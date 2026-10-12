@@ -2351,10 +2351,41 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	pool.freeUnits += willCreate * baseDiskTemplate.freeUnits()
 	pool.baseDisksInflight += willCreate
 
+	// Ready base disks of the pool that new base disks should be created
+	// from (instead of the image). Empty if the feature is disabled or there
+	// are no suitable base disks.
+	var srcBaseDisks []baseDisk
+	// Source base disks must be held from deletion while dependents are being
+	// created, so the feature can't work without inflight dependents
+	// accounting (see applyInflightDependents). The service refuses to start
+	// with such a config (see validateUseReadyBaseDiskAsSrcConfig), but the
+	// storage may be used on its own (e.g. by tools), so fall back to the
+	// image here instead of failing.
+	if s.useReadyBaseDiskAsSrc && s.holdBaseDisksWithInflightDependents {
+		srcBaseDisks, err = s.getSrcBaseDiskCandidates(
+			ctx,
+			tx,
+			config.imageID,
+			config.zoneID,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var newBaseDisks []baseDisk
 	for i := uint64(0); i < willCreate; i++ {
-		// All base disks should have the same params.
+		// All base disks should have the same params (except for id and
+		// source base disk).
 		baseDiskTemplate.id = generateBaseDiskID(s.baseDiskIDPrefix)
+
+		if len(srcBaseDisks) != 0 {
+			// Spread the load over the source base disks.
+			srcBaseDisk := srcBaseDisks[i%uint64(len(srcBaseDisks))]
+			baseDiskTemplate.srcDiskZoneID = srcBaseDisk.zoneID
+			baseDiskTemplate.srcDiskID = srcBaseDisk.id
+		}
+
 		newBaseDisks = append(newBaseDisks, baseDiskTemplate)
 
 		logging.Info(
@@ -2370,6 +2401,17 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 			oldState: nil,
 			state:    &newBaseDisks[i],
 		})
+	}
+
+	// New base disks created from other base disks hold their source base
+	// disks from deletion until creation is finished (see inflightDependents).
+	// Appends transitions of the source base disks, which should be written
+	// to DB as well (they are no-ops for 'scheduling' and 'free' tables).
+	// Pool counters are not affected: inflight dependents don't change free
+	// slots/units of the source base disks.
+	transitions, err = s.applyInflightDependents(ctx, tx, transitions)
+	if err != nil {
+		return nil, err
 	}
 
 	err = s.updateSchedulingTable(ctx, tx, transitions)
@@ -2398,8 +2440,8 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	}
 
 	var values []persistence.Value
-	for _, baseDisk := range newBaseDisks {
-		values = append(values, baseDisk.structValue())
+	for _, t := range transitions {
+		values = append(values, t.state.structValue())
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -3291,6 +3333,60 @@ func (s *storageYDB) getFreeBaseDisks(
 	return s.findBaseDisksTx(ctx, tx, ids)
 }
 
+// Returns base disks of the pool that can be used as a source for new base
+// disks of this pool (see CreateBaseDiskRequest.SrcDisk), less loaded first.
+// Returns nil if there are no suitable base disks (e.g. the pool is empty).
+func (s *storageYDB) getSrcBaseDiskCandidates(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	imageID string,
+	zoneID string,
+) ([]baseDisk, error) {
+
+	// Only base disks with free slots are considered. It keeps the lookup
+	// cheap (see 'free' table) and such base disks are the ones that overlay
+	// disks are going to be created from anyway.
+	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	var candidates []baseDisk
+	for _, disk := range freeBaseDisks {
+		// Base disk can be used as a source for other base disks only after
+		// its own creation is finished (it also forbids chains of holds, see
+		// retireBaseDisk and applyInflightDependents).
+		if disk.status != baseDiskStatusReady {
+			continue
+		}
+
+		// Retiring base disks are going to be deleted.
+		if disk.retiring || disk.isDoomed() {
+			continue
+		}
+
+		candidates = append(candidates, disk)
+	}
+
+	// Creating a base disk from another base disk reads the whole source
+	// base disk, so prefer base disks that are not serving other transfers
+	// right now (see inflightDependents) and then the least loaded ones.
+	// Order by id as a tiebreaker for determinism.
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].inflightDependents != candidates[j].inflightDependents {
+			return candidates[i].inflightDependents < candidates[j].inflightDependents
+		}
+
+		if candidates[i].activeUnits != candidates[j].activeUnits {
+			return candidates[i].activeUnits < candidates[j].activeUnits
+		}
+
+		return candidates[i].id < candidates[j].id
+	})
+
+	return candidates, nil
+}
+
 func (s *storageYDB) getNonRetiringBaseDisks(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -3435,6 +3531,18 @@ func (s *storageYDB) retireBaseDisk(
 			return nil, err
 		}
 	}
+
+	// Prefer ready base disks as rebase targets: overlay disks can't be
+	// rebased onto a base disk until its creation is finished. Base disks
+	// that are still being created are still suitable (see below), e.g. for
+	// idempotent retries, but should only be used as a last resort. That
+	// matters when regular base disks of the pool are created from other
+	// base disks (see useReadyBaseDiskAsSrc).
+	sort.SliceStable(suitableBaseDisks, func(i, j int) bool {
+		iReady := suitableBaseDisks[i].status == baseDiskStatusReady
+		jReady := suitableBaseDisks[j].status == baseDiskStatusReady
+		return iReady && !jReady
+	})
 
 	var baseDiskTransitions []baseDiskTransition
 

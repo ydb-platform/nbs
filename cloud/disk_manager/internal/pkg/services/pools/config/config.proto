@@ -60,4 +60,13 @@ message PoolsConfig {
     // are running a version that decrements the counter.
     // TODO: remove after deployment of this version is finished.
     optional bool HoldBaseDisksWithInflightDependents = 27 [default = false];
+    // When a pool needs new base disks and already has a ready base disk, use
+    // that base disk as the source for the new ones (disk-to-disk transfer,
+    // see CreateBaseDiskRequest.SrcDisk) instead of creating them from the
+    // image. Falls back to the image when the pool has no suitable ready base
+    // disk with free slots (e.g. the pool is empty, its base disks are still
+    // being created, or all of them are full or retiring).
+    // Requires HoldBaseDisksWithInflightDependents=true, because source base
+    // disks must be protected from deletion until their dependents are created.
+    optional bool UseReadyBaseDiskAsSrc = 28 [default = false];
 }
