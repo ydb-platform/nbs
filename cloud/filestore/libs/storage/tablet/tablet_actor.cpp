@@ -1272,10 +1272,17 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
         NProto::TError error;
         const auto* rangeState =
             std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
+        const auto& operationId = std::visit(
+            [](const auto& state) { return state.OperationId; },
+            *GetForcedOperationState());
         if (rangeState && rangeState->Mode == mode) {
-            error = MakeError(S_ALREADY, "already launched");
+            error = MakeError(
+                S_ALREADY,
+                "already launched, operationId=" + operationId);
         } else {
-            error = MakeError(E_TRY_AGAIN, "another operation is running");
+            error = MakeError(
+                E_TRY_AGAIN,
+                "another operation is running, operationId=" + operationId);
         }
         return std::make_unique<TResponse>(std::move(error));
     }
@@ -1333,12 +1340,17 @@ TIndexTabletActor::ProcessForcedTabletOperationRequest(
         NProto::TError error;
         const auto* state =
             std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
+        const auto& operationId = std::visit(
+            [](const auto& state) { return state.OperationId; },
+            *GetForcedOperationState());
         if (state && state->Mode == mode) {
-            error = MakeError(S_ALREADY, "already launched");
+            error = MakeError(
+                S_ALREADY,
+                "already launched, operationId=" + operationId);
         } else {
             error = MakeError(
                 E_TRY_AGAIN,
-                TStringBuilder() << "another operation is running");
+                "another operation is running, operationId=" + operationId);
         }
         return std::make_unique<TResponse>(std::move(error));
     }
