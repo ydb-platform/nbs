@@ -20,6 +20,7 @@
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
@@ -29,7 +30,9 @@
 
 #include <vhost/blockdev.h>
 
+#include <atomic>
 #include <span>
+#include <thread>
 
 IOutputStream& operator<<(
     IOutputStream& out,
@@ -177,11 +180,13 @@ public:
         }
     }
 
-    void StartServer(bool addNonExistingDevice = false)
+    void StartServer(bool addNonExistingDevice = false, ITaskQueuePtr threadPool = nullptr)
     {
         Server = CreateServer(
             Logging,
-            CreateAioBackend(Encryptor, Logging, ThreadCount));
+            threadPool
+                ? CreateAioBackend(Encryptor, Logging, std::move(threadPool))
+                : CreateAioBackend(Encryptor, Logging, ThreadCount));
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -1261,6 +1266,56 @@ INSTANTIATE_TEST_SUITE_P(
         return std::string(name);
     });
 
+class TControlledTaskQueue final: public ITaskQueue
+{
+private:
+    const ITaskQueuePtr Pool;
+    const ui64 ExpectedTasks;
+    std::atomic<ui64> Enqueued = 0;
+    NThreading::TPromise<void> AllEnqueued = NThreading::NewPromise();
+    NThreading::TPromise<void> ReleaseTasks = NThreading::NewPromise();
+
+public:
+    TControlledTaskQueue(ITaskQueuePtr pool, ui64 expectedTasks)
+        : Pool(std::move(pool))
+        , ExpectedTasks(expectedTasks)
+    {}
+
+    void Start() override
+    {
+        Pool->Start();
+    }
+
+    void Stop() override
+    {
+        Pool->Stop();
+    }
+
+    void Enqueue(ITaskPtr task) override
+    {
+        Pool->ExecuteSimple(
+            [gate = ReleaseTasks.GetFuture(), task = std::move(task)]() mutable
+            {
+                gate.Wait();
+                task->Execute();
+            });
+
+        if (++Enqueued == ExpectedTasks) {
+            AllEnqueued.SetValue();
+        }
+    }
+
+    bool WaitForAllEnqueued(TDuration timeout) const
+    {
+        return AllEnqueued.GetFuture().Wait(timeout);
+    }
+
+    void Release()
+    {
+        ReleaseTasks.TrySetValue();
+    }
+};
+
 class TSlowEncryptor: public IEncryptor
 {
 private:
@@ -1462,9 +1517,26 @@ TEST_P(TSlowEncryptorServerTest, ShouldDecryptDataInParallel)
 
 TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
 {
-    StartServer();
-
     const ui64 requestCount = ThreadCount * 5;
+    auto threadPool = std::make_shared<TControlledTaskQueue>(
+        CreateThreadPool("ENCRYPTION", ThreadCount), requestCount);
+    std::thread stopThread;
+    bool stopRequested = false;
+    Y_DEFER
+    {
+        // Also release blocked workers after a fatal assertion, before
+        // teardown.
+        threadPool->Release();
+        if (stopThread.joinable()) {
+            stopThread.join();
+        }
+        if (stopRequested) {
+            Server.reset();
+            Client.DeInit();
+        }
+    };
+
+    ASSERT_NO_FATAL_FAILURE(StartServer(false, threadPool));
 
     auto makePattern = [&](size_t block) -> TString
     {
@@ -1507,12 +1579,27 @@ TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
             Client.WriteAsync(i % QueueCount, {hdr}, {readBuffer, status}));
     }
 
-    // Give AIO time to complete the reads and enqueue decryption tasks onto
-    // the thread pool. Each decryption sleeps 100ms, so most tasks remain
-    // queued at this point.
-    Sleep(TDuration::MilliSeconds(200));
+    // Every AIO completion must reach the pool before stopping the server.
+    // The gate keeps both running and queued tasks unfinished at this point.
+    ASSERT_TRUE(threadPool->WaitForAllEnqueued(TDuration::Seconds(5)));
 
-    Server->Stop();
+    auto stopStarted = NThreading::NewPromise();
+    auto stopFinished = NThreading::NewPromise();
+    stopThread = std::thread(
+        [server = Server, stopStarted, stopFinished]() mutable
+        {
+            stopStarted.SetValue();
+            server->Stop();
+            stopFinished.SetValue();
+        });
+    stopRequested = true;
+
+    ASSERT_TRUE(stopStarted.GetFuture().Wait(TDuration::Seconds(5)));
+    EXPECT_FALSE(stopFinished.GetFuture().Wait(TDuration::MilliSeconds(100)));
+
+    threadPool->Release();
+    ASSERT_TRUE(stopFinished.GetFuture().Wait(TDuration::Seconds(5)));
+    stopThread.join();
     Server.reset();
 
     EXPECT_EQ(
@@ -1532,8 +1619,6 @@ TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
         TString readData(readBuffers[i].data(), readBuffers[i].size());
         EXPECT_EQ(makePattern(i), readData);
     }
-
-    Client.DeInit();
 }
 
 INSTANTIATE_TEST_SUITE_P(

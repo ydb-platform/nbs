@@ -95,10 +95,9 @@ private:
     ITaskQueuePtr ThreadPool;
 
 public:
-    TAioBackend(
-        IEncryptorPtr encryptor,
-        ILoggingServicePtr logging,
-        ui64 threadPoolSize);
+    TAioBackend(IEncryptorPtr encryptor,
+                ILoggingServicePtr logging,
+                ITaskQueuePtr threadPool);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -137,17 +136,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAioBackend::TAioBackend(
-    IEncryptorPtr encryptor,
-    ILoggingServicePtr logging,
-    ui64 threadPoolSize)
+TAioBackend::TAioBackend(IEncryptorPtr encryptor,
+                         ILoggingServicePtr logging,
+                         ITaskQueuePtr threadPool)
     : Logging{std::move(logging)}
     , Log(Logging->CreateLog("AIO"))
     , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
-    , ThreadPool(
-          threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
-                             : nullptr)
+    , ThreadPool(std::move(threadPool))
 {}
 
 void TAioBackend::IoSetup()
@@ -584,10 +580,19 @@ IBackendPtr CreateAioBackend(
     ILoggingServicePtr logging,
     ui64 threadPoolSize)
 {
-    return std::make_shared<TAioBackend>(
+    return CreateAioBackend(
         std::move(encryptor),
         std::move(logging),
-        threadPoolSize);
+        threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
+                           : nullptr);
+}
+
+IBackendPtr CreateAioBackend(IEncryptorPtr encryptor,
+                             ILoggingServicePtr logging,
+                             ITaskQueuePtr threadPool)
+{
+    return std::make_shared<TAioBackend>(
+        std::move(encryptor), std::move(logging), std::move(threadPool));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer
