@@ -1392,6 +1392,10 @@ void TIndexTabletActor::HandleForcedOperationCompletedImpl(
     if (!IsForcedOperationRunning()) {
         ReportForcedOperationUnexpectedState(
             "got ForcedOperationCompleted but no current op");
+
+        // This should not happen, but lets be defensive.
+        WorkerActors.erase(sender);
+        EnqueueForcedOperationIfNeeded(ctx);
         return;
     }
 
