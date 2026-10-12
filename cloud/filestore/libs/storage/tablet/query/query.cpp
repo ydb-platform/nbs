@@ -1,6 +1,9 @@
 #include "query.h"
 #include "parser.h"
 
+#include <util/string/builder.h>
+#include <util/string/escape.h>
+
 #include <mutex>
 
 struct yy_buffer_state;
@@ -12,44 +15,28 @@ namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TParseContext
+TResultOrError<TSelect> Parse(TStringBuf input)
 {
-    TSelect Query;
-    TParseError Error;
-};
-
-TParseContext CurrentParseContext;
-size_t CurrentTokenOffset = 0;
-size_t ScannedInputBytes = 0;
-
-TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
-{
+    // The legacy Flex scanner still uses shared internal state.
     static std::mutex Mutex;
     const std::lock_guard guard(Mutex);
 
-    CurrentParseContext.Query = TSelect{};
-    CurrentParseContext.Error = {};
-    CurrentTokenOffset = 0;
-    ScannedInputBytes = 0;
-
+    TParseContext context;
     auto* buffer = yy_scan_bytes(input.data(), input.size());
-    const int result = yyparse();
+    const int result = yyparse(context);
     yy_delete_buffer(buffer);
 
     if (result != 0) {
-        if (error) {
-            *error = CurrentParseContext.Error;
-            if (error->Message.empty()) {
-                error->Message = "invalid query";
-            }
+        if (context.Error.Message.empty()) {
+            context.Error.Message = "invalid query";
         }
-        return Nothing();
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << context.Error.Message
+                             << " at byte " << context.Error.Offset);
     }
 
-    if (error) {
-        *error = {};
-    }
-    return std::move(CurrentParseContext.Query);
+    return std::move(context.Query);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery

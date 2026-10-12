@@ -1,20 +1,11 @@
 %{
-#include <cloud/filestore/libs/storage/tablet/query/query.h>
+#include "parser.h"
 
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TParseContext
-{
-    TSelect Query;
-    TParseError Error;
-};
-
-extern TParseContext CurrentParseContext;
-extern size_t CurrentTokenOffset;
 
 static TExpression* PredicateExpression(TPredicate* predicate)
 {
@@ -48,10 +39,10 @@ static TExpression* LogicalExpression(
     return expression;
 }
 
-static void SetError(const char* message)
+static void SetError(TParseContext& context, const char* message)
 {
-    CurrentParseContext.Error.Message = message;
-    CurrentParseContext.Error.Offset = CurrentTokenOffset;
+    context.Error.Message = message;
+    context.Error.Offset = context.CurrentTokenOffset;
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery
@@ -59,15 +50,35 @@ static void SetError(const char* message)
 using namespace NCloud::NFileStore::NStorage::NQuery;
 %}
 
+%define api.pure full
 %define parse.error verbose
+
+%parse-param { NCloud::NFileStore::NStorage::NQuery::TParseContext& context }
+%lex-param { NCloud::NFileStore::NStorage::NQuery::TParseContext& context }
 
 %code requires {
 #include <cloud/filestore/libs/storage/tablet/query/query.h>
+
+namespace NCloud::NFileStore::NStorage::NQuery {
+
+struct TParseContext
+{
+    TSelect Query;
+    TParseError Error;
+    size_t CurrentTokenOffset = 0;
+    size_t ScannedInputBytes = 0;
+};
+
+}   // namespace NCloud::NFileStore::NStorage::NQuery
 }
 
 %code provides {
-int yylex(void);
-void yyerror(const char* message);
+int yylex(
+    YYSTYPE* value,
+    NCloud::NFileStore::NStorage::NQuery::TParseContext& context);
+void yyerror(
+    NCloud::NFileStore::NStorage::NQuery::TParseContext& context,
+    const char* message);
 }
 
 %union {
@@ -101,10 +112,10 @@ void yyerror(const char* message);
 query:
     SELECT columns FROM IDENTIFIER where_clause limit_clause
     {
-        CurrentParseContext.Query.Columns = std::move(*$2);
-        CurrentParseContext.Query.Table = std::move(*$4);
+        context.Query.Columns = std::move(*$2);
+        context.Query.Table = std::move(*$4);
         if ($5) {
-            CurrentParseContext.Query.Where = std::move(*$5);
+            context.Query.Where = std::move(*$5);
             delete $5;
         }
         delete $2;
@@ -153,7 +164,7 @@ limit_clause:
     %empty
   | LIMIT NUMBER
     {
-        CurrentParseContext.Query.Limit = $2;
+        context.Query.Limit = $2;
     }
 ;
 
@@ -278,7 +289,9 @@ value:
 
 %%
 
-void yyerror(const char* message)
+void yyerror(
+    NCloud::NFileStore::NStorage::NQuery::TParseContext& context,
+    const char* message)
 {
-    NCloud::NFileStore::NStorage::NQuery::SetError(message);
+    NCloud::NFileStore::NStorage::NQuery::SetError(context, message);
 }

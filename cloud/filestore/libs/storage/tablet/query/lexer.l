@@ -1,6 +1,4 @@
 %{
-#define YY_NO_INPUT 1
-
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunneeded-internal-declaration"
@@ -10,25 +8,24 @@
 
 #include <util/generic/string.h>
 #include <util/string/cast.h>
+#include <util/string/escape.h>
 
 #include <cctype>
 
-namespace NCloud::NFileStore::NStorage::NQuery {
-extern size_t CurrentTokenOffset;
-extern size_t ScannedInputBytes;
-}
+#define YY_DECL int yylex( \
+    YYSTYPE* value, \
+    NCloud::NFileStore::NStorage::NQuery::TParseContext& context)
 
 #define YY_USER_ACTION \
-    NCloud::NFileStore::NStorage::NQuery::CurrentTokenOffset = \
-        NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes; \
-    NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes += yyleng;
+    context.CurrentTokenOffset = context.ScannedInputBytes; \
+    context.ScannedInputBytes += yyleng;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 static int Keyword(const char* text)
 {
     TString value(text);
-    for (auto& ch : value) {
+    for (auto& ch: value) {
         ch = std::tolower(static_cast<unsigned char>(ch));
     }
 
@@ -45,30 +42,24 @@ static int Keyword(const char* text)
 
 static TString Unquote(const char* text, size_t length)
 {
-    TString result;
-    for (size_t i = 1; i + 1 < length; ++i) {
-        if (text[i] == '\\' && i + 2 < length) {
-            ++i;
-        }
-        result += text[i];
-    }
-    return result;
+    return UnescapeC(TStringBuf(text + 1, length - 2));
 }
 %}
 
 %option noyywrap
-%option noinput
 
 %%
 
+    /* Skip whitespace; the byte offsets are still updated. */
 [ \t\r\n]+                  ;
 
+    /* Return Bison's end-of-input token, with the offset past the last byte. */
 <<EOF>>                     {
-    NCloud::NFileStore::NStorage::NQuery::CurrentTokenOffset =
-        NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes;
+    context.CurrentTokenOffset = context.ScannedInputBytes;
     return 0;
 }
 
+    /* Comparison operators. Chooses the longest match (e.g. >= over >). */
 "=="|"="                    { return EQ; }
 "!="                        { return NE; }
 ">="                        { return GE; }
@@ -76,29 +67,35 @@ static TString Unquote(const char* text, size_t length)
 "<="                        { return LE; }
 "<"                         { return LT; }
 
+    /* Quoted strings: ordinary characters or a backslash followed by a
+     * non-newline character. Unquote removes the surrounding quotes and
+     * decodes C-style escape sequences in the string contents. */
 '([^\\'\n]|\\.)*'           |
 \"([^\\\"\n]|\\.)*\"         {
-    yylval.text = new TString(Unquote(yytext, yyleng));
+    value->text = new TString(Unquote(yytext, yyleng));
     return STRING;
 }
 
+    /* Unsigned decimal integers; reject values that overflow ui64. */
 [0-9]+                      {
-    ui64 value = 0;
-    if (!TryFromString(TStringBuf(yytext, yyleng), value)) {
+    ui64 number = 0;
+    if (!TryFromString(TStringBuf(yytext, yyleng), number)) {
         return INVALID;
     }
-    yylval.number = value;
+    value->number = number;
     return NUMBER;
 }
 
+    /* Keyword and identifiers; keyword substrings inside names remain identifiers. */
 [A-Za-z_][A-Za-z0-9_]*      {
     const int token = Keyword(yytext);
     if (token == IDENTIFIER) {
-        yylval.text = new TString(yytext, yyleng);
+        value->text = new TString(yytext, yyleng);
     }
     return token;
 }
 
+    /* Punctuation uses its character code as the token type; no value needed. */
 "*"                         { return '*'; }
 "{"                         { return '{'; }
 "}"                         { return '}'; }
@@ -106,6 +103,8 @@ static TString Unquote(const char* text, size_t length)
 "("                         { return '('; }
 ")"                         { return ')'; }
 
+    /* Reject any remaining character instead of silently ending the query.
+     * Dot matches any character except newline, which whitespace handles. */
 .                           { return INVALID; }
 
 %%

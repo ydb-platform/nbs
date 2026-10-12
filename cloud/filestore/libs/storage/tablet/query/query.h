@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -86,6 +88,6 @@ struct TParseError
     TString Message;
 };
 
-TMaybe<TSelect> Parse(TStringBuf input, TParseError* error = nullptr);
+TResultOrError<TSelect> Parse(TStringBuf input);
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery

@@ -55,36 +55,48 @@ size_t PredicateValuesSize(const TPredicate& predicate)
         predicate);
 }
 
+TSelect ParseQuery(TStringBuf input)
+{
+    auto result = Parse(input);
+    UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError().GetMessage());
+    return result.ExtractResult();
+}
+
+NProto::TError GetParseError(TStringBuf input)
+{
+    auto result = Parse(input);
+    UNIT_ASSERT(HasError(result.GetError()));
+    return result.GetError();
+}
+
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TQueryParserTest)
 {
     Y_UNIT_TEST(ShouldParseSelectAll)
     {
-        auto query = Parse(
+        auto query = ParseQuery(
             "SELECT * FROM NodeRefs WHERE child_id IN {1, 2, 3} LIMIT 10");
 
-        UNIT_ASSERT(query);
-        UNIT_ASSERT_VALUES_EQUAL(query->Table, "NodeRefs");
-        UNIT_ASSERT(query->Columns.empty());
-        UNIT_ASSERT(query->Where);
-        const auto& predicate = AsPredicate(*query->Where);
+        UNIT_ASSERT_VALUES_EQUAL(query.Table, "NodeRefs");
+        UNIT_ASSERT(query.Columns.empty());
+        UNIT_ASSERT(query.Where);
+        const auto& predicate = AsPredicate(*query.Where);
         UNIT_ASSERT(std::holds_alternative<TInPredicate>(predicate));
         UNIT_ASSERT_VALUES_EQUAL("child_id", PredicateColumn(predicate));
         UNIT_ASSERT_VALUES_EQUAL(3, PredicateValuesSize(predicate));
-        UNIT_ASSERT_VALUES_EQUAL(10, *query->Limit);
+        UNIT_ASSERT_VALUES_EQUAL(10, *query.Limit);
     }
 
     Y_UNIT_TEST(ShouldParseProjectionAndString)
     {
-        auto query = Parse(
+        auto query = ParseQuery(
             "select name, child_id from NodeRefs "
             "where name = 'hello' and node_id = 42");
 
-        UNIT_ASSERT(query);
-        UNIT_ASSERT_VALUES_EQUAL(query->Columns.size(), 2);
-        UNIT_ASSERT(query->Where);
-        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT_VALUES_EQUAL(query.Columns.size(), 2);
+        UNIT_ASSERT(query.Where);
+        const auto& logical = AsLogical(*query.Where);
         UNIT_ASSERT(logical.Left);
         UNIT_ASSERT(logical.Right);
         UNIT_ASSERT(logical.Operator == ELogicalOperator::And);
@@ -95,66 +107,58 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
     Y_UNIT_TEST(ShouldRejectEmptyIn)
     {
-        TParseError error;
-        UNIT_ASSERT(
-            !Parse("SELECT * FROM NodeRefs WHERE child_id IN {}", &error));
-        UNIT_ASSERT(!error.Message.empty());
+        const auto error =
+            GetParseError("SELECT * FROM NodeRefs WHERE child_id IN {}");
+        UNIT_ASSERT(!error.GetMessage().empty());
     }
 
     Y_UNIT_TEST(ShouldRejectUnknownCharacters)
     {
-        TParseError error;
-        UNIT_ASSERT(
-            !Parse("SELECT * FROM NodeRefs @ WHERE child_id = 1", &error));
-        UNIT_ASSERT(!error.Message.empty());
+        const auto error =
+            GetParseError("SELECT * FROM NodeRefs @ WHERE child_id = 1");
+        UNIT_ASSERT(!error.GetMessage().empty());
     }
 
     Y_UNIT_TEST(ShouldRejectUnterminatedString)
     {
-        TParseError error;
-        UNIT_ASSERT(
-            !Parse("SELECT * FROM NodeRefs WHERE name = 'hello", &error));
-        UNIT_ASSERT(!error.Message.empty());
+        const auto error =
+            GetParseError("SELECT * FROM NodeRefs WHERE name = 'hello");
+        UNIT_ASSERT(!error.GetMessage().empty());
     }
 
     Y_UNIT_TEST(ShouldRejectNumericOverflow)
     {
-        TParseError error;
-        UNIT_ASSERT(!Parse(
+        auto error = GetParseError(
             "SELECT * FROM NodeRefs WHERE child_id = "
-            "18446744073709551616",
-            &error));
-        UNIT_ASSERT(!error.Message.empty());
+            "18446744073709551616");
+        UNIT_ASSERT(!error.GetMessage().empty());
 
-        UNIT_ASSERT(!Parse(
-            "SELECT * FROM NodeRefs LIMIT 18446744073709551616",
-            &error));
-        UNIT_ASSERT(!error.Message.empty());
+        error = GetParseError(
+            "SELECT * FROM NodeRefs LIMIT 18446744073709551616");
+        UNIT_ASSERT(!error.GetMessage().empty());
     }
 
     Y_UNIT_TEST(ShouldParseEscapedStringsAndLimit)
     {
-        auto query =
-            Parse("select name from NodeRefs where name = 'it\\'s' limit 0");
+        auto query = ParseQuery(
+            "select name from NodeRefs where name = 'it\\'s' limit 0");
 
-        UNIT_ASSERT(query);
-        UNIT_ASSERT_VALUES_EQUAL(1, query->Columns.size());
-        UNIT_ASSERT(query->Where);
+        UNIT_ASSERT_VALUES_EQUAL(1, query.Columns.size());
+        UNIT_ASSERT(query.Where);
         UNIT_ASSERT_VALUES_EQUAL(
             "it's",
-            std::get<TString>(PredicateValue(AsPredicate(*query->Where))));
-        UNIT_ASSERT_VALUES_EQUAL(*query->Limit, 0);
+            std::get<TString>(PredicateValue(AsPredicate(*query.Where))));
+        UNIT_ASSERT_VALUES_EQUAL(*query.Limit, 0);
     }
 
     Y_UNIT_TEST(ShouldParsePrecedenceAndColumnReferences)
     {
-        auto query = Parse(
+        auto query = ParseQuery(
             "SELECT name FROM NodeRefs "
             "WHERE a == b OR c != 'x' AND d SUBSTR \"y\"");
 
-        UNIT_ASSERT(query);
-        UNIT_ASSERT(query->Where);
-        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT(query.Where);
+        const auto& logical = AsLogical(*query.Where);
         UNIT_ASSERT(logical.Operator == ELogicalOperator::Or);
         const auto& equal = AsPredicate(*logical.Left);
         UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
@@ -171,27 +175,25 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
     Y_UNIT_TEST(ShouldParseNestedParentheses)
     {
-        auto query = Parse(
+        auto query = ParseQuery(
             "SELECT * FROM NodeRefs WHERE "
             "((a == b OR c != 'x') AND d SUBSTR 'y') LIMIT 5");
 
-        UNIT_ASSERT(query);
-        UNIT_ASSERT(query->Where);
-        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT(query.Where);
+        const auto& logical = AsLogical(*query.Where);
         UNIT_ASSERT(logical.Operator == ELogicalOperator::And);
         UNIT_ASSERT(AsLogical(*logical.Left).Operator == ELogicalOperator::Or);
-        UNIT_ASSERT_VALUES_EQUAL(5, *query->Limit);
+        UNIT_ASSERT_VALUES_EQUAL(5, *query.Limit);
     }
 
     Y_UNIT_TEST(ShouldParseComparisonOperators)
     {
         const auto assertComparison = [] (TStringBuf op, auto expectedTag) {
-            auto query = Parse(
+            auto query = ParseQuery(
                 TString("SELECT * FROM t WHERE a ") + TString(op) + " 42");
 
-            UNIT_ASSERT(query);
-            UNIT_ASSERT(query->Where);
-            const auto& predicate = AsPredicate(*query->Where);
+            UNIT_ASSERT(query.Where);
+            const auto& predicate = AsPredicate(*query.Where);
             UNIT_ASSERT(
                 std::holds_alternative<decltype(expectedTag)>(predicate));
             UNIT_ASSERT_VALUES_EQUAL("a", PredicateColumn(predicate));
@@ -208,19 +210,18 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
     Y_UNIT_TEST(ShouldNotTreatKeywordsInsideIdentifiersAsOperators)
     {
-        auto candy = Parse("SELECT a FROM t WHERE a == candy");
-        UNIT_ASSERT(candy);
-        UNIT_ASSERT(candy->Where);
-        const auto& equal = AsPredicate(*candy->Where);
+        auto candy = ParseQuery("SELECT a FROM t WHERE a == candy");
+        UNIT_ASSERT(candy.Where);
+        const auto& equal = AsPredicate(*candy.Where);
         UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
         UNIT_ASSERT_VALUES_EQUAL(
             "candy",
             std::get<TColumnRef>(PredicateValue(equal)).Name);
 
-        auto logical = Parse("SELECT a FROM t WHERE a == floor OR  c == d");
-        UNIT_ASSERT(logical);
-        UNIT_ASSERT(logical->Where);
-        const auto& logicalExpression = AsLogical(*logical->Where);
+        auto logical =
+            ParseQuery("SELECT a FROM t WHERE a == floor OR  c == d");
+        UNIT_ASSERT(logical.Where);
+        const auto& logicalExpression = AsLogical(*logical.Where);
         UNIT_ASSERT(logicalExpression.Operator == ELogicalOperator::Or);
         UNIT_ASSERT_VALUES_EQUAL(
             "floor",
@@ -233,7 +234,6 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
     Y_UNIT_TEST(ShouldRejectMalformedQueries)
     {
-        TParseError error;
         for (const auto* input:
              {
                  "SELECT * FROM NodeRefs WHERE",
@@ -246,25 +246,28 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
                  "SELECT * FROM NodeRefs LIMIT 1 trailing",
              })
         {
-            UNIT_ASSERT_C(!Parse(input, &error), input);
-            UNIT_ASSERT_C(!error.Message.empty(), input);
+            const auto error = GetParseError(input);
+            UNIT_ASSERT_C(!error.GetMessage().empty(), input);
         }
     }
 
     Y_UNIT_TEST(ShouldReportParseErrorOffset)
     {
-        TParseError error;
         const TString unexpectedToken =
             "SELECT * FROM NodeRefs @ WHERE child_id = 1";
-        UNIT_ASSERT(!Parse(unexpectedToken, &error));
-        UNIT_ASSERT_VALUES_EQUAL(
-            unexpectedToken.find('@'),
-            error.Offset);
+        const auto tokenError = GetParseError(unexpectedToken);
+        const TString tokenOffset = TStringBuilder()
+            << "at byte " << unexpectedToken.find('@');
+        UNIT_ASSERT(tokenError.GetMessage().find(tokenOffset.c_str()) !=
+                    std::string::npos);
 
         const TString unexpectedEof =
             "SELECT * FROM NodeRefs WHERE child_id =";
-        UNIT_ASSERT(!Parse(unexpectedEof, &error));
-        UNIT_ASSERT_VALUES_EQUAL(unexpectedEof.size(), error.Offset);
+        const auto eofError = GetParseError(unexpectedEof);
+        const TString eofOffset = TStringBuilder()
+            << "at byte " << unexpectedEof.size();
+        UNIT_ASSERT(eofError.GetMessage().find(eofOffset.c_str()) !=
+                    std::string::npos);
     }
 }
 
