@@ -155,6 +155,9 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
+    LocalSystemTabletBackupConfigPath =
+        storageConfig.GetSystemTabletBackupConfigPath();
+
     if (GetDynamicYamlConfigurationStaticallyEnabled()) {
         StorageConfigControls =
             std::make_shared<NStorage::TStorageConfigControls>();
@@ -301,10 +304,39 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
+    if (LocalSystemTabletBackupConfigPath) {
+        config.SetSystemTabletBackupConfigPath(LocalSystemTabletBackupConfigPath);
+    }
+
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config),
         FeaturesConfig,
         StorageConfigControls);
+
+    UpdateSystemTabletBackupConfig();
+}
+
+void TConfigInitializerYdb::UpdateSystemTabletBackupConfig()
+{
+    if (!KikimrConfig) {
+        return;
+    }
+
+    if (CmsSystemTabletBackupConfig) {
+        KikimrConfig->MutableSystemTabletBackupConfig()->CopyFrom(
+            *CmsSystemTabletBackupConfig);
+    } else {
+        KikimrConfig->ClearSystemTabletBackupConfig();
+    }
+
+    if (StorageConfig) {
+        const auto backupPath = StorageConfig->GetSystemTabletBackupConfigPath();
+        if (backupPath) {
+            KikimrConfig->MutableSystemTabletBackupConfig()
+                ->MutableFilesystem()
+                ->SetPath(backupPath);
+        }
+    }
 }
 
 void TConfigInitializerYdb::ApplyYdbStatsConfig(const TString& text)
@@ -590,10 +622,16 @@ void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
+    if (config.HasSystemTabletBackupConfig()) {
+        CmsSystemTabletBackupConfig = config.GetSystemTabletBackupConfig();
+    }
+
     if (!GetDynamicYamlConfigurationStaticallyEnabled()) {
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);
     }
+
+    UpdateSystemTabletBackupConfig();
 }
 
 }   // namespace NCloud::NBlockStore::NServer

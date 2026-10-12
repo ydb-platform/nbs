@@ -1738,4 +1738,8 @@ message TStorageServiceConfig
     // When set, partitions of multipartition volumes use the configured
     // MaxBlobsPerRange as is instead of dividing it by the partition count.
     optional bool IgnorePartitionCountInMaxBlobsPerRange = 542;
+
+    // Filesystem directory for system tablet backups. Overrides the CMS path.
+    // If empty, the system tablet backup configuration from CMS is used.
+    optional string SystemTabletBackupConfigPath = 543;
 }
