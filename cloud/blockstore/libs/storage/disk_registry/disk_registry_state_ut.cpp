@@ -782,8 +782,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
             CleanDevices(state, db);
         });
 
@@ -876,8 +876,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1091,8 +1091,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL("disk-1", r.AffectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
 
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetDiskStateUpdates().size());
         });
@@ -1267,8 +1267,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1322,8 +1322,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState& state = *statePtr;
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -1814,7 +1814,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT(state.MarkDeviceAsDirty(db, "uuid-5"));
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
         });
 
         state.PublishCounters(Now());
@@ -1860,7 +1860,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, disksToCleanup->Val());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         state.PublishCounters(Now());
@@ -2353,8 +2353,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-2", group->GetDisks(2).GetDiskId());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4", 0));
         });
 
         group = state.FindPlacementGroup("group-1");
@@ -2402,8 +2402,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, groups.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
     }
 
@@ -2642,8 +2642,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             // OK to deallocate disk from group.
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4", 0));
         });
 
         group = state.FindPlacementGroup("group-1");
@@ -2708,8 +2708,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, groups.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3", 0));
         });
     }
 
@@ -2841,8 +2841,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-3", group->GetDisks(2).GetDiskId());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3", 0));
 
             for (const auto& d: state.GetDirtyDevices()) {
                 state.MarkDeviceAsClean(Now(), db, d.GetDeviceUUID());
@@ -3054,8 +3054,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-3", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-3", 0));
 
             for (const auto& d: state.GetDirtyDevices()) {
                 state.MarkDeviceAsClean(Now(), db, d.GetDeviceUUID());
@@ -3343,8 +3343,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-3", group->GetDisks(2).GetDiskId());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-4", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-4", 0));
             CleanDevices(state, db);
 
             NProto::TPlacementGroupSettings settings;
@@ -5691,8 +5691,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             TVector<TDeviceConfig> devices;
             UNIT_ASSERT_SUCCESS(AllocateDisk(db, state, "disk-1", {}, {}, 10_GB, devices));
             UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -6918,8 +6918,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
          */
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -7796,8 +7796,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
@@ -9990,16 +9990,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-2"));
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetDisksToReallocate().size());
         UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-2"));
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-2"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-2"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-2", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-2", 0));
         });
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDisksToReallocate().size());
@@ -10501,8 +10501,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
 
             auto [config, seqNo] = state.GetVolumeConfigUpdate("disk-1");
             UNIT_ASSERT(!config.HasPlacementGroupId());
@@ -10886,8 +10886,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
             CleanDevices(state, db);
         });
 

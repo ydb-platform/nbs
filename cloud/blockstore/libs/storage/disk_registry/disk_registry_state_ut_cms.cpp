@@ -844,8 +844,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     "cms action (test-remove-message)",
                     agentPtr->GetStateMessage());
 
-                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "nrd0"));
-                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "nrd0"));
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "nrd0", 0));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "nrd0", 0));
                 UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
                 UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(

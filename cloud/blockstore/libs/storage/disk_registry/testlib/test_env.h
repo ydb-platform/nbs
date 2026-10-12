@@ -681,7 +681,8 @@ public:
         TString folderId = "yc.nbs.tests",
         ui32 replicaCount = 0,
         NProto::EStorageMediaKind mediaKind =
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        ui64 externalVolumeTabletId = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
 
@@ -694,16 +695,21 @@ public:
         request->Record.SetPlacementPartitionIndex(placementPartitionIndex);
         request->Record.SetReplicaCount(replicaCount);
         request->Record.SetStorageMediaKind(mediaKind);
+        request->Record.SetExternalVolumeTabletId(externalVolumeTabletId);
 
         return request;
     }
 
-    auto CreateDeallocateDiskRequest(const TString& diskId, bool sync = false)
+    auto CreateDeallocateDiskRequest(
+        const TString& diskId,
+        bool sync = false,
+        ui64 externalVolumeTabletId = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetSync(sync);
+        request->Record.SetExternalVolumeTabletId(externalVolumeTabletId);
 
         return request;
     }
@@ -1043,10 +1049,13 @@ public:
         return request;
     }
 
-    auto CreateMarkDiskForCleanupRequest(const TString& diskId)
+    auto CreateMarkDiskForCleanupRequest(
+        const TString& diskId,
+        ui64 externalVolumeTabletId = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
         request->Record.SetDiskId(diskId);
+        request->Record.SetExternalVolumeTabletId(externalVolumeTabletId);
         return request;
     }
 
