@@ -692,7 +692,7 @@ message TForcedOperationRequest
 
         // Tablet operations
         E_FLUSH = 3;
-        E_FLUSH_BYTES = 4;
+        E_FLUSH_BYTES = 4; // Only use when no concurrent writes are possible
         E_COLLECT_GARBAGE = 5;
     };
 

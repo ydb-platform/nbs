@@ -243,6 +243,8 @@ using TForcedFlushActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvFlushResponse,
     TEvIndexTabletPrivate::TEvFlushRequest>;
 
+// Note: only use with no concurrent writes to the fs. Otherwise the
+//       actor may continue issuing unbounded number of flush bytes requests.
 using TForcedFlushBytesActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvFlushBytesResponse,
     TEvIndexTabletPrivate::TEvFlushBytesRequest,
