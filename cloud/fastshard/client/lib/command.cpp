@@ -101,14 +101,29 @@ TCommand::TCommand(IStorageNodePtr client)
         .SetFlag(&Timing);
 }
 
-void TCommand::AddAcquireOption()
+void TCommand::AddAcquireOption(NProto::EAccessMode accessMode)
 {
+    AcquireAccessMode = accessMode;
+
     Opts.AddLongOption("acquire")
         .Help(
             "acquire the device before the request and release it "
             "afterwards")
         .NoArgument()
         .SetFlag(&Acquire);
+
+    Opts.AddLongOption(
+            "acquire-fastshard-id",
+            "fastshard the device belongs to, sent in the acquire and release "
+            "requests")
+        .RequiredArgument("STR")
+        .StoreResult(&AcquireFastshardId);
+
+    Opts.AddLongOption(
+            "acquire-generation",
+            "client generation sent in the acquire and release requests")
+        .RequiredArgument("NUM")
+        .StoreResult(&AcquireGeneration);
 }
 
 void TCommand::ParseOpts(int argc, const char* argv[])
@@ -134,6 +149,12 @@ void TCommand::ParseOpts(int argc, const char* argv[])
             << "unknown log level: " << VerboseLevel.Quote();
     }
     LogLevel = *logLevel;
+
+    if (!Acquire && (AcquireGeneration || AcquireFastshardId)) {
+        ythrow TUsageException()
+            << "--acquire-generation and --acquire-fastshard-id require "
+               "--acquire";
+    }
 
     CheckOpts();
 }
@@ -242,6 +263,9 @@ NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
     NCloud::NProto::TAcquireDevicesRequest request;
     PrepareHeaders(*request.MutableHeaders());
     request.AddDeviceUUIDs(deviceUUID);
+    request.SetGeneration(AcquireGeneration);
+    request.SetAccessMode(AcquireAccessMode);
+    request.SetFastshardId(AcquireFastshardId);
 
     auto response = Client->AcquireDevices(std::move(request));
     if (HasError(response)) {
@@ -259,6 +283,8 @@ void TCommand::ReleaseDevice(const TString& deviceUUID)
     NCloud::NProto::TReleaseDevicesRequest request;
     PrepareHeaders(*request.MutableHeaders());
     request.AddDeviceUUIDs(deviceUUID);
+    request.SetGeneration(AcquireGeneration);
+    request.SetFastshardId(AcquireFastshardId);
 
     auto response = Client->ReleaseDevices(std::move(request));
     if (HasError(response)) {

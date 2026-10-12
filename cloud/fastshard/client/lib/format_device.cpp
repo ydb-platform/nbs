@@ -18,7 +18,7 @@ public:
     explicit TFormatDeviceCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
-        AddAcquireOption();
+        AddAcquireOption(NProto::ACCESS_READ_WRITE);
 
         Opts.AddLongOption("device-uuid", "device whose journal is wiped")
             .RequiredArgument("STR")

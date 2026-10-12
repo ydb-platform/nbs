@@ -14,6 +14,8 @@ class TReleaseDevicesCommand final: public TCommand
 {
 private:
     TVector<TString> DeviceUUIDs;
+    ui32 Generation = 0;
+    TString FastshardId;
 
 public:
     explicit TReleaseDevicesCommand(IStorageNodePtr client)
@@ -22,6 +24,19 @@ public:
         Opts.AddLongOption("device-uuid", "device to release (may be repeated)")
             .RequiredArgument("STR")
             .AppendTo(&DeviceUUIDs);
+
+        Opts.AddLongOption(
+                "generation",
+                "client generation; a request with a lower generation than "
+                "the last one seen from the client is rejected")
+            .RequiredArgument("NUM")
+            .StoreResult(&Generation);
+
+        Opts.AddLongOption(
+                "fastshard-id",
+                "fastshard the devices belong to")
+            .RequiredArgument("STR")
+            .StoreResult(&FastshardId);
     }
 
 protected:
@@ -41,6 +56,8 @@ protected:
             for (const auto& uuid: DeviceUUIDs) {
                 request.AddDeviceUUIDs(uuid);
             }
+            request.SetGeneration(Generation);
+            request.SetFastshardId(FastshardId);
         }
         PrepareHeaders(*request.MutableHeaders());
 
