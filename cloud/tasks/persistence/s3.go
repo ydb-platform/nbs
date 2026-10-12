@@ -343,6 +343,17 @@ func (c *S3Client) BucketExists(
 	return true, nil
 }
 
+// Objects written before were marked with Content-Encoding
+// "application/octet-stream". A storage that compresses responses keeps that
+// marking, so the Go transport does not decompress them and the caller gets
+// gzip instead of the object. Asking for the bytes as stored avoids it. Set
+// after signing, as the transport sets its own Accept-Encoding.
+func withIdentityEncoding(r *request.Request) {
+	r.Handlers.Send.PushFront(func(r *request.Request) {
+		r.HTTPRequest.Header.Set("Accept-Encoding", "identity")
+	})
+}
+
 func (c *S3Client) GetObject(
 	ctx context.Context,
 	bucket string,
@@ -360,7 +371,7 @@ func (c *S3Client) GetObject(
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
-	})
+	}, withIdentityEncoding)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -507,7 +518,7 @@ func (c *S3Client) GetObjectWithLimit(
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
-	})
+	}, withIdentityEncoding)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == aws_s3.ErrCodeNoSuchKey {
@@ -548,11 +559,11 @@ func (c *S3Client) putObject(
 ) error {
 
 	input := &aws_s3.PutObjectInput{
-		Bucket:          &bucket,
-		Key:             &key,
-		Body:            bytes.NewReader(object.Data),
-		Metadata:        object.Metadata,
-		ContentEncoding: aws.String("application/octet-stream"),
+		Bucket:      &bucket,
+		Key:         &key,
+		Body:        bytes.NewReader(object.Data),
+		Metadata:    object.Metadata,
+		ContentType: aws.String("application/octet-stream"),
 	}
 
 	_, err := c.s3.PutObjectWithContext(ctx, input)
@@ -569,11 +580,11 @@ func (c *S3Client) putObjectWithStorageClass(
 ) error {
 
 	input := &aws_s3.PutObjectInput{
-		Bucket:          &bucket,
-		Key:             &key,
-		Body:            bytes.NewReader(object.Data),
-		Metadata:        object.Metadata,
-		ContentEncoding: aws.String("application/octet-stream"),
+		Bucket:      &bucket,
+		Key:         &key,
+		Body:        bytes.NewReader(object.Data),
+		Metadata:    object.Metadata,
+		ContentType: aws.String("application/octet-stream"),
 	}
 	if len(object.StorageClass) != 0 {
 		input.StorageClass = aws.String(object.StorageClass)
