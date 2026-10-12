@@ -19,6 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 NActors::IActorPtr CreateVolumeBalancerActor(
     TStorageConfigConstPtr storageConfig,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr cgroupStatFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
