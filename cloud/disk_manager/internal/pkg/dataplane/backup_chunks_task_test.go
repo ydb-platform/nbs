@@ -2,7 +2,6 @@ package dataplane
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sync/atomic"
 	"testing"
@@ -238,7 +237,7 @@ func TestBackupChunksTaskCopiesOnlyItsRange(t *testing.T) {
 	require.Equal(t, entries[1:], queue)
 }
 
-func TestBackupChunksTaskStopsOnUnavailableChunkStorage(t *testing.T) {
+func TestBackupChunksTaskLeavesUnreadableChunksInQueue(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -247,10 +246,10 @@ func TestBackupChunksTaskStopsOnUnavailableChunkStorage(t *testing.T) {
 	follower := newTestFollower(t, ctx)
 
 	var entries []snapshot_storage.BackupChunkQueueEntry
-	for i := 0; i < backupChunksUnreadableInARow+5; i++ {
+	for _, chunkID := range []string{"task.snap1.0", "task.snap1.1"} {
 		entries = append(entries, snapshot_storage.BackupChunkQueueEntry{
 			SnapshotID:   "snap1",
-			ChunkID:      fmt.Sprintf("task.snap1.%v", i),
+			ChunkID:      chunkID,
 			StoredInS3:   true,
 			EncryptedDEK: follower.encryptedDEK,
 		})
@@ -263,15 +262,11 @@ func TestBackupChunksTaskStopsOnUnavailableChunkStorage(t *testing.T) {
 	task.ioDepth = 1
 	execCtx := mocks.NewExecutionContextMock()
 
-	// No chunk can be read: the task stops after a few of them instead of
-	// trying the whole range, and the framework runs it again later.
+	// No chunk can be read: each is tried once and stays in the queue for the
+	// next task of the range.
 	err = task.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
-	require.EqualValues(
-		t,
-		backupChunksUnreadableInARow,
-		unavailableStorage.reads.Load(),
-	)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, unavailableStorage.reads.Load())
 
 	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
