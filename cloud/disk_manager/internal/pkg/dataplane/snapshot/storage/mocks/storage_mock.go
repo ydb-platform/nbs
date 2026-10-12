@@ -311,6 +311,15 @@ func (s *StorageMock) GetQueuedChunksToBackup(
 	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
 }
 
+func (s *StorageMock) GetFirstQueuedChunkShardID(
+	ctx context.Context,
+	fromShardID uint64,
+) (uint64, bool, error) {
+
+	args := s.Called(ctx, fromShardID)
+	return args.Get(0).(uint64), args.Bool(1), args.Error(2)
+}
+
 func (s *StorageMock) ChunksBackupCompleted(
 	ctx context.Context,
 	entries []storage.BackupChunkQueueEntry,

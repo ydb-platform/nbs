@@ -330,6 +330,7 @@ func RegisterForExecution(
 				return &scheduleBackupChunksTasks{
 					scheduler:  taskScheduler,
 					storage:    storage,
+					registry:   metricsRegistry,
 					rangeCount: config.GetBackupChunksRangeCount(),
 					maxTasks:   int(config.GetBackupChunksMaxTasks()),
 				}

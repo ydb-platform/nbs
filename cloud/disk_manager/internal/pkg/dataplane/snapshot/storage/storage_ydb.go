@@ -341,3 +341,24 @@ func (s *storageYDB) GetQueuedChunksToBackup(
 	)
 	return entries, err
 }
+
+func (s *storageYDB) GetFirstQueuedChunkShardID(
+	ctx context.Context,
+	fromShardID uint64,
+) (shardID uint64, found bool, err error) {
+
+	defer s.metrics.StatOperation("GetFirstQueuedChunkShardID")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			shardID, found, err = s.getFirstQueuedChunkShardID(
+				ctx,
+				session,
+				fromShardID,
+			)
+			return err
+		},
+	)
+	return shardID, found, err
+}
