@@ -157,6 +157,10 @@ private:
     // Empty for one-shot actors and when shutting down.
     TActorId ServiceActorId;
 
+    // Unique request epoch number. Preserved across resets and used
+    // to filter out delayed TEvGet responses after fallback to
+    // TEvReadDataRequest.
+    ui32 RequestGeneration = 0;
     std::optional<TRequestState> RequestState;
 
 public:
@@ -277,6 +281,7 @@ void TReadDataActor::StartRequest(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
     auto& state = GetState();
+    ++RequestGeneration;
 
     if (state.RequestContext.UseTwoStageRead) {
         if (!state.RequestContext.ZeroCopyReadEnabled) {
@@ -601,7 +606,8 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
             blobPiece.RangesSize(),
             blobId.ToString().c_str());
 
-        SendToBSProxy(ctx, proxy, request.release(), blobPieceId++);
+        const ui64 cookie = (ui64(RequestGeneration) << 32) | blobPieceId++;
+        SendToBSProxy(ctx, proxy, request.release(), cookie);
     }
 }
 
@@ -609,6 +615,11 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ui32(ev->Cookie >> 32) != RequestGeneration) {
+        return;
+    }
+
+    const ui32 blobPieceId = ui32(ev->Cookie);
     auto& state = GetState();
     const auto& LogTag = state.RequestContext.LogTag;
 
@@ -637,8 +648,8 @@ void TReadDataActor::HandleReadBlobResponse(
             "%s TEvBlobStorage::TEvGet failed: response: %s, group: %lu",
             state.RequestContext.LogTag.c_str(),
             msg->Print(false).c_str(),
-            ev->Cookie < state.DescribeResponse.BlobPiecesSize()
-                ? state.DescribeResponse.GetBlobPieces(ev->Cookie)
+            blobPieceId < state.DescribeResponse.BlobPiecesSize()
+                ? state.DescribeResponse.GetBlobPieces(blobPieceId)
                       .GetBSGroupId()
                 : 0);
 
@@ -652,14 +663,12 @@ void TReadDataActor::HandleReadBlobResponse(
         return;
     }
 
-    SERVICE_VERIFY(ev->Cookie < state.DescribeResponse.BlobPiecesSize());
-    const auto& blobPiece = state.DescribeResponse.GetBlobPieces(ev->Cookie);
+    SERVICE_VERIFY(blobPieceId < state.DescribeResponse.BlobPiecesSize());
+    const auto& blobPiece = state.DescribeResponse.GetBlobPieces(blobPieceId);
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
         SERVICE_VERIFY(i < blobPiece.RangesSize());
 
-        const auto& blobPiece =
-            state.DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
