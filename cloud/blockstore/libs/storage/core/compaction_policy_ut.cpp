@@ -108,14 +108,16 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
                     config.SetHDDCompactionType(type);
                     config.SetSSDMaxBlobsPerUnit(100);
                     config.SetHDDMaxBlobsPerUnit(100);
+                    config.SetSSDMaxBlobsPerRange(66);
+                    config.SetSSDV2MaxBlobsPerRange(6);
+                    config.SetHDDMaxBlobsPerRange(44);
+                    config.SetHDDV2MaxBlobsPerRange(4);
                     TStorageConfig storageConfig(
                         config,
                         std::make_shared<NFeatures::TFeaturesConfig>(
                             NCloud::NProto::TFeaturesConfig()));
-                    const auto policy = BuildCompactionPolicy(
-                        partitionConfig,
-                        storageConfig,
-                        1);
+                    const auto policy =
+                        BuildCompactionPolicy(partitionConfig, storageConfig);
                     // Empty ranges score zero only under CT_LOAD.
                     if (type == NProto::CT_LOAD) {
                         UNIT_ASSERT_VALUES_EQUAL(
@@ -124,6 +126,28 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
                     } else {
                         UNIT_ASSERT(policy->CalculateScore({}).Score < 0);
                     }
+
+                    const ui32 maxBlobsPerRange =
+                        mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+                            ? (tabletVersion == 2 ? 6 : 66)
+                            : (tabletVersion == 2 ? 4 : 44);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        maxBlobsPerRange,
+                        GetMaxBlobsPerRange(partitionConfig, storageConfig));
+
+                    TRangeStat stat;
+                    stat.BlobCount = maxBlobsPerRange - 1;
+                    UNIT_ASSERT(policy->CalculateScore(stat).Score <= 0);
+                    stat.BlobCount = maxBlobsPerRange;
+                    if (type == NProto::CT_DEFAULT) {
+                        UNIT_ASSERT(policy->CalculateScore(stat).Score > 0);
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            policy->CalculateScore(stat).Score);
+                    }
+                    stat.BlobCount = maxBlobsPerRange + 1;
+                    UNIT_ASSERT(policy->CalculateScore(stat).Score > 0);
                 }
             }
         }
@@ -152,12 +176,10 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig())
         );
-        const ui32 siblingCount = 2;
         auto config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            66 / 2 // maxBlobsPerRange
-        );
+            GetMaxBlobsPerRange(partitionConfig, storageConfig));
 
         UNIT_ASSERT_VALUES_EQUAL(2222, config.MaxReadIops);
         UNIT_ASSERT_VALUES_EQUAL(222_MB, config.MaxReadBandwidth);
@@ -165,7 +187,7 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         UNIT_ASSERT_VALUES_EQUAL(111_MB, config.MaxWriteBandwidth);
         UNIT_ASSERT_VALUES_EQUAL(4_MB, config.MaxBlobSize);
         UNIT_ASSERT_VALUES_EQUAL(4_KB, config.BlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(33, config.MaxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(66, config.MaxBlobsPerRange);
 
         partitionConfig.SetBlockSize(64_KB);
         partitionConfig.SetMaxBlocksInBlob(128);
@@ -174,36 +196,28 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            44 / 2 // maxBlobsPerRange
-        );
+            GetMaxBlobsPerRange(partitionConfig, storageConfig));
         UNIT_ASSERT_VALUES_EQUAL(222, config.MaxReadIops);
         UNIT_ASSERT_VALUES_EQUAL(22_MB, config.MaxReadBandwidth);
         UNIT_ASSERT_VALUES_EQUAL(111, config.MaxWriteIops);
         UNIT_ASSERT_VALUES_EQUAL(11_MB, config.MaxWriteBandwidth);
         UNIT_ASSERT_VALUES_EQUAL(8_MB, config.MaxBlobSize);
         UNIT_ASSERT_VALUES_EQUAL(64_KB, config.BlockSize);
-        UNIT_ASSERT_VALUES_EQUAL(22, config.MaxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(44, config.MaxBlobsPerRange);
 
         partitionConfig.SetTabletVersion(2);
         partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto maxBlobsPerRange = GetMaxBlobsPerRange(
-            partitionConfig,
-            storageConfig,
-            siblingCount
-        );
+        auto maxBlobsPerRange =
+            GetMaxBlobsPerRange(partitionConfig, storageConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(3, maxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(6, maxBlobsPerRange);
 
         partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
-        maxBlobsPerRange = GetMaxBlobsPerRange(
-            partitionConfig,
-            storageConfig,
-            siblingCount
-        );
+        maxBlobsPerRange = GetMaxBlobsPerRange(partitionConfig, storageConfig);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, maxBlobsPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(4, maxBlobsPerRange);
     }
 }
 
