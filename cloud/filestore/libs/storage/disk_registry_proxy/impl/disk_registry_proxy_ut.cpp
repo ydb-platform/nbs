@@ -521,8 +521,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         const auto& request = env.DiskRegistry->Allocate;
         UNIT_ASSERT_VALUES_EQUAL("fs", request.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, request.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(42, request.GetExternalVolumeTabletId());
         UNIT_ASSERT_VALUES_EQUAL("cloud", request.GetCloudId());
         UNIT_ASSERT_VALUES_EQUAL("folder", request.GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, request.GetBlockSize());
@@ -557,15 +556,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             std::make_unique<TEvDiskRegistryProxy::TEvMarkForCleanupRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.MarkForCleanup.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, dr.MarkForCleanup.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            dr.MarkForCleanup.GetExternalVolumeTabletId());
 
         env.Execute<TEvDiskRegistryProxy::TEvDeallocateDevicesResponse>(
             std::make_unique<TEvDiskRegistryProxy::TEvDeallocateDevicesRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.Deallocate.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, dr.Deallocate.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            dr.Deallocate.GetExternalVolumeTabletId());
         UNIT_ASSERT(!dr.Deallocate.GetSync());
 
         env.Execute<TEvDiskRegistryProxy::TEvFinishRepairResponse>(
@@ -875,6 +876,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         TEvVolume::TEvReallocateDiskRequest sent;
         sent.Record.SetDiskId("fs");
+        sent.Record.SetExternalVolumeTabletId(42);
         sent.Record.MutableHeaders()->SetTraceId("trace");
         sent.Record.MutableHeaders()->SetClientId("dr");
         const TString bytes = SerializeEvent(sent);
