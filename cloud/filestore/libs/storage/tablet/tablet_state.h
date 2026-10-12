@@ -251,6 +251,7 @@ private:
     bool CompressNodeRef = false;
 
     /*const*/ bool FileSystemEventsEnabled = false;
+    /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
 
     bool StateLoaded = false;
 
@@ -438,6 +439,17 @@ public:
     bool GetCompressNodeRef() const
     {
         return CompressNodeRef || FileSystem.GetCompressNodeRef();
+    }
+
+    /**
+     * Checks whether FileSystemEvents should be counted but not sent to the
+     * clients.
+     *
+     * @return - True if FileSystemEventsDryRunModeEnabled is set.
+     */
+    bool IsFileSystemEventsDryRunModeEnabled() const
+    {
+        return FileSystemEventsDryRunModeEnabled;
     }
 
     ui64 GetCurrentCommitId() const
