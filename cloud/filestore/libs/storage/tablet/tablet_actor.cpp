@@ -1892,8 +1892,6 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
         IgnoreFunc(TEvIndexTabletPrivate::TEvCancelUnconfirmedData);
         IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted);
-        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodeRefsRequest);
         IgnoreFunc(TEvIndexTabletPrivate::TEvLoadNodesRequest);
