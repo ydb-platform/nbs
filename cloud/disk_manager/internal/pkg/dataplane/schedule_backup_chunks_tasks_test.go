@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/mocks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -48,6 +48,7 @@ func newScheduleBackupChunksTasksTest() scheduleBackupChunksTasksTest {
 		task: &scheduleBackupChunksTasks{
 			scheduler:  scheduler,
 			storage:    storage,
+			registry:   metrics.NewEmptyRegistry(),
 			rangeCount: testBackupChunkRangeCount,
 			maxTasks:   2,
 			state:      &protos.ScheduleBackupChunksTasksState{},
@@ -61,41 +62,32 @@ func (s scheduleBackupChunksTasksTest) run(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, s.storage, s.scheduler)
 }
 
-func (s scheduleBackupChunksTasksTest) expectQueued(
-	firstShardID uint64,
-	lastShardID uint64,
-	queued bool,
+// The read from range fromIndex finds the first queued chunk in range
+// foundIndex, or nothing when foundIndex is negative.
+func (s scheduleBackupChunksTasksTest) expectFirstQueued(
+	fromIndex uint32,
+	foundIndex int,
 ) {
 
-	var entries []snapshot_storage.BackupChunkQueueEntry
-	if queued {
-		entries = append(entries, snapshot_storage.BackupChunkQueueEntry{
-			SnapshotID: "snapshot",
-			ChunkID:    "chunk",
-		})
+	from, _ := backupChunkShardRange(fromIndex, testBackupChunkRangeCount)
+	if foundIndex < 0 {
+		s.storage.On(
+			"GetFirstQueuedChunkShardID",
+			mock.Anything,
+			from,
+		).Return(uint64(0), false, nil).Once()
+		return
 	}
 
+	found, _ := backupChunkShardRange(
+		uint32(foundIndex),
+		testBackupChunkRangeCount,
+	)
 	s.storage.On(
-		"GetQueuedChunksToBackup",
+		"GetFirstQueuedChunkShardID",
 		mock.Anything,
-		firstShardID,
-		lastShardID,
-		(*snapshot_storage.BackupChunkQueueEntry)(nil),
-		1,
-	).Return(entries, nil).Once()
-}
-
-func (s scheduleBackupChunksTasksTest) expectQueueQueued(queued bool) {
-	s.expectQueued(0, math.MaxUint64, queued)
-}
-
-func (s scheduleBackupChunksTasksTest) expectRangeQueued(
-	index uint32,
-	queued bool,
-) {
-
-	first, last := backupChunkShardRange(index, testBackupChunkRangeCount)
-	s.expectQueued(first, last, queued)
+		from,
+	).Return(found, true, nil).Once()
 }
 
 func (s scheduleBackupChunksTasksTest) expectTaskScheduled(
@@ -158,7 +150,7 @@ func (s scheduleBackupChunksTasksTest) withRangeTasks(
 
 func TestScheduleBackupChunksTasksSchedulesNothingForEmptyQueue(t *testing.T) {
 	s := newScheduleBackupChunksTasksTest()
-	s.expectQueueQueued(false)
+	s.expectFirstQueued(0, -1)
 
 	s.run(t)
 	require.EqualValues(t, testBackupChunkRangeCount, s.task.state.RangeCount)
@@ -174,12 +166,10 @@ func TestScheduleBackupChunksTasksSchedulesOneTaskPerQueuedRange(
 ) {
 
 	s := newScheduleBackupChunksTasksTest()
-	s.expectQueueQueued(true)
-	s.expectRangeQueued(0, false)
-	s.expectRangeQueued(1, true)
+	// Ranges 0 and 2 are empty: the reads skip them.
+	s.expectFirstQueued(0, 1)
 	s.expectTaskScheduled(1, 0)
-	s.expectRangeQueued(2, false)
-	s.expectRangeQueued(3, true)
+	s.expectFirstQueued(2, 3)
 	s.expectTaskScheduled(3, 0)
 
 	// Two tasks run: ranges 4..7 are not looked at.
@@ -195,9 +185,8 @@ func TestScheduleBackupChunksTasksLeavesRangeToItsTask(t *testing.T) {
 	s := newScheduleBackupChunksTasksTest()
 	s.withRangeTasks(map[uint32]string{0: "task_0"})
 	s.expectEndedTasks([]string{"task_0"}, nil)
-	s.expectQueueQueued(true)
 	// Range 0 still has its task, so it is not looked at again.
-	s.expectRangeQueued(1, true)
+	s.expectFirstQueued(1, 1)
 	s.expectTaskScheduled(1, 0)
 
 	s.run(t)
@@ -212,12 +201,10 @@ func TestScheduleBackupChunksTasksReplacesEndedTasks(t *testing.T) {
 		[]string{"old_1", "old_2"},
 		[]string{"old_1", "old_2"},
 	)
-	s.expectQueueQueued(true)
-	s.expectRangeQueued(0, false)
 	// The new task of a range gets the next key of the range.
-	s.expectRangeQueued(1, true)
+	s.expectFirstQueued(0, 1)
 	s.expectTaskScheduled(1, 1)
-	s.expectRangeQueued(2, true)
+	s.expectFirstQueued(2, 2)
 	s.expectTaskScheduled(2, 1)
 
 	s.run(t)
@@ -238,16 +225,10 @@ func TestScheduleBackupChunksTasksWaitsForTasksOfOldSplit(t *testing.T) {
 	require.EqualValues(t, 4, s.task.state.RangeCount)
 
 	s.expectEndedTasks([]string{"old_0"}, []string{"old_0"})
-	s.expectQueueQueued(true)
-	s.expectRangeQueued(0, true)
+	s.expectFirstQueued(0, 0)
 	s.expectTaskScheduled(0, 0)
-	s.expectRangeQueued(1, false)
-	s.expectRangeQueued(2, false)
-	s.expectRangeQueued(3, false)
-	s.expectRangeQueued(4, false)
-	s.expectRangeQueued(5, false)
-	s.expectRangeQueued(6, false)
-	s.expectRangeQueued(7, false)
+	// Nothing is queued after range 0: one read covers ranges 1..7.
+	s.expectFirstQueued(1, -1)
 
 	s.run(t)
 	require.EqualValues(t, testBackupChunkRangeCount, s.task.state.RangeCount)
@@ -261,14 +242,65 @@ func TestScheduleBackupChunksTasksTakesNewTaskLimitAtOnce(t *testing.T) {
 	// task starts at once.
 	s.task.maxTasks = 3
 	s.expectEndedTasks([]string{"task_0", "task_1"}, nil)
-	s.expectQueueQueued(true)
-	s.expectRangeQueued(2, true)
+	s.expectFirstQueued(2, 2)
 	s.expectTaskScheduled(2, 0)
 
 	s.run(t)
 	require.EqualValues(t, testBackupChunkRangeCount, s.task.state.RangeCount)
 	require.Equal(t, "task_0", s.task.state.RangeTaskIds[0])
 	require.Equal(t, "task_2", s.task.state.RangeTaskIds[2])
+}
+
+func TestScheduleBackupChunksTasksWrapsAroundFromNextRange(t *testing.T) {
+	s := newScheduleBackupChunksTasksTest()
+	s.withRangeTasks(nil)
+	s.task.state.NextRange = 6
+
+	// Nothing from range 6 on; the scan wraps to the start and finds range 1.
+	s.expectFirstQueued(6, -1)
+	s.expectFirstQueued(0, 1)
+	s.expectTaskScheduled(1, 0)
+	s.expectFirstQueued(2, -1)
+
+	s.run(t)
+	require.Equal(t, "task_1", s.task.state.RangeTaskIds[1])
+	require.EqualValues(t, 2, s.task.state.NextRange)
+}
+
+func TestScheduleBackupChunksTasksStopsWrappedScanAtNextRange(t *testing.T) {
+	s := newScheduleBackupChunksTasksTest()
+	s.withRangeTasks(nil)
+	s.task.state.NextRange = 4
+
+	// Only range 5 is queued: the wrapped scan from 0 finds it again and
+	// stops, as ranges from 4 on were already looked at.
+	s.expectFirstQueued(4, 5)
+	s.expectTaskScheduled(5, 0)
+	s.expectFirstQueued(6, -1)
+	s.expectFirstQueued(0, 5)
+
+	s.run(t)
+	require.Equal(t, "task_5", s.task.state.RangeTaskIds[5])
+	require.EqualValues(t, 6, s.task.state.NextRange)
+}
+
+func TestScheduleBackupChunksTasksSkipsRangeWithTaskFoundByRead(
+	t *testing.T,
+) {
+
+	s := newScheduleBackupChunksTasksTest()
+	s.withRangeTasks(map[uint32]string{3: "task_3"})
+	s.expectEndedTasks([]string{"task_3"}, nil)
+
+	// The read from range 0 lands in range 3, which has its task: the next
+	// read starts after it.
+	s.expectFirstQueued(0, 3)
+	s.expectFirstQueued(4, 6)
+	s.expectTaskScheduled(6, 0)
+
+	s.run(t)
+	require.Equal(t, "task_3", s.task.state.RangeTaskIds[3])
+	require.Equal(t, "task_6", s.task.state.RangeTaskIds[6])
 }
 
 func TestScheduleBackupChunksTasksIgnoresRetryLimit(t *testing.T) {
@@ -302,6 +334,16 @@ func TestBackupChunkShardRangesCoverShardSpace(t *testing.T) {
 			first, last := backupChunkShardRange(index, count)
 			require.Equal(t, previousLast+1, first)
 			require.Less(t, first, last)
+		}
+	}
+}
+
+func TestBackupChunkShardIndexInvertsShardRange(t *testing.T) {
+	for _, count := range []uint32{1, 3, 8, 200, 400} {
+		for index := uint32(0); index < count; index++ {
+			first, last := backupChunkShardRange(index, count)
+			require.Equal(t, index, backupChunkShardIndex(first, count))
+			require.Equal(t, index, backupChunkShardIndex(last, count))
 		}
 	}
 }

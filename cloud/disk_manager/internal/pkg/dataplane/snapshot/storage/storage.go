@@ -198,6 +198,13 @@ type Storage interface {
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
 
+	// Returns the smallest shard_id of a queued chunk that is at least
+	// fromShardID; found is false when no chunk is queued from there on.
+	GetFirstQueuedChunkShardID(
+		ctx context.Context,
+		fromShardID uint64,
+	) (shardID uint64, found bool, err error)
+
 	// Returns a non-retriable error if a chunk of the snapshot could not be
 	// copied, and InterruptExecutionError while a chunk of it is queued.
 	CheckBackupChunksCompleted(ctx context.Context, snapshotID string) error

@@ -1781,6 +1781,46 @@ func (s *storageYDB) getQueuedChunksToBackup(
 	return entries, nil
 }
 
+func (s *storageYDB) getFirstQueuedChunkShardID(
+	ctx context.Context,
+	session *persistence.Session,
+	fromShardID uint64,
+) (uint64, bool, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $from_shard_id as Uint64;
+
+		select shard_id
+		from backup_chunk_queue
+		where shard_id >= $from_shard_id
+		order by shard_id
+		limit 1
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$from_shard_id",
+			persistence.Uint64Value(fromShardID),
+		),
+	)
+	if err != nil {
+		return 0, false, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, false, res.Err()
+	}
+
+	var shardID uint64
+	err = res.ScanNamed(persistence.OptionalWithDefault("shard_id", &shardID))
+	if err != nil {
+		return 0, false, err
+	}
+
+	return shardID, true, res.Err()
+}
+
 func (s *storageYDB) ChunksBackupCompleted(
 	ctx context.Context,
 	entries []BackupChunkQueueEntry,

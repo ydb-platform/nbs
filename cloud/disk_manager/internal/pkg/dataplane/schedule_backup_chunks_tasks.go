@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -21,9 +23,15 @@ import (
 // keeps at most maxTasks dataplane.BackupChunks tasks running, one per
 // non-empty range. A range has at most one task at a time, so no chunk is
 // copied twice. A task ends when its range is empty; an empty queue runs none.
+//
+// Ranges with chunks are found by a skip scan: one read gives the first
+// queued chunk at or after a range, the next read starts after the range it
+// is in. Empty ranges cost nothing, so a run reads the queue about as many
+// times as it schedules tasks, whatever the range count.
 type scheduleBackupChunksTasks struct {
 	scheduler  tasks.Scheduler
 	storage    storage.Storage
+	registry   metrics.Registry
 	rangeCount uint32
 	maxTasks   int
 	state      *protos.ScheduleBackupChunksTasksState
@@ -88,6 +96,8 @@ func (t *scheduleBackupChunksTasks) schedule(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	runStart := time.Now()
+
 	running, err := t.dropEndedTasks(ctx)
 	if err != nil {
 		return err
@@ -118,41 +128,90 @@ func (t *scheduleBackupChunksTasks) schedule(
 	}
 
 	if running >= t.maxTasks {
+		t.report(ctx, runStart, running, 0, 0)
 		return nil
 	}
 
-	queued, err := t.hasQueuedChunks(ctx, 0, math.MaxUint64)
-	if err != nil || !queued {
-		return err
-	}
-
+	// Ranges are taken in order from NextRange, wrapping around, so that a
+	// range that frees first is not always the same one.
+	scheduled, reads := 0, 0
 	start := t.state.NextRange
-	for i := uint32(0); i < rangeCount && running < t.maxTasks; i++ {
-		index := (start + i) % rangeCount
-		if len(t.state.RangeTaskIds[index]) != 0 {
-			continue
-		}
+	for _, segment := range [][2]uint32{{start, rangeCount}, {0, start}} {
+		part := segment[0]
+		for part < segment[1] && running < t.maxTasks {
+			// A range with a task is left to it.
+			for part < segment[1] && len(t.state.RangeTaskIds[part]) != 0 {
+				part++
+			}
 
-		firstShardID, lastShardID := backupChunkShardRange(index, rangeCount)
-		queued, err := t.hasQueuedChunks(ctx, firstShardID, lastShardID)
-		if err != nil {
-			return err
-		}
+			if part >= segment[1] {
+				break
+			}
 
-		if !queued {
-			continue
-		}
+			firstShardID, _ := backupChunkShardRange(part, rangeCount)
+			shardID, found, err := t.storage.GetFirstQueuedChunkShardID(
+				ctx,
+				firstShardID,
+			)
+			reads++
+			if err != nil {
+				return err
+			}
 
-		err = t.scheduleTask(ctx, execCtx, index, firstShardID, lastShardID)
-		if err != nil {
-			return err
-		}
+			if !found {
+				break
+			}
 
-		running++
-		t.state.NextRange = (index + 1) % rangeCount
+			part = backupChunkShardIndex(shardID, rangeCount)
+			if part >= segment[1] {
+				break
+			}
+
+			if len(t.state.RangeTaskIds[part]) != 0 {
+				part++
+				continue
+			}
+
+			first, last := backupChunkShardRange(part, rangeCount)
+			err = t.scheduleTask(ctx, execCtx, part, first, last)
+			if err != nil {
+				return err
+			}
+
+			running++
+			scheduled++
+			t.state.NextRange = (part + 1) % rangeCount
+			part++
+		}
 	}
 
+	t.report(ctx, runStart, running, scheduled, reads)
 	return nil
+}
+
+func (t *scheduleBackupChunksTasks) report(
+	ctx context.Context,
+	runStart time.Time,
+	running int,
+	scheduled int,
+	reads int,
+) {
+
+	duration := time.Since(runStart)
+	t.registry.Timer("backup/dispatcherRunTime").RecordDuration(duration)
+	t.registry.Gauge("backup/dispatcherRunningTasks").Set(float64(running))
+	t.registry.Counter("backup/dispatcherScheduledTasks").Add(int64(scheduled))
+	t.registry.Counter("backup/dispatcherQueueReads").Add(int64(reads))
+
+	logging.Info(
+		ctx,
+		"backup chunks dispatcher: %v tasks running, %v scheduled, "+
+			"%v queue reads, %v",
+		running,
+		scheduled,
+		reads,
+		duration,
+	)
 }
 
 // Clears the ranges whose tasks ended; returns how many tasks still run.
@@ -188,22 +247,6 @@ func (t *scheduleBackupChunksTasks) dropEndedTasks(
 	}
 
 	return len(taskIDs) - len(ended), nil
-}
-
-func (t *scheduleBackupChunksTasks) hasQueuedChunks(
-	ctx context.Context,
-	firstShardID uint64,
-	lastShardID uint64,
-) (bool, error) {
-
-	entries, err := t.storage.GetQueuedChunksToBackup(
-		ctx,
-		firstShardID,
-		lastShardID,
-		nil, // after
-		1,   // limit
-	)
-	return len(entries) != 0, err
 }
 
 // The key names the range and counts the range's tasks, so a retry after a
@@ -259,4 +302,15 @@ func backupChunkShardRange(index uint32, count uint32) (uint64, uint64) {
 	}
 
 	return first, first + step - 1
+}
+
+// Returns the index of the range of count that shardID falls into; the
+// inverse of backupChunkShardRange.
+func backupChunkShardIndex(shardID uint64, count uint32) uint32 {
+	if count == 1 {
+		return 0
+	}
+
+	step := math.MaxUint64/uint64(count) + 1
+	return uint32(shardID / step)
 }
