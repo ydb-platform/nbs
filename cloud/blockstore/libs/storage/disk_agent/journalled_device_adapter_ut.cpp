@@ -22,6 +22,7 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NJournalled;
 using namespace std::chrono_literals;
 
 namespace {
@@ -51,7 +52,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::shared_ptr<TMemoryTestStorage> Storage;
     TStorageAdapterPtr StorageAdapter;
     TDeviceClientPtr DeviceClient;
-    NJournalled::IDevicePtr Device;
+    IDevicePtr Device;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -112,17 +113,17 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
     }
 
-    NProto::TError WritePages(TVector<NJournalled::TPageRange> ranges)
+    NProto::TError WritePages(TVector<TPageRange> ranges)
     {
         return Device->WritePages(std::move(ranges)).GetValueSync();
     }
 
-    auto ReadPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
+    auto ReadPages(TVector<TPageRangeRef> rangeRefs)
     {
         return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
     }
 
-    NProto::TError ZeroPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
+    NProto::TError ZeroPages(TVector<TPageRangeRef> rangeRefs)
     {
         return Device->ZeroPages(std::move(rangeRefs)).GetValueSync();
     }
@@ -137,7 +138,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateWritePagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(TVector<NJournalled::TPageRange>&)>;
+            std::function<void(TVector<TPageRange>&)>;
 
         const TPrepareFunc testCases[]{
             // nothing to write
@@ -179,7 +180,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
             testCases[i](ranges);
 
             const auto error = WritePages(std::move(ranges));
@@ -194,7 +195,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateReadPagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(TVector<NJournalled::TPageRangeRef>&)>;
+            std::function<void(TVector<TPageRangeRef>&)>;
 
         const TPrepareFunc testCases[]{
             // nothing to read
@@ -210,7 +211,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
-            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            TVector<TPageRangeRef> rangeRefs;
             testCases[i](rangeRefs);
 
             const auto error = ReadPages(std::move(rangeRefs)).GetError();
@@ -225,7 +226,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateZeroPagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(TVector<NJournalled::TPageRangeRef>&)>;
+            std::function<void(TVector<TPageRangeRef>&)>;
 
         const TPrepareFunc testCases[]{
             // nothing to zero
@@ -241,7 +242,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
-            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            TVector<TPageRangeRef> rangeRefs;
             testCases[i](rangeRefs);
 
             const auto error = ZeroPages(std::move(rangeRefs));
@@ -346,7 +347,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         // a write lands in the region as well
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
             auto& range = ranges.emplace_back();
             range.FirstPageNo = 1;
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Z'));
@@ -369,7 +370,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         // a write beyond the region is rejected before anything is written
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
             auto& range = ranges.emplace_back();
             range.FirstPageNo = blockCount - 1;
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Q'));
@@ -395,7 +396,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     {
         const auto makeRanges = []
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
 
             {
                 auto& range = ranges.emplace_back();
@@ -432,7 +433,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         for (ui32 i = 0; i != requestCount; ++i) {
             const ui64 rangeCount = 1 + RandomNumber<ui64>(8);
 
-            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            TVector<TPageRangeRef> rangeRefs;
             for (ui64 j = 0; j != rangeCount; ++j) {
                 const ui64 firstPageNo = RandomNumber<ui64>(DefaultBlockCount);
 
