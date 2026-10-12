@@ -49,6 +49,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 DefaultCacheCapacityBytes = 1024 * 1024 + 1024;
+constexpr ui32 StateFileHeaderReserveSize = 256;
 
 constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;
@@ -322,7 +323,7 @@ struct TBootstrap
              .FileSystemId = "FileSystemId",
              .ClientId = "ClientId",
              .FilePath = TempFileHandle.GetName(),
-             .CapacityBytes = CacheCapacityBytes,
+             .StateFileSize = CacheCapacityBytes + StateFileHeaderReserveSize,
              .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
              .FlushRetryPeriod = CacheFlushRetryPeriod,
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,

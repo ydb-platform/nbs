@@ -75,6 +75,7 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
+constexpr ui64 StateFileHeaderReserveSize = 256;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
@@ -272,7 +273,8 @@ struct TBootstrap
         // Keep the path configured to allow restoring
         // an existing HandleOpsQueue.
         proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-        proto.SetHandleOpsQueueSize(handleOpsQueueSize);
+        proto.SetHandleOpsQueueSize(
+            handleOpsQueueSize + StateFileHeaderReserveSize);
 
         proto.SetDirectoryHandlesStoragePath(
             TempDir.Path() / "DirectoryHandles");
@@ -291,7 +293,8 @@ struct TBootstrap
         // WriteBackCache should be configured even if it is disabled
         proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
         // minimum possible capacity
-        proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
+        proto.SetWriteBackCacheStateFileSize(
+            writeBackCacheCapacity + StateFileHeaderReserveSize);
         proto.SetWriteBackCacheAutomaticFlushPeriod(
             writeBackCacheAutomaticFlushPeriodMs);
 

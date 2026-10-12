@@ -7,6 +7,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/output.h>
+#include <util/system/align.h>
 #include <util/system/tempfile.h>
 
 namespace NCloud {
@@ -60,7 +61,7 @@ struct TBootstrap
         {
             TFileRingBuffer rb(
                 TempFileHandle.Name(),
-                DataCapacity,
+                256 + AlignUp(MetadataCapacity, sizeof(ui64)) + DataCapacity,
                 MetadataCapacity,
                 version);
 
