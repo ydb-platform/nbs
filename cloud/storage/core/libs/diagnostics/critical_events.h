@@ -22,6 +22,7 @@ namespace NCloud {
     xxx(FileRingBufferCorruptionDetectedError)                                 \
     xxx(AccessToCorruptedFileRingBufferError)                                  \
     xxx(JournalStrandedRecordDetectedError)                                    \
+    xxx(JournalledDeviceCreationError)                                         \
 // STORAGE_CRITICAL_EVENTS
 
 #define STORAGE_IMPOSSIBLE_EVENTS(xxx)                                         \
