@@ -2888,6 +2888,136 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
+    void DoTestShouldIgnoreLateReadBlobResponses(bool beforeDescribeData)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        config.SetEnablePreallocatedDataActors(true);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+        const auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const TString firstData(1_MB, 'A');
+        service.WriteData(headers, fs, nodeId, handle, 0, firstData);
+
+        TActorId readActor;
+        ui32 startedReads = 0;
+        ui32 blobPieces = 0;
+        ui32 fallbackRequests = 0;
+        bool failedBlob = false;
+        bool replayedBlobs = false;
+        TVector<TAutoPtr<IEventHandle>> delayedBlobs;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                const auto type = event->GetTypeRewrite();
+                if (type == TEvServicePrivate::EvStartReadData) {
+                    if (!readActor) {
+                        readActor = event->Recipient;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(readActor, event->Recipient);
+                    ++startedReads;
+                }
+
+                if (type == TEvService::EvReadDataRequest &&
+                    event->Sender == readActor)
+                {
+                    ++fallbackRequests;
+                }
+
+                if (event->Recipient != readActor) {
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                }
+
+                if (startedReads == 1) {
+                    if (type == TEvIndexTablet::EvDescribeDataResponse) {
+                        using TResponse =
+                            TEvIndexTablet::TEvDescribeDataResponse;
+                        blobPieces = event->Get<TResponse>()->Record.BlobPiecesSize();
+                    }
+
+                    if (type == TEvBlobStorage::EvGetResult) {
+                        if (!failedBlob) {
+                            event->Get<TEvBlobStorage::TEvGetResult>()->Status =
+                                NKikimrProto::ERROR;
+                            failedBlob = true;
+                        } else {
+                            delayedBlobs.emplace_back(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                }
+
+                const bool shouldReplay = beforeDescribeData
+                    ? type == TEvIndexTablet::EvDescribeDataResponse
+                    : type == TEvBlobStorage::EvGetResult;
+                if (startedReads == 2 && !replayedBlobs && shouldReplay)
+                {
+                    replayedBlobs = true;
+                    // Deliver old replies before allowing the new read to
+                    // process its description or its first blob result.
+                    for (auto& delayed: delayedBlobs) {
+                        runtime.Send(delayed.Release(), nodeIdx);
+                    }
+                    runtime.Send(event.Release(), nodeIdx);
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto response =
+            service.ReadData(headers, fs, nodeId, handle, 0, firstData.size());
+        UNIT_ASSERT_VALUES_EQUAL(firstData, response->Record.GetBuffer());
+
+        // Allow the pool release and all remaining blob replies to arrive.
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(failedBlob);
+        UNIT_ASSERT(blobPieces > 2);
+        UNIT_ASSERT_VALUES_EQUAL(blobPieces - 1, delayedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+
+        // Both successful and failed old replies must be ignored.
+        delayedBlobs.back()->Get<TEvBlobStorage::TEvGetResult>()->Status =
+            NKikimrProto::ERROR;
+
+        const TString secondData(1_MB, 'B');
+        service.WriteData(headers, fs, nodeId, handle, 0, secondData);
+        response =
+            service.ReadData(headers, fs, nodeId, handle, 0, secondData.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, startedReads);
+        UNIT_ASSERT(replayedBlobs);
+        UNIT_ASSERT_VALUES_EQUAL(secondData, response->Record.GetBuffer());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreLateReadBlobResponsesBeforeDescribeData)
+    {
+        DoTestShouldIgnoreLateReadBlobResponses(true);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreLateReadBlobResponsesWhileReadingBlobs)
+    {
+        DoTestShouldIgnoreLateReadBlobResponses(false);
+    }
+
     Y_UNIT_TEST(ShouldReassignTablet)
     {
         NProto::TStorageConfig config;
