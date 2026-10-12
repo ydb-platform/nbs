@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync/atomic"
 	"testing"
@@ -68,6 +69,28 @@ func (s *unavailableChunkStorage) ReadChunkBlob(
 
 	s.reads.Add(1)
 	return chunks.ChunkBlob{}, errors.NewRetriableErrorf("storage is unavailable")
+}
+
+// Fails reads of one chunk with a retriable error, as the chunk storage does
+// on an object it answers 500 for.
+type unreadableChunkStorage struct {
+	snapshot_storage.Storage
+	chunkID string
+	reads   atomic.Int64
+}
+
+func (s *unreadableChunkStorage) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+	storedInS3 bool,
+) (chunks.ChunkBlob, error) {
+
+	if chunkID == s.chunkID {
+		s.reads.Add(1)
+		return chunks.ChunkBlob{}, errors.NewRetriableErrorf("internal error")
+	}
+
+	return s.Storage.ReadChunkBlob(ctx, chunkID, storedInS3)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -215,7 +238,7 @@ func TestBackupChunksTaskCopiesOnlyItsRange(t *testing.T) {
 	require.Equal(t, entries[1:], queue)
 }
 
-func TestBackupChunksTaskStopsOnRetriableError(t *testing.T) {
+func TestBackupChunksTaskStopsOnUnavailableChunkStorage(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -224,10 +247,10 @@ func TestBackupChunksTaskStopsOnRetriableError(t *testing.T) {
 	follower := newTestFollower(t, ctx)
 
 	var entries []snapshot_storage.BackupChunkQueueEntry
-	for _, chunkID := range []string{"task.snap1.0", "task.snap1.1"} {
+	for i := 0; i < backupChunksUnreadableInARow+5; i++ {
 		entries = append(entries, snapshot_storage.BackupChunkQueueEntry{
 			SnapshotID:   "snap1",
-			ChunkID:      chunkID,
+			ChunkID:      fmt.Sprintf("task.snap1.%v", i),
 			StoredInS3:   true,
 			EncryptedDEK: follower.encryptedDEK,
 		})
@@ -240,15 +263,83 @@ func TestBackupChunksTaskStopsOnRetriableError(t *testing.T) {
 	task.ioDepth = 1
 	execCtx := mocks.NewExecutionContextMock()
 
-	// The chunk storage is unavailable: the task stops on the first chunk
-	// instead of trying the next one, and the framework runs it again later.
+	// No chunk can be read: the task stops after a few of them instead of
+	// trying the whole range, and the framework runs it again later.
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
-	require.EqualValues(t, 1, unavailableStorage.reads.Load())
+	require.EqualValues(
+		t,
+		backupChunksUnreadableInARow,
+		unavailableStorage.reads.Load(),
+	)
 
 	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.ElementsMatch(t, entries, queue)
+}
+
+func TestBackupChunksTaskLeavesUnreadableChunkInQueue(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	chunkID := createSnapshotWithChunk(t, ctx, storage, "snap2")
+
+	unreadable := snapshot_storage.BackupChunkQueueEntry{
+		SnapshotID:   "snap1",
+		ChunkID:      "task.snap1.0",
+		StoredInS3:   true,
+		EncryptedDEK: follower.encryptedDEK,
+	}
+	entries := []snapshot_storage.BackupChunkQueueEntry{
+		unreadable,
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      chunkID,
+			StoredInS3:   true,
+			EncryptedDEK: follower.encryptedDEK,
+		},
+	}
+	err := enqueueBackupChunks(ctx, storage, entries)
+	require.NoError(t, err)
+
+	unreadableStorage := &unreadableChunkStorage{
+		Storage: storage,
+		chunkID: unreadable.ChunkID,
+	}
+	task := newBackupChunksTask(unreadableStorage, follower)
+	execCtx := mocks.NewExecutionContextMock()
+
+	// The unreadable chunk does not stop the range: the other chunk is
+	// copied and the task ends.
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, unreadableStorage.reads.Load())
+
+	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	require.NoError(t, err)
+
+	// The unreadable chunk stays queued and its backup waits, it does not
+	// fail.
+	queue, err := queuedBackupChunks(ctx, storage)
+	require.NoError(t, err)
+	require.ElementsMatch(
+		t,
+		[]snapshot_storage.BackupChunkQueueEntry{unreadable},
+		queue,
+	)
+
+	err = storage.CheckBackupChunksCompleted(ctx, "snap1")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snap2"))
+
+	// The next task of the range reads it again.
+	task = newBackupChunksTask(unreadableStorage, follower)
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, unreadableStorage.reads.Load())
 }
 
 func TestBackupChunksTaskCopiesSharedChunkOnce(t *testing.T) {

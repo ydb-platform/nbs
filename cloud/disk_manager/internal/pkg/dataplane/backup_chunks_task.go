@@ -3,6 +3,7 @@ package dataplane
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -22,6 +23,10 @@ import (
 
 // How often copied chunks are marked when fewer than a batch are waiting.
 const backupChunksCompleteInterval = time.Second
+
+// Chunks in a row that cannot be read before the task takes the chunk storage
+// for unavailable and stops.
+const backupChunksUnreadableInARow = 10
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,11 +80,12 @@ func (t *backupChunksTask) Run(
 	})
 
 	var copiers sync.WaitGroup
+	var unreadable atomic.Int64
 	for i := 0; i < t.ioDepth; i++ {
 		copiers.Add(1)
 		group.Go(func() error {
 			defer copiers.Done()
-			return t.copy(groupCtx, toCopy, copied)
+			return t.copy(groupCtx, toCopy, copied, &unreadable)
 		})
 	}
 
@@ -194,14 +200,19 @@ func groupByChunk(
 	return groups
 }
 
-// A retriable error, such as the follower or YDB being unavailable, stops
-// the task: the framework runs it again later. Any other error belongs to the
-// chunk, such as missing or corrupt data: the chunk leaves the queue as failed,
-// which fails the backup of its snapshot, and the rest of the range goes on.
+// A chunk that cannot be read now, such as a 500 from the chunk storage on
+// its object, stays in the queue and the rest of the range goes on: the next
+// task of the range reads it again, until it is read. Chunks unreadable in a
+// row mean the chunk storage is unavailable, and any other retriable error,
+// such as the follower or YDB being unavailable, stops the task: the
+// framework runs it again later. Any other error belongs to the chunk, such
+// as missing or corrupt data: the chunk leaves the queue as failed, which
+// fails the backup of its snapshot, and the rest of the range goes on.
 func (t *backupChunksTask) copy(
 	ctx context.Context,
 	toCopy <-chan []storage.BackupChunkQueueEntry,
 	copied chan<- []storage.BackupChunkQueueEntry,
+	unreadable *atomic.Int64,
 ) error {
 
 	for entries := range toCopy {
@@ -210,7 +221,26 @@ func (t *backupChunksTask) copy(
 		}
 
 		// The object is the same for every snapshot of the chunk.
-		err := t.copyChunk(ctx, entries[0])
+		chunkBlob, err := t.readChunk(ctx, entries[0])
+		if errors.Is(err, errors.NewEmptyRetriableError()) {
+			if unreadable.Add(1) >= backupChunksUnreadableInARow {
+				return err
+			}
+
+			logging.Warn(
+				ctx,
+				"Failed to read chunk %v, it stays in the queue: %v",
+				entries[0].ChunkID,
+				err,
+			)
+			continue
+		}
+
+		if err == nil {
+			unreadable.Store(0)
+			err = t.putChunk(ctx, entries[0], chunkBlob)
+		}
+
 		if errors.Is(err, errors.NewEmptyRetriableError()) {
 			return err
 		}
@@ -308,10 +338,10 @@ func (t *backupChunksTask) complete(
 	}
 }
 
-func (t *backupChunksTask) copyChunk(
+func (t *backupChunksTask) readChunk(
 	ctx context.Context,
 	entry storage.BackupChunkQueueEntry,
-) error {
+) (chunks.ChunkBlob, error) {
 
 	readStart := time.Now()
 	chunkBlob, err := t.storage.ReadChunkBlob(
@@ -322,12 +352,17 @@ func (t *backupChunksTask) copyChunk(
 	t.registry.Timer("backup/chunkReadTime").RecordDuration(
 		time.Since(readStart),
 	)
-	if err != nil {
-		return err
-	}
+	return chunkBlob, err
+}
+
+func (t *backupChunksTask) putChunk(
+	ctx context.Context,
+	entry storage.BackupChunkQueueEntry,
+	chunkBlob chunks.ChunkBlob,
+) error {
 
 	// The follower client waits for the host's bandwidth itself.
-	err = t.backupS3.PutObject(
+	err := t.backupS3.PutObject(
 		ctx,
 		backup.ChunkKey(entry.ChunkID),
 		entry.EncryptedDEK,
