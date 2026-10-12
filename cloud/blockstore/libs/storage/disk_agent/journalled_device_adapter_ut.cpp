@@ -79,10 +79,10 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         Device = CreateDeviceAdapter(
             Timer,
-            DeviceUUID,
-            DefaultBlockSize,
             DeviceClient,
-            {});
+            DeviceUUID,
+            {.FirstPageNo = 0, .PageCount = DefaultBlockCount},
+            DefaultBlockSize);
     }
 
     static char BlockData(ui64 blockIndex)
@@ -341,10 +341,10 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         auto region = CreateDeviceAdapter(
             Timer,
-            DeviceUUID,
-            DefaultBlockSize,
             DeviceClient,
-            {.FirstBlockIndex = firstBlock, .BlockCount = blockCount});
+            DeviceUUID,
+            {.FirstPageNo = firstBlock, .PageCount = blockCount},
+            DefaultBlockSize);
 
         FillDevice();
 

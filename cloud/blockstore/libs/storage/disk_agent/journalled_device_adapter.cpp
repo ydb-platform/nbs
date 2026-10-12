@@ -3,8 +3,6 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
-#include <cloud/fastshard/journal/iface/device.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -13,6 +11,7 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NJournalled;
 using namespace NThreading;
 
 namespace {
@@ -20,7 +19,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 auto CreateWriteBlocksRequest(
-    const NJournalled::TPageRange& range,
+    const TPageRange& range,
     ui32 blockSize,
     ui64 firstBlockIndex) -> std::shared_ptr<NProto::TWriteBlocksRequest>
 {
@@ -40,7 +39,7 @@ auto CreateWriteBlocksRequest(
 }
 
 auto CreateReadBlocksRequest(
-    const NJournalled::TPageRangeRef& rangeRef,
+    const TPageRangeRef& rangeRef,
     ui32 blockSize,
     ui64 firstBlockIndex) -> std::shared_ptr<NProto::TReadBlocksRequest>
 {
@@ -54,7 +53,7 @@ auto CreateReadBlocksRequest(
 }
 
 auto CreateZeroBlocksRequest(
-    const NJournalled::TPageRangeRef& rangeRef,
+    const TPageRangeRef& rangeRef,
     ui64 firstBlockIndex) -> std::shared_ptr<NProto::TZeroBlocksRequest>
 {
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -68,22 +67,18 @@ auto CreateZeroBlocksRequest(
 // Checks that the pages fit in the region. An unbounded region leaves the
 // bounds to the device itself.
 NProto::TError ValidatePagesInRegion(
-    const TDeviceRegion& region,
+    const TPageRangeRef& region,
     ui64 firstPageNo,
     ui64 pageCount)
 {
-    if (region.BlockCount == TDeviceRegion::WholeDevice) {
-        return {};
-    }
-
-    if (firstPageNo >= region.BlockCount ||
-        pageCount > region.BlockCount - firstPageNo)
+    if (firstPageNo >= region.PageCount ||
+        pageCount > region.PageCount - firstPageNo)
     {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "pages " << firstPageNo << "x" << pageCount
-                << " are beyond the device: " << region.BlockCount
+                << " are beyond the device: " << region.PageCount
                 << " pages");
     }
 
@@ -91,8 +86,8 @@ NProto::TError ValidatePagesInRegion(
 }
 
 TResultOrError<ui32> ValidateWritePagesRequest(
-    const TVector<NJournalled::TPageRange>& ranges,
-    const TDeviceRegion& region)
+    const TVector<TPageRange>& ranges,
+    const TPageRangeRef& region)
 {
     ui32 blockSize = 0;
 
@@ -138,8 +133,8 @@ TResultOrError<ui32> ValidateWritePagesRequest(
 }
 
 NProto::TError ValidateReadPagesRequest(
-    const TVector<NJournalled::TPageRangeRef>& rangeRefs,
-    const TDeviceRegion& region)
+    const TVector<TPageRangeRef>& rangeRefs,
+    const TPageRangeRef& region)
 {
     if (rangeRefs.empty()) {
         return MakeError(E_ARGUMENT, "nothing to read");
@@ -166,8 +161,8 @@ NProto::TError ValidateReadPagesRequest(
 }
 
 NProto::TError ValidateZeroPagesRequest(
-    const TVector<NJournalled::TPageRangeRef>& rangeRefs,
-    const TDeviceRegion& region)
+    const TVector<TPageRangeRef>& rangeRefs,
+    const TPageRangeRef& region)
 {
     if (rangeRefs.empty()) {
         return MakeError(E_ARGUMENT, "nothing to zero");
@@ -195,34 +190,33 @@ NProto::TError ValidateZeroPagesRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceAdapter final
-    : public NJournalled::IDevice
+class TDeviceAdapter final: public IDevice
 {
 private:
     const ITimerPtr Timer;
-    const TString DeviceUUID;
-    const ui32 BlockSize;
     const TDeviceClientPtr DeviceClient;
-    const TDeviceRegion Region;
+    const TString DeviceUUID;
+    const TPageRangeRef Region;
+    const ui32 BlockSize;
 
 public:
     TDeviceAdapter(
             ITimerPtr timer,
-            TString deviceUUID,
-            ui32 blockSize,
             TDeviceClientPtr deviceClient,
-            TDeviceRegion region)
+            TString deviceUUID,
+            TPageRangeRef region,
+            ui32 blockSize)
         : Timer(std::move(timer))
-        , DeviceUUID(std::move(deviceUUID))
-        , BlockSize(blockSize)
         , DeviceClient(std::move(deviceClient))
+        , DeviceUUID(std::move(deviceUUID))
         , Region(region)
+        , BlockSize(blockSize)
     {}
 
     // NJournalled::IDevice
 
     [[nodiscard]] auto ReadPages(
-        TVector<NJournalled::TPageRangeRef> rangeRefs)
+        TVector<TPageRangeRef> rangeRefs)
         -> TFuture<TResultOrError<TVector<TBuffer>>> final
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
@@ -249,7 +243,7 @@ public:
                 CreateReadBlocksRequest(
                     rangeRef,
                     BlockSize,
-                    Region.FirstBlockIndex),
+                    Region.FirstPageNo),
                 BlockSize,
                 TStringBuf()   // dataBuffer
                 ));
@@ -281,7 +275,7 @@ public:
             });
     }
 
-    [[nodiscard]] auto WritePages(TVector<NJournalled::TPageRange> ranges)
+    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
         -> TFuture<NProto::TError> final
     {
         ui32 requestBlockSize = 0;
@@ -309,7 +303,7 @@ public:
                 CreateWriteBlocksRequest(
                     range,
                     requestBlockSize,
-                    Region.FirstBlockIndex),
+                    Region.FirstPageNo),
                 requestBlockSize,
                 TStringBuf()   // dataBuffer
                 ));
@@ -335,7 +329,7 @@ public:
             });
     }
 
-    [[nodiscard]] auto ZeroPages(TVector<NJournalled::TPageRangeRef> ranges)
+    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
         -> TFuture<NProto::TError> final
     {
         if (auto error = ValidateZeroPagesRequest(ranges, Region);
@@ -357,7 +351,7 @@ public:
             futures.push_back(storageAdapter->ZeroBlocks(
                 now,
                 CreateCallContext(),
-                CreateZeroBlocksRequest(range, Region.FirstBlockIndex),
+                CreateZeroBlocksRequest(range, Region.FirstPageNo),
                 BlockSize));
         }
 
@@ -386,19 +380,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NJournalled::IDevicePtr CreateDeviceAdapter(
+IDevicePtr CreateDeviceAdapter(
     ITimerPtr timer,
-    TString deviceUUID,
-    ui32 blockSize,
     TDeviceClientPtr deviceClient,
-    TDeviceRegion region)
+    TString deviceUUID,
+    TPageRangeRef region,
+    ui32 blockSize)
 {
     return std::make_shared<TDeviceAdapter>(
         std::move(timer),
-        std::move(deviceUUID),
-        blockSize,
         std::move(deviceClient),
-        region);
+        std::move(deviceUUID),
+        region,
+        blockSize);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
