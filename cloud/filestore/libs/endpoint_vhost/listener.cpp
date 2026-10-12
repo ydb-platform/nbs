@@ -132,7 +132,6 @@ public:
         protoConfig.SetHandleOpsQueuePath(HandleOpsQueueConfig.PathPrefix);
         protoConfig.SetHandleOpsQueueSize(HandleOpsQueueConfig.MaxQueueSize);
         protoConfig.SetWriteBackCachePath(WriteBackCacheConfig.PathPrefix);
-        protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
         protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
             WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
         protoConfig.SetWriteBackCacheFlushRetryPeriod(

@@ -1080,10 +1080,23 @@ private:
                 if (hasState.GetResult() ||
                     FileSystemConfig->GetServerWriteBackCacheEnabled())
                 {
+                    const ui64 stateFileSize =
+                        FileSystemConfig->GetServerWriteBackCacheStateFileSize();
+                    if (!stateFileSize) {
+                        return MakeError(
+                            E_ARGUMENT,
+                            ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                                "[f:%s][c:%s] WriteBackCache state file size "
+                                "must be positive",
+                                Config->GetFileSystemId().Quote().c_str(),
+                                Config->GetClientId().Quote().c_str())));
+                    }
+
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            stateFileSize);
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1128,7 +1141,9 @@ private:
                      .FileSystemId = Config->GetFileSystemId(),
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                     .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                     .CapacityBytes =
+                         FileSystemConfig
+                             ->GetServerWriteBackCacheStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =
@@ -1396,6 +1411,11 @@ private:
             features.GetServerWriteBackCacheEnabled());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+
+        if (features.GetServerWriteBackCacheStateFileSize()) {
+            config.SetServerWriteBackCacheStateFileSize(
+                features.GetServerWriteBackCacheStateFileSize());
+        }
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());
