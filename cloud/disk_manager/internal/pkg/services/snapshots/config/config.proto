@@ -22,4 +22,5 @@ message SnapshotsConfig {
     optional bool RetryBrokenDRBasedDiskCheckpoint = 8;
     optional string ScheduleBackupSnapshotTasksScheduleInterval = 9 [default = "1m"];
     optional uint32 ScheduleBackupSnapshotTasksLimit = 10 [default = 1000];
+    optional string CreateSnapshotStaggeringWindow = 11 [default = "0s"];
 }

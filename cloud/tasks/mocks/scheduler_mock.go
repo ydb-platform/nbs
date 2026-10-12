@@ -27,6 +27,18 @@ func (s *SchedulerMock) ScheduleTask(
 	return args.String(0), args.Error(1)
 }
 
+func (s *SchedulerMock) ScheduleTaskAt(
+	ctx context.Context,
+	taskType string,
+	description string,
+	timing tasks.TaskScheduleTiming,
+	request proto.Message,
+) (string, error) {
+
+	args := s.Called(ctx, taskType, description, timing, request)
+	return args.String(0), args.Error(1)
+}
+
 func (s *SchedulerMock) ScheduleZonalTask(
 	ctx context.Context,
 	taskType string,

@@ -8,6 +8,7 @@ SRCS(
     execution_context.go
     lister.go
     registry.go
+    reconcile_delayed_tasks_task.go
     runner.go
     runner_metrics.go
     scheduler.go
@@ -17,6 +18,9 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    clear_ended_tasks_task_test.go
+    delayed_metrics_test.go
+    reconcile_delayed_tasks_task_test.go
     runner_test.go
     scheduler_test.go
     task_test.go

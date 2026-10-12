@@ -37,6 +37,9 @@ type ExecutionContext interface {
 
 	IsHanging() bool
 
+	// True only for delayed tasks that have never been locked for Run.
+	IsUnstartedDelayedTask() bool
+
 	SetEstimatedInflightDuration(estimatedInflightDuration time.Duration)
 
 	SetEstimatedStallingDuration(estimatedStallingDuration time.Duration)
@@ -146,9 +149,35 @@ func (c *executionContext) IsHanging() bool {
 		c.stallingHangingTaskTimeout,
 	)
 
-	return time.Since(c.taskState.CreatedAt) > c.hangingTaskTimeout ||
+	// Ordinary tasks retain the original age calculation.
+	// For delayed tasks, exclude the initial scheduled wait.
+	hangingSince := c.taskState.CreatedAt
+	if !c.taskState.AvailableAt.IsZero() {
+		hangingSince = c.taskState.AvailableAt
+		if !c.taskState.FirstRunStartedAt.IsZero() {
+			hangingSince = c.taskState.FirstRunStartedAt
+		} else if storage.IsCancellingOrCancelled(c.taskState.Status) {
+			hangingSince = c.taskState.CancelRequestedAt
+			if hangingSince.IsZero() {
+				hangingSince = c.taskState.ChangedStateAt
+				if hangingSince.IsZero() {
+					hangingSince = c.taskState.CreatedAt
+				}
+			}
+		}
+	}
+
+	return time.Since(hangingSince) > c.hangingTaskTimeout ||
 		c.taskState.InflightDuration > inflightTimeout ||
 		c.taskState.StallingDuration > stallingTimeout
+}
+
+func (c *executionContext) IsUnstartedDelayedTask() bool {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	return !c.taskState.AvailableAt.IsZero() &&
+		c.taskState.FirstRunStartedAt.IsZero()
 }
 
 func (c *executionContext) SetEstimatedInflightDuration(estimatedInflightDuration time.Duration) {
