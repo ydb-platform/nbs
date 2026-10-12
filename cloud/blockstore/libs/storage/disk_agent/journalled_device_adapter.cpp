@@ -65,6 +65,20 @@ auto CreateZeroBlocksRequest(
     return request;
 }
 
+TString DumpRangeRefs(const TVector<NJournalled::TPageRangeRef>& rangeRefs)
+{
+    TStringBuilder sb;
+    sb << "[";
+    for (size_t i = 0; i != rangeRefs.size(); ++i) {
+        if (i != 0) {
+            sb << ", ";
+        }
+        sb << rangeRefs[i].FirstPageNo << "x" << rangeRefs[i].PageCount;
+    }
+    sb << "]";
+    return sb;
+}
+
 // Checks that the pages fit in the region. An unbounded region leaves the
 // bounds to the device itself.
 NProto::TError ValidatePagesInRegion(
@@ -145,11 +159,15 @@ NProto::TError ValidateReadPagesRequest(
         return MakeError(E_ARGUMENT, "nothing to read");
     }
 
-    for (const auto& rangeRef: rangeRefs) {
+    for (size_t i = 0; i != rangeRefs.size(); ++i) {
+        const auto& rangeRef = rangeRefs[i];
+
         if (rangeRef.PageCount == 0) {
             return MakeError(
                 E_ARGUMENT,
-                "page group ref must contain at least one page");
+                TStringBuilder()
+                    << "page group ref must contain at least one page: ref #"
+                    << i << " of " << DumpRangeRefs(rangeRefs));
         }
 
         if (auto error = ValidatePagesInRegion(
@@ -173,11 +191,15 @@ NProto::TError ValidateZeroPagesRequest(
         return MakeError(E_ARGUMENT, "nothing to zero");
     }
 
-    for (const auto& rangeRef: rangeRefs) {
+    for (size_t i = 0; i != rangeRefs.size(); ++i) {
+        const auto& rangeRef = rangeRefs[i];
+
         if (rangeRef.PageCount == 0) {
             return MakeError(
                 E_ARGUMENT,
-                "page group ref must contain at least one page");
+                TStringBuilder()
+                    << "page group ref must contain at least one page: ref #"
+                    << i << " of " << DumpRangeRefs(rangeRefs));
         }
 
         if (auto error = ValidatePagesInRegion(

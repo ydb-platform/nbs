@@ -513,9 +513,8 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("10:[a]", ReadPages({{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldZeroARangeLargerThanAChunk, TFixture)
+    Y_UNIT_TEST_F(ShouldZeroALargeRange, TFixture)
     {
-        // more than the 1 MiB the zeroes are written in at once
         constexpr ui64 pageCount = 1_MB / DefaultPageSize + 3;
 
         Device = CreateDevice(pageCount + 2);
@@ -534,6 +533,26 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
             UNIT_ASSERT_VALUES_EQUAL_C("0", DescribePage(content[i]), i);
         }
         UNIT_ASSERT_VALUES_EQUAL("a", DescribePage(content[pageCount + 1]));
+    }
+
+    Y_UNIT_TEST_F(ShouldFreeTheZeroedPages, TFixture)
+    {
+        constexpr ui64 pageCount = 1_MB / DefaultPageSize;
+
+        Device = CreateDevice(pageCount);
+
+        TVector<TString> pages(pageCount, Page('a'));
+        WritePages({{0, pages}});
+
+        const ui64 allocatedBefore = TFileStat(FilePath()).AllocationSize;
+        UNIT_ASSERT_GE(allocatedBefore, pageCount * DefaultPageSize);
+
+        ZeroPages({{0, pageCount}});
+
+        // the pages are punched out of the file rather than overwritten
+        const ui64 allocatedAfter = TFileStat(FilePath()).AllocationSize;
+        UNIT_ASSERT_LT(allocatedAfter, allocatedBefore);
+        UNIT_ASSERT_VALUES_EQUAL(pageCount * DefaultPageSize, FileSize());
     }
 
     Y_UNIT_TEST_F(ShouldRejectZeroingPagesBeyondTheDevice, TFixture)

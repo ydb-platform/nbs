@@ -16,8 +16,13 @@
 #include <util/system/file.h>
 #include <util/system/sanitizers.h>
 
+#include <cerrno>
 #include <cstring>
 #include <memory>
+
+#if defined(_linux_)
+#   include <fcntl.h>
+#endif
 
 namespace NCloud::NJournalled {
 
@@ -30,10 +35,6 @@ namespace {
 // O_DIRECT requires the buffers, the offsets and the sizes to be aligned to
 // the logical block size of the underlying device, which never exceeds 4 KiB
 constexpr ui32 DirectIOAlignment = 4_KB;
-
-// the zeroes are written in chunks of at most this size, so zeroing a large
-// range does not allocate a buffer of the range size
-constexpr ui32 MaxZeroChunkSize = 1_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,6 +57,39 @@ NCloud::NProto::TError CheckTransfer(
     }
 
     return {};
+}
+
+NCloud::NProto::TError DiscardRange(TFileHandle& file, i64 offset, i64 length)
+{
+#if defined(_linux_)
+    if (fallocate(
+            FHANDLE(file),
+            FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
+            offset,
+            length) == 0)
+    {
+        return {};
+    }
+
+    // a block device without write zeroes can not punch a hole, but the
+    // kernel zeroes it explicitly in this mode
+    if (errno == EOPNOTSUPP &&
+        fallocate(FHANDLE(file), FALLOC_FL_ZERO_RANGE, offset, length) == 0)
+    {
+        return {};
+    }
+
+    const int err = errno;
+    auto error = MakeError(E_IO, LastSystemErrorText(err));
+#else
+    Y_UNUSED(file);
+    auto error = MakeError(E_NOT_IMPLEMENTED, "not supported on this platform");
+#endif
+
+    return MakeError(
+        error.GetCode(),
+        TStringBuilder() << "unable to zero range [" << offset << ", "
+                         << offset + length << "): " << error.GetMessage());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,57 +228,29 @@ public:
     TFuture<NCloud::NProto::TError> ZeroPages(
         TVector<TPageRangeRef> ranges) override
     {
-        ui64 maxPageCount = 0;
         for (const auto& range: ranges) {
             auto error = ValidatePageRange(range.FirstPageNo, range.PageCount);
             if (HasError(error)) {
                 return MakeFuture(std::move(error));
             }
-
-            maxPageCount = Max(maxPageCount, range.PageCount);
         }
-
-        if (maxPageCount == 0) {
-            return MakeFuture<NCloud::NProto::TError>();
-        }
-
-        const ui64 chunkPageCount =
-            Min<ui64>(maxPageCount, Max<ui32>(MaxZeroChunkSize / PageSize, 1));
-
-        // shared by all the writes, each of which keeps it alive
-        auto zeroes = std::make_shared<TAlignedBuffer>(
-            static_cast<ui32>(chunkPageCount * PageSize),
-            DirectIOAlignment);
-        std::memset(zeroes->Begin(), 0, zeroes->Size());
-
-        TVector<TFuture<NCloud::NProto::TError>> futures;
 
         for (const auto& range: ranges) {
-            ui64 pageNo = range.FirstPageNo;
-            ui64 pageCount = range.PageCount;
+            if (range.PageCount == 0) {
+                continue;
+            }
 
-            while (pageCount) {
-                const ui64 count = Min(pageCount, chunkPageCount);
-                futures.push_back(WriteZeroes(pageNo, count, zeroes));
+            auto error = DiscardRange(
+                File,
+                GetOffset(range.FirstPageNo),
+                static_cast<i64>(range.PageCount * PageSize));
 
-                pageNo += count;
-                pageCount -= count;
+            if (HasError(error)) {
+                return MakeFuture(std::move(error));
             }
         }
 
-        return WaitAll(futures).Apply(
-            [futures = std::move(futures)]
-            (const TFuture<void>&) -> NCloud::NProto::TError
-            {
-                for (const auto& future: futures) {
-                    const auto& error = future.GetValue();
-                    if (HasError(error)) {
-                        return error;
-                    }
-                }
-
-                return {};
-            });
+        return MakeFuture<NCloud::NProto::TError>();
     }
 
 private:
@@ -363,36 +369,6 @@ private:
                     "write",
                     firstPageNo,
                     buffer.Size(),
-                    error,
-                    bytes));
-            });
-
-        return promise.GetFuture();
-    }
-
-    TFuture<NCloud::NProto::TError> WriteZeroes(
-        ui64 firstPageNo,
-        ui64 pageCount,
-        std::shared_ptr<TAlignedBuffer> zeroes)
-    {
-        const TArrayRef<const char> data(zeroes->Begin(), pageCount * PageSize);
-
-        auto promise = NewPromise<NCloud::NProto::TError>();
-
-        FileIO->AsyncWrite(
-            File,
-            GetOffset(firstPageNo),
-            data,
-            [promise,
-             firstPageNo,
-             expectedBytes = data.size(),
-             zeroes = std::move(zeroes)]
-            (const NCloud::NProto::TError& error, ui32 bytes) mutable
-            {
-                promise.SetValue(CheckTransfer(
-                    "zero",
-                    firstPageNo,
-                    expectedBytes,
                     error,
                     bytes));
             });
