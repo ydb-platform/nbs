@@ -251,6 +251,7 @@ private:
         }
 
         ShutDown();
+        Handler->CancelRequests();
         ReleaseRequest(InFlightBytes);
         TryCompleteDrain();
     }
@@ -258,6 +259,7 @@ private:
     void DoSendResponse(TCont* c, TServerResponse& response)
     {
         if (IsShutdownError(response.Error)) {
+            Handler->CompleteResponse(response);
             return;
         }
 

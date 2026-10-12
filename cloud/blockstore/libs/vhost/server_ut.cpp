@@ -11,6 +11,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <cloud/contrib/vhost/include/vhost/server.h>
@@ -56,6 +57,7 @@ private:
     const ui32 BlockSize;
     const ui64 BlocksCount = 256;
     const bool DropDiscardRequests;
+    const IServerStatsPtr ServerStats;
 
     IServerPtr VhostServer;
     std::shared_ptr<TTestStorage> TestStorage;
@@ -67,9 +69,14 @@ private:
     TLockFreeQueue<TPromise<void>> FrozenPromises;
 
 public:
-    TTestEnvironment(ui32 blockSize, bool dropDiscardRequests = false)
+    TTestEnvironment(
+        ui32 blockSize,
+        bool dropDiscardRequests = false,
+        IServerStatsPtr serverStats = {})
         : BlockSize(blockSize)
         , DropDiscardRequests(dropDiscardRequests)
+        , ServerStats(
+              serverStats ? std::move(serverStats) : CreateServerStatsStub())
     {
         InitVhostDeviceEnvironment();
     }
@@ -88,6 +95,11 @@ public:
     std::shared_ptr<ITestVhostDevice> GetVhostDevice()
     {
         return VhostDevice;
+    }
+
+    std::shared_ptr<TTestStorage> GetTestStorage()
+    {
+        return TestStorage;
     }
 
     TTestVhostQueueFactory& GetVhostQueueFactory()
@@ -209,7 +221,7 @@ private:
 
         VhostServer = CreateServer(
             CreateLoggingService("console"),
-            CreateServerStatsStub(),
+            ServerStats,
             VhostQueueFactory,
             CreateDefaultDeviceHandlerFactory(),
             serverConfig,
@@ -404,6 +416,144 @@ void TestEndpointStopException(bool failSynchronously)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
+    Y_UNIT_TEST(ShouldMeasureVhostIoDepthForPendingAndFailedParents)
+    {
+        std::atomic<ui64> nowNs = 0;
+        TIoDepthTracker depth(2, [&] { return nowNs.load(); });
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestStartedHandler =
+            [&](TLog&, TMetricRequest& request, TCallContext&, const TString&)
+        {
+            depth.Started(
+                request.RequestType == EBlockStoreRequest::ReadBlocks ? 0 : 1);
+        };
+        stats->RequestCompletedHandler = [&](TLog&,
+                                             TMetricRequest& request,
+                                             TCallContext&,
+                                             const NProto::TError&)
+        {
+            UNIT_ASSERT(depth.Completed(
+                request.RequestType == EBlockStoreRequest::ReadBlocks ? 0 : 1));
+        };
+
+        TTestEnvironment env(DefaultBlockSize, false, stats);
+        auto readResponse = NewPromise<NProto::TReadBlocksLocalResponse>();
+        auto writeResponse = NewPromise<NProto::TWriteBlocksLocalResponse>();
+        auto readArrived = NewPromise<void>();
+        auto writeArrived = NewPromise<void>();
+        env.GetTestStorage()->ReadBlocksLocalHandler = [=](auto, auto) mutable
+        {
+            readArrived.SetValue();
+            return readResponse.GetFuture();
+        };
+        env.GetTestStorage()->WriteBlocksLocalHandler = [=](auto, auto) mutable
+        {
+            writeArrived.SetValue();
+            return writeResponse.GetFuture();
+        };
+
+        Y_DEFER
+        {
+            readResponse.TrySetValue({});
+            writeResponse.TrySetValue({});
+        };
+
+        TVector<TString> readBlocks;
+        TVector<TString> writeBlocks;
+        auto readSg =
+            ResizeBlocks(readBlocks, 1, TString(DefaultBlockSize, 'r'));
+        auto writeSg =
+            ResizeBlocks(writeBlocks, 1, TString(DefaultBlockSize, 'w'));
+        auto device = env.GetVhostDevice();
+        auto read = device->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            DefaultBlockSize,
+            readSg);
+        auto write = device->SendTestRequest(
+            EBlockStoreRequest::WriteBlocks,
+            0,
+            DefaultBlockSize,
+            writeSg);
+        readArrived.GetFuture().GetValue(TDuration::Seconds(5));
+        writeArrived.GetFuture().GetValue(TDuration::Seconds(5));
+
+        nowNs = 60'000'000'000ULL;
+        auto snapshot = depth.Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[1].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 60'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[1].IntegralUs, 60'000'000);
+        UNIT_ASSERT(!read.HasValue());
+        UNIT_ASSERT(!write.HasValue());
+
+        NProto::TWriteBlocksLocalResponse failedWrite;
+        *failedWrite.MutableError() = MakeError(E_FAIL, "test write failure");
+        writeResponse.SetValue(std::move(failedWrite));
+        UNIT_ASSERT(
+            write.GetValue(TDuration::Seconds(5)) == TVhostRequest::IOERR);
+
+        nowNs = 90'000'000'000ULL;
+        readResponse.SetValue({});
+        UNIT_ASSERT(
+            read.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
+        snapshot = depth.Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[1].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 90'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[1].IntegralUs, 60'000'000);
+        UNIT_ASSERT(snapshot.Continuous);
+    }
+
+    Y_UNIT_TEST(ShouldFinishVhostIoDepthOnceOnCancelAndLateCompletion)
+    {
+        std::atomic<ui64> nowNs = 0;
+        TIoDepthTracker depth(1, [&] { return nowNs.load(); });
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestStartedHandler =
+            [&](TLog&, TMetricRequest&, TCallContext&, const TString&)
+        {
+            depth.Started(0);
+        };
+        stats->RequestCompletedHandler =
+            [&](TLog&, TMetricRequest&, TCallContext&, const NProto::TError&)
+        {
+            UNIT_ASSERT(depth.Completed(0));
+        };
+        TTestEnvironment env(DefaultBlockSize, false, stats);
+        auto response = NewPromise<NProto::TReadBlocksLocalResponse>();
+        auto arrived = NewPromise<void>();
+        env.GetTestStorage()->ReadBlocksLocalHandler = [=](auto, auto) mutable
+        {
+            arrived.SetValue();
+            return response.GetFuture();
+        };
+        Y_DEFER
+        {
+            response.TrySetValue({});
+        };
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'r'));
+        auto future = env.GetVhostDevice()->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            DefaultBlockSize,
+            sglist);
+        arrived.GetFuture().GetValue(TDuration::Seconds(5));
+
+        nowNs = 60'000'000'000ULL;
+        env.StopVhostServer();
+        UNIT_ASSERT(
+            future.GetValue(TDuration::Seconds(5)) == TVhostRequest::CANCELLED);
+        nowNs = 120'000'000'000ULL;
+        response.SetValue({});
+
+        const auto snapshot = depth.Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 60'000'000);
+        UNIT_ASSERT(snapshot.Continuous);
+    }
+
     Y_UNIT_TEST(ShouldStartStopVhostEndpoint)
     {
         auto logging = CreateLoggingService("console");

@@ -10,11 +10,13 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
 #include <util/stream/str.h>
 
 #include <array>
@@ -90,6 +92,20 @@ private:
     IOutputStream& Out;
 
 public:
+    IServerHandler* Handler = nullptr;
+    bool Deferred = false;
+    bool ForwardResponses = true;
+    TVector<ITaskPtr> PendingTasks;
+    TServerResponsePtr LastResponse;
+
+    void ExecutePending()
+    {
+        auto tasks = std::move(PendingTasks);
+        for (auto& task: tasks) {
+            task->Execute();
+        }
+    }
+
     TServerContext(IOutputStream& out)
         : Out(out)
     {}
@@ -110,7 +126,11 @@ public:
 
     void Enqueue(ITaskPtr task) override
     {
-        task->Execute();
+        if (Deferred) {
+            PendingTasks.push_back(std::move(task));
+        } else {
+            task->Execute();
+        }
     }
 
     const NProto::TReadBlocksLocalResponse& WaitFor(
@@ -133,6 +153,14 @@ public:
 
     void SendResponse(TServerResponsePtr response) override
     {
+        if (Handler) {
+            LastResponse = response;
+            if (ForwardResponses) {
+                Handler->SendResponse(Out, *response);
+            }
+            return;
+        }
+
         Out.Write(response->HeaderBuffer.Data(), response->HeaderBuffer.Size());
 
         if (response->DataBuffer) {
@@ -297,6 +325,80 @@ TExportInfo NegotiateClient(
     return result;
 }
 
+class TRequestMetricsFixture
+{
+public:
+    ui32 Current = 0;
+    ui32 Completed = 0;
+    ui32 Errors = 0;
+    std::shared_ptr<TTestStorage> Storage = std::make_shared<TTestStorage>();
+    IServerHandlerPtr Handler;
+    TStringStream Replies;
+    TStringStream Requests;
+    TIntrusivePtr<TServerContext> Context;
+
+    TRequestMetricsFixture()
+    {
+        Storage->DoAllocations = true;
+        SetupStorage(*Storage);
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestStartedHandler = [this](auto&, auto&, auto&, const auto&)
+        {
+            ++Current;
+        };
+        stats->RequestCompletedHandler =
+            [this](auto&, auto&, auto&, const auto& error)
+        {
+            UNIT_ASSERT(Current);
+            --Current;
+            ++Completed;
+            Errors += HasError(error);
+        };
+        TStorageOptions options;
+        options.DiskId = DefaultDiskId;
+        options.BlockSize = DefaultBlockSize;
+        options.BlocksCount = DefaultBlocksCount;
+        Handler = CreateServerHandlerFactory(
+                      CreateDefaultDeviceHandlerFactory(),
+                      CreateLoggingService("console", {TLOG_DEBUG}),
+                      Storage,
+                      std::move(stats),
+                      CreateErrorHandlerStub(),
+                      options)
+                      ->CreateHandler();
+        NegotiateClient(*Handler, Replies, Requests);
+        Context = MakeIntrusive<TServerContext>(Replies);
+        Context->Handler = Handler.get();
+        Context->Deferred = true;
+    }
+
+    void Accept(ui32 command, bool truncate = false)
+    {
+        TRequest request{};
+        request.Magic = NBD_REQUEST_MAGIC;
+        request.Type = command;
+        request.Handle = 1;
+        request.Length = DefaultBlockSize;
+        TStringStream encoded;
+        TRequestWriter writer(encoded);
+        writer.WriteRequest(
+            request,
+            command == NBD_CMD_WRITE ? TString(request.Length, 'a')
+                                     : TString());
+        const auto& bytes = encoded.Str();
+        Requests.Write(bytes.data(), bytes.size() - truncate);
+        Handler->ProcessRequests(Context, Requests, Replies, nullptr);
+    }
+};
+
+class TThrowingResponseOutput final: public IOutputStream
+{
+    void DoWrite(const void*, size_t) override
+    {
+        ythrow yexception() << "response write failed";
+    }
+};
+
 void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
@@ -460,6 +562,95 @@ void ProcessUnalignedRequests(
 
 Y_UNIT_TEST_SUITE(TServerHandlerTest)
 {
+    Y_UNIT_TEST(ShouldBalancePendingRequestMetrics)
+    {
+        for (const ui32 command:
+             {NBD_CMD_READ, NBD_CMD_WRITE, NBD_CMD_WRITE_ZEROES})
+        {
+            for (const bool disconnect: {false, true}) {
+                TRequestMetricsFixture fixture;
+                fixture.Accept(command);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 1);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 0);
+
+                if (disconnect) {
+                    fixture.Handler->CancelRequests();
+                    UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+                    UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+                }
+                fixture.Context->ExecutePending();
+                UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.Errors, disconnect);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepMetricsUntilSendStopsAfterReceiveError)
+    {
+        TRequestMetricsFixture fixture;
+        fixture.Accept(NBD_CMD_READ);
+        fixture.Handler->ProcessException(
+            std::make_exception_ptr(yexception() << "invalid next request"));
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 0);
+
+        fixture.Context->ExecutePending();
+        fixture.Handler->CancelRequests();
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Errors, 0);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteMetricsForStorageError)
+    {
+        TRequestMetricsFixture fixture;
+        fixture.Storage->ReadBlocksLocalHandler = [](auto, auto)
+        {
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_IO, "read failure");
+            return MakeFuture(response);
+        };
+        fixture.Accept(NBD_CMD_READ);
+        fixture.Context->ExecutePending();
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Errors, 1);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteMetricsWhenResponseIsNotSent)
+    {
+        for (const bool failedWrite: {false, true}) {
+            TRequestMetricsFixture fixture;
+            fixture.Context->ForwardResponses = false;
+            fixture.Accept(NBD_CMD_READ);
+            fixture.Context->ExecutePending();
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 1);
+            auto& response = *fixture.Context->LastResponse;
+            if (failedWrite) {
+                TThrowingResponseOutput output;
+                UNIT_ASSERT_EXCEPTION(
+                    fixture.Handler->SendResponse(output, response),
+                    yexception);
+            } else {
+                fixture.Handler->CompleteResponse(response);
+            }
+            fixture.Handler->CompleteResponse(response);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Errors, failedWrite);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompleteMetricsForTruncatedWritePayload)
+    {
+        TRequestMetricsFixture fixture;
+        UNIT_ASSERT_EXCEPTION(fixture.Accept(NBD_CMD_WRITE, true), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Completed, 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Errors, 1);
+    }
+
     Y_UNIT_TEST(ShouldNegotiateClient)
     {
         auto storage = std::make_shared<TTestStorage>();

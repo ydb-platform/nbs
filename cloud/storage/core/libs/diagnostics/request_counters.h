@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "io_depth_tracker.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/size_interval.h>
 #include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
@@ -9,6 +11,8 @@
 #include <util/datetime/base.h>
 #include <util/generic/flags.h>
 
+#include <memory>
+#include <optional>
 #include <span>
 
 namespace NCloud {
@@ -39,6 +43,7 @@ public:
         OnlyStartEndpointRequests        = (1 << 5),
         ThrottlingHistogramsDisabled     = (1 << 6),
         DisaggregatedCountersDisabled    = (1 << 7),
+        ReportIoDepth = (1 << 8),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -59,6 +64,10 @@ private:
 
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;
+    std::unique_ptr<TIoDepthTracker> IoDepthTracker;
+
+    // Snapshot at the beginning of the averaging interval.
+    std::optional<TIoDepthSnapshot> PreviousIoDepthSnapshot;
     TVector<TRequestCountersPtr> Subscribers;
 
 public:
@@ -70,7 +79,8 @@ public:
         std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses);
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        TIoDepthClock ioDepthClock = {});
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);
@@ -125,6 +135,8 @@ public:
 
     void UpdateStats(bool updatePercentiles = false);
 
+    std::optional<TIoDepthSnapshot> GetIoDepthSnapshot();
+
 private:
     void RequestStartedImpl(
         TRequestType requestType,
@@ -146,6 +158,10 @@ private:
         ECalcMaxTime calcMaxTime);
 
     bool ShouldReport(TRequestType requestType) const;
+
+    void UpdateIoDepthAverage(
+        const TIoDepthSnapshot& snapshot,
+        bool updateIntervalFinished);
 
     template<typename TMethod, typename... TArgs>
     void NotifySubscribers(TMethod&& m, TArgs&&... args);
