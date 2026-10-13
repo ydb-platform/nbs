@@ -17,7 +17,7 @@ SET(RECIPE_ARGS
     --restart-interval $NFS_RESTART_INTERVAL
 )
 
-IF (ENABLE_EXTERNAL_DATA_CHANNEL)
+IF (OPENSOURCE)
     SET_APPEND(RECIPE_ARGS --enable-external-data-channel)
 ENDIF()
 
