@@ -11,9 +11,12 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TBuffer>
-class TBlockBuffer final
-    : public IBlockBuffer
+class TBlockBuffer final: public IBlockBuffer
 {
+    static_assert(
+        std::is_same_v<TBuffer, TString> || std::is_same_v<TBuffer, TRcBuf>,
+        "TBlockBuffer supports only TString and TRcBuf");
+
 private:
     const TByteRange ByteRange;
     TBuffer Buffer;
