@@ -94,6 +94,7 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/file_io_stats_publisher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -332,6 +333,15 @@ void TBootstrapBase::Init()
         CreateCriticalEventsStatsHandler());
 
     STORAGE_INFO("CriticalEventsStatsUpdater initialized");
+
+    if (FileIOStatsRegistry) {
+        FileIOStatsUpdater = CreateStatsUpdater(
+            Timer,
+            BackgroundScheduler,
+            CreateFileIOStatsPublisher(Timer, FileIOStatsRegistry, rootGroup));
+
+        STORAGE_INFO("FileIOStatsUpdater initialized");
+    }
 
     TVector<TCertificateFiles> certPathList;
     for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
@@ -1062,6 +1072,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Server);
     START_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     START_COMMON_COMPONENT(ServerStatsUpdater);
+    START_COMMON_COMPONENT(FileIOStatsUpdater);
     START_COMMON_COMPONENT(BackgroundThreadPool);
     START_COMMON_COMPONENT(RdmaClient);
     START_COMMON_COMPONENT(GetTraceServiceClient());
@@ -1136,6 +1147,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
     STOP_COMMON_COMPONENT(RdmaClient);
     STOP_COMMON_COMPONENT(BackgroundThreadPool);
+    STOP_COMMON_COMPONENT(FileIOStatsUpdater);
     STOP_COMMON_COMPONENT(ServerStatsUpdater);
     STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);

@@ -409,6 +409,10 @@ message TDiskAgentConfig
 
     // Enables the journal for Journalled Devices.
     optional bool JournalEnabled = 50;
+
+    // Enables collection and publication of the file I/O backend (AIO and
+    // io_uring) statistics.
+    optional bool FileIOStatsEnabled = 51;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

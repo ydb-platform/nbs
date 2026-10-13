@@ -56,6 +56,8 @@ protected:
     IServerStatsPtr ServerStats;
     IStatsUpdaterPtr CriticalEventsStatsUpdater;
     IStatsUpdaterPtr ServerStatsUpdater;
+    TFileIOStatsRegistryPtr FileIOStatsRegistry;
+    IStatsUpdaterPtr FileIOStatsUpdater;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
     NDiscovery::IDiscoveryServicePtr DiscoveryService;

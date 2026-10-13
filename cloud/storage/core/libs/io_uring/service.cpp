@@ -3,6 +3,7 @@
 #include "context.h"
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -25,6 +26,10 @@ namespace NCloud {
 using namespace NIoUring;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TStringBuf BackendName = "io_uring";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -180,13 +185,17 @@ class TIoUringServiceFactory final
 {
 private:
     const TIoUringServiceParams Params;
+    const TFileIOStatsRegistryPtr StatsRegistry;
 
     std::shared_ptr<TContext> WqOwner;
     ui32 Index = 0;
 
 public:
-    explicit TIoUringServiceFactory(TIoUringServiceParams params)
+    explicit TIoUringServiceFactory(
+            TIoUringServiceParams params,
+            TFileIOStatsRegistryPtr statsRegistry)
         : Params(std::move(params))
+        , StatsRegistry(std::move(statsRegistry))
     {}
 
     IFileIOServicePtr CreateFileIOService() final
@@ -204,6 +213,7 @@ public:
             .PropagateAffinityToKernelWorkers =
                 Params.PropagateAffinityToKernelWorkers,
             .Flags = Params.SQKernelPollingEnabled ? IORING_SETUP_SQPOLL : 0,
+            .Stats = RegisterFileIOStats(StatsRegistry, TString(BackendName)),
         };
 
         const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;
@@ -223,11 +233,14 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    TIoUringServiceParams params)
+    TIoUringServiceParams params,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
     using TFactory = TIoUringServiceFactory<TIoUringService>;
 
-    return std::make_shared<TFactory>(std::move(params));
+    return std::make_shared<TFactory>(
+        std::move(params),
+        std::move(statsRegistry));
 }
 
 IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
@@ -235,7 +248,7 @@ IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
 {
     using TFactory = TIoUringServiceFactory<TIoUringServiceNull>;
 
-    return std::make_shared<TFactory>(std::move(params));
+    return std::make_shared<TFactory>(std::move(params), nullptr);
 }
 
 }   // namespace NCloud

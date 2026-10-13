@@ -12,6 +12,7 @@ PEERDIR(
 SRCS(
     busy_idle_calculator_ut.cpp
     cgroup_stats_fetcher_ut.cpp
+    file_io_stats_publisher_ut.cpp
     histogram_types_ut.cpp
     logging_ut.cpp
     max_calculator_ut.cpp

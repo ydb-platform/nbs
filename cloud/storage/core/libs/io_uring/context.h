@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 #include <cloud/storage/core/libs/common/public.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -17,6 +18,8 @@ class TContext final
 {
 private:
     io_uring Ring = {};
+
+    const TFileIOStatsPtr Stats;
 
     ITaskQueuePtr SubmissionThread;
     TThread CompletionThread;
@@ -41,6 +44,10 @@ public:
 
         bool PropagateAffinityToKernelWorkers = false;
         ui32 Flags = 0;
+
+        // Statistics of read/write operations. If not set, the context
+        // creates its own statistics.
+        TFileIOStatsPtr Stats;
     };
 
     explicit TContext(TParams params);
@@ -91,6 +98,11 @@ public:
     void PostCompletion(TFileIOCompletion* completion, int res);
 
 private:
+    TFileIOCompletion* StartRequest(
+        EFileIORequest request,
+        ui64 requestBytes,
+        TFileIOCompletion* completion);
+
     void SubmitIO(
         int op,
         int fd,
