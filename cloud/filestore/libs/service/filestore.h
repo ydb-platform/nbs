@@ -69,17 +69,6 @@ TString FallocateFlagsToString(ui32 flags);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-struct IResponseHandler
-{
-    virtual ~IResponseHandler() = default;
-
-    virtual void HandleResponse(const T& response) = 0;
-    virtual void HandleCompletion(const NProto::TError& error) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct IFileStore
 {
     virtual ~IFileStore() = default;
@@ -112,11 +101,6 @@ struct IFileStoreService
     FILESTORE_CONTROL_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
-
-    virtual void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

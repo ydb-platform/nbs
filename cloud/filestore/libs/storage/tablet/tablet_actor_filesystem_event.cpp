@@ -41,6 +41,31 @@ ui32 TIndexTabletActor::SendFileSystemEvents(
         clients.insert(clientId);
     }
 
+    //
+    // The counters reflect the number of sends - in dry run mode as well.
+    //
+
+    for (const auto& event: events) {
+        if (event.HasInvalidateNode()) {
+            Metrics->InvalidateNodeEventSendCount.fetch_add(
+                clients.size(),
+                std::memory_order_relaxed);
+        }
+        if (event.HasInvalidateNodeRef()) {
+            Metrics->InvalidateNodeRefEventSendCount.fetch_add(
+                clients.size(),
+                std::memory_order_relaxed);
+        }
+    }
+
+    if (IsFileSystemEventsDryRunModeEnabled()) {
+        //
+        // Dry run mode: the events are generated and counted but not sent.
+        //
+
+        return clients.size();
+    }
+
     const auto& fileSystemId = GetMainFileSystemId();
     for (const auto& event: events) {
         LOG_DEBUG(

@@ -16,9 +16,9 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::DestroySession:
         case EFileStoreRequest::ResetSession:
         case EFileStoreRequest::PingSession:
-        case EFileStoreRequest::SubscribeSession:
-        case EFileStoreRequest::GetSessionEvents:
-        case EFileStoreRequest::GetSessionEventsStream:
+        case EFileStoreRequest::Reserved1:
+        case EFileStoreRequest::Reserved2:
+        case EFileStoreRequest::Reserved3:
             return CreatePermissionList({EPermission::Update});
         case EFileStoreRequest::ResolvePath:
         case EFileStoreRequest::ListNodes:

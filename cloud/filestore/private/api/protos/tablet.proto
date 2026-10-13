@@ -1642,6 +1642,7 @@ message TGenerateFileSystemEventResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Number of clients the event was sent to.
+    // Number of clients the event was sent to (would have been sent to in
+    // FileSystemEventsDryRunModeEnabled mode).
     uint32 ClientCount = 2;
 }

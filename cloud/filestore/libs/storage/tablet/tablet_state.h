@@ -251,6 +251,7 @@ private:
     bool CompressNodeRef = false;
 
     /*const*/ bool FileSystemEventsEnabled = false;
+    /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
 
     bool StateLoaded = false;
 
@@ -440,6 +441,17 @@ public:
         return CompressNodeRef || FileSystem.GetCompressNodeRef();
     }
 
+    /**
+     * Checks whether FileSystemEvents should be counted but not sent to the
+     * clients.
+     *
+     * @return - True if FileSystemEventsDryRunModeEnabled is set.
+     */
+    bool IsFileSystemEventsDryRunModeEnabled() const
+    {
+        return FileSystemEventsDryRunModeEnabled;
+    }
+
     ui64 GetCurrentCommitId() const
     {
         return MakeCommitId(Generation, LastStep);
@@ -452,11 +464,6 @@ public:
         }
 
         return MakeCommitId(Generation, ++LastStep);
-    }
-
-    ui64 GenerateEventId(TSession* session)
-    {
-        return MakeCommitId(Generation, ++session->LastEvent);
     }
 
     const NProto::TFileSystemStats& GetFileSystemStats() const
@@ -883,7 +890,6 @@ public:
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
-    TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;

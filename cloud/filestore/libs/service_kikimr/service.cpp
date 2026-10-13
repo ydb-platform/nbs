@@ -4,7 +4,6 @@
 #include "methods.h"
 #include "request_actor.h"
 #include "side_channel.h"
-#include "stream_request_actor.h"
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -84,18 +83,6 @@ public:
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse>
-        responseHandler) override
-    {
-        ExecuteStreamRequest<TGetSessionEventsServiceMethod>(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-    }
-
 private:
     template <typename T>
     void ExecuteRequestImpl(
@@ -157,18 +144,6 @@ private:
         Y_UNUSED(TFsyncDirServiceMethod::RequestName);
 
         response.SetValue(TFsyncDirServiceMethod::TResponse());
-    }
-
-    template <typename T>
-    void ExecuteStreamRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename T::TRequest> request,
-        IResponseHandlerPtr<typename T::TResponse> responseHandler)
-    {
-        ActorSystem->Register(std::make_unique<TStreamRequestActor<T>>(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler)));
     }
 
     template <typename T>

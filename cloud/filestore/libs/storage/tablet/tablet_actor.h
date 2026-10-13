@@ -458,10 +458,6 @@ private:
         }
     }
 
-    void NotifySessionEvent(
-        const NActors::TActorContext& ctx,
-        const NProto::TSessionEvent& event);
-
     void RegisterFileSystemEventClient(
         const NActors::TActorId& recipient,
         const NActors::TActorId& clientId);
