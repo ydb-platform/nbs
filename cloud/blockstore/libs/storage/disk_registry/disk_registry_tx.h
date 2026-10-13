@@ -67,6 +67,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
+    xxx(RestoreDiskFromBackup,              __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1296,6 +1297,37 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TChangeDiskDevice(
+                TRequestInfoPtr requestInfo,
+                TString diskId,
+                TString sourceDeviceId,
+                TString targetDeviceId)
+            : RequestInfo(std::move(requestInfo))
+            , DiskId(std::move(diskId))
+            , SourceDeviceId(std::move(sourceDeviceId))
+            , TargetDeviceId(std::move(targetDeviceId))
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // RestoreDiskFromBackup
+    //
+    
+    struct TRestoreDiskFromBackup
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TString DiskId;
+        const TString SourceDeviceId;
+        const TString TargetDeviceId;
+
+        NProto::TError Error;
+
+        TRestoreDiskFromBackup(
                 TRequestInfoPtr requestInfo,
                 TString diskId,
                 TString sourceDeviceId,

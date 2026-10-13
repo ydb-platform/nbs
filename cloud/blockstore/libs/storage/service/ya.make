@@ -23,6 +23,7 @@ SRCS(
     service_actor_actions_disk_registry_change_state.cpp
     service_actor_actions_disk_registry_describe_disk.cpp
     service_actor_actions_disk_registry_ensure_state_integrity.cpp
+    service_actor_actions_disk_registry_restore_disk_from_backup.cpp
     service_actor_actions_drain_node.cpp
     service_actor_actions_finish_fill_disk.cpp
     service_actor_actions_flush_profile_log.cpp

@@ -386,6 +386,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateRestoreDiskFromBackupActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateSetupChannelsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
