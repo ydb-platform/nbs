@@ -8,6 +8,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
+// The backup queue and follower_chunks are written by every copy task and
+// every snapshot copy at once. They are small, so splitting by size alone
+// keeps them in one or two partitions; they are split by load instead, and
+// not merged back below the minimum between waves of backups.
+const (
+	backupTablesMinPartitions = 64
+	backupTablesMaxPartitions = 1024
+)
+
 func Create(
 	ctx context.Context,
 	config *snapshot_config.SnapshotConfig,
@@ -151,6 +162,10 @@ func Create(
 			),
 			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
 			persistence.WithSecondaryKeyColumn("snapshot_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
 		),
 		dropUnusedColumns,
 	)
@@ -170,6 +185,10 @@ func Create(
 			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
 			persistence.WithPrimaryKeyColumn("chunk_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
 		),
 		dropUnusedColumns,
 	)

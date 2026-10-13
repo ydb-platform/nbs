@@ -213,6 +213,24 @@ type CreateTableDescription struct {
 	ColumnFamilies         []ydb_options.ColumnFamily
 	UniformPartitions      uint64
 	ExternalBlobsMediaKind string
+	PartitioningByLoad     *PartitioningByLoad
+}
+
+// A partition under load is split; partitions are merged back while there
+// are more than MinPartitions and never split beyond MaxPartitions.
+type PartitioningByLoad struct {
+	MinPartitions uint64
+	MaxPartitions uint64
+}
+
+func (p PartitioningByLoad) settings() ydb_options.PartitioningSettings {
+	// Partitioning by size is not set here: a new table gets the default, an
+	// existing one keeps its own.
+	return ydb_options.PartitioningSettings{
+		PartitioningByLoad: ydb_options.FeatureEnabled,
+		MinPartitionsCount: p.MinPartitions,
+		MaxPartitionsCount: p.MaxPartitions,
+	}
 }
 
 type CreateTableOption func(*CreateTableDescription)
@@ -263,6 +281,21 @@ func WithUniformPartitions(n uint64) CreateTableOption {
 func WithExternalBlobs(mediaKind string) CreateTableOption {
 	return func(d *CreateTableDescription) {
 		d.ExternalBlobsMediaKind = mediaKind
+	}
+}
+
+// Applied to a new table and to an existing one: unlike the other options,
+// CreateOrAlterTable brings the settings of an existing table to these.
+func WithPartitioningByLoad(
+	minPartitions uint64,
+	maxPartitions uint64,
+) CreateTableOption {
+
+	return func(d *CreateTableDescription) {
+		d.PartitioningByLoad = &PartitioningByLoad{
+			MinPartitions: minPartitions,
+			MaxPartitions: maxPartitions,
+		}
 	}
 }
 
@@ -869,6 +902,12 @@ func createTable(
 		))
 	}
 
+	if description.PartitioningByLoad != nil {
+		options = append(options, ydb_options.WithPartitioningSettingsObject(
+			description.PartitioningByLoad.settings(),
+		))
+	}
+
 	if len(description.ExternalBlobsMediaKind) > 0 {
 		options = append(options, ydb_options.WithStorageSettings(
 			ydb_options.StorageSettings{
@@ -1067,6 +1106,28 @@ func alterTable(
 		err = session.AlterTable(ctx, fullPath, option)
 		if err != nil {
 			return err
+		}
+	}
+
+	if description.PartitioningByLoad != nil {
+		current := currentDescription.PartitioningSettings
+		settings := description.PartitioningByLoad.settings()
+		if current.PartitioningByLoad != settings.PartitioningByLoad ||
+			current.MinPartitionsCount != settings.MinPartitionsCount ||
+			current.MaxPartitionsCount != settings.MaxPartitionsCount {
+
+			// Sent as they are, so that the table keeps its size split.
+			settings.PartitioningBySize = current.PartitioningBySize
+			settings.PartitionSizeMb = current.PartitionSizeMb
+
+			err = session.AlterTable(
+				ctx,
+				fullPath,
+				ydb_options.WithAlterPartitionSettingsObject(settings),
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
