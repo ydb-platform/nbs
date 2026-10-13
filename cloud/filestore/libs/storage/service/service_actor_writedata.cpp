@@ -401,6 +401,10 @@ private:
             if (!iovecs.empty()) {
                 // GetRcBufAllocator/GetDefaultRcBufAllocator is available
                 // starting from ydb/stable-26-1
+                // TODO(myagkov): issue-7526
+                // Remove ifdef OPENSOURCE after backporting
+                // GetRcBufAllocator/GetDefaultRcBufAllocator to 25-* stable
+                // branches or dropping support of 25-* stable branches
 #ifdef OPENSOURCE
                 IRcBufAllocator* allocator =
                     ctx.ActorSystem()->GetRcBufAllocator();
