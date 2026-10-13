@@ -3,6 +3,7 @@
 #include "device_manager.h"
 
 #include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/journal/iface/journalled_device.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -21,6 +22,7 @@
 
 #include <atomic>
 #include <optional>
+#include <thread>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -371,9 +373,37 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void StartService()
     {
-        const auto error = Service->Start().GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        Service->Start();
     }
+
+    // Start blocks until every device has started, so the tests that
+    // complete the starts by hand run it apart.
+    struct TBackgroundStart
+    {
+        std::atomic<bool> Done = false;
+        std::thread Thread;
+
+        explicit TBackgroundStart(IServerBackendPtr service)
+            : Thread(
+                  [this, service = std::move(service)]
+                  {
+                      service->Start();
+                      Done = true;
+                  })
+        {}
+
+        ~TBackgroundStart()
+        {
+            Wait();
+        }
+
+        void Wait()
+        {
+            if (Thread.joinable()) {
+                Thread.join();
+            }
+        }
+    };
 
     // Creates a service over |count| devices that complete their start only
     // when told to.
@@ -1003,13 +1033,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 FormatError(error));
         }
 
-        {
-            const auto error = Service->Stop().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
+        Service->Stop();
 
         // the device that failed to start is not there to be stopped
         UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount.load());
@@ -1064,13 +1088,13 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         auto [service, devices] =
             CreateDeferredStartService(DeviceCount, RestoreConcurrency);
 
-        auto future = service->Start();
+        TBackgroundStart start(service);
 
         // Only RestoreConcurrency devices restore at once
 
         WaitForStarting(devices, RestoreConcurrency);
         UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartedCount(devices));
-        UNIT_ASSERT(!future.HasValue());
+        UNIT_ASSERT(!start.Done);
 
         // Each device that completes lets the next one in
 
@@ -1088,9 +1112,9 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 i);
 
             if (completed == DeviceCount) {
-                future.Wait();
+                start.Wait();
             } else {
-                UNIT_ASSERT_C(!future.HasValue(), i);
+                UNIT_ASSERT_C(!start.Done, i);
             }
         }
 
@@ -1100,9 +1124,6 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 device->StartCount.load(),
                 device->Name);
         }
-
-        const auto error = future.GetValue();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
     Y_UNIT_TEST_F(ShouldRestoreAtLeastOneJournalAtOnce, TFixture)
@@ -1112,7 +1133,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         auto [service, devices] = CreateDeferredStartService(2, 0);
 
-        auto future = service->Start();
+        TBackgroundStart start(service);
 
         WaitForStarting(devices, 1);
         UNIT_ASSERT_VALUES_EQUAL(1, StartedCount(devices));
@@ -1120,13 +1141,10 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         CompleteAnyStart(devices);
         WaitForStarting(devices, 1);
         UNIT_ASSERT_VALUES_EQUAL(2, StartedCount(devices));
-        UNIT_ASSERT(!future.HasValue());
+        UNIT_ASSERT(!start.Done);
 
         CompleteAnyStart(devices);
-        future.Wait();
-
-        const auto error = future.GetValue();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        start.Wait();
     }
 
     Y_UNIT_TEST_F(ShouldReportDevicesThatFailToRestore, TFixture)
@@ -1139,18 +1157,15 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         auto [service, devices] = CreateDeferredStartService(DeviceCount, 1);
         devices[0]->StartError = MakeError(E_IO, "restore failed");
 
-        auto future = service->Start();
+        TBackgroundStart start(service);
 
         for (ui32 i = 0; i != DeviceCount; ++i) {
             WaitForStarting(devices, 1);
             CompleteAnyStart(devices);
         }
 
-        future.Wait();
+        start.Wait();
         UNIT_ASSERT_VALUES_EQUAL(DeviceCount, StartedCount(devices));
-
-        const auto error = future.GetValue();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,

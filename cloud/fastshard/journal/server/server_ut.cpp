@@ -66,15 +66,11 @@ struct TTestBackend: public IServerBackend
     TReadJournalTailFunc ReadJournalTailImpl;
     TAdvanceLsnLowWatermarkFunc AdvanceLsnLowWatermarkImpl;
 
-    TFuture<NProto::TError> Start() override
-    {
-        return MakeFuture<NProto::TError>();
-    }
+    void Start() override
+    {}
 
-    TFuture<NProto::TError> Stop() override
-    {
-        return MakeFuture<NProto::TError>();
-    }
+    void Stop() override
+    {}
 
     [[nodiscard]] auto AcquireDevices(
         NProto::TAcquireDevicesRequest request)

@@ -2,6 +2,8 @@
 
 #include "device_manager.h"
 
+#include <cloud/fastshard/journal/iface/journalled_device.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -46,7 +48,7 @@ private:
 
     std::atomic<size_t> NextIndex = 0;
     std::atomic<size_t> CompletedCount = 0;
-    TPromise<NProto::TError> AllCompleted = NewPromise<NProto::TError>();
+    TPromise<void> AllCompleted = NewPromise<void>();
 
 public:
     TDeviceOperationWindow(
@@ -56,10 +58,10 @@ public:
         , Operation(std::move(operation))
     {}
 
-    TFuture<NProto::TError> Run(size_t limit)
+    TFuture<void> Run(size_t limit)
     {
         if (Specs.empty()) {
-            return MakeFuture<NProto::TError>();
+            return MakeFuture();
         }
 
         const size_t inFlight = Min(Max<size_t>(limit, 1), Specs.size());
@@ -117,7 +119,7 @@ private:
             return false;
         }
 
-        AllCompleted.SetValue(NProto::TError());
+        AllCompleted.SetValue();
         return true;
     }
 };
@@ -218,9 +220,9 @@ public:
 
     // IServerBackend
 
-    TFuture<NProto::TError> Start() override
+    void Start() override
     {
-        return RunOnDevices(
+        auto future = RunOnDevices(
             RestoreConcurrency,
             [weakSelf = weak_from_this()](TJournalledDeviceSpec* spec)
             {
@@ -244,13 +246,17 @@ public:
                         return error;
                     });
             });
+
+        future.Wait();
     }
 
-    TFuture<NProto::TError> Stop() override
+    void Stop() override
     {
-        return RunOnDevices(
+        auto future = RunOnDevices(
             DeviceSpecs.size(),
             [](TJournalledDeviceSpec* spec) { return spec->Device->Stop(); });
+
+        future.Wait();
     }
 
     [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)
@@ -339,9 +345,7 @@ public:
     }
 
 private:
-    TFuture<NProto::TError> RunOnDevices(
-        size_t limit,
-        TDeviceOperation operation)
+    TFuture<void> RunOnDevices(size_t limit, TDeviceOperation operation)
     {
         TVector<TJournalledDeviceSpec*> specs;
         specs.reserve(DeviceSpecs.size());
