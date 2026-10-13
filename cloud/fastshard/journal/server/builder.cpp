@@ -20,12 +20,79 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
-    TLog& Log,
-    ILoggingServicePtr logging,
-    TExecutorPtr executor,
-    IDeviceManagerPtr deviceManager,
-    bool journalEnabled,
+class TJournalledDeviceV1Factory final
+    : public IJournalledDeviceFactory
+{
+private:
+    const IDeviceManagerPtr DeviceManager;
+
+public:
+    explicit TJournalledDeviceV1Factory(IDeviceManagerPtr deviceManager)
+        : DeviceManager(std::move(deviceManager))
+    {}
+
+    TResultOrError<IJournalledDevicePtr> Create(
+        const TJournalledDeviceConfig& config) final;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<IJournalledDevicePtr> TJournalledDeviceV1Factory::Create(
+    const TJournalledDeviceConfig& config)
+{
+    const auto& uuid = config.DeviceUUID;
+
+    if (!config.BlockSize) {
+        return MakeError(E_ARGUMENT, "the device block size is zero");
+    }
+
+    if (config.LogMetaSize || config.LogDataSize) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the journal is disabled, but the device " << uuid.Quote()
+                << " has the journal parts " << config.LogMetaSize << " and "
+                << config.LogDataSize << " bytes");
+    }
+
+    // No journal: the whole device holds the data, writes go straight to it.
+    return CreateJournalledDeviceV1(
+        DeviceManager->CreateDevice(
+            uuid,
+            {.FirstPageNo = 0, .PageCount = config.BlocksCount},
+            config.BlockSize));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TJournalledDeviceV2Factory final
+    : public IJournalledDeviceFactory
+{
+private:
+    const ILoggingServicePtr Logging;
+    const TExecutorPtr Executor;
+    const IDeviceManagerPtr DeviceManager;
+
+    TLog Log;
+
+public:
+    TJournalledDeviceV2Factory(
+        ILoggingServicePtr logging,
+        TExecutorPtr executor,
+        IDeviceManagerPtr deviceManager)
+        : Logging(std::move(logging))
+        , Executor(std::move(executor))
+        , DeviceManager(std::move(deviceManager))
+        , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
+    {}
+
+    TResultOrError<IJournalledDevicePtr> Create(
+        const TJournalledDeviceConfig& config) final;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<IJournalledDevicePtr> TJournalledDeviceV2Factory::Create(
     const TJournalledDeviceConfig& config)
 {
     const ui32 blockSize = config.BlockSize;
@@ -34,15 +101,6 @@ TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
 
     if (!blockSize) {
         return MakeError(E_ARGUMENT, "the device block size is zero");
-    }
-
-    if (!journalEnabled) {
-        // No journal: the whole device holds the data, writes go straight to it.
-        return CreateJournalledDeviceV1(
-            deviceManager->CreateDevice(
-                uuid,
-                {.FirstPageNo = 0, .PageCount = blockCount},
-                blockSize));
     }
 
     // The device is split into three parts: the journal metadata, the journal
@@ -94,14 +152,14 @@ TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
 
     auto createAdapter = [&](ui64 firstBlockIndex, ui64 regionBlockCount)
     {
-        return deviceManager->CreateDevice(
+        return DeviceManager->CreateDevice(
             uuid,
             {.FirstPageNo = firstBlockIndex, .PageCount = regionBlockCount},
             blockSize);
     };
 
     auto logMetaStore = CreateDeviceKeyBufferStore(
-        logging,
+        Logging,
         createAdapter(0, logMetaBlockCount),
         logMetaBlockCount,
         blockSize);
@@ -116,15 +174,15 @@ TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
         dataBlockCount);
 
     auto journal = CreateJournal(
-        logging,
-        executor,
+        Logging,
+        Executor,
         std::move(logMetaStore),
         std::move(logDataStore),
         dataBlockCount);
 
     auto journalledDevice = CreateJournalledDeviceV2(
-        std::move(logging),
-        std::move(executor),
+        Logging,
+        Executor,
         std::move(journal),
         std::move(dataStore),
         uuid);
@@ -160,57 +218,29 @@ TServerBuilder::TServerBuilder(
 
 IStartablePtr TServerBuilder::Build()
 {
-    auto Log = Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE");
+    IJournalledDeviceFactoryPtr factory;
 
-    TVector<TJournalledDeviceSpec> devices;
-
-    for (const auto& config: DeviceConfigs) {
-        const auto& uuid = config.DeviceUUID;
-
-        if (!ServerConfig.JournalEnabled &&
-            (config.LogMetaSize || config.LogDataSize))
-        {
-            ReportJournalledDeviceCreationError(
-                TStringBuilder()
-                << "the journal is disabled, but the device " << uuid.Quote()
-                << " has the journal parts " << config.LogMetaSize << " and "
-                << config.LogDataSize << " bytes");
-            continue;
-        }
-
-        auto [device, error] = CreateJournalledDevice(
-            Log,
+    if (ServerConfig.JournalEnabled) {
+        factory = std::make_shared<TJournalledDeviceV2Factory>(
             Logging,
             Executor,
-            DeviceManager,
-            ServerConfig.JournalEnabled,
-            config);
-
-        if (HasError(error)) {
-            ReportJournalledDeviceCreationError(
-                TStringBuilder() << "unable to create device " << uuid.Quote()
-                                 << ": " << FormatError(error));
-            continue;
-        }
-
-        devices.emplace_back(std::move(device), config);
+            DeviceManager);
+    } else {
+        factory = std::make_shared<TJournalledDeviceV1Factory>(DeviceManager);
     }
 
-    if (devices.empty()) {
-        STORAGE_THROW_SERVICE_ERROR(MakeError(
-            E_NOT_FOUND,
-            TStringBuilder() << "none of the " << DeviceConfigs.size()
-                             << " journalled devices could be created"));
-    }
+    auto service = CreateService(
+        Executor,
+        std::move(DeviceManager),
+        std::move(factory),
+        std::move(DeviceConfigs),
+        ServerConfig.RestoreConcurrency);
 
     return CreateServer(
         ServerConfig.ListenAddress,
         std::move(Logging),
         std::move(Executor),
-        CreateService(
-            std::move(DeviceManager),
-            std::move(devices),
-            ServerConfig.RestoreConcurrency));
+        std::move(service));
 }
 
 }   // namespace NCloud::NJournalled

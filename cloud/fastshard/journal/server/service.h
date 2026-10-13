@@ -5,6 +5,8 @@
 #include "config.h"
 
 #include <cloud/fastshard/journal/iface/journalled_device.h>
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
 
 namespace NCloud::NJournalled {
 
@@ -29,10 +31,12 @@ struct IServerBackend : public IJournalledDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TJournalledDeviceSpec
+struct IJournalledDeviceFactory
 {
-    IJournalledDevicePtr Device;
-    TJournalledDeviceConfig Config;
+    virtual ~IJournalledDeviceFactory() = default;
+
+    virtual TResultOrError<IJournalledDevicePtr> Create(
+        const TJournalledDeviceConfig& config) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,8 +45,10 @@ struct TJournalledDeviceSpec
 // as a restore holds the whole journal metadata of its device in memory until
 // it is parsed.
 IServerBackendPtr CreateService(
+    TExecutorPtr executor,
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices,
+    IJournalledDeviceFactoryPtr journalledDeviceFactory,
+    TVector<TJournalledDeviceConfig> journalledDeviceConfigs,
     ui32 restoreConcurrency);
 
 }   // namespace NCloud::NJournalled

@@ -10,6 +10,7 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
@@ -39,13 +40,15 @@ struct TTestDeviceManager final: public IDeviceManager
 {
     TVector<TCreateDeviceCall> CreateDeviceCalls;
 
-    [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest /*request*/)
+    [[nodiscard]] auto AcquireDevices(
+        NProto::TAcquireDevicesRequest /*request*/)
         -> TFuture<NProto::TAcquireDevicesResponse> final
     {
         return MakeFuture<NProto::TAcquireDevicesResponse>();
     }
 
-    [[nodiscard]] auto ReleaseDevices(NProto::TReleaseDevicesRequest /*request*/)
+    [[nodiscard]] auto ReleaseDevices(
+        NProto::TReleaseDevicesRequest /*request*/)
         -> TFuture<NProto::TReleaseDevicesResponse> final
     {
         return MakeFuture<NProto::TReleaseDevicesResponse>();
@@ -77,10 +80,12 @@ struct TTestDeviceManager final: public IDeviceManager
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    TPortManager PortManager;
     NMonitoring::TDynamicCountersPtr Counters;
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
     std::shared_ptr<TTestDeviceManager> DeviceManager;
+    IStartablePtr Server;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -92,6 +97,19 @@ struct TFixture: public NUnitTest::TBaseFixture
             {.FiltrationLevel = TLOG_RESOURCES});
         Executor = TExecutor::Create("TestExecutor");
         DeviceManager = std::make_shared<TTestDeviceManager>();
+
+        Logging->Start();
+        Executor->Start();
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*context*/) override
+    {
+        if (Server) {
+            Server->Stop();
+        }
+
+        Executor->Stop();
+        Logging->Stop();
     }
 
     i64 CriticalEventCount(const TString& name) const
@@ -99,22 +117,27 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Counters->GetCounter("AppCriticalEvents/" + name, true)->Val();
     }
 
+    // Builds the server and starts it, as the devices are created on start.
     IStartablePtr Build(
         bool journalEnabled,
         TVector<TJournalledDeviceConfig> configs)
     {
-        return TServerBuilder(
-                   Logging,
-                   Executor,
-                   DeviceManager,
-                   TServerConfig{
-                       // the server is never started
-                       .ListenAddress = TNetworkAddress{0},
-                       .JournalEnabled = journalEnabled,
-                       .RestoreConcurrency = 1,
-                   },
-                   std::move(configs))
-            .Build();
+        auto server =
+            TServerBuilder(
+                Logging,
+                Executor,
+                DeviceManager,
+                TServerConfig{
+                    .ListenAddress = TNetworkAddress{PortManager.GetTcpPort()},
+                    .JournalEnabled = journalEnabled,
+                    .RestoreConcurrency = 1,
+                },
+                std::move(configs))
+                .Build();
+
+        server->Start();
+        Server = server;
+        return server;
     }
 
     static TJournalledDeviceConfig MakeConfig(
@@ -244,26 +267,6 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
             UNIT_ASSERT_VALUES_EQUAL("valid", call.DeviceUUID);
         }
         UNIT_ASSERT_VALUES_EQUAL(3, DeviceManager->CreateDeviceCalls.size());
-    }
-
-    Y_UNIT_TEST_F(ShouldFailIfNoDeviceCanBeCreated, TFixture)
-    {
-        auto config = MakeConfig("uuid-1", 1024, 4, 64);
-        config.BlockSize = 0;
-
-        try {
-            Build(true, {config, config});
-            UNIT_FAIL("no exception");
-        } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, e.GetCode());
-            UNIT_ASSERT_STRING_CONTAINS(
-                e.GetMessage(),
-                "none of the 2 journalled devices could be created");
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            CriticalEventCount("JournalledDeviceCreationError"));
     }
 }
 

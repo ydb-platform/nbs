@@ -18,8 +18,8 @@ namespace NCloud::NJournalled {
 struct TServerConfig
 {
     TNetworkAddress ListenAddress;
-    bool JournalEnabled;
-    ui32 RestoreConcurrency;
+    bool JournalEnabled = false;
+    ui32 RestoreConcurrency = 4;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,9 +41,9 @@ public:
         TServerConfig serverConfig,
         TVector<TJournalledDeviceConfig> deviceConfigs);
 
-    // Devices that fail to be created are reported and skipped; throws
-    // TServiceError if none of them could be created. The server starts the
-    // devices with at most |RestoreConcurrency| of them restoring at once.
+    // The devices are created when the server starts, with at most
+    // |RestoreConcurrency| of them restoring at once. Devices that fail to be
+    // created are reported and skipped.
     IStartablePtr Build();
 };
 

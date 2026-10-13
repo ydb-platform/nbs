@@ -5,17 +5,21 @@
 #include <cloud/fastshard/journal/iface/device.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
-#include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
 #include <util/string/printf.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
+#include <atomic>
 #include <optional>
 #include <utility>
 
@@ -51,11 +55,11 @@ struct TTestDevice final: public IDevice
     NProto::TError ZeroPagesError;
 
     TTestDevice(
-            TString deviceUUID,
-            TPageRangeRef region,
-            ui32 blockSize,
-            TVector<TZeroPagesCall>& zeroPagesCalls,
-            NProto::TError zeroPagesError)
+        TString deviceUUID,
+        TPageRangeRef region,
+        ui32 blockSize,
+        TVector<TZeroPagesCall>& zeroPagesCalls,
+        NProto::TError zeroPagesError)
         : DeviceUUID(std::move(deviceUUID))
         , Region(region)
         , BlockSize(blockSize)
@@ -70,15 +74,15 @@ struct TTestDevice final: public IDevice
         return {};
     }
 
-    [[nodiscard]] auto WritePages(TVector<TPageRange> /*ranges*/)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto WritePages(
+        TVector<TPageRange> /*ranges*/) -> TFuture<NProto::TError> final
     {
         UNIT_FAIL("unexpected WritePages");
         return {};
     }
 
-    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] auto ZeroPages(
+        TVector<TPageRangeRef> ranges) -> TFuture<NProto::TError> final
     {
         ZeroPagesCalls.push_back(
             {.DeviceUUID = DeviceUUID,
@@ -167,7 +171,8 @@ struct TTestDeviceManager final: public IDeviceManager
 ////////////////////////////////////////////////////////////////////////////////
 
 // Answers every request with the name of the device in the error message, so
-// the tests can tell which device has served a request.
+// the tests can tell which device has served a request. The service starts and
+// stops the device in the executor, so the state is shared between threads.
 struct TTestJournalledDevice final: public IJournalledDevice
 {
     const TString Name;
@@ -175,10 +180,9 @@ struct TTestJournalledDevice final: public IJournalledDevice
 
     // When set, Start does not complete until CompleteStart is called.
     bool DeferStart = false;
-    std::optional<TPromise<NProto::TError>> StartPromise;
 
-    ui32 StartCount = 0;
-    ui32 StopCount = 0;
+    std::atomic<ui32> StartCount = 0;
+    std::atomic<ui32> StopCount = 0;
 
     explicit TTestJournalledDevice(TString name)
         : Name(std::move(name))
@@ -192,16 +196,27 @@ struct TTestJournalledDevice final: public IJournalledDevice
             return MakeFuture(StartError);
         }
 
-        UNIT_ASSERT_C(!StartPromise, Name + " is already starting");
+        auto guard = Guard(Lock);
+        Y_ABORT_UNLESS(!StartPromise, "%s is already starting", Name.c_str());
         StartPromise = NewPromise<NProto::TError>();
         return StartPromise->GetFuture();
     }
 
+    bool IsStarting()
+    {
+        auto guard = Guard(Lock);
+        return StartPromise.has_value();
+    }
+
     void CompleteStart()
     {
-        UNIT_ASSERT_C(StartPromise, Name + " is not starting");
-        auto promise = *std::exchange(StartPromise, std::nullopt);
-        promise.SetValue(StartError);
+        std::optional<TPromise<NProto::TError>> promise;
+        with_lock (Lock) {
+            promise = std::exchange(StartPromise, std::nullopt);
+        }
+
+        UNIT_ASSERT_C(promise, Name + " is not starting");
+        promise->SetValue(StartError);
     }
 
     TFuture<NProto::TError> Stop() final
@@ -238,6 +253,9 @@ struct TTestJournalledDevice final: public IJournalledDevice
     }
 
 private:
+    TAdaptiveLock Lock;
+    std::optional<TPromise<NProto::TError>> StartPromise;
+
     template <typename TResponse>
     TFuture<TResponse> MakeResponse() const
     {
@@ -245,6 +263,46 @@ private:
         *response.MutableError() = MakeError(S_OK, Name);
         return MakeFuture(std::move(response));
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Hands out the test devices by their UUIDs: the service asks for a device
+// when it starts and again every time it formats the device.
+struct TTestJournalledDeviceFactory final: public IJournalledDeviceFactory
+{
+    THashMap<TString, std::shared_ptr<TTestJournalledDevice>> Devices;
+    THashMap<TString, NProto::TError> CreateErrors;
+
+    TResultOrError<IJournalledDevicePtr> Create(
+        const TJournalledDeviceConfig& config) final
+    {
+        with_lock (Lock) {
+            CreatedUUIDs.push_back(config.DeviceUUID);
+        }
+
+        if (const auto* error = CreateErrors.FindPtr(config.DeviceUUID)) {
+            return *error;
+        }
+
+        const auto* device = Devices.FindPtr(config.DeviceUUID);
+        Y_ABORT_UNLESS(
+            device,
+            "unexpected device %s",
+            config.DeviceUUID.Quote().c_str());
+
+        return IJournalledDevicePtr(*device);
+    }
+
+    TVector<TString> GetCreatedUUIDs()
+    {
+        auto guard = Guard(Lock);
+        return CreatedUUIDs;
+    }
+
+private:
+    TAdaptiveLock Lock;
+    TVector<TString> CreatedUUIDs;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -267,8 +325,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     };
 
     NMonitoring::TDynamicCountersPtr Counters;
+    TExecutorPtr Executor;
 
     std::shared_ptr<TTestDeviceManager> DeviceManager;
+    std::shared_ptr<TTestJournalledDeviceFactory> Factory;
     TVector<std::shared_ptr<TTestJournalledDevice>> Devices;
     IServerBackendPtr Service;
 
@@ -277,22 +337,42 @@ struct TFixture: public NUnitTest::TBaseFixture
         Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(Counters);
 
+        Executor = TExecutor::Create("TestExecutor");
+        Executor->Start();
+
         DeviceManager = std::make_shared<TTestDeviceManager>();
         DeviceManager->Clients.insert(ClientId);
 
-        TVector<TJournalledDeviceSpec> specs;
+        Factory = std::make_shared<TTestJournalledDeviceFactory>();
+
+        TVector<TJournalledDeviceConfig> configs;
         for (const auto& config: Configs) {
             auto device =
                 std::make_shared<TTestJournalledDevice>(config.DeviceUUID);
             Devices.push_back(device);
-            specs.push_back({.Device = std::move(device), .Config = config});
+            Factory->Devices.emplace(config.DeviceUUID, std::move(device));
+            configs.push_back(config);
         }
 
         Service = CreateService(
+            Executor,
             DeviceManager,
-            std::move(specs),
+            Factory,
+            std::move(configs),
             std::size(Configs)   // restoreConcurrency
         );
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*context*/) override
+    {
+        Service.reset();
+        Executor->Stop();
+    }
+
+    void StartService()
+    {
+        const auto error = Service->Start().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
     // Creates a service over |count| devices that complete their start only
@@ -303,7 +383,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             TVector<std::shared_ptr<TTestJournalledDevice>>>
     {
         TVector<std::shared_ptr<TTestJournalledDevice>> devices;
-        TVector<TJournalledDeviceSpec> specs;
+        TVector<TJournalledDeviceConfig> configs;
 
         for (ui32 i = 0; i != count; ++i) {
             auto config = Configs[0];
@@ -314,11 +394,16 @@ struct TFixture: public NUnitTest::TBaseFixture
             device->DeferStart = true;
 
             devices.push_back(device);
-            specs.push_back({.Device = std::move(device), .Config = config});
+            Factory->Devices.emplace(config.DeviceUUID, std::move(device));
+            configs.push_back(std::move(config));
         }
 
-        auto service =
-            CreateService(DeviceManager, std::move(specs), restoreConcurrency);
+        auto service = CreateService(
+            Executor,
+            DeviceManager,
+            Factory,
+            std::move(configs),
+            restoreConcurrency);
 
         return {std::move(service), std::move(devices)};
     }
@@ -329,14 +414,31 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         return CountIf(
             devices,
-            [](const auto& device) { return device->StartPromise.has_value(); });
+            [](const auto& device) { return device->IsStarting(); });
     }
 
     static size_t StartedCount(const TTestDevices& devices)
     {
         return CountIf(
             devices,
-            [](const auto& device) { return device->StartCount != 0; });
+            [](const auto& device) { return device->StartCount.load() != 0; });
+    }
+
+    // The devices are started in the executor, so the tests wait for the
+    // service to catch up.
+    template <typename TCondition>
+    static void WaitUntil(TCondition&& condition)
+    {
+        const auto deadline = TInstant::Now() + TDuration::Seconds(30);
+        while (!condition()) {
+            UNIT_ASSERT_C(TInstant::Now() < deadline, "wait timed out");
+            Sleep(TDuration::MilliSeconds(1));
+        }
+    }
+
+    static void WaitForStarting(const TTestDevices& devices, size_t count)
+    {
+        WaitUntil([&] { return StartingCount(devices) == count; });
     }
 
     // The service starts the devices in no particular order, so the tests
@@ -345,10 +447,24 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         auto it = FindIf(
             devices,
-            [](const auto& device) { return device->StartPromise.has_value(); });
+            [](const auto& device) { return device->IsStarting(); });
 
         UNIT_ASSERT_C(it != devices.end(), "no device is starting");
         (*it)->CompleteStart();
+    }
+
+    // Sends each kind of request that reaches the journalled device and
+    // returns the errors of the responses.
+    TVector<NProto::TError> SendJournalledDeviceRequests(
+        const TString& deviceUUID)
+    {
+        TVector<NProto::TError> errors;
+        for (auto& [error, _]:
+             SendJournalledDeviceRequests(deviceUUID, ClientId))
+        {
+            errors.push_back(std::move(error));
+        }
+        return errors;
     }
 
     i64 CriticalEventCount(const TString& name) const
@@ -357,7 +473,9 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     template <typename TRequest>
-    static TRequest MakeRequest(const TString& deviceUUID, const TString& clientId)
+    static TRequest MakeRequest(
+        const TString& deviceUUID,
+        const TString& clientId)
     {
         TRequest request;
         request.MutableHeaders()->SetClientId(clientId);
@@ -365,10 +483,31 @@ struct TFixture: public NUnitTest::TBaseFixture
         return request;
     }
 
+    using TResponses = TVector<std::pair<NProto::TError, NProto::EAccessMode>>;
+
     // Sends each kind of device request and returns the errors of the
     // responses along with the access mode each kind requires.
-    auto SendDeviceRequests(const TString& deviceUUID, const TString& clientId)
-        -> TVector<std::pair<NProto::TError, NProto::EAccessMode>>
+    TResponses SendDeviceRequests(
+        const TString& deviceUUID,
+        const TString& clientId)
+    {
+        auto responses = SendJournalledDeviceRequests(deviceUUID, clientId);
+        responses.emplace_back(
+            Service
+                ->FormatDevice(MakeRequest<NProto::TFormatDeviceRequest>(
+                    deviceUUID,
+                    clientId))
+                .GetValueSync()
+                .GetError(),
+            NProto::ACCESS_READ_WRITE);
+        return responses;
+    }
+
+    // Sends each kind of request that reaches the journalled device, i.e.
+    // all of them but FormatDevice.
+    TResponses SendJournalledDeviceRequests(
+        const TString& deviceUUID,
+        const TString& clientId)
     {
         return {
             {Service
@@ -386,10 +525,9 @@ struct TFixture: public NUnitTest::TBaseFixture
                  .GetError(),
              NProto::ACCESS_READ_WRITE},
             {Service
-                 ->ReadJournalTail(
-                     MakeRequest<NProto::TReadJournalTailRequest>(
-                         deviceUUID,
-                         clientId))
+                 ->ReadJournalTail(MakeRequest<NProto::TReadJournalTailRequest>(
+                     deviceUUID,
+                     clientId))
                  .GetValueSync()
                  .GetError(),
              NProto::ACCESS_READ_ONLY},
@@ -398,13 +536,6 @@ struct TFixture: public NUnitTest::TBaseFixture
                      MakeRequest<NProto::TAdvanceLsnLowWatermarkRequest>(
                          deviceUUID,
                          clientId))
-                 .GetValueSync()
-                 .GetError(),
-             NProto::ACCESS_READ_WRITE},
-            {Service
-                 ->FormatDevice(MakeRequest<NProto::TFormatDeviceRequest>(
-                     deviceUUID,
-                     clientId))
                  .GetValueSync()
                  .GetError(),
              NProto::ACCESS_READ_WRITE},
@@ -431,6 +562,8 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 {
     Y_UNIT_TEST_F(ShouldRouteRequestsToDevices, TFixture)
     {
+        StartService();
+
         for (const auto& config: Configs) {
             const auto& uuid = config.DeviceUUID;
 
@@ -438,11 +571,10 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
             const auto responses = SendDeviceRequests(uuid, ClientId);
 
+            // FormatDevice has nothing to wipe on a device without a journal,
+            // so it may answer S_FALSE
             for (const auto& [error, _]: responses) {
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    S_OK,
-                    error.GetCode(),
-                    FormatError(error));
+                UNIT_ASSERT_C(!HasError(error), FormatError(error));
             }
 
             // the requests but FormatDevice (the last one) reach the
@@ -469,11 +601,39 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRejectRequestsToDevicesThatAreNotStarted, TFixture)
+    {
+        // The devices are created on start, until then nothing serves them
+
+        for (const auto& config: Configs) {
+            for (const auto& error:
+                 SendJournalledDeviceRequests(config.DeviceUUID))
+            {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_INVALID_STATE,
+                    error.GetCode(),
+                    FormatError(error));
+            }
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Factory->GetCreatedUUIDs().size());
+
+        for (const auto& device: Devices) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                device->StartCount.load(),
+                device->Name);
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldRejectUnknownDevice, TFixture)
     {
+        StartService();
+
         const TString unknownUuid = "unknown";
 
-        for (const auto& [error, _]: SendDeviceRequests(unknownUuid, ClientId)) {
+        for (const auto& [error, _]: SendDeviceRequests(unknownUuid, ClientId))
+        {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
                 error.GetCode(),
@@ -489,12 +649,16 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
     Y_UNIT_TEST_F(ShouldRejectRequestsWithoutDeviceUUID, TFixture)
     {
+        StartService();
+
         for (const auto& [error, _]: SendDeviceRequests({}, ClientId)) {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty device UUID");
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "empty device UUID");
         }
 
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->AccessDeviceCalls.size());
@@ -502,6 +666,8 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
     Y_UNIT_TEST_F(ShouldRejectRequestsWithoutClientId, TFixture)
     {
+        StartService();
+
         for (const auto& [error, _]:
              SendDeviceRequests(Configs[0].DeviceUUID, {}))
         {
@@ -517,6 +683,8 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
     Y_UNIT_TEST_F(ShouldRejectClientsWithoutAccess, TFixture)
     {
+        StartService();
+
         for (const auto& [error, _]:
              SendDeviceRequests(Configs[0].DeviceUUID, "other-client-id"))
         {
@@ -529,6 +697,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         // nothing is formatted
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldForwardAcquireAndReleaseDevices, TFixture)
@@ -576,12 +745,18 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
     Y_UNIT_TEST_F(ShouldFormatJournalMetadata, TFixture)
     {
+        StartService();
+
         const auto& config = Configs[0];
+        const auto& device = Devices[0];
         const ui64 logMetaBlockCount = config.LogMetaSize / config.BlockSize;
 
         {
             const auto error = FormatDevice(config.DeviceUUID, false);
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
         }
 
         const auto& calls = DeviceManager->ZeroPagesCalls;
@@ -596,10 +771,34 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, call.Ranges.size());
         UNIT_ASSERT_VALUES_EQUAL(0, call.Ranges[0].FirstPageNo);
         UNIT_ASSERT_VALUES_EQUAL(logMetaBlockCount, call.Ranges[0].PageCount);
+
+        // the journalled device is stopped before the wipe and recreated
+        // after it
+        UNIT_ASSERT_VALUES_EQUAL(1, device->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, device->StartCount.load());
+
+        const auto created = Factory->GetCreatedUUIDs();
+        UNIT_ASSERT_VALUES_EQUAL(2, Count(created, config.DeviceUUID));
+
+        // the other device is left alone
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StartCount.load());
+
+        // the recreated device serves the requests again
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(config.DeviceUUID, error.GetMessage());
+        }
     }
 
     Y_UNIT_TEST_F(ShouldFormatWholeDevice, TFixture)
     {
+        StartService();
+
         for (const auto& config: Configs) {
             DeviceManager->ZeroPagesCalls.clear();
 
@@ -626,25 +825,145 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 config.BlocksCount,
                 call.Ranges[0].PageCount);
         }
+
+        for (const auto& device: Devices) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                device->StopCount.load(),
+                device->Name);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                2,
+                device->StartCount.load(),
+                device->Name);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldNotFormatDeviceWithoutJournal, TFixture)
     {
+        StartService();
+
         // The device has no journal, so the default format has nothing to wipe
 
         const auto error = FormatDevice(Configs[1].DeviceUUID, false);
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            error.GetCode(),
+            FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+
+        // the journalled device is not touched
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StartCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldReportFormatErrors, TFixture)
     {
+        StartService();
+
         DeviceManager->ZeroPagesError = MakeError(E_IO, "zero failed");
 
-        const auto error = FormatDevice(Configs[0].DeviceUUID, true);
+        const auto& config = Configs[0];
+
+        const auto error = FormatDevice(config.DeviceUUID, true);
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL("zero failed", error.GetMessage());
+
+        // the journalled device is stopped and not recreated, so the device
+        // serves nothing until the next format succeeds
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StartCount.load());
+
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // the other device keeps working
+        for (const auto& error:
+             SendJournalledDeviceRequests(Configs[1].DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        DeviceManager->ZeroPagesError = {};
+
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // a failed device is stopped for free
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, Devices[0]->StartCount.load());
+
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectParallelFormats, TFixture)
+    {
+        StartService();
+
+        const auto& config = Configs[0];
+        const auto& device = Devices[0];
+
+        // the recreated device does not start until told to, so the format
+        // hangs in the middle
+        device->DeferStart = true;
+
+        auto request = MakeRequest<NProto::TFormatDeviceRequest>(
+            config.DeviceUUID,
+            ClientId);
+        request.SetWholeDevice(true);
+
+        auto first = Service->FormatDevice(request);
+        WaitUntil([&] { return device->IsStarting(); });
+        UNIT_ASSERT(!first.HasValue());
+
+        {
+            const auto error =
+                Service->FormatDevice(request).GetValueSync().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "Device " + config.DeviceUUID.Quote() + " is being formatted");
+        }
+
+        // only the first format wipes the device
+        UNIT_ASSERT_VALUES_EQUAL(1, DeviceManager->ZeroPagesCalls.size());
+
+        device->CompleteStart();
+
+        const auto error = first.GetValueSync().GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        // the device is free to be formatted again
+        device->DeferStart = false;
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldStartAndStopDevices, TFixture)
@@ -653,27 +972,88 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         Devices[0]->StartError = MakeError(E_IO, "start failed");
 
-        {
-            const auto error = Service->Start().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
-        }
+        StartService();
 
         for (const auto& device: Devices) {
-            UNIT_ASSERT_VALUES_EQUAL_C(1, device->StartCount, device->Name);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                device->StartCount.load(),
+                device->Name);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             CriticalEventCount("JournalledDeviceCreationError"));
 
+        for (const auto& error:
+             SendJournalledDeviceRequests(Configs[0].DeviceUUID))
         {
-            const auto error = Service->Stop().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                error.GetCode(),
+                FormatError(error));
         }
 
-        for (const auto& device: Devices) {
-            UNIT_ASSERT_VALUES_EQUAL_C(1, device->StopCount, device->Name);
+        for (const auto& error:
+             SendJournalledDeviceRequests(Configs[1].DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
         }
+
+        {
+            const auto error = Service->Stop().GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // the device that failed to start is not there to be stopped
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StopCount.load());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportDevicesThatFailToCreate, TFixture)
+    {
+        // A device the factory refuses to make is reported just like one that
+        // fails to start
+
+        const auto& config = Configs[0];
+        Factory->CreateErrors[config.DeviceUUID] =
+            MakeError(E_ARGUMENT, "bad config");
+
+        StartService();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StartCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StartCount.load());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalledDeviceCreationError"));
+
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // the format fails the same way and leaves the device failed
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("bad config", error.GetMessage());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StartCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldRestoreJournalsWithLimitedConcurrency, TFixture)
@@ -688,7 +1068,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         // Only RestoreConcurrency devices restore at once
 
-        UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartingCount(devices));
+        WaitForStarting(devices, RestoreConcurrency);
         UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartedCount(devices));
         UNIT_ASSERT(!future.HasValue());
 
@@ -701,19 +1081,24 @@ Y_UNIT_TEST_SUITE(TServiceTest)
             const ui32 expectedStarted =
                 Min(DeviceCount, completed + RestoreConcurrency);
 
-            UNIT_ASSERT_VALUES_EQUAL_C(expectedStarted, StartedCount(devices), i);
+            WaitForStarting(devices, expectedStarted - completed);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                expectedStarted - completed,
-                StartingCount(devices),
+                expectedStarted,
+                StartedCount(devices),
                 i);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                completed == DeviceCount,
-                future.HasValue(),
-                i);
+
+            if (completed == DeviceCount) {
+                future.Wait();
+            } else {
+                UNIT_ASSERT_C(!future.HasValue(), i);
+            }
         }
 
         for (const auto& device: devices) {
-            UNIT_ASSERT_VALUES_EQUAL_C(1, device->StartCount, device->Name);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                device->StartCount.load(),
+                device->Name);
         }
 
         const auto error = future.GetValue();
@@ -729,16 +1114,19 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         auto future = service->Start();
 
-        UNIT_ASSERT_VALUES_EQUAL(1, StartingCount(devices));
+        WaitForStarting(devices, 1);
         UNIT_ASSERT_VALUES_EQUAL(1, StartedCount(devices));
 
         CompleteAnyStart(devices);
-        UNIT_ASSERT_VALUES_EQUAL(1, StartingCount(devices));
+        WaitForStarting(devices, 1);
         UNIT_ASSERT_VALUES_EQUAL(2, StartedCount(devices));
         UNIT_ASSERT(!future.HasValue());
 
         CompleteAnyStart(devices);
-        UNIT_ASSERT(future.HasValue());
+        future.Wait();
+
+        const auto error = future.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
     Y_UNIT_TEST_F(ShouldReportDevicesThatFailToRestore, TFixture)
@@ -754,9 +1142,11 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         auto future = service->Start();
 
         for (ui32 i = 0; i != DeviceCount; ++i) {
+            WaitForStarting(devices, 1);
             CompleteAnyStart(devices);
         }
 
+        future.Wait();
         UNIT_ASSERT_VALUES_EQUAL(DeviceCount, StartedCount(devices));
 
         const auto error = future.GetValue();
