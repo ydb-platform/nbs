@@ -15,7 +15,7 @@ SET(RECIPE_ARGS
     --restart-flag  $VHOST_RESTART_FLAG
 )
 
-IF (ENABLE_EXTERNAL_DATA_CHANNEL)
+IF (OPENSOURCE)
     SET_APPEND(RECIPE_ARGS --enable-external-data-channel)
 ENDIF()
 
