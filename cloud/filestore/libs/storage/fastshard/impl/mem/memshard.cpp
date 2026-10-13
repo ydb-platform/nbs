@@ -530,6 +530,27 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    TFuture<NProtoPrivate::TCreateSessionResponse> CreateSession(
+        NProtoPrivate::TCreateSessionRequest request) override
+    {
+        Y_UNUSED(request);
+        return MakeFuture(NProtoPrivate::TCreateSessionResponse{});
+    }
+
+    TFuture<NProto::TResetSessionResponse> ResetSession(
+        NProto::TResetSessionRequest request) override
+    {
+        Y_UNUSED(request);
+        return MakeFuture(NProto::TResetSessionResponse{});
+    }
+
+    TFuture<NProtoPrivate::TDestroySessionResponse> DestroySession(
+        NProtoPrivate::TDestroySessionRequest request) override
+    {
+        Y_UNUSED(request);
+        return MakeFuture(NProtoPrivate::TDestroySessionResponse{});
+    }
+
     [[nodiscard]] TFuture<NCloud::NProto::TError> Init() override
     {
         return MakeFuture(NCloud::NProto::TError{});
