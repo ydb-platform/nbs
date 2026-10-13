@@ -16,6 +16,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <unordered_set>
+#include <vector>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -597,6 +598,152 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         service.StatVolume();
+    }
+
+    Y_UNIT_TEST(ShouldNotEraseAnotherConnectionTabletMapping)
+    {
+        const auto inactivityTimeout = TDuration::Seconds(1);
+        const auto timeoutMargin = TDuration::MilliSeconds(100);
+        const auto connectionStartDelay = inactivityTimeout / 2;
+
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            inactivityTimeout.MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+
+        // CreateVolume sends WaitReady through VolumeProxy. Expire the
+        // connection created by that request so the two requests below create
+        // separate connections.
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        runtime.DispatchEvents(options);
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch, ui64 cookie)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            runtime.Send(
+                new IEventHandle(
+                    MakeVolumeProxyServiceId(),
+                    service.GetSender(),
+                    request.release(),
+                    0,
+                    cookie),
+                nodeIdx);
+        };
+
+        std::vector<std::unique_ptr<IEventHandle>> describeResponses;
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        bool holdDescribeResponses = true;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeRequest: {
+                        if (event->GetRecipientRewrite() !=
+                            MakeVolumeProxyServiceId()) {
+                            volumeActorId = event->GetRecipientRewrite();
+                        }
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        if (holdDescribeResponses) {
+                            auto* msg = event->template Get<
+                                TEvSSProxy::TEvDescribeVolumeResponse>();
+                            const auto& volumeDescription =
+                                msg->PathDescription
+                                    .GetBlockStoreVolumeDescription();
+                            volumeTabletId =
+                                volumeDescription.GetVolumeTabletId();
+                            describeResponses.emplace_back(event.Release());
+                            return true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto waitForDescribeResponses = [&](size_t count)
+        {
+            runtime.DispatchEvents(TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return describeResponses.size() == count;
+                }});
+        };
+
+        sendStatRequest(false, 1);
+        waitForDescribeResponses(1);
+
+        sendStatRequest(true, 2);
+        waitForDescribeResponses(2);
+        UNIT_ASSERT(
+            describeResponses[0]->Cookie != describeResponses[1]->Cookie);
+        UNIT_ASSERT(volumeTabletId);
+
+        holdDescribeResponses = false;
+        const ui64 firstConnectionId = describeResponses[0]->Cookie;
+        runtime.Send(describeResponses[0].release(), nodeIdx);
+        auto response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT(volumeActorId);
+
+        runtime.AdvanceCurrentTime(connectionStartDelay);
+
+        runtime.Send(describeResponses[1].release(), nodeIdx);
+        response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+
+        // Expire the first connection after the second one has replaced it in
+        // ConnectionByTablet.
+        runtime.AdvanceCurrentTime(
+            inactivityTimeout - connectionStartDelay + timeoutMargin);
+        options.FinalEvents.clear();
+        options.FinalEvents.emplace_back(
+            [firstConnectionId](IEventHandle& event)
+            {
+                if (event.GetTypeRewrite() != TEvents::TSystem::Wakeup) {
+                    return false;
+                }
+                return event.Get<TEvents::TEvWakeup>()->Tag ==
+                    firstConnectionId;
+            });
+        runtime.DispatchEvents(options);
+
+        bool requestDropped = false;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() == volumeActorId)
+                {
+                    requestDropped = true;
+                    return true;
+                }
+                return false;
+            });
+
+        sendStatRequest(true, 3);
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]
+            {
+                return requestDropped;
+            }});
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+        response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
