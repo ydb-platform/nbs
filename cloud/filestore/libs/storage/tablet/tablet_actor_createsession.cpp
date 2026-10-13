@@ -36,6 +36,9 @@ void FillFeatures(
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+    features->SetXAttrCacheTimeout(
+        config.GetXAttrCacheTimeout().MilliSeconds());
+    features->SetXAttrCacheLimit(config.GetXAttrCacheLimit());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 
     auto preferredBlockSizeMultiplier =

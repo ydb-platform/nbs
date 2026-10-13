@@ -1363,6 +1363,9 @@ private:
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
         }
+        if (features.GetXAttrCacheLimit()) {
+            config.SetXAttrCacheLimit(features.GetXAttrCacheLimit());
+        }
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(

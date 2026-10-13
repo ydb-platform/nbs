@@ -1436,6 +1436,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         config.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
+        config.SetXAttrCacheTimeout(TDuration::Seconds(30).MilliSeconds());
+        config.SetXAttrCacheLimit(1024);
         config.SetPreferredBlockSizeMultiplier(2);
         config.SetAsyncDestroyHandleEnabled(true);
         config.SetAsyncDestroyReadOnlyHandleEnabled(true);
@@ -1472,6 +1474,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         features.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         features.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
+        features.SetXAttrCacheTimeout(TDuration::Seconds(30).MilliSeconds());
+        features.SetXAttrCacheLimit(1024);
         features.SetThreeStageWriteEnabled(true);
         features.SetThreeStageWriteThreshold(10_MB);
         features.SetPreferredBlockSize(4_KB * 2);
