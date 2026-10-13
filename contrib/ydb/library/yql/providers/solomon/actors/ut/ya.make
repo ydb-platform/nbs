@@ -8,6 +8,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     library/cpp/http/simple
     library/cpp/retry
     contrib/ydb/core/testlib/basics

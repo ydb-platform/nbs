@@ -19,6 +19,7 @@ PEERDIR(
     contrib/ydb/library/login
     contrib/ydb/library/testlib/service_mocks/ldap_mock
     yql/essentials/public/udf/service/exception_policy
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

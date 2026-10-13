@@ -1,6 +1,7 @@
 LIBRARY()
 
 PEERDIR(
+    library/cpp/time_provider
     contrib/ydb/core/blobstorage/vdisk/hulldb/base
     contrib/ydb/core/blobstorage/vdisk/hulldb/generic
     contrib/ydb/core/protos
@@ -16,10 +17,12 @@ SRCS(
     hulldb_compstrat_lazy.h
     hulldb_compstrat_promote.h
     hulldb_compstrat_ratio.h
+    hulldb_compstrat_ranks.h
     hulldb_compstrat_selector.cpp
     hulldb_compstrat_selector.h
     hulldb_compstrat_space.h
     hulldb_compstrat_squeeze.h
+    hulldb_compstrat_yield.h
     hulldb_compstrat_utils.h
 )
 

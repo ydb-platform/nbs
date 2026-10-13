@@ -2,6 +2,7 @@ UNITTEST_FOR(contrib/ydb/core/tx/sequenceshard)
 
 PEERDIR(
     contrib/ydb/core/testlib/default
+    yql/essentials/sql/v1_dummy
 )
 
 SRCS(

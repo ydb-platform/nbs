@@ -19,6 +19,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/public/api/grpc
     contrib/ydb/services/persqueue_cluster_discovery
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

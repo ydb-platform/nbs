@@ -20,6 +20,7 @@ PEERDIR(
     contrib/ydb/core/testlib
     contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/public/lib/ut_helpers
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

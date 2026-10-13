@@ -34,6 +34,7 @@ PEERDIR(
     contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
     contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/services/persqueue_v1
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

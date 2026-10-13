@@ -3,6 +3,7 @@ UNITTEST_FOR(contrib/ydb/core/tx/columnshard/engines/storage/optimizer)
 SIZE(SMALL)
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     contrib/ydb/core/tx/columnshard/engines/changes
     contrib/ydb/core/tx/columnshard/engines
     contrib/ydb/core/tx/columnshard

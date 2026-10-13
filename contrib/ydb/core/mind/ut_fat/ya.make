@@ -15,6 +15,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/pdisk
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/testlib/default
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

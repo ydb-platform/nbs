@@ -7,6 +7,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
+    yql/essentials/sql/v1
     contrib/libs/apache/arrow
     contrib/libs/fmt
     contrib/ydb/core/kqp/ut/common

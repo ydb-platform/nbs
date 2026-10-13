@@ -6,6 +6,7 @@ PEERDIR(
     contrib/ydb/core/testlib/pg
     contrib/ydb/core/tx/replication/ydb_proxy
     contrib/ydb/library/actors/core
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     contrib/ydb/public/sdk/cpp/src/client/topic
     library/cpp/testing/unittest
 )

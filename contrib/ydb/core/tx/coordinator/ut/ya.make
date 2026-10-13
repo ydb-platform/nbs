@@ -12,6 +12,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
     contrib/ydb/public/api/grpc
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

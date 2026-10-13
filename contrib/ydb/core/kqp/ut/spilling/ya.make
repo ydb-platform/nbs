@@ -9,6 +9,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
     contrib/ydb/public/sdk/cpp/src/client/proto
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/counters
@@ -16,6 +17,7 @@ PEERDIR(
     contrib/ydb/core/kqp/provider
     contrib/ydb/core/kqp/ut/common
     yql/essentials/sql/pg_dummy
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

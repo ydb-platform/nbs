@@ -19,6 +19,7 @@ ENDIF()
 PEERDIR(
     contrib/ydb/library/actors/util
     contrib/ydb/core/yql_testlib
+    yql/essentials/sql/v1_dummy
 )
 
 END()

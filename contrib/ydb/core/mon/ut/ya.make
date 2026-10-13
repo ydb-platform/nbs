@@ -10,6 +10,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/library/aclib
     contrib/ydb/library/actors/core
+    yql/essentials/sql/v1_dummy
 )
 
 SRCS(

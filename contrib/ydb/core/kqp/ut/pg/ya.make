@@ -10,6 +10,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
+    yql/essentials/sql/v1
     contrib/ydb/core/kqp/ut/common
     yql/essentials/public/udf/service/exception_policy
     yql/essentials/sql/pg
