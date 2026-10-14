@@ -32,6 +32,11 @@ namespace {
 // lsn the device holds.
 constexpr ui32 TailBatch = 1024;
 
+// Pause before repeating a request that failed with a retriable error:
+// doubles from the first to the second value with every failure.
+constexpr TDuration MinRetryBackoff = TDuration::MilliSeconds(1);
+constexpr TDuration MaxRetryBackoff = TDuration::MilliSeconds(100);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TActionStats
@@ -40,6 +45,8 @@ struct TActionStats
 
     std::atomic<ui64> Count{0};
     std::atomic<ui64> Errors{0};
+    // Retriable failures that were followed by another attempt.
+    std::atomic<ui64> Retries{0};
     std::atomic<ui64> Bytes{0};
 
     TAdaptiveLock Lock;
@@ -96,11 +103,13 @@ struct TActionStats
 
         with_lock (Lock) {
             out << Name << ": " << count << " ok, " << Errors.load()
-                << " errors, " << Sprintf("%.1f", count / seconds) << " req/s, "
+                << " errors, " << Retries.load() << " retries, "
+                << Sprintf("%.1f", count / seconds) << " req/s, "
                 << Sprintf("%.2f", Bytes.load() / seconds / 1_MB) << " MB/s";
             if (count) {
-                out << ", latency us: p50 " << Hist.GetValueAtPercentile(50)
-                    << " p90 " << Hist.GetValueAtPercentile(90) << " p99 "
+                out << ", latency us: mean " << Sprintf("%.0f", Hist.GetMean())
+                    << " p50 " << Hist.GetValueAtPercentile(50) << " p90 "
+                    << Hist.GetValueAtPercentile(90) << " p99 "
                     << Hist.GetValueAtPercentile(99) << " max "
                     << Hist.GetMax();
             }
@@ -329,12 +338,17 @@ private:
         }
     }
 
+    // The run was stopped or ran out of time; unlike ShouldStop it does
+    // not take a request from the --requests budget, so a request being
+    // retried can poll it.
+    bool StopPending() const
+    {
+        return StopRequested.load() || TInstant::Now() >= Deadline;
+    }
+
     bool ShouldStop()
     {
-        if (StopRequested.load()) {
-            return true;
-        }
-        if (TInstant::Now() >= Deadline) {
+        if (StopPending()) {
             return true;
         }
         if (Options.Requests && RequestsIssued.fetch_add(1) >= Options.Requests)
@@ -342,6 +356,46 @@ private:
             return true;
         }
         return false;
+    }
+
+    template <typename TResponse>
+    struct TAttempt
+    {
+        TResponse Response;
+        // Round trip of the last attempt alone, without the backoffs.
+        TDuration Latency;
+    };
+
+    // Issues the request |send| makes until it succeeds, fails with an error
+    // that is not retriable, or has been failing for --retry-timeout. Unless
+    // |outliveStop| is set it also gives up once the run stops. Every
+    // repeated attempt counts as a retry in |stats|; the caller records the
+    // final response as a success or an error.
+    template <typename TSend>
+    auto Retry(TActionStats& stats, bool outliveStop, TSend&& send)
+        -> TAttempt<decltype(send())>
+    {
+        const TInstant first = TInstant::Now();
+        TDuration backoff = MinRetryBackoff;
+
+        for (;;) {
+            const TInstant started = TInstant::Now();
+            auto response = send();
+            const TDuration latency = TInstant::Now() - started;
+
+            if (!HasError(response) ||
+                GetErrorKind(response.GetError()) !=
+                    EErrorKind::ErrorRetriable ||
+                TInstant::Now() - first >= Options.RetryTimeout ||
+                (!outliveStop && StopPending()))
+            {
+                return {std::move(response), latency};
+            }
+
+            stats.Retries.fetch_add(1);
+            FiberScheduler::sleep(backoff.NanoSeconds());
+            backoff = Min(backoff * 2, MaxRetryBackoff);
+        }
     }
 
     void RunWorker()
@@ -373,14 +427,20 @@ private:
             group->AddContent(PagePattern);
         }
 
-        const TInstant started = TInstant::Now();
-        auto response = Client->WriteLogRecord(std::move(request));
+        // A rejected record is retried under the same lsn, even past the
+        // end of the run: skipping it would leave a gap in the chain, which
+        // the journal can never flush past, as soon as a later record of
+        // another worker lands.
+        auto [response, latency] = Retry(
+            Writes,
+            /*outliveStop=*/true,
+            [&] { return Client->WriteLogRecord(request); });
         if (HasError(response)) {
             Writes.RecordError(response.GetError());
             return;
         }
         Writes.Record(
-            TInstant::Now() - started,
+            latency,
             static_cast<ui64>(Options.WritePages) * Options.PageSize);
 
         if (Options.AdvanceEvery && lsn % Options.AdvanceEvery == 0 &&
@@ -401,8 +461,10 @@ private:
         ref->SetPageCount(Options.ReadPages);
         ref->SetPageSize(Options.PageSize);
 
-        const TInstant started = TInstant::Now();
-        auto response = Client->ReadPages(std::move(request));
+        auto [response, latency] = Retry(
+            Reads,
+            /*outliveStop=*/false,
+            [&] { return Client->ReadPages(request); });
         if (HasError(response)) {
             Reads.RecordError(response.GetError());
             return;
@@ -414,7 +476,7 @@ private:
                 bytes += page.size();
             }
         }
-        Reads.Record(TInstant::Now() - started, bytes);
+        Reads.Record(latency, bytes);
     }
 
     void DoAdvance(ui64 lsn)
@@ -424,8 +486,10 @@ private:
         request.SetDeviceUUID(Options.DeviceUUID);
         request.SetLsnLowWatermark(lsn);
 
-        const TInstant started = TInstant::Now();
-        auto response = Client->AdvanceLsnLowWatermark(std::move(request));
+        auto [response, latency] = Retry(
+            Advances,
+            /*outliveStop=*/false,
+            [&] { return Client->AdvanceLsnLowWatermark(request); });
         if (response.GetError().GetCode() == E_NOT_IMPLEMENTED) {
             // TODO(#6956): drop once every storage node serves it
             if (AdvanceSupported.exchange(false)) {
@@ -439,7 +503,7 @@ private:
             Advances.RecordError(response.GetError());
             return;
         }
-        Advances.Record(TInstant::Now() - started, 0);
+        Advances.Record(latency, 0);
     }
 
     void RunReporter()
@@ -458,13 +522,16 @@ private:
 
             Cerr << Sprintf(
                         "%6.0fs: write %.0f req/s, read %.0f req/s, "
-                        "errors %lu",
+                        "errors %lu, retries %lu",
                         (now - Started).SecondsFloat(),
                         (writes - lastWrites) / seconds,
                         (reads - lastReads) / seconds,
                         static_cast<unsigned long>(
                             Writes.Errors.load() + Reads.Errors.load() +
-                            Advances.Errors.load()))
+                            Advances.Errors.load()),
+                        static_cast<unsigned long>(
+                            Writes.Retries.load() + Reads.Retries.load() +
+                            Advances.Retries.load()))
                  << Endl;
 
             lastWrites = writes;

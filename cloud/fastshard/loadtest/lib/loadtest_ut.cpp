@@ -219,6 +219,160 @@ TEST(TFastShardLoadTest, ShouldReportErrors)
     EXPECT_EQ(5u, storage->WriteCalls.size());
 }
 
+TEST(TFastShardLoadTest, ShouldRetryRejectedWriteUnderSameLsn)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    for (int i = 0; i < 2; ++i) {
+        storage->WriteRespQueue.emplace_back().MutableError()->SetCode(
+            NCloud::E_REJECTED);
+    }
+
+    auto options = MakeOptions();
+    options.ReadPercent = 0;
+    options.IoDepth = 1;
+    options.Requests = 5;
+    auto test = CreateLoadTest(options, storage);
+
+    const auto stats = test->Run();
+    EXPECT_TRUE(stats.GetSuccess());
+
+    const auto* writeStats = FindStats(stats, "WriteLogRecord");
+    ASSERT_TRUE(writeStats);
+    EXPECT_EQ(5u, writeStats->GetCount());
+
+    // the first record was sent three times, then the chain went on
+    // without a gap
+    TVector<ui64> lsns;
+    for (const auto& call: storage->WriteCalls) {
+        lsns.push_back(call.GetLogSequenceNumber());
+    }
+    EXPECT_EQ((TVector<ui64>{1, 1, 1, 2, 3, 4, 5}), lsns);
+}
+
+TEST(TFastShardLoadTest, ShouldRetryReads)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    storage->ReadRespQueue.emplace_back().MutableError()->SetCode(
+        NCloud::E_TIMEOUT);
+
+    auto options = MakeOptions();
+    options.ReadPercent = 100;
+    options.IoDepth = 1;
+    options.Requests = 2;
+    auto test = CreateLoadTest(options, storage);
+
+    const auto stats = test->Run();
+    EXPECT_TRUE(stats.GetSuccess());
+    EXPECT_EQ(3u, storage->ReadCalls.size());
+
+    const auto* readStats = FindStats(stats, "ReadPages");
+    ASSERT_TRUE(readStats);
+    EXPECT_EQ(2u, readStats->GetCount());
+}
+
+TEST(TFastShardLoadTest, ShouldGiveUpRetryingAfterTimeout)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    storage->WriteResp.MutableError()->SetCode(NCloud::E_REJECTED);
+
+    auto options = MakeOptions();
+    options.ReadPercent = 0;
+    options.IoDepth = 1;
+    options.Requests = 2;
+    options.RetryTimeout = TDuration::MilliSeconds(50);
+    auto test = CreateLoadTest(options, storage);
+
+    const auto stats = test->Run();
+    EXPECT_FALSE(stats.GetSuccess());
+
+    const auto* writeStats = FindStats(stats, "WriteLogRecord");
+    ASSERT_TRUE(writeStats);
+    EXPECT_EQ(0u, writeStats->GetCount());
+    // both records were attempted more than once before being given up
+    EXPECT_GT(storage->WriteCalls.size(), 2u);
+    EXPECT_EQ(2u, storage->WriteCalls.back().GetLogSequenceNumber());
+}
+
+TEST(TFastShardLoadTest, ShouldNotRetryWhenDisabled)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    storage->WriteResp.MutableError()->SetCode(NCloud::E_REJECTED);
+
+    auto options = MakeOptions();
+    options.ReadPercent = 0;
+    options.Requests = 3;
+    options.RetryTimeout = TDuration::Zero();
+    auto test = CreateLoadTest(options, storage);
+
+    EXPECT_FALSE(test->Run().GetSuccess());
+    EXPECT_EQ(3u, storage->WriteCalls.size());
+}
+
+TEST(TFastShardLoadTest, ShouldStopWhileRetryingReads)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    storage->ReadResp.MutableError()->SetCode(NCloud::E_REJECTED);
+
+    auto options = MakeOptions();
+    options.ReadPercent = 100;
+    options.IoDepth = 1;
+    options.Requests = 0;
+    options.Duration = TDuration::Minutes(10);
+    options.RetryTimeout = TDuration::Minutes(10);
+    auto test = CreateLoadTest(options, storage);
+
+    std::thread stopper(
+        [&]
+        {
+            while (storage->ReadCalls.size() < 3) {
+                Sleep(TDuration::MilliSeconds(1));
+            }
+            test->Stop();
+        });
+
+    // the single read is given up at the stop instead of being retried
+    // for the rest of the retry timeout
+    EXPECT_FALSE(test->Run().GetSuccess());
+    stopper.join();
+    EXPECT_EQ(1u, storage->ReleaseCalls.size());
+}
+
+TEST(TFastShardLoadTest, ShouldKeepRetryingWritesAfterStop)
+{
+    auto storage = std::make_shared<TFakeStorageNode>();
+    storage->WriteResp.MutableError()->SetCode(NCloud::E_REJECTED);
+
+    auto options = MakeOptions();
+    options.ReadPercent = 0;
+    options.IoDepth = 1;
+    options.Requests = 0;
+    options.Duration = TDuration::Minutes(10);
+    options.RetryTimeout = TDuration::MilliSeconds(200);
+    auto test = CreateLoadTest(options, storage);
+
+    size_t callsAtStop = 0;
+    std::thread stopper(
+        [&]
+        {
+            while (storage->WriteCalls.size() < 3) {
+                Sleep(TDuration::MilliSeconds(1));
+            }
+            callsAtStop = storage->WriteCalls.size();
+            test->Stop();
+        });
+
+    // the record is retried past the stop until the retry timeout, so a
+    // record that another worker may have already written after it is
+    // not skipped
+    EXPECT_FALSE(test->Run().GetSuccess());
+    stopper.join();
+    EXPECT_GT(storage->WriteCalls.size(), callsAtStop);
+    for (const auto& call: storage->WriteCalls) {
+        EXPECT_EQ(1u, call.GetLogSequenceNumber());
+    }
+    EXPECT_EQ(1u, storage->ReleaseCalls.size());
+}
+
 TEST(TFastShardLoadTest, ShouldFailWhenAcquireFails)
 {
     auto storage = std::make_shared<TFakeStorageNode>();
