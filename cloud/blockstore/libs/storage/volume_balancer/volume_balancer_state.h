@@ -109,8 +109,8 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
-    void UpdateVolumeToPush();
-    void UpdateVolumeToPull(TInstant now);
+    TString SelectVolumeToPush() const;
+    TString SelectVolumeToPull(TInstant now) const;
 
     bool IsVolumePreemptible(
         const TString& diskId,

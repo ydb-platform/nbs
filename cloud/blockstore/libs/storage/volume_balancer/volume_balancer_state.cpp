@@ -46,6 +46,8 @@ void TVolumeBalancerState::UpdateVolumeStats(
         knownDisks.insert(d.first);
     }
 
+    bool localSufferingDetected = false;
+
     for (auto& v: stats) {
         auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
 
@@ -73,6 +75,9 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
+            if (info.IsLocal && info.SufferCount > 0) {
+                localSufferingDetected = true;
+            }
         }
         knownDisks.erase(v.GetDiskId());
     }
@@ -81,12 +86,13 @@ void TVolumeBalancerState::UpdateVolumeStats(
         Volumes.erase(d);
     }
 
-    if (emergencyCpu) {
-        VolumeToPull = {};
-        UpdateVolumeToPush();
-    } else {
-        VolumeToPush = {};
-        UpdateVolumeToPull(now);
+    VolumeToPush = {};
+    VolumeToPull = {};
+
+    if (emergencyCpu && localSufferingDetected) {
+        VolumeToPush = SelectVolumeToPush();
+    } else if (!emergencyCpu) {
+        VolumeToPull = SelectVolumeToPull(now);
     }
 }
 
@@ -225,12 +231,12 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeBalancerState::UpdateVolumeToPush()
+TString TVolumeBalancerState::SelectVolumeToPush() const
 {
     const bool moveMostHeavy = StorageConfig->GetVolumePreemptionType() ==
-        NProto::PREEMPTION_MOVE_MOST_HEAVY;
+                               NProto::PREEMPTION_MOVE_MOST_HEAVY;
 
-    VolumeToPush = {};
+    TString volumeToPush;
 
     ui64 value = moveMostHeavy ? 0 : Max<ui64>();
     for (auto v = Volumes.begin(); v != Volumes.end(); ++v) {
@@ -239,34 +245,34 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         }
 
         if (moveMostHeavy) {
-            if (value < v->second.SufferCount) {
+            if (value <= v->second.SufferCount) {
                 value = v->second.SufferCount;
-                VolumeToPush = v->first;
+                volumeToPush = v->first;
             }
         } else {
-            if (value > v->second.SufferCount) {
+            if (value >= v->second.SufferCount) {
                 value = v->second.SufferCount;
-                VolumeToPush = v->first;
+                volumeToPush = v->first;
             }
         }
     }
+
+    return volumeToPush;
 }
 
-void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
+TString TVolumeBalancerState::SelectVolumeToPull(TInstant now) const
 {
-    VolumeToPull = {};
-
     for (const auto& v: Volumes) {
         if (!v.second.IsLocal &&
-            v.second.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER &&
+            v.second.PreemptionSource ==
+                NProto::EPreemptionSource::SOURCE_BALANCER &&
             v.second.NextPullAttempt <= now &&
             !VolumesInProgress.count(v.first))
         {
-            VolumeToPull = v.first;
-            return;
+            return v.first;
         }
     }
-
+    return {};
 }
 
 bool TVolumeBalancerState::IsVolumePreemptible(

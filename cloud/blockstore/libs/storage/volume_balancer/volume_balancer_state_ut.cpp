@@ -470,6 +470,75 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPull());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLocalSufferIsZero)
+    {
+        TVolumeBalancerState state(CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            70,
+            CreateFeatureConfig("Balancer", {}, true)));
+        TInstant now = TInstant::Seconds(0);
+
+        const TVector vols{
+            CreateVolumeStats("vol0", "", "", true),
+            CreateVolumeStats("vol1", "", "", true)};
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 0;
+        perfMap["vol1"] = 0;
+
+        state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+        UNIT_ASSERT_VALUES_EQUAL("", state.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", state.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnVolumeBySufferAlone)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            70,
+            CreateFeatureConfig("Balancer", {}, true));
+
+        TVolumeBalancerState state(storageConfig);
+        TInstant now = TInstant::Seconds(0);
+
+        {
+            TVector vols{
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+            perfMap["vol0"] = 10;
+            perfMap["vol1"] = 1;
+
+            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector vols{
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", false)};
+
+            TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+            perfMap["vol0"] = 0;
+            perfMap["vol1"] = 0;
+
+            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+
+            now += storageConfig->GetInitialPullDelay();
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
