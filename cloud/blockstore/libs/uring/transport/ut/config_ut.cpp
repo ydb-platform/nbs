@@ -11,10 +11,10 @@ Y_UNIT_TEST_SUITE(TUringConfigTest)
         TClientConfig c;
         UNIT_ASSERT_VALUES_EQUAL(2u, c.IoThreads);
         UNIT_ASSERT_VALUES_EQUAL(4096u, c.QueueSize);
-        UNIT_ASSERT_VALUES_EQUAL(1024u, c.MaxInflightRequests);
-        UNIT_ASSERT_VALUES_EQUAL(64ull << 20, c.MaxInflightBytes);
+        UNIT_ASSERT_VALUES_EQUAL(32u, c.MaxInflightRequests);
+        UNIT_ASSERT_VALUES_EQUAL(256ull << 20, c.MaxInflightBytes);
         UNIT_ASSERT_VALUES_EQUAL(64u << 10, c.MaxProtoSize);
-        UNIT_ASSERT_VALUES_EQUAL(8u << 20, c.MaxDataSize);
+        UNIT_ASSERT_VALUES_EQUAL(4u << 20, c.MaxDataSize);
         UNIT_ASSERT_VALUES_EQUAL(1u << 20, c.SendWindowBytes);
         UNIT_ASSERT(c.OobMode == EOobMode::Auto);
         UNIT_ASSERT_VALUES_EQUAL(128u << 10, c.OobThreshold);
@@ -31,6 +31,11 @@ Y_UNIT_TEST_SUITE(TUringConfigTest)
         TServerConfig s;
         UNIT_ASSERT_VALUES_EQUAL(128u, s.Backlog);
         UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(10), s.DataTokenTtl);
+        // the byte limit is a backstop: a full queue of largest messages has
+        // to fit it, or it would reject what the request count allows
+        UNIT_ASSERT_GE(
+            s.MaxInflightBytes,
+            ui64(s.MaxInflightRequests) * (s.MaxDataSize + s.MaxProtoSize));
     }
 
     Y_UNIT_TEST(ShouldConvertFromProto)

@@ -60,7 +60,7 @@ constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(1);
 constexpr ui64 FRAME_OVERHEAD = 256;
 
 // Errors accept(2) reports for the connection it took off the queue, which it
-// tells us to treat as EAGAIN, plus the one a firewall rule produces.
+// tells us to treat as EAGAIN.
 bool IsPendingConnectionError(int error)
 {
     switch (error) {
@@ -1086,6 +1086,19 @@ public:
 
     void Start() override
     {
+        const ui64 queued = ui64(Config->MaxInflightRequests) *
+                            (Config->MaxDataSize + Config->MaxProtoSize);
+        Y_ABORT_UNLESS(
+            Config->MaxInflightBytes >= queued,
+            "MaxInflightBytes %lu rejects what MaxInflightRequests %u allows: "
+            "%u requests of MaxDataSize %u plus MaxProtoSize %u need %lu",
+            Config->MaxInflightBytes,
+            Config->MaxInflightRequests,
+            Config->MaxInflightRequests,
+            Config->MaxDataSize,
+            Config->MaxProtoSize,
+            queued);
+
         Log = Logging->CreateLog("BLOCKSTORE_URING");
         Counters = MakeCounters(Monitoring, "uring_server");
         for (ui32 i = 0; i < Max<ui32>(Config->IoThreads, 1); ++i) {

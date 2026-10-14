@@ -216,25 +216,39 @@ struct TRawClient
         return !TryReadAll(fd, &buf, 1);
     }
 
-    void SendRequest(ui64 id, TStringBuf proto, TStringBuf data, bool oob)
+    void SendRequestHeader(
+        ui64 id,
+        TStringBuf proto,
+        size_t dataLen,
+        bool oob)
     {
         TFrameHeader h;
         h.Type = FRAME_REQUEST;
         h.RequestId = id;
         h.ProtoLen = proto.size();
-        h.DataLen = data.size();
-        h.Flags = data.empty() ? 0 : (oob ? FLAG_OOB : FLAG_INLINE);
+        h.DataLen = dataLen;
+        h.Flags = dataLen ? (oob ? FLAG_OOB : FLAG_INLINE) : 0;
         WriteAll(MainFd, &h, sizeof(h));
         WriteAll(MainFd, proto.data(), proto.size());
+    }
+
+    void SendRequestData(ui64 id, TStringBuf data)
+    {
+        TDataHeader dh;
+        dh.RequestId = id;
+        dh.DataLen = data.size();
+        WriteAll(DataFd, &dh, sizeof(dh));
+        WriteAll(DataFd, data.data(), data.size());
+    }
+
+    void SendRequest(ui64 id, TStringBuf proto, TStringBuf data, bool oob)
+    {
+        SendRequestHeader(id, proto, data.size(), oob);
         if (!data.empty() && !oob) {
             WriteAll(MainFd, data.data(), data.size());
         }
         if (!data.empty() && oob) {
-            TDataHeader dh;
-            dh.RequestId = id;
-            dh.DataLen = data.size();
-            WriteAll(DataFd, &dh, sizeof(dh));
-            WriteAll(DataFd, data.data(), data.size());
+            SendRequestData(id, data);
         }
     }
 
@@ -774,9 +788,10 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
     Y_UNIT_TEST_F(ShouldAccountInflightBytesUntilTheKernelIsDone, TFixture)
     {
         TServerConfig config;
-        config.MaxDataSize = 4 << 20;
+        config.MaxDataSize = 1 << 20;
+        config.MaxInflightRequests = 2;
         // above what one request and its echo pin together, below what two of
-        // them do
+        // them do, and still above a full queue of the largest request
         config.MaxInflightBytes = 2560 << 10;
         StartServer(config);
 
@@ -844,40 +859,67 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
     Y_UNIT_TEST_F(ShouldRejectWithoutClosingAFastReader, TFixture)
     {
         TServerConfig config;
-        config.MaxDataSize = 4 << 20;
-        config.MaxInflightBytes = 1 << 20;
+        config.MaxDataSize = 256 << 10;
+        config.MaxInflightRequests = 2;
+        // exactly a full queue of the largest request, so nothing here is a
+        // misconfiguration
+        config.MaxInflightBytes = 2 * ((256 << 10) + (64 << 10));
         StartServer(config);
-        Handler->ResponseSize = 1 << 20;
+        Handler->ResponseSize = 256 << 10;
 
         TRawClient client;
         client.RcvBuf = 4096;
         client.Connect(Port, EOobMode::Auto);
 
-        // every request is admitted on its own tiny size before any response
-        // is queued, so the responses in flight overshoot the limit by far
-        // more than a reply costs; the session must survive that
-        for (ui64 i = 1; i <= 8; ++i) {
-            client.SendRequest(i, "p", {}, false);
-        }
+        // both requests are admitted on their own size, which is what the
+        // budget is for; their responses then double what is in flight, so it
+        // overshoots the limit by far more than a reply costs and the session
+        // has to survive saying no
+        auto payload = Pattern(256 << 10, 14);
+        client.SendRequestHeader(1, "p", payload.size(), true);
+        client.SendRequestHeader(2, "p", payload.size(), true);
+        client.SendRequestData(1, payload);
+        client.SendRequestData(2, payload);
         size_t responses = 0;
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 2; ++i) {
             if (client.ReadFrameOnly().Header.Type == FRAME_RESPONSE) {
                 ++responses;
             }
         }
-        UNIT_ASSERT_VALUES_UNEQUAL(0u, responses);
+        UNIT_ASSERT_VALUES_EQUAL(2u, responses);
 
-        // the megabytes queued for a peer that is merely slow are past the
-        // limit now, so the next requests do not fit it - and saying so must
-        // not cost the session
-        for (ui64 i = 9; i <= 11; ++i) {
-            client.SendRequest(i, "p", {}, false);
+        for (ui64 i = 3; i <= 5; ++i) {
+            client.SendRequest(i, "p", payload, true);
             auto frame = client.ReadFrameOnly();
             UNIT_ASSERT_VALUES_EQUAL(i, frame.Header.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(frame.Header.Type));
             UNIT_ASSERT_VALUES_EQUAL(
                 E_REJECTED,
                 ParseError(frame.Proto).GetCode());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReleaseRejectionBytes, TFixture)
+    {
+        TServerConfig config;
+        // three unsent rejections fit this, and no more
+        config.MaxProtoSize = 1024;
+        config.MaxInflightRequests = 1;
+        StartServer(config);
+        Handler->Hold = true;
+
+        TRawClient client;
+        client.Connect(Port, EOobMode::Auto);
+        client.SendRequest(1, "p", {}, false);
+        WaitForRequests(1);
+
+        // each rejection is read before the next request is sent, so the
+        // budget frees up again; twenty is far past what it holds at once
+        for (ui64 i = 2; i <= 21; ++i) {
+            client.SendRequest(i, "p", {}, false);
+            auto frame = client.ReadFrameOnly();
+            UNIT_ASSERT_VALUES_EQUAL(i, frame.Header.RequestId);
+            UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(frame.Header.Type));
         }
     }
 
@@ -912,8 +954,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
     Y_UNIT_TEST_F(ShouldAccountResponseBytes, TFixture)
     {
         TServerConfig config;
-        config.MaxDataSize = 4 << 20;
-        config.MaxInflightBytes = (1 << 20) + 4096;
+        config.MaxDataSize = 1 << 20;
+        config.MaxInflightRequests = 1;
+        config.MaxInflightBytes = (1 << 20) + (64 << 10);
         StartServer(config);
         // the read shape: a tiny request, a large response
         Handler->ResponseSize = 1 << 20;
@@ -929,8 +972,8 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         UNIT_ASSERT_VALUES_EQUAL(1u << 20, first.Header.DataLen);
 
         // the response is a megabyte the peer is not reading, so the next
-        // request does not fit the limit even though it is tiny itself
-        client.SendRequest(2, "p", Pattern(64 << 10, 13), false);
+        // request does not fit the limit even though the budget would hold it
+        client.SendRequest(2, "p", Pattern(512 << 10, 13), true);
         auto second = client.ReadFrameOnly();
         UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(second.Header.Type));
         UNIT_ASSERT_VALUES_EQUAL(2u, second.Header.RequestId);

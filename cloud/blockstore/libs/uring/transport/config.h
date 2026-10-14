@@ -16,10 +16,10 @@ struct TTransportConfig
 {
     ui32 IoThreads = 2;
     ui32 QueueSize = 4096;
-    ui32 MaxInflightRequests = 1024;
-    ui64 MaxInflightBytes = 64ull << 20;
+    ui32 MaxInflightRequests = 32;
+    ui64 MaxInflightBytes = 256ull << 20;
     ui32 MaxProtoSize = 64u << 10;
-    ui32 MaxDataSize = 8u << 20;
+    ui32 MaxDataSize = 4u << 20;
     ui32 SendWindowBytes = 1u << 20;
     EOobMode OobMode = EOobMode::Auto;
     ui32 OobThreshold = 128u << 10;
