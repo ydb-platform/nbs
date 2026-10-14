@@ -12,6 +12,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <thread>
+
 namespace NCloud::NBlockStore::NUring {
 
 using namespace NThreading;
@@ -469,6 +471,39 @@ Y_UNIT_TEST_SUITE(TUringRingTest)
             rx.reset();
             return Ring->IsRingThread();
         }));
+        ::close(fds[0]);
+        ::close(fds[1]);
+    }
+
+    Y_UNIT_TEST_F(ShouldServeIoOfCommandQueuedDuringStop, TFixture)
+    {
+        int fds[2];
+        UNIT_ASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+        UNIT_ASSERT(::write(fds[0], "x", 1) == 1);
+        char buf[1];
+        auto blocked = NewPromise<void>();
+        auto gate = NewPromise<void>();
+        auto done = NewPromise<int>();
+        std::unique_ptr<TExactIo> rx;
+
+        Ring->Execute([=]() mutable {
+            blocked.SetValue();
+            gate.GetFuture().Wait();
+        });
+        blocked.GetFuture().GetValue(TDuration::Seconds(5));
+
+        // the ring thread is stuck in the command above, so Stop() and the IO
+        // command below are both queued when it resumes
+        std::thread stopper([&] { Ring->Stop(); });
+        Ring->Execute([&] {
+            rx = std::make_unique<TExactIo>(*Ring);
+            rx->Recv(fds[1], buf, sizeof(buf), [=](int e) mutable { done.SetValue(e); });
+        });
+        gate.SetValue();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, done.GetFuture().GetValue(TDuration::Seconds(5)));
+        stopper.join();
+        rx.reset();
         ::close(fds[0]);
         ::close(fds[1]);
     }

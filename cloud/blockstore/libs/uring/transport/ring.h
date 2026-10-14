@@ -94,6 +94,7 @@ private:
     TIoOp EventOp;
     TIoOp TimerOp;
     bool StopInitiated = false;
+    bool Draining = false;
 
     NThreading::TPromise<NProto::TError> InitResult;
     std::atomic<TThread::TId> ThreadId = 0;
@@ -108,9 +109,12 @@ public:
     // ring thread.
     void Stop();
 
-    // Commands still queued when the ring thread shuts down are run before it
-    // exits. A command enqueued after that point (after Stop() has returned or
-    // a failed Start()) is dropped: it cannot be run on a ring that is gone.
+    // The ring thread does not exit while commands are queued, so a command
+    // enqueued during shutdown runs in the live loop and may start IO. One that
+    // slips in after the loop's last check runs once more during the final
+    // drain and must not start IO (Submit aborts). A command enqueued after the
+    // ring thread has exited (after Stop() has returned, or a failed Start())
+    // is dropped: it cannot be run on a ring that is gone.
     void Execute(TCommand command);
     bool IsRingThread() const;
     bool SendZeroCopySupported() const { return ZcSupported; }

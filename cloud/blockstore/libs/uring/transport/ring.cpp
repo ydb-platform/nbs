@@ -163,7 +163,9 @@ void* TRing::ThreadProc()
             Cancel(&EventOp);
             Cancel(&TimerOp);
         }
-        if (StopInitiated && ActiveOps == 0 && Pending.empty()) {
+        if (StopInitiated && ActiveOps == 0 && Pending.empty() &&
+            Commands.IsEmpty())
+        {
             break;
         }
 
@@ -180,6 +182,7 @@ void* TRing::ThreadProc()
         Dispatch();
     }
 
+    Draining = true;
     DrainCommands();
 
     ::close(EventFd);
@@ -220,6 +223,10 @@ void TRing::CheckSubmitResult(int ret)
 
 void TRing::Submit(TIoOp* op, std::function<void(io_uring_sqe*)> prep)
 {
+    Y_ABORT_UNLESS(
+        !Draining,
+        "op %u submitted by a command running during the final drain",
+        op->Tag);
     Y_ABORT_UNLESS(!op->InFlight, "op %u already in flight", op->Tag);
     op->InFlight = true;
     op->Prep = std::move(prep);
@@ -312,7 +319,7 @@ void TRing::ArmTimer()
 
 TIoOp* TRing::AllocOp(IIoHandler* handler, ui32 tag)
 {
-    Y_DEBUG_ABORT_UNLESS(
+    Y_ABORT_UNLESS(
         tag < TAG_RESERVED_BASE,
         "tag %u is reserved for the ring",
         tag);
