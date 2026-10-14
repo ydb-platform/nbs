@@ -2,39 +2,28 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import re
 import shutil
 import sys
 import urllib.parse
-from typing import Any, NamedTuple, Pattern, TextIO, TypeAlias
+from pathlib import Path
+from typing import TYPE_CHECKING, Pattern, TextIO, TypeAlias
 from xml.etree import ElementTree as ET
 
 from ..helpers import setup_logger
 from .junit_utils import add_junit_link_property, is_faulty_testcase
 from .mute_utils import mute_target, pattern_to_re
 
+if TYPE_CHECKING:
+    from ..tracing.yatrace import Chunk, YaTraceCollection
+
 LOGGER = logging.getLogger(__name__)
 
 # TODO: Replace with a named mute rule type in a follow-up cleanup.
 CompiledPatternPair: TypeAlias = tuple[Pattern[str], Pattern[str]]
-# TODO: Replace these broad trace aliases with typed structures in a follow-up
-# cleanup.
-TraceEvent: TypeAlias = dict[str, Any]
 LogMap: TypeAlias = dict[str, str]
-
-
-class SubtestTraceKey(NamedTuple):
-    test_class: str
-    subtest: str
-
-
-class ChunkTraceKey(NamedTuple):
-    suite: str
-    chunk_index: int
-    chunks_total: int
 
 
 def _escape_github_command(value: str) -> str:
@@ -132,156 +121,6 @@ class YaMuteCheck:
         return set(matched_test_cases) == set(failed_by_current_chunk_cases)
 
 
-class YTestReportTrace:
-    def __init__(self, out_root: str) -> None:
-        self.out_root = out_root
-        self.traces: dict[SubtestTraceKey, TraceEvent] = {}
-        self.chunk_traces: dict[ChunkTraceKey, list[TraceEvent]] = {}
-
-    def load(self, subdir: str) -> None:
-        test_results_dir = os.path.join(self.out_root, f"{subdir}/test-results/")
-
-        if not os.path.isdir(test_results_dir):
-            LOGGER.info("Directory %s doesn't exist", test_results_dir)
-            return
-
-        for folder in os.listdir(test_results_dir):
-            fn = os.path.join(
-                self.out_root,
-                test_results_dir,
-                folder,
-                "ytest.report.trace",
-            )
-
-            if not os.path.isfile(fn):
-                continue
-
-            with open(fn, "r") as fp:
-                for line in fp:
-                    event = json.loads(line.strip())
-                    if event["name"] == "subtest-finished":
-                        event = event["value"]
-                        class_event = event["class"].replace("::", ".")
-                        subtest = event["subtest"]
-                        LOGGER.info("loaded (%s, %s)", class_event, subtest)
-                        self.traces[SubtestTraceKey(class_event, subtest)] = event
-                    elif event["name"] == "chunk-event":
-                        event = event["value"]
-                        event["test_results_folder"] = folder
-                        chunk_idx = event["chunk_index"]
-                        chunk_total = event["nchunks"]
-                        LOGGER.info(
-                            "loaded (%s, %s, %s)", subdir, chunk_idx, chunk_total
-                        )
-                        self.chunk_traces.setdefault(
-                            ChunkTraceKey(subdir, chunk_idx, chunk_total), []
-                        ).append(event)
-
-    def get_logs(self, class_event: str, name: str) -> LogMap:
-        trace = self.traces.get(SubtestTraceKey(class_event, name))
-        if not trace:
-            return {}
-
-        logs = trace["logs"]
-        result: LogMap = {}
-        for key, path in logs.items():
-            if key == "logsdir":
-                continue
-            result[key] = path.replace("$(BUILD_ROOT)", self.out_root)
-
-        return result
-
-    def select_chunk_trace(
-        self,
-        suite: str,
-        idx: int,
-        total: int,
-        failure_text: str | None = None,
-        warn_on_ambiguity: bool = True,
-    ) -> TraceEvent | None:
-        traces = self.chunk_traces.get(ChunkTraceKey(suite, idx, total), [])
-        if not traces:
-            return None
-        if len(traces) == 1:
-            return traces[0]
-        if not failure_text:
-            if warn_on_ambiguity:
-                emit_transform_warning(
-                    "Unable to disambiguate chunk logs for "
-                    f"{suite} [{idx}/{total}]: failure text is empty; "
-                    "leaving log links empty"
-                )
-            return None
-
-        for trace in traces:
-            folder = trace.get("test_results_folder")
-            if folder and f"test-results/{folder}" in failure_text:
-                return trace
-
-        for trace in traces:
-            logs = trace.get("logs", {})
-            for path in logs.values():
-                if path.replace("$(BUILD_ROOT)", self.out_root) in failure_text:
-                    return trace
-
-        if warn_on_ambiguity:
-            emit_transform_warning(
-                "Unable to disambiguate chunk logs for "
-                f"{suite} [{idx}/{total}]; leaving log links empty"
-            )
-        return None
-
-    def get_logs_chunks(
-        self, suite: str, idx: int, total: int, failure_text: str | None = None
-    ) -> LogMap:
-        trace = self.select_chunk_trace(suite, idx, total, failure_text)
-        if not trace:
-            return {}
-
-        logs = trace["logs"]
-        result: LogMap = {}
-        for key, path in logs.items():
-            if key == "logsdir":
-                continue
-            result[key] = path.replace("$(BUILD_ROOT)", self.out_root)
-
-        return result
-
-    def get_log_dir(self, class_event: str, name: str) -> str | None:
-        logs_dir = (
-            self.traces.get(SubtestTraceKey(class_event, name), {})
-            .get("logs", {})
-            .get("logsdir")
-        )
-
-        if logs_dir is None:
-            return None
-
-        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
-
-    def get_log_dir_chunk(
-        self,
-        suite: str,
-        idx: int,
-        total: int,
-        failure_text: str | None = None,
-        warn_on_ambiguity: bool = True,
-    ) -> str | None:
-        trace = self.select_chunk_trace(
-            suite,
-            idx,
-            total,
-            failure_text,
-            warn_on_ambiguity=warn_on_ambiguity,
-        )
-        logs_dir = trace.get("logs", {}).get("logsdir") if trace else None
-
-        if logs_dir is None:
-            return None
-
-        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
-
-
 def filter_empty_logs(logs: LogMap) -> LogMap:
     result: LogMap = {}
     for key, value in logs.items():
@@ -290,6 +129,42 @@ def filter_empty_logs(logs: LogMap) -> LogMap:
             continue
         result[key] = value
     return result
+
+
+def _select_chunk_event(
+    traces: YaTraceCollection,
+    suite: str,
+    chunk_index: int,
+    chunks_total: int,
+    failure_text: str | None,
+) -> Chunk | None:
+    event = traces.select_chunk_event(
+        suite,
+        chunk_index,
+        chunks_total,
+        failure_text,
+    )
+    candidates = traces.chunk_event_candidates(
+        suite,
+        chunk_index,
+        chunks_total,
+    )
+    if event is not None or len(candidates) <= 1:
+        return event
+
+    if failure_text:
+        message = (
+            f"Unable to disambiguate chunk logs for "
+            f"{suite} [{chunk_index}/{chunks_total}]; leaving log links empty"
+        )
+    else:
+        message = (
+            f"Unable to disambiguate chunk logs for "
+            f"{suite} [{chunk_index}/{chunks_total}]: failure text is empty; "
+            "leaving log links empty"
+        )
+    emit_transform_warning(message)
+    return None
 
 
 def save_log(
@@ -327,6 +202,21 @@ def save_log(
     return f"{log_url_prefix}{quoted_fpath}"
 
 
+def _load_ya_traces(ya_out: Path) -> YaTraceCollection | None:
+    try:
+        # Trace enrichment is optional: keep JUnit processing usable even when
+        # tracing dependencies could not be installed on the runner.
+        from ..tracing.yatrace import YaTraceCollection
+
+        return YaTraceCollection.load(ya_out)
+    except Exception as error:
+        emit_transform_warning(
+            f"Ya trace enrichment is unavailable: {error}; "
+            "continuing without trace-derived log links"
+        )
+        return None
+
+
 def transform(
     fp: TextIO,
     ya_mute_check: YaMuteCheck,
@@ -340,13 +230,13 @@ def transform(
 ) -> None:
     tree = ET.parse(fp)
     root = tree.getroot()
+    ya_out = Path(ya_out_dir)
+    traces = _load_ya_traces(ya_out)
 
     for suite in root.findall("testsuite"):
         suite_name = suite.get("name")
         if suite_name is None:
             continue
-        traces = YTestReportTrace(ya_out_dir)
-        traces.load(suite_name)
 
         for case in suite.findall("testcase"):
             test_name = case.get("name")
@@ -364,13 +254,18 @@ def transform(
 
             if not is_fail:
                 continue
+            if traces is None:
+                continue
 
             if "." in test_name:
                 test_name = test_name.replace("kubernetes.io", "kubernetes::io")
                 test_cls, test_method = test_name.rsplit(".", maxsplit=1)
                 test_method = test_method.replace("kubernetes::io", "kubernetes.io")
-                logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
-                logs_directory = traces.get_log_dir(test_cls, test_method)
+                trace_event = traces.finished_test(
+                    suite_name,
+                    test_cls,
+                    test_method,
+                )
             elif "chunk" in test_name:
                 failure = case.find("failure")
                 if failure is None:
@@ -389,21 +284,22 @@ def transform(
                         continue
                     chunk_idx = int(match.group(1))
                     chunks_total = int(match.group(2))
-                logs = filter_empty_logs(
-                    traces.get_logs_chunks(
-                        suite_name, chunk_idx, chunks_total, failure_text
-                    )
-                )
-                logs_directory = traces.get_log_dir_chunk(
+                trace_event = _select_chunk_event(
+                    traces,
                     suite_name,
                     chunk_idx,
                     chunks_total,
                     failure_text,
-                    warn_on_ambiguity=False,
                 )
             else:
                 continue
 
+            logs = filter_empty_logs(
+                trace_event.resolved_logs(traces.root) if trace_event else {}
+            )
+            logs_directory = (
+                trace_event.logs_directory if trace_event is not None else None
+            )
             if logs_directory is not None and not is_mute:
                 add_junit_link_property(
                     case,
