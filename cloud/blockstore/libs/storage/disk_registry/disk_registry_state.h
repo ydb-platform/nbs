@@ -898,6 +898,14 @@ public:
         const TVector<NProto::TDeviceConfig>& devices,
         TAllocateDiskResult* result);
 
+    NProto::TError CreateMirroredDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& masterId,
+        ui32 blockSize,
+        NProto::EStorageMediaKind mediaKind,
+        const TVector<TVector<NProto::TDeviceConfig>>& replicas);
+
     NProto::TError ChangeDiskDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -985,6 +993,13 @@ public:
         const TAgentId& agentId) const;
 
     bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
+
+    NProto::TError CreateMirroredDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        const TVector<NProto::TDeviceConfig>& devices,
+        TAllocateDiskResult* result);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

@@ -35,6 +35,34 @@ message TCreateDiskFromDevicesResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Create mirrored disk from devices
+
+message TCreateMirroredDiskFromDevicesRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    NKikimrBlockStore.TVolumeConfig VolumeConfig = 2;
+
+    message TReplicaConfig
+    {
+        repeated TDeviceConfig Devices = 1;
+    }
+
+    // List of devices for each replica.
+    repeated TReplicaConfig Replicas = 3;
+
+    // Force dangerous actions.
+    bool Force = 4;
+}
+
+message TCreateMirroredDiskFromDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Change disk device
 
 message TChangeDiskDeviceRequest
@@ -53,24 +81,6 @@ message TChangeDiskDeviceRequest
 }
 
 message TChangeDiskDeviceResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}
-
-message TRemapDiskDevicesRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // Disk identification.
-    string DiskId = 2;
-
-    // List of devices UUIDs that make up the disk.
-    repeated string Devices = 3;
-}
-
-message TRemapDiskDevicesResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

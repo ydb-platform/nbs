@@ -67,7 +67,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
-    xxx(RemapDiskDevices,                   __VA_ARGS__)                       \
+    xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1283,6 +1283,43 @@ struct TTxDiskRegistry
     };
 
     //
+    // CreateMirroredDiskFromDevices
+    //
+
+    struct TCreateMirroredDiskFromDevices
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TString MasterDiskId;
+        const ui32 BlockSize;
+        const NProto::EStorageMediaKind MediaKind;
+        const TVector<TVector<NProto::TDeviceConfig>> Replicas;
+        const bool Force;
+
+        NProto::TError Error;
+
+        TCreateMirroredDiskFromDevices(
+            TRequestInfoPtr requestInfo,
+            TString masterDiskId,
+            ui32 blockSize,
+            NProto::EStorageMediaKind mediaKind,
+            TVector<TVector<NProto::TDeviceConfig>> replicas,
+            bool force)
+            : RequestInfo(std::move(requestInfo))
+            , MasterDiskId(std::move(masterDiskId))
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
+            , Replicas(std::move(replicas))
+            , Force(force)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
     // ChangeDiskDevice
     //
 
@@ -1305,34 +1342,6 @@ struct TTxDiskRegistry
             , DiskId(std::move(diskId))
             , SourceDeviceId(std::move(sourceDeviceId))
             , TargetDeviceId(std::move(targetDeviceId))
-        {}
-
-        void Clear()
-        {
-            Error.Clear();
-        }
-    };
-
-    //
-    // RemapDiskDevices
-    //
-
-    struct TRemapDiskDevices
-    {
-        const TRequestInfoPtr RequestInfo;
-
-        const TString DiskId;
-        const TVector<TString> NewDevices;
-
-        NProto::TError Error;
-
-        TRemapDiskDevices(
-            TRequestInfoPtr requestInfo,
-            TString diskId,
-            TVector<TString> newDevices)
-            : RequestInfo(std::move(requestInfo))
-            , DiskId(std::move(diskId))
-            , NewDevices(std::move(newDevices))
         {}
 
         void Clear()

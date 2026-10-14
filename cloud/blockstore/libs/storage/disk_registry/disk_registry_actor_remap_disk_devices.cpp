@@ -11,40 +11,49 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleRemapDiskDevices(
-    const TEvDiskRegistry::TEvRemapDiskDevicesRequest::TPtr& ev,
+void TDiskRegistryActor::HandleCreateMirroredDiskFromDevices(
+    const TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(CreateDiskFromDevices);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(CreateMirroredDiskFromDevices);
 
     const auto& record = ev->Get()->Record;
+    const auto& volume = ev->Get()->Record.GetVolumeConfig();
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received RemapDiskDevices request: %s %s",
+        "%s Received CreateMirroredDiskFromDevices request: %s %s",
         LogTitle.GetWithTime().c_str(),
         SafeDebugPrint(record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    ExecuteTx<TRemapDiskDevices>(
+    TVector<TVector<NProto::TDeviceConfig>> replicas;
+    for (const auto& replica: record.GetReplicas()) {
+        replicas.push_back(
+            TVector<NProto::TDeviceConfig>(
+                replica.GetDevices().begin(),
+                replica.GetDevices().end()));
+    }
+
+    ExecuteTx<TCreateMirroredDiskFromDevices>(
         ctx,
-        CreateRequestInfo<TEvDiskRegistry::TRemapDiskDevicesMethod>(
+        CreateRequestInfo<
+            TEvDiskRegistry::TCreateMirroredDiskFromDevicesMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
-        record.GetDiskId(),
-        TVector<TDeviceId> (
-            record.GetDevices().begin(),
-            record.GetDevices().end())
-        );
+            ev->Get()->CallContext),
+        volume.GetDiskId(),
+        volume.GetBlockSize(),
+        static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
+        std::move(replicas),
+        record.GetForce());
 }
 
-bool TDiskRegistryActor::PrepareRemapDiskDevices(
+bool TDiskRegistryActor::PrepareCreateMirroredDiskFromDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRemapDiskDevices& args)
+    TTxDiskRegistry::TCreateMirroredDiskFromDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -53,30 +62,30 @@ bool TDiskRegistryActor::PrepareRemapDiskDevices(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteRemapDiskDevices(
+void TDiskRegistryActor::ExecuteCreateMirroredDiskFromDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRemapDiskDevices& args)
+    TTxDiskRegistry::TCreateMirroredDiskFromDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
     Y_UNUSED(args);
 }
 
-void TDiskRegistryActor::CompleteRemapDiskDevices(
+void TDiskRegistryActor::CompleteCreateMirroredDiskFromDevices(
     const TActorContext& ctx,
-    TTxDiskRegistry::TRemapDiskDevices& args)
+    TTxDiskRegistry::TCreateMirroredDiskFromDevices& args)
 {
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s RemapDiskDevices result: %s",
+        "%s CreateMirroredDiskFromDevices result: %s",
         LogTitle.GetWithTime().c_str(),
         FormatError(args.Error).c_str());
 
-    auto response =
-        std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesResponse>(
-            std::move(args.Error));
+    auto response = std::make_unique<
+        TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesResponse>(
+        std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

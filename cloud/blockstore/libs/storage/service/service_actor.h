@@ -382,11 +382,11 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateChangeDiskDeviceActionActor(
+    TResultOrError<NActors::IActorPtr> CreateMirroredDiskFromDevicesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateRemapDiskDevicesActionActor(
+    TResultOrError<NActors::IActorPtr> CreateChangeDiskDeviceActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

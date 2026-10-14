@@ -25,15 +25,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRemapDiskDevicesActor final
-    : public TActorBootstrapped<TRemapDiskDevicesActor>
+class TCreateMirroredDiskFromDevicesActor final
+    : public TActorBootstrapped<TCreateMirroredDiskFromDevicesActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     TString Input;
 
 public:
-    TRemapDiskDevicesActor(TRequestInfoPtr requestInfo, TString input);
+    TCreateMirroredDiskFromDevicesActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -43,24 +43,24 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleRemapDiskDevicesResponse(
-        const TEvDiskRegistry::TEvRemapDiskDevicesResponse::TPtr& ev,
+    void HandleCreateMirroredDiskFromDevicesResponse(
+        const TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRemapDiskDevicesActor::TRemapDiskDevicesActor(
+TCreateMirroredDiskFromDevicesActor::TCreateMirroredDiskFromDevicesActor(
     TRequestInfoPtr requestInfo,
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TRemapDiskDevicesActor::Bootstrap(const TActorContext& ctx)
+void TCreateMirroredDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvDiskRegistry::TEvRemapDiskDevicesRequest>();
+        std::make_unique<TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest>();
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
              .ok())
@@ -74,20 +74,20 @@ void TRemapDiskDevicesActor::Bootstrap(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TRemapDiskDevicesActor::ReplyAndDie(
+void TCreateMirroredDiskFromDevicesActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
     google::protobuf::util::MessageToJsonString(
-        NProto::TRemapDiskDevicesResponse(),
+        NProto::TCreateMirroredDiskFromDevicesResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
         RequestInfo->CallContext->LWOrbit,
-        "ExecuteAction_changediskdevice",
+        "ExecuteAction_createmirroreddiskfromdevices",
         RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -96,8 +96,8 @@ void TRemapDiskDevicesActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TRemapDiskDevicesActor::HandleRemapDiskDevicesResponse(
-    const TEvDiskRegistry::TEvRemapDiskDevicesResponse::TPtr& ev,
+void TCreateMirroredDiskFromDevicesActor::HandleCreateMirroredDiskFromDevicesResponse(
+    const TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->GetError());
@@ -105,12 +105,12 @@ void TRemapDiskDevicesActor::HandleRemapDiskDevicesResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TRemapDiskDevicesActor::StateWork)
+STFUNC(TCreateMirroredDiskFromDevicesActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistry::TEvRemapDiskDevicesResponse,
-            HandleRemapDiskDevicesResponse);
+            TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesResponse,
+            HandleCreateMirroredDiskFromDevicesResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -125,11 +125,11 @@ STFUNC(TRemapDiskDevicesActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateRemapDiskDevicesActionActor(
+TResultOrError<IActorPtr> TServiceActor::CreateMirroredDiskFromDevicesActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TRemapDiskDevicesActor>(
+    return {std::make_unique<TCreateMirroredDiskFromDevicesActor>(
         std::move(requestInfo),
         std::move(input))};
 }
