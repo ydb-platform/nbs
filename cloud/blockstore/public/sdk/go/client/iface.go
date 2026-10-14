@@ -209,6 +209,11 @@ type ClientIface interface {
 		req *protos.TCreateVolumeFromDeviceRequest,
 	) (*protos.TCreateVolumeFromDeviceResponse, error)
 
+	QueryKnownStorage(
+		ctx context.Context,
+		req *protos.TQueryKnownStorageRequest,
+	) (*protos.TQueryKnownStorageResponse, error)
+
 	//
 	// Private API.
 	//

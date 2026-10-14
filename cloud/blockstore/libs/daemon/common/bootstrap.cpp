@@ -734,7 +734,8 @@ void TBootstrapBase::Init()
             EBlockStoreRequest::StopEndpoint,
             EBlockStoreRequest::RefreshEndpoint,
             EBlockStoreRequest::CreateVolumeFromDevice,
-            EBlockStoreRequest::ResumeDevice
+            EBlockStoreRequest::ResumeDevice,
+            EBlockStoreRequest::QueryKnownStorage,
         });
     }
 

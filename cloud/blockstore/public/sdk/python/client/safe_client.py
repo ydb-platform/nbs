@@ -1077,3 +1077,53 @@ class _SafeClient(object):
             timestamp,
             trace_id,
             request_timeout).DiskStates
+
+    @_handle_errors
+    def query_known_storage_async(
+            self,
+            agent_ids: list[str],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
+
+        request = protos.TQueryKnownStorageRequest(
+            AgentIds=agent_ids,
+        )
+
+        future = futures.Future()
+        response = self.__impl.query_known_storage_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+        def set_result(f):
+            exception = f.exception()
+            if exception:
+                future.set_exception(exception)
+            else:
+                future.set_result(f.result().KnownStorage)
+        response.add_done_callback(set_result)
+
+        return future
+
+    @_handle_errors
+    def query_known_storage(
+            self,
+            agent_ids: list[str],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
+
+        request = protos.TQueryKnownStorageRequest(
+            AgentIds=agent_ids
+        )
+        return self.__impl.query_known_storage(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout).KnownStorage

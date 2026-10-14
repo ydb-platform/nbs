@@ -397,6 +397,15 @@ func (c *NbsClientMock) ReleaseNVMeDevice(
 	return args.Get(0).(*protos.TReleaseNVMeDeviceResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) QueryKnownStorage(
+	ctx context.Context,
+	req *protos.TQueryKnownStorageRequest,
+) (*protos.TQueryKnownStorageResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TQueryKnownStorageResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNbsClientMock() *NbsClientMock {

@@ -768,6 +768,8 @@ STFUNC(TDiskRegistryActor::StateWork)
             HandleEnsureDiskRegistryStateIntegrityResponse
         )
 
+        HFunc(TEvService::TEvQueryKnownStorageRequest, HandleQueryKnownStorage);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -825,6 +827,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             TEvDiskRegistry::TEvEnsureDiskRegistryStateIntegrityResponse,
             HandleEnsureDiskRegistryStateIntegrityResponse
         )
+
+        HFunc(TEvService::TEvQueryKnownStorageRequest, HandleQueryKnownStorage);
 
         IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
@@ -885,6 +889,8 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvService::TEvQueryAvailableStorageRequest,
             HandleQueryAvailableStorage);
+        HFunc(TEvService::TEvQueryKnownStorageRequest,
+            HandleQueryKnownStorage);
 
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
