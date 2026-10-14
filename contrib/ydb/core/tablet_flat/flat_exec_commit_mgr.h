@@ -10,6 +10,7 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet_flat/flat_executor.pb.h>
+#include <util/generic/deque.h>
 
 namespace NKikimr {
 namespace NTabletFlatExecutor {
@@ -123,11 +124,22 @@ namespace NTabletFlatExecutor {
             Tail += 1;
             Back = (Back == Max<ui32>() ? commit->Step : Back);
 
-            StatsAccount(*commit);
-            Waste->Account(commit->GcDelta);
-            GcLogic->WriteToLog(*commit);
-            TrackCommitTxs(*commit);
-            SendCommitEv(*commit);
+            Pending.emplace_back(commit);
+            SubmitReadyCommits();
+        }
+
+        bool HasPendingCommits() const noexcept { return !Pending.empty(); }
+
+        void RedoEncoded(ui32 step, TString body) noexcept
+        {
+            Y_ABORT_UNLESS(!Pending.empty() && step >= Pending.front()->Step);
+            const auto index = step - Pending.front()->Step;
+            Y_ABORT_UNLESS(index < Pending.size());
+            auto& commit = *Pending[index];
+            Y_ABORT_UNLESS(commit.Step == step && commit.RedoPending);
+            commit.EncodedRedo = std::move(body);
+            commit.RedoPending = false;
+            SubmitReadyCommits();
         }
 
         void Confirm(const ui32 step) noexcept
@@ -140,6 +152,23 @@ namespace NTabletFlatExecutor {
         }
 
     private:
+        void SubmitReadyCommits() noexcept
+        {
+            while (!Pending.empty() && !Pending.front()->RedoPending) {
+                auto& commit = *Pending.front();
+                for (auto& prepare : commit.Prepare) {
+                    prepare(commit);
+                }
+                commit.Prepare.clear();
+                StatsAccount(commit);
+                Waste->Account(commit.GcDelta);
+                GcLogic->WriteToLog(commit);
+                TrackCommitTxs(commit);
+                SendCommitEv(commit);
+                Pending.pop_front();
+            }
+        }
+
         void Switch(ui32 step) noexcept
         {
             *Step0 = step;
@@ -192,6 +221,7 @@ namespace NTabletFlatExecutor {
         ui32 Head = 0;          /* Tablet current step, AKA Step0   */
         ui32 *Step0 = nullptr;  /* Compatability for tablet Step0   */
         bool Sync = false;      /* Synchromous commit in progress   */
+        TDeque<TAutoPtr<TLogCommit>> Pending;
         TIntrusivePtr<NSnap::TWaste> Waste;
         ETactic Tactic = ETactic::TacticDefault;
         TGcLogic * const GcLogic = nullptr;

@@ -15,6 +15,7 @@ SRCS(
     flat_exec_broker.cpp
     flat_exec_commit.cpp
     flat_exec_commit_mgr.cpp
+    flat_redo_compression.cpp
     flat_exec_seat.cpp
     flat_executor.cpp
     flat_executor.h

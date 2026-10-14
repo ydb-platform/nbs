@@ -17,6 +17,7 @@
 #include "flat_executor_data_cleanup_logic.h"
 #include "flat_executor_gclogic.h"
 #include "flat_bio_events.h"
+#include "flat_redo_compression.h"
 #include "flat_bio_stats.h"
 #include "flat_fwd_sieve.h"
 #include "flat_sausage_grind.h"
@@ -462,6 +463,7 @@ class TExecutor
     ui64 TransactionUniqCounter = 0;
 
     bool LogBatchFlushScheduled = false;
+    bool LogSnapshotPending = false;
     bool NeedFollowerSnapshot = false;
 
     mutable bool HadRejectProbabilityByTxInFly = false;
@@ -553,6 +555,7 @@ class TExecutor
     void Handle(TEvTablet::TEvDropLease::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvPrivate::TEvLeaseExtend::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvTablet::TEvCommitResult::TPtr &ev, const TActorContext &ctx);
+    void Handle(TEvRedoEncoded::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvPrivate::TEvActivateExecution::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvPrivate::TEvBrokenTransaction::TPtr &ev, const TActorContext &ctx);
     void Handle(TEvents::TEvFlushLog::TPtr &ev);

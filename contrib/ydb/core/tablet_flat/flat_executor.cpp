@@ -443,6 +443,7 @@ void TExecutor::Active(const TActorContext &ctx) {
     Stats->HasSharedBlobs = BorrowLogic->GetHasFlag();
 
     CommitManager->Start(this, Owner->Tablet(), &Step0, Counters.Get());
+    LogicRedo->SetCompressionOwner(SelfId());
 
     CompactionLogic = THolder<TCompactionLogic>(new TCompactionLogic(MemTableMemoryConsumersCollection.Get(), Logger.Get(), Broker.Get(), this, loadedState->Comp,
                                                                      Sprintf("tablet-%" PRIu64, Owner->TabletID())));
@@ -1675,7 +1676,7 @@ void TExecutor::ConfirmReadOnlyLease(std::function<void()> callback) {
 }
 
 bool TExecutor::CanExecuteTransaction() const {
-    return Stats->IsActive && (Stats->IsFollower() || PendingPartSwitches.empty()) && !BrokenTransaction;
+    return Stats->IsActive && (Stats->IsFollower() || PendingPartSwitches.empty()) && !BrokenTransaction && !LogSnapshotPending;
 }
 
 void TExecutor::DoExecute(TAutoPtr<ITransaction> self, bool allowImmediate, const TActorContext &ctx) {
@@ -2208,7 +2209,7 @@ void TExecutor::CommitTransactionLog(TAutoPtr<TSeat> seat, TPageCollectionTxEnv 
             for (auto& snapshot : Scans->Drop(change->Deleted[num])) {
                 ReleaseScanLocks(std::move(snapshot->Barrier), *snapshot->Subset);
             }
-            LogicRedo->CutLog(change->Deleted[num], edge, commit->GcDelta);
+            LogicRedo->CutLog(change->Deleted[num], edge, *commit);
         }
 
         if (auto garbage = std::move(change->Garbage)) {
@@ -2398,14 +2399,10 @@ void TExecutor::CommitTransactionLog(TAutoPtr<TSeat> seat, TPageCollectionTxEnv 
                 proto.SetTableId(partSwitch.TableId);
 
                 {
-                    TGCBlobDelta dummy; /* this isn't real cut log operation */
-
                     auto epoch = Max(loaned->PartComponents.GetEpoch(), NTable::TEpoch::Zero()) + 1;
                     auto stamp = MakeGenStepPair(Generation(), commit->Step);
 
-                    LogicRedo->CutLog(loaned->LocalTableId, { stamp, epoch }, dummy);
-
-                    Y_ABORT_UNLESS(!dummy.Deleted && !dummy.Created);
+                    LogicRedo->CutLog(loaned->LocalTableId, { stamp, epoch }, *commit, false);
 
                     auto *sx = proto.MutableTableSnapshoted();
                     sx->SetTable(loaned->LocalTableId);
@@ -2442,14 +2439,10 @@ void TExecutor::CommitTransactionLog(TAutoPtr<TSeat> seat, TPageCollectionTxEnv 
                 proto.SetTableId(partSwitch.TableId);
 
                 {
-                    TGCBlobDelta dummy; /* this isn't real cut log operation */
-
                     auto epoch = Max(loaned->Epoch, NTable::TEpoch::Zero()) + 1;
                     auto stamp = MakeGenStepPair(Generation(), commit->Step);
 
-                    LogicRedo->CutLog(loaned->LocalTableId, { stamp, epoch }, dummy);
-
-                    Y_ABORT_UNLESS(!dummy.Deleted && !dummy.Created);
+                    LogicRedo->CutLog(loaned->LocalTableId, { stamp, epoch }, *commit, false);
 
                     auto *sx = proto.MutableTableSnapshoted();
                     sx->SetTable(loaned->LocalTableId);
@@ -2572,10 +2565,18 @@ void TExecutor::MakeLogSnapshot() {
     if (!LogicSnap->MayFlush(true) || PendingPartSwitches)
         return;
 
-    NeedFollowerSnapshot = false;
     THPTimer makeLogSnapTimer;
 
     LogicRedo->FlushBatchedLog();
+
+    // A snapshot must include every preceding redo entry and table cut. Pause
+    // transaction activation while the compression workers finish that prefix.
+    if (CommitManager->HasPendingCommits()) {
+        LogSnapshotPending = true;
+        return;
+    }
+    LogSnapshotPending = false;
+    NeedFollowerSnapshot = false;
 
     auto commit = CommitManager->Begin(true, ECommit::Snap, {});
 
@@ -2882,6 +2883,20 @@ void TExecutor::Handle(TEvPrivate::TEvLeaseExtend::TPtr &, const TActorContext &
 
     // Start a new lease extension commit
     EnsureReadOnlyLease(LeaseEnd);
+}
+
+void TExecutor::Handle(TEvRedoEncoded::TPtr &ev, const TActorContext &ctx) {
+    Y_UNUSED(ctx);
+    CommitManager->RedoEncoded(ev->Get()->Step, std::move(ev->Get()->Body));
+    CompactionLogic->UpdateLogUsage(LogicRedo->GrabLogUsage());
+    const bool retrySnapshot = LogSnapshotPending;
+    if (LogSnapshotPending && !CommitManager->HasPendingCommits()) {
+        LogSnapshotPending = false;
+    }
+    if (retrySnapshot || NeedFollowerSnapshot || LogicSnap->MayFlush(false)) {
+        MakeLogSnapshot();
+    }
+    PlanTransactionActivation();
 }
 
 void TExecutor::Handle(TEvTablet::TEvCommitResult::TPtr &ev, const TActorContext &ctx) {
@@ -3353,7 +3368,7 @@ void TExecutor::Handle(NOps::TEvResult *ops, TProdCompact *msg, bool cancelled) 
         // may have no TMemTable inputs, we still want to cut log since it's
         // effectively a snapshot.
         Y_ABORT_UNLESS(msg->Params->Edge.Head > NTable::TEpoch::Zero());
-        LogicRedo->CutLog(tableId, { snapStamp, ops->Subset->Head }, commit->GcDelta);
+        LogicRedo->CutLog(tableId, { snapStamp, ops->Subset->Head }, *commit);
         auto *sx = proto.MutableTableSnapshoted();
         sx->SetTable(tableId);
         sx->SetGeneration(ExpandGenStepPair(snapStamp).first);
@@ -3987,6 +4002,7 @@ STFUNC(TExecutor::StateWork) {
         hFunc(NSharedCache::TEvUpdated, Handle);
         HFunc(TEvTablet::TEvDropLease, Handle);
         HFunc(TEvTablet::TEvCommitResult, Handle);
+        HFunc(TEvRedoEncoded, Handle);
         hFunc(TEvTablet::TEvCheckBlobstorageStatusResult, Handle);
         hFunc(TEvBlobStorage::TEvCollectGarbageResult, Handle);
         HFunc(TEvBlobStorage::TEvGetResult, Handle);

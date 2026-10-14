@@ -4,6 +4,7 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <util/generic/vector.h>
 #include <util/generic/string.h>
+#include <functional>
 
 namespace NKikimr {
 namespace NTabletFlatExecutor {
@@ -59,6 +60,10 @@ namespace NTabletFlatExecutor {
         TGCBlobDelta GcDelta;
         TVector<TEvTablet::TCommitMetadata> Metadata;
         NWilson::TTraceId TraceId;
+        // Prepared and submitted in step order after asynchronous redo encoding.
+        bool RedoPending = false;
+        TString EncodedRedo;
+        TVector<std::function<void(TLogCommit&)>> Prepare;
         TSeat *FirstTx = nullptr;
         TSeat *LastTx = nullptr;
     };

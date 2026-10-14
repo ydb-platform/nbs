@@ -2,6 +2,7 @@
 #include "flat_executor_counters.h"
 #include "flat_exec_seat.h"
 #include "flat_exec_commit_mgr.h"
+#include "flat_redo_compression.h"
 #include "flat_bio_eggs.h"
 #include "logic_redo_batch.h"
 #include "logic_redo_entry.h"
@@ -226,24 +227,33 @@ void TLogicRedo::MakeLogEntry(TLogCommit &commit, TString redo, TArrayRef<const 
     if (redo) {
         NSan::CheckMemIsInitialized(redo.data(), redo.size());
 
-        Cookies->Switch(commit.Step, true /* require step switch */);
+        Y_ABORT_UNLESS(CompressionOwner);
+        Y_ABORT_UNLESS(!commit.RedoPending);
+        commit.RedoPending = true;
+        commit.Prepare.emplace_back([this, tables = TVector<ui32>(affects.begin(), affects.end()), embed](TLogCommit& ready) {
+            MakeEncodedLogEntry(ready, std::move(ready.EncodedRedo), tables, embed);
+        });
+        TActivationContext::Register(CreateRedoCompressionActor(CompressionOwner, commit.Step, std::move(redo)), CompressionOwner);
+    }
+}
 
-        auto coded = NPageCollection::TSlicer::Lz4()->Encode(redo);
+void TLogicRedo::MakeEncodedLogEntry(TLogCommit &commit, TString coded, TArrayRef<const ui32> affects, bool embed)
+{
+    Cookies->Switch(commit.Step, true /* require step switch */);
 
-        Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
+    Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
 
-        if (embed && coded.size() <= MaxSizeToEmbedInLog) {
-            // Note: Encode reserves MaxCompressedLength bytes
-            NUtil::ShrinkToFit(coded);
+    if (embed && coded.size() <= MaxSizeToEmbedInLog) {
+        // Note: Encode reserves MaxCompressedLength bytes
+        NUtil::ShrinkToFit(coded);
 
-            commit.Embedded = std::move(coded);
-            Queue->Push({ Cookies->Gen, commit.Step }, affects, commit.Embedded);
-        } else {
-            auto largeGlobId = Slicer.Do(commit.Refs, std::move(coded), false);
-            largeGlobId.MaterializeTo(commit.GcDelta.Created);
+        commit.Embedded = std::move(coded);
+        Queue->Push({ Cookies->Gen, commit.Step }, affects, commit.Embedded);
+    } else {
+        auto largeGlobId = Slicer.Do(commit.Refs, std::move(coded), false);
+        largeGlobId.MaterializeTo(commit.GcDelta.Created);
 
-            Queue->Push({ Cookies->Gen, commit.Step }, affects, largeGlobId);
-        }
+        Queue->Push({ Cookies->Gen, commit.Step }, affects, largeGlobId);
     }
 }
 
@@ -314,6 +324,7 @@ ui64 TLogicRedo::Confirm(ui32 step, const TActorContext &ctx, const TActorId &ow
 void TLogicRedo::SnapToLog(NKikimrExecutorFlat::TLogSnapshot &snap)
 {
     Y_ABORT_UNLESS(Batch->Commit == nullptr);
+    Y_ABORT_UNLESS(!CommitManager->HasPendingCommits());
 
     Queue->Flush(snap);
 
@@ -327,9 +338,19 @@ void TLogicRedo::SnapToLog(NKikimrExecutorFlat::TLogSnapshot &snap)
     }
 }
 
-void TLogicRedo::CutLog(ui32 table, NTable::TSnapEdge edge, TGCBlobDelta &gc)
+void TLogicRedo::CutLog(ui32 table, NTable::TSnapEdge edge, TLogCommit &commit, bool garbage)
 {
-    Queue->Cut(table, edge, gc);
+    // Earlier redo entries may still be encoding. Apply cuts only after those
+    // entries have been installed, and include deletions in this commit's GC log.
+    commit.Prepare.emplace_back([this, table, edge, garbage](TLogCommit& ready) {
+        if (garbage) {
+            Queue->Cut(table, edge, ready.GcDelta);
+        } else {
+            TGCBlobDelta dummy;
+            Queue->Cut(table, edge, dummy);
+            Y_ABORT_UNLESS(!dummy.Deleted && !dummy.Created);
+        }
+    });
 }
 
 }}

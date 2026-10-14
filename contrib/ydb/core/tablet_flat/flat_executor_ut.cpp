@@ -2,6 +2,7 @@
 #include "flat_executor_ut_common.h"
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/testlib/actors/block_events.h>
+#include <util/generic/algorithm.h>
 
 namespace NKikimr {
 namespace NTabletFlatExecutor {
@@ -641,6 +642,242 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_CompactionScan) {
     }
 }
 
+
+Y_UNIT_TEST_SUITE(TRedoCompression) {
+    struct TTxConfigure : ITransaction {
+        explicit TTxConfigure(bool batching) : Batching(batching) {}
+
+        bool Execute(TTransactionContext& txc, const TActorContext&) override {
+            txc.DB.Alter()
+                .SetExecutorAllowLogBatching(Batching)
+                .SetExecutorLogFlushPeriod(TDuration::Zero());
+            return true;
+        }
+
+        void Complete(const TActorContext& ctx) override {
+            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
+        }
+
+        const bool Batching;
+    };
+
+    struct TTxWrite : ITransaction {
+        TTxWrite(i64 key, TString value) : Key(key), Value(std::move(value)) {}
+
+        bool Execute(TTransactionContext& txc, const TActorContext&) override {
+            const auto key = NScheme::TInt64::TInstance(Key);
+            const auto value = NScheme::TString::TInstance(Value);
+            NTable::TUpdateOp op{TRowsModel::ColumnValueId, NTable::ECellOp::Set, value};
+            txc.DB.Update(TRowsModel::TableId, NTable::ERowOp::Upsert, {key}, {op});
+            return true;
+        }
+
+        void Complete(const TActorContext& ctx) override {
+            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
+        }
+
+        const i64 Key;
+        const TString Value;
+    };
+
+    struct TTxCheck : ITransaction {
+        explicit TTxCheck(TString value) : Value(std::move(value)) {}
+
+        bool Execute(TTransactionContext& txc, const TActorContext&) override {
+            for (i64 id = 1; id <= 2; ++id) {
+                const auto key = NScheme::TInt64::TInstance(id);
+                NTable::TRowState row;
+                auto ready = txc.DB.Select(TRowsModel::TableId, {key}, {TRowsModel::ColumnValueId}, row);
+                if (ready == NTable::EReady::Page) {
+                    return false;
+                }
+                UNIT_ASSERT_VALUES_EQUAL(ready, NTable::EReady::Data);
+                UNIT_ASSERT_VALUES_EQUAL(row.Get(0).AsBuf(), Value);
+            }
+            return true;
+        }
+
+        void Complete(const TActorContext& ctx) override {
+            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
+        }
+
+        const TString Value;
+    };
+
+    void CheckOutOfOrderReplies(bool batching, TString value) {
+        TMyEnvBase env;
+        TRowsModel rows;
+        env.FireDummyTablet();
+        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
+        env.SendSync(new NFake::TEvExecute{new TTxConfigure(batching)});
+
+        TBlockEvents<TEvRedoEncoded> encoded(env.Env);
+        TBlockEvents<TEvTablet::TEvCommit> commits(env.Env);
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(1, value)});
+        env->WaitFor("first compression", [&] { return encoded.size() == 1; });
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(2, value)});
+        env->WaitFor("second compression", [&] { return encoded.size() == 2; });
+
+        auto first = std::move(encoded.front());
+        encoded.pop_front();
+        const auto firstStep = first->Get()->Step;
+        const auto secondStep = encoded.front()->Get()->Step;
+        UNIT_ASSERT(firstStep < secondStep);
+
+        bool secondDelivered = false;
+        auto observer = env->AddObserver<TEvRedoEncoded>([&](auto& ev) {
+            if (ev->Get()->Step == secondStep) {
+                secondDelivered = true;
+            }
+        });
+        encoded.Unblock();
+        env->WaitFor("out of order compression reply", [&] { return secondDelivered; });
+        // The second result cannot submit a commit ahead of the first one.
+        UNIT_ASSERT(commits.empty());
+
+        encoded.push_back(std::move(first));
+        encoded.Stop().Unblock();
+        env->WaitFor("ordered commits", [&] { return commits.size() == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(commits[0]->Get()->Step, firstStep);
+        UNIT_ASSERT_VALUES_EQUAL(commits[1]->Get()->Step, secondStep);
+        if (batching && value.size() < 2048) {
+            UNIT_ASSERT(commits[0]->Get()->EmbeddedLogBody);
+        } else {
+            UNIT_ASSERT(!commits[0]->Get()->References.empty());
+        }
+        commits.Stop().Unblock();
+        env.WaitForWakeUp(2);
+
+        env.RestartTablet();
+        env.SendSync(new NFake::TEvExecute{new TTxCheck(value)}, true);
+    }
+
+    Y_UNIT_TEST(OutOfOrderEmbeddedReplies) {
+        CheckOutOfOrderReplies(true, "value");
+    }
+
+    Y_UNIT_TEST(OutOfOrderForcedReplies) {
+        CheckOutOfOrderReplies(false, "value");
+    }
+
+    Y_UNIT_TEST(OutOfOrderLargeReplies) {
+        TString value(64 * 1024, '\0');
+        ui32 random = 1;
+        for (char& byte : value) {
+            random ^= random << 13;
+            random ^= random >> 17;
+            random ^= random << 5;
+            byte = char(random);
+        }
+        CheckOutOfOrderReplies(true, std::move(value));
+    }
+
+    Y_UNIT_TEST(CompactionWhileEncoding) {
+        TMyEnvBase env;
+        TRowsModel rows;
+        env.FireDummyTablet(ui32(NFake::TDummy::EFlg::Comp));
+        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
+        env.SendSync(new NFake::TEvExecute{new TTxConfigure(false)});
+
+        TBlockEvents<TEvRedoEncoded> encoded(env.Env);
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(1, "value")});
+        env->WaitFor("pending compression", [&] { return encoded.size() == 1; });
+        env.SendSync(new NFake::TEvCompact(TRowsModel::TableId, true));
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(2, "value")});
+        env->WaitFor("second compression", [&] { return encoded.size() == 2; });
+        encoded.Stop().Unblock();
+        env.WaitForWakeUp(2);
+        env.WaitFor<NFake::TEvCompacted>();
+        env.RestartTablet();
+        env.SendSync(new NFake::TEvExecute{new TTxCheck("value")}, true);
+    }
+
+    Y_UNIT_TEST(SnapshotWhileEncoding) {
+        TMyEnvBase env;
+        TRowsModel rows;
+        env.FireDummyTablet();
+        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
+        env.SendSync(new NFake::TEvExecute{new TTxConfigure(false)});
+
+        TBlockEvents<TEvRedoEncoded> encoded(env.Env);
+        TBlockEvents<TEvTablet::TEvCommit> commits(env.Env);
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(1, "value")});
+        env->WaitFor("pending compression", [&] { return encoded.size() == 1; });
+
+        bool snapshotRequested = false;
+        env.SendAsync(new NFake::TEvCall([&](auto* executor, const auto&) {
+            // Exercise the same snapshot request used when a follower attaches.
+            executor->FollowerAttached(0);
+            snapshotRequested = true;
+        }));
+        env->WaitFor("snapshot request", [&] { return snapshotRequested; });
+        UNIT_ASSERT(commits.empty());
+
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(2, "value")});
+        encoded.Stop().Unblock();
+        env->WaitFor("redo, snapshot, and resumed transaction", [&] { return commits.size() == 3; });
+        UNIT_ASSERT(!commits[0]->Get()->IsSnapshot);
+        UNIT_ASSERT(commits[1]->Get()->IsSnapshot);
+        UNIT_ASSERT(!commits[2]->Get()->IsSnapshot);
+        UNIT_ASSERT(commits[0]->Get()->Step < commits[1]->Get()->Step);
+        UNIT_ASSERT(commits[1]->Get()->Step < commits[2]->Get()->Step);
+        commits.Stop().Unblock();
+        env.WaitForWakeUp(2);
+
+        env.RestartTablet();
+        env.SendSync(new NFake::TEvExecute{new TTxCheck("value")}, true);
+    }
+
+    struct TTxDrop : ITransaction {
+        explicit TTxDrop(bool& executed) : Executed(executed) {}
+
+        bool Execute(TTransactionContext& txc, const TActorContext&) override {
+            txc.DB.Alter().DropTable(TRowsModel::TableId);
+            Executed = true;
+            return true;
+        }
+
+        void Complete(const TActorContext& ctx) override {
+            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
+        }
+
+        bool& Executed;
+    };
+
+    Y_UNIT_TEST(DropTableWhileEncoding) {
+        TMyEnvBase env;
+        TRowsModel rows;
+        env.FireDummyTablet();
+        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
+        env.SendSync(new NFake::TEvExecute{new TTxConfigure(false)});
+
+        TBlockEvents<TEvRedoEncoded> encoded(env.Env);
+        TBlockEvents<TEvTablet::TEvCommit> commits(env.Env);
+        env.SendAsync(new NFake::TEvExecute{new TTxWrite(1, "value")});
+        env->WaitFor("pending compression", [&] { return encoded.size() == 1; });
+
+        bool dropped = false;
+        env.SendAsync(new NFake::TEvExecute{new TTxDrop(dropped)});
+        env->WaitFor("drop while encoding", [&] { return dropped; });
+        encoded.Stop().Unblock();
+        env->WaitFor("write and drop commits", [&] { return commits.size() == 2; });
+        UNIT_ASSERT(!commits[0]->Get()->References.empty());
+        const auto redoBlob = commits[0]->Get()->References[0].Id;
+        const auto& deleted = commits[1]->Get()->GcLeft;
+        UNIT_ASSERT(Find(deleted.begin(), deleted.end(), redoBlob) != deleted.end());
+        commits.Stop().Unblock();
+        env.WaitForWakeUp(2);
+
+        env.RestartTablet();
+        bool checked = false;
+        env.SendSync(new NFake::TEvCall([&](auto* executor, const auto& ctx) {
+            UNIT_ASSERT(!executor->Scheme().GetTableInfo(TRowsModel::TableId));
+            checked = true;
+            ctx.Send(env.Edge, new TEvents::TEvWakeup);
+        }), true);
+        UNIT_ASSERT(checked);
+    }
+}
 
 Y_UNIT_TEST_SUITE(TFlatTableExecutor_ExecutorTxLimit) {
 

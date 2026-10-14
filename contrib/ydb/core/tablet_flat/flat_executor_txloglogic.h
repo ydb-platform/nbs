@@ -47,6 +47,9 @@ class TLogicRedo {
 
     TDeque<TCompletionEntry> CompletionQueue; // would be graph once data-dependencies implemented
     ui32 PrevConfirmedStep = 0;
+    TActorId CompressionOwner;
+
+    void MakeEncodedLogEntry(TLogCommit&, TString coded, TArrayRef<const ui32> affects, bool embed);
 
 public:
     struct TCommitRWTransactionResult {
@@ -59,6 +62,7 @@ public:
 
     void Describe(IOutputStream &out) const noexcept;
     void InstallCounters(TExecutorCounters *counters, TTabletCountersWithTxTypes* appTxCounters);
+    void SetCompressionOwner(TActorId owner) { CompressionOwner = owner; }
     bool TerminateTransaction(TAutoPtr<TSeat>, const TActorContext &ctx, const TActorId &ownerId);
     bool CommitROTransaction(TAutoPtr<TSeat> seat, const TActorContext &ownerCtx);
     TCommitRWTransactionResult CommitRWTransaction(TAutoPtr<TSeat> seat, NTable::TChange &change, bool force);
@@ -67,7 +71,7 @@ public:
 
     ui64 Confirm(ui32 step, const TActorContext &ctx, const TActorId &ownerId);
 
-    void CutLog(ui32 table, NTable::TSnapEdge, TGCBlobDelta&);
+    void CutLog(ui32 table, NTable::TSnapEdge, TLogCommit&, bool garbage = true);
     void SnapToLog(NKikimrExecutorFlat::TLogSnapshot&);
     NRedo::TStats LogStats() const noexcept;
     TArrayRef<const NRedo::TUsage> GrabLogUsage() const noexcept;
