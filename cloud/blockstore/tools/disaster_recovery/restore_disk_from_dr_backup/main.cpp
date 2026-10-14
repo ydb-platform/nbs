@@ -49,10 +49,6 @@ class TDiskValidator
 public:
     bool AddDeviceToDisk(const TString& diskId, const TString& deviceUuid);
 
-    static bool ValidateDevice(
-        const NProto::TDeviceConfig& oldDevice,
-        const NProto::TDeviceConfig& newDevice);
-
 private:
     THashMap<TString, TString> DeviceToDisk;
 };
@@ -68,7 +64,7 @@ bool TDiskValidator::AddDeviceToDisk(
     return true;
 }
 
-bool TDiskValidator::ValidateDevice(
+bool ValidateDevice(
     const NProto::TDeviceConfig& oldDevice,
     const NProto::TDeviceConfig& newDevice)
 {
@@ -105,6 +101,17 @@ TDeviceIndex BuildDeviceIndex(const NProto::TDiskRegistryStateBackup& backup)
     TDeviceIndex index;
     for (const auto& agent: backup.GetAgents()) {
         for (const auto& device: agent.GetDevices()) {
+            index.ByUUID.emplace(device.GetDeviceUUID(), &device);
+
+            TPhysicalKey key{
+                .SerialNumber = device.GetSerialNumber(),
+                .PhysicalOffset = device.GetPhysicalOffset()};
+
+            index.ByPhysical.emplace(std::move(key), &device);
+        }
+
+        // TODO: get rid of duplication
+        for (const auto& device: agent.GetUnknownDevices()) {
             index.ByUUID.emplace(device.GetDeviceUUID(), &device);
 
             TPhysicalKey key{
@@ -175,7 +182,7 @@ TVector<NProto::TDeviceConfig> ResolveDiskDevices(
                 << " not found in current backup";
         }
 
-        if (!TDiskValidator::ValidateDevice(**oldDevice, *currentDevice)) {
+        if (!ValidateDevice(**oldDevice, *currentDevice)) {
             ythrow yexception()
                 << "device " << uuid.Quote()
                 << " is inconsistent with device in previous backup";
