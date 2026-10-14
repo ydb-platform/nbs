@@ -979,6 +979,42 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             FormatError(releaseError));
     }
 
+    Y_UNIT_TEST_F(ShouldSkipVfioGroupAcquisitionWhenDisabled, TFixture)
+    {
+        Service->Stop();
+        auto proto = Config->GetConfigProto();
+        proto.SetAcquireVfioGroupOnRelease(false);
+        Config = std::make_shared<TLocalNVMeConfig>(std::move(proto));
+        Service = CreateService();
+        Service->Start();
+
+        SetProviderReady();
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        const auto& device = Devices[0];
+        const auto& pciAddr = device.GetPCIAddress();
+        SysFs->AddrToDriver[pciAddr] = "vfio-pci";
+        SysFs->OpenVfioGroupForPCIDeviceImpl =
+            [](const TString&) -> TFileHandle
+        {
+            UNIT_FAIL("VFIO group acquisition is disabled");
+            return {};
+        };
+
+        auto future = Service->ReleaseNVMeDevice(
+            device.GetSerialNumber(),
+            EmptyIdempotenceId);
+        NVMeManager->WaitSanitizeRequested();
+        NVMeManager->UpdateSanitizeStatus("/dev/nvme0", MakeError(S_OK), 100.0);
+        const auto releaseError = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            releaseError.GetCode(),
+            FormatError(releaseError));
+        UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
+    }
+
     Y_UNIT_TEST_F(ShouldSkipVfioGroupCheckForNVMeDriver, TFixture)
     {
         SetProviderReady();

@@ -23,10 +23,12 @@ Y_UNIT_TEST_SUITE(TLocalNVMeConfigTest)
                 config->GetDevicesSourceUri());
 
             UNIT_ASSERT(!config->GetLockdownConfig());
+            UNIT_ASSERT(config->GetAcquireVfioGroupOnRelease());
         }
 
         const TVector<ui8> allowedAdminOpcodes{1, 2, 3};
         const TVector<ui8> allowedSetFeatureIds{10, 20, 30};
+        proto.SetAcquireVfioGroupOnRelease(false);
 
         {
             auto& lockdownProto = *proto.MutableLockdownConfig();
@@ -47,6 +49,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeConfigTest)
                 config->GetDevicesSourceUri());
 
             auto lockdown = config->GetLockdownConfig();
+            UNIT_ASSERT(!config->GetAcquireVfioGroupOnRelease());
 
             UNIT_ASSERT(lockdown);
 

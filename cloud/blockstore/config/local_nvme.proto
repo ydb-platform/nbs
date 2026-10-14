@@ -40,4 +40,8 @@ message TLocalNVMeConfig {
     // Optional NVMe Lockdown configuration.
     // If not specified, Lockdown is not applied.
     optional TLockdownConfig LockdownConfig = 5;
+
+    // Acquire the VFIO group before rebinding a released device to the nvme driver.
+    // Default: true.
+    optional bool AcquireVfioGroupOnRelease = 6;
 }

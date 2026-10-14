@@ -1409,7 +1409,9 @@ auto TLocalNVMeService::ReleaseDeviceImpl(const TSerialNumber& serialNumber)
         {
             TFileHandle vfioGroup;
             const auto& pciAddr = device->GetPCIAddress();
-            if (SysFs->GetDriverForPCIDevice(pciAddr) == "vfio-pci") {
+            if (Config->GetAcquireVfioGroupOnRelease() &&
+                SysFs->GetDriverForPCIDevice(pciAddr) == "vfio-pci")
+            {
                 vfioGroup = SysFs->OpenVfioGroupForPCIDevice(pciAddr);
             }
 
