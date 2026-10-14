@@ -159,6 +159,20 @@ struct TRawClient
         }
     }
 
+    static bool TryWriteAll(int fd, const void* data, size_t size)
+    {
+        const char* p = static_cast<const char*>(data);
+        while (size) {
+            const auto n = ::send(fd, p, size, MSG_NOSIGNAL);
+            if (n <= 0) {
+                return false;
+            }
+            p += n;
+            size -= n;
+        }
+        return true;
+    }
+
     static bool TryReadAll(int fd, void* data, size_t size)
     {
         char* p = static_cast<char*>(data);
@@ -176,6 +190,24 @@ struct TRawClient
     static void ReadAll(int fd, void* data, size_t size)
     {
         UNIT_ASSERT_C(TryReadAll(fd, data, size), "unexpected eof");
+    }
+
+    // Reads everything the server queued and then expects the end of the
+    // stream; false if it is still open after a few idle seconds.
+    static bool DrainToEof(int fd)
+    {
+        timeval tv{.tv_sec = 3, .tv_usec = 0};
+        ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        char buf[4096];
+        for (;;) {
+            const auto n = ::recv(fd, buf, sizeof(buf), 0);
+            if (n == 0) {
+                return true;
+            }
+            if (n < 0) {
+                return LastSystemError() == ECONNRESET;
+            }
+        }
     }
 
     static bool WaitForEof(int fd)
@@ -204,6 +236,16 @@ struct TRawClient
             WriteAll(DataFd, &dh, sizeof(dh));
             WriteAll(DataFd, data.data(), data.size());
         }
+    }
+
+    bool TrySendRequest(ui64 id, TStringBuf proto)
+    {
+        TFrameHeader h;
+        h.Type = FRAME_REQUEST;
+        h.RequestId = id;
+        h.ProtoLen = proto.size();
+        return TryWriteAll(MainFd, &h, sizeof(h)) &&
+               TryWriteAll(MainFd, proto.data(), proto.size());
     }
 
     struct TResponse
@@ -797,6 +839,74 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         auto r = client.ReadResponse();
         UNIT_ASSERT_VALUES_EQUAL(1u, r.Header.RequestId);
         UNIT_ASSERT(payload == r.Data);
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectWithoutClosingAFastReader, TFixture)
+    {
+        TServerConfig config;
+        config.MaxDataSize = 4 << 20;
+        config.MaxInflightBytes = 1 << 20;
+        StartServer(config);
+        Handler->ResponseSize = 1 << 20;
+
+        TRawClient client;
+        client.RcvBuf = 4096;
+        client.Connect(Port, EOobMode::Auto);
+
+        // every request is admitted on its own tiny size before any response
+        // is queued, so the responses in flight overshoot the limit by far
+        // more than a reply costs; the session must survive that
+        for (ui64 i = 1; i <= 8; ++i) {
+            client.SendRequest(i, "p", {}, false);
+        }
+        size_t responses = 0;
+        for (int i = 0; i < 8; ++i) {
+            if (client.ReadFrameOnly().Header.Type == FRAME_RESPONSE) {
+                ++responses;
+            }
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL(0u, responses);
+
+        // the megabytes queued for a peer that is merely slow are past the
+        // limit now, so the next requests do not fit it - and saying so must
+        // not cost the session
+        for (ui64 i = 9; i <= 11; ++i) {
+            client.SendRequest(i, "p", {}, false);
+            auto frame = client.ReadFrameOnly();
+            UNIT_ASSERT_VALUES_EQUAL(i, frame.Header.RequestId);
+            UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(frame.Header.Type));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                ParseError(frame.Proto).GetCode());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldCloseAPeerHoardingRejections, TFixture)
+    {
+        TServerConfig config;
+        // three rejections fit the budget, the fourth does not
+        config.MaxProtoSize = 1024;
+        config.MaxInflightRequests = 1;
+        StartServer(config);
+        Handler->Hold = true;
+
+        TRawClient client;
+        client.Connect(Port, EOobMode::Auto);
+        client.SendRequest(1, "p", {}, false);
+        WaitForRequests(1);
+
+        bool closed = false;
+        for (ui64 i = 2; i <= 100 && !closed; ++i) {
+            closed = !client.TrySendRequest(i, "p");
+            if (!closed) {
+                Sleep(TDuration::MilliSeconds(2));
+            }
+        }
+        if (!closed) {
+            UNIT_ASSERT_C(
+                TRawClient::DrainToEof(client.MainFd),
+                "the server kept queueing rejections");
+        }
     }
 
     Y_UNIT_TEST_F(ShouldAccountResponseBytes, TFixture)

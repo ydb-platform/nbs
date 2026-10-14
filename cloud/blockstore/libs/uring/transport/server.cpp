@@ -55,13 +55,16 @@ static_assert(offsetof(THello, Role) == offsetof(TDataHello, Role));
 
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(1);
 
+// A queued frame costs more than the bytes it carries: the frame, the chunk
+// the stream holds it by, the head string and the queue slot.
+constexpr ui64 FRAME_OVERHEAD = 256;
+
 // Errors accept(2) reports for the connection it took off the queue, which it
 // tells us to treat as EAGAIN, plus the one a firewall rule produces.
 bool IsPendingConnectionError(int error)
 {
     switch (error) {
         case ECONNABORTED:
-        case EPERM:
         case EPROTO:
         case ENOPROTOOPT:
         case ENETDOWN:
@@ -76,10 +79,13 @@ bool IsPendingConnectionError(int error)
     }
 }
 
+// Conditions that leave the connection on the queue, so accept would keep
+// failing on the same one. EPERM is here because the LSM hook runs before the
+// dequeue, so a standing denial would spin.
 bool IsResourceError(int error)
 {
     return error == EMFILE || error == ENFILE || error == ENOBUFS ||
-           error == ENOMEM;
+           error == ENOMEM || error == EPERM;
 }
 
 struct TSession;
@@ -125,6 +131,11 @@ struct TSession
 
     ui32 InflightRequests = 0;
     ui64 InflightBytes = 0;
+    // Unsent rejections are budgeted apart from InflightBytes: a session that
+    // overshoots the inflight limit with responses it was admitted for must
+    // still be able to say no, and the number of rejections a peer can
+    // provoke must not depend on how much it is being sent.
+    ui64 RejectionBytes = 0;
     THashMap<TServerRequest*, std::unique_ptr<TServerRequest>> Requests;
 
     // Guards the handoff to the ring: once Stopped is set the ring may be
@@ -187,19 +198,15 @@ struct TSession
     void SendErrorFrame(ui64 requestId, ui32 code, TStringBuf message)
     {
         auto payload = SerializeError(code, message);
-        const ui64 bytes = payload.size();
-        // a reply is proto only, so one MaxProtoSize of headroom above the
-        // limit keeps a rejection deliverable while a peer that keeps asking
-        // with a full socket still cannot queue these without a bound
-        if (InflightBytes + bytes >
-            Config->MaxInflightBytes + Config->MaxProtoSize)
-        {
-            Connection->Close(MakeError(
-                E_REJECTED,
-                "inflight limit leaves no room for an error frame"));
+        const ui64 bytes =
+            sizeof(TFrameHeader) + payload.size() + FRAME_OVERHEAD;
+        if (RejectionBytes + bytes > Config->MaxProtoSize) {
+            // the peer keeps asking without reading the answers
+            Connection->Close(
+                MakeError(E_REJECTED, "too many unsent rejections"));
             return;
         }
-        InflightBytes += bytes;
+        RejectionBytes += bytes;
         auto frame = std::make_shared<TOutFrame>();
         frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + payload.size());
         TFrameHeader h;
@@ -209,7 +216,7 @@ struct TSession
         memcpy(frame->Head.begin(), &h, sizeof(h));
         memcpy(frame->Head.begin() + sizeof(h), payload.data(), payload.size());
         frame->OnDone = [self = shared_from_this(), bytes] {
-            self->ReleaseBytes(bytes);
+            self->RejectionBytes -= bytes;
         };
         Connection->Send(std::move(frame));
         Counters->Errors->Inc();
