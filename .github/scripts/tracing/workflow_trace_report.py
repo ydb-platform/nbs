@@ -7,11 +7,13 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Sequence
 
 import boto3
+from github.WorkflowJob import WorkflowJob
 
 from ..helpers import get_jobs, github_client
+from .otlp import Trace
 from .trace_io import (
     MAX_INPUT_BYTES,
     MAX_SPANS,
@@ -76,6 +78,37 @@ def download_s3_trace_inputs(
     return inputs
 
 
+def write_workflow_trace_bundles(
+    *,
+    output_dir: Path,
+    workflow_run: Mapping[str, Any],
+    jobs: Sequence[WorkflowJob],
+    imported: Trace,
+    test_log_url_prefix: str = "",
+    test_data_url_prefix: str = "",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    workflow_only, metadata = build_workflow_trace(workflow_run, jobs, Trace())
+    workflow_only_manifest = write_trace_bundle(
+        output_dir,
+        workflow_only,
+        title=f"Workflow trace · {workflow_run.get('name', 'unknown')}",
+        metadata=metadata,
+        file_prefix="workflow-only-trace",
+    )
+
+    combined, _ = build_workflow_trace(workflow_run, jobs, imported)
+    combined_manifest = write_trace_bundle(
+        output_dir,
+        combined,
+        title=f"Workflow and ya trace · {workflow_run.get('name', 'unknown')}",
+        metadata=metadata,
+        file_prefix="workflow-trace",
+        test_log_url_prefix=test_log_url_prefix,
+        test_data_url_prefix=test_data_url_prefix,
+    )
+    return workflow_only_manifest, combined_manifest
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True, type=Path)
@@ -134,19 +167,18 @@ def main() -> None:
         max_input_bytes=MAX_INPUT_BYTES,
         max_spans=MAX_SPANS,
     )
-    trace, metadata = build_workflow_trace(workflow_run, jobs, imported)
-    manifest = write_trace_bundle(
-        args.output_dir,
-        trace,
-        title=f"Workflow trace · {workflow_run.get('name', 'unknown')}",
-        metadata=metadata,
-        file_prefix="workflow-trace",
+    workflow_only_manifest, combined_manifest = write_workflow_trace_bundles(
+        output_dir=args.output_dir,
+        workflow_run=workflow_run,
+        jobs=jobs,
+        imported=imported,
         test_log_url_prefix=args.test_log_url_prefix,
         test_data_url_prefix=args.test_data_url_prefix,
     )
     print(
-        f"Wrote {manifest['span_count']} spans, including {len(imported)} "
-        f"imported ya spans, to {args.output_dir}"
+        f"Wrote {workflow_only_manifest['span_count']} workflow spans and "
+        f"{combined_manifest['span_count']} combined spans, including "
+        f"{len(imported)} imported ya spans, to {args.output_dir}"
     )
 
 
