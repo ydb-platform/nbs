@@ -37,6 +37,10 @@ struct TOptions
     // the newest one, so the journal on the storage node does not fill
     // up. Zero disables it.
     ui64 AdvanceEvery = 256;
+    // A request failing with a retriable error (E_REJECTED, E_TIMEOUT, ...)
+    // is repeated, a write under the same lsn, until it succeeds or this
+    // long has passed since its first attempt. Zero disables retries.
+    TDuration RetryTimeout = TDuration::Seconds(30);
 
     // Reporting.
     TString Name = "fastshard-loadtest";

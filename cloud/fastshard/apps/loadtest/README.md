@@ -26,7 +26,15 @@ Only built in `OPENSOURCE` builds without `FORCE_FASTSHARD_IPC_STUB`:
    `[0, --page-count)`. Every `--advance-every` written records the lsn
    low watermark is advanced to the newest one, so the journal on the
    storage node does not fill up.
-4. `ReleaseDevices`.
+4. A request that fails with a retriable error (`E_REJECTED` when the
+   journal is full, `E_TIMEOUT`, ...) is repeated after a backoff growing
+   from 1 ms to 100 ms, a write under the same lsn, until it succeeds or
+   `--retry-timeout` elapses. Reads and watermark advances also give up
+   when the run stops; a write keeps retrying past the end of the run,
+   because a rejected record must not be skipped: once a later record
+   lands, the records after the gap can never be chained, so the journal
+   never flushes them and stays full.
+5. `ReleaseDevices`.
 
 ## Options
 
@@ -44,6 +52,8 @@ Only built in `OPENSOURCE` builds without `FORCE_FASTSHARD_IPC_STUB`:
  * `--read-percent` - share of reads, 0..100 (default 0, write-only)
  * `--advance-every` - watermark advance period in records (default 256,
    0 disables)
+ * `--retry-timeout` - seconds to keep retrying a request that fails
+   with a retriable error (default 30, 0 disables retries)
  * `--name` - test name in the results
  * `--results` - write the JSON results to a file instead of stdout
  * `--report-interval` - print progress to stderr every N seconds
@@ -54,10 +64,16 @@ Only built in `OPENSOURCE` builds without `FORCE_FASTSHARD_IPC_STUB`:
 A one-line summary per action goes to stderr:
 
 ```
-WriteLogRecord: 48213 ok, 0 errors, 4821.3 req/s, 18.83 MB/s, latency us: p50 189 p90 240 p99 412 max 2210
-ReadPages: 48007 ok, 0 errors, 4800.7 req/s, 18.75 MB/s, latency us: p50 171 p90 221 p99 380 max 1902
-AdvanceLsnLowWatermark: 188 ok, 0 errors, 18.8 req/s, 0.00 MB/s, latency us: p50 120 p90 150 p99 200 max 240
+WriteLogRecord: 48213 ok, 0 errors, 37 retries, 4821.3 req/s, 18.83 MB/s, latency us: mean 196 p50 189 p90 240 p99 412 max 2210
+ReadPages: 48007 ok, 0 errors, 0 retries, 4800.7 req/s, 18.75 MB/s, latency us: mean 178 p50 171 p90 221 p99 380 max 1902
+AdvanceLsnLowWatermark: 188 ok, 0 errors, 0 retries, 18.8 req/s, 0.00 MB/s, latency us: mean 124 p50 120 p90 150 p99 200 max 240
 ```
+
+`ok` counts the requests that succeeded, `retries` the retriable failures
+that were followed by another attempt. The latency of a retried request
+is that of its last attempt alone, so backoffs do not show in the
+percentiles, and `req/s` counts successes only: a run that spends its
+time retrying shows up as a throughput drop and a high retry count.
 
 The results go to stdout (or `--results`) as a `TTestStats` JSON
 document: per action `Count`, `RequestBytes` and a `Latency` block with

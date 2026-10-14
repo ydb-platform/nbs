@@ -106,6 +106,16 @@ void TOptions::Parse(int argc, const char* argv[])
         .DefaultValue(AdvanceEvery)
         .StoreResult(&AdvanceEvery);
 
+    ui64 retrySeconds = RetryTimeout.Seconds();
+    opts.AddLongOption(
+            "retry-timeout",
+            "keep retrying a request that fails with a retriable error "
+            "(E_REJECTED, E_TIMEOUT, ...) for up to NUM seconds (0 disables "
+            "retries)")
+        .RequiredArgument("NUM")
+        .DefaultValue(retrySeconds)
+        .StoreResult(&retrySeconds);
+
     opts.AddLongOption("name", "test name in the results")
         .RequiredArgument("STR")
         .DefaultValue(Name)
@@ -133,6 +143,7 @@ void TOptions::Parse(int argc, const char* argv[])
 
     Duration = TDuration::Seconds(durationSeconds);
     ReportInterval = TDuration::Seconds(reportSeconds);
+    RetryTimeout = TDuration::Seconds(retrySeconds);
 
     if (!Port) {
         ythrow TUsageException() << "--port is required";
