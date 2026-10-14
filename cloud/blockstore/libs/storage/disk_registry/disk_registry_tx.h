@@ -67,7 +67,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
-    xxx(RestoreDiskFromBackup,              __VA_ARGS__)                       \
+    xxx(RemapDiskDevices,                   __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1314,28 +1314,25 @@ struct TTxDiskRegistry
     };
 
     //
-    // RestoreDiskFromBackup
+    // RemapDiskDevices
     //
-    
-    struct TRestoreDiskFromBackup
+
+    struct TRemapDiskDevices
     {
         const TRequestInfoPtr RequestInfo;
 
         const TString DiskId;
-        const TString SourceDeviceId;
-        const TString TargetDeviceId;
+        const TVector<TString> newDevices;
 
         NProto::TError Error;
 
-        TRestoreDiskFromBackup(
-                TRequestInfoPtr requestInfo,
-                TString diskId,
-                TString sourceDeviceId,
-                TString targetDeviceId)
+        TRemapDiskDevices(
+            TRequestInfoPtr requestInfo,
+            TString diskId,
+            TVector<TString> newDevices)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
-            , SourceDeviceId(std::move(sourceDeviceId))
-            , TargetDeviceId(std::move(targetDeviceId))
+            , newDevices(std::move(newDevices))
         {}
 
         void Clear()

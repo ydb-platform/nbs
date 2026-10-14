@@ -386,7 +386,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateRestoreDiskFromBackupActionActor(
+    TResultOrError<NActors::IActorPtr> CreateRemapDiskDevicesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

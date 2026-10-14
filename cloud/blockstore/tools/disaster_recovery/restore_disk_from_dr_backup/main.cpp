@@ -148,21 +148,22 @@ TVector<NProto::TDeviceConfig> ResolveDiskDevices(
 
 // TODO: Validate disk, validate devices (?)
 
-NProto::TRestoreDiskFromBackupRequest BuildRequest(
+NProto::TRemapDiskDevicesRequest BuildRequest(
+
     const NProto::TDiskConfig& oldDisk,
     const TVector<NProto::TDeviceConfig>& newDevices)
 {
-    NProto::TRestoreDiskFromBackupRequest request;
+    NProto::TRemapDiskDevicesRequest request;
     request.SetDiskId(oldDisk.GetDiskId());
 
     for (const auto& device: newDevices) {
-        *request.AddDevices() = device;
+        *request.AddDevices() = device.GetDeviceUUID();
     }
     return request;
 }
 
 void DumpRequest(
-    const NProto::TRestoreDiskFromBackupRequest& request,
+    const NProto::TRemapDiskDevicesRequest& request,
     const TOptions& options)
 {
     TProtoStringType json;

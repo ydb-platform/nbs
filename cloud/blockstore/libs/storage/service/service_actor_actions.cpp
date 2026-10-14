@@ -102,7 +102,7 @@ void TServiceActor::HandleExecuteAction(
         {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },
         {"acquirenvmedevice",                 &TServiceActor::CreateAcquireNVMeDeviceActor                 },
         {"releasenvmedevice",                 &TServiceActor::CreateReleaseNVMeDeviceActor                 },
-        {"restorediskfrombackup",             &TServiceActor::CreateRestoreDiskFromBackupActionActor       },
+        {"remapdiskdevices",                  &TServiceActor::CreateRemapDiskDevicesActionActor            },
     };
 
     NProto::TError error;

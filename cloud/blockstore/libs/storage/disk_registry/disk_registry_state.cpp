@@ -9077,6 +9077,18 @@ bool TDiskRegistryState::IsDeviceDetached(
     return NStorage::IsDeviceDetached(*agent, device);
 }
 
+NProto::TError TDiskRegistryState::RemapDiskDevices(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    const TVector<TDeviceId>& newDevices)
+{
+    Y_UNUSED(db);
+    Y_UNUSED(diskId);
+    Y_UNUSED(newDevices);
+
+    return {};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError TDiskRegistryState::UpdateVolumeHealth(

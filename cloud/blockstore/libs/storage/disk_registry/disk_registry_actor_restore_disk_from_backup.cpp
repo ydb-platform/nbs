@@ -11,18 +11,18 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::HandleRestoreDiskFromBackup(
-    const TEvDiskRegistry::TEvRestoreDiskFromBackupRequest::TPtr& ev,
+void TDiskRegistryActor::HandleRemapDiskDevices(
+    const TEvDiskRegistry::TEvRemapDiskDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(ev);
 }
 
-bool TDiskRegistryActor::PrepareRestoreDiskFromBackup(
+bool TDiskRegistryActor::PrepareRemapDiskDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRestoreDiskFromBackup& args)
+    TTxDiskRegistry::TRemapDiskDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
@@ -31,19 +31,19 @@ bool TDiskRegistryActor::PrepareRestoreDiskFromBackup(
     return true;
 }
 
-void TDiskRegistryActor::ExecuteRestoreDiskFromBackup(
+void TDiskRegistryActor::ExecuteRemapDiskDevices(
     const TActorContext& ctx,
     TTransactionContext& tx,
-    TTxDiskRegistry::TRestoreDiskFromBackup& args)
+    TTxDiskRegistry::TRemapDiskDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
     Y_UNUSED(args);
 }
 
-void TDiskRegistryActor::CompleteRestoreDiskFromBackup(
+void TDiskRegistryActor::CompleteRemapDiskDevices(
     const TActorContext& ctx,
-    TTxDiskRegistry::TRestoreDiskFromBackup& args)
+    TTxDiskRegistry::TRemapDiskDevices& args)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);

@@ -57,7 +57,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
     xxx(EnsureDiskRegistryStateIntegrity,   __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
-    xxx(RestoreDiskFromBackup,              __VA_ARGS__)                       \
+    xxx(RemapDiskDevices,                   __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -229,8 +229,8 @@ struct TEvDiskRegistry
         EvUpdateVolumeHealthRequest = EvBegin + 83,
         EvUpdateVolumeHealthResponse = EvBegin + 84,
 
-        EvRestoreDiskFromBackupRequest = EvBegin + 85,
-        EvRestoreDiskFromBackupResponse = EvBegin + 86,
+        EvRemapDiskDevicesRequest = EvBegin + 85,
+        EvRemapDiskDevicesResponse = EvBegin + 86,
 
         EvEnd
     };

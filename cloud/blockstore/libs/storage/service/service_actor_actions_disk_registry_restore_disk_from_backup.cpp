@@ -25,15 +25,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRestoreDiskFromBackupActor final
-    : public TActorBootstrapped<TRestoreDiskFromBackupActor>
+class TRemapDiskDevicesActor final
+    : public TActorBootstrapped<TRemapDiskDevicesActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     TString Input;
 
 public:
-    TRestoreDiskFromBackupActor(TRequestInfoPtr requestInfo, TString input);
+    TRemapDiskDevicesActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -43,24 +43,24 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleRestoreDiskFromBackupResponse(
-        const TEvDiskRegistry::TEvRestoreDiskFromBackupResponse::TPtr& ev,
+    void HandleRemapDiskDevicesResponse(
+        const TEvDiskRegistry::TEvRemapDiskDevicesResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRestoreDiskFromBackupActor::TRestoreDiskFromBackupActor(
+TRemapDiskDevicesActor::TRemapDiskDevicesActor(
     TRequestInfoPtr requestInfo,
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TRestoreDiskFromBackupActor::Bootstrap(const TActorContext& ctx)
+void TRemapDiskDevicesActor::Bootstrap(const TActorContext& ctx)
 {
     auto request =
-        std::make_unique<TEvDiskRegistry::TEvRestoreDiskFromBackupRequest>();
+        std::make_unique<TEvDiskRegistry::TEvRemapDiskDevicesRequest>();
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
              .ok())
@@ -74,14 +74,14 @@ void TRestoreDiskFromBackupActor::Bootstrap(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TRestoreDiskFromBackupActor::ReplyAndDie(
+void TRemapDiskDevicesActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
     google::protobuf::util::MessageToJsonString(
-        NProto::TRestoreDiskFromBackupResponse(),
+        NProto::TRemapDiskDevicesResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
@@ -96,8 +96,8 @@ void TRestoreDiskFromBackupActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TRestoreDiskFromBackupActor::HandleRestoreDiskFromBackupResponse(
-    const TEvDiskRegistry::TEvRestoreDiskFromBackupResponse::TPtr& ev,
+void TRemapDiskDevicesActor::HandleRemapDiskDevicesResponse(
+    const TEvDiskRegistry::TEvRemapDiskDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->GetError());
@@ -105,12 +105,12 @@ void TRestoreDiskFromBackupActor::HandleRestoreDiskFromBackupResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TRestoreDiskFromBackupActor::StateWork)
+STFUNC(TRemapDiskDevicesActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvDiskRegistry::TEvRestoreDiskFromBackupResponse,
-            HandleRestoreDiskFromBackupResponse);
+            TEvDiskRegistry::TEvRemapDiskDevicesResponse,
+            HandleRemapDiskDevicesResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -125,11 +125,11 @@ STFUNC(TRestoreDiskFromBackupActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateRestoreDiskFromBackupActionActor(
+TResultOrError<IActorPtr> TServiceActor::CreateRemapDiskDevicesActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TRestoreDiskFromBackupActor>(
+    return {std::make_unique<TRemapDiskDevicesActor>(
         std::move(requestInfo),
         std::move(input))};
 }
