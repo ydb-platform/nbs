@@ -29,6 +29,8 @@
 #include <utility>
 
 #include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -243,7 +245,8 @@ struct TSession
         sink.Target = raw->DataSgList();
         sink.OnDone = [this, raw](const NProto::TError& error) {
             if (HasError(error)) {
-                Release(raw);
+                ReleaseBytes(RequestBytes(raw));
+                ReleaseSlot(raw);
                 return;
             }
             Counters->OobBytes->Add(raw->DataLen);
@@ -281,11 +284,24 @@ struct TSession
         Y_UNUSED(self);
     }
 
-    void Release(TServerRequest* raw)
+    static ui64 RequestBytes(const TServerRequest* raw)
     {
-        InflightBytes -= raw->Proto.size() + raw->DataLen;
+        return raw->Proto.size() + raw->DataLen;
+    }
+
+    // The handler is done with the request, but the bytes it was admitted for
+    // stay accounted until the kernel is done with the response they went
+    // into: a peer that stops reading would otherwise free an admission slot
+    // per response while the send queue grows without a bound.
+    void ReleaseSlot(TServerRequest* raw)
+    {
         --InflightRequests;
         Requests.erase(raw);
+    }
+
+    void ReleaseBytes(ui64 bytes)
+    {
+        InflightBytes -= bytes;
     }
 
     void Answer(
@@ -299,6 +315,7 @@ struct TSession
             delete raw;
             return;
         }
+        const ui64 bytes = RequestBytes(raw);
         auto frame = std::make_shared<TOutFrame>();
         frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + proto.size());
         TFrameHeader h;
@@ -308,19 +325,60 @@ struct TSession
         memcpy(frame->Head.begin(), &h, sizeof(h));
         memcpy(frame->Head.begin() + sizeof(h), proto.data(), proto.size());
         frame->Data = std::move(data);
-        frame->OnDone = [owner = std::move(owner)]() mutable { owner.reset(); };
+        frame->OnDone =
+            [owner = std::move(owner), self = shared_from_this(), bytes]() mutable
+            {
+                owner.reset();
+                self->ReleaseBytes(bytes);
+            };
         Connection->Send(std::move(frame));
-        Release(raw);
+        ReleaseSlot(raw);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// The peer's address without its port: the two sockets of one client come
+// from different ephemeral ports but the same address.
+struct TPeerAddress
+{
+    bool Known = false;
+    ui16 Family = AF_UNSPEC;
+    std::array<char, 16> Bytes{};
+
+    bool operator==(const TPeerAddress& other) const = default;
+};
+
+TPeerAddress GetPeerAddress(int fd)
+{
+    sockaddr_storage addr{};
+    socklen_t len = sizeof(addr);
+    if (::getpeername(fd, reinterpret_cast<sockaddr*>(&addr), &len) < 0) {
+        return {};
+    }
+    TPeerAddress peer;
+    peer.Known = true;
+    peer.Family = addr.ss_family;
+    if (addr.ss_family == AF_INET) {
+        memcpy(
+            peer.Bytes.data(),
+            &reinterpret_cast<sockaddr_in*>(&addr)->sin_addr,
+            sizeof(in_addr));
+    } else if (addr.ss_family == AF_INET6) {
+        memcpy(
+            peer.Bytes.data(),
+            &reinterpret_cast<sockaddr_in6*>(&addr)->sin6_addr,
+            sizeof(in6_addr));
+    }
+    return peer;
+}
 
 struct TPendingSession
 {
     int MainFd = -1;
     TInstant Deadline;
     TConnectionParams Params;
+    TPeerAddress Peer;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,13 +400,13 @@ private:
 
     TVector<std::unique_ptr<TRing>>& Rings;
     const TServerConfigPtr Config;
-    const IServerHandlerPtr Handler;
     const TCountersPtr Counters;
     TLog Log;
 
     // ring 0 only
     int ListenFd = -1;
     TIoOp* AcceptOp = nullptr;
+    bool AcceptStalled = false;
     size_t NextRing = 0;
     THashMap<ui64, TPendingSession> Tokens;
     THashMap<int, std::unique_ptr<THandshake>> Handshakes;
@@ -358,6 +416,10 @@ private:
     std::atomic<bool> Stopped = false;
 
     TAdaptiveLock SessionLock;
+    // Dropped once the sessions are drained, which breaks the cycle with a
+    // handler holding this endpoint. A weak handle instead would let the
+    // handler lose the only way to release a ctx it still owns.
+    IServerHandlerPtr Handler;
     THashMap<TSession*, std::weak_ptr<TSession>> Sessions;
     NThreading::TPromise<void> SessionsDrained;
 
@@ -370,9 +432,9 @@ public:
             TLog log)
         : Rings(rings)
         , Config(std::move(config))
-        , Handler(std::move(handler))
         , Counters(std::move(counters))
         , Log(std::move(log))
+        , Handler(std::move(handler))
     {}
 
     NProto::TError Listen(const TString& host, ui32 port)
@@ -421,7 +483,7 @@ public:
         ring->Execute([this, ring, tornDown]() mutable {
             TornDown = std::move(tornDown);
             ring->RemoveTickable(this);
-            if (AcceptOp) {
+            if (AcceptOp && AcceptOp->InFlight) {
                 ring->Cancel(AcceptOp);
             } else {
                 CloseListener();
@@ -456,6 +518,12 @@ public:
         }
         if (drained.Initialized()) {
             drained.GetFuture().GetValueSync();
+        }
+
+        IServerHandlerPtr handler;
+        with_lock (SessionLock) {
+            handler = std::move(Handler);
+            Handler = nullptr;
         }
     }
 
@@ -523,6 +591,11 @@ public:
                 fds.push_back(fd);
             }
         }
+        if (AcceptStalled && ListenFd >= 0 && AcceptOp) {
+            AcceptStalled = false;
+            Rings[0]->Accept(AcceptOp, ListenFd);
+        }
+
         for (int fd: fds) {
             STORAGE_WARN("handshake timed out, closing the socket");
             auto& handshake = GetHandshake(fd);
@@ -549,8 +622,20 @@ private:
         if (res >= 0) {
             StartHandshake(res);
         } else if (res == -ECONNABORTED) {
-            // the peer gave up before the handshake; keep accepting
+            // the peer gave up before the handshake; its rate is bounded by
+            // the peer's SYN rate, so re-arming at once cannot spin
             STORAGE_WARN("accept: connection aborted");
+        } else if (
+            res == -EMFILE || res == -ENFILE || res == -ENOBUFS ||
+            res == -ENOMEM)
+        {
+            // accept would keep failing at once while the resource is gone,
+            // so the next tick re-arms instead of spinning the ring
+            STORAGE_ERROR(
+                "accept failed, retrying on the next tick: "
+                << FormatError(MakeSystemError(-res, "accept")));
+            AcceptStalled = true;
+            return;
         } else {
             STORAGE_ERROR(
                 "accept failed, no longer listening: "
@@ -648,6 +733,12 @@ private:
 
     void OnPrefix(int fd)
     {
+        if (Stopped) {
+            // arming another receive here would outlive the barrier that has
+            // already cancelled what it could see
+            DropHandshake(fd);
+            return;
+        }
         auto& handshake = GetHandshake(fd);
         ui32 magic = 0;
         ui8 role = 0;
@@ -707,6 +798,10 @@ private:
 
     void OnHello(int fd)
     {
+        if (Stopped) {
+            DropHandshake(fd);
+            return;
+        }
         THello hello;
         memcpy(&hello, GetHandshake(fd).Buffer.data(), sizeof(hello));
 
@@ -768,6 +863,7 @@ private:
                 .MainFd = fd,
                 .Deadline = TInstant::Now() + Config->DataTokenTtl,
                 .Params = params,
+                .Peer = GetPeerAddress(fd),
             };
         });
     }
@@ -775,7 +871,11 @@ private:
     void OnDataHello(int fd, const TDataHello& hello)
     {
         auto it = Tokens.find(hello.DataToken);
-        if (hello.Version != PROTOCOL_VERSION || it == Tokens.end()) {
+        // a token guessed by an off-path peer must not attach its data stream
+        // to somebody else's main socket
+        const bool samePeer =
+            it != Tokens.end() && it->second.Peer == GetPeerAddress(fd);
+        if (hello.Version != PROTOCOL_VERSION || !samePeer) {
             STORAGE_WARN(
                 "rejecting a data socket: version " << hello.Version
                 << ", token " << hello.DataToken);
@@ -823,20 +923,22 @@ private:
     void StartSession(int mainFd, int dataFd, const TConnectionParams& params)
     {
         auto& ring = *Rings[NextRing++ % Rings.size()];
-        auto session = std::make_shared<TSession>(
-            ring,
-            Handler,
-            Config,
-            Counters,
-            Log,
-            mainFd,
-            dataFd);
-        session->Unregister = [weak = weak_from_this(), raw = session.get()] {
-            if (auto self = weak.lock()) {
-                self->ForgetSession(raw);
-            }
-        };
+        TSessionPtr session;
         with_lock (SessionLock) {
+            Y_ABORT_UNLESS(Handler, "starting a session without a handler");
+            session = std::make_shared<TSession>(
+                ring,
+                Handler,
+                Config,
+                Counters,
+                Log,
+                mainFd,
+                dataFd);
+            session->Unregister = [weak = weak_from_this(), raw = session.get()] {
+                if (auto self = weak.lock()) {
+                    self->ForgetSession(raw);
+                }
+            };
             Sessions[session.get()] = session;
         }
         ring.Execute([session, params] {
@@ -936,17 +1038,19 @@ public:
             Rings.push_back(std::move(ring));
         }
         Counters->SendZeroCopySupported->Set(Rings[0]->SendZeroCopySupported());
-        Started = true;
+        with_lock (Lock) {
+            Started = true;
+        }
     }
 
     void Stop() override
     {
-        if (!Started) {
-            return;
-        }
-        Started = false;
         TVector<std::shared_ptr<TServerEndpoint>> endpoints;
         with_lock (Lock) {
+            if (!Started) {
+                return;
+            }
+            Started = false;
             endpoints = Endpoints;
         }
         // the endpoints own every connection, so they go first
@@ -963,19 +1067,23 @@ public:
         ui32 port,
         IServerHandlerPtr handler) override
     {
-        if (!Started) {
-            return MakeError(E_INVALID_STATE, "server is not started");
-        }
-        auto endpoint = std::make_shared<TServerEndpoint>(
-            Rings,
-            Config,
-            std::move(handler),
-            Counters,
-            Log);
-        if (auto error = endpoint->Listen(host, port); HasError(error)) {
-            return error;
-        }
+        // the whole body is under the lock: an endpoint that armed its accept
+        // after Stop() took its snapshot would never be stopped, and the ring
+        // would wait for that accept forever
+        std::shared_ptr<TServerEndpoint> endpoint;
         with_lock (Lock) {
+            if (!Started) {
+                return MakeError(E_INVALID_STATE, "server is not started");
+            }
+            endpoint = std::make_shared<TServerEndpoint>(
+                Rings,
+                Config,
+                std::move(handler),
+                Counters,
+                Log);
+            if (auto error = endpoint->Listen(host, port); HasError(error)) {
+                return error;
+            }
             Endpoints.push_back(endpoint);
         }
         return IServerEndpointPtr(endpoint);

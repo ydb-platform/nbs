@@ -72,11 +72,12 @@ struct TRawClient
     int MainFd = -1;
     int DataFd = -1;
     ui32 OobThreshold = 128 << 10;
+    int RcvBuf = 0;
     TWelcome Welcome;
 
     void SendHello(ui16 port, EOobMode oobMode)
     {
-        MainFd = Dial(port);
+        MainFd = Dial(port, RcvBuf);
         THello hello;
         hello.OobMode = ToWire(oobMode);
         hello.MaxProtoSize = 64 << 10;
@@ -93,7 +94,7 @@ struct TRawClient
 
     void OpenData(ui16 port)
     {
-        DataFd = Dial(port);
+        DataFd = Dial(port, RcvBuf);
         TDataHello dh;
         dh.DataToken = Welcome.DataToken;
         WriteAll(DataFd, &dh, sizeof(dh));
@@ -125,10 +126,13 @@ struct TRawClient
         Disconnect();
     }
 
-    static int Dial(ui16 port)
+    static int Dial(ui16 port, int rcvBuf = 0)
     {
         int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
         UNIT_ASSERT(fd >= 0);
+        if (rcvBuf) {
+            ::setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvBuf, sizeof(rcvBuf));
+        }
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
@@ -204,13 +208,20 @@ struct TRawClient
         TString Data;
     };
 
-    TResponse ReadResponse()
+    // the frame off the main stream, leaving an out-of-band payload unread
+    TResponse ReadFrameOnly()
     {
         TResponse r;
         ReadAll(MainFd, &r.Header, sizeof(r.Header));
         UNIT_ASSERT_VALUES_EQUAL(MAGIC, r.Header.Magic);
         r.Proto = TString::Uninitialized(r.Header.ProtoLen);
         ReadAll(MainFd, r.Proto.begin(), r.Proto.size());
+        return r;
+    }
+
+    TResponse ReadResponse()
+    {
+        TResponse r = ReadFrameOnly();
         if (r.Header.DataLen) {
             r.Data = TString::Uninitialized(r.Header.DataLen);
             if (r.Header.Flags & FLAG_INLINE) {
@@ -295,8 +306,6 @@ struct TFixture: public NUnitTest::TBaseFixture
         for (void* ctx: held) {
             Endpoint->SendResponse(ctx, {}, {}, nullptr);
         }
-        // the handler holds the endpoint and the endpoint holds the handler
-        Handler->Endpoint.reset();
     }
 };
 
@@ -692,6 +701,93 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         });
         client.Disconnect();
         answerer.join();
+    }
+
+    Y_UNIT_TEST_F(ShouldStopWithPrefixOnlyHandshakes, TFixture)
+    {
+        StartServer();
+        TVector<int> fds;
+        for (int i = 0; i < 8; ++i) {
+            int fd = TRawClient::Dial(Port);
+            THello hello;
+            // the role byte says a main socket, so the server waits for the
+            // rest of THello that never comes
+            TRawClient::WriteAll(fd, &hello, sizeof(TDataHello));
+            fds.push_back(fd);
+        }
+        Server->Stop();
+        for (int fd: fds) {
+            UNIT_ASSERT(TRawClient::WaitForEof(fd));
+            CloseSocket(fd);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldAccountInflightBytesUntilTheKernelIsDone, TFixture)
+    {
+        TServerConfig config;
+        config.MaxDataSize = 4 << 20;
+        config.MaxInflightBytes = 1536 << 10;
+        StartServer(config);
+
+        TRawClient client;
+        client.RcvBuf = 4096;
+        client.Connect(Port, EOobMode::Auto);
+
+        auto payload = Pattern(1 << 20, 11);
+        client.SendRequest(1, "p", payload, true);
+        // the response header arrives on the main stream, but its payload is
+        // stuck on the data stream the client does not read
+        auto first = client.ReadFrameOnly();
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_RESPONSE), ui32(first.Header.Type));
+        UNIT_ASSERT_VALUES_EQUAL(1u, first.Header.RequestId);
+
+        client.SendRequest(2, "p", payload, true);
+        auto second = client.ReadFrameOnly();
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(second.Header.Type));
+        UNIT_ASSERT_VALUES_EQUAL(2u, second.Header.RequestId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ParseError(second.Proto).GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectDataSocketFromAnotherAddress, TFixture)
+    {
+        StartServer();
+        TRawClient client;
+        client.Connect(Port, EOobMode::Auto, false);
+        UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_OK), ui32(client.Welcome.Status));
+
+        int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        UNIT_ASSERT(fd >= 0);
+        sockaddr_in local{};
+        local.sin_family = AF_INET;
+        local.sin_addr.s_addr = htonl(INADDR_LOOPBACK + 1);
+        UNIT_ASSERT_C(
+            ::bind(fd, reinterpret_cast<sockaddr*>(&local), sizeof(local)) == 0,
+            LastSystemErrorText());
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(Port);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        UNIT_ASSERT_C(
+            ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0,
+            LastSystemErrorText());
+
+        TDataHello dh;
+        dh.DataToken = client.Welcome.DataToken;
+        TRawClient::WriteAll(fd, &dh, sizeof(dh));
+        TDataWelcome dw{};
+        TRawClient::ReadAll(fd, &dw, sizeof(dw));
+        UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_BAD_TOKEN), ui32(dw.Status));
+        CloseSocket(fd);
+
+        // the token was not spent, so the client's own data socket still pairs
+        client.OpenData(Port);
+        auto payload = Pattern(1 << 20, 12);
+        client.SendRequest(1, "p", payload, true);
+        auto r = client.ReadResponse();
+        UNIT_ASSERT_VALUES_EQUAL(1u, r.Header.RequestId);
+        UNIT_ASSERT(payload == r.Data);
     }
 }
 
