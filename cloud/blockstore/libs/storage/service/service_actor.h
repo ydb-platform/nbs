@@ -382,7 +382,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateMirroredDiskFromDevicesActionActor(
+    TResultOrError<NActors::IActorPtr> CreateCreateMirroredDiskFromDevicesActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

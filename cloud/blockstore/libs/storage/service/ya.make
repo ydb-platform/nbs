@@ -16,6 +16,7 @@ SRCS(
     service_actor_actions_compact_range.cpp
     service_actor_actions_configure_volume_balancer.cpp
     service_actor_actions_create_disk_from_devices.cpp
+    service_actor_actions_create_mirrored_disk_from_devices.cpp
     service_actor_actions_delete_checkpoint_data.cpp
     service_actor_actions_describe_blob.cpp
     service_actor_actions_describe_blocks.cpp
@@ -23,7 +24,6 @@ SRCS(
     service_actor_actions_disk_registry_change_state.cpp
     service_actor_actions_disk_registry_describe_disk.cpp
     service_actor_actions_disk_registry_ensure_state_integrity.cpp
-    service_actor_actions_disk_registry_remap_disk_devices.cpp
     service_actor_actions_drain_node.cpp
     service_actor_actions_finish_fill_disk.cpp
     service_actor_actions_flush_profile_log.cpp

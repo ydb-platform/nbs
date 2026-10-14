@@ -80,6 +80,7 @@ void TServiceActor::HandleExecuteAction(
         {"updateusedblocks",                  &TServiceActor::CreateUpdateUsedBlocksActionActor            },
         {"getdiskregistrytabletinfo",         &TServiceActor::CreateGetDiskRegistryTabletInfo              },
         {"creatediskfromdevices",             &TServiceActor::CreateCreateDiskFromDevicesActionActor       },
+        {"createmirroreddiskfromdevices",     &TServiceActor::CreateCreateMirroredDiskFromDevicesActor     },
         {"changediskdevice",                  &TServiceActor::CreateChangeDiskDeviceActionActor            },
         {"setupchannels",                     &TServiceActor::CreateSetupChannelsActionActor               },
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },
@@ -102,7 +103,6 @@ void TServiceActor::HandleExecuteAction(
         {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },
         {"acquirenvmedevice",                 &TServiceActor::CreateAcquireNVMeDeviceActor                 },
         {"releasenvmedevice",                 &TServiceActor::CreateReleaseNVMeDeviceActor                 },
-        {"createmirroreddiskfromdevices",     &TServiceActor::CreateMirroredDiskFromDevicesActionActor     },
     };
 
     NProto::TError error;

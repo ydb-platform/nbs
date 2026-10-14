@@ -125,7 +125,7 @@ STFUNC(TCreateMirroredDiskFromDevicesActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateMirroredDiskFromDevicesActionActor(
+TResultOrError<IActorPtr> TServiceActor::CreateCreateMirroredDiskFromDevicesActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {

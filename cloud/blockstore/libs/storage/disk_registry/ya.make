@@ -17,6 +17,7 @@ SRCS(
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
     disk_registry_actor_create_disk_from_devices.cpp
+    disk_registry_actor_create_mirrored_disk_from_devices.cpp
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_ensure_state_integrity.cpp
@@ -46,7 +47,6 @@ SRCS(
     disk_registry_actor_register.cpp
     disk_registry_actor_regular.cpp
     disk_registry_actor_release.cpp
-    disk_registry_actor_remap_disk_devices.cpp
     disk_registry_actor_replace_devices.cpp
     disk_registry_actor_replace.cpp
     disk_registry_actor_restore_state.cpp
