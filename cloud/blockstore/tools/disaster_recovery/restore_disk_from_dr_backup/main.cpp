@@ -44,6 +44,40 @@ struct TDeviceIndex
         ByPhysical;
 };
 
+class TDiskValidator
+{
+public:
+    bool AddDeviceToDisk(const TString& diskId, const TString& deviceUuid);
+
+    static bool ValidateDevice(
+        const NProto::TDeviceConfig& oldDevice,
+        const NProto::TDeviceConfig& newDevice);
+
+private:
+    THashMap<TString, TString> DeviceToDisk;
+};
+
+bool TDiskValidator::AddDeviceToDisk(
+    const TString& diskId,
+    const TString& deviceUuid)
+{
+    if (DeviceToDisk.contains(deviceUuid)) {
+        return false;
+    }
+    DeviceToDisk.emplace(deviceUuid, diskId);
+    return true;
+}
+
+bool TDiskValidator::ValidateDevice(
+    const NProto::TDeviceConfig& oldDevice,
+    const NProto::TDeviceConfig& newDevice)
+{
+    return oldDevice.GetSerialNumber() == newDevice.GetSerialNumber() &&
+           oldDevice.GetPhysicalOffset() == newDevice.GetPhysicalOffset() &&
+           oldDevice.GetPoolKind() == newDevice.GetPoolKind() &&
+           oldDevice.GetBlockSize() == newDevice.GetBlockSize();
+}
+
 TString ReadFile(const TString& filePath)
 {
     TFile file(filePath, EOpenModeFlag::RdOnly);
@@ -87,14 +121,14 @@ TDeviceIndex BuildDeviceIndex(const NProto::TDiskRegistryStateBackup& backup)
 THashMap<TString, const NProto::TDiskConfig*> BuildDiskIdToConfig(
     const NProto::TDiskRegistryStateBackup& backup)
 {
-    THashMap<TString, const NProto::TDiskConfig*> idToConfig;
-    idToConfig.reserve(backup.GetDisks().size());
+    THashMap<TString, const NProto::TDiskConfig*> diskIdToConfig;
+    diskIdToConfig.reserve(backup.GetDisks().size());
 
     for (const auto& disk: backup.GetDisks()) {
-        idToConfig.emplace(disk.GetDiskId(), &disk);
+        diskIdToConfig.emplace(disk.GetDiskId(), &disk);
     }
 
-    return idToConfig;
+    return diskIdToConfig;
 }
 
 const NProto::TDeviceConfig* ResolveDevice(
@@ -115,7 +149,8 @@ const NProto::TDeviceConfig* ResolveDevice(
 TVector<NProto::TDeviceConfig> ResolveDiskDevices(
     const NProto::TDiskConfig& oldDisk,
     const TDeviceIndex& oldIndex,
-    const TDeviceIndex& currentIndex)
+    const TDeviceIndex& currentIndex,
+    TDiskValidator& validator)
 {
     if (oldDisk.DeviceUUIDsSize() == 0) {
         ythrow yexception() << "disk has no devices in old backup";
@@ -138,6 +173,17 @@ TVector<NProto::TDeviceConfig> ResolveDiskDevices(
                 << (*oldDevice) -> GetSerialNumber().Quote()
                 << " and physical offset " << (*oldDevice)->GetPhysicalOffset()
                 << " not found in current backup";
+        }
+
+        if (!TDiskValidator::ValidateDevice(**oldDevice, *currentDevice)) {
+            ythrow yexception()
+                << "device " << uuid.Quote()
+                << " is inconsistent with device in previous backup";
+        }
+
+        if (!validator.AddDeviceToDisk(oldDisk.GetDiskId(), uuid)) {
+            ythrow yexception() << "device " << uuid.Quote()
+                                << " already exists on other disk ";
         }
 
         devices.push_back(*currentDevice);
@@ -198,18 +244,19 @@ void Run(const TOptions& options)
     auto currentBackup = LoadBackup(options.CurrentBackupPath);
     TDeviceIndex currentIndex = BuildDeviceIndex(currentBackup);
 
-    THashMap<TString, const NProto::TDiskConfig*> oldIdToConfig =
+    THashMap<TString, const NProto::TDiskConfig*> oldDiskIdToConfig =
         BuildDiskIdToConfig(oldBackup);
 
+    TDiskValidator validator;
+
     for (const auto& diskId: options.DiskIds) {
-        const auto* oldDisk = oldIdToConfig.FindPtr(diskId);
+        const auto* oldDisk = oldDiskIdToConfig.FindPtr(diskId);
         if (!oldDisk) {
             ythrow yexception() << "disk not found in old backup";
         }
-        // TODO: process failed disks (?)
 
         const auto devices =
-            ResolveDiskDevices(**oldDisk, oldIndex, currentIndex);
+            ResolveDiskDevices(**oldDisk, oldIndex, currentIndex, validator);
 
         DumpRequest(BuildRequest(**oldDisk, devices), options);
     }
