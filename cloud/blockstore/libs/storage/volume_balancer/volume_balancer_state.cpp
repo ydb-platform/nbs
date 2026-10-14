@@ -273,12 +273,11 @@ bool TVolumeBalancerState::IsVolumePreemptible(
     const TString& diskId,
     const TVolumeInfo& volume) const
 {
-    const bool isFeatureEnabledForFolder = StorageConfig->IsBalancerFeatureEnabled(
-        volume.CloudId,
-        volume.FolderId,
-        diskId);
-
-    const bool balancerEnabled = isFeatureEnabledForFolder || GetEnabled();
+    const bool isFeatureEnabledForFolder =
+        StorageConfig->IsBalancerFeatureEnabled(
+            volume.CloudId,
+            volume.FolderId,
+            diskId);
 
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else
@@ -287,10 +286,8 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         (volume.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) &&
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
-    return volume.IsLocal &&
-        balancerEnabled &&
-        isSuitableMediaKind &&
-        !VolumesInProgress.count(diskId);
+    return volume.IsLocal && isFeatureEnabledForFolder && isSuitableMediaKind &&
+           !VolumesInProgress.count(diskId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
