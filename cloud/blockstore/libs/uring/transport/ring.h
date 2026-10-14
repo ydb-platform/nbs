@@ -116,6 +116,9 @@ public:
     void Accept(TIoOp* op, int fd);
     void Cancel(TIoOp* target);
 
+    // RemoveTickable takes effect immediately, including from inside an
+    // OnTick: a tickable that removes itself or another one will not be called
+    // again in that sweep.
     void AddTickable(ITickable* t);
     void RemoveTickable(ITickable* t);
 

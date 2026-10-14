@@ -124,6 +124,27 @@ struct TTcpFixture: public TFixture
     }
 };
 
+struct TRemovingTicker: public ITickable
+{
+    TRing& Ring;
+    ITickable* Victim;
+    std::atomic<int> Ticks = 0;
+
+    TRemovingTicker(TRing& ring, ITickable* victim)
+        : Ring(ring)
+        , Victim(victim)
+    {}
+
+    void OnTick(TInstant) override
+    {
+        ++Ticks;
+        if (Victim) {
+            Ring.RemoveTickable(Victim);
+            Victim = nullptr;
+        }
+    }
+};
+
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TUringRingTest)
@@ -382,6 +403,25 @@ Y_UNIT_TEST_SUITE(TUringRingTest)
             Ring->FreeOp(op);
             return Ring->InFlightOps();
         }));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotTickTickableRemovedDuringTick, TFixture)
+    {
+        TTicker victim;
+        TRemovingTicker remover(*Ring, &victim);
+
+        OnRing([&] {
+            Ring->AddTickable(&remover);
+            Ring->AddTickable(&victim);
+            return 0;
+        });
+        const auto deadline = TInstant::Now() + TDuration::Seconds(3);
+        while (remover.Ticks < 3 && TInstant::Now() < deadline) {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(remover.Ticks >= 3);
+        UNIT_ASSERT_VALUES_EQUAL(0, victim.Ticks.load());
+        OnRing([&] { Ring->RemoveTickable(&remover); return 0; });
     }
 }
 

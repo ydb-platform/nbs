@@ -6,6 +6,7 @@
 
 #include <util/system/yassert.h>
 
+#include <algorithm>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -248,7 +249,11 @@ void TRing::Dispatch()
                         ArmTimer();
                         const auto now = TInstant::Now();
                         for (auto* t: TVector<ITickable*>(Tickables)) {
-                            t->OnTick(now);
+                            if (std::find(Tickables.begin(), Tickables.end(), t) !=
+                                Tickables.end())
+                            {
+                                t->OnTick(now);
+                            }
                         }
                     }
                     break;
