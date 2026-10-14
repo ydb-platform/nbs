@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    mount_registry.cpp
     rdma_protocol.cpp
     rdma_target.cpp
 )
