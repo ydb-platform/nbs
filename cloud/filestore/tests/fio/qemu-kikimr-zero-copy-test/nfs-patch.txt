@@ -1,6 +1,6 @@
 ZeroCopyWriteEnabled: true
 ThreeStageWriteEnabled: true
 UnalignedThreeStageWriteEnabled: true
-
 ZeroCopyReadEnabled: true
 TwoStageReadEnabled: true
+EnableRdmaForWrites: true
