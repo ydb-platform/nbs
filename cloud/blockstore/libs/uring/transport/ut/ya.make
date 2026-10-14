@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     config_ut.cpp
+    protocol_ut.cpp
 )
 
 PEERDIR(
