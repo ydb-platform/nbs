@@ -44,6 +44,17 @@ ADAPTER_METRICS_REQUESTS_PUBLIC(DECLARE_UPDATE_ADAPTER_METRICS, TEvService)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TResponse>
+void AugmentResponse(TResponse& responseProto)
+{
+    Y_UNUSED(responseProto);
+}
+
+void AugmentResponse(NProtoPrivate::TCreateSessionResponse& responseProto)
+{
+    responseProto.SetAdapterModeEnabled(true);
+}
+
 template <typename TMethod>
 void OnResponse(
     TActorSystem* actorSystem,
@@ -60,6 +71,7 @@ void OnResponse(
     ui64 requestBytes,
     typename TMethod::TResponse::ProtoRecordType responseProto)
 {
+    AugmentResponse(responseProto);
     auto response =
         std::make_unique<typename TMethod::TResponse>(std::move(responseProto));
 

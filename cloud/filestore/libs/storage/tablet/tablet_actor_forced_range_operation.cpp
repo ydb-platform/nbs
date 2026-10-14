@@ -264,35 +264,18 @@ using TDeleteRangesWithEmptyScoreActor = TForcedOperationActor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
-    const TActorContext& ctx)
-{
-    if (IsForcedRangeOperationRunning()) {
-        return;
-    }
-
-    auto pendingRequest = DequeueForcedRangeOperation();
-    if (!pendingRequest) {
-        return;
-    }
-
-    auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
-            std::move(pendingRequest->Ranges),
-            pendingRequest->Mode,
-            std::move(pendingRequest->OperationId));
-    ctx.Send(ctx.SelfID, request.release());
-}
-
 void TIndexTabletActor::HandleForcedRangeOperation(
     const TEvIndexTabletPrivate::TEvForcedRangeOperationRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation request for %lu ranges",
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s ForcedRangeOperation request mode=%u for %lu ranges",
         LogTag.c_str(),
+        msg->Mode,
         msg->Ranges.size());
 
     auto replyError = [&](const NProto::TError& error)
@@ -322,13 +305,11 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         EnqueueForcedRangeOperation(
             msg->Mode,
             std::move(msg->Ranges),
@@ -336,7 +317,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         return;
     }
 
-    StartForcedRangeOperation(
+    // always returns valid state after the previous check
+    const auto* state = StartForcedRangeOperation(
         msg->Mode,
         std::move(msg->Ranges),
         std::move(msg->OperationId));
@@ -349,7 +331,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
 
@@ -358,20 +340,18 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
-        case TEvIndexTabletPrivate::EForcedRangeOperationMode::DeleteZeroCompactionRanges:
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::
+            DeleteZeroCompactionRanges:
             actor = std::make_unique<TDeleteRangesWithEmptyScoreActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                *GetForcedRangeOperationState(),
+                *state,
                 std::move(requestInfo));
             break;
-
-        default:
-            TABLET_VERIFY_C(false, "unexpected forced compaction mode");
     }
 
     auto actorId = ctx.Register(actor.release());
@@ -383,16 +363,7 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation completed (%s)",
-        LogTag.c_str(),
-        FormatError(msg->GetError()).c_str());
-
-    TABLET_VERIFY(IsForcedRangeOperationRunning());
-    WorkerActors.erase(ev->Sender);
-
-    CompleteForcedRangeOperation(msg->GetError());
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    HandleForcedOperationCompletedImpl(ev->Sender, msg->GetError(), ctx);
 }
 
 void TIndexTabletActor::HandleForcedRangeOperationProgress(
@@ -401,7 +372,7 @@ void TIndexTabletActor::HandleForcedRangeOperationProgress(
 {
     Y_UNUSED(ctx);
 
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         UpdateForcedRangeOperationProgress(ev->Get()->Current);
     }
 }

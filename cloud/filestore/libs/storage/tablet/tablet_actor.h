@@ -367,11 +367,26 @@ private:
         const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueForcedOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedRangeOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedTabletOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    void HandleForcedOperationCompletedImpl(
+        const NActors::TActorId& sender,
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
 
     void AddInFlightRequest(
         TRequestInfo& requestInfo,
