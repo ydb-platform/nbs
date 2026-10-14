@@ -28,7 +28,7 @@ TOptions::TOptions(int argc, char** argv)
         .Help(
             "Comma-separated list of disk IDs to restore");
 
-    opts.AddLongOption("output-dir")    
+    opts.AddLongOption("output-dir")
         .RequiredArgument("STR")
         .StoreResult(&OutputDir)
         .Help(
