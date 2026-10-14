@@ -1,15 +1,9 @@
 #include "options.h"
 
-#include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
-
-#include <cloud/storage/core/libs/common/format.h>
 
 #include <util/digest/multi.h>
 #include <util/folder/path.h>
-#include <util/generic/hash.h>
-#include <util/generic/map.h>
-#include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
 
@@ -199,8 +193,19 @@ TVector<NProto::TDeviceConfig> ResolveDiskDevices(
     return devices;
 }
 
-NProto::TCreateDiskFromDevicesRequest BuildRequest(
+bool IsMirroredDisk(const NProto::TDiskConfig& disk)
+{
+    const auto kind = disk.GetStorageMediaKind();
+    return kind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+           kind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3;
+}
 
+TString BuildReplicaId(const TString& diskId, ui32 replicaIndex)
+{
+    return TStringBuilder() << diskId << "/" << replicaIndex;
+}
+
+NProto::TCreateDiskFromDevicesRequest BuildNonreplicatedDiskRequest(
     const NProto::TDiskConfig& oldDisk,
     const TVector<NProto::TDeviceConfig>& newDevices)
 {
@@ -220,16 +225,42 @@ NProto::TCreateDiskFromDevicesRequest BuildRequest(
     return request;
 }
 
+NProto::TCreateMirroredDiskFromDevicesRequest BuildMirroredDiskRequest(
+    const NProto::TDiskConfig& oldMaster,
+    const TVector<TVector<NProto::TDeviceConfig>>& replicas)
+{
+    NProto::TCreateMirroredDiskFromDevicesRequest request;
+
+    auto& volumeConfig = *request.MutableVolumeConfig();
+
+    volumeConfig.SetDiskId(oldMaster.GetDiskId());
+    volumeConfig.SetBlockSize(oldMaster.GetBlockSize());
+    volumeConfig.SetStorageMediaKind(oldMaster.GetStorageMediaKind());
+
+    request.SetForce(true);
+
+    for (const auto& replicaDevices: replicas) {
+        auto& replica = *request.AddReplicas();
+        for (const auto& device: replicaDevices) {
+            *replica.AddDevices() = device;
+        }
+    }
+
+    return request;
+}
+
+template <typename TRequest>
 void DumpRequest(
-    const NProto::TCreateDiskFromDevicesRequest& request,
+    const TRequest& request,
+    const TString& diskId,
     const TOptions& options)
 {
     TProtoStringType json;
     auto status = google::protobuf::util::MessageToJsonString(request, &json);
     if (!status.ok()) {
         ythrow yexception()
-            << "Error serializing request for disk "
-            << request.GetVolumeConfig().GetDiskId().Quote() << " error: " << status.ToString();
+            << "Error serializing request for disk " << diskId.Quote()
+            << " error: " << status.ToString();
     }
 
     if (!options.OutputDir) {
@@ -240,12 +271,11 @@ void DumpRequest(
     const TFsPath outputDir(options.OutputDir);
     outputDir.MkDirs();
 
-    const TFsPath outputPath = outputDir / (request.GetVolumeConfig().GetDiskId() + ".json");
+    const TFsPath outputPath = outputDir / (diskId + ".json");
     TFileOutput(outputPath).Write(json);
 
-    Cout << "Disk " << request.GetVolumeConfig().GetDiskId().Quote() << " dumped to "
-         << outputPath.GetPath().Quote()
-         << ", devices count: " << request.GetDevices().size() << Endl;
+    Cout << "Disk " << diskId.Quote() << " dumped to "
+         << outputPath.GetPath().Quote();
 }
 
 void Run(const TOptions& options)
@@ -267,10 +297,39 @@ void Run(const TOptions& options)
             ythrow yexception() << "disk not found in old backup";
         }
 
-        const auto devices =
-            ResolveDiskDevices(**oldDisk, oldIndex, currentIndex, validator);
+        const auto& disk = **oldDisk;
 
-        DumpRequest(BuildRequest(**oldDisk, devices), options);
+        if (!IsMirroredDisk(disk)) {
+            const auto devices =
+                ResolveDiskDevices(disk, oldIndex, currentIndex, validator);
+
+            DumpRequest(
+                BuildNonreplicatedDiskRequest(disk, devices),
+                diskId,
+                options);
+            continue;
+        }
+
+        TVector<TVector<NProto::TDeviceConfig>> replicas;
+        replicas.reserve(disk.GetReplicaCount() + 1);
+
+        for (ui32 i = 0; i <= disk.GetReplicaCount(); ++i) {
+            const auto replicaId = BuildReplicaId(diskId, i);
+            const auto* replica = oldDiskIdToConfig.FindPtr(replicaId);
+            if (!replica) {
+                ythrow yexception() << "replica " << replicaId.Quote()
+                                    << " not found in old backup";
+            }
+
+            auto devices = ResolveDiskDevices(
+                **replica,
+                oldIndex,
+                currentIndex,
+                validator);
+            replicas.push_back(std::move(devices));
+        }
+
+        DumpRequest(BuildMirroredDiskRequest(disk, replicas), diskId, options);
     }
 }
 
