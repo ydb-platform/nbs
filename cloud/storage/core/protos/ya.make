@@ -21,6 +21,7 @@ SRCS(
     tablet.proto
     throttler.proto
     trace.proto
+    uring.proto
 )
 
 END()

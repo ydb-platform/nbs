@@ -40,6 +40,7 @@ RECURSE(
     storage/perf
     storage/protos
     throttling
+    uring
     validation
     vhost
     ydbstats

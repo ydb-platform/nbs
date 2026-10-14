@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EUringOobMode
+{
+    URING_OOB_AUTO = 0;
+    URING_OOB_OFF = 1;
+    URING_OOB_REQUIRED = 2;
+}
+
+enum EUringSendZeroCopyMode
+{
+    URING_SEND_ZC_AUTO = 0;
+    URING_SEND_ZC_OFF = 1;
+    URING_SEND_ZC_REQUIRED = 2;
+}
+
+message TUringClient
+{
+    uint32 IoThreads = 1;
+    uint32 QueueSize = 2;
+    uint32 MaxInflightRequests = 3;
+    uint64 MaxInflightBytes = 4;
+    uint32 MaxProtoSize = 5;
+    uint32 MaxDataSize = 6;
+    uint32 SendWindowBytes = 7;
+    EUringOobMode OobMode = 8;
+    uint32 OobThreshold = 9;
+    EUringSendZeroCopyMode SendZeroCopyMode = 10;
+    uint32 SendZeroCopyThreshold = 11;
+    optional bool DirectSgIoEnabled = 12;
+    uint64 MaxResponseDelay = 13;     // ms
+    uint64 MaxReconnectDelay = 14;    // ms
+    uint64 TcpUserTimeout = 15;       // ms
+    uint64 KeepAliveIdle = 16;        // ms
+    uint64 KeepAliveInterval = 17;    // ms
+    uint32 KeepAliveCount = 18;
+}
+
+message TUringServer
+{
+    uint32 IoThreads = 1;
+    uint32 QueueSize = 2;
+    uint32 MaxInflightRequests = 3;   // per session
+    uint64 MaxInflightBytes = 4;      // per session
+    uint32 MaxProtoSize = 5;
+    uint32 MaxDataSize = 6;
+    uint32 SendWindowBytes = 7;
+    EUringOobMode OobMode = 8;
+    uint32 OobThreshold = 9;
+    EUringSendZeroCopyMode SendZeroCopyMode = 10;
+    uint32 SendZeroCopyThreshold = 11;
+    optional bool DirectSgIoEnabled = 12;
+    uint32 Backlog = 13;
+    uint64 DataTokenTtl = 14;         // ms
+    uint64 TcpUserTimeout = 15;       // ms
+    uint64 KeepAliveIdle = 16;        // ms
+    uint64 KeepAliveInterval = 17;    // ms
+    uint32 KeepAliveCount = 18;
+}
