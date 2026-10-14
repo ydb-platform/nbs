@@ -7,6 +7,7 @@ SRCS(
     connection_ut.cpp
     protocol_ut.cpp
     ring_ut.cpp
+    server_ut.cpp
     socket_ut.cpp
 )
 

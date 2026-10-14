@@ -6,6 +6,7 @@ SRCS(
     config.cpp
     connection.cpp
     ring.cpp
+    server.cpp
     socket.cpp
 )
 
