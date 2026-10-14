@@ -199,24 +199,29 @@ TVector<NProto::TDeviceConfig> ResolveDiskDevices(
     return devices;
 }
 
-// TODO: Validate disk, validate devices (?)
-
-NProto::TRemapDiskDevicesRequest BuildRequest(
+NProto::TCreateDiskFromDevicesRequest BuildRequest(
 
     const NProto::TDiskConfig& oldDisk,
     const TVector<NProto::TDeviceConfig>& newDevices)
 {
-    NProto::TRemapDiskDevicesRequest request;
-    request.SetDiskId(oldDisk.GetDiskId());
+    NProto::TCreateDiskFromDevicesRequest request;
+
+    ::NKikimrBlockStore::TVolumeConfig volumeConfig;
+    volumeConfig.SetDiskId(oldDisk.GetDiskId());
+    volumeConfig.SetBlockSize(oldDisk.GetBlockSize());
+    volumeConfig.SetStorageMediaKind(oldDisk.GetStorageMediaKind());
+
+    request.MutableVolumeConfig()->CopyFrom(volumeConfig);
+    request.SetForce(true);
 
     for (const auto& device: newDevices) {
-        *request.AddDevices() = device.GetDeviceUUID();
+        *request.AddDevices() = device;
     }
     return request;
 }
 
 void DumpRequest(
-    const NProto::TRemapDiskDevicesRequest& request,
+    const NProto::TCreateDiskFromDevicesRequest& request,
     const TOptions& options)
 {
     TProtoStringType json;
@@ -224,7 +229,7 @@ void DumpRequest(
     if (!status.ok()) {
         ythrow yexception()
             << "Error serializing request for disk "
-            << request.GetDiskId().Quote() << " error: " << status.ToString();
+            << request.GetVolumeConfig().GetDiskId().Quote() << " error: " << status.ToString();
     }
 
     if (!options.OutputDir) {
@@ -235,10 +240,10 @@ void DumpRequest(
     const TFsPath outputDir(options.OutputDir);
     outputDir.MkDirs();
 
-    const TFsPath outputPath = outputDir / (request.GetDiskId() + ".json");
+    const TFsPath outputPath = outputDir / (request.GetVolumeConfig().GetDiskId() + ".json");
     TFileOutput(outputPath).Write(json);
 
-    Cout << "Disk " << request.GetDiskId().Quote() << " dumped to "
+    Cout << "Disk " << request.GetVolumeConfig().GetDiskId().Quote() << " dumped to "
          << outputPath.GetPath().Quote()
          << ", devices count: " << request.GetDevices().size() << Endl;
 }
