@@ -9,6 +9,8 @@
 
 #include <util/network/socket.h>
 
+#include <atomic>
+
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -75,6 +77,7 @@ struct TTestHandler: public IConnectionHandler
     TPromise<void> FrameArrived = NewPromise();
     TPromise<NProto::TError> Closed = NewPromise<NProto::TError>();
     TVector<NProto::TError> SinkResults;
+    size_t ClosedCount = 0;
 
     void OnFrame(const TFrameHeader& h, TStringBuf proto, TStringBuf data) override
     {
@@ -107,6 +110,7 @@ struct TTestHandler: public IConnectionHandler
 
     void OnConnectionClosed(const NProto::TError& error) override
     {
+        ++ClosedCount;
         Closed.TrySetValue(error);
     }
 
@@ -234,6 +238,57 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
     }
 
+    // Queues more than the sockets can take with nobody reading them, closes
+    // the connection with sends still in flight and checks that every frame is
+    // released exactly once.
+    void CheckCloseWithQueuedSends(bool zc)
+    {
+        Main.SetSmallBuffers();
+        Data.SetSmallBuffers();
+        auto params = Params(true, 0, zc);
+        OnRing([&] {
+            ConnA = std::make_unique<TConnection>(
+                *Ring, params, Main.Client, Data.Client, &A,
+                Logging->CreateLog("A"));
+            ConnA->Start();
+            return 0;
+        });
+
+        // the sockets take a few of these and leave the rest queued
+        constexpr ui64 count = 8;
+        auto payload = Pattern(128 << 10, 11);
+        std::atomic<size_t> released = 0;
+        OnRing([&] {
+            for (ui64 id = 1; id <= count; ++id) {
+                ConnA->Send(MakeFrame(
+                    id,
+                    "bye",
+                    {TBlockDataRef{payload.data(), payload.size()}},
+                    [&] { ++released; }));
+            }
+            return 0;
+        });
+        Sleep(TDuration::MilliSeconds(100));
+        if (zc) {
+            // the peer does not read, so none of these bytes can be
+            // acknowledged, the kernel still holds every zero-copy page and no
+            // frame may be reported as sent yet
+            UNIT_ASSERT_VALUES_EQUAL(0u, released.load());
+        }
+
+        OnRing([&] {
+            ConnA->Close(MakeError(E_REJECTED, "closing with sends queued"));
+            return 0;
+        });
+        // the peer is still there and still not reading: closing must not
+        // wait for it to drain the zero-copy pages it holds
+        auto error = A.Closed.GetFuture().GetValue(TDuration::Seconds(10));
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(count, released.load());
+        UNIT_ASSERT_VALUES_EQUAL(1u, OnRing([&] { return A.ClosedCount; }));
+        ::close(Main.Server);
+        ::close(Data.Server);
+    }
 };
 
 }   // namespace
@@ -452,6 +507,125 @@ Y_UNIT_TEST_SUITE(TUringConnectionTest)
         ::close(Main.Client);
     }
 
+    Y_UNIT_TEST_F(ShouldPickOobByThreshold, TFixture)
+    {
+        Connect(Params(true, 4096));
+        auto below = Pattern(4095, 7);
+        auto atThreshold = Pattern(4096, 8);
+        OnRing([&] {
+            ConnA->Send(MakeFrame(1, "below", {TBlockDataRef{below.data(), below.size()}}));
+            ConnA->Send(MakeFrame(2, "at", {TBlockDataRef{atThreshold.data(), atThreshold.size()}}));
+            return 0;
+        });
+        WaitFrame(B, 2);
+        auto frames = OnRing([&] { return B.Frames; });
+        UNIT_ASSERT_VALUES_EQUAL(2u, frames.size());
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FLAG_INLINE), ui32(frames[0].Header.Flags));
+        UNIT_ASSERT(below == frames[0].Data);
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FLAG_OOB), ui32(frames[1].Header.Flags));
+        UNIT_ASSERT(atThreshold == frames[1].Data);
+    }
+
+    Y_UNIT_TEST_F(ShouldParseFrameArrivingByteByByte, TFixture)
+    {
+        OnRing([&] {
+            ConnB = std::make_unique<TConnection>(
+                *Ring, Params(false), Main.Server, -1, &B, Logging->CreateLog("B"));
+            ConnB->Start();
+            return 0;
+        });
+        auto payload = Pattern(100, 9);
+        TFrameHeader h;
+        h.Type = FRAME_RESPONSE;
+        h.Flags = FLAG_INLINE;
+        h.RequestId = 42;
+        h.ProtoLen = 5;
+        h.DataLen = payload.size();
+        TString wire(reinterpret_cast<const char*>(&h), sizeof(h));
+        wire += "proto";
+        wire += payload;
+        for (char c: wire) {
+            UNIT_ASSERT(::send(Main.Client, &c, 1, MSG_NOSIGNAL) == 1);
+        }
+        WaitFrame(B, 1);
+        auto f = OnRing([&] { return B.Frames[0]; });
+        UNIT_ASSERT_VALUES_EQUAL(42u, f.Header.RequestId);
+        UNIT_ASSERT_VALUES_EQUAL("proto", f.Proto);
+        UNIT_ASSERT(payload == f.Data);
+        ::close(Main.Client);
+    }
+
+    Y_UNIT_TEST_F(ShouldGrowRecvBufferForLargeInlineFrame, TFixture)
+    {
+        Connect(Params(false));   // OOB off, so the payload goes inline
+        auto payload = Pattern(200000, 10);
+        OnRing([&] {
+            ConnA->Send(MakeFrame(1, "inline", {TBlockDataRef{payload.data(), payload.size()}}));
+            return 0;
+        });
+        WaitFrame(B, 1);
+        auto f = OnRing([&] { return B.Frames[0]; });
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FLAG_INLINE), ui32(f.Header.Flags));
+        UNIT_ASSERT(payload == f.Data);
+    }
+
+    // Many queued chunks and a socket too small for them: send completions
+    // land in the middle of a chunk and have to carry over to the next ones.
+    Y_UNIT_TEST_F(ShouldPipelineManyFrames, TFixture)
+    {
+        Main.SetSmallBuffers();
+        Connect(Params(false));
+        constexpr size_t count = 500;
+        TVector<TString> payloads;
+        TVector<TString> protos;
+        for (size_t i = 0; i < count; ++i) {
+            payloads.push_back(Pattern(i % 300 + 1, i));
+            protos.push_back(Pattern(i % 17 + 1, i + 3));
+        }
+        OnRing([&] {
+            for (size_t i = 0; i < count; ++i) {
+                ConnA->Send(MakeFrame(
+                    i + 1,
+                    protos[i],
+                    {TBlockDataRef{payloads[i].data(), payloads[i].size()}}));
+            }
+            return 0;
+        });
+        WaitFrame(B, count);
+        auto frames = OnRing([&] { return B.Frames; });
+        UNIT_ASSERT_VALUES_EQUAL(count, frames.size());
+        for (size_t i = 0; i < count; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, frames[i].Header.RequestId);
+            UNIT_ASSERT(protos[i] == frames[i].Proto);
+            UNIT_ASSERT(payloads[i] == frames[i].Data);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRunOnDoneWhenSendingWhileClosing, TFixture)
+    {
+        Connect(Params(false));
+        size_t calls = 0;
+        auto frame = MakeFrame(1, "late", {}, [&] { ++calls; });
+        UNIT_ASSERT_VALUES_EQUAL(1u, OnRing([&] {
+            ConnA->Close(MakeError(E_REJECTED, "closed before send"));
+            ConnA->Send(frame);
+            return calls;
+        }));
+        // the caller still holds the frame, and dropping it must not run
+        // OnDone a second time
+        frame.reset();
+        UNIT_ASSERT_VALUES_EQUAL(1u, calls);
+    }
+
+    Y_UNIT_TEST_F(ShouldReleaseQueuedFramesOnClose, TFixture)
+    {
+        CheckCloseWithQueuedSends(false);
+    }
+
+    Y_UNIT_TEST_F(ShouldReleaseQueuedZeroCopyFramesOnClose, TFixture)
+    {
+        CheckCloseWithQueuedSends(true);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring
