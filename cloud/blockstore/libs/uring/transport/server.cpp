@@ -53,6 +53,35 @@ static_assert(offsetof(THello, Magic) == offsetof(TDataHello, Magic));
 static_assert(offsetof(THello, Version) == offsetof(TDataHello, Version));
 static_assert(offsetof(THello, Role) == offsetof(TDataHello, Role));
 
+constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Minutes(1);
+
+// Errors accept(2) reports for the connection it took off the queue, which it
+// tells us to treat as EAGAIN, plus the one a firewall rule produces.
+bool IsPendingConnectionError(int error)
+{
+    switch (error) {
+        case ECONNABORTED:
+        case EPERM:
+        case EPROTO:
+        case ENOPROTOOPT:
+        case ENETDOWN:
+        case ENETUNREACH:
+        case ENONET:
+        case EHOSTDOWN:
+        case EHOSTUNREACH:
+        case EOPNOTSUPP:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsResourceError(int error)
+{
+    return error == EMFILE || error == ENFILE || error == ENOBUFS ||
+           error == ENOMEM;
+}
+
 struct TSession;
 using TSessionPtr = std::shared_ptr<TSession>;
 
@@ -158,6 +187,19 @@ struct TSession
     void SendErrorFrame(ui64 requestId, ui32 code, TStringBuf message)
     {
         auto payload = SerializeError(code, message);
+        const ui64 bytes = payload.size();
+        // a reply is proto only, so one MaxProtoSize of headroom above the
+        // limit keeps a rejection deliverable while a peer that keeps asking
+        // with a full socket still cannot queue these without a bound
+        if (InflightBytes + bytes >
+            Config->MaxInflightBytes + Config->MaxProtoSize)
+        {
+            Connection->Close(MakeError(
+                E_REJECTED,
+                "inflight limit leaves no room for an error frame"));
+            return;
+        }
+        InflightBytes += bytes;
         auto frame = std::make_shared<TOutFrame>();
         frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + payload.size());
         TFrameHeader h;
@@ -166,6 +208,9 @@ struct TSession
         h.ProtoLen = payload.size();
         memcpy(frame->Head.begin(), &h, sizeof(h));
         memcpy(frame->Head.begin() + sizeof(h), payload.data(), payload.size());
+        frame->OnDone = [self = shared_from_this(), bytes] {
+            self->ReleaseBytes(bytes);
+        };
         Connection->Send(std::move(frame));
         Counters->Errors->Inc();
     }
@@ -289,10 +334,11 @@ struct TSession
         return raw->Proto.size() + raw->DataLen;
     }
 
-    // The handler is done with the request, but the bytes it was admitted for
-    // stay accounted until the kernel is done with the response they went
-    // into: a peer that stops reading would otherwise free an admission slot
-    // per response while the send queue grows without a bound.
+    // The handler is done with the request, but the bytes of the request and
+    // of its response stay accounted until the kernel is done with the frame
+    // they went into: a peer that stops reading would otherwise free an
+    // admission slot per response while the send queue grows without a bound,
+    // and a read-shaped request pins far more on the way out than in.
     void ReleaseSlot(TServerRequest* raw)
     {
         --InflightRequests;
@@ -315,7 +361,9 @@ struct TSession
             delete raw;
             return;
         }
-        const ui64 bytes = RequestBytes(raw);
+        const ui64 responseBytes = proto.size() + SgListGetSize(data);
+        const ui64 bytes = RequestBytes(raw) + responseBytes;
+        InflightBytes += responseBytes;
         auto frame = std::make_shared<TOutFrame>();
         frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + proto.size());
         TFrameHeader h;
@@ -402,6 +450,11 @@ private:
     const TServerConfigPtr Config;
     const TCountersPtr Counters;
     TLog Log;
+
+    struct {
+        TLogThrottler Accept = TLogThrottler(LOG_THROTTLER_PERIOD);
+        TLogThrottler AcceptResources = TLogThrottler(LOG_THROTTLER_PERIOD);
+    } LogThrottler;
 
     // ring 0 only
     int ListenFd = -1;
@@ -621,19 +674,20 @@ private:
         }
         if (res >= 0) {
             StartHandshake(res);
-        } else if (res == -ECONNABORTED) {
-            // the peer gave up before the handshake; its rate is bounded by
-            // the peer's SYN rate, so re-arming at once cannot spin
-            STORAGE_WARN("accept: connection aborted");
-        } else if (
-            res == -EMFILE || res == -ENFILE || res == -ENOBUFS ||
-            res == -ENOMEM)
-        {
-            // accept would keep failing at once while the resource is gone,
-            // so the next tick re-arms instead of spinning the ring
-            STORAGE_ERROR(
+        } else if (IsPendingConnectionError(-res)) {
+            // the connection this reports is off the queue, so re-arming at
+            // once makes progress and cannot spin; the rate is the peer's
+            STORAGE_WARN_T(
+                LogThrottler.Accept,
+                "accept failed for one connection: "
+                    << FormatError(MakeSystemError(-res, "accept")));
+        } else if (IsResourceError(-res)) {
+            // the connection stays on the queue, so accept would keep failing
+            // at once: the next tick re-arms instead of spinning the ring
+            STORAGE_ERROR_T(
+                LogThrottler.AcceptResources,
                 "accept failed, retrying on the next tick: "
-                << FormatError(MakeSystemError(-res, "accept")));
+                    << FormatError(MakeSystemError(-res, "accept")));
             AcceptStalled = true;
             return;
         } else {
@@ -733,13 +787,15 @@ private:
 
     void OnPrefix(int fd)
     {
-        if (Stopped) {
-            // arming another receive here would outlive the barrier that has
-            // already cancelled what it could see
+        auto& handshake = GetHandshake(fd);
+        // arming another receive here would outlive the barrier that has
+        // already cancelled what it could see; a cancel that lost the race to
+        // a queued completion leaves TExactIo armable again, but the deadline
+        // sweep will not look at this entry a second time
+        if (Stopped || handshake.Cancelled) {
             DropHandshake(fd);
             return;
         }
-        auto& handshake = GetHandshake(fd);
         ui32 magic = 0;
         ui8 role = 0;
         memcpy(&magic, handshake.Buffer.data() + offsetof(THello, Magic), sizeof(magic));
@@ -798,12 +854,13 @@ private:
 
     void OnHello(int fd)
     {
-        if (Stopped) {
+        auto& handshake = GetHandshake(fd);
+        if (Stopped || handshake.Cancelled) {
             DropHandshake(fd);
             return;
         }
         THello hello;
-        memcpy(&hello, GetHandshake(fd).Buffer.data(), sizeof(hello));
+        memcpy(&hello, handshake.Buffer.data(), sizeof(hello));
 
         if (hello.Version != PROTOCOL_VERSION) {
             STORAGE_WARN("unsupported protocol version " << hello.Version);

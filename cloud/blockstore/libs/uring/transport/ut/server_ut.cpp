@@ -31,6 +31,7 @@ struct TEchoHandler: public IServerHandler
     IServerEndpointPtr Endpoint;
     std::atomic<int> Requests = 0;
     std::atomic<bool> Hold = false;
+    std::atomic<size_t> ResponseSize = 0;   // 0: echo the request back
     TVector<void*> Held;
     TVector<std::shared_ptr<TString>> Buffers;
     TAdaptiveLock Lock;
@@ -48,8 +49,12 @@ struct TEchoHandler: public IServerHandler
     {
         ++Requests;
         auto echo = std::make_shared<TString>();
-        for (const auto& ref: data) {
-            echo->append(ref.Data(), ref.Size());
+        if (const size_t size = ResponseSize) {
+            *echo = TString::Uninitialized(size);
+        } else {
+            for (const auto& ref: data) {
+                echo->append(ref.Data(), ref.Size());
+            }
         }
         with_lock (Lock) {
             Buffers.push_back(echo);
@@ -425,11 +430,13 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         TRawClient client;
         client.Connect(Port, EOobMode::Auto);
         client.SendRequest(5, "p", {}, false);
-        WaitForRequests(1);
-        Handler->Hold = true;
-        client.SendRequest(6, "p", {}, false);
+        // the response proves the handler took the request before Hold was
+        // set: counting requests would not, since the count is bumped before
+        // the flag is read
         auto first = client.ReadResponse();
         UNIT_ASSERT_VALUES_EQUAL(5u, first.Header.RequestId);
+        Handler->Hold = true;
+        client.SendRequest(6, "p", {}, false);
         void* ctx = TakeHeld();
         Endpoint->SendError(ctx, E_REJECTED, "nope");
         auto r = client.ReadResponse();
@@ -726,7 +733,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
     {
         TServerConfig config;
         config.MaxDataSize = 4 << 20;
-        config.MaxInflightBytes = 1536 << 10;
+        // above what one request and its echo pin together, below what two of
+        // them do
+        config.MaxInflightBytes = 2560 << 10;
         StartServer(config);
 
         TRawClient client;
@@ -788,6 +797,36 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         auto r = client.ReadResponse();
         UNIT_ASSERT_VALUES_EQUAL(1u, r.Header.RequestId);
         UNIT_ASSERT(payload == r.Data);
+    }
+
+    Y_UNIT_TEST_F(ShouldAccountResponseBytes, TFixture)
+    {
+        TServerConfig config;
+        config.MaxDataSize = 4 << 20;
+        config.MaxInflightBytes = (1 << 20) + 4096;
+        StartServer(config);
+        // the read shape: a tiny request, a large response
+        Handler->ResponseSize = 1 << 20;
+
+        TRawClient client;
+        client.RcvBuf = 4096;
+        client.Connect(Port, EOobMode::Auto);
+
+        client.SendRequest(1, "p", {}, false);
+        auto first = client.ReadFrameOnly();
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_RESPONSE), ui32(first.Header.Type));
+        UNIT_ASSERT_VALUES_EQUAL(1u, first.Header.RequestId);
+        UNIT_ASSERT_VALUES_EQUAL(1u << 20, first.Header.DataLen);
+
+        // the response is a megabyte the peer is not reading, so the next
+        // request does not fit the limit even though it is tiny itself
+        client.SendRequest(2, "p", Pattern(64 << 10, 13), false);
+        auto second = client.ReadFrameOnly();
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(second.Header.Type));
+        UNIT_ASSERT_VALUES_EQUAL(2u, second.Header.RequestId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ParseError(second.Proto).GetCode());
     }
 }
 
