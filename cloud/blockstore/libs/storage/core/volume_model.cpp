@@ -502,9 +502,6 @@ void SetupChannels(
     ui32 freshChannelCount =
         Max(GetExistingFreshChannelCount(volumeParams),
             freshChannelCountForMediaKind);
-    if (volumeConfig.GetTabletVersion() == 2) {
-        freshChannelCount = 1;
-    }
 
     if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HYBRID &&
         !flags.GetNoSeparateMixedChannelAllocation() &&

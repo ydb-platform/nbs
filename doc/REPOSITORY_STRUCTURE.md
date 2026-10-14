@@ -111,7 +111,6 @@
 * [storage/partition2](/cloud/blockstore/libs/storage/partition2) - experimental BlockStore Partition2 tablet implementation (also for STORAGE_MEDIA_{SSD,HDD} disks)
 * [storage/partition_common](/cloud/blockstore/libs/storage/partition_common) - common code for the actors that implement block storage - partition, partition2, partition_nonrepl, volume - contains some parts of the implementation of overlay disks, fresh blocks storage, draining, long-running operation tracking, changed blocks tracking
 * [storage/partition_nonrepl](/cloud/blockstore/libs/storage/partition_nonrepl) - block storage implementation of STORAGE_MEDIA_{SSD,HDD}_{NONREPLICATED,MIRROR2,MIRROR3}
-* [storage/perf](/cloud/blockstore/libs/storage/perf) - a really tiny amount of benchmarks (which should probably be moved to storage/partition2)
 * [storage/protos](/cloud/blockstore/libs/storage/protos) - internal proto specs which don't depend on YDB BlobStorage proto specs
 * [storage/protos_ydb](/cloud/blockstore/libs/storage/protos_ydb) - internal proto specs which do depend on YDB BlobStorage proto specs
 * [storage/service](/cloud/blockstore/libs/storage/service) - TServiceActor - our entry point to the actor-based component environment - handles disk creation/destruction/resizing/altering requests, forwards IO events to TVolumeActors (can pass events to local volumes and to remote volumes as well), aggregates service-layer metrics

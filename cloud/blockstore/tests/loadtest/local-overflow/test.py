@@ -59,6 +59,7 @@ TESTS = [
 
 def __run_test(test_case):
     storage = TStorageServiceConfig()
+    storage.EnablePartitionV2 = True
     storage.ThrottlingEnabled = True
     storage.HDDSystemChannelPoolKind = "system"
     storage.SSDSystemChannelPoolKind = "system"

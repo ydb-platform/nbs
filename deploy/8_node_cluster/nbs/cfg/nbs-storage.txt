@@ -24,7 +24,6 @@ IncrementalCompactionEnabled: true
 SSDFreshChannelPoolKind: "ssdmirror"
 FreshChannelCount: 1
 FreshChannelWriteRequestsEnabled: true
-RunV2SoftGcAtStartup: true
 MultipartitionVolumesEnabled: true
 NonReplicatedMigrationStartAllowed: true
 TabletBootInfoBackupFilePath: "/tmp/nbs/backups/nbs-tablet-boot-info-backup.txt"
