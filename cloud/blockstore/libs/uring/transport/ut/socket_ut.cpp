@@ -2,8 +2,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/network/socket.h>
+#include <cerrno>
 
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 
@@ -53,6 +54,45 @@ Y_UNIT_TEST_SUITE(TUringSocketTest)
     {
         auto [fd, error] = CreateListenSocket("no.such.host.invalid", 0, 16);
         UNIT_ASSERT(HasError(error));
+    }
+
+    Y_UNIT_TEST(ShouldReportBindFailureAsPositiveErrno)
+    {
+        auto [fd, error] = CreateListenSocket("127.0.0.1", 0, 16);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        auto [port, perr] = GetLocalPort(fd);
+        UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
+
+        auto [fd2, error2] = CreateListenSocket("127.0.0.1", port, 16);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MAKE_SYSTEM_ERROR(EADDRINUSE),
+            error2.GetCode());
+        CloseSocket(fd);
+    }
+
+    Y_UNIT_TEST(ShouldAcceptOnReportedPort)
+    {
+        auto [fd, error] = CreateListenSocket("127.0.0.1", 0, 16);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        auto [port, perr] = GetLocalPort(fd);
+        UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
+
+        int client = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        UNIT_ASSERT(client >= 0);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        UNIT_ASSERT(::connect(
+            client,
+            reinterpret_cast<sockaddr*>(&addr),
+            sizeof(addr)) == 0);
+        int accepted = ::accept4(fd, nullptr, nullptr, SOCK_CLOEXEC);
+        UNIT_ASSERT(accepted >= 0);
+
+        CloseSocket(accepted);
+        CloseSocket(client);
+        CloseSocket(fd);
     }
 }
 
