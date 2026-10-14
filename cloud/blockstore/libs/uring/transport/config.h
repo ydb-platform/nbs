@@ -6,6 +6,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/stream/output.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -37,12 +38,16 @@ struct TClientConfig: TTransportConfig
 {
     TDuration MaxResponseDelay = TDuration::Seconds(30);
     TDuration MaxReconnectDelay = TDuration::Seconds(30);
+
+    void DumpHtml(IOutputStream& out) const;
 };
 
 struct TServerConfig: TTransportConfig
 {
     ui32 Backlog = 128;
     TDuration DataTokenTtl = TDuration::Seconds(10);
+
+    void DumpHtml(IOutputStream& out) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

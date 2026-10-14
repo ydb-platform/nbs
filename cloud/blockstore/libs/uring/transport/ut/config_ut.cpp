@@ -41,6 +41,10 @@ Y_UNIT_TEST_SUITE(TUringConfigTest)
         proto.SetSendZeroCopyMode(NProto::URING_SEND_ZC_OFF);
         proto.SetDirectSgIoEnabled(false);
         proto.SetMaxResponseDelay(1500);
+        proto.SetMaxReconnectDelay(2500);
+        proto.SetTcpUserTimeout(2500);
+        proto.SetKeepAliveIdle(2500);
+        proto.SetKeepAliveInterval(2500);
 
         auto c = CreateClientConfig(proto);
         UNIT_ASSERT_VALUES_EQUAL(4u, c.IoThreads);
@@ -49,14 +53,27 @@ Y_UNIT_TEST_SUITE(TUringConfigTest)
         UNIT_ASSERT(c.SendZeroCopyMode == ESendZeroCopyMode::Off);
         UNIT_ASSERT(!c.DirectSgIoEnabled);
         UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(1500), c.MaxResponseDelay);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.MaxReconnectDelay);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.TcpUserTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.KeepAliveIdle);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.KeepAliveInterval);
 
         NProto::TUringServer sp;
+        sp.SetIoThreads(3);
         sp.SetBacklog(7);
         sp.SetDataTokenTtl(250);
         auto s = CreateServerConfig(sp);
+        UNIT_ASSERT_VALUES_EQUAL(3u, s.IoThreads);
         UNIT_ASSERT_VALUES_EQUAL(7u, s.Backlog);
         UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(250), s.DataTokenTtl);
         UNIT_ASSERT(s.OobMode == EOobMode::Auto);
+    }
+
+    Y_UNIT_TEST(ShouldKeepDirectSgIoDefaultOnEmptyProto)
+    {
+        auto c = CreateClientConfig(NProto::TUringClient());
+        UNIT_ASSERT_VALUES_EQUAL(2u, c.IoThreads);
+        UNIT_ASSERT(c.DirectSgIoEnabled);
     }
 }
 
