@@ -237,6 +237,10 @@ message TLocalServiceConfig
 
     // Delay between processing entries in the async handle operations queue.
     optional uint32 AsyncHandleOperationDrainPeriod = 43;
+
+    // X Attrs cache size limit (number of entries). Zero means the vhost
+    // default.
+    optional uint32 XAttrCacheLimit = 44;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
