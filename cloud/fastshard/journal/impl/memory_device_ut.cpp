@@ -88,6 +88,14 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
+    void ZeroPages(const TVector<std::pair<ui64, ui64>>& refs)
+    {
+        const auto error =
+            Device->ZeroPages(MakeRangeRefs(refs)).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
     // the pages read are grouped after the refs they have been read for
     NCloud::NProto::TReadPagesResponse ReadPagesResponse(
         const TVector<std::pair<ui64, ui64>>& refs)
@@ -123,6 +131,33 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
 {
+    Y_UNIT_TEST_F(ShouldZeroPages, TFixture)
+    {
+        WritePages({{10, {"a", "b", "c", "d"}}, {20, {"e", "f"}}});
+
+        // every range of the request is zeroed, the other pages are kept
+
+        ZeroPages({{11, 2}, {21, 1}});
+
+        const auto z = ZeroedPage();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder() << "10:[a," << z << "," << z << ",d] 20:[e," << z
+                << "]",
+            ReadPages({{10, 4}, {20, 2}}));
+
+        // zeroing the pages never written and empty ranges is fine
+
+        ZeroPages({{100, 3}, {10, 0}});
+
+        UNIT_ASSERT_VALUES_EQUAL("10:[a]", ReadPages({{10, 1}}));
+
+        // a zeroed page can be written again
+
+        WritePages({{11, {"B"}}});
+
+        UNIT_ASSERT_VALUES_EQUAL("11:[B]", ReadPages({{11, 1}}));
+    }
+
     Y_UNIT_TEST_F(ShouldReadWrittenPages, TFixture)
     {
         WritePages({{10, {"a", "b", "c"}}});

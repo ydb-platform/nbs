@@ -37,6 +37,14 @@ struct TTestDevice final: public IDevice
 
         return MakeFuture<NCloud::NProto::TError>();
     }
+
+    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
+        -> TFuture<NCloud::NProto::TError> final
+    {
+        Y_UNUSED(ranges);
+
+        return MakeFuture<NCloud::NProto::TError>();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

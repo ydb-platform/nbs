@@ -82,6 +82,14 @@ struct TBrokenDevice final: public IDevice
 
         return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
     }
+
+    NThreading::TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        Y_UNUSED(ranges);
+
+        return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
+    }
 };
 
 // allocates the pages of a record and writes them

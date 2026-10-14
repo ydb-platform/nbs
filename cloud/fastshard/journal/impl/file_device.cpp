@@ -16,7 +16,13 @@
 #include <util/system/file.h>
 #include <util/system/sanitizers.h>
 
+#include <cerrno>
 #include <cstring>
+#include <memory>
+
+#if defined(_linux_)
+#   include <fcntl.h>
+#endif
 
 namespace NCloud::NJournalled {
 
@@ -51,6 +57,39 @@ NCloud::NProto::TError CheckTransfer(
     }
 
     return {};
+}
+
+NCloud::NProto::TError DiscardRange(TFileHandle& file, i64 offset, i64 length)
+{
+#if defined(_linux_)
+    if (fallocate(
+            FHANDLE(file),
+            FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
+            offset,
+            length) == 0)
+    {
+        return {};
+    }
+
+    // a block device without write zeroes can not punch a hole, but the
+    // kernel zeroes it explicitly in this mode
+    if (errno == EOPNOTSUPP &&
+        fallocate(FHANDLE(file), FALLOC_FL_ZERO_RANGE, offset, length) == 0)
+    {
+        return {};
+    }
+
+    const int err = errno;
+    auto error = MakeError(E_IO, LastSystemErrorText(err));
+#else
+    Y_UNUSED(file);
+    auto error = MakeError(E_NOT_IMPLEMENTED, "not supported on this platform");
+#endif
+
+    return MakeError(
+        error.GetCode(),
+        TStringBuilder() << "unable to zero range [" << offset << ", "
+                         << offset + length << "): " << error.GetMessage());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,6 +223,34 @@ public:
 
                 return {};
             });
+    }
+
+    TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        for (const auto& range: ranges) {
+            auto error = ValidatePageRange(range.FirstPageNo, range.PageCount);
+            if (HasError(error)) {
+                return MakeFuture(std::move(error));
+            }
+        }
+
+        for (const auto& range: ranges) {
+            if (range.PageCount == 0) {
+                continue;
+            }
+
+            auto error = DiscardRange(
+                File,
+                GetOffset(range.FirstPageNo),
+                static_cast<i64>(range.PageCount * PageSize));
+
+            if (HasError(error)) {
+                return MakeFuture(std::move(error));
+            }
+        }
+
+        return MakeFuture<NCloud::NProto::TError>();
     }
 
 private:
