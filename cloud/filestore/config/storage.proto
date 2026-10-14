@@ -962,4 +962,9 @@ message TStorageConfig
     // XAttr cache size limit (number of entries). Passed to filestore-vhost
     // the same way as XAttrCacheTimeout.
     optional uint32 XAttrCacheLimit = 556;
+
+    // Enable RDMA transport between filestore-vhost and YDB storage for write
+    // operations independently of read operations.
+    // Requires RDMA to be enabled in the IC config.
+    optional bool EnableRdmaForWrites = 557;
 }
