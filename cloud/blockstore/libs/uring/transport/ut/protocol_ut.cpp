@@ -49,6 +49,15 @@ Y_UNIT_TEST_SUITE(TUringProtocolTest)
         auto bad = ParseError("\x01\x02garbage");
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, bad.GetCode());
     }
+
+    Y_UNIT_TEST(ShouldNotParseSuccessAsError)
+    {
+        auto empty = ParseError("");
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, empty.GetCode());
+
+        auto success = ParseError(SerializeError(S_OK, "fine"));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, success.GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

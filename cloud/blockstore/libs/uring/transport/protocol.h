@@ -166,8 +166,11 @@ inline TString SerializeError(ui32 code, TStringBuf message)
 inline NProto::TError ParseError(TStringBuf buffer)
 {
     NProto::TError error;
-    if (!error.ParseFromArray(buffer.data(), buffer.size())) {
+    if (buffer.empty() || !error.ParseFromArray(buffer.data(), buffer.size())) {
         return MakeError(E_FAIL, "unparsable error payload");
+    }
+    if (!HasError(error)) {
+        return MakeError(E_FAIL, "error payload carries a success code");
     }
     return error;
 }
