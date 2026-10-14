@@ -9,6 +9,7 @@
 #include <util/generic/string.h>
 
 #include <optional>
+#include <type_traits>
 
 namespace NCloud::NBlockStore::NUring {
 

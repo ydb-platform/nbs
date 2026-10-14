@@ -58,6 +58,16 @@ Y_UNIT_TEST_SUITE(TUringProtocolTest)
         auto success = ParseError(SerializeError(S_OK, "fine"));
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, success.GetCode());
     }
+
+    Y_UNIT_TEST(ShouldPinWireValues)
+    {
+        UNIT_ASSERT(ToWire(EOobMode::Off) == OOB_WIRE_OFF);
+        UNIT_ASSERT(ToWire(EOobMode::Auto) == OOB_WIRE_AUTO);
+        UNIT_ASSERT(ToWire(EOobMode::Required) == OOB_WIRE_REQUIRED);
+        UNIT_ASSERT_VALUES_EQUAL(0u, static_cast<ui32>(OOB_WIRE_OFF));
+        UNIT_ASSERT_VALUES_EQUAL(1u, static_cast<ui32>(OOB_WIRE_AUTO));
+        UNIT_ASSERT_VALUES_EQUAL(2u, static_cast<ui32>(OOB_WIRE_REQUIRED));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring
