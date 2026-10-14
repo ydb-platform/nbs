@@ -64,7 +64,7 @@ struct THello
     ui32 MaxProtoSize = 0;
     ui32 MaxDataSize = 0;
     ui32 MaxInflightBytes = 0;
-    ui32 Pad = 0;
+    ui32 OobThreshold = 0;
 };
 
 struct TWelcome
@@ -77,7 +77,7 @@ struct TWelcome
     ui32 MaxProtoSize = 0;
     ui32 MaxDataSize = 0;
     ui32 MaxInflightBytes = 0;
-    ui32 Pad = 0;
+    ui32 OobThreshold = 0;
 };
 
 struct TDataHello
