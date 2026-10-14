@@ -42,6 +42,10 @@ struct ITickable
     virtual void OnTick(TInstant now) = 0;
 };
 
+// Tags at or above TAG_RESERVED_BASE belong to the ring's own operations;
+// AllocOp rejects them.
+constexpr ui32 TAG_RESERVED_BASE = 0xFFFF0000;
+
 struct TIoOp
 {
     IIoHandler* Handler = nullptr;
@@ -84,6 +88,7 @@ private:
     TLockFreeQueue<TCommand> Commands;
     TDeque<TIoOp*> Pending;
     TVector<ITickable*> Tickables;
+    TVector<ITickable*> TickSweep;
     TVector<std::unique_ptr<TIoOp>> OpPool;
 
     TIoOp EventOp;
@@ -98,11 +103,20 @@ public:
     ~TRing() override;
 
     NProto::TError Start();
+
+    // Not safe to call concurrently with itself; must not be called from the
+    // ring thread.
     void Stop();
 
+    // Commands still queued when the ring thread shuts down are run before it
+    // exits. A command enqueued after that point (after Stop() has returned or
+    // a failed Start()) is dropped: it cannot be run on a ring that is gone.
     void Execute(TCommand command);
     bool IsRingThread() const;
     bool SendZeroCopySupported() const { return ZcSupported; }
+
+    // Includes the ring's own eventfd and timer reads, so an idle ring reports
+    // 2.
     size_t InFlightOps() const { return ActiveOps.load(); }
 
     TIoOp* AllocOp(IIoHandler* handler, ui32 tag);
@@ -125,6 +139,10 @@ public:
 private:
     void* ThreadProc() override;
     NProto::TError Init();
+    TIoOp* NewOp(IIoHandler* handler, ui32 tag);
+    template <typename F>
+    void Guarded(const char* what, F&& f);
+    void CheckSubmitResult(int ret);
     void Submit(TIoOp* op, std::function<void(io_uring_sqe*)> prep);
     void FlushPending();
     void DrainCommands();

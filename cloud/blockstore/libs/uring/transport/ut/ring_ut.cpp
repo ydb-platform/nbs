@@ -395,9 +395,11 @@ Y_UNIT_TEST_SUITE(TUringRingTest)
 
         TTicker ticker;
         OnRing([&] { Ring->AddTickable(&ticker); return 0; });
-        while (ticker.Ticks < 2) {
+        const auto deadline = TInstant::Now() + TDuration::Seconds(3);
+        while (ticker.Ticks < 2 && TInstant::Now() < deadline) {
             Sleep(TDuration::MilliSeconds(10));
         }
+        UNIT_ASSERT(ticker.Ticks >= 2);
         UNIT_ASSERT_VALUES_EQUAL(2, OnRing([&] {
             Ring->RemoveTickable(&ticker);
             Ring->FreeOp(op);
@@ -422,6 +424,53 @@ Y_UNIT_TEST_SUITE(TUringRingTest)
         UNIT_ASSERT(remover.Ticks >= 3);
         UNIT_ASSERT_VALUES_EQUAL(0, victim.Ticks.load());
         OnRing([&] { Ring->RemoveTickable(&remover); return 0; });
+    }
+
+    Y_UNIT_TEST_F(ShouldSurviveThrowingCommandHandlerAndTicker, TFixture)
+    {
+        struct TThrowingTicker: public ITickable
+        {
+            std::atomic<int> Ticks = 0;
+            void OnTick(TInstant) override
+            {
+                ++Ticks;
+                ythrow yexception() << "tick";
+            }
+        };
+
+        Ring->Execute([] { ythrow yexception() << "command"; });
+
+        int fds[2];
+        UNIT_ASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+        char buf[1];
+        auto done = NewPromise<int>();
+        std::unique_ptr<TExactIo> rx;
+        OnRing([&] {
+            rx = std::make_unique<TExactIo>(*Ring);
+            rx->Recv(fds[1], buf, sizeof(buf), [=](int) mutable {
+                done.SetValue(0);
+                ythrow yexception() << "handler";
+            });
+            return 0;
+        });
+        UNIT_ASSERT(::write(fds[0], "x", 1) == 1);
+        done.GetFuture().GetValue(TDuration::Seconds(5));
+
+        TThrowingTicker ticker;
+        OnRing([&] { Ring->AddTickable(&ticker); return 0; });
+        const auto deadline = TInstant::Now() + TDuration::Seconds(3);
+        while (ticker.Ticks < 2 && TInstant::Now() < deadline) {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(ticker.Ticks >= 2);
+
+        UNIT_ASSERT(OnRing([&] {
+            Ring->RemoveTickable(&ticker);
+            rx.reset();
+            return Ring->IsRingThread();
+        }));
+        ::close(fds[0]);
+        ::close(fds[1]);
     }
 }
 

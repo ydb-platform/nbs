@@ -4,9 +4,12 @@
 
 #include <cloud/storage/core/libs/common/thread.h>
 
+#include <util/generic/yexception.h>
 #include <util/system/yassert.h>
 
 #include <algorithm>
+#include <cstring>
+#include <errno.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -17,9 +20,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 TAG_EVENTFD = 0xFFFF0001;
-constexpr ui32 TAG_TIMER = 0xFFFF0002;
-constexpr ui32 TAG_CANCEL = 0xFFFF0003;
+constexpr ui32 TAG_EVENTFD = TAG_RESERVED_BASE + 1;
+constexpr ui32 TAG_TIMER = TAG_RESERVED_BASE + 2;
+constexpr ui32 TAG_CANCEL = TAG_RESERVED_BASE + 3;
 constexpr ui32 CQE_BATCH = 64;
 const TDuration TICK = TDuration::MilliSeconds(100);
 
@@ -167,17 +170,17 @@ void* TRing::ThreadProc()
         Sleeping = true;
         if (!Commands.IsEmpty() || !Pending.empty()) {
             Sleeping = false;
-            io_uring_submit(&Ring);
+            CheckSubmitResult(io_uring_submit(&Ring));
             Dispatch();
             continue;
         }
         const int ret = io_uring_submit_and_wait(&Ring, 1);
         Sleeping = false;
-        if (ret < 0 && ret != -EINTR && ret != -EAGAIN && ret != -EBUSY) {
-            Y_ABORT("io_uring_submit_and_wait: %s", LastSystemErrorText(-ret));
-        }
+        CheckSubmitResult(ret);
         Dispatch();
     }
+
+    DrainCommands();
 
     ::close(EventFd);
     ::close(TimerFd);
@@ -185,11 +188,33 @@ void* TRing::ThreadProc()
     return nullptr;
 }
 
+template <typename F>
+void TRing::Guarded(const char* what, F&& f)
+{
+    try {
+        f();
+    } catch (...) {
+        STORAGE_ERROR(
+            Name << ": " << what << " threw: " << CurrentExceptionMessage());
+    }
+}
+
 void TRing::DrainCommands()
 {
     TCommand command;
     while (Commands.Dequeue(&command)) {
-        command();
+        Guarded("command", command);
+    }
+}
+
+void TRing::CheckSubmitResult(int ret)
+{
+    // EBUSY and EAGAIN mean the kernel wants completions reaped first; the
+    // loop does that and submits again
+    if (ret < 0 && ret != -EINTR && ret != -EAGAIN && ret != -EBUSY) {
+        STORAGE_ERROR(
+            Name << ": io_uring submit failed: " << LastSystemErrorText(-ret));
+        Y_ABORT("io_uring submit: %s", LastSystemErrorText(-ret));
     }
 }
 
@@ -208,7 +233,7 @@ void TRing::FlushPending()
     while (!Pending.empty()) {
         io_uring_sqe* sqe = io_uring_get_sqe(&Ring);
         if (!sqe) {
-            io_uring_submit(&Ring);
+            CheckSubmitResult(io_uring_submit(&Ring));
             sqe = io_uring_get_sqe(&Ring);
             if (!sqe) {
                 return;
@@ -248,20 +273,22 @@ void TRing::Dispatch()
                     if (!StopInitiated) {
                         ArmTimer();
                         const auto now = TInstant::Now();
-                        for (auto* t: TVector<ITickable*>(Tickables)) {
-                            if (std::find(Tickables.begin(), Tickables.end(), t) !=
-                                Tickables.end())
-                            {
-                                t->OnTick(now);
+                        TickSweep = Tickables;
+                        for (auto* t: TickSweep) {
+                            if (t) {
+                                Guarded("OnTick", [&] { t->OnTick(now); });
                             }
                         }
+                        TickSweep.clear();
                     }
                     break;
                 case TAG_CANCEL:
                     FreeOp(op);
                     break;
                 default:
-                    op->Handler->OnIoComplete(op, res, flags);
+                    Guarded("OnIoComplete", [&] {
+                        op->Handler->OnIoComplete(op, res, flags);
+                    });
                     break;
             }
         }
@@ -284,6 +311,15 @@ void TRing::ArmTimer()
 }
 
 TIoOp* TRing::AllocOp(IIoHandler* handler, ui32 tag)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        tag < TAG_RESERVED_BASE,
+        "tag %u is reserved for the ring",
+        tag);
+    return NewOp(handler, tag);
+}
+
+TIoOp* TRing::NewOp(IIoHandler* handler, ui32 tag)
 {
     std::unique_ptr<TIoOp> op;
     if (!OpPool.empty()) {
@@ -383,8 +419,10 @@ void TRing::Cancel(TIoOp* target)
     if (!target->InFlight) {
         return;
     }
-    TIoOp* op = AllocOp(nullptr, TAG_CANCEL);
+    TIoOp* op = NewOp(nullptr, TAG_CANCEL);
     Submit(op, [=](io_uring_sqe* sqe) {
+        // matches by op address: relies on Pending and the SQ being FIFO, an
+        // out-of-order flush could cancel an unrelated transfer that reuses it
         io_uring_prep_cancel(sqe, target, 0);
     });
 }
@@ -397,6 +435,7 @@ void TRing::AddTickable(ITickable* t)
 void TRing::RemoveTickable(ITickable* t)
 {
     std::erase(Tickables, t);
+    std::ranges::replace(TickSweep, t, nullptr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
