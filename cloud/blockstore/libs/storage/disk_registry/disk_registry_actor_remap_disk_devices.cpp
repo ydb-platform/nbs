@@ -15,8 +15,30 @@ void TDiskRegistryActor::HandleRemapDiskDevices(
     const TEvDiskRegistry::TEvRemapDiskDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(ev);
+    BLOCKSTORE_DISK_REGISTRY_COUNTER(CreateDiskFromDevices);
+
+    const auto& record = ev->Get()->Record;
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received RemapDiskDevices request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        SafeDebugPrint(record).c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
+
+    ExecuteTx<TRemapDiskDevices>(
+        ctx,
+        CreateRequestInfo<TEvDiskRegistry::TRemapDiskDevicesMethod>(
+            ev->Sender,
+            ev->Cookie,
+            ev->Get()->CallContext
+        ),
+        record.GetDiskId(),
+        TVector<TDeviceId> (
+            record.GetDevices().begin(),
+            record.GetDevices().end())
+        );
 }
 
 bool TDiskRegistryActor::PrepareRemapDiskDevices(
@@ -37,16 +59,32 @@ void TDiskRegistryActor::ExecuteRemapDiskDevices(
     TTxDiskRegistry::TRemapDiskDevices& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
+
+    TDiskRegistryDatabase db(tx.DB);
+
+    TDiskRegistryState::TAllocateDiskResult result;
+    args.Error = State->RemapDiskDevices(
+        db,
+        args.DiskId,
+        args.NewDevices);
 }
 
 void TDiskRegistryActor::CompleteRemapDiskDevices(
     const TActorContext& ctx,
     TTxDiskRegistry::TRemapDiskDevices& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(args);
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s RemapDiskDevices result: %s",
+        LogTitle.GetWithTime().c_str(),
+        FormatError(args.Error).c_str());
+
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvCreateDiskFromDevicesResponse>(
+            std::move(args.Error));
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

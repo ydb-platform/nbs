@@ -1322,7 +1322,7 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
 
         const TString DiskId;
-        const TVector<TString> newDevices;
+        const TVector<TString> NewDevices;
 
         NProto::TError Error;
 
@@ -1332,7 +1332,7 @@ struct TTxDiskRegistry
             TVector<TString> newDevices)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
-            , newDevices(std::move(newDevices))
+            , NewDevices(std::move(newDevices))
         {}
 
         void Clear()
