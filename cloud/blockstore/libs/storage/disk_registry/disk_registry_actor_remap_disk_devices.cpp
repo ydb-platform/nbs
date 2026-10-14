@@ -59,14 +59,8 @@ void TDiskRegistryActor::ExecuteRemapDiskDevices(
     TTxDiskRegistry::TRemapDiskDevices& args)
 {
     Y_UNUSED(ctx);
-
-    TDiskRegistryDatabase db(tx.DB);
-
-    TDiskRegistryState::TAllocateDiskResult result;
-    args.Error = State->RemapDiskDevices(
-        db,
-        args.DiskId,
-        args.NewDevices);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
 }
 
 void TDiskRegistryActor::CompleteRemapDiskDevices(

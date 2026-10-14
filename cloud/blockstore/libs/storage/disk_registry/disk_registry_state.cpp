@@ -3247,12 +3247,17 @@ bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
 bool TDiskRegistryState::CanSecureErase(const NProto::TDeviceConfig& device) const
 {
     return GetSecureEraseReadiness(device) ==
-           ESecureEraseReadiness::ReadyToErase;
+           ESecureEraseReadiness::ReadyToErase
+           && StorageConfig->GetDiskRegistrySuspendSecureErase();
 }
 
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
+    if (StorageConfig->GetDiskRegistrySuspendSecureErase()) {
+        return ESecureEraseReadiness::SecureEraseSuspended;
+    }
+
     if (DeviceList.IsSuspendedAndNotResumingDevice(device.GetDeviceUUID())) {
         STORAGE_DEBUG(
             "Skip SecureErase for device '%s'. Device is suspended.",
@@ -9075,18 +9080,6 @@ bool TDiskRegistryState::IsDeviceDetached(
         return false;
     }
     return NStorage::IsDeviceDetached(*agent, device);
-}
-
-NProto::TError TDiskRegistryState::RemapDiskDevices(
-    TDiskRegistryDatabase& db,
-    const TDiskId& diskId,
-    const TVector<TDeviceId>& newDevices)
-{
-    Y_UNUSED(db);
-    Y_UNUSED(diskId);
-    Y_UNUSED(newDevices);
-
-    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

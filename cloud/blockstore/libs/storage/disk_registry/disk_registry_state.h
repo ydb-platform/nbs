@@ -35,6 +35,7 @@ enum class ESecureEraseReadiness {
     AgentAbsent,
     AgentUnavailable,
     DeviceDetached,
+    SecureEraseSuspended,
 };
 
 struct TAgentStorageInfo
@@ -984,11 +985,6 @@ public:
         const TAgentId& agentId) const;
 
     bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
-
-    NProto::TError RemapDiskDevices(
-        TDiskRegistryDatabase& db,
-        const TDiskId& diskId,
-        const TVector<TDeviceId>& newDevices);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
