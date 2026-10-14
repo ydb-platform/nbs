@@ -74,6 +74,10 @@ struct TTestHandler: public IConnectionHandler
     TVector<TReceived> Frames;
     TVector<std::shared_ptr<TString>> Buffers;
     bool DiscardNext = false;
+    // scatters the next sinks over refs of this size, as a client reading into
+    // a caller's block list does
+    size_t SinkPieceSize = 0;
+    bool MismatchNextSink = false;
     TPromise<void> FrameArrived = NewPromise();
     TPromise<NProto::TError> Closed = NewPromise<NProto::TError>();
     TVector<NProto::TError> SinkResults;
@@ -95,9 +99,22 @@ struct TTestHandler: public IConnectionHandler
 
         TDataSink sink;
         if (!DiscardNext && h.DataLen) {
-            sink.Target = {TBlockDataRef{buffer->data(), buffer->size()}};
+            if (MismatchNextSink) {
+                sink.Target = {TBlockDataRef{buffer->data(), buffer->size() / 2}};
+            } else if (SinkPieceSize) {
+                for (size_t offset = 0; offset < buffer->size();
+                     offset += SinkPieceSize)
+                {
+                    sink.Target.push_back(TBlockDataRef{
+                        buffer->data() + offset,
+                        Min(SinkPieceSize, buffer->size() - offset)});
+                }
+            } else {
+                sink.Target = {TBlockDataRef{buffer->data(), buffer->size()}};
+            }
         }
         DiscardNext = false;
+        MismatchNextSink = false;
         sink.OnDone = [this, buffer, index](const NProto::TError& e) {
             SinkResults.push_back(e);
             if (!HasError(e)) {
@@ -269,7 +286,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             return 0;
         });
         Sleep(TDuration::MilliSeconds(100));
-        if (zc) {
+        if (zc && Ring->SendZeroCopySupported()) {
             // the peer does not read, so none of these bytes can be
             // acknowledged, the kernel still holds every zero-copy page and no
             // frame may be reported as sent yet
@@ -414,6 +431,10 @@ Y_UNIT_TEST_SUITE(TUringConnectionTest)
 
     Y_UNIT_TEST_F(ShouldSendZeroCopyWhenSupported, TFixture)
     {
+        if (!Ring->SendZeroCopySupported()) {
+            Cerr << "IORING_OP_SENDMSG_ZC is not supported, skipping" << Endl;
+            return;
+        }
         Connect(Params(true, 0, true));
         auto payload = Pattern(1 << 20, 6);
         bool done = false;
@@ -625,6 +646,87 @@ Y_UNIT_TEST_SUITE(TUringConnectionTest)
     Y_UNIT_TEST_F(ShouldReleaseQueuedZeroCopyFramesOnClose, TFixture)
     {
         CheckCloseWithQueuedSends(true);
+    }
+
+    Y_UNIT_TEST_F(ShouldScatterOobPayloadIntoManyRefs, TFixture)
+    {
+        Connect(Params(true, 0));
+        auto payload = Pattern(1 << 20, 12);
+        OnRing([&] {
+            B.SinkPieceSize = 4096;   // 256 refs, four times MAX_IOV
+            ConnA->Send(MakeFrame(
+                1,
+                "scatter",
+                {TBlockDataRef{payload.data(), payload.size()}}));
+            return 0;
+        });
+        WaitFrame(B, 1);
+        auto f = OnRing([&] { return B.Frames[0]; });
+        UNIT_ASSERT_VALUES_EQUAL(ui32(FLAG_OOB), ui32(f.Header.Flags));
+        UNIT_ASSERT(payload == f.Data);
+    }
+
+    Y_UNIT_TEST_F(ShouldCloseOnSinkSizeMismatch, TFixture)
+    {
+        Connect(Params(true, 0));
+        auto payload = Pattern(8192, 13);
+        OnRing([&] {
+            B.MismatchNextSink = true;
+            ConnA->Send(MakeFrame(
+                1,
+                "bad",
+                {TBlockDataRef{payload.data(), payload.size()}}));
+            return 0;
+        });
+        auto error = B.Closed.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(HasError(error));
+        auto results = OnRing([&] { return B.SinkResults; });
+        UNIT_ASSERT_VALUES_EQUAL(1u, results.size());
+        UNIT_ASSERT(HasError(results[0]));
+    }
+
+    // 24 bytes claiming a MaxDataSize inline payload must not grow the receive
+    // buffer: a sender with a data stream sends those out of band
+    Y_UNIT_TEST_F(ShouldRejectInlineFrameAboveOobThreshold, TFixture)
+    {
+        OnRing([&] {
+            ConnB = std::make_unique<TConnection>(
+                *Ring, Params(true, 4096), Main.Server, Data.Server, &B,
+                Logging->CreateLog("B"));
+            ConnB->Start();
+            return 0;
+        });
+        TFrameHeader h;
+        h.Type = FRAME_REQUEST;
+        h.Flags = FLAG_INLINE;
+        h.RequestId = 1;
+        h.DataLen = 8 << 20;
+        UNIT_ASSERT(::send(Main.Client, &h, sizeof(h), MSG_NOSIGNAL) == sizeof(h));
+        auto error = B.Closed.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(HasError(error));
+        ::close(Main.Client);
+        ::close(Data.Client);
+    }
+
+    Y_UNIT_TEST_F(ShouldCloseWhenSendingOversizedPayload, TFixture)
+    {
+        auto params = Params(false);
+        params.MaxDataSize = 4096;
+        Connect(params);
+        auto payload = Pattern(8192, 14);
+        size_t released = 0;
+        OnRing([&] {
+            ConnA->Send(MakeFrame(
+                1,
+                "big",
+                {TBlockDataRef{payload.data(), payload.size()}},
+                [&] { ++released; }));
+            return 0;
+        });
+        auto error = A.Closed.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(ui32(E_ARGUMENT), error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1u, OnRing([&] { return released; }));
     }
 }
 

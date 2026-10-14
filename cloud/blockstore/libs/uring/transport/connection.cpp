@@ -19,6 +19,15 @@ namespace {
 constexpr size_t INITIAL_RECV_BUF = 64 << 10;
 constexpr size_t SCRATCH_SIZE = 64 << 10;
 
+void RunOnDone(TOutFrame& frame)
+{
+    if (frame.OnDone) {
+        auto onDone = std::move(frame.OnDone);
+        frame.OnDone = nullptr;
+        onDone();
+    }
+}
+
 void Shutdown(int fd)
 {
     if (fd >= 0) {
@@ -106,11 +115,7 @@ void TConnection::Send(TOutFramePtr frame)
     if (Closing) {
         // the caller may be waiting on OnDone to release the buffers, and the
         // frame itself may outlive this call
-        if (frame->OnDone) {
-            auto onDone = std::move(frame->OnDone);
-            frame->OnDone = nullptr;
-            onDone();
-        }
+        RunOnDone(*frame);
         return;
     }
 
@@ -122,12 +127,20 @@ void TConnection::Send(TOutFramePtr frame)
         frame->Head.size(),
         header->ProtoLen);
 
+    // the size of a payload can follow from a request the peer shaped, so an
+    // oversized one drops the frame and closes instead of aborting
     const size_t dataLen = SgListGetSize(frame->Data);
-    Y_ABORT_UNLESS(
-        dataLen <= Params.MaxDataSize,
-        "payload %lu exceeds MaxDataSize %u",
-        dataLen,
-        Params.MaxDataSize);
+    if (dataLen > Params.MaxDataSize) {
+        STORAGE_ERROR(
+            "payload " << dataLen << " of request " << header->RequestId
+                       << " exceeds MaxDataSize " << Params.MaxDataSize);
+        RunOnDone(*frame);
+        Close(MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "payload " << dataLen << " exceeds MaxDataSize "
+                             << Params.MaxDataSize));
+        return;
+    }
 
     const ui64 requestId = header->RequestId;
     const bool oob =
@@ -347,6 +360,14 @@ bool TConnection::ParseFrames()
                                  << " flags=" << int(h.Flags)
                                  << " proto=" << h.ProtoLen
                                  << " data=" << h.DataLen);
+            return false;
+        }
+
+        if (inl && Params.OobEnabled && h.DataLen >= Params.OobThreshold) {
+            ProtocolError(
+                TStringBuilder() << "inline payload " << h.DataLen
+                                 << " at or above the out-of-band threshold "
+                                 << Params.OobThreshold);
             return false;
         }
 
