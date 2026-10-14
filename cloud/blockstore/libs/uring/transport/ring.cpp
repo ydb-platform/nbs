@@ -26,6 +26,11 @@ constexpr ui32 TAG_CANCEL = TAG_RESERVED_BASE + 3;
 constexpr ui32 CQE_BATCH = 64;
 const TDuration TICK = TDuration::MilliSeconds(100);
 
+bool IsUserOp(const TIoOp* op)
+{
+    return op->Tag < TAG_RESERVED_BASE;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +49,14 @@ TRing::TRing(TString name, ui32 queueSize, ESendZeroCopyMode zcMode, TLog log)
 TRing::~TRing()
 {
     Stop();
+    // the fds outlive the ring thread, so an Execute that raced its exit
+    // cannot write to a closed (possibly reused) descriptor
+    if (EventFd >= 0) {
+        ::close(EventFd);
+    }
+    if (TimerFd >= 0) {
+        ::close(TimerFd);
+    }
 }
 
 NProto::TError TRing::Start()
@@ -139,12 +152,6 @@ void* TRing::ThreadProc()
     const bool ok = !HasError(error);
     InitResult.SetValue(std::move(error));
     if (!ok) {
-        if (EventFd >= 0) {
-            ::close(EventFd);
-        }
-        if (TimerFd >= 0) {
-            ::close(TimerFd);
-        }
         if (RingInitialized) {
             io_uring_queue_exit(&Ring);
         }
@@ -158,7 +165,12 @@ void* TRing::ThreadProc()
         DrainCommands();
         FlushPending();
 
-        if (StopRequested && !StopInitiated) {
+        // the eventfd read stays armed while user ops are in flight, so a
+        // command posted during shutdown still wakes the loop and can cancel
+        // them
+        if (StopRequested && !StopInitiated && UserOps == 0 &&
+            Commands.IsEmpty())
+        {
             StopInitiated = true;
             Cancel(&EventOp);
             Cancel(&TimerOp);
@@ -185,8 +197,6 @@ void* TRing::ThreadProc()
     Draining = true;
     DrainCommands();
 
-    ::close(EventFd);
-    ::close(TimerFd);
     io_uring_queue_exit(&Ring);
     return nullptr;
 }
@@ -231,6 +241,9 @@ void TRing::Submit(TIoOp* op, std::function<void(io_uring_sqe*)> prep)
     op->InFlight = true;
     op->Prep = std::move(prep);
     ++ActiveOps;
+    if (IsUserOp(op)) {
+        ++UserOps;
+    }
     Pending.push_back(op);
     FlushPending();
 }
@@ -269,6 +282,9 @@ void TRing::Dispatch()
             if (!(flags & IORING_CQE_F_MORE)) {
                 op->InFlight = false;
                 --ActiveOps;
+                if (IsUserOp(op)) {
+                    --UserOps;
+                }
             }
             switch (op->Tag) {
                 case TAG_EVENTFD:

@@ -507,6 +507,49 @@ Y_UNIT_TEST_SUITE(TUringRingTest)
         ::close(fds[0]);
         ::close(fds[1]);
     }
+
+    Y_UNIT_TEST_F(ShouldRunCancelPostedWhileStopWaitsForUserOp, TFixture)
+    {
+        int fds[2];
+        UNIT_ASSERT(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+        char buf[8];
+        auto done = NewPromise<int>();
+        std::unique_ptr<TExactIo> rx;
+
+        // the peer never writes, so this recv is still in flight when Stop()
+        // asks the loop to shut down
+        OnRing([&] {
+            rx = std::make_unique<TExactIo>(*Ring);
+            rx->Recv(fds[1], buf, sizeof(buf), [=](int e) mutable { done.SetValue(e); });
+            return 0;
+        });
+
+        std::thread stopper([&] { Ring->Stop(); });
+        // let the loop see StopRequested and go back to sleep before the
+        // teardown cancel is posted
+        Sleep(TDuration::MilliSeconds(200));
+        Ring->Execute([&] { rx->Cancel(); });
+
+        auto future = done.GetFuture();
+        const bool ran = future.Wait(TDuration::Seconds(5));
+        if (!ran) {
+            // the loop is wedged with nothing armed on the eventfd: close the
+            // peer so the recv completes, Stop() returns and the assertion
+            // below reports the failure instead of hanging the suite
+            ::close(fds[0]);
+            fds[0] = -1;
+            future.Wait(TDuration::Seconds(5));
+        }
+        stopper.join();
+        UNIT_ASSERT_C(ran, "the cancel posted during Stop() never ran");
+        UNIT_ASSERT_VALUES_EQUAL(ECANCELED, future.GetValue());
+
+        rx.reset();
+        if (fds[0] >= 0) {
+            ::close(fds[0]);
+        }
+        ::close(fds[1]);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

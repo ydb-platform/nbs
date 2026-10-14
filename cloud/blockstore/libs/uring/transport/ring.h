@@ -85,6 +85,9 @@ private:
     std::atomic<bool> Sleeping = false;
     std::atomic<bool> StopRequested = false;
     std::atomic<size_t> ActiveOps = 0;
+    // ops with a caller-supplied tag; the ring's own reads and cancels are not
+    // counted here
+    size_t UserOps = 0;
     TLockFreeQueue<TCommand> Commands;
     TDeque<TIoOp*> Pending;
     TVector<ITickable*> Tickables;
@@ -105,16 +108,24 @@ public:
 
     NProto::TError Start();
 
-    // Not safe to call concurrently with itself; must not be called from the
-    // ring thread.
+    // Requests shutdown and joins the ring thread. The loop does not exit
+    // while an op is in flight, so Stop() blocks until the last user op is
+    // reaped: the caller must either have no IO outstanding or cancel it,
+    // which a command posted after Stop() can still do (see Execute).
+    // A second Stop(), or one after a failed Start(), is a no-op. Not safe to
+    // call concurrently with itself; must not be called from the ring thread.
     void Stop();
 
-    // The ring thread does not exit while commands are queued, so a command
-    // enqueued during shutdown runs in the live loop and may start IO. One that
-    // slips in after the loop's last check runs once more during the final
-    // drain and must not start IO (Submit aborts). A command enqueued after the
-    // ring thread has exited (after Stop() has returned, or a failed Start())
-    // is dropped: it cannot be run on a ring that is gone.
+    // Runs the command on the ring thread; callable from any thread for the
+    // lifetime of this object. A command enqueued while the loop is live runs
+    // in it and may start IO. That includes shutdown while user ops are still
+    // in flight: the ring keeps its eventfd read armed until the last one is
+    // reaped, so a teardown cancel posted after Stop() is woken up, run, and
+    // its own IO reaped. Once no user op is left the loop commits to exiting,
+    // and racing Execute with that point is not supported: such a command
+    // either runs in the final drain, where it must not start IO (Submit
+    // aborts), or is dropped because the ring thread has already exited (also
+    // after a failed Start()).
     void Execute(TCommand command);
     bool IsRingThread() const;
     bool SendZeroCopySupported() const { return ZcSupported; }
