@@ -190,9 +190,15 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
                 LOG_INFO(
                     ctx,
                     TFileStoreComponents::SERVICE,
-                    "[%s] NodeRef locked under GetNodeAttr for %lu",
+                    "[%s] NodeRef locked under GetNodeAttr for %lu, shard %s, "
+                    "%s",
                     LogTag.c_str(),
-                    GetNodeAttrRequest.GetNodeId());
+                    GetNodeAttrRequest.GetNodeId(),
+                    LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+                    LeaderResponse.GetNode()
+                        .GetShardNodeName()
+                        .Quote()
+                        .c_str());
 
                 HandleError(ctx, MakeConcurrentModificationError());
                 return;
@@ -317,12 +323,15 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
     LOG_INFO(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] NodeRef changed under GetNodeAttr for %lu (exists: %d, "
-        "locked: %d)",
+        "[%s] NodeRef changed under GetNodeAttr for %lu, shard %s, %s "
+        "(exists: %d, locked: %d, current: %s)",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
+        LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+        LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
         exists,
-        locked);
+        locked,
+        msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
     HandleError(ctx, MakeConcurrentModificationError());
 }
