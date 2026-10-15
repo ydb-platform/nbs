@@ -15,6 +15,7 @@
 
 #include <util/generic/scope.h>
 
+#include <functional>
 #include <thread>
 
 #include <sys/socket.h>
@@ -47,6 +48,9 @@ struct TCollector: public IClientRequestHandler
 {
     TAdaptiveLock Lock;
     TVector<TPromise<TResult>> Promises;
+    // Close() spins while a guard is held, and this runs on the ring thread,
+    // so a guard released after the handler hangs the response here
+    bool CloseBuffers = false;
 
     TFuture<TResult> NewPromiseFuture()
     {
@@ -62,7 +66,10 @@ struct TCollector: public IClientRequestHandler
         TStringBuf proto,
         size_t dataBytes) override
     {
-        Y_UNUSED(req);
+        if (CloseBuffers) {
+            req->SendData.Close();
+            req->RecvData.Close();
+        }
         with_lock (Lock) {
             for (auto& p: Promises) {
                 if (!p.HasValue()) {
@@ -176,6 +183,154 @@ struct TFakeServer
         ::shutdown(ListenFd, SHUT_RDWR);
         Thread.join();
         CloseSocket(ListenFd);
+    }
+};
+
+bool TryReadAll(int fd, void* data, size_t size)
+{
+    char* p = static_cast<char*>(data);
+    while (size) {
+        const auto n = ::recv(fd, p, size, 0);
+        if (n <= 0) {
+            return false;
+        }
+        p += n;
+        size -= n;
+    }
+    return true;
+}
+
+bool TryWriteAll(int fd, const void* data, size_t size)
+{
+    const char* p = static_cast<const char*>(data);
+    while (size) {
+        const auto n = ::send(fd, p, size, MSG_NOSIGNAL);
+        if (n <= 0) {
+            return false;
+        }
+        p += n;
+        size -= n;
+    }
+    return true;
+}
+
+void WaitForEof(int fd)
+{
+    char c = 0;
+    while (::recv(fd, &c, 1, 0) > 0) {
+    }
+}
+
+// The id of the next request on the main stream; its payload, if any, must
+// be inline.
+ui64 ReadRequest(int mainFd)
+{
+    TFrameHeader h;
+    if (!TryReadAll(mainFd, &h, sizeof(h))) {
+        return 0;
+    }
+    const size_t rest = h.ProtoLen + (h.Flags & FLAG_INLINE ? h.DataLen : 0);
+    TString buffer = TString::Uninitialized(rest);
+    if (rest && !TryReadAll(mainFd, buffer.begin(), rest)) {
+        return 0;
+    }
+    return h.RequestId;
+}
+
+void SendOobResponseHeader(int mainFd, ui64 id, ui32 dataLen)
+{
+    TFrameHeader h;
+    h.Type = FRAME_RESPONSE;
+    h.Flags = FLAG_OOB;
+    h.RequestId = id;
+    h.DataLen = dataLen;
+    TryWriteAll(mainFd, &h, sizeof(h));
+}
+
+void SendDataHeader(int dataFd, ui64 id, ui32 dataLen)
+{
+    TDataHeader h;
+    h.RequestId = id;
+    h.DataLen = dataLen;
+    TryWriteAll(dataFd, &h, sizeof(h));
+}
+
+// Serves one client: completes the out-of-band handshake, then hands both
+// sockets to the script and closes them once it returns.
+struct TScriptedPeer
+{
+    using TScript = std::function<void(int mainFd, int dataFd)>;
+
+    int ListenFd = -1;
+    ui16 Port = 0;
+    std::thread Thread;
+
+    explicit TScriptedPeer(TScript script)
+    {
+        auto [fd, error] = CreateListenSocket("127.0.0.1", 0, 16);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        ListenFd = fd;
+        auto [port, perr] = GetLocalPort(ListenFd);
+        UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
+        Port = port;
+
+        Thread = std::thread([this, script = std::move(script)] {
+            const int mainFd = Accept();
+            const int dataFd = mainFd >= 0 ? Handshake(mainFd) : -1;
+            if (dataFd >= 0) {
+                script(mainFd, dataFd);
+            }
+            CloseSocket(dataFd);
+            CloseSocket(mainFd);
+        });
+    }
+
+    ~TScriptedPeer()
+    {
+        ::shutdown(ListenFd, SHUT_RDWR);
+        Thread.join();
+        CloseSocket(ListenFd);
+    }
+
+    int Accept()
+    {
+        const int fd = ::accept(ListenFd, nullptr, nullptr);
+        if (fd >= 0) {
+            // a script never waits on the client for long
+            timeval tv{.tv_sec = 10, .tv_usec = 0};
+            ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        }
+        return fd;
+    }
+
+    int Handshake(int mainFd)
+    {
+        THello hello;
+        if (!TryReadAll(mainFd, &hello, sizeof(hello))) {
+            return -1;
+        }
+        TWelcome welcome;
+        welcome.OobMode = OOB_WIRE_REQUIRED;
+        welcome.DataToken = 1;
+        welcome.MaxProtoSize = hello.MaxProtoSize;
+        welcome.MaxDataSize = hello.MaxDataSize;
+        welcome.MaxInflightBytes = hello.MaxInflightBytes;
+        welcome.OobThreshold = hello.OobThreshold;
+        if (!TryWriteAll(mainFd, &welcome, sizeof(welcome))) {
+            return -1;
+        }
+
+        const int dataFd = Accept();
+        TDataHello dataHello;
+        TDataWelcome dataWelcome;
+        if (dataFd < 0 ||
+            !TryReadAll(dataFd, &dataHello, sizeof(dataHello)) ||
+            !TryWriteAll(dataFd, &dataWelcome, sizeof(dataWelcome)))
+        {
+            CloseSocket(dataFd);
+            return -1;
+        }
+        return dataFd;
     }
 };
 
@@ -420,6 +575,7 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
 
         auto payload = Pattern(4096, 3);
         TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        Collector->CloseBuffers = true;
         auto future = Collector->NewPromiseFuture();
         Endpoint->SendRequest(
             MakeRequest("slow", send, {}, TDuration::MilliSeconds(300)),
@@ -427,7 +583,6 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
 
         auto result = future.GetValue(TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, result.Status);
-        send.Close();   // must not block: every guard was released
     }
 
     Y_UNIT_TEST_F(LateOobResponseIsDiscarded, TFixture)
@@ -437,8 +592,10 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         WaitConnected();
         ServerHandler->Hold = true;
 
-        auto payload = Pattern(1 << 20, 4);
-        auto echoed = TString::Uninitialized(payload.size());
+        const size_t size = 1 << 20;
+        auto payload = Pattern(size, 4);
+        const TString sentinel(size, 'S');
+        TString echoed(size, 'S');
         TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
         TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
         auto first = Collector->NewPromiseFuture();
@@ -450,7 +607,7 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
             first.GetValue(TDuration::Seconds(10)).Status);
         recv.Close();
 
-        // the server answers the timed-out request, then a fresh one must work
+        // the server answers the timed-out request
         void* ctx = TakeHeld(1).front();
         auto late = std::make_shared<TString>(payload);
         ServerEndpoint->SendResponse(
@@ -459,12 +616,23 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
             {TBlockDataRef{late->data(), late->size()}},
             late);
 
+        // the data stream is FIFO, so this payload is read only after the
+        // late one has been taken off it
         ServerHandler->Hold = false;
+        auto fresh = Pattern(size, 8);
+        auto freshEchoed = TString::Uninitialized(size);
+        TGuardedSgList freshSend({TBlockDataRef{fresh.data(), fresh.size()}});
+        TGuardedSgList freshRecv(
+            {TBlockDataRef{freshEchoed.data(), freshEchoed.size()}});
         auto second = Collector->NewPromiseFuture();
-        Endpoint->SendRequest(MakeRequest("ping"), nullptr);
+        Endpoint->SendRequest(
+            MakeRequest("echo", freshSend, freshRecv),
+            nullptr);
         auto result = second.GetValue(TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(0u, result.Status);
-        UNIT_ASSERT_VALUES_EQUAL("ping", result.Proto);
+        UNIT_ASSERT_VALUES_EQUAL(size, result.DataBytes);
+        UNIT_ASSERT(fresh == freshEchoed);
+        UNIT_ASSERT(echoed == sentinel);
     }
 
     Y_UNIT_TEST_F(ShouldCancelRequest, TFixture)
@@ -489,26 +657,30 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
 
     Y_UNIT_TEST_F(DisconnectDuringPayloadReleasesGuard, TFixture)
     {
-        StartServer();
+        const ui32 size = 1 << 20;
+        const auto payload = Pattern(size, 5);
+        TScriptedPeer peer([&](int mainFd, int dataFd) {
+            const ui64 id = ReadRequest(mainFd);
+            SendOobResponseHeader(mainFd, id, size);
+            SendDataHeader(dataFd, id, size);
+            TryWriteAll(dataFd, payload.data(), size / 2);
+            // the client is reading the payload when both sockets close
+            Sleep(TDuration::MilliSeconds(100));
+        });
+        Port = peer.Port;
         StartClient();
         WaitConnected();
-        ServerHandler->Hold = true;
 
-        auto payload = Pattern(4 << 20, 5);
-        auto echoed = TString::Uninitialized(payload.size());
-        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        auto request = Pattern(4096, 6);
+        auto echoed = TString::Uninitialized(size);
+        TGuardedSgList send({TBlockDataRef{request.data(), request.size()}});
         TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        Collector->CloseBuffers = true;
         auto future = Collector->NewPromiseFuture();
         Endpoint->SendRequest(MakeRequest("echo", send, recv), nullptr);
-        while (ServerHandler->Received == 0) {
-            Sleep(TDuration::MilliSeconds(5));
-        }
-        StopServer();
 
         auto result = future.GetValue(TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, result.Status);
-        send.Close();
-        recv.Close();
         Events->Disconnected.GetFuture().GetValue(TDuration::Seconds(10));
     }
 
@@ -717,6 +889,39 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         StartClient(config);
         Events->Unavailable.GetFuture().GetValue(TDuration::Seconds(20));
         UNIT_ASSERT_VALUES_EQUAL(0, Events->Connects.load());
+    }
+
+    Y_UNIT_TEST_F(ShouldDisconnectOnDuplicateResponse, TFixture)
+    {
+        const ui32 size = 1 << 20;
+        const auto payload = Pattern(size, 7);
+        TScriptedPeer peer([&](int mainFd, int dataFd) {
+            const ui64 id = ReadRequest(mainFd);
+            SendOobResponseHeader(mainFd, id, size);
+            SendDataHeader(dataFd, id, size);
+            TryWriteAll(dataFd, payload.data(), size / 2);
+            // the client is reading the payload when the second response
+            // for the same request comes, payload and all
+            Sleep(TDuration::MilliSeconds(100));
+            SendOobResponseHeader(mainFd, id, size);
+            TryWriteAll(dataFd, payload.data() + size / 2, size - size / 2);
+            SendDataHeader(dataFd, id, size);
+            TryWriteAll(dataFd, payload.data(), size);
+            WaitForEof(mainFd);
+        });
+        Port = peer.Port;
+        StartClient();
+        WaitConnected();
+
+        auto echoed = TString::Uninitialized(size);
+        TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        Collector->CloseBuffers = true;
+        auto future = Collector->NewPromiseFuture();
+        Endpoint->SendRequest(MakeRequest("dup", {}, recv), nullptr);
+
+        auto result = future.GetValue(TDuration::Seconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, result.Status);
+        Events->Disconnected.GetFuture().GetValue(TDuration::Seconds(10));
     }
 }
 

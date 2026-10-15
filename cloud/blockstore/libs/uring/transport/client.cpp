@@ -484,6 +484,36 @@ private:
         Finish(it, ParseError(proto));
     }
 
+    void ProtocolError(TStringBuf what)
+    {
+        STORAGE_WARN(
+            "protocol error from " << Host << ":" << Port
+                                   << ", closing: " << what);
+        Connection->Close(MakeError(
+            E_REJECTED,
+            TStringBuilder() << "protocol error: " << what));
+    }
+
+    // The request a response fills, or end() when there is none: the id is
+    // unknown, the request is decided, or it is a second response.
+    TActiveMap::iterator FindResponseTarget(ui64 id)
+    {
+        auto it = Active.find(id);
+        if (it == Active.end()) {
+            return it;
+        }
+        if (it->second.RecvInFlight) {
+            // its payload is still being read into the very same buffer
+            ProtocolError(
+                TStringBuilder() << "second response for request " << id);
+            return Active.end();
+        }
+        if (it->second.Status) {
+            return Active.end();   // timed out or cancelled
+        }
+        return it;
+    }
+
     NProto::TError TakeRecvGuard(TActive& active, ui32 dataLen)
     {
         active.RecvGuard.emplace(active.Request->RecvData.Acquire());
@@ -511,9 +541,9 @@ private:
             Connection->Close(MakeError(E_REJECTED, "unexpected frame type"));
             return;
         }
-        auto it = Active.find(header.RequestId);
-        if (it == Active.end() || it->second.Status) {
-            return;   // timed out or cancelled
+        auto it = FindResponseTarget(header.RequestId);
+        if (it == Active.end()) {
+            return;
         }
         if (header.Type == FRAME_ERROR) {
             FinishWithErrorFrame(it, proto);
@@ -542,8 +572,8 @@ private:
             return {};
         }
         // an empty sink makes the connection read the payload and drop it
-        auto it = Active.find(header.RequestId);
-        if (it == Active.end() || it->second.Status) {
+        auto it = FindResponseTarget(header.RequestId);
+        if (it == Active.end()) {
             return {};
         }
         if (header.Type == FRAME_ERROR) {
@@ -589,7 +619,11 @@ private:
         const TString* staging)
     {
         auto it = Active.find(id);
-        Y_ABORT_UNLESS(it != Active.end(), "payload for a finished request %lu", id);
+        if (it == Active.end()) {
+            ProtocolError(
+                TStringBuilder() << "payload for a finished request " << id);
+            return;
+        }
         auto& active = it->second;
         active.RecvInFlight = false;
         if (HasError(error) || active.Status) {
