@@ -50,7 +50,7 @@ def build_device_index(backup):
 def build_disk_id_to_config(backup):
     disk_id_to_config = {}
     for disk in backup.Disks:
-        disk_id_to_config.setdefault(disk.DiskId, disk)
+        disk_id_to_config[disk.DiskId] = disk
     return disk_id_to_config
 
 
@@ -63,9 +63,9 @@ def validate_device(old_device, new_device):
     )
 
 
-def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, validator):
+def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, reserved):
     if len(old_disk.DeviceUUIDs) == 0:
-        raise RuntimeError("disk has no devices in old backup")
+        raise RuntimeError(f"disk {quote(old_disk.DiskId)} has no devices in old backup")
 
     devices = []
     for uuid in old_disk.DeviceUUIDs:
@@ -87,9 +87,10 @@ def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, validator):
                 f"device {quote(uuid)} is inconsistent with device in previous backup"
             )
 
-        if uuid in validator:
-            raise RuntimeError(f"device {quote(uuid)} already exists on other disk ")
-        validator[uuid] = old_disk.DiskId
+        if uuid in reserved and reserved[uuid] != old_disk.DiskId:
+            raise RuntimeError(f"device {quote(uuid)} already exists on other disk {quote(reserved[uuid])}")
+
+        reserved[uuid] = old_disk.DiskId
         devices.append(current_device)
 
     return devices
@@ -161,10 +162,45 @@ def send_request(action, request, disk_id):
         "--input-bytes", request_payload(request, disk_id),
     ]
     run(args, check=True, text=True, stdout=sys.stdout, stderr=sys.stdout)
-    print(f"Disk {quote(disk_id)} restored")
 
 
-def run(old_backup_path, current_backup_path, disk_ids):
+def process_disk(
+    disk_id,
+    old_disk,
+    disk_id_to_old_config,
+    old_by_uuid,
+    current_by_physical,
+    reserved
+):
+    if old_disk is None:
+        raise RuntimeError(f" disk with id {quote(disk_id)} not found in old backup")
+
+    if not is_mirrored_disk(old_disk):
+        devices = resolve_disk_devices(
+            old_disk, old_by_uuid, current_by_physical, reserved
+        )
+        return "CreateDiskFromDevices", build_nonreplicated_disk_request(old_disk, devices)
+
+    if not old_disk.MasterDiskId:
+        raise RuntimeError("mirrored disk has no master disk id")
+
+    replicas = []
+    for replica_index in range(old_disk.ReplicaCount + 1):
+        replica_id = build_replica_id(disk_id, replica_index)
+
+        replica = disk_id_to_old_config.get(replica_id)
+        if replica is None:
+            raise RuntimeError(f"replica {quote(replica_id)} not found in old backup")
+        replicas.append(
+            resolve_disk_devices(
+                replica, old_by_uuid, current_by_physical, reserved
+            )
+        )
+
+    return "CreateMirroredDiskFromDevices", build_mirrored_disk_request(old_disk, replicas)
+
+
+def run(old_backup_path, current_backup_path, disk_ids, dry_run):
     old_backup = load_backup(old_backup_path)
     old_by_uuid, _ = build_device_index(old_backup)
 
@@ -172,44 +208,49 @@ def run(old_backup_path, current_backup_path, disk_ids):
     _, current_by_physical = build_device_index(current_backup)
 
     disk_id_to_old_config = build_disk_id_to_config(old_backup)
-    validator = {}
+    reserved = {}
+    disks_to_restore = []
+    incomplete_disks = []
 
     for disk_id in disk_ids:
-        old_disk = disk_id_to_old_config.get(disk_id)
-        if old_disk is None:
-            raise RuntimeError(f" disk with id {quote(disk_id)} not found in old backup")
-
-        if not is_mirrored_disk(old_disk):
-            devices = resolve_disk_devices(
-                old_disk, old_by_uuid, current_by_physical, validator
-            )
-            send_request(
-                "CreateDiskFromDevices",
-                build_nonreplicated_disk_request(old_disk, devices),
+        try:
+            action, request = process_disk(
                 disk_id,
+                disk_id_to_old_config.get(disk_id),
+                disk_id_to_old_config,
+                old_by_uuid,
+                current_by_physical,
+                reserved
             )
+        except RuntimeError as exc:
+            incomplete_disks.append(disk_id)
+            print(f"Disk {quote(disk_id)}: incomplete data to restore: {exc}")
             continue
 
-        if not old_disk.MasterDiskId:
-            continue
+        disks_to_restore.append((disk_id, action, request))
+        print(f"Disk {quote(disk_id)}: ready to restore")
 
-        replicas = []
-        for replica_index in range(old_disk.ReplicaCount + 1):
-            replica_id = build_replica_id(disk_id, replica_index)
-            replica = disk_id_to_old_config.get(replica_id)
-            if replica is None:
-                raise RuntimeError(f"replica {quote(replica_id)} not found in old backup")
-            replicas.append(
-                resolve_disk_devices(
-                    replica, old_by_uuid, current_by_physical, validator
-                )
-            )
+    print(f"Disks to restore count: {len(disks_to_restore)}")
+    print(f"Disks with incomplete data count: {len(incomplete_disks)}")
 
-        send_request(
-            "CreateMirroredDiskFromDevices",
-            build_mirrored_disk_request(old_disk, replicas),
-            disk_id,
-        )
+    restore_failed = []
+    if not dry_run:
+        for disk_id, action, request in disks_to_restore:
+            try:
+                send_request(action, request, disk_id)
+            except Exception as exc:
+                restore_failed.append(disk_id)
+                print(f"Disk {quote(disk_id)}: restore failed: {exc}", file=sys.stderr)
+                continue
+            print(f"Disk {quote(disk_id)} restored")
+
+        print(f"Disks restored count: {len(disks_to_restore) - len(restore_failed)}")
+        print(f"Disks failed to restore count: {len(restore_failed)}")
+
+    if incomplete_disks or restore_failed:
+        return 1
+
+    return 0
 
 
 def parse_args(argv):
@@ -229,6 +270,10 @@ def parse_args(argv):
         required=True,
         help="Comma-separated list of disk IDs to restore",
     )
+    parser.add_argument(
+        "--dry-run",
+        help="Check disks data and do not call blockstore-client",
+    )
     return parser.parse_args(argv)
 
 
@@ -236,15 +281,15 @@ def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     disk_ids = [disk_id for disk_id in args.disk_ids.split(",") if disk_id]
     try:
-        run(
+        return run(
             args.old_backup_path,
             args.current_backup_path,
             disk_ids,
+            args.dry_run,
         )
     except Exception as exc:
         print(exc, file=sys.stderr)
         return 1
-    return 0
 
 
 if __name__ == "__main__":
