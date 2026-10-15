@@ -40,9 +40,11 @@ struct IServerEndpoint
 {
     virtual ~IServerEndpoint() = default;
 
-    // Any thread, exactly once per ctx. data is aliased; owner is released
-    // once the kernel is done with it. The request buffer handed to
-    // HandleRequest is released here, so it must not be aliased by data.
+    // Any thread, exactly once per ctx. data is aliased when
+    // DirectSgIoEnabled and owner is released once the kernel is done with
+    // it; otherwise data is copied and owner released before this returns.
+    // The request buffer handed to HandleRequest is released here, so it must
+    // not be aliased by data.
     virtual void SendResponse(
         void* ctx,
         TStringBuf proto,

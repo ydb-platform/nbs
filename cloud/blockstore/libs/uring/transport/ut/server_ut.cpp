@@ -1000,6 +1000,44 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
             E_REJECTED,
             ParseError(second.Proto).GetCode());
     }
+
+    Y_UNIT_TEST_F(ShouldStageResponsesWithoutDirectSgIo, TFixture)
+    {
+        auto staged = [&]
+        {
+            return Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "uring_server")
+                ->GetCounter("StagingCopyBytes")
+                ->Val();
+        };
+        const auto payload = Pattern(1 << 20, 15);
+        Handler->Hold = true;
+
+        for (bool direct: {true, false}) {
+            TServerConfig config;
+            config.DirectSgIoEnabled = direct;
+            StartServer(config);
+            TRawClient client;
+            client.Connect(Port, EOobMode::Auto);
+            client.SendRequest(1, "p", {}, false);
+
+            auto owner = std::make_shared<TString>(payload);
+            const std::weak_ptr<TString> weak = owner;
+            TSgList data = {TBlockDataRef{owner->data(), owner->size()}};
+            Endpoint->SendResponse(TakeHeld(), "p", data, std::move(owner));
+            if (!direct) {
+                // the handler's buffer is free as soon as the call returns
+                UNIT_ASSERT(weak.expired());
+            }
+
+            auto r = client.ReadResponse();
+            UNIT_ASSERT_VALUES_EQUAL(ui32(FLAG_OOB), ui32(r.Header.Flags));
+            UNIT_ASSERT(payload == r.Data);
+            UNIT_ASSERT_VALUES_EQUAL(direct ? 0 : payload.size(), staged());
+            Server->Stop();
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

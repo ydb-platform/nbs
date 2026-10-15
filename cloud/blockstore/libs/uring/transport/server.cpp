@@ -605,6 +605,16 @@ public:
         TSgList data,
         std::shared_ptr<void> owner) override
     {
+        const size_t size = SgListGetSize(data);
+        if (size && !Config->DirectSgIoEnabled) {
+            auto staging =
+                std::make_shared<TString>(TString::Uninitialized(size));
+            SgListCopy(data, TBlockDataRef{staging->data(), size});
+            data = {TBlockDataRef{staging->data(), size}};
+            owner = std::move(staging);
+            Counters->StagingCopyBytes->Add(size);
+        }
+
         auto* raw = static_cast<TServerRequest*>(ctx);
         // outlives the request, whose last reference may be the one below
         auto session = raw->Session;
