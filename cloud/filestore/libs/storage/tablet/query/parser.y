@@ -17,7 +17,7 @@ static TExpression* BinaryOperatorExpression(
 }
 
 template <typename TPredicateType>
-static TBinaryOperatorNode* SingleValuePredicate(TString column, TValue value)
+static TBinaryOperatorNode* MakeBinaryOperatorNode(TString column, TValue value)
 {
     TPredicateType predicate;
     predicate.Column = std::move(column);
