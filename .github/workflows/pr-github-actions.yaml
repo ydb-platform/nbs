@@ -340,7 +340,7 @@ jobs:
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ga-scripts-pytest-results
           path: ga-scripts-pytest-results.xml
@@ -348,7 +348,7 @@ jobs:
       - name: Upload pytest html report artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload-html
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ga-scripts-pytest-report-html
           path: ga-scripts-pytest-report.html
