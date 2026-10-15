@@ -1040,6 +1040,81 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
             UNIT_ASSERT_VALUES_EQUAL(0, ClientCounter("SendZcNotifications"));
         }
     }
+
+    Y_UNIT_TEST_F(InflightByteLimitRejects, TFixture)
+    {
+        StartServer();
+        TClientConfig config;
+        config.MaxInflightRequests = 4;
+        config.MaxDataSize = 64 << 10;
+        config.MaxInflightBytes = 4 * (128 << 10);
+        StartClient(config);
+        WaitConnected();
+        ServerHandler->Hold = true;
+
+        // a request counts its payload both ways and its proto, so the fourth
+        // one does not fit the bytes although a slot is still free for it
+        auto payload = Pattern(64 << 10, 12);
+        auto echoed = TString::Uninitialized(payload.size());
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        TVector<TFuture<TResult>> futures;
+        for (int i = 0; i < 4; ++i) {
+            futures.push_back(Collector->NewPromiseFuture());
+            Endpoint->SendRequest(
+                MakeRequest("slow", send, recv, TDuration::Seconds(60)),
+                nullptr);
+        }
+
+        for (void* ctx: TakeHeld(3)) {
+            ServerEndpoint->SendResponse(ctx, "slow", {}, nullptr);
+        }
+        int rejected = 0;
+        int succeeded = 0;
+        for (auto& f: futures) {
+            const ui32 status = f.GetValue(TDuration::Seconds(10)).Status;
+            rejected += status == E_REJECTED;
+            succeeded += status == S_OK;
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, rejected);
+        UNIT_ASSERT_VALUES_EQUAL(3, succeeded);
+        UNIT_ASSERT_VALUES_EQUAL(3, ServerHandler->Received.load());
+    }
+
+    Y_UNIT_TEST_F(HungPeerClosesAfterUserTimeout, TFixture)
+    {
+        auto release = NewPromise();
+        TScriptedPeer peer([future = release.GetFuture()](int, int)
+                           { future.Wait(TDuration::Seconds(30)); });
+        Y_DEFER
+        {
+            release.TrySetValue();
+        };
+        Port = peer.Port;
+        TClientConfig config;
+        config.TcpUserTimeout = TDuration::Seconds(1);
+        StartClient(config);
+        WaitConnected();
+
+        // far more than the socket buffers take, and the peer never reads, so
+        // the client is left with data nobody will make room for
+        auto payload = Pattern(1 << 20, 13);
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TVector<TFuture<TResult>> futures;
+        for (int i = 0; i < 8; ++i) {
+            futures.push_back(Collector->NewPromiseFuture());
+            Endpoint->SendRequest(
+                MakeRequest("hung", send, {}, TDuration::Seconds(60)),
+                nullptr);
+        }
+
+        for (auto& f: futures) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                f.GetValue(TDuration::Seconds(20)).Status);
+        }
+        Events->Disconnected.GetFuture().GetValue(TDuration::Seconds(1));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring
