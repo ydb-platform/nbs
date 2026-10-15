@@ -35,8 +35,8 @@ def build_device_index(backup):
     by_physical = {}
 
     def add_device(device):
-        by_uuid.setdefault(device.DeviceUUID, device)
-        by_physical.setdefault((device.SerialNumber, device.PhysicalOffset), device)
+        by_uuid[device.DeviceUUID] = device
+        by_physical[(device.SerialNumber, device.PhysicalOffset)] = device
 
     for agent in backup.Agents:
         for device in agent.Devices:
