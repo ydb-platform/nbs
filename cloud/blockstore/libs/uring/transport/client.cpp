@@ -24,14 +24,14 @@
 #include <util/system/guard.h>
 #include <util/system/spinlock.h>
 
+#include <errno.h>
+#include <sys/socket.h>
+
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
-
-#include <errno.h>
-#include <sys/socket.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -183,14 +183,14 @@ private:
 
 public:
     TClientEndpoint(
-            TRing& ring,
-            ITaskQueue& resolver,
-            TClientConfigPtr config,
-            TString host,
-            ui16 port,
-            IClientEndpointHandlerPtr eventHandler,
-            TCountersPtr counters,
-            TLog log)
+        TRing& ring,
+        ITaskQueue& resolver,
+        TClientConfigPtr config,
+        TString host,
+        ui16 port,
+        IClientEndpointHandlerPtr eventHandler,
+        TCountersPtr counters,
+        TLog log)
         : Ring(ring)
         , Resolver(resolver)
         , Config(std::move(config))
@@ -205,10 +205,12 @@ public:
 
     void Start()
     {
-        Ring.Execute([self = shared_from_this()] {
-            self->Ring.AddTickable(self.get());
-            self->BeginConnect();
-        });
+        Ring.Execute(
+            [self = shared_from_this()]
+            {
+                self->Ring.AddTickable(self.get());
+                self->BeginConnect();
+            });
     }
 
     ui64 SendRequest(
@@ -228,8 +230,7 @@ public:
         // pointer; a command posted before Stopped always runs
         auto* raw = req.release();
         const bool posted = TryPost(
-            [self = shared_from_this(), raw, callContext, id, bytes]
-            {
+            [self = shared_from_this(), raw, callContext, id, bytes] {
                 self->StartRequest(
                     TClientRequestPtr(raw),
                     callContext,
@@ -248,12 +249,16 @@ public:
 
     void CancelRequest(ui64 id) override
     {
-        TryPost([self = shared_from_this(), id] {
-            auto it = self->Active.find(id);
-            if (it != self->Active.end()) {
-                self->Finish(it, MakeError(E_CANCELLED, "request cancelled"));
-            }
-        });
+        TryPost(
+            [self = shared_from_this(), id]
+            {
+                auto it = self->Active.find(id);
+                if (it != self->Active.end()) {
+                    self->Finish(
+                        it,
+                        MakeError(E_CANCELLED, "request cancelled"));
+                }
+            });
     }
 
     NThreading::TFuture<void> Stop() override
@@ -261,9 +266,8 @@ public:
         with_lock (Lock) {
             if (!StopRequested) {
                 StopRequested = true;
-                Ring.Execute([self = shared_from_this()] {
-                    self->StopOnRing();
-                });
+                Ring.Execute([self = shared_from_this()]
+                             { self->StopOnRing(); });
             }
         }
         return StopPromise.GetFuture();
@@ -271,10 +275,12 @@ public:
 
     void TryForceReconnect() override
     {
-        TryPost([self = shared_from_this()] {
-            self->Backoff.Reset();
-            self->NextConnectAttempt = TInstant::Zero();
-        });
+        TryPost(
+            [self = shared_from_this()]
+            {
+                self->Backoff.Reset();
+                self->NextConnectAttempt = TInstant::Zero();
+            });
     }
 
     void OnTick(TInstant now) override
@@ -316,9 +322,8 @@ private:
     void Reject(TClientRequestPtr req, NProto::TError error)
     {
         auto* raw = req.release();
-        const bool posted = TryPost([raw, error] {
-            DeliverError(TClientRequestPtr(raw), error);
-        });
+        const bool posted = TryPost(
+            [raw, error] { DeliverError(TClientRequestPtr(raw), error); });
         if (!posted) {
             DeliverError(TClientRequestPtr(raw), error);
         }
@@ -331,7 +336,8 @@ private:
             if (requests >= Config->MaxInflightRequests) {
                 return false;
             }
-        } while (!InflightRequests.compare_exchange_weak(requests, requests + 1));
+        } while (
+            !InflightRequests.compare_exchange_weak(requests, requests + 1));
 
         const ui64 limit = MaxInflightBytes.load();
         ui64 current = InflightBytes.load();
@@ -340,7 +346,8 @@ private:
                 --InflightRequests;
                 return false;
             }
-        } while (!InflightBytes.compare_exchange_weak(current, current + bytes));
+        } while (
+            !InflightBytes.compare_exchange_weak(current, current + bytes));
         return true;
     }
 
@@ -362,7 +369,9 @@ private:
         if (State != EState::Connected || Connection->IsClosing()) {
             Counters->Rejected->Inc();
             Release(bytes);
-            DeliverError(std::move(req), MakeError(E_REJECTED, "not connected"));
+            DeliverError(
+                std::move(req),
+                MakeError(E_REJECTED, "not connected"));
             return;
         }
 
@@ -384,7 +393,8 @@ private:
         const TSgList& sgList = active.SendGuard->Get();
         const size_t dataLen = SgListGetSize(sgList);
         const TString& proto = active.Request->Proto;
-        if (proto.size() > Params.MaxProtoSize || dataLen > Params.MaxDataSize) {
+        if (proto.size() > Params.MaxProtoSize || dataLen > Params.MaxDataSize)
+        {
             Counters->Errors->Inc();
             Finish(
                 it,
@@ -410,21 +420,23 @@ private:
 
         if (Config->DirectSgIoEnabled) {
             frame->Data = sgList;
-            frame->OnDone = [this, id] {
+            frame->OnDone = [this, id]
+            {
                 OnSent(id);
             };
             Counters->DirectSendBytes->Add(dataLen);
         } else {
             std::shared_ptr<TString> staging;
             if (dataLen) {
-                staging = std::make_shared<TString>(
-                    TString::Uninitialized(dataLen));
+                staging =
+                    std::make_shared<TString>(TString::Uninitialized(dataLen));
                 SgListCopy(sgList, TBlockDataRef{staging->data(), dataLen});
                 frame->Data = {TBlockDataRef{staging->data(), dataLen}};
                 Counters->StagingCopyBytes->Add(dataLen);
             }
             active.SendGuard.reset();
-            frame->OnDone = [this, id, staging = std::move(staging)] {
+            frame->OnDone = [this, id, staging = std::move(staging)]
+            {
                 OnSent(id);
             };
         }
@@ -529,9 +541,9 @@ private:
             Counters->Errors->Inc();
             return MakeError(
                 E_ARGUMENT,
-                TStringBuilder() << "response carries " << dataLen
-                                 << " bytes, the receive buffer holds "
-                                 << size);
+                TStringBuilder()
+                    << "response carries " << dataLen
+                    << " bytes, the receive buffer holds " << size);
         }
         return {};
     }
@@ -558,7 +570,8 @@ private:
             return;
         }
         auto& active = it->second;
-        if (auto error = TakeRecvGuard(active, header.DataLen); HasError(error)) {
+        if (auto error = TakeRecvGuard(active, header.DataLen); HasError(error))
+        {
             Finish(it, error);
             return;
         }
@@ -585,7 +598,8 @@ private:
             return {};
         }
         auto& active = it->second;
-        if (auto error = TakeRecvGuard(active, header.DataLen); HasError(error)) {
+        if (auto error = TakeRecvGuard(active, header.DataLen); HasError(error))
+        {
             Finish(it, error);
             return {};
         }
@@ -597,7 +611,8 @@ private:
         TDataSink sink;
         if (Config->DirectSgIoEnabled) {
             sink.Target = active.RecvGuard->Get();
-            sink.OnDone = [this, id, dataLen](const NProto::TError& error) {
+            sink.OnDone = [this, id, dataLen](const NProto::TError& error)
+            {
                 OnPayload(id, dataLen, error, nullptr);
             };
         } else {
@@ -697,9 +712,8 @@ private:
             {
                 auto address = Resolve(host, port);
                 if (auto self = weak.lock()) {
-                    self->TryPost([self, address] {
-                        self->OnResolved(address);
-                    });
+                    self->TryPost([self, address]
+                                  { self->OnResolved(address); });
                 }
             });
     }
@@ -739,7 +753,8 @@ private:
             FailHandshake(error);
             return;
         }
-        h.OnConnect = [this, next = std::move(next)](int error) {
+        h.OnConnect = [this, next = std::move(next)](int error)
+        {
             if (StepSucceeded(error, "connect")) {
                 next();
             }
@@ -782,21 +797,31 @@ private:
         h.Hello.MaxInflightBytes =
             Min<ui64>(Config->MaxInflightBytes, Max<ui32>());
         h.Hello.OobThreshold = Config->OobThreshold;
-        h.Io.Send(h.MainFd, &h.Hello, sizeof(h.Hello), [this](int error) {
-            if (StepSucceeded(error, "send hello")) {
-                RecvWelcome();
-            }
-        });
+        h.Io.Send(
+            h.MainFd,
+            &h.Hello,
+            sizeof(h.Hello),
+            [this](int error)
+            {
+                if (StepSucceeded(error, "send hello")) {
+                    RecvWelcome();
+                }
+            });
     }
 
     void RecvWelcome()
     {
         auto& h = *Handshake;
-        h.Io.Recv(h.MainFd, &h.Welcome, sizeof(h.Welcome), [this](int error) {
-            if (StepSucceeded(error, "recv welcome")) {
-                OnWelcome();
-            }
-        });
+        h.Io.Recv(
+            h.MainFd,
+            &h.Welcome,
+            sizeof(h.Welcome),
+            [this](int error)
+            {
+                if (StepSucceeded(error, "recv welcome")) {
+                    OnWelcome();
+                }
+            });
     }
 
     void OnWelcome()
@@ -841,11 +866,16 @@ private:
     {
         auto& h = *Handshake;
         h.DataHello.DataToken = h.Welcome.DataToken;
-        h.Io.Send(h.DataFd, &h.DataHello, sizeof(h.DataHello), [this](int error) {
-            if (StepSucceeded(error, "send data hello")) {
-                RecvDataWelcome();
-            }
-        });
+        h.Io.Send(
+            h.DataFd,
+            &h.DataHello,
+            sizeof(h.DataHello),
+            [this](int error)
+            {
+                if (StepSucceeded(error, "send data hello")) {
+                    RecvDataWelcome();
+                }
+            });
     }
 
     void RecvDataWelcome()
@@ -855,7 +885,8 @@ private:
             h.DataFd,
             &h.DataWelcome,
             sizeof(h.DataWelcome),
-            [this](int error) {
+            [this](int error)
+            {
                 if (StepSucceeded(error, "recv data welcome")) {
                     OnDataWelcome();
                 }
@@ -890,7 +921,8 @@ private:
             .SendZeroCopy = Config->SendZeroCopyMode != ESendZeroCopyMode::Off,
             .SendZeroCopyThreshold = Config->SendZeroCopyThreshold,
         };
-        MaxInflightBytes = Min<ui64>(Config->MaxInflightBytes, w.MaxInflightBytes);
+        MaxInflightBytes =
+            Min<ui64>(Config->MaxInflightBytes, w.MaxInflightBytes);
         const int mainFd = std::exchange(Handshake->MainFd, -1);
         const int dataFd = std::exchange(Handshake->DataFd, -1);
         DropHandshake();
@@ -1013,9 +1045,9 @@ private:
 
 public:
     TClient(
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            TClientConfigPtr config)
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        TClientConfigPtr config)
         : Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
         , Config(std::move(config))
@@ -1095,7 +1127,9 @@ public:
         IClientEndpointHandlerPtr handler) override
     {
         if (port > Max<ui16>()) {
-            return MakeError(E_ARGUMENT, TStringBuilder() << "bad port " << port);
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "bad port " << port);
         }
         // under the lock, so that Stop() sees every endpoint that has started
         std::shared_ptr<TClientEndpoint> endpoint;

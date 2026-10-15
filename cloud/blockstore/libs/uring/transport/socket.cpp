@@ -6,9 +6,10 @@
 
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <optional>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -33,7 +34,8 @@ NProto::TError MakeSystemError(int code, TStringBuf message)
 {
     return MakeError(
         MAKE_SYSTEM_ERROR(code),
-        TStringBuilder() << "(" << LastSystemErrorText(code) << ") " << message);
+        TStringBuilder() << "(" << LastSystemErrorText(code) << ") "
+                         << message);
 }
 
 NProto::TError ApplySocketOptions(int fd, const TSocketOptions& options)
@@ -99,10 +101,8 @@ NProto::TError ApplySocketOptions(int fd, const TSocketOptions& options)
     return {};
 }
 
-TResultOrError<int> CreateListenSocket(
-    const TString& host,
-    ui16 port,
-    ui32 backlog)
+TResultOrError<int>
+CreateListenSocket(const TString& host, ui16 port, ui32 backlog)
 {
     std::optional<TNetworkAddress> address;
     try {
@@ -122,7 +122,8 @@ TResultOrError<int> CreateListenSocket(
             last = MakeSystemError(errno, "socket");
             continue;
         }
-        if (auto e = SetOpt<int>(fd, SOL_SOCKET, SO_REUSEADDR, 1, "SO_REUSEADDR");
+        if (auto e =
+                SetOpt<int>(fd, SOL_SOCKET, SO_REUSEADDR, 1, "SO_REUSEADDR");
             HasError(e))
         {
             last = e;

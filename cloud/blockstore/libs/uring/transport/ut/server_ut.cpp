@@ -1,7 +1,6 @@
-#include <cloud/blockstore/libs/uring/transport/server.h>
-
 #include <cloud/blockstore/libs/uring/transport/config.h>
 #include <cloud/blockstore/libs/uring/transport/protocol.h>
+#include <cloud/blockstore/libs/uring/transport/server.h>
 #include <cloud/blockstore/libs/uring/transport/socket.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
@@ -12,11 +11,11 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
-#include <thread>
-
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <thread>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -114,8 +113,8 @@ struct TRawClient
     {
         SendHello(port, oobMode);
         ReadWelcome();
-        if (Welcome.Status == STATUS_OK && Welcome.OobMode == OOB_WIRE_REQUIRED &&
-            openData)
+        if (Welcome.Status == STATUS_OK &&
+            Welcome.OobMode == OOB_WIRE_REQUIRED && openData)
         {
             OpenData(port);
         }
@@ -145,7 +144,8 @@ struct TRawClient
         addr.sin_port = htons(port);
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         UNIT_ASSERT_C(
-            ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0,
+            ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
+                0,
             LastSystemErrorText());
         return fd;
     }
@@ -218,11 +218,7 @@ struct TRawClient
         return !TryReadAll(fd, &buf, 1);
     }
 
-    void SendRequestHeader(
-        ui64 id,
-        TStringBuf proto,
-        size_t dataLen,
-        bool oob)
+    void SendRequestHeader(ui64 id, TStringBuf proto, size_t dataLen, bool oob)
     {
         TFrameHeader h;
         h.Type = FRAME_REQUEST;
@@ -397,7 +393,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         TRawClient client;
         client.Connect(Port, EOobMode::Auto);
         UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_OK), ui32(client.Welcome.Status));
-        UNIT_ASSERT_VALUES_EQUAL(ui32(OOB_WIRE_REQUIRED), ui32(client.Welcome.OobMode));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui32(OOB_WIRE_REQUIRED),
+            ui32(client.Welcome.OobMode));
 
         auto small = Pattern(1024, 1);
         client.SendRequest(1, "p1", small, false);
@@ -440,7 +438,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         StartServer(config);
         TRawClient client;
         client.Connect(Port, EOobMode::Auto);
-        UNIT_ASSERT_VALUES_EQUAL(ui32(OOB_WIRE_OFF), ui32(client.Welcome.OobMode));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui32(OOB_WIRE_OFF),
+            ui32(client.Welcome.OobMode));
         auto payload = Pattern(1 << 20, 3);
         client.SendRequest(1, "p", payload, false);
         auto r = client.ReadResponse();
@@ -455,7 +455,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         StartServer(config);
         TRawClient client;
         client.Connect(Port, EOobMode::Required, false);
-        UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_CONFIG_MISMATCH), ui32(client.Welcome.Status));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui32(STATUS_CONFIG_MISMATCH),
+            ui32(client.Welcome.Status));
     }
 
     Y_UNIT_TEST_F(ShouldRejectBadVersion, TFixture)
@@ -467,7 +469,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         TRawClient::WriteAll(fd, &hello, sizeof(hello));
         TWelcome welcome;
         TRawClient::ReadAll(fd, &welcome, sizeof(welcome));
-        UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_VERSION_MISMATCH), ui32(welcome.Status));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui32(STATUS_VERSION_MISMATCH),
+            ui32(welcome.Status));
         CloseSocket(fd);
     }
 
@@ -649,7 +653,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         TRawClient::WriteAll(badMode, &hello, sizeof(hello));
         TWelcome welcome;
         TRawClient::ReadAll(badMode, &welcome, sizeof(welcome));
-        UNIT_ASSERT_VALUES_EQUAL(ui32(STATUS_CONFIG_MISMATCH), ui32(welcome.Status));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ui32(STATUS_CONFIG_MISMATCH),
+            ui32(welcome.Status));
         CloseSocket(badMode);
 
         TRawClient client;
@@ -763,11 +769,13 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         for (int i = 0; i < 8; ++i) {
             held.push_back(TakeHeld());
         }
-        std::thread answerer([&] {
-            for (void* ctx: held) {
-                Endpoint->SendResponse(ctx, "a", {}, nullptr);
-            }
-        });
+        std::thread answerer(
+            [&]
+            {
+                for (void* ctx: held) {
+                    Endpoint->SendResponse(ctx, "a", {}, nullptr);
+                }
+            });
         client.Disconnect();
         answerer.join();
     }
@@ -842,7 +850,8 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         addr.sin_port = htons(Port);
         addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         UNIT_ASSERT_C(
-            ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0,
+            ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
+                0,
             LastSystemErrorText());
 
         TDataHello dh;
@@ -898,7 +907,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
             client.SendRequest(i, "p", payload, true);
             auto frame = client.ReadFrameOnly();
             UNIT_ASSERT_VALUES_EQUAL(i, frame.Header.RequestId);
-            UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(frame.Header.Type));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ui32(FRAME_ERROR),
+                ui32(frame.Header.Type));
             UNIT_ASSERT_VALUES_EQUAL(
                 E_REJECTED,
                 ParseError(frame.Proto).GetCode());
@@ -925,7 +936,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
             client.SendRequest(i, "p", {}, false);
             auto frame = client.ReadFrameOnly();
             UNIT_ASSERT_VALUES_EQUAL(i, frame.Header.RequestId);
-            UNIT_ASSERT_VALUES_EQUAL(ui32(FRAME_ERROR), ui32(frame.Header.Type));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ui32(FRAME_ERROR),
+                ui32(frame.Header.Type));
         }
     }
 

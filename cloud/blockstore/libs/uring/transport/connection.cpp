@@ -57,12 +57,12 @@ void DropUndeliveredData(int fd)
 ////////////////////////////////////////////////////////////////////////////////
 
 TConnection::TConnection(
-        TRing& ring,
-        TConnectionParams params,
-        int mainFd,
-        int dataFd,
-        IConnectionHandler* handler,
-        TLog log)
+    TRing& ring,
+    TConnectionParams params,
+    int mainFd,
+    int dataFd,
+    IConnectionHandler* handler,
+    TLog log)
     : Ring(ring)
     , Params(params)
     , Handler(handler)
@@ -355,11 +355,10 @@ bool TConnection::ParseFrames()
             h.DataLen > Params.MaxDataSize || (oob && Data.Fd < 0))
         {
             ProtocolError(
-                TStringBuilder() << "bad frame header: magic=" << Hex(h.Magic)
-                                 << " type=" << int(h.Type)
-                                 << " flags=" << int(h.Flags)
-                                 << " proto=" << h.ProtoLen
-                                 << " data=" << h.DataLen);
+                TStringBuilder()
+                << "bad frame header: magic=" << Hex(h.Magic)
+                << " type=" << int(h.Type) << " flags=" << int(h.Flags)
+                << " proto=" << h.ProtoLen << " data=" << h.DataLen);
             return false;
         }
 
@@ -390,8 +389,8 @@ bool TConnection::ParseFrames()
                 }
                 return false;
             }
-            const bool badSink = !sink.Target.empty() &&
-                                 SgListGetSize(sink.Target) != h.DataLen;
+            const bool badSink =
+                !sink.Target.empty() && SgListGetSize(sink.Target) != h.DataLen;
             TExpect expect;
             expect.RequestId = h.RequestId;
             expect.DataLen = h.DataLen;
@@ -469,10 +468,10 @@ void TConnection::OnDataRecv(int res)
                 DataHdr.DataLen > Params.MaxDataSize)
             {
                 ProtocolError(
-                    TStringBuilder() << "bad data header: magic="
-                                     << Hex(DataHdr.Magic) << " request "
-                                     << DataHdr.RequestId << " len "
-                                     << DataHdr.DataLen);
+                    TStringBuilder()
+                    << "bad data header: magic=" << Hex(DataHdr.Magic)
+                    << " request " << DataHdr.RequestId << " len "
+                    << DataHdr.DataLen);
                 return;
             }
             DataState = EDataState::WaitingAdmission;
@@ -518,10 +517,10 @@ void TConnection::TryProgressData()
     auto& e = DataFifo.front();
     if (e.RequestId != DataHdr.RequestId || e.DataLen != DataHdr.DataLen) {
         ProtocolError(
-            TStringBuilder() << "data stream mismatch: expected request "
-                             << e.RequestId << " len " << e.DataLen
-                             << ", got request " << DataHdr.RequestId
-                             << " len " << DataHdr.DataLen);
+            TStringBuilder()
+            << "data stream mismatch: expected request " << e.RequestId
+            << " len " << e.DataLen << ", got request " << DataHdr.RequestId
+            << " len " << DataHdr.DataLen);
         return;
     }
     DataState = EDataState::ReadingPayload;
@@ -606,9 +605,8 @@ void TConnection::OnIoComplete(TIoOp* op, int res, ui32 cqeFlags)
 void TConnection::ProtocolError(TStringBuf what)
 {
     STORAGE_WARN("protocol error, closing: " << what);
-    Close(MakeError(
-        E_REJECTED,
-        TStringBuilder() << "protocol error: " << what));
+    Close(
+        MakeError(E_REJECTED, TStringBuilder() << "protocol error: " << what));
 }
 
 void TConnection::Close(NProto::TError error)
@@ -641,8 +639,7 @@ void TConnection::MaybeFinishClose()
     if (!Closing || Finished) {
         return;
     }
-    if (MainRecvOp->InFlight || DataRecvOp->InFlight ||
-        !InFlightSends.empty())
+    if (MainRecvOp->InFlight || DataRecvOp->InFlight || !InFlightSends.empty())
     {
         return;
     }

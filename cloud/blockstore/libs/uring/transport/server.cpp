@@ -21,16 +21,16 @@
 #include <util/system/guard.h>
 #include <util/system/spinlock.h>
 
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <utility>
-
-#include <errno.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -146,13 +146,13 @@ struct TSession
     bool Stopped = false;
 
     TSession(
-            TRing& ring,
-            IServerHandlerPtr handler,
-            TServerConfigPtr config,
-            TCountersPtr counters,
-            TLog log,
-            int mainFd,
-            int dataFd)
+        TRing& ring,
+        IServerHandlerPtr handler,
+        TServerConfigPtr config,
+        TCountersPtr counters,
+        TLog log,
+        int mainFd,
+        int dataFd)
         : Ring(ring)
         , Handler(std::move(handler))
         , Config(std::move(config))
@@ -208,14 +208,16 @@ struct TSession
         }
         RejectionBytes += bytes;
         auto frame = std::make_shared<TOutFrame>();
-        frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + payload.size());
+        frame->Head =
+            TString::Uninitialized(sizeof(TFrameHeader) + payload.size());
         TFrameHeader h;
         h.Type = FRAME_ERROR;
         h.RequestId = requestId;
         h.ProtoLen = payload.size();
         memcpy(frame->Head.begin(), &h, sizeof(h));
         memcpy(frame->Head.begin() + sizeof(h), payload.data(), payload.size());
-        frame->OnDone = [self = shared_from_this(), bytes] {
+        frame->OnDone = [self = shared_from_this(), bytes]
+        {
             self->RejectionBytes -= bytes;
         };
         Connection->Send(std::move(frame));
@@ -295,7 +297,8 @@ struct TSession
 
         TDataSink sink;
         sink.Target = raw->DataSgList();
-        sink.OnDone = [this, raw](const NProto::TError& error) {
+        sink.OnDone = [this, raw](const NProto::TError& error)
+        {
             if (HasError(error)) {
                 ReleaseBytes(RequestBytes(raw));
                 ReleaseSlot(raw);
@@ -372,7 +375,8 @@ struct TSession
         const ui64 bytes = RequestBytes(raw) + responseBytes;
         InflightBytes += responseBytes;
         auto frame = std::make_shared<TOutFrame>();
-        frame->Head = TString::Uninitialized(sizeof(TFrameHeader) + proto.size());
+        frame->Head =
+            TString::Uninitialized(sizeof(TFrameHeader) + proto.size());
         TFrameHeader h;
         h.Type = type;
         h.RequestId = raw->RequestId;
@@ -380,12 +384,13 @@ struct TSession
         memcpy(frame->Head.begin(), &h, sizeof(h));
         memcpy(frame->Head.begin() + sizeof(h), proto.data(), proto.size());
         frame->Data = std::move(data);
-        frame->OnDone =
-            [owner = std::move(owner), self = shared_from_this(), bytes]() mutable
-            {
-                owner.reset();
-                self->ReleaseBytes(bytes);
-            };
+        frame->OnDone = [owner = std::move(owner),
+                         self = shared_from_this(),
+                         bytes]() mutable
+        {
+            owner.reset();
+            self->ReleaseBytes(bytes);
+        };
         Connection->Send(std::move(frame));
         ReleaseSlot(raw);
     }
@@ -458,7 +463,8 @@ private:
     const TCountersPtr Counters;
     TLog Log;
 
-    struct {
+    struct
+    {
         TLogThrottler Accept = TLogThrottler(LOG_THROTTLER_PERIOD);
         TLogThrottler AcceptResources = TLogThrottler(LOG_THROTTLER_PERIOD);
     } LogThrottler;
@@ -485,11 +491,11 @@ private:
 
 public:
     TServerEndpoint(
-            TVector<std::unique_ptr<TRing>>& rings,
-            TServerConfigPtr config,
-            IServerHandlerPtr handler,
-            TCountersPtr counters,
-            TLog log)
+        TVector<std::unique_ptr<TRing>>& rings,
+        TServerConfigPtr config,
+        IServerHandlerPtr handler,
+        TCountersPtr counters,
+        TLog log)
         : Rings(rings)
         , Config(std::move(config))
         , Counters(std::move(counters))
@@ -500,7 +506,9 @@ public:
     NProto::TError Listen(const TString& host, ui32 port)
     {
         if (port > Max<ui16>()) {
-            return MakeError(E_ARGUMENT, TStringBuilder() << "bad port " << port);
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "bad port " << port);
         }
         auto [fd, error] = CreateListenSocket(host, port, Config->Backlog);
         if (HasError(error)) {
@@ -516,11 +524,13 @@ public:
         Port = actual;
 
         auto* ring = Rings[0].get();
-        ring->Execute([this, ring] {
-            ring->AddTickable(this);
-            AcceptOp = ring->AllocOp(this, TAG_ACCEPT);
-            ring->Accept(AcceptOp, ListenFd);
-        });
+        ring->Execute(
+            [this, ring]
+            {
+                ring->AddTickable(this);
+                AcceptOp = ring->AllocOp(this, TAG_ACCEPT);
+                ring->Accept(AcceptOp, ListenFd);
+            });
         return {};
     }
 
@@ -540,33 +550,35 @@ public:
 
         auto tornDown = NThreading::NewPromise();
         auto* ring = Rings[0].get();
-        ring->Execute([this, ring, tornDown]() mutable {
-            TornDown = std::move(tornDown);
-            ring->RemoveTickable(this);
-            if (AcceptOp && AcceptOp->InFlight) {
-                ring->Cancel(AcceptOp);
-            } else {
-                CloseListener();
-            }
-            TVector<int> fds;
-            for (auto& [fd, handshake]: Handshakes) {
-                if (handshake->Io->InFlight()) {
-                    CancelHandshake(*handshake);
+        ring->Execute(
+            [this, ring, tornDown]() mutable
+            {
+                TornDown = std::move(tornDown);
+                ring->RemoveTickable(this);
+                if (AcceptOp && AcceptOp->InFlight) {
+                    ring->Cancel(AcceptOp);
                 } else {
-                    fds.push_back(fd);
+                    CloseListener();
                 }
-            }
-            for (int fd: fds) {
-                DropHandshake(fd);
-            }
-            for (auto& [token, pending]: Tokens) {
-                Y_UNUSED(token);
-                CloseSocket(pending.MainFd);
-            }
-            Tokens.clear();
-            CloseSessions();
-            CheckTornDown();
-        });
+                TVector<int> fds;
+                for (auto& [fd, handshake]: Handshakes) {
+                    if (handshake->Io->InFlight()) {
+                        CancelHandshake(*handshake);
+                    } else {
+                        fds.push_back(fd);
+                    }
+                }
+                for (int fd: fds) {
+                    DropHandshake(fd);
+                }
+                for (auto& [token, pending]: Tokens) {
+                    Y_UNUSED(token);
+                    CloseSocket(pending.MainFd);
+                }
+                Tokens.clear();
+                CloseSessions();
+                CheckTornDown();
+            });
         tornDown.GetFuture().GetValueSync();
 
         NThreading::TPromise<void> drained;
@@ -597,7 +609,10 @@ public:
         // outlives the request, whose last reference may be the one below
         auto session = raw->Session;
         const bool posted = session->TryPost(
-            [session, raw, proto = TString(proto), data = std::move(data),
+            [session,
+             raw,
+             proto = TString(proto),
+             data = std::move(data),
              owner = std::move(owner)]() mutable
             {
                 session->Answer(
@@ -617,14 +632,9 @@ public:
         auto* raw = static_cast<TServerRequest*>(ctx);
         auto session = raw->Session;
         const bool posted = session->TryPost(
-            [session, raw, payload = SerializeError(error, message)]() mutable
-            {
-                session->Answer(
-                    raw,
-                    FRAME_ERROR,
-                    std::move(payload),
-                    {},
-                    nullptr);
+            [session, raw, payload = SerializeError(error, message)]() mutable {
+                session
+                    ->Answer(raw, FRAME_ERROR, std::move(payload), {}, nullptr);
             });
         if (!posted) {
             delete raw;
@@ -783,7 +793,8 @@ private:
             fd,
             raw->Buffer.data(),
             HANDSHAKE_PREFIX,
-            [this, fd](int error) {
+            [this, fd](int error)
+            {
                 if (error) {
                     DropHandshake(fd);
                     return;
@@ -805,8 +816,14 @@ private:
         }
         ui32 magic = 0;
         ui8 role = 0;
-        memcpy(&magic, handshake.Buffer.data() + offsetof(THello, Magic), sizeof(magic));
-        memcpy(&role, handshake.Buffer.data() + offsetof(THello, Role), sizeof(role));
+        memcpy(
+            &magic,
+            handshake.Buffer.data() + offsetof(THello, Magic),
+            sizeof(magic));
+        memcpy(
+            &role,
+            handshake.Buffer.data() + offsetof(THello, Role),
+            sizeof(role));
 
         if (magic != MAGIC) {
             STORAGE_WARN("bad handshake magic " << Hex(magic));
@@ -828,7 +845,8 @@ private:
             fd,
             handshake.Buffer.data() + HANDSHAKE_PREFIX,
             sizeof(THello) - HANDSHAKE_PREFIX,
-            [this, fd](int error) {
+            [this, fd](int error)
+            {
                 if (error) {
                     DropHandshake(fd);
                     return;
@@ -852,7 +870,8 @@ private:
             fd,
             handshake.Buffer.data(),
             size,
-            [this, fd, next = std::move(next)](int error) {
+            [this, fd, next = std::move(next)](int error)
+            {
                 auto handshake = ExtractHandshake(fd);
                 next(error == 0);
                 CheckTornDown();
@@ -873,9 +892,11 @@ private:
             STORAGE_WARN("unsupported protocol version " << hello.Version);
             TWelcome welcome;
             welcome.Status = STATUS_VERSION_MISMATCH;
-            Reply(fd, &welcome, sizeof(welcome), [fd](bool) {
-                CloseSocket(fd);
-            });
+            Reply(
+                fd,
+                &welcome,
+                sizeof(welcome),
+                [fd](bool) { CloseSocket(fd); });
             return;
         }
 
@@ -894,9 +915,11 @@ private:
                 << ui32(hello.OobMode));
             TWelcome welcome;
             welcome.Status = STATUS_CONFIG_MISMATCH;
-            Reply(fd, &welcome, sizeof(welcome), [fd](bool) {
-                CloseSocket(fd);
-            });
+            Reply(
+                fd,
+                &welcome,
+                sizeof(welcome),
+                [fd](bool) { CloseSocket(fd); });
             return;
         }
 
@@ -914,22 +937,27 @@ private:
         const bool needData = *oob;
         const auto params = MakeParams(welcome, *oob);
 
-        Reply(fd, &welcome, sizeof(welcome), [this, fd, token, needData, params](bool ok) {
-            if (!ok || Stopped) {
-                CloseSocket(fd);
-                return;
-            }
-            if (!needData) {
-                StartSession(fd, -1, params);
-                return;
-            }
-            Tokens[token] = TPendingSession{
-                .MainFd = fd,
-                .Deadline = TInstant::Now() + Config->DataTokenTtl,
-                .Params = params,
-                .Peer = GetPeerAddress(fd),
-            };
-        });
+        Reply(
+            fd,
+            &welcome,
+            sizeof(welcome),
+            [this, fd, token, needData, params](bool ok)
+            {
+                if (!ok || Stopped) {
+                    CloseSocket(fd);
+                    return;
+                }
+                if (!needData) {
+                    StartSession(fd, -1, params);
+                    return;
+                }
+                Tokens[token] = TPendingSession{
+                    .MainFd = fd,
+                    .Deadline = TInstant::Now() + Config->DataTokenTtl,
+                    .Params = params,
+                    .Peer = GetPeerAddress(fd),
+                };
+            });
     }
 
     void OnDataHello(int fd, const TDataHello& hello)
@@ -941,15 +969,17 @@ private:
             it != Tokens.end() && it->second.Peer == GetPeerAddress(fd);
         if (hello.Version != PROTOCOL_VERSION || !samePeer) {
             STORAGE_WARN(
-                "rejecting a data socket: version " << hello.Version
-                << ", token " << hello.DataToken);
+                "rejecting a data socket: version "
+                << hello.Version << ", token " << hello.DataToken);
             TDataWelcome welcome;
             welcome.Status = hello.Version != PROTOCOL_VERSION
                                  ? STATUS_VERSION_MISMATCH
                                  : STATUS_BAD_TOKEN;
-            Reply(fd, &welcome, sizeof(welcome), [fd](bool) {
-                CloseSocket(fd);
-            });
+            Reply(
+                fd,
+                &welcome,
+                sizeof(welcome),
+                [fd](bool) { CloseSocket(fd); });
             return;
         }
 
@@ -961,14 +991,19 @@ private:
 
         TDataWelcome welcome;
         welcome.Status = STATUS_OK;
-        Reply(fd, &welcome, sizeof(welcome), [this, fd, mainFd, params](bool ok) {
-            if (!ok || Stopped) {
-                CloseSocket(fd);
-                CloseSocket(mainFd);
-                return;
-            }
-            StartSession(mainFd, fd, params);
-        });
+        Reply(
+            fd,
+            &welcome,
+            sizeof(welcome),
+            [this, fd, mainFd, params](bool ok)
+            {
+                if (!ok || Stopped) {
+                    CloseSocket(fd);
+                    CloseSocket(mainFd);
+                    return;
+                }
+                StartSession(mainFd, fd, params);
+            });
     }
 
     TConnectionParams MakeParams(const TWelcome& welcome, bool oob) const
@@ -998,17 +1033,20 @@ private:
                 Log,
                 mainFd,
                 dataFd);
-            session->Unregister = [weak = weak_from_this(), raw = session.get()] {
+            session->Unregister = [weak = weak_from_this(), raw = session.get()]
+            {
                 if (auto self = weak.lock()) {
                     self->ForgetSession(raw);
                 }
             };
             Sessions[session.get()] = session;
         }
-        ring.Execute([session, params] {
-            session->Self = session;
-            session->Start(params);
-        });
+        ring.Execute(
+            [session, params]
+            {
+                session->Self = session;
+                session->Start(params);
+            });
     }
 
     void ForgetSession(TSession* raw)
@@ -1040,12 +1078,14 @@ private:
         }
         for (auto& session: sessions) {
             auto& ring = session->Ring;
-            ring.Execute([session = std::move(session)] {
-                if (session->Connection) {
-                    session->Connection->Close(
-                        MakeError(E_REJECTED, "server is stopping"));
-                }
-            });
+            ring.Execute(
+                [session = std::move(session)]
+                {
+                    if (session->Connection) {
+                        session->Connection->Close(
+                            MakeError(E_REJECTED, "server is stopping"));
+                    }
+                });
         }
     }
 };
@@ -1070,9 +1110,9 @@ private:
 
 public:
     TServer(
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            TServerConfigPtr config)
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        TServerConfigPtr config)
         : Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
         , Config(std::move(config))
@@ -1139,10 +1179,8 @@ public:
         }
     }
 
-    TResultOrError<IServerEndpointPtr> StartEndpoint(
-        TString host,
-        ui32 port,
-        IServerHandlerPtr handler) override
+    TResultOrError<IServerEndpointPtr>
+    StartEndpoint(TString host, ui32 port, IServerHandlerPtr handler) override
     {
         // the whole body is under the lock: an endpoint that armed its accept
         // after Stop() took its snapshot would never be stopped, and the ring

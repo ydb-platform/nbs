@@ -27,10 +27,8 @@ NProto::TError ApplySocketOptions(int fd, const TSocketOptions& options);
 
 // Resolves host with AI_PASSIVE, binds, listens. Returns the listening fd.
 // On error the fd is 0 and must not be closed; check HasError first.
-TResultOrError<int> CreateListenSocket(
-    const TString& host,
-    ui16 port,
-    ui32 backlog);
+TResultOrError<int>
+CreateListenSocket(const TString& host, ui16 port, ui32 backlog);
 
 TResultOrError<ui16> GetLocalPort(int fd);
 

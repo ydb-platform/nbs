@@ -7,12 +7,13 @@
 #include <util/generic/yexception.h>
 #include <util/system/yassert.h>
 
-#include <algorithm>
-#include <cstring>
 #include <errno.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+
+#include <algorithm>
+#include <cstring>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -110,7 +111,8 @@ NProto::TError TRing::Init()
     if (ZcMode != ESendZeroCopyMode::Off) {
         io_uring_probe* probe = io_uring_get_probe_ring(&Ring);
         if (probe) {
-            ZcSupported = io_uring_opcode_supported(probe, IORING_OP_SENDMSG_ZC);
+            ZcSupported =
+                io_uring_opcode_supported(probe, IORING_OP_SENDMSG_ZC);
             io_uring_free_probe(probe);
         }
         if (!ZcSupported && ZcMode == ESendZeroCopyMode::Required) {
@@ -309,9 +311,9 @@ void TRing::Dispatch()
                     FreeOp(op);
                     break;
                 default:
-                    Guarded("OnIoComplete", [&] {
-                        op->Handler->OnIoComplete(op, res, flags);
-                    });
+                    Guarded(
+                        "OnIoComplete",
+                        [&] { op->Handler->OnIoComplete(op, res, flags); });
                     break;
             }
         }
@@ -321,16 +323,18 @@ void TRing::Dispatch()
 
 void TRing::ArmEventFd()
 {
-    Submit(&EventOp, [this](io_uring_sqe* sqe) {
-        io_uring_prep_read(sqe, EventFd, &EventOp.Word, sizeof(ui64), 0);
-    });
+    Submit(
+        &EventOp,
+        [this](io_uring_sqe* sqe)
+        { io_uring_prep_read(sqe, EventFd, &EventOp.Word, sizeof(ui64), 0); });
 }
 
 void TRing::ArmTimer()
 {
-    Submit(&TimerOp, [this](io_uring_sqe* sqe) {
-        io_uring_prep_read(sqe, TimerFd, &TimerOp.Word, sizeof(ui64), 0);
-    });
+    Submit(
+        &TimerOp,
+        [this](io_uring_sqe* sqe)
+        { io_uring_prep_read(sqe, TimerFd, &TimerOp.Word, sizeof(ui64), 0); });
 }
 
 TIoOp* TRing::AllocOp(IIoHandler* handler, ui32 tag)
@@ -373,9 +377,10 @@ void TRing::FreeOp(TIoOp* op)
 
 void TRing::Recv(TIoOp* op, int fd, void* buf, size_t len, int flags)
 {
-    Submit(op, [=](io_uring_sqe* sqe) {
-        io_uring_prep_recv(sqe, fd, buf, len, flags);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        { io_uring_prep_recv(sqe, fd, buf, len, flags); });
 }
 
 void TRing::RecvMsg(TIoOp* op, int fd, int flags)
@@ -383,9 +388,10 @@ void TRing::RecvMsg(TIoOp* op, int fd, int flags)
     op->Msg = {};
     op->Msg.msg_iov = op->Iov;
     op->Msg.msg_iovlen = op->IovCount;
-    Submit(op, [=](io_uring_sqe* sqe) {
-        io_uring_prep_recvmsg(sqe, fd, &op->Msg, flags);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        { io_uring_prep_recvmsg(sqe, fd, &op->Msg, flags); });
 }
 
 void TRing::SendMsg(TIoOp* op, int fd, int flags)
@@ -395,46 +401,60 @@ void TRing::SendMsg(TIoOp* op, int fd, int flags)
     op->Msg.msg_iovlen = op->IovCount;
     const bool zc = op->ZeroCopy && ZcSupported;
     op->ZeroCopy = zc;
-    Submit(op, [=](io_uring_sqe* sqe) {
-        if (zc) {
-            io_uring_prep_sendmsg_zc(sqe, fd, &op->Msg, flags | MSG_NOSIGNAL);
-        } else {
-            io_uring_prep_sendmsg(sqe, fd, &op->Msg, flags | MSG_NOSIGNAL);
-        }
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        {
+            if (zc) {
+                io_uring_prep_sendmsg_zc(
+                    sqe,
+                    fd,
+                    &op->Msg,
+                    flags | MSG_NOSIGNAL);
+            } else {
+                io_uring_prep_sendmsg(sqe, fd, &op->Msg, flags | MSG_NOSIGNAL);
+            }
+        });
 }
 
 void TRing::Send(TIoOp* op, int fd, const void* buf, size_t len)
 {
-    Submit(op, [=](io_uring_sqe* sqe) {
-        io_uring_prep_send(sqe, fd, buf, len, MSG_NOSIGNAL);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        { io_uring_prep_send(sqe, fd, buf, len, MSG_NOSIGNAL); });
 }
 
 void TRing::Connect(TIoOp* op, int fd, const sockaddr* addr, socklen_t len)
 {
     memcpy(&op->Addr, addr, len);
     op->AddrLen = len;
-    Submit(op, [=](io_uring_sqe* sqe) {
-        io_uring_prep_connect(
-            sqe,
-            fd,
-            reinterpret_cast<const sockaddr*>(&op->Addr),
-            op->AddrLen);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        {
+            io_uring_prep_connect(
+                sqe,
+                fd,
+                reinterpret_cast<const sockaddr*>(&op->Addr),
+                op->AddrLen);
+        });
 }
 
 void TRing::Accept(TIoOp* op, int fd)
 {
     op->AddrLen = sizeof(op->Addr);
-    Submit(op, [=](io_uring_sqe* sqe) {
-        io_uring_prep_accept(
-            sqe,
-            fd,
-            reinterpret_cast<sockaddr*>(&op->Addr),
-            &op->AddrLen,
-            SOCK_CLOEXEC);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        {
+            io_uring_prep_accept(
+                sqe,
+                fd,
+                reinterpret_cast<sockaddr*>(&op->Addr),
+                &op->AddrLen,
+                SOCK_CLOEXEC);
+        });
 }
 
 void TRing::Cancel(TIoOp* target)
@@ -443,11 +463,15 @@ void TRing::Cancel(TIoOp* target)
         return;
     }
     TIoOp* op = NewOp(nullptr, TAG_CANCEL);
-    Submit(op, [=](io_uring_sqe* sqe) {
-        // matches by op address: relies on Pending and the SQ being FIFO, an
-        // out-of-order flush could cancel an unrelated transfer that reuses it
-        io_uring_prep_cancel(sqe, target, 0);
-    });
+    Submit(
+        op,
+        [=](io_uring_sqe* sqe)
+        {
+            // matches by op address: relies on Pending and the SQ being FIFO,
+            // an out-of-order flush could cancel an unrelated transfer that
+            // reuses it
+            io_uring_prep_cancel(sqe, target, 0);
+        });
 }
 
 void TRing::AddTickable(ITickable* t)

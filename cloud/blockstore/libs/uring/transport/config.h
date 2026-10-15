@@ -55,12 +55,14 @@ struct TServerConfig: TTransportConfig
 TClientConfig CreateClientConfig(const NProto::TUringClient& config);
 TServerConfig CreateServerConfig(const NProto::TUringServer& config);
 
-inline TClientConfigPtr CreateClientConfigPtr(const NProto::TUringClient& config)
+inline TClientConfigPtr CreateClientConfigPtr(
+    const NProto::TUringClient& config)
 {
     return std::make_shared<TClientConfig>(CreateClientConfig(config));
 }
 
-inline TServerConfigPtr CreateServerConfigPtr(const NProto::TUringServer& config)
+inline TServerConfigPtr CreateServerConfigPtr(
+    const NProto::TUringServer& config)
 {
     return std::make_shared<TServerConfig>(CreateServerConfig(config));
 }

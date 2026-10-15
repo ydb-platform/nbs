@@ -55,10 +55,12 @@ inline TCountersPtr MakeCounters(
     counters->DirectRecvBytes = group->GetCounter("DirectRecvBytes", true);
     counters->StagingCopyBytes = group->GetCounter("StagingCopyBytes", true);
     counters->SendZcRequests = group->GetCounter("SendZcRequests", true);
-    counters->SendZcNotifications = group->GetCounter("SendZcNotifications", true);
+    counters->SendZcNotifications =
+        group->GetCounter("SendZcNotifications", true);
     counters->SendZcCopiedNotifications =
         group->GetCounter("SendZcCopiedNotifications", true);
-    counters->SendZeroCopySupported = group->GetCounter("SendZeroCopySupported");
+    counters->SendZeroCopySupported =
+        group->GetCounter("SendZeroCopySupported");
     counters->ActiveConnections = group->GetCounter("ActiveConnections");
     return counters;
 }

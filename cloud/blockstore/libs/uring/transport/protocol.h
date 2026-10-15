@@ -128,18 +128,24 @@ static_assert(std::is_trivially_copyable_v<TFrameHeader>);
 inline ui8 ToWire(EOobMode mode)
 {
     switch (mode) {
-        case EOobMode::Off: return OOB_WIRE_OFF;
-        case EOobMode::Required: return OOB_WIRE_REQUIRED;
-        default: return OOB_WIRE_AUTO;
+        case EOobMode::Off:
+            return OOB_WIRE_OFF;
+        case EOobMode::Required:
+            return OOB_WIRE_REQUIRED;
+        default:
+            return OOB_WIRE_AUTO;
     }
 }
 
 inline EOobMode FromWire(ui8 mode)
 {
     switch (mode) {
-        case OOB_WIRE_OFF: return EOobMode::Off;
-        case OOB_WIRE_REQUIRED: return EOobMode::Required;
-        default: return EOobMode::Auto;
+        case OOB_WIRE_OFF:
+            return EOobMode::Off;
+        case OOB_WIRE_REQUIRED:
+            return EOobMode::Required;
+        default:
+            return EOobMode::Auto;
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "config.h"
 
 #include <cloud/storage/core/libs/common/context.h>
@@ -55,10 +56,8 @@ struct IServer: public IStartable
 {
     virtual ~IServer() = default;
 
-    virtual TResultOrError<IServerEndpointPtr> StartEndpoint(
-        TString host,
-        ui32 port,
-        IServerHandlerPtr handler) = 0;
+    virtual TResultOrError<IServerEndpointPtr>
+    StartEndpoint(TString host, ui32 port, IServerHandlerPtr handler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

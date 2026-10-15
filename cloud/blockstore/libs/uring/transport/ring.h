@@ -1,10 +1,13 @@
 #pragma once
 
 #include "public.h"
+
 #include "protocol.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <library/cpp/threading/future/future.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
@@ -13,14 +16,12 @@
 #include <util/system/thread.h>
 #include <util/thread/lfqueue.h>
 
-#include <library/cpp/threading/future/future.h>
-
 #include <liburing.h>
+#include <sys/socket.h>
 
 #include <atomic>
 #include <functional>
 #include <memory>
-#include <sys/socket.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -128,11 +129,18 @@ public:
     // after a failed Start()).
     void Execute(TCommand command);
     bool IsRingThread() const;
-    bool SendZeroCopySupported() const { return ZcSupported; }
+
+    bool SendZeroCopySupported() const
+    {
+        return ZcSupported;
+    }
 
     // Includes the ring's own eventfd and timer reads, so an idle ring reports
     // 2.
-    size_t InFlightOps() const { return ActiveOps.load(); }
+    size_t InFlightOps() const
+    {
+        return ActiveOps.load();
+    }
 
     TIoOp* AllocOp(IIoHandler* handler, ui32 tag);
     void FreeOp(TIoOp* op);
@@ -194,7 +202,11 @@ public:
     void Recv(int fd, void* buf, size_t len, TCallback cb);
     void Send(int fd, const void* buf, size_t len, TCallback cb);
     void Cancel();
-    bool InFlight() const { return Op && Op->InFlight; }
+
+    bool InFlight() const
+    {
+        return Op && Op->InFlight;
+    }
 
 private:
     void Issue();

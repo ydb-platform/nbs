@@ -1,5 +1,4 @@
 #include <cloud/blockstore/libs/uring/transport/client.h>
-
 #include <cloud/blockstore/libs/uring/transport/config.h>
 #include <cloud/blockstore/libs/uring/transport/protocol.h>
 #include <cloud/blockstore/libs/uring/transport/server.h>
@@ -15,10 +14,10 @@
 
 #include <util/generic/scope.h>
 
+#include <sys/socket.h>
+
 #include <functional>
 #include <thread>
-
-#include <sys/socket.h>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -162,21 +161,23 @@ struct TFakeServer
         UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
         Port = port;
 
-        Thread = std::thread([this, welcome] {
-            for (;;) {
-                const int fd = ::accept(ListenFd, nullptr, nullptr);
-                if (fd < 0) {
-                    return;
+        Thread = std::thread(
+            [this, welcome]
+            {
+                for (;;) {
+                    const int fd = ::accept(ListenFd, nullptr, nullptr);
+                    if (fd < 0) {
+                        return;
+                    }
+                    THello hello;
+                    const auto n =
+                        ::recv(fd, &hello, sizeof(hello), MSG_WAITALL);
+                    if (n == sizeof(hello)) {
+                        ::send(fd, &welcome, sizeof(welcome), MSG_NOSIGNAL);
+                    }
+                    CloseSocket(fd);
                 }
-                THello hello;
-                const auto n =
-                    ::recv(fd, &hello, sizeof(hello), MSG_WAITALL);
-                if (n == sizeof(hello)) {
-                    ::send(fd, &welcome, sizeof(welcome), MSG_NOSIGNAL);
-                }
-                CloseSocket(fd);
-            }
-        });
+            });
     }
 
     ~TFakeServer()
@@ -276,15 +277,17 @@ struct TScriptedPeer
         UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
         Port = port;
 
-        Thread = std::thread([this, script = std::move(script)] {
-            const int mainFd = Accept();
-            const int dataFd = mainFd >= 0 ? Handshake(mainFd) : -1;
-            if (dataFd >= 0) {
-                script(mainFd, dataFd);
-            }
-            CloseSocket(dataFd);
-            CloseSocket(mainFd);
-        });
+        Thread = std::thread(
+            [this, script = std::move(script)]
+            {
+                const int mainFd = Accept();
+                const int dataFd = mainFd >= 0 ? Handshake(mainFd) : -1;
+                if (dataFd >= 0) {
+                    script(mainFd, dataFd);
+                }
+                CloseSocket(dataFd);
+                CloseSocket(mainFd);
+            });
     }
 
     ~TScriptedPeer()
@@ -325,8 +328,7 @@ struct TScriptedPeer
         const int dataFd = Accept();
         TDataHello dataHello;
         TDataWelcome dataWelcome;
-        if (dataFd < 0 ||
-            !TryReadAll(dataFd, &dataHello, sizeof(dataHello)) ||
+        if (dataFd < 0 || !TryReadAll(dataFd, &dataHello, sizeof(dataHello)) ||
             !TryWriteAll(dataFd, &dataWelcome, sizeof(dataWelcome)))
         {
             CloseSocket(dataFd);
@@ -487,7 +489,8 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         for (size_t size: {size_t(4096), size_t(1) << 20}) {
             auto payload = Pattern(size, 1);
             auto echoed = TString::Uninitialized(size);
-            TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+            TGuardedSgList send(
+                {TBlockDataRef{payload.data(), payload.size()}});
             TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
 
             auto future = Collector->NewPromiseFuture();
@@ -665,14 +668,16 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
     {
         const ui32 size = 1 << 20;
         const auto payload = Pattern(size, 5);
-        TScriptedPeer peer([&](int mainFd, int dataFd) {
-            const ui64 id = ReadRequest(mainFd);
-            SendOobResponseHeader(mainFd, id, size);
-            SendDataHeader(dataFd, id, size);
-            TryWriteAll(dataFd, payload.data(), size / 2);
-            // the client is reading the payload when both sockets close
-            Sleep(TDuration::MilliSeconds(100));
-        });
+        TScriptedPeer peer(
+            [&](int mainFd, int dataFd)
+            {
+                const ui64 id = ReadRequest(mainFd);
+                SendOobResponseHeader(mainFd, id, size);
+                SendDataHeader(dataFd, id, size);
+                TryWriteAll(dataFd, payload.data(), size / 2);
+                // the client is reading the payload when both sockets close
+                Sleep(TDuration::MilliSeconds(100));
+            });
         Port = peer.Port;
         StartClient();
         WaitConnected();
@@ -799,11 +804,13 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         }
         TVector<std::thread> workers;
         for (int t = 0; t < threads; ++t) {
-            workers.emplace_back([&] {
-                for (int i = 0; i < perThread; ++i) {
-                    Endpoint->SendRequest(MakeRequest("ping"), nullptr);
-                }
-            });
+            workers.emplace_back(
+                [&]
+                {
+                    for (int i = 0; i < perThread; ++i) {
+                        Endpoint->SendRequest(MakeRequest("ping"), nullptr);
+                    }
+                });
         }
         for (auto& w: workers) {
             w.join();
@@ -884,7 +891,8 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         // never accepts, so the welcome never comes
         auto [fd, error] = CreateListenSocket("127.0.0.1", 0, 16);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        Y_DEFER {
+        Y_DEFER
+        {
             CloseSocket(fd);
         };
         auto [port, perr] = GetLocalPort(fd);
@@ -903,20 +911,22 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
     {
         const ui32 size = 1 << 20;
         const auto payload = Pattern(size, 7);
-        TScriptedPeer peer([&](int mainFd, int dataFd) {
-            const ui64 id = ReadRequest(mainFd);
-            SendOobResponseHeader(mainFd, id, size);
-            SendDataHeader(dataFd, id, size);
-            TryWriteAll(dataFd, payload.data(), size / 2);
-            // the client is reading the payload when the second response
-            // for the same request comes, payload and all
-            Sleep(TDuration::MilliSeconds(100));
-            SendOobResponseHeader(mainFd, id, size);
-            TryWriteAll(dataFd, payload.data() + size / 2, size - size / 2);
-            SendDataHeader(dataFd, id, size);
-            TryWriteAll(dataFd, payload.data(), size);
-            WaitForEof(mainFd);
-        });
+        TScriptedPeer peer(
+            [&](int mainFd, int dataFd)
+            {
+                const ui64 id = ReadRequest(mainFd);
+                SendOobResponseHeader(mainFd, id, size);
+                SendDataHeader(dataFd, id, size);
+                TryWriteAll(dataFd, payload.data(), size / 2);
+                // the client is reading the payload when the second response
+                // for the same request comes, payload and all
+                Sleep(TDuration::MilliSeconds(100));
+                SendOobResponseHeader(mainFd, id, size);
+                TryWriteAll(dataFd, payload.data() + size / 2, size - size / 2);
+                SendDataHeader(dataFd, id, size);
+                TryWriteAll(dataFd, payload.data(), size);
+                WaitForEof(mainFd);
+            });
         Port = peer.Port;
         StartClient();
         WaitConnected();
@@ -944,14 +954,18 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
         auto future = Collector->NewPromiseFuture();
         Endpoint->SendRequest(MakeRequest("echo", send, recv), nullptr);
-        UNIT_ASSERT_VALUES_EQUAL(0u, future.GetValue(TDuration::Seconds(10)).Status);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            future.GetValue(TDuration::Seconds(10)).Status);
 
         auto counters = Monitoring->GetCounters()
                             ->GetSubgroup("counters", "blockstore")
                             ->GetSubgroup("component", "uring_client");
         UNIT_ASSERT(counters->GetCounter("Requests", true)->Val() >= 1);
         UNIT_ASSERT(counters->GetCounter("OobBytes", true)->Val() >= (1 << 20));
-        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("ActiveConnections")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter("ActiveConnections")->Val());
     }
 
     Y_UNIT_TEST_F(ShouldCountClosedSendBufferAsError, TFixture)

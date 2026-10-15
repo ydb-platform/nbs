@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "protocol.h"
 #include "ring.h"
 
@@ -84,7 +85,7 @@ struct IConnectionHandler
 // inside that callback.
 class TConnection final: public IIoHandler
 {
-    enum ETag: ui32
+    enum ETag : ui32
     {
         TAG_MAIN_RECV = 1,
         TAG_MAIN_SEND = 2,
@@ -177,7 +178,11 @@ public:
     void Start();
     void Send(TOutFramePtr frame);
     void Close(NProto::TError error);
-    bool IsClosing() const { return Closing; }
+
+    bool IsClosing() const
+    {
+        return Closing;
+    }
 
 private:
     void OnIoComplete(TIoOp* op, int res, ui32 cqeFlags) override;

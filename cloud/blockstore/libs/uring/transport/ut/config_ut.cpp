@@ -57,11 +57,21 @@ Y_UNIT_TEST_SUITE(TUringConfigTest)
         UNIT_ASSERT(c.OobMode == EOobMode::Required);
         UNIT_ASSERT(c.SendZeroCopyMode == ESendZeroCopyMode::Off);
         UNIT_ASSERT(!c.DirectSgIoEnabled);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(1500), c.MaxResponseDelay);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.MaxReconnectDelay);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.TcpUserTimeout);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.KeepAliveIdle);
-        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(2500), c.KeepAliveInterval);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(1500),
+            c.MaxResponseDelay);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(2500),
+            c.MaxReconnectDelay);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(2500),
+            c.TcpUserTimeout);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(2500),
+            c.KeepAliveIdle);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(2500),
+            c.KeepAliveInterval);
 
         NProto::TUringServer sp;
         sp.SetIoThreads(3);

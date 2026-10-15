@@ -8,53 +8,69 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SET(param, ...)                            \
-    if (const auto& value = config.Get##param()) { \
-        result.param = __VA_ARGS__(value);         \
+#define SET(param, ...)                                                        \
+    if (const auto& value = config.Get##param()) {                             \
+        result.param = __VA_ARGS__(value);                                     \
     }
 
-#define SET_OPTIONAL(param)                       \
-    if (config.Has##param()) {                    \
-        result.param = config.Get##param();       \
+#define SET_OPTIONAL(param)                                                    \
+    if (config.Has##param()) {                                                 \
+        result.param = config.Get##param();                                    \
     }
 
 EOobMode ConvertOobMode(NProto::EUringOobMode mode)
 {
     switch (mode) {
-        case NProto::URING_OOB_AUTO: return EOobMode::Auto;
-        case NProto::URING_OOB_OFF: return EOobMode::Off;
-        case NProto::URING_OOB_REQUIRED: return EOobMode::Required;
-        default: Y_ABORT("unsupported oob mode %d", mode);
+        case NProto::URING_OOB_AUTO:
+            return EOobMode::Auto;
+        case NProto::URING_OOB_OFF:
+            return EOobMode::Off;
+        case NProto::URING_OOB_REQUIRED:
+            return EOobMode::Required;
+        default:
+            Y_ABORT("unsupported oob mode %d", mode);
     }
 }
 
 ESendZeroCopyMode ConvertZcMode(NProto::EUringSendZeroCopyMode mode)
 {
     switch (mode) {
-        case NProto::URING_SEND_ZC_AUTO: return ESendZeroCopyMode::Auto;
-        case NProto::URING_SEND_ZC_OFF: return ESendZeroCopyMode::Off;
-        case NProto::URING_SEND_ZC_REQUIRED: return ESendZeroCopyMode::Required;
-        default: Y_ABORT("unsupported send zc mode %d", mode);
+        case NProto::URING_SEND_ZC_AUTO:
+            return ESendZeroCopyMode::Auto;
+        case NProto::URING_SEND_ZC_OFF:
+            return ESendZeroCopyMode::Off;
+        case NProto::URING_SEND_ZC_REQUIRED:
+            return ESendZeroCopyMode::Required;
+        default:
+            Y_ABORT("unsupported send zc mode %d", mode);
     }
 }
 
 const char* ToString(EOobMode mode)
 {
     switch (mode) {
-        case EOobMode::Off: return "Off";
-        case EOobMode::Auto: return "Auto";
-        case EOobMode::Required: return "Required";
-        default: return "Unknown";
+        case EOobMode::Off:
+            return "Off";
+        case EOobMode::Auto:
+            return "Auto";
+        case EOobMode::Required:
+            return "Required";
+        default:
+            return "Unknown";
     }
 }
 
 const char* ToString(ESendZeroCopyMode mode)
 {
     switch (mode) {
-        case ESendZeroCopyMode::Off: return "Off";
-        case ESendZeroCopyMode::Auto: return "Auto";
-        case ESendZeroCopyMode::Required: return "Required";
-        default: return "Unknown";
+        case ESendZeroCopyMode::Off:
+            return "Off";
+        case ESendZeroCopyMode::Auto:
+            return "Auto";
+        case ESendZeroCopyMode::Required:
+            return "Required";
+        default:
+            return "Unknown";
     }
 }
 
