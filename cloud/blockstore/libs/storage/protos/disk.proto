@@ -1644,6 +1644,12 @@ message TCreateVolumeFromDevicesRequest
 
     // Devices from which the disk is assembled
     repeated string DeviceUUIDs = 6;
+
+    // Force dangerous actions.
+    bool Force = 7;
+
+    // If true, the block count will not be adjusted.
+    bool KeepBlockCount = 8;
 }
 
 message TCreateVolumeFromDevicesResponse

@@ -48,6 +48,8 @@ std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
 
     *outRequest->Record.MutableVolumeConfig() =
         ConvertToVolumeConfig(inRequest);
+    outRequest->Record.SetForce(inRequest.GetForce());
+    outRequest->Record.SetKeepBlockCount(inRequest.GetKeepBlockCount());
 
     return outRequest;
 }

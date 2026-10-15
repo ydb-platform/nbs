@@ -1,14 +1,12 @@
-PROGRAM()
+PY3_PROGRAM()
 
-SRCS(
-    main.cpp
-    options.cpp
+PY_SRCS(
+    __main__.py
 )
 
 PEERDIR(
-    cloud/blockstore/libs/storage/protos_ydb
-
-    library/cpp/getopt
+    cloud/blockstore/libs/storage/protos
+    cloud/storage/core/protos
 )
 
 END()
