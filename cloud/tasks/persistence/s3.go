@@ -104,10 +104,16 @@ type S3Client struct {
 	s3          *aws_s3.S3
 	callTimeout time.Duration
 	metrics     *s3Metrics
+	// Nil does not limit PutObject.
+	putObjectLimiter *s3AttemptLimiter
 }
 
 type s3ClientOptions struct {
-	emptySigningRegion bool
+	emptySigningRegion            bool
+	minPutObjectAttemptsPerSecond uint64
+	maxPutObjectAttemptsPerSecond uint64
+	minThrottleRetryDelay         time.Duration
+	maxThrottleRetryDelay         time.Duration
 }
 
 type S3ClientOption func(*s3ClientOptions)
@@ -118,6 +124,35 @@ type S3ClientOption func(*s3ClientOptions)
 func WithS3EmptySigningRegion() S3ClientOption {
 	return func(options *s3ClientOptions) {
 		options.emptySigningRegion = true
+	}
+}
+
+// WithS3PutObjectAttemptsPerSecond spaces the attempts of PutObject of this
+// client, retries included, so that a request quota of the storage is not
+// exceeded whatever the size of the objects. With minAttempts below
+// maxAttempts the rate adapts between them to the throttling of the storage:
+// down after a window with a 429 or SlowDown, up otherwise, so that hosts
+// sharing a quota settle at their shares of it without being told the quota.
+// A zero minAttempts keeps the rate at maxAttempts; a zero maxAttempts does
+// not limit.
+func WithS3PutObjectAttemptsPerSecond(
+	minAttempts uint64,
+	maxAttempts uint64,
+) S3ClientOption {
+
+	return func(options *s3ClientOptions) {
+		options.minPutObjectAttemptsPerSecond = minAttempts
+		options.maxPutObjectAttemptsPerSecond = maxAttempts
+	}
+}
+
+// WithS3ThrottleRetryDelays bounds the pause before a throttled request
+// (429, SlowDown) is retried. Zero keeps the SDK default: 500 ms, doubled on
+// every retry up to 300 s.
+func WithS3ThrottleRetryDelays(minDelay, maxDelay time.Duration) S3ClientOption {
+	return func(options *s3ClientOptions) {
+		options.minThrottleRetryDelay = minDelay
+		options.maxThrottleRetryDelay = maxDelay
 	}
 }
 
@@ -141,6 +176,24 @@ func NewS3Client(
 	var clientOptions s3ClientOptions
 	for _, option := range options {
 		option(&clientOptions)
+	}
+
+	err := validateThrottleRetryDelays(
+		clientOptions.minThrottleRetryDelay,
+		clientOptions.maxThrottleRetryDelay,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if clientOptions.minPutObjectAttemptsPerSecond >
+		clientOptions.maxPutObjectAttemptsPerSecond {
+
+		return nil, errors.NewNonRetriableErrorf(
+			"S3 min PutObject attempts per second %v is greater than max %v",
+			clientOptions.minPutObjectAttemptsPerSecond,
+			clientOptions.maxPutObjectAttemptsPerSecond,
+		)
 	}
 
 	if len(region) == 0 {
@@ -171,7 +224,9 @@ func NewS3Client(
 		S3ForcePathStyle: aws.Bool(true), // otherwise, we get DNS DDOS errors in tests
 		Retryer: &s3ClientRetryer{
 			DefaultRetryer: client.DefaultRetryer{
-				NumMaxRetries: int(maxRetriableErrorCount),
+				NumMaxRetries:    int(maxRetriableErrorCount),
+				MinThrottleDelay: clientOptions.minThrottleRetryDelay,
+				MaxThrottleDelay: clientOptions.maxThrottleRetryDelay,
 			},
 			metrics: s3Metrics,
 		},
@@ -210,7 +265,42 @@ func NewS3Client(
 		s3:          aws_s3.New(session),
 		callTimeout: callTimeout,
 		metrics:     s3Metrics,
+		putObjectLimiter: newS3AttemptLimiter(
+			clientOptions.minPutObjectAttemptsPerSecond,
+			clientOptions.maxPutObjectAttemptsPerSecond,
+			func(rate float64) {
+				s3Metrics.OnAttemptRate("PutObject", rate)
+			},
+		),
 	}, nil
+}
+
+// Every attempt of a request, a retry too, is signed again right before it
+// is sent: waiting in a sign handler paces the retries of the SDK as well.
+// Every attempt also completes through the handler that tells the limiter
+// about throttling.
+func (c *S3Client) putObjectRequestOptions() []request.Option {
+	if c.putObjectLimiter == nil {
+		return nil
+	}
+
+	return []request.Option{
+		func(r *request.Request) {
+			r.Handlers.Sign.PushFront(func(r *request.Request) {
+				waitStart := time.Now()
+				err := c.putObjectLimiter.wait(r.Context())
+				c.metrics.OnAttemptWait(r.Operation.Name, time.Since(waitStart))
+				if err != nil {
+					r.Error = err
+				}
+			})
+			r.Handlers.CompleteAttempt.PushBack(func(r *request.Request) {
+				if r.Error != nil && r.IsErrorThrottle() {
+					c.putObjectLimiter.onThrottle()
+				}
+			})
+		},
+	}
 }
 
 func NewS3ClientFromConfig(
@@ -241,6 +331,38 @@ func NewS3ClientFromConfig(
 		)
 	}
 
+	options := []S3ClientOption{
+		WithS3PutObjectAttemptsPerSecond(
+			config.GetMinPutObjectAttemptsPerSecond(),
+			config.GetMaxPutObjectAttemptsPerSecond(),
+		),
+	}
+
+	minThrottleRetryDelay, err := parseOptionalDuration(
+		config.GetMinThrottleRetryDelay(),
+	)
+	if err != nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"failed to parse MinThrottleRetryDelay: %w",
+			err,
+		)
+	}
+
+	maxThrottleRetryDelay, err := parseOptionalDuration(
+		config.GetMaxThrottleRetryDelay(),
+	)
+	if err != nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"failed to parse MaxThrottleRetryDelay: %w",
+			err,
+		)
+	}
+
+	options = append(options, WithS3ThrottleRetryDelays(
+		minThrottleRetryDelay,
+		maxThrottleRetryDelay,
+	))
+
 	return NewS3Client(
 		config.GetEndpoint(),
 		config.GetRegion(),
@@ -251,7 +373,41 @@ func NewS3ClientFromConfig(
 		availabilityMonitoring,
 		tokenProvider,
 		0, // maxIdleConnsPerHost
+		options...,
 	)
+}
+
+// The SDK draws a pause from [min, 2*min) and, past the max, from
+// [max/2, max): a bound that makes such a range empty panics there. Zero
+// keeps the SDK default.
+func validateThrottleRetryDelays(minDelay, maxDelay time.Duration) error {
+	for _, delay := range []time.Duration{minDelay, maxDelay} {
+		if delay != 0 && delay < time.Millisecond {
+			return errors.NewNonRetriableErrorf(
+				"S3 throttle retry delay %v is less than 1ms",
+				delay,
+			)
+		}
+	}
+
+	if minDelay != 0 && maxDelay != 0 && minDelay > maxDelay {
+		return errors.NewNonRetriableErrorf(
+			"S3 min throttle retry delay %v is greater than max %v",
+			minDelay,
+			maxDelay,
+		)
+	}
+
+	return nil
+}
+
+// An empty value is zero.
+func parseOptionalDuration(value string) (time.Duration, error) {
+	if len(value) == 0 {
+		return 0, nil
+	}
+
+	return time.ParseDuration(value)
 }
 
 func newS3CredentialsFromConfig(
@@ -493,7 +649,11 @@ func (c *S3Client) PutObjectWithOptions(
 		)
 	}
 
-	_, err = c.s3.PutObjectWithContext(ctx, input)
+	_, err = c.s3.PutObjectWithContext(
+		ctx,
+		input,
+		c.putObjectRequestOptions()...,
+	)
 	return wrapError(err)
 }
 
@@ -566,7 +726,11 @@ func (c *S3Client) putObject(
 		ContentType: aws.String("application/octet-stream"),
 	}
 
-	_, err := c.s3.PutObjectWithContext(ctx, input)
+	_, err := c.s3.PutObjectWithContext(
+		ctx,
+		input,
+		c.putObjectRequestOptions()...,
+	)
 	return err
 }
 
@@ -590,7 +754,11 @@ func (c *S3Client) putObjectWithStorageClass(
 		input.StorageClass = aws.String(object.StorageClass)
 	}
 
-	_, err := c.s3.PutObjectWithContext(ctx, input)
+	_, err := c.s3.PutObjectWithContext(
+		ctx,
+		input,
+		c.putObjectRequestOptions()...,
+	)
 	return err
 }
 
