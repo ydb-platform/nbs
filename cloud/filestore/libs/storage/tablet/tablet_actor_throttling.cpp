@@ -42,6 +42,8 @@ TThrottlingRequestInfo BuildRequestInfo(
     ui32 policyVersion)
 {
     ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request.Record);
+    // TODO(myagkov, issue-7538): add TLength to WriteDataRequest and
+    // set it with payload size on client side
     if (byteCount == 0 && request.GetPayloadCount() > 0) {
         byteCount = request.GetPayload(0).GetSize();
     }
