@@ -333,7 +333,9 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             args.NodeId,
             args.CommitId,
             b,
-            {b - args.ByteRange.FirstAlignedBlock(), args.Buffer});
+            TBlockDataHolder{
+                b - args.ByteRange.FirstAlignedBlock(),
+                args.Buffer});
     }
 
     if (args.ByteRange.UnalignedHeadLength()) {
