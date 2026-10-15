@@ -442,6 +442,28 @@ public:
         TString ShadowDiskId;
     };
 
+    struct TCreateDiskFromDevicesParams
+    {
+        explicit TCreateDiskFromDevicesParams(
+            const TDiskId& diskId,
+            ui32 blockSize,
+            NProto::EStorageMediaKind mediaKind,
+            bool force,
+            bool keepBlockCount)
+            : DiskId(diskId)
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
+            , Force(force)
+            , KeepBlockCount(keepBlockCount)
+        {}
+
+        const TDiskId& DiskId;
+        ui32 BlockSize;
+        NProto::EStorageMediaKind MediaKind;
+        bool Force = false;
+        bool KeepBlockCount = false;
+    };
+
     NProto::TError AllocateDisk(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -891,19 +913,14 @@ public:
     NProto::TError CreateDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
-        bool force,
-        const TDiskId& diskId,
-        ui32 blockSize,
-        NProto::EStorageMediaKind mediaKind,
+        const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
         TAllocateDiskResult* result);
 
     NProto::TError CreateMirroredDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDiskId& masterId,
-        ui32 blockSize,
-        NProto::EStorageMediaKind mediaKind,
+        const TCreateDiskFromDevicesParams& params,
         const TVector<TVector<NProto::TDeviceConfig>>& replicas);
 
     NProto::TError ChangeDiskDevice(

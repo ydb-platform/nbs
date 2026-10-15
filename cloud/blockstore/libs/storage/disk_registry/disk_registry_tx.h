@@ -1238,6 +1238,7 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
+        const bool KeepBlockCount;
 
         NProto::TError Error;
         ui64 LogicalBlockCount = 0;
@@ -1248,13 +1249,15 @@ struct TTxDiskRegistry
                 TString diskId,
                 ui32 blockSize,
                 NProto::EStorageMediaKind mediaKind,
-                TVector<NProto::TDeviceConfig> devices)
+                TVector<NProto::TDeviceConfig> devices,
+                bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Devices(std::move(devices))
+            , KeepBlockCount(keepBlockCount)
         {}
 
         void Clear()
@@ -1295,6 +1298,7 @@ struct TTxDiskRegistry
         const NProto::EStorageMediaKind MediaKind;
         const TVector<TVector<NProto::TDeviceConfig>> Replicas;
         const bool Force;
+        const bool KeepBlockCount;
 
         NProto::TError Error;
 
@@ -1304,13 +1308,15 @@ struct TTxDiskRegistry
             ui32 blockSize,
             NProto::EStorageMediaKind mediaKind,
             TVector<TVector<NProto::TDeviceConfig>> replicas,
-            bool force)
+            bool force,
+            bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , MasterDiskId(std::move(masterDiskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Replicas(std::move(replicas))
             , Force(force)
+            , KeepBlockCount(keepBlockCount)
         {}
 
         void Clear()

@@ -47,7 +47,8 @@ void TDiskRegistryActor::HandleCreateMirroredDiskFromDevices(
         volume.GetBlockSize(),
         static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
         std::move(replicas),
-        record.GetForce());
+        record.GetForce(),
+        record.GetKeepBlockCount());
 }
 
 bool TDiskRegistryActor::PrepareCreateMirroredDiskFromDevices(
@@ -67,9 +68,19 @@ void TDiskRegistryActor::ExecuteCreateMirroredDiskFromDevices(
     TTransactionContext& tx,
     TTxDiskRegistry::TCreateMirroredDiskFromDevices& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
+    TDiskRegistryDatabase db(tx.DB);
+
+    args.Error = State->CreateMirroredDiskFromDevices(
+        ctx.Now(),
+        db,
+        TDiskRegistryState::TCreateDiskFromDevicesParams(
+            args.MasterDiskId,
+            args.BlockSize,
+            args.MediaKind,
+            args.Force,
+            args.KeepBlockCount
+        ),
+        args.Replicas);
 }
 
 void TDiskRegistryActor::CompleteCreateMirroredDiskFromDevices(

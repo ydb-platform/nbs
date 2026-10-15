@@ -45,16 +45,15 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         CreateRequestInfo<TEvDiskRegistry::TCreateDiskFromDevicesMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetForce(),
         volume.GetDiskId(),
         volume.GetBlockSize(),
         static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
-        TVector<NProto::TDeviceConfig> (
+        TVector<NProto::TDeviceConfig>(
             record.GetDevices().begin(),
-            record.GetDevices().end())
-        );
+            record.GetDevices().end()),
+        record.GetKeepBlockCount());
 }
 
 bool TDiskRegistryActor::PrepareCreateDiskFromDevices(
@@ -80,10 +79,13 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
     args.Error = State->CreateDiskFromDevices(
         ctx.Now(),
         db,
-        args.Force,
-        args.DiskId,
-        args.BlockSize,
-        args.MediaKind,
+        TDiskRegistryState::TCreateDiskFromDevicesParams(
+            args.DiskId,
+            args.BlockSize,
+            args.MediaKind,
+            args.Force,
+            args.KeepBlockCount
+        ),
         args.Devices,
         &result);
 

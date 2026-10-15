@@ -218,6 +218,7 @@ NProto::TCreateDiskFromDevicesRequest BuildNonreplicatedDiskRequest(
 
     request.MutableVolumeConfig()->CopyFrom(volumeConfig);
     request.SetForce(true);
+    request.SetKeepBlockCount(true);
 
     for (const auto& device: newDevices) {
         *request.AddDevices() = device;
@@ -238,6 +239,7 @@ NProto::TCreateMirroredDiskFromDevicesRequest BuildMirroredDiskRequest(
     volumeConfig.SetStorageMediaKind(oldMaster.GetStorageMediaKind());
 
     request.SetForce(true);
+    request.SetKeepBlockCount(true);
 
     for (const auto& replicaDevices: replicas) {
         auto& replica = *request.AddReplicas();
