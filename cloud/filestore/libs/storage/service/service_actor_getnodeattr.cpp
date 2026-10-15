@@ -190,10 +190,9 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
                 LOG_INFO(
                     ctx,
                     TFileStoreComponents::SERVICE,
-                    "[%s] NodeRef locked under GetNodeAttr for %lu, %s",
+                    "[%s] NodeRef locked under GetNodeAttr for %lu",
                     LogTag.c_str(),
-                    GetNodeAttrRequest.GetNodeId(),
-                    GetNodeAttrRequest.GetName().Quote().c_str());
+                    GetNodeAttrRequest.GetNodeId());
 
                 HandleError(ctx, MakeConcurrentModificationError());
                 return;
@@ -318,11 +317,10 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
     LOG_INFO(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] NodeRef changed under GetNodeAttr for %lu, %s (exists: %d, "
+        "[%s] NodeRef changed under GetNodeAttr for %lu (exists: %d, "
         "locked: %d)",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
-        GetNodeAttrRequest.GetName().Quote().c_str(),
         exists,
         locked);
 
@@ -336,8 +334,8 @@ NProto::TError TGetNodeAttrActor::MakeConcurrentModificationError() const
     return MakeError(
         E_REJECTED,
         TStringBuilder()
-            << "concurrent directory modifications for request: "
-            << GetNodeAttrRequest.ShortDebugString().Quote(),
+            << "concurrent directory modifications for node "
+            << GetNodeAttrRequest.GetNodeId(),
         flags);
 }
 
