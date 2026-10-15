@@ -296,6 +296,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     localRequest->SetBlocksCount(localBlocksCount);
     localRequest->SetFlags(request->GetFlags());
     localRequest->SetCheckpointId(request->GetCheckpointId());
+    localRequest->SetSnapshotCreationRead(request->GetSnapshotCreationRead());
     localRequest->SetSessionId(request->GetSessionId());
     localRequest->SetBlockSize(StorageBlockSize);
 

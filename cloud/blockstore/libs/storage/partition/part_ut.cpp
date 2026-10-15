@@ -5074,6 +5074,69 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(partition.ReadBlocks(0)));
     }
 
+    Y_UNIT_TEST(ShouldUseAsyncReadOnlyForSnapshotCreation)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.CreateCheckpoint("snapshot");
+        partition.Flush();
+        partition.WriteBlocks(1, 2);
+        partition.Flush();
+
+        auto expectedClass = NKikimrBlobStorage::FastRead;
+        ui32 reads = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGet) {
+                    const auto* msg = event->Get<TEvBlobStorage::TEvGet>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        msg->GetHandleClass, expectedClass);
+                    UNIT_ASSERT_VALUES_EQUAL(msg->Deadline, TInstant::Max());
+                    ++reads;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        for (bool local: {false, true}) {
+            for (bool snapshotCreationRead: {false, true, false}) {
+                for (const auto& checkpoint: {TString(), TString("snapshot")}) {
+                    expectedClass = snapshotCreationRead
+                                        ? NKikimrBlobStorage::AsyncRead
+                                        : NKikimrBlobStorage::FastRead;
+                    reads = 0;
+                    const auto expectedData =
+                        GetBlockContent(checkpoint ? 1 : 2);
+                    if (local) {
+                        auto buffer = GetBlockContent();
+                        auto request = partition.CreateReadBlocksLocalRequest(
+                            1, buffer, checkpoint);
+                        request->Record.SetSnapshotCreationRead(
+                            snapshotCreationRead);
+                        partition.SendToPipe(std::move(request));
+                        auto response = partition.RecvReadBlocksLocalResponse();
+                        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+                        UNIT_ASSERT_VALUES_EQUAL(buffer, expectedData);
+                    } else {
+                        auto request =
+                            partition.CreateReadBlocksRequest(1, checkpoint);
+                        request->Record.SetSnapshotCreationRead(
+                            snapshotCreationRead);
+                        partition.SendToPipe(std::move(request));
+                        auto response = partition.RecvReadBlocksResponse();
+                        UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            GetBlockContent(response), expectedData);
+                    }
+                    UNIT_ASSERT(reads > 0);
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldReadFromCheckpoint)
     {
         auto runtime = PrepareTestActorRuntime();
