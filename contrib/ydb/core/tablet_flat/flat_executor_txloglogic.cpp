@@ -25,12 +25,14 @@ TLogicRedo::TCompletionEntry::TCompletionEntry(TAutoPtr<TSeat> seat, ui32 step)
     , InFlyRWTransaction(seat)
 {}
 
-TLogicRedo::TLogicRedo(TAutoPtr<NPageCollection::TSteppedCookieAllocator> cookies, TCommitManager *commitManager, TAutoPtr<NRedo::TQueue> queue)
+TLogicRedo::TLogicRedo(TAutoPtr<NPageCollection::TSteppedCookieAllocator> cookies, TAutoPtr<NPageCollection::TSteppedCookieAllocator> rawCookies, TCommitManager *commitManager, TAutoPtr<NRedo::TQueue> queue)
     : CommitManager(commitManager)
     , Cookies(cookies)
+    , RawCookies(rawCookies)
     , Batch(new NRedo::TBatch)
     , Queue(queue)
     , Slicer(1, Cookies.Get(), NBlockIO::BlockSize)
+    , RawSlicer(1, RawCookies.Get(), NBlockIO::BlockSize)
 {}
 
 TLogicRedo::~TLogicRedo()
@@ -207,7 +209,7 @@ TLogicRedo::TCommitRWTransactionResult TLogicRedo::CommitRWTransaction(
                 tx->TxSpan.Link(Batch->Commit->TraceId, {});
             }
         }
-        
+
         Batch->Commit->PushTx(seat.Get());
 
         CompletionQueue.push_back({ seat, Batch->Commit->Step });
@@ -226,20 +228,26 @@ void TLogicRedo::MakeLogEntry(TLogCommit &commit, TString redo, TArrayRef<const 
     if (redo) {
         NSan::CheckMemIsInitialized(redo.data(), redo.size());
 
-        Cookies->Switch(commit.Step, true /* require step switch */);
+        bool compressionEnabled = redo.size() < (MaxBytesToBatch / 4);
+        auto* cookies = compressionEnabled ? Cookies.Get() : RawCookies.Get();
+        cookies->Switch(commit.Step, true /* require step switch */);
 
-        auto coded = NPageCollection::TSlicer::Lz4()->Encode(redo);
+        auto coded = compressionEnabled
+            ? NPageCollection::TSlicer::Lz4()->Encode(redo)
+            : std::move(redo);
 
         Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
 
-        if (embed && coded.size() <= MaxSizeToEmbedInLog) {
+        // Embedded redo has no codec marker and must always be compressed.
+        if (compressionEnabled && embed && coded.size() <= MaxSizeToEmbedInLog) {
             // Note: Encode reserves MaxCompressedLength bytes
             NUtil::ShrinkToFit(coded);
 
             commit.Embedded = std::move(coded);
             Queue->Push({ Cookies->Gen, commit.Step }, affects, commit.Embedded);
         } else {
-            auto largeGlobId = Slicer.Do(commit.Refs, std::move(coded), false);
+            auto& slicer = compressionEnabled ? Slicer : RawSlicer;
+            auto largeGlobId = slicer.Do(commit.Refs, std::move(coded), false);
             largeGlobId.MaterializeTo(commit.GcDelta.Created);
 
             Queue->Push({ Cookies->Gen, commit.Step }, affects, largeGlobId);
