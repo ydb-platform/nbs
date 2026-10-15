@@ -334,6 +334,22 @@ struct TFixture: public NUnitTest::TBaseFixture
             ->GetCounter("ActiveConnections");
     }
 
+    // A plain sendmsg copies a response into the socket buffer and releases
+    // its frame at once, so only a zero-copy one stays accounted while the
+    // peer does not read.
+    bool ZeroCopySupported()
+    {
+        const bool supported = Monitoring->GetCounters()
+                                   ->GetSubgroup("counters", "blockstore")
+                                   ->GetSubgroup("component", "uring_server")
+                                   ->GetCounter("SendZeroCopySupported")
+                                   ->Val();
+        if (!supported) {
+            Cerr << "IORING_OP_SENDMSG_ZC is not supported, skipping" << Endl;
+        }
+        return supported;
+    }
+
     void WaitForRequests(int count)
     {
         while (Handler->Requests < count) {
@@ -808,6 +824,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         // them do, and still above a full queue of the largest request
         config.MaxInflightBytes = 2560 << 10;
         StartServer(config);
+        if (!ZeroCopySupported()) {
+            return;
+        }
 
         TRawClient client;
         client.RcvBuf = 4096;
@@ -880,6 +899,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         // misconfiguration
         config.MaxInflightBytes = 2 * ((256 << 10) + (64 << 10));
         StartServer(config);
+        if (!ZeroCopySupported()) {
+            return;
+        }
         Handler->ResponseSize = 256 << 10;
 
         TRawClient client;
@@ -977,6 +999,9 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
         config.MaxInflightRequests = 1;
         config.MaxInflightBytes = (1 << 20) + (64 << 10);
         StartServer(config);
+        if (!ZeroCopySupported()) {
+            return;
+        }
         // the read shape: a tiny request, a large response
         Handler->ResponseSize = 1 << 20;
 
