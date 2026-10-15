@@ -36,9 +36,9 @@ bool TFreshBlocks::AddBlock(
     return inserted;
 }
 
-// This version of AddBlock is used when adding an unaligned tail, which
-// requires zeroing the remaining block bytes, or when loading fresh blocks
-// after a tablet restart.
+// This version of AddBlock copies blockData and is used when adding an
+// unaligned tail, which requires zeroing the remaining bytes in the block,
+// or when loading fresh blocks after a tablet restart.
 bool TFreshBlocks::AddBlock(
     ui64 nodeId,
     ui32 blockIndex,
