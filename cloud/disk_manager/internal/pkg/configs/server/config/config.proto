@@ -6,6 +6,8 @@ import "google/protobuf/duration.proto";
 import "cloud/disk_manager/internal/pkg/auth/config/config.proto";
 import "cloud/disk_manager/internal/pkg/cells/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nbs/config/config.proto";
+import "cloud/disk_manager/internal/pkg/clients/disk_service/config/config.proto";
+import "cloud/disk_manager/internal/pkg/dataplane/snapshot/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nfs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/backup/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
@@ -56,6 +58,47 @@ message GrpcConfig {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message DisabledZonesConfig {
+    repeated string Zones = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Presence enables snapshot export on this host.
+message ExportConfig {
+    // Uploaded with its original filename in the destination bucket root.
+    // A computed <archive-name>.sha256 is also uploaded.
+    // Uploaded on every export with PUT, overwriting existing objects.
+    optional string UnpackArchivePath = 1;
+    // Uploaded as README.md in the destination bucket root on every export.
+    optional string UnpackReadmePath = 2;
+    // Required when ExportConfig is present. Calls Compute inner.DiskService.
+    optional disk_service_client.ClientConfig DiskServiceClientConfig = 5;
+    enum Source {
+        AUTO = 0;
+        PRIMARY = 1;
+        BACKUP = 2;
+    }
+    // AUTO uses primary storage, falling back only when the snapshot is absent.
+    optional Source SourceStorage = 6 [default = AUTO];
+    // Primary storage configuration for dedicated export nodes. Otherwise use
+    // DataplaneConfig.SnapshotConfig. No primary database is needed for BACKUP.
+    optional snapshot.SnapshotConfig SnapshotConfig = 7;
+    optional uint64 PartSize = 8 [default = 268435456];
+    optional uint32 ReadWorkerCount = 9 [default = 16];
+    optional uint32 UploadWorkerCount = 10 [default = 2];
+    optional string Compression = 11 [default = "lz4"];
+    optional string S3CallTimeout = 12 [default = "10m"];
+    optional uint32 S3MaxRetriableErrorCount = 13 [default = 3];
+    // Whole-operation retries within a run. Further attempts use task retries
+    // and the durable checkpoint; transient failures do not discard parts.
+    optional uint32 MaxRetries = 14 [default = 3];
+    optional uint64 MaxIdleConnsPerHost = 15 [default = 64];
+    repeated string ForbiddenFolderIds = 16;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message ServerConfig {
     optional GrpcConfig GrpcConfig = 1;
     required tasks.TasksConfig TasksConfig = 2;
@@ -79,4 +122,6 @@ message ServerConfig {
     optional filesystem_snapshot.FilesystemSnapshotsConfig FilesystemSnapshotsConfig = 20;
     optional cells.CellsConfig FilestoreCellsConfig = 21;
     optional backup.SnapshotStorageBackupConfig SnapshotStorageBackupConfig = 22;
+    optional DisabledZonesConfig DisabledZonesConfig = 23;
+    optional ExportConfig ExportConfig = 24;
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
@@ -28,6 +29,7 @@ import (
 func initDataplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	newSnapshotStorageQuotaReporter snapshot.NewSnapshotStorageQuotaReporterFunc,
@@ -92,6 +94,7 @@ func initDataplane(
 		ctx,
 		dataplaneConfig,
 		performanceConfig,
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,

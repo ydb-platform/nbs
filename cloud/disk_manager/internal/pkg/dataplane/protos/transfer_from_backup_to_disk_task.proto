@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum BackupSourceKind {
+    BACKUP_SOURCE_KIND_UNSPECIFIED = 0;
+    BACKUP_SOURCE_KIND_SNAPSHOT = 1;
+    BACKUP_SOURCE_KIND_IMAGE = 2;
+}
+
+message TransferFromBackupToDiskRequest {
+    BackupSourceKind SrcKind = 1;
+    // Snapshot or image id.
+    string SrcId = 2;
+    // Disk the snapshot was created from. Not used for images.
+    string SrcDiskId = 3;
+    types.Disk DstDisk = 4;
+    types.EncryptionDesc DstEncryption = 5;
+    // If set, the backup should belong to this folder.
+    string ExpectedFolderId = 6;
+}
+
+message TransferFromBackupToDiskTaskState {
+    // Hashes of the backup's meta and chunk map, set by the first attempt.
+    bytes MetaSha256 = 1;
+    bytes ChunkMapSha256 = 2;
+    uint32 ChunkCount = 3;
+    uint32 MilestoneChunkIndex = 4;
+    uint32 TransferredChunkCount = 5;
+    double Progress = 6;
+}
+
+message TransferFromBackupToDiskMetadata {
+    double Progress = 1;
+}

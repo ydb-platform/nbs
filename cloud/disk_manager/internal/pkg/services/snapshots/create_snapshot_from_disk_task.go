@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -66,6 +67,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	snapshotMeta, err := t.storage.CreateSnapshot(ctx, resources.SnapshotMeta{
+		BlockSize:     diskParams.BlockSize,
 		ID:            t.request.DstSnapshotId,
 		FolderID:      t.request.FolderId,
 		Disk:          disk,
@@ -105,6 +107,7 @@ func (t *createSnapshotFromDiskTask) run(
 		"",
 		disk.ZoneId,
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
+			BlockSize:           diskParams.BlockSize,
 			SrcDisk:             disk,
 			SrcDiskCheckpointId: checkpointID,
 			DstSnapshotId:       t.request.DstSnapshotId,

@@ -49,6 +49,16 @@ func newStorage(
 	db *persistence.YDBClient,
 ) Storage {
 
+	return newStorageWithBackupFolders(t, ctx, db, []string{"backed"})
+}
+
+func newStorageWithBackupFolders(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	backupFolderIDs []string,
+) Storage {
+
 	disksFolder := fmt.Sprintf("%v/disks", t.Name())
 	imagesFolder := fmt.Sprintf("%v/images", t.Name())
 	snapshotsFolder := fmt.Sprintf("%v/snapshots", t.Name())
@@ -88,6 +98,7 @@ func newStorage(
 		db,
 		endedMigrationExpirationTimeout,
 		true, // backupEnabled
+		backupFolderIDs,
 	)
 	require.NoError(t, err)
 

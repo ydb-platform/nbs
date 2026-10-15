@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,8 +53,9 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	if meta == nil || !meta.Ready {
-		return t.storage.SnapshotBackupCancelled(ctx, snapshotID)
+	// Nothing to copy: the snapshot is gone or already backed up.
+	if meta == nil || !meta.Ready || meta.BackupCompleted {
+		return t.removeFromQueue(ctx)
 	}
 
 	if meta.Disk == nil {
@@ -90,16 +90,6 @@ func (t *backupSnapshotTask) Run(
 		}
 	}
 
-	err = t.backupS3.PutObject(
-		ctx,
-		backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
-		t.state.EncryptedDek,
-		persistence.S3Object{Data: data},
-	)
-	if err != nil {
-		return err
-	}
-
 	idempotencyKey := fmt.Sprintf(
 		"%v_%v_backup",
 		execCtx.GetTaskID(),
@@ -113,6 +103,9 @@ func (t *backupSnapshotTask) Run(
 		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId:   snapshotID,
 			EncryptedDek: t.state.EncryptedDek,
+			// The copy writes the meta while it holds the snapshot.
+			MetaKey: backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
+			Meta:    data,
 		},
 	)
 	if err != nil {
@@ -131,7 +124,14 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	return t.storage.SnapshotBackupScheduled(ctx, snapshotID)
+	// Marks only a ready snapshot: if deletion won before the copy took its
+	// hold, the snapshot is already deleting and the copy copied nothing.
+	err = t.storage.SnapshotBackupCompleted(ctx, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupSnapshotTask) Cancel(
@@ -141,7 +141,15 @@ func (t *backupSnapshotTask) Cancel(
 
 	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
 	// roll back the objects already written to the follower bucket.
-	return t.storage.SnapshotBackupCancelled(ctx, t.request.SnapshotId)
+	// The copy clears its chunks and releases the snapshot in its own Cancel.
+	if len(t.state.DataplaneTaskID) != 0 {
+		_, err := t.scheduler.CancelTask(ctx, t.state.DataplaneTaskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupSnapshotTask) GetMetadata(
@@ -153,4 +161,14 @@ func (t *backupSnapshotTask) GetMetadata(
 
 func (t *backupSnapshotTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *backupSnapshotTask) removeFromQueue(ctx context.Context) error {
+	return t.storage.RemoveSnapshotFromBackupQueue(
+		ctx,
+		t.request.SnapshotId,
+		t.request.BackupId,
+	)
 }

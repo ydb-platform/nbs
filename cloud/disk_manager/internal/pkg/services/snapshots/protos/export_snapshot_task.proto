@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package snapshots;
+
+import "cloud/disk_manager/api/export.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos";
+
+message ExportSnapshotTaskState {
+    string DataplaneTaskId = 1;
+    yandex.cloud.priv.disk_manager.v1.ExportResponse Response = 2;
+}

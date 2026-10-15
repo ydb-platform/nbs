@@ -571,6 +571,62 @@ func migrateAndValidate(
 	require.NoError(fixtures.t, err)
 }
 
+func TestYDBMigratePartitioningByLoad(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx, empty.NewRegistry())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	fixtures := migrationFixture{
+		t:                 t,
+		ctx:               ctx,
+		db:                db,
+		folder:            fmt.Sprintf("ydb_test/%v", t.Name()),
+		table:             "table",
+		dropUnusedColumns: false,
+	}
+
+	columns := []CreateTableOption{
+		WithColumn("id", Optional(TypeUTF8)),
+		WithColumn("val", Optional(TypeUTF8)),
+		WithPrimaryKeyColumn("id"),
+	}
+
+	// The table is created without partitioning by load.
+	migrateAndValidate(
+		fixtures,
+		NewCreateTableDescription(columns...),
+		func(description options.Description) {
+			require.NotEqual(
+				t,
+				options.FeatureEnabled,
+				description.PartitioningSettings.PartitioningByLoad,
+			)
+		},
+	)
+
+	// The existing table gets it.
+	withPartitioning := NewCreateTableDescription(
+		append(columns, WithPartitioningByLoad(2, 16))...,
+	)
+	validate := func(description options.Description) {
+		settings := description.PartitioningSettings
+		require.Equal(t, options.FeatureEnabled, settings.PartitioningByLoad)
+		require.EqualValues(t, 2, settings.MinPartitionsCount)
+		require.EqualValues(t, 16, settings.MaxPartitionsCount)
+	}
+	migrateAndValidate(fixtures, withPartitioning, validate)
+
+	// Applying the same settings again changes nothing.
+	migrateAndValidate(fixtures, withPartitioning, validate)
+
+	// A new table is created with them.
+	fixtures.table = "new_table"
+	migrateAndValidate(fixtures, withPartitioning, validate)
+}
+
 func TestYDBMigrateSecondaryKeys(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

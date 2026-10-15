@@ -5,12 +5,16 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const skipClientConfigParsingAnnotation = "skip-client-config-parsing"
+const skipServerConfigParsingAnnotation = "skip-server-config-parsing"
 
 func isHelperCommand(cmd *cobra.Command) bool {
 	// cmd.Name() would be the name of the most specific subcommand
@@ -28,6 +32,19 @@ func isHelperCommand(cmd *cobra.Command) bool {
 
 	_, ok := helperCommands[cmd.Name()]
 	return ok
+}
+
+func hasCommandAnnotation(cmd *cobra.Command, annotation string) bool {
+	for cmd != nil {
+		if cmd.Annotations != nil {
+			if _, ok := cmd.Annotations[annotation]; ok {
+				return true
+			}
+		}
+		cmd = cmd.Parent()
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,9 +68,11 @@ func Run(
 				return nil
 			}
 
-			err := util.ParseProto(clientConfigFilePath, clientConfig)
-			if err != nil {
-				return err
+			if !hasCommandAnnotation(cmd, skipClientConfigParsingAnnotation) {
+				err := util.ParseProto(clientConfigFilePath, clientConfig)
+				if err != nil {
+					return err
+				}
 			}
 
 			if idExtracted {
@@ -118,6 +137,10 @@ func Run(
 		err := rootCmd.PersistentPreRunE(cmd, args)
 		if err != nil {
 			return err
+		}
+
+		if hasCommandAnnotation(cmd, skipServerConfigParsingAnnotation) {
+			return nil
 		}
 
 		return util.ParseProto(serverConfigFilePath, serverConfig)
