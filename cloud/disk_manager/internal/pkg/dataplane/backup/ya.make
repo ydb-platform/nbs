@@ -5,12 +5,14 @@ SRCS(
     keys.go
     meta.go
     s3.go
+    source.go
 )
 
 GO_TEST_SRCS(
     keys_test.go
     meta_test.go
     s3_test.go
+    source_test.go
 )
 
 END()
