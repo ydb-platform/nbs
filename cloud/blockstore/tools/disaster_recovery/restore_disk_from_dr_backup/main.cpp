@@ -93,29 +93,21 @@ NProto::TDiskRegistryStateBackup LoadBackup(const TString& path)
 TDeviceIndex BuildDeviceIndex(const NProto::TDiskRegistryStateBackup& backup)
 {
     TDeviceIndex index;
+
+    auto addDevice = [&](const NProto::TDeviceConfig& device) {
+        index.ByUUID.emplace(device.GetDeviceUUID(), &device);
+
+        TPhysicalKey key{
+            .SerialNumber = device.GetSerialNumber(),
+            .PhysicalOffset = device.GetPhysicalOffset()};
+
+        index.ByPhysical.emplace(std::move(key), &device);
+    };
+
     for (const auto& agent: backup.GetAgents()) {
-        for (const auto& device: agent.GetDevices()) {
-            index.ByUUID.emplace(device.GetDeviceUUID(), &device);
-
-            TPhysicalKey key{
-                .SerialNumber = device.GetSerialNumber(),
-                .PhysicalOffset = device.GetPhysicalOffset()};
-
-            index.ByPhysical.emplace(std::move(key), &device);
-        }
-
-        // TODO: get rid of duplication
-        for (const auto& device: agent.GetUnknownDevices()) {
-            index.ByUUID.emplace(device.GetDeviceUUID(), &device);
-
-            TPhysicalKey key{
-                .SerialNumber = device.GetSerialNumber(),
-                .PhysicalOffset = device.GetPhysicalOffset()};
-
-            index.ByPhysical.emplace(std::move(key), &device);
-        }
+        std::for_each(agent.GetDevices().begin(), agent.GetDevices().end(), addDevice);
+        std::for_each(agent.GetUnknownDevices().begin(), agent.GetUnknownDevices().end(), addDevice);
     }
-
     return index;
 }
 
