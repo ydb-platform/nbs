@@ -182,6 +182,8 @@ private:
     NThreading::TPromise<void> StopPromise = NThreading::NewPromise();
 
 public:
+    std::function<void()> Unregister;
+
     TClientEndpoint(
         TRing& ring,
         ITaskQueue& resolver,
@@ -1020,6 +1022,11 @@ private:
         with_lock (Lock) {
             Stopped = true;
         }
+        // the client may hold the last reference
+        auto self = shared_from_this();
+        if (Unregister) {
+            std::exchange(Unregister, {})();
+        }
         // breaks the cycle with a handler holding this endpoint
         EventHandler.reset();
         StopPromise.SetValue();
@@ -1147,6 +1154,12 @@ public:
                 std::move(handler),
                 Counters,
                 Log);
+            // the endpoint unregisters before its Stop resolves, and the
+            // client waits for that before it goes away
+            endpoint->Unregister = [this, raw = endpoint.get()]
+            {
+                ForgetEndpoint(raw);
+            };
             endpoint->Start();
             Endpoints.push_back(endpoint);
         }
@@ -1158,6 +1171,16 @@ public:
         Config->DumpHtml(out);
         with_lock (Lock) {
             out << "<p>endpoints: " << Endpoints.size() << "</p>";
+        }
+    }
+
+private:
+    void ForgetEndpoint(TClientEndpoint* raw)
+    {
+        with_lock (Lock) {
+            std::erase_if(
+                Endpoints,
+                [raw](const auto& endpoint) { return endpoint.get() == raw; });
         }
     }
 };

@@ -13,6 +13,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/scope.h>
+#include <util/stream/str.h>
 
 #include <sys/socket.h>
 
@@ -1175,6 +1176,28 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         }
         UNIT_ASSERT_VALUES_EQUAL(1, cancelled);
         UNIT_ASSERT_VALUES_EQUAL(15, rejected);
+    }
+
+    Y_UNIT_TEST_F(ShouldForgetStoppedEndpoints, TFixture)
+    {
+        StartServer();
+        StartClient();
+        WaitConnected();
+
+        TVector<IClientEndpointPtr> endpoints = {Endpoint};
+        for (int i = 0; i < 4; ++i) {
+            auto [endpoint, error] =
+                Client->StartEndpoint("127.0.0.1", Port, nullptr);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            endpoints.push_back(endpoint);
+        }
+        for (auto& endpoint: endpoints) {
+            endpoint->Stop().GetValue(TDuration::Seconds(10));
+        }
+
+        TStringStream out;
+        Client->DumpHtml(out);
+        UNIT_ASSERT_STRING_CONTAINS(out.Str(), "<p>endpoints: 0</p>");
     }
 }
 
