@@ -66,7 +66,8 @@ TFileSystem::TFileSystem(
           Log,
           std::move(directoryHandleStats),
           std::move(directoryHandleStorage),
-          DirectoryEntryVersionCache))
+          DirectoryEntryVersionCache,
+          Config->GetDirectoryHandlesPersistentHandleMaxSize()))
     , XAttrCache(
         Timer,
         Config->GetXAttrCacheLimit(),

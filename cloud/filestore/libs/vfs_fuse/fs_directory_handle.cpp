@@ -120,10 +120,17 @@ std::optional<TDirectoryHandleChunk> TDirectoryHandleChunk::Deserialize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandle::TDirectoryHandle(fuse_ino_t ino)
+TDirectoryHandle::TDirectoryHandle(
+    fuse_ino_t ino,
+    TDirectoryHandleModuleStatsPtr stats,
+    ui64 readStatsSizeThreshold)
     : SerializedSize(BaseSerializedSize)
+    , ReadStatsSizeThreshold(readStatsSizeThreshold)
+    , Stats(std::move(stats))
     , Index(ino)
-{}
+{
+    Y_ABORT_UNLESS(Stats);
+}
 
 TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
@@ -146,7 +153,8 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
 
     with_lock (Lock) {
         Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
+        LastRead = Content.try_emplace(end).first;
+        LastRead->second = {.Buffer = content, .CacheVersion = cacheVersion};
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -160,6 +168,9 @@ TMaybe<TDirectoryContent>
 TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
 {
     size_t end = 0;
+    bool recordStats = false;
+    bool oldChunk = false;
+    bool nonSequential = false;
     TBufferPtr content = nullptr;
     ui64 cacheVersion = 0;
 
@@ -167,11 +178,24 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
         auto it = Content.upper_bound(offset);
         if (it != Content.end()) {
             end = it->first;
+            recordStats = SerializedSize > ReadStatsSizeThreshold;
+            oldChunk = std::next(it) != Content.end();
+            if (LastRead != Content.end()) {
+                nonSequential = LastRead != it && std::next(LastRead) != it;
+            }
+            LastRead = it;
             content = it->second.Buffer;
             cacheVersion = it->second.CacheVersion;
         } else if (Cookie) {
             return Nothing();
         }
+    }
+
+    if (recordStats && oldChunk) {
+        Stats->IncrementOldChunkReadCount();
+    }
+    if (recordStats && nonSequential) {
+        Stats->IncrementNonSequentialReadCount();
     }
 
     TDirectoryContent result;
@@ -195,6 +219,7 @@ void TDirectoryHandle::ResetContent()
 {
     with_lock (Lock) {
         Content.clear();
+        LastRead = Content.end();
         Cookie.clear();
         UpdateVersion = 0;
         SerializedSize = BaseSerializedSize;

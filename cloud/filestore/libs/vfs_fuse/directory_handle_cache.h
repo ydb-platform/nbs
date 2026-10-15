@@ -21,6 +21,7 @@ private:
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
+    const ui64 ReadStatsSizeThreshold;
 
     TDirectoryHandleModuleStatsPtr Stats;
 
@@ -33,7 +34,8 @@ public:
         TLog log,
         TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage,
-        TDirectoryEntryVersionCachePtr directoryEntryVersionCache);
+        TDirectoryEntryVersionCachePtr directoryEntryVersionCache,
+        ui64 readStatsSizeThreshold);
 
     bool IsPersistent() const;
 
