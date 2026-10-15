@@ -72,7 +72,7 @@ struct TBlockDataHolder
 
     [[nodiscard]] TStringBuf GetBlockData() const
     {
-        Y_DEBUG_ABORT_UNLESS(BlockBuffer);
+        Y_ABORT_UNLESS(BlockBuffer);
         return BlockBuffer->GetBlock(BufferBlockIndex);
     }
 };
