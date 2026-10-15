@@ -10,6 +10,8 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/auth/config
     cloud/disk_manager/internal/pkg/cells/config
     cloud/disk_manager/internal/pkg/clients/nbs/config
+    cloud/disk_manager/internal/pkg/clients/disk_service/config
+    cloud/disk_manager/internal/pkg/dataplane/snapshot/config
     cloud/disk_manager/internal/pkg/clients/nfs/config
     cloud/disk_manager/internal/pkg/dataplane/backup/config
     cloud/disk_manager/internal/pkg/dataplane/config

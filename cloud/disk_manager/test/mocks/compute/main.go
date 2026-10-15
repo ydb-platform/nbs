@@ -14,6 +14,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type computeService struct {
+	compute.UnimplementedDiskServiceServer
 }
 
 func (s *computeService) CreateToken(

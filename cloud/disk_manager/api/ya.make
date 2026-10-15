@@ -16,6 +16,7 @@ SRCS(
     disk.proto
     disk_service.proto
     error.proto
+    export.proto
     image.proto
     image_service.proto
     filesystem_service.proto

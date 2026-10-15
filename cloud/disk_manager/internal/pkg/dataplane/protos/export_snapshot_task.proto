@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/api/export.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+message ExportSnapshotRequest {
+    string SnapshotId = 1;
+    // Compute export task ID from the incoming x-operation-id header.
+    string OperationId = 2;
+    string FolderId = 3;
+    string SourceDiskId = 4;
+    yandex.cloud.priv.disk_manager.v1.ExportDestination Destination = 5;
+    yandex.cloud.priv.disk_manager.v1.DecryptionInfo DecryptionInfo = 6;
+    uint32 BlockSize = 7;
+}
+
+message ExportSnapshotTaskState {
+    // AUTO is resolved once; no source changes are allowed after checkpointing.
+    string Source = 1;
+    bytes BackupMetaSHA256 = 2;
+    bytes BackupChunkMapSHA256 = 3;
+    // JSON exporter.S3ExportState: immutable manifest plan and completed parts.
+    // Contains opaque decryption metadata, never S3 credentials.
+    bytes ExportState = 4;
+    double Progress = 5;
+}

@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"google.golang.org/grpc"
+	grpc_codes "google.golang.org/grpc/codes"
+	grpc_status "google.golang.org/grpc/status"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"google.golang.org/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,6 +52,18 @@ func (s *imageService) Delete(
 	}
 
 	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
+// Export is a placeholder until the export task implementation is available.
+func (s *imageService) Export(
+	ctx context.Context,
+	req *disk_manager.ExportImageRequest,
+) (*disk_manager.Operation, error) {
+
+	return nil, grpc_status.Error(
+		grpc_codes.Unimplemented,
+		"image export is not implemented",
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

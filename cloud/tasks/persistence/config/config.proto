@@ -27,6 +27,18 @@ message S3Config {
     optional uint64 MaxRetriableErrorCount = 5 [default = 3];
     optional S3ControlPlaneConfig ControlPlaneConfig = 6;
     optional bool UseIamToken = 7;
+    // Idle keep-alive connections kept per host. 0 keeps the Go default of 2,
+    // which reopens a TLS connection for almost every concurrent request.
+    optional uint64 MaxIdleConnsPerHost = 8;
+    // Attempts of PutObject per second of this client, retries included.
+    // Keeps a request quota of the storage whatever the size of the objects.
+    // 0 does not limit them.
+    optional uint64 MaxPutObjectAttemptsPerSecond = 20;
+    // Bounds of the pause before a throttled request (429, SlowDown) is
+    // retried; the pause doubles on every retry. Empty keeps the SDK
+    // defaults, 500ms and 300s.
+    optional string MinThrottleRetryDelay = 21;
+    optional string MaxThrottleRetryDelay = 22;
 }
 
 message S3ControlPlaneConfig {

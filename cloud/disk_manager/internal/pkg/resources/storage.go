@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -25,11 +26,14 @@ type DiskMeta struct {
 	PlacementPartitionIndex string `json:"placement_partition_index"`
 
 	CreateRequest proto.Message `json:"create_request"`
-	CreateTaskID  string        `json:"create_task_id"`
-	CreatingAt    time.Time     `json:"creating_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	CreatedBy     string        `json:"created_by"`
-	DeleteTaskID  string        `json:"delete_task_id"`
+	// Serialized create request read from YDB; its protobuf type depends on
+	// whether the disk was created empty, from an image, or from a snapshot.
+	CreateRequestData []byte    `json:"-"`
+	CreateTaskID      string    `json:"create_task_id"`
+	CreatingAt        time.Time `json:"creating_at"`
+	CreatedAt         time.Time `json:"created_at"`
+	CreatedBy         string    `json:"created_by"`
+	DeleteTaskID      string    `json:"delete_task_id"`
 
 	ScannedAt            time.Time `json:"scanned_at"`
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
@@ -54,9 +58,13 @@ type ImageMeta struct {
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
+	// A backup of the image completed; a deleting image is never marked.
+	BackupCompleted bool `json:"backup_completed"`
 }
 
 type SnapshotMeta struct {
+	// Preserved with the snapshot even after the source disk is deleted.
+	BlockSize         uint32                `json:"block_size"`
 	ID                string                `json:"id"`
 	FolderID          string                `json:"folder_id"`
 	Disk              *types.Disk           `json:"disk"`
@@ -71,6 +79,7 @@ type SnapshotMeta struct {
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
+	BackupCompleted   bool                  `json:"backup_completed"`
 }
 
 type FilesystemMeta struct {
@@ -117,6 +126,48 @@ type PlacementGroupMeta struct {
 	CreatedAt               time.Time               `json:"created_at"`
 	CreatedBy               string                  `json:"created_by"`
 	DeleteTaskID            string                  `json:"delete_task_id"`
+}
+
+type SnapshotBackupRequest struct {
+	SnapshotID string
+	BackupID   string
+}
+
+type SnapshotBackupID struct {
+	DiskID     string
+	SnapshotID string
+}
+
+type ImageBackupRequest struct {
+	ImageID  string
+	BackupID string
+}
+
+type ImageBackupQueueStats struct {
+	// Attempts waiting for a free slot.
+	Queued uint64
+	// Attempts whose task is scheduled.
+	Scheduled uint64
+}
+
+type ScheduledImageBackup struct {
+	ImageID  string
+	BackupID string
+	TaskID   string
+}
+
+// A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
+type ScheduledSnapshotBackup struct {
+	SnapshotID string
+	BackupID   string
+	TaskID     string
+}
+
+type SnapshotBackupQueueStats struct {
+	// Attempts waiting for a free slot.
+	Queued uint64
+	// Attempts whose task is scheduled.
+	Scheduled uint64
 }
 
 type Storage interface {
@@ -181,11 +232,53 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
-	ListImagesToBackup(ctx context.Context, limit int) ([]string, error)
+	// Returns queued attempts that have no task yet, oldest first.
+	ListImagesToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]ImageBackupRequest, error)
 
-	ImageBackupScheduled(ctx context.Context, imageID string) error
+	// Queues a ready image of any folder for backup as attempt backupID. A
+	// request for a backed up image does nothing, a request while an attempt
+	// is queued or running joins it, a request after it failed or was
+	// cancelled starts a new one.
+	EnqueueImageBackup(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
 
-	ImageBackupCancelled(ctx context.Context, imageID string) error
+	// Records the task of a queued attempt. Returns when the attempt was
+	// queued; zero if it left the queue or was queued before the time was
+	// recorded.
+	ImageBackupScheduled(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+		taskID string,
+	) (time.Time, error)
+
+	ListScheduledImageBackups(
+		ctx context.Context,
+		limit int,
+	) ([]ScheduledImageBackup, error)
+
+	// Removes the queue row of this attempt only. Does not mark the image as
+	// backed up.
+	RemoveImageFromBackupQueue(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
+
+	// Marks a ready image as backed up. A deleting image is not marked.
+	ImageBackupCompleted(ctx context.Context, imageID string) error
+
+	GetImageBackupQueueStats(ctx context.Context) (ImageBackupQueueStats, error)
+
+	GetImageBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
+
+	ImageBackupDeletionsCompleted(ctx context.Context, imageIDs []string) error
 
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
 	CreateSnapshot(ctx context.Context, snapshot SnapshotMeta) (SnapshotMeta, error)
@@ -221,11 +314,57 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
-	ListSnapshotsToBackup(ctx context.Context, limit int) ([]string, error)
+	EnqueueSnapshotBackup(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+	) error
 
-	SnapshotBackupScheduled(ctx context.Context, snapshotID string) error
+	// Returns queued attempts that have no task yet, oldest first.
+	ListSnapshotsToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]SnapshotBackupRequest, error)
 
-	SnapshotBackupCancelled(ctx context.Context, snapshotID string) error
+	// Records the task of a queued attempt. Returns when the attempt was
+	// queued; zero if it left the queue or was queued before the time was
+	// recorded.
+	SnapshotBackupScheduled(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+		taskID string,
+	) (time.Time, error)
+
+	ListScheduledSnapshotBackups(
+		ctx context.Context,
+		limit int,
+	) ([]ScheduledSnapshotBackup, error)
+
+	GetSnapshotBackupQueueStats(
+		ctx context.Context,
+	) (SnapshotBackupQueueStats, error)
+
+	// Removes the queue row of this attempt only. Does not mark the snapshot
+	// as backed up.
+	RemoveSnapshotFromBackupQueue(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+	) error
+
+	// Marks a ready snapshot as backed up. A deleting snapshot is not marked.
+	SnapshotBackupCompleted(ctx context.Context, snapshotID string) error
+
+	GetSnapshotBackupDeleteQueue(
+		ctx context.Context,
+		limit int,
+	) ([]SnapshotBackupID, error)
+
+	SnapshotBackupDeletionsCompleted(
+		ctx context.Context,
+		snapshotIDs []string,
+	) error
 
 	// Returns filesystem if action has been accepted by storage and nil otherwise.
 	CreateFilesystem(ctx context.Context, filesystem FilesystemMeta) (*FilesystemMeta, error)

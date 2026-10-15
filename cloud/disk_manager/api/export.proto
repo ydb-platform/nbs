@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package yandex.cloud.priv.disk_manager.v1;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+// Metadata copied into the export manifest for decryption by the user.
+// The exporter does not decrypt the snapshot or image data.
+message DecryptionInfo {
+    string kek_id = 1;
+    int64 kek_version = 2;
+    // DEK encrypted with the KEK. Encoded as Base64 in the JSON manifest.
+    bytes encrypted_dek = 3;
+}
+
+// Destination of a snapshot or image export: an S3-compatible bucket of the
+// caller. S3 credentials are supplied by Compute through a separate call
+// and are not part of this message.
+message ExportDestination {
+    // HTTP(S) endpoint of an S3-compatible storage.
+    string endpoint = 1;
+    // Signing region; empty when the storage does not use one.
+    string region = 2;
+    // The bucket must exist.
+    string bucket = 3;
+    // Optional prefix of the exported objects.
+    string prefix = 4;
+}
+
+message ExportMetadata {
+    double progress = 1;
+}
+
+message ExportResponse {
+    string bucket = 1;
+    string manifest_key = 2;
+}

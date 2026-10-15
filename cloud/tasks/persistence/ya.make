@@ -2,6 +2,8 @@ GO_LIBRARY()
 
 SRCS(
     s3.go
+    s3_attempt_limiter.go
+    s3_export.go
     s3_metrics.go
     ydb.go
     ydb_logger.go
@@ -13,6 +15,7 @@ SRCS(
 
 GO_TEST_SRCS(
     s3_test.go
+    s3_export_test.go
     ydb_test.go
 
     availability_monitoring_test.go

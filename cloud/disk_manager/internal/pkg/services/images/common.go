@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,6 +22,7 @@ func deleteImage(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	config *config.ImagesConfig,
+	disabledZones *common.DisabledZones,
 	scheduler tasks.Scheduler,
 	storage resources.Storage,
 	poolService pools.Service,
@@ -62,6 +65,7 @@ func deleteImage(
 		ctx,
 		execCtx,
 		config,
+		disabledZones,
 		scheduler,
 		*imageMeta,
 	)
@@ -98,22 +102,34 @@ func scheduleRetireBaseDisks(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	config *config.ImagesConfig,
+	disabledZones *common.DisabledZones,
 	scheduler tasks.Scheduler,
 	imageMeta resources.ImageMeta,
 ) error {
 
 	for _, c := range config.GetDefaultDiskPoolConfigs() {
+		zoneID := c.GetZoneId()
+		if disabledZones.IsDisabled(zoneID) {
+			logging.Warn(
+				ctx,
+				"Skipping base disk retirement for image %v: zone %v is disabled",
+				imageMeta.ID,
+				zoneID,
+			)
+			continue
+		}
+
 		_, err := scheduler.ScheduleTask(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
 				"retire_base_disks_"+execCtx.GetTaskID()+
-					":"+c.GetZoneId()+":"+imageMeta.ID,
+					":"+zoneID+":"+imageMeta.ID,
 			),
 			"pools.RetireBaseDisks",
 			"",
 			&pools_protos.RetireBaseDisksRequest{
 				ImageId:          imageMeta.ID,
-				ZoneId:           c.GetZoneId(),
+				ZoneId:           zoneID,
 				UseBaseDiskAsSrc: true,
 				UseImageSize:     imageMeta.Size,
 			},

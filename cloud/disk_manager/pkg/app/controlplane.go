@@ -6,14 +6,16 @@ import (
 	"net"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	cells_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -32,8 +34,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,6 +144,7 @@ func newGrpcServer(
 func registerControlplaneTasks(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	db *persistence.YDBClient,
@@ -187,6 +188,7 @@ func registerControlplaneTasks(
 		ctx,
 		config.GetDisksConfig(),
 		performanceConfig,
+		disabledZones,
 		resourceStorage,
 		poolStorage,
 		taskRegistry,
@@ -201,9 +203,13 @@ func registerControlplaneTasks(
 	}
 
 	logging.Info(ctx, "Registering image tasks")
+	// Snapshot and image backups report their queues side by side.
+	backupQueueMetricsRegistry := mon.NewRegistry("backup_queue")
+
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -211,6 +217,7 @@ func registerControlplaneTasks(
 		poolService,
 		cellSelector,
 		backupS3,
+		backupQueueMetricsRegistry,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -227,6 +234,8 @@ func registerControlplaneTasks(
 		nbsFactory,
 		cellSelector,
 		backupS3,
+		backupQueueMetricsRegistry,
+		config.GetExportConfig(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -239,6 +248,7 @@ func registerControlplaneTasks(
 		err = filesystem.RegisterForExecution(
 			ctx,
 			config.GetFilesystemConfig(),
+			disabledZones,
 			taskScheduler,
 			taskRegistry,
 			resourceStorage,
@@ -306,6 +316,7 @@ func registerControlplaneTasks(
 func initControlplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	newAuthorizer auth.NewAuthorizer,
@@ -370,6 +381,7 @@ func initControlplane(
 		db,
 		endedMigrationExpirationTimeout,
 		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
+		config.GetSnapshotStorageBackupConfig().GetFolderIds(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize resource storage: %v", err)
@@ -408,6 +420,7 @@ func initControlplane(
 	err = registerControlplaneTasks(
 		ctx,
 		config,
+		disabledZones,
 		mon,
 		creds,
 		db,
@@ -471,6 +484,7 @@ func initControlplane(
 		snapshots.NewService(
 			taskScheduler,
 			config.GetSnapshotsConfig(),
+			config.GetExportConfig(),
 		),
 	)
 	facade.RegisterPrivateService(

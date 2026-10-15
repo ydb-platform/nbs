@@ -8,6 +8,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
+// The backup queue and follower_chunks are written by every copy task and
+// every snapshot copy at once. They are small, so splitting by size alone
+// keeps them in one or two partitions; they are split by load instead, and
+// not merged back below the minimum between waves of backups.
+const (
+	backupTablesMinPartitions = 64
+	backupTablesMaxPartitions = 1024
+)
+
 func Create(
 	ctx context.Context,
 	config *snapshot_config.SnapshotConfig,
@@ -121,37 +132,18 @@ func Create(
 	}
 	logging.Info(ctx, "Created chunk_map table")
 
-	err = db.CreateOrAlterTable(
-		ctx,
-		config.GetStorageFolder(),
-		"backup_chunks",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn(
-				"snapshot_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"chunk_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"status",
-				persistence.Optional(persistence.TypeInt64),
-			),
-			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Created backup_chunks table")
-
+	// Keyed by a hash of the chunk so that copy tasks reading from a random
+	// shard_id take disjoint batches. Per-snapshot operations go through the
+	// snapshot_id index.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		"backup_chunk_queue",
 		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"shard_id",
+				persistence.Optional(persistence.TypeUint64),
+			),
 			persistence.WithColumn(
 				"snapshot_id",
 				persistence.Optional(persistence.TypeUTF8),
@@ -168,7 +160,12 @@ func Create(
 				"encrypted_dek",
 				persistence.Optional(persistence.TypeString),
 			),
-			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
+			persistence.WithSecondaryKeyColumn("snapshot_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
 		),
 		dropUnusedColumns,
 	)
@@ -176,6 +173,65 @@ func Create(
 		return err
 	}
 	logging.Info(ctx, "Created backup_chunk_queue table")
+
+	// Chunks queued for the follower or already copied there, whichever
+	// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
+	// the last unref moves it to backup_chunk_delete_queue.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"follower_chunks",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created follower_chunks table")
+
+	// Chunks deleted from chunk_blobs whose follower objects are to be
+	// deleted.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_delete_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_delete_queue table")
+
+	// Chunks that could not be copied to the follower: missing or corrupt
+	// data. The backup of their snapshot fails.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_failures",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("error", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_failures table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
 		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
@@ -249,17 +305,29 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped chunk_map table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunks")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped backup_chunks table")
-
 	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
 	if err != nil {
 		return err
 	}
 	logging.Info(ctx, "Dropped backup_chunk_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "follower_chunks")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped follower_chunks table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_delete_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_failures")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_failures table")
 
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 
@@ -308,6 +376,8 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
+		// The backup copy that holds the snapshot; deletion waits for it.
+		persistence.WithColumn("backup_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
