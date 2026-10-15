@@ -1159,10 +1159,12 @@ public:
                 Config->SendZeroCopyMode,
                 Log);
             auto error = ring->Start();
-            Y_ABORT_IF(
-                HasError(error),
-                "cannot start the uring server: %s",
-                FormatError(error).c_str());
+            if (HasError(error)) {
+                // joins the rings started so far
+                Rings.clear();
+                ythrow TServiceError(E_FAIL)
+                    << "cannot start the uring server: " << FormatError(error);
+            }
             Rings.push_back(std::move(ring));
         }
         Counters->SendZeroCopySupported->Set(Rings[0]->SendZeroCopySupported());

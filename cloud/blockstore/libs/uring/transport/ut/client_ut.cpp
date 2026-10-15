@@ -1199,6 +1199,25 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         Client->DumpHtml(out);
         UNIT_ASSERT_STRING_CONTAINS(out.Str(), "<p>endpoints: 0</p>");
     }
+
+    Y_UNIT_TEST_F(ShouldThrowWhenTheRingCannotStart, TFixture)
+    {
+        TClientConfig config;
+        // past IORING_MAX_ENTRIES, so the kernel refuses the ring
+        config.QueueSize = 1 << 20;
+        Client = CreateClient(
+            Logging,
+            Monitoring,
+            std::make_shared<TClientConfig>(config));
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            Client->Start(),
+            TServiceError,
+            "Invalid argument");
+        Client->Stop();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Client->StartEndpoint("127.0.0.1", 1, Events).GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

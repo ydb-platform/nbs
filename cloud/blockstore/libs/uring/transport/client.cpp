@@ -1084,8 +1084,6 @@ public:
 
         Log = Logging->CreateLog("BLOCKSTORE_URING");
         Counters = MakeCounters(Monitoring, "uring_client");
-        Resolver = CreateThreadPool("URING.RESOLVE", 1);
-        Resolver->Start();
         for (ui32 i = 0; i < Max<ui32>(Config->IoThreads, 1); ++i) {
             auto ring = std::make_unique<TRing>(
                 TStringBuilder() << "URING.CLI" << i,
@@ -1093,12 +1091,16 @@ public:
                 Config->SendZeroCopyMode,
                 Log);
             auto error = ring->Start();
-            Y_ABORT_IF(
-                HasError(error),
-                "cannot start the uring client: %s",
-                FormatError(error).c_str());
+            if (HasError(error)) {
+                // joins the rings started so far
+                Rings.clear();
+                ythrow TServiceError(E_FAIL)
+                    << "cannot start the uring client: " << FormatError(error);
+            }
             Rings.push_back(std::move(ring));
         }
+        Resolver = CreateThreadPool("URING.RESOLVE", 1);
+        Resolver->Start();
         Counters->SendZeroCopySupported->Set(Rings[0]->SendZeroCopySupported());
         with_lock (Lock) {
             Started = true;

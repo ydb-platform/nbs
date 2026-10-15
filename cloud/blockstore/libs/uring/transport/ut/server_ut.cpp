@@ -1063,6 +1063,27 @@ Y_UNIT_TEST_SUITE(TUringServerTest)
             Server->Stop();
         }
     }
+
+    Y_UNIT_TEST_F(ShouldThrowWhenTheRingCannotStart, TFixture)
+    {
+        TServerConfig config;
+        // past IORING_MAX_ENTRIES, so the kernel refuses the ring
+        config.QueueSize = 1 << 20;
+        Server = CreateServer(
+            Logging,
+            Monitoring,
+            std::make_shared<TServerConfig>(config));
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            Server->Start(),
+            TServiceError,
+            "Invalid argument");
+        Server->Stop();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Server->StartEndpoint("127.0.0.1", 0, Handler)
+                .GetError()
+                .GetCode());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring
