@@ -1115,6 +1115,67 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         }
         Events->Disconnected.GetFuture().GetValue(TDuration::Seconds(1));
     }
+
+    Y_UNIT_TEST_F(ShouldSurviveHandlerThrowingOnFrameRelease, TFixture)
+    {
+        struct TThrowOnCancel: public TCollector
+        {
+            void HandleResponse(
+                TClientRequestPtr req,
+                ui32 status,
+                TStringBuf proto,
+                size_t dataBytes) override
+            {
+                TCollector::HandleResponse(
+                    std::move(req),
+                    status,
+                    proto,
+                    dataBytes);
+                if (status == E_CANCELLED) {
+                    ythrow yexception() << "handler failed";
+                }
+            }
+        };
+
+        Collector = std::make_shared<TThrowOnCancel>();
+
+        auto release = NewPromise();
+        TScriptedPeer peer([future = release.GetFuture()](int, int)
+                           { future.Wait(TDuration::Seconds(30)); });
+        Y_DEFER
+        {
+            release.TrySetValue();
+        };
+        Port = peer.Port;
+        StartClient();
+        WaitConnected();
+
+        // the peer never reads, so the last frame is still queued behind the
+        // others when its request is cancelled, and the cancellation is
+        // delivered only once the stop releases the frame
+        auto payload = Pattern(1 << 20, 14);
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TVector<TFuture<TResult>> futures;
+        ui64 last = 0;
+        for (int i = 0; i < 16; ++i) {
+            futures.push_back(Collector->NewPromiseFuture());
+            last = Endpoint->SendRequest(
+                MakeRequest("hung", send, {}, TDuration::Seconds(60)),
+                nullptr);
+        }
+        Endpoint->CancelRequest(last);
+        Endpoint->Stop().GetValue(TDuration::Seconds(10));
+
+        int cancelled = 0;
+        int rejected = 0;
+        for (auto& f: futures) {
+            const ui32 status = f.GetValue(TDuration::Seconds(10)).Status;
+            cancelled += status == E_CANCELLED;
+            rejected += status == E_REJECTED;
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, cancelled);
+        UNIT_ASSERT_VALUES_EQUAL(15, rejected);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

@@ -36,7 +36,8 @@ struct TConnectionParams
 
 // Head: TFrameHeader followed by proto bytes. The caller fills Type,
 // RequestId and ProtoLen; the connection fills Flags and DataLen and takes
-// Head over. OnDone runs when the kernel no longer references Head/Data.
+// Head over. OnDone runs on the ring thread when the kernel no longer
+// references Head/Data; what it throws is logged.
 struct TOutFrame
 {
     TString Head;
@@ -45,9 +46,7 @@ struct TOutFrame
 
     ~TOutFrame()
     {
-        if (OnDone) {
-            OnDone();
-        }
+        Y_DEBUG_ABORT_UNLESS(!OnDone, "frame dropped before its OnDone ran");
     }
 };
 
@@ -143,6 +142,10 @@ private:
     IConnectionHandler* Handler;
     TLog Log;
 
+    // Frames no chunk refers to anymore, waiting for RunReleased. Declared
+    // before the streams, so it outlives the chunks.
+    TDeque<TOutFramePtr> Released;
+
     TStream Main;
     TStream Data;
 
@@ -202,6 +205,8 @@ private:
 
     void StartSend(TStream& stream);
     void OnSendComplete(TStream& stream, TIoOp* op, int res, ui32 cqeFlags);
+    void RunOnDone(TOutFrame& frame);
+    void RunReleased();
 
     void MaybeFinishClose();
     void ProtocolError(TStringBuf what);

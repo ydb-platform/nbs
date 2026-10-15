@@ -13,6 +13,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/generic/yexception.h>
 #include <util/system/thread.h>
 #include <util/thread/lfqueue.h>
 
@@ -131,6 +132,19 @@ public:
     void Execute(TCommand command);
     bool IsRingThread() const;
 
+    // Runs a callback that may throw, logging what it throws instead.
+    template <typename F>
+    void Guarded(const char* what, F&& f)
+    {
+        try {
+            f();
+        } catch (...) {
+            STORAGE_ERROR(
+                Name << ": " << what
+                     << " threw: " << CurrentExceptionMessage());
+        }
+    }
+
     bool SendZeroCopySupported() const
     {
         return ZcSupported;
@@ -164,8 +178,6 @@ private:
     void* ThreadProc() override;
     NProto::TError Init();
     TIoOp* NewOp(IIoHandler* handler, ui32 tag);
-    template <typename F>
-    void Guarded(const char* what, F&& f);
     void CheckSubmitResult(int ret);
     void Submit(TIoOp* op, std::function<void(io_uring_sqe*)> prep);
     void FlushPending();

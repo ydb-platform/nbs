@@ -219,17 +219,6 @@ void* TRing::ThreadProc()
     return nullptr;
 }
 
-template <typename F>
-void TRing::Guarded(const char* what, F&& f)
-{
-    try {
-        f();
-    } catch (...) {
-        STORAGE_ERROR(
-            Name << ": " << what << " threw: " << CurrentExceptionMessage());
-    }
-}
-
 void TRing::DrainCommands()
 {
     TCommand command;

@@ -10,6 +10,8 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NUring {
 
 namespace {
@@ -18,15 +20,6 @@ namespace {
 
 constexpr size_t INITIAL_RECV_BUF = 64 << 10;
 constexpr size_t SCRATCH_SIZE = 64 << 10;
-
-void RunOnDone(TOutFrame& frame)
-{
-    if (frame.OnDone) {
-        auto onDone = std::move(frame.OnDone);
-        frame.OnDone = nullptr;
-        onDone();
-    }
-}
 
 void Shutdown(int fd)
 {
@@ -148,13 +141,19 @@ void TConnection::Send(TOutFramePtr frame)
     header->DataLen = dataLen;
     header->Flags = dataLen ? (oob ? FLAG_OOB : FLAG_INLINE) : 0;
 
+    // the chunks hold the frame through a handle whose release only queues
+    // it, so that OnDone runs from RunReleased and not from a destructor
+    auto handle = TOutFramePtr(
+        frame.get(),
+        [this, frame](TOutFrame*) { Released.push_back(frame); });
+
     auto chunk = std::make_shared<TChunk>();
     chunk->Head = std::move(frame->Head);
     if (!oob) {
         chunk->Data = frame->Data;
     }
     chunk->Total = chunk->Head.size() + (oob ? 0 : dataLen);
-    chunk->Frame = frame;
+    chunk->Frame = handle;
     Main.Queue.push_back(std::move(chunk));
 
     if (oob) {
@@ -166,7 +165,7 @@ void TConnection::Send(TOutFramePtr frame)
             TString(reinterpret_cast<const char*>(&dh), sizeof(dh));
         dataChunk->Data = frame->Data;
         dataChunk->Total = sizeof(dh) + dataLen;
-        dataChunk->Frame = frame;
+        dataChunk->Frame = handle;
         Data.Queue.push_back(std::move(dataChunk));
         StartSend(Data);
     }
@@ -243,6 +242,7 @@ void TConnection::OnSendComplete(
         // stream.SendOp may already be a newer op
         Ring.FreeOp(op);
         InFlightSends.erase(op);
+        RunReleased();
         MaybeFinishClose();
         return;
     }
@@ -255,6 +255,7 @@ void TConnection::OnSendComplete(
         if (last) {
             Ring.FreeOp(op);
             InFlightSends.erase(op);
+            RunReleased();
         }
         if (!Closing) {
             Close(MakeSystemError(res < 0 ? -res : EPIPE, "send"));
@@ -281,12 +282,29 @@ void TConnection::OnSendComplete(
         // so the op has to be back in the pool first
         Ring.FreeOp(op);
         InFlightSends.erase(op);
+        RunReleased();
     }
     if (Closing) {
         MaybeFinishClose();
         return;
     }
     StartSend(stream);
+}
+
+void TConnection::RunOnDone(TOutFrame& frame)
+{
+    if (auto onDone = std::exchange(frame.OnDone, nullptr)) {
+        Ring.Guarded("OnDone", onDone);
+    }
+}
+
+void TConnection::RunReleased()
+{
+    while (!Released.empty()) {
+        auto frame = std::move(Released.front());
+        Released.pop_front();
+        RunOnDone(*frame);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -660,6 +678,7 @@ void TConnection::MaybeFinishClose()
     // safe; that runs their OnDone
     Main.Queue.clear();
     Data.Queue.clear();
+    RunReleased();
 
     auto fifo = std::move(DataFifo);
     for (auto& e: fifo) {
