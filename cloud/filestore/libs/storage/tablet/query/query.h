@@ -43,15 +43,14 @@ struct TInPredicate : TPredicateBase
     TVector<TValue> Values;
 };
 
-using TPredicate = std::variant<
+using TBinaryOperator = std::variant<
     TEqualPredicate,
     TNotEqualPredicate,
     TGreaterPredicate,
     TGreaterOrEqualPredicate,
     TLessPredicate,
     TLessOrEqualPredicate,
-    TSubstrPredicate,
-    TInPredicate>;
+    TSubstrPredicate>;
 
 enum class ELogicalOperator
 {
@@ -68,9 +67,21 @@ struct TLogicalExpression
     std::unique_ptr<TExpression> Right;
 };
 
+using TMultiOperator = std::variant<TInPredicate, TLogicalExpression>;
+
+struct TBinaryOperatorNode
+{
+    TBinaryOperator Operator;
+};
+
+struct TMultiOperatorNode
+{
+    TMultiOperator Operator;
+};
+
 struct TExpression
 {
-    std::variant<TPredicate, TLogicalExpression> Node;
+    std::variant<TBinaryOperatorNode, TMultiOperatorNode> Node;
 };
 
 struct TSelect

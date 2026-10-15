@@ -2,55 +2,41 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <type_traits>
-
 namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 
-const TPredicate& AsPredicate(const TExpression& expression)
+const TBinaryOperator& AsBinaryOperator(const TExpression& expression)
 {
-    return std::get<TPredicate>(expression.Node);
+    return std::get<TBinaryOperatorNode>(expression.Node).Operator;
 }
 
 const TLogicalExpression& AsLogical(const TExpression& expression)
 {
-    return std::get<TLogicalExpression>(expression.Node);
+    const auto& multi = std::get<TMultiOperatorNode>(expression.Node);
+    return std::get<TLogicalExpression>(multi.Operator);
 }
 
-const TString& PredicateColumn(const TPredicate& predicate)
+const TInPredicate& AsInPredicate(const TExpression& expression)
+{
+    const auto& multi = std::get<TMultiOperatorNode>(expression.Node);
+    return std::get<TInPredicate>(multi.Operator);
+}
+
+const TString& PredicateColumn(const TBinaryOperator& predicate)
 {
     return std::visit(
         [](const auto& value) -> const TString& { return value.Column; },
         predicate);
 }
 
-const TValue& PredicateValue(const TPredicate& predicate, size_t index = 0)
+const TValue& PredicateValue(const TBinaryOperator& predicate)
 {
     return std::visit(
-        [index](const auto& value) -> const TValue& {
-            using T = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<T, TInPredicate>) {
-                return value.Values[index];
-            } else {
-                return value.Value;
-            }
-        },
-        predicate);
-}
-
-size_t PredicateValuesSize(const TPredicate& predicate)
-{
-    return std::visit(
-        [](const auto& value) -> size_t {
-            using T = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<T, TInPredicate>) {
-                return value.Values.size();
-            } else {
-                return 1;
-            }
+        [](const auto& value) -> const TValue& {
+            return value.Value;
         },
         predicate);
 }
@@ -81,10 +67,11 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT_VALUES_EQUAL(query.Table, "NodeRefs");
         UNIT_ASSERT(query.Columns.empty());
         UNIT_ASSERT(query.Where);
-        const auto& predicate = AsPredicate(*query.Where);
-        UNIT_ASSERT(std::holds_alternative<TInPredicate>(predicate));
-        UNIT_ASSERT_VALUES_EQUAL("child_id", PredicateColumn(predicate));
-        UNIT_ASSERT_VALUES_EQUAL(3, PredicateValuesSize(predicate));
+        UNIT_ASSERT(std::holds_alternative<TMultiOperatorNode>(
+            query.Where->Node));
+        const auto& predicate = AsInPredicate(*query.Where);
+        UNIT_ASSERT_VALUES_EQUAL("child_id", predicate.Column);
+        UNIT_ASSERT_VALUES_EQUAL(3, predicate.Values.size());
         UNIT_ASSERT_VALUES_EQUAL(10, *query.Limit);
     }
 
@@ -102,7 +89,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(logical.Operator == ELogicalOperator::And);
         UNIT_ASSERT(
             std::holds_alternative<TString>(
-                PredicateValue(AsPredicate(*logical.Left))));
+                PredicateValue(AsBinaryOperator(*logical.Left))));
     }
 
     Y_UNIT_TEST(ShouldRejectEmptyIn)
@@ -147,7 +134,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(query.Where);
         UNIT_ASSERT_VALUES_EQUAL(
             "it's",
-            std::get<TString>(PredicateValue(AsPredicate(*query.Where))));
+            std::get<TString>(PredicateValue(AsBinaryOperator(*query.Where))));
         UNIT_ASSERT_VALUES_EQUAL(*query.Limit, 0);
     }
 
@@ -160,7 +147,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(query.Where);
         const auto& logical = AsLogical(*query.Where);
         UNIT_ASSERT(logical.Operator == ELogicalOperator::Or);
-        const auto& equal = AsPredicate(*logical.Left);
+        const auto& equal = AsBinaryOperator(*logical.Left);
         UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
         UNIT_ASSERT_VALUES_EQUAL(
             "b",
@@ -168,9 +155,9 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         const auto& andExpression = AsLogical(*logical.Right);
         UNIT_ASSERT(andExpression.Operator == ELogicalOperator::And);
         UNIT_ASSERT(std::holds_alternative<TNotEqualPredicate>(
-            AsPredicate(*andExpression.Left)));
+            AsBinaryOperator(*andExpression.Left)));
         UNIT_ASSERT(std::holds_alternative<TSubstrPredicate>(
-            AsPredicate(*andExpression.Right)));
+            AsBinaryOperator(*andExpression.Right)));
     }
 
     Y_UNIT_TEST(ShouldParseNestedParentheses)
@@ -193,7 +180,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
                 TString("SELECT * FROM t WHERE a ") + TString(op) + " 42");
 
             UNIT_ASSERT(query.Where);
-            const auto& predicate = AsPredicate(*query.Where);
+            const auto& predicate = AsBinaryOperator(*query.Where);
             UNIT_ASSERT(
                 std::holds_alternative<decltype(expectedTag)>(predicate));
             UNIT_ASSERT_VALUES_EQUAL("a", PredicateColumn(predicate));
@@ -212,7 +199,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
     {
         auto candy = ParseQuery("SELECT a FROM t WHERE a == candy");
         UNIT_ASSERT(candy.Where);
-        const auto& equal = AsPredicate(*candy.Where);
+        const auto& equal = AsBinaryOperator(*candy.Where);
         UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
         UNIT_ASSERT_VALUES_EQUAL(
             "candy",
@@ -226,10 +213,10 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "floor",
             std::get<TColumnRef>(
-                PredicateValue(AsPredicate(*logicalExpression.Left))).Name);
+                PredicateValue(AsBinaryOperator(*logicalExpression.Left))).Name);
         UNIT_ASSERT_VALUES_EQUAL(
             "c",
-            PredicateColumn(AsPredicate(*logicalExpression.Right)));
+            PredicateColumn(AsBinaryOperator(*logicalExpression.Right)));
     }
 
     Y_UNIT_TEST(ShouldRejectMalformedQueries)

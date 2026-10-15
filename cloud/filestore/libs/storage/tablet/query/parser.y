@@ -7,21 +7,32 @@ namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static TExpression* PredicateExpression(TPredicate* predicate)
+static TExpression* BinaryOperatorExpression(
+    TBinaryOperatorNode* operatorNode)
 {
     auto expression = new TExpression;
-    expression->Node = std::move(*predicate);
-    delete predicate;
+    expression->Node = std::move(*operatorNode);
+    delete operatorNode;
     return expression;
 }
 
 template <typename TPredicateType>
-static TPredicate* SingleValuePredicate(TString column, TValue value)
+static TBinaryOperatorNode* SingleValuePredicate(TString column, TValue value)
 {
     TPredicateType predicate;
     predicate.Column = std::move(column);
     predicate.Value = std::move(value);
-    return new TPredicate(std::move(predicate));
+    auto node = new TBinaryOperatorNode;
+    node->Operator = std::move(predicate);
+    return node;
+}
+
+static TExpression* MultiOperatorExpression(TMultiOperatorNode* operatorNode)
+{
+    auto expression = new TExpression;
+    expression->Node = std::move(*operatorNode);
+    delete operatorNode;
+    return expression;
 }
 
 static TExpression* LogicalExpression(
@@ -34,9 +45,9 @@ static TExpression* LogicalExpression(
     logical.Left.reset(left);
     logical.Right.reset(right);
 
-    auto expression = new TExpression;
-    expression->Node = std::move(logical);
-    return expression;
+    auto node = new TMultiOperatorNode;
+    node->Operator = std::move(logical);
+    return MultiOperatorExpression(node);
 }
 
 static void SetError(TParseContext& context, const char* message)
@@ -85,13 +96,15 @@ void yyerror(
     TString* text;
     ui64 number;
     NCloud::NFileStore::NStorage::NQuery::TValue* value;
-    NCloud::NFileStore::NStorage::NQuery::TPredicate* predicate;
+    NCloud::NFileStore::NStorage::NQuery::TBinaryOperatorNode* binaryOperator;
+    NCloud::NFileStore::NStorage::NQuery::TMultiOperatorNode* multiOperator;
     NCloud::NFileStore::NStorage::NQuery::TExpression* expression;
     TVector<TString>* columns;
     TVector<NCloud::NFileStore::NStorage::NQuery::TValue>* values;
 }
 
-%destructor { delete $$; } <text> <value> <predicate> <expression> <columns> <values>
+%destructor { delete $$; } <text> <value> <binaryOperator> <multiOperator>
+%destructor { delete $$; } <expression> <columns> <values>
 
 %token SELECT FROM WHERE AND OR IN SUBSTR LIMIT INVALID
 %token EQ NE GT GE LT LE
@@ -100,7 +113,8 @@ void yyerror(
 
 %type <columns> columns identifier_list
 %type <expression> where_clause expr primary
-%type <predicate> predicate
+%type <binaryOperator> binary_predicate
+%type <multiOperator> multi_predicate
 %type <value> value
 %type <values> value_list
 
@@ -184,9 +198,13 @@ expr:
 ;
 
 primary:
-    predicate
+    binary_predicate
     {
-        $$ = PredicateExpression($1);
+        $$ = BinaryOperatorExpression($1);
+    }
+  | multi_predicate
+    {
+        $$ = MultiOperatorExpression($1);
     }
   | '(' expr ')'
     {
@@ -194,7 +212,7 @@ primary:
     }
 ;
 
-predicate:
+binary_predicate:
     IDENTIFIER EQ value
     {
         $$ = SingleValuePredicate<TEqualPredicate>(
@@ -244,12 +262,16 @@ predicate:
         delete $1;
         delete $3;
     }
-  | IDENTIFIER IN '{' value_list '}'
+;
+
+multi_predicate:
+    IDENTIFIER IN '{' value_list '}'
     {
         TInPredicate predicate;
         predicate.Column = std::move(*$1);
         predicate.Values = std::move(*$4);
-        $$ = new TPredicate(std::move(predicate));
+        $$ = new TMultiOperatorNode;
+        $$->Operator = std::move(predicate);
         delete $1;
         delete $4;
     }
