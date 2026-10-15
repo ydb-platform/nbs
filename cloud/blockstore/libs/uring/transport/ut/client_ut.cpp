@@ -102,11 +102,13 @@ struct TEchoHandler: public IServerHandler
         TSgList data) override
     {
         ++Received;
-        if (Hold) {
-            with_lock (Lock) {
+        IServerEndpointPtr endpoint;
+        with_lock (Lock) {
+            if (Hold) {
                 Held.push_back(ctx);
+                return;
             }
-            return;
+            endpoint = Endpoint;
         }
         auto echo = std::make_shared<TString>();
         for (const auto& ref: data) {
@@ -116,7 +118,7 @@ struct TEchoHandler: public IServerHandler
         if (!echo->empty()) {
             out.push_back(TBlockDataRef{echo->data(), echo->size()});
         }
-        Endpoint->SendResponse(ctx, proto, std::move(out), echo);
+        endpoint->SendResponse(ctx, proto, std::move(out), echo);
     }
 };
 
@@ -361,7 +363,11 @@ struct TFixture: public NUnitTest::TBaseFixture
             Server->StartEndpoint("127.0.0.1", Port, ServerHandler);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         ServerEndpoint = endpoint;
-        ServerHandler->Endpoint = endpoint;
+        // the request that reads it comes through io_uring, which TSAN does
+        // not see as synchronization
+        with_lock (ServerHandler->Lock) {
+            ServerHandler->Endpoint = endpoint;
+        }
         auto [port, perr] = GetEndpointPort(endpoint);
         UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
         Port = port;
@@ -821,6 +827,7 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             future.GetValue(TDuration::Seconds(10)).Status);
+        UNIT_ASSERT_VALUES_EQUAL(1, ClientCounter("Rejected"));
         Endpoint->CancelRequest(id);
         Endpoint->TryForceReconnect();
         Endpoint->Stop().GetValue(TDuration::Seconds(10));
@@ -841,6 +848,7 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             future.GetValue(TDuration::Seconds(10)).Status);
+        UNIT_ASSERT_VALUES_EQUAL(1, ClientCounter("Errors"));
         send.Close();
 
         // only the request failed, the connection is still up
@@ -922,6 +930,74 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
         auto result = future.GetValue(TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, result.Status);
         Events->Disconnected.GetFuture().GetValue(TDuration::Seconds(10));
+    }
+
+    Y_UNIT_TEST_F(ShouldCountRequestsAndBytes, TFixture)
+    {
+        StartServer();
+        StartClient();
+        WaitConnected();
+
+        auto payload = Pattern(1 << 20, 7);
+        auto echoed = TString::Uninitialized(payload.size());
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        auto future = Collector->NewPromiseFuture();
+        Endpoint->SendRequest(MakeRequest("echo", send, recv), nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(0u, future.GetValue(TDuration::Seconds(10)).Status);
+
+        auto counters = Monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "uring_client");
+        UNIT_ASSERT(counters->GetCounter("Requests", true)->Val() >= 1);
+        UNIT_ASSERT(counters->GetCounter("OobBytes", true)->Val() >= (1 << 20));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters->GetCounter("ActiveConnections")->Val());
+    }
+
+    Y_UNIT_TEST_F(ShouldCountClosedSendBufferAsError, TFixture)
+    {
+        StartServer();
+        StartClient();
+        WaitConnected();
+
+        auto payload = Pattern(4096, 9);
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        send.Close();
+        auto future = Collector->NewPromiseFuture();
+        Endpoint->SendRequest(MakeRequest("closed", send), nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            future.GetValue(TDuration::Seconds(10)).Status);
+        UNIT_ASSERT_VALUES_EQUAL(1, ClientCounter("Errors"));
+    }
+
+    Y_UNIT_TEST_F(ShouldCountClosedRecvBufferAsError, TFixture)
+    {
+        StartServer();
+        StartClient();
+        WaitConnected();
+        ServerHandler->Hold = true;
+
+        auto payload = Pattern(4096, 10);
+        auto echoed = TString::Uninitialized(payload.size());
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        auto future = Collector->NewPromiseFuture();
+        Endpoint->SendRequest(MakeRequest("echo", send, recv), nullptr);
+
+        // the caller gives its buffer up before the response arrives
+        void* ctx = TakeHeld(1).front();
+        recv.Close();
+        auto echo = std::make_shared<TString>(payload);
+        ServerEndpoint->SendResponse(
+            ctx,
+            "echo",
+            {TBlockDataRef{echo->data(), echo->size()}},
+            echo);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            future.GetValue(TDuration::Seconds(10)).Status);
+        UNIT_ASSERT_VALUES_EQUAL(1, ClientCounter("Errors"));
     }
 }
 

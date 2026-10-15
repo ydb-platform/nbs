@@ -56,18 +56,20 @@ struct TEchoHandler: public IServerHandler
                 echo->append(ref.Data(), ref.Size());
             }
         }
+        IServerEndpointPtr endpoint;
         with_lock (Lock) {
             Buffers.push_back(echo);
             if (Hold) {
                 Held.push_back(ctx);
                 return;
             }
+            endpoint = Endpoint;
         }
         TSgList out;
         if (!echo->empty()) {
             out.push_back(TBlockDataRef{echo->data(), echo->size()});
         }
-        Endpoint->SendResponse(ctx, proto, std::move(out), echo);
+        endpoint->SendResponse(ctx, proto, std::move(out), echo);
     }
 };
 
@@ -318,7 +320,11 @@ struct TFixture: public NUnitTest::TBaseFixture
         auto [endpoint, error] = Server->StartEndpoint("127.0.0.1", 0, Handler);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         Endpoint = endpoint;
-        Handler->Endpoint = endpoint;
+        // the request that reads it comes through io_uring, which TSAN does
+        // not see as synchronization
+        with_lock (Handler->Lock) {
+            Handler->Endpoint = endpoint;
+        }
         auto [port, perr] = GetEndpointPort(Endpoint);
         UNIT_ASSERT_C(!HasError(perr), FormatError(perr));
         Port = port;

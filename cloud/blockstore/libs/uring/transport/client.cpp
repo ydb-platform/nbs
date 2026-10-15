@@ -237,6 +237,7 @@ public:
                     bytes);
             });
         if (!posted) {
+            Counters->Rejected->Inc();
             Release(bytes);
             DeliverError(
                 TClientRequestPtr(raw),
@@ -376,6 +377,7 @@ private:
 
         active.SendGuard.emplace(active.Request->SendData.Acquire());
         if (!*active.SendGuard) {
+            Counters->Errors->Inc();
             Finish(it, MakeError(E_CANCELLED, "send buffer is closed"));
             return;
         }
@@ -383,6 +385,7 @@ private:
         const size_t dataLen = SgListGetSize(sgList);
         const TString& proto = active.Request->Proto;
         if (proto.size() > Params.MaxProtoSize || dataLen > Params.MaxDataSize) {
+            Counters->Errors->Inc();
             Finish(
                 it,
                 MakeError(
@@ -518,6 +521,7 @@ private:
     {
         active.RecvGuard.emplace(active.Request->RecvData.Acquire());
         if (!*active.RecvGuard) {
+            Counters->Errors->Inc();
             return MakeError(E_CANCELLED, "receive buffer is closed");
         }
         const size_t size = SgListGetSize(active.RecvGuard->Get());
@@ -634,6 +638,7 @@ private:
         if (staging) {
             active.RecvGuard.emplace(active.Request->RecvData.Acquire());
             if (!*active.RecvGuard) {
+                Counters->Errors->Inc();
                 Finish(it, MakeError(E_CANCELLED, "receive buffer is closed"));
                 return;
             }
