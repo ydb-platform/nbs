@@ -6,15 +6,15 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMixedBlobBuilder::Accept(const TBlock& block, const TBlockDataHolder& blockData)
+void TMixedBlobBuilder::Accept(
+    const TBlock& block,
+    const TBlockDataHolder& blockData)
 {
     auto data = blockData.GetBlockData();
     Y_DEBUG_ABORT_UNLESS(data.size() == BlockSize);
 
-    auto& range = Ranges[GetMixedRangeIndex(
-        Hasher,
-        block.NodeId,
-        block.BlockIndex)];
+    auto& range =
+        Ranges[GetMixedRangeIndex(Hasher, block.NodeId, block.BlockIndex)];
     AddBlock(range, block, blockData);
 
     if (range.Blocks.size() == MaxBlocksInBlob) {
