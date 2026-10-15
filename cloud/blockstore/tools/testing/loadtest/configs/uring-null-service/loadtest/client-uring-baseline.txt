@@ -1,0 +1,9 @@
+# TClientConfig for IPC_URING, variant "baseline". @NBS_HOST@ is substituted by
+# run.sh. UringHost/UringPort and UringClientConfig are the stage-2 fields
+# (mirrors of RdmaDeviceAddress/RdmaDevicePort + RdmaClientConfig).
+ThreadsCount: 4
+UringHost: "@NBS_HOST@"
+UringPort: 9770
+UringClientConfig {
+    IoThreads: 2
+}

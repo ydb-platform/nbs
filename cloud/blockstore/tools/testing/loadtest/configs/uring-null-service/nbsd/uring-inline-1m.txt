@@ -1,0 +1,17 @@
+# A/B: data socket exists but the inline threshold is 1 MiB, so 256 KiB
+# requests travel inline and only >1 MiB payloads would go out of band.
+# The threshold is negotiated as min(local, remote): set the same value in
+# client-uring-inline-1m.txt.
+ServerEnabled: true
+Server {
+    IoThreads: 2
+    OobThreshold: 1048576
+}
+BlockstoreServerTargetEnabled: true
+BlockstoreServerTarget {
+    Endpoint {
+        Host: "0.0.0.0"
+        Port: 9770
+    }
+    WorkerThreads: 8
+}

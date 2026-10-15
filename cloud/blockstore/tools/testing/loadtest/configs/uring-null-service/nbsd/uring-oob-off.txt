@@ -1,0 +1,15 @@
+# A/B: no data socket, every payload inline on the main socket.
+# OobMode is negotiated as min(local, remote), so OFF here is enough.
+ServerEnabled: true
+Server {
+    IoThreads: 2
+    OobMode: URING_OOB_OFF
+}
+BlockstoreServerTargetEnabled: true
+BlockstoreServerTarget {
+    Endpoint {
+        Host: "0.0.0.0"
+        Port: 9770
+    }
+    WorkerThreads: 8
+}

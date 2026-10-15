@@ -1,0 +1,15 @@
+# A/B: direct SG I/O off on the server -- responses are copied into a
+# transport-owned buffer (StagingCopyBytes grows).
+ServerEnabled: true
+Server {
+    IoThreads: 2
+    DirectSgIoEnabled: false
+}
+BlockstoreServerTargetEnabled: true
+BlockstoreServerTarget {
+    Endpoint {
+        Host: "0.0.0.0"
+        Port: 9770
+    }
+    WorkerThreads: 8
+}

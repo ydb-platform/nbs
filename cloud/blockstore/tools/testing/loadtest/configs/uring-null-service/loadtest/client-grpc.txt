@@ -1,0 +1,3 @@
+# TClientConfig (text proto) for the gRPC baseline. Host/port come from the
+# loadtest command line (--host/--port), see run.sh.
+ThreadsCount: 4

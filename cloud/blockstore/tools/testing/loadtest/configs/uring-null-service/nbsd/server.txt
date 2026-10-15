@@ -1,0 +1,13 @@
+# TServerAppConfig for `nbsd --service null`. Loadtest runs on another host,
+# so the server binds to all interfaces instead of the default "localhost".
+ServerConfig {
+    Host: "0.0.0.0"
+    Port: 9769
+    DataHost: "0.0.0.0"
+    DataPort: 9768
+    ThreadsCount: 8
+    StrictContractValidation: false
+}
+NullServiceConfig {
+    AddReadResponseData: true
+}

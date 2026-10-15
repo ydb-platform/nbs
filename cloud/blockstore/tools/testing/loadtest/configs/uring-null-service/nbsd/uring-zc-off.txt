@@ -1,0 +1,14 @@
+# A/B: SEND_ZC disabled on the server side (client side: client-uring-zc-off.txt).
+ServerEnabled: true
+Server {
+    IoThreads: 2
+    SendZeroCopyMode: URING_SEND_ZC_OFF
+}
+BlockstoreServerTargetEnabled: true
+BlockstoreServerTarget {
+    Endpoint {
+        Host: "0.0.0.0"
+        Port: 9770
+    }
+    WorkerThreads: 8
+}

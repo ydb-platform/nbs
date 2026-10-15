@@ -1,0 +1,15 @@
+# TUringConfig (cloud/blockstore/config/uring.proto, stage 2): everything at
+# the transport defaults -- OOB auto (threshold 128 KiB), SEND_ZC auto,
+# direct SG I/O on. Listens on 0.0.0.0:9770.
+ServerEnabled: true
+Server {
+    IoThreads: 2
+}
+BlockstoreServerTargetEnabled: true
+BlockstoreServerTarget {
+    Endpoint {
+        Host: "0.0.0.0"
+        Port: 9770
+    }
+    WorkerThreads: 8
+}
