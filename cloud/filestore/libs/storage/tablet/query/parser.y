@@ -215,49 +215,49 @@ primary:
 binary_predicate:
     IDENTIFIER EQ value
     {
-        $$ = SingleValuePredicate<TEqualPredicate>(
+        $$ = MakeBinaryOperatorNode<TEqualPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER NE value
     {
-        $$ = SingleValuePredicate<TNotEqualPredicate>(
+        $$ = MakeBinaryOperatorNode<TNotEqualPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER SUBSTR value
     {
-        $$ = SingleValuePredicate<TSubstrPredicate>(
+        $$ = MakeBinaryOperatorNode<TSubstrPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER GT value
     {
-        $$ = SingleValuePredicate<TGreaterPredicate>(
+        $$ = MakeBinaryOperatorNode<TGreaterPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER GE value
     {
-        $$ = SingleValuePredicate<TGreaterOrEqualPredicate>(
+        $$ = MakeBinaryOperatorNode<TGreaterOrEqualPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER LT value
     {
-        $$ = SingleValuePredicate<TLessPredicate>(
+        $$ = MakeBinaryOperatorNode<TLessPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER LE value
     {
-        $$ = SingleValuePredicate<TLessOrEqualPredicate>(
+        $$ = MakeBinaryOperatorNode<TLessOrEqualPredicate>(
             std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
