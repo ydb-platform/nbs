@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -504,4 +506,209 @@ func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 	// The throttle pause is the configured milliseconds, not the SDK
 	// default of 500 ms and more.
 	require.Less(t, elapsed, 400*time.Millisecond)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The hostname handle of the storage: names the proxies in turn, one per
+// request.
+type hostnameHandle struct {
+	mutex sync.Mutex
+	hosts []string
+	calls int
+}
+
+func (h *hostnameHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mutex.Lock()
+	host := h.hosts[h.calls%len(h.hosts)]
+	h.calls++
+	h.mutex.Unlock()
+
+	_, _ = w.Write([]byte(host + "\n"))
+}
+
+func (h *hostnameHandle) callCount() int {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	return h.calls
+}
+
+func TestS3ProxyChooserKeepsProxyForTheInterval(t *testing.T) {
+	handle := &hostnameHandle{hosts: []string{"proxy-a", "proxy-b"}}
+	server := httptest.NewServer(handle)
+	defer server.Close()
+
+	chooser := newS3ProxyChooser(
+		server.URL,
+		4080,
+		4480,
+		time.Hour,
+		newS3Metrics(time.Second, empty.NewRegistry(), nil),
+	)
+
+	httpRequest, _ := http.NewRequest(http.MethodPut, "http://s3.test/k", nil)
+	httpsRequest, _ := http.NewRequest(http.MethodPut, "https://s3.test/k", nil)
+
+	proxy, err := chooser.proxy(httpRequest)
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy-a:4080", proxy.String())
+
+	// The same proxy within the interval, the https port for https.
+	proxy, err = chooser.proxy(httpsRequest)
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy-a:4480", proxy.String())
+	require.Equal(t, 1, handle.callCount())
+
+	// A dropped proxy is replaced at once.
+	chooser.discard()
+	proxy, err = chooser.proxy(httpRequest)
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy-b:4080", proxy.String())
+	require.Equal(t, 2, handle.callCount())
+}
+
+func TestS3ProxyChooserFallsBackToBalancer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		},
+	))
+	defer server.Close()
+
+	chooser := newS3ProxyChooser(
+		server.URL,
+		4080,
+		4480,
+		time.Hour,
+		newS3Metrics(time.Second, empty.NewRegistry(), nil),
+	)
+
+	request, _ := http.NewRequest(http.MethodPut, "http://s3.test/k", nil)
+	proxy, err := chooser.proxy(request)
+	require.NoError(t, err)
+	require.Nil(t, proxy)
+}
+
+// An HTTP proxy that is the storage itself: a request to it carries the
+// full URL, so it answers in place of the endpoint. Answers the statuses in
+// turn, the last one from then on.
+type proxyS3 struct {
+	statuses []int
+
+	mutex    sync.Mutex
+	requests int
+}
+
+func (p *proxyS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.mutex.Lock()
+	status := p.statuses[min(p.requests, len(p.statuses)-1)]
+	p.requests++
+	p.mutex.Unlock()
+
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(
+			"<Error><Code>Gateway</Code><Message>gateway</Message></Error>",
+		))
+		return
+	}
+
+	w.Header().Set("ETag", `"etag"`)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (p *proxyS3) requestCount() int {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.requests
+}
+
+// A client whose proxies are the given server: the handle names the
+// loopback, the ports of the chooser are the server's.
+func newProxiedS3Client(
+	t *testing.T,
+	proxy *httptest.Server,
+	handle *httptest.Server,
+	proxyMaxRetries uint64,
+) *S3Client {
+
+	proxyURL, err := url.Parse(proxy.URL)
+	require.NoError(t, err)
+	port, err := strconv.ParseUint(proxyURL.Port(), 10, 32)
+	require.NoError(t, err)
+
+	s3, err := NewS3Client(
+		"http://s3.test",
+		"region",
+		NewS3Credentials("test", "test"),
+		10*time.Second, // callTimeout
+		empty.NewRegistry(),
+		10,  // maxRetriableErrorCount
+		nil, // availabilityMonitoring
+		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
+		WithS3Proxies(handle.URL, uint32(port), uint32(port), time.Hour, proxyMaxRetries),
+		WithS3ThrottleRetryDelays(time.Millisecond, 2*time.Millisecond),
+	)
+	require.NoError(t, err)
+	return s3
+}
+
+func TestS3ShouldTakeAnotherProxyAfterGatewayError(t *testing.T) {
+	ctx := newContext()
+
+	proxy := &proxyS3{statuses: []int{http.StatusBadGateway, http.StatusOK}}
+	proxyServer := httptest.NewServer(proxy)
+	defer proxyServer.Close()
+	handle := &hostnameHandle{hosts: []string{"127.0.0.1"}}
+	handleServer := httptest.NewServer(handle)
+	defer handleServer.Close()
+
+	s3 := newProxiedS3Client(t, proxyServer, handleServer, 3)
+
+	// The 502 drops the proxy: the retry asks the handle again and succeeds.
+	err := s3.PutObject(ctx, "bucket", "key", S3Object{Data: []byte("x")})
+	require.NoError(t, err)
+	require.Equal(t, 2, proxy.requestCount())
+	require.Equal(t, 2, handle.callCount())
+}
+
+func TestS3ShouldGiveUpOnProxiesAfterFewRetries(t *testing.T) {
+	ctx := newContext()
+
+	proxy := &proxyS3{statuses: []int{http.StatusBadGateway}}
+	proxyServer := httptest.NewServer(proxy)
+	defer proxyServer.Close()
+	handle := &hostnameHandle{hosts: []string{"127.0.0.1"}}
+	handleServer := httptest.NewServer(handle)
+	defer handleServer.Close()
+
+	s3 := newProxiedS3Client(t, proxyServer, handleServer, 3)
+
+	// Three retries through proxies, not the ten of the client.
+	err := s3.PutObject(ctx, "bucket", "key", S3Object{Data: []byte("x")})
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	require.Equal(t, 4, proxy.requestCount())
+}
+
+func TestS3ShouldKeepThrottleRetriesThroughProxies(t *testing.T) {
+	ctx := newContext()
+
+	proxy := &proxyS3{statuses: []int{http.StatusTooManyRequests}}
+	proxyServer := httptest.NewServer(proxy)
+	defer proxyServer.Close()
+	handle := &hostnameHandle{hosts: []string{"127.0.0.1"}}
+	handleServer := httptest.NewServer(handle)
+	defer handleServer.Close()
+
+	s3 := newProxiedS3Client(t, proxyServer, handleServer, 1)
+
+	// Throttling is about the quota, not the proxy: all ten retries, and the
+	// proxy is kept.
+	err := s3.PutObject(ctx, "bucket", "key", S3Object{Data: []byte("x")})
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	require.Equal(t, 11, proxy.requestCount())
+	require.Equal(t, 1, handle.callCount())
 }
