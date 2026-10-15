@@ -36,6 +36,9 @@ bool TFreshBlocks::AddBlock(
     return inserted;
 }
 
+// This version of AddBlock is used when adding an unaligned tail, which
+// requires zeroing the remaining block bytes, or when loading fresh blocks
+// after a tablet restart.
 bool TFreshBlocks::AddBlock(
     ui64 nodeId,
     ui32 blockIndex,
@@ -48,6 +51,7 @@ bool TFreshBlocks::AddBlock(
     TString buffer;
     buffer.reserve(blockSize);
     buffer.append(blockData);
+    // Use resize to zeroing remaining block bytes
     buffer.resize(blockSize, 0);
     auto blockBuffer = CreateBlockBuffer(
         {static_cast<ui64>(blockIndex) * blockSize, blockSize, blockSize},
