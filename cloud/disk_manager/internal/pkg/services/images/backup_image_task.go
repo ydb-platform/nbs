@@ -114,6 +114,13 @@ func (t *backupImageTask) Run(
 		return err
 	}
 
+	// The copy ends with the meta. A copy that ended without it, such as a
+	// copy of an older build, left the backup incomplete: it is not marked.
+	err = backup.CheckImageMeta(ctx, t.backupS3, imageID)
+	if err != nil {
+		return err
+	}
+
 	// Marks only a ready image: if deletion won before the copy took its
 	// hold, the image is already deleting and the copy copied nothing.
 	err = t.storage.ImageBackupCompleted(ctx, imageID)
