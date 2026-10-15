@@ -1248,6 +1248,27 @@ void TIndexTabletDatabase::WriteFreshBlock(
         .Update(NIceDb::TUpdate<TTable::BlockData>(TString(blockData)));
 }
 
+void TIndexTabletDatabase::WriteFreshBlocks(
+    ui64 nodeId,
+    ui64 commitId,
+    const TByteRange& byteRange,
+    IBlockBufferPtr blockBuffer)
+{
+    using TTable = TIndexTabletSchema::FreshBlocks;
+
+    auto t = Table<TTable>();
+    for (ui64 blockIndex = byteRange.FirstAlignedBlock();
+         blockIndex <
+         byteRange.FirstAlignedBlock() + byteRange.AlignedBlockCount();
+         ++blockIndex)
+    {
+        t.Key(nodeId, blockIndex, ReverseCommitId(commitId))
+            .Update(
+                NIceDb::TUpdate<TTable::BlockData>(blockBuffer->GetBlock(
+                    blockIndex - byteRange.FirstAlignedBlock())));
+    }
+}
+
 void TIndexTabletDatabase::MarkFreshBlockDeleted(
     ui64 nodeId,
     ui64 minCommitId,
@@ -1291,13 +1312,13 @@ bool TIndexTabletDatabase::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
         ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
-        blocks.emplace_back(TFreshBlock {
-            nodeId,
-            blockIndex,
-            minCommitId,
-            maxCommitId,
-            it.GetValue<TTable::BlockData>()
-        });
+        blocks.emplace_back(
+            TFreshBlock{
+                nodeId,
+                blockIndex,
+                minCommitId,
+                maxCommitId,
+                TString(it.GetValue<TTable::BlockData>())});
 
         if (!it.Next()) {
             return false;   // not ready
