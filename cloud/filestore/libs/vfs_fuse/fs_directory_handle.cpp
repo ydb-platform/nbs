@@ -153,8 +153,8 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
 
     with_lock (Lock) {
         Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        LastRead = Content.try_emplace(end).first;
-        LastRead->second = {.Buffer = content, .CacheVersion = cacheVersion};
+        Content.try_emplace(end, content, cacheVersion);
+        LastReadKey = end;
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -168,7 +168,6 @@ TMaybe<TDirectoryContent>
 TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
 {
     size_t end = 0;
-    bool recordStats = false;
     bool oldChunk = false;
     bool nonSequential = false;
     TBufferPtr content = nullptr;
@@ -178,12 +177,15 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
         auto it = Content.upper_bound(offset);
         if (it != Content.end()) {
             end = it->first;
-            recordStats = SerializedSize > ReadStatsSizeThreshold;
-            oldChunk = std::next(it) != Content.end();
-            if (LastRead != Content.end()) {
-                nonSequential = LastRead != it && std::next(LastRead) != it;
+            if (SerializedSize > ReadStatsSizeThreshold) {
+                oldChunk = std::next(it) != Content.end();
+                if (LastReadKey) {
+                    nonSequential = *LastReadKey != end &&
+                        (it == Content.begin() ||
+                         std::prev(it)->first != *LastReadKey);
+                }
             }
-            LastRead = it;
+            LastReadKey = end;
             content = it->second.Buffer;
             cacheVersion = it->second.CacheVersion;
         } else if (Cookie) {
@@ -191,10 +193,10 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
         }
     }
 
-    if (recordStats && oldChunk) {
+    if (oldChunk) {
         Stats->IncrementOldChunkReadCount();
     }
-    if (recordStats && nonSequential) {
+    if (nonSequential) {
         Stats->IncrementNonSequentialReadCount();
     }
 
@@ -219,7 +221,7 @@ void TDirectoryHandle::ResetContent()
 {
     with_lock (Lock) {
         Content.clear();
-        LastRead = Content.end();
+        LastReadKey.reset();
         Cookie.clear();
         UpdateVersion = 0;
         SerializedSize = BaseSerializedSize;

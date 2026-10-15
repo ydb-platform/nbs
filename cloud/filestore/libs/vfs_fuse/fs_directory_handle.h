@@ -81,8 +81,8 @@ private:
     TMap<ui64, TContent> Content;
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
-    // Chunk served by the last UpdateContent or ReadContent.
-    TMap<ui64, TContent>::iterator LastRead = Content.end();
+    // Key of the chunk served by the last UpdateContent or ReadContent.
+    std::optional<ui64> LastReadKey;
     const ui64 ReadStatsSizeThreshold;
     TDirectoryHandleModuleStatsPtr Stats;
 
