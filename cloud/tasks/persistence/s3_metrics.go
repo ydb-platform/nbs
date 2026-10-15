@@ -143,6 +143,14 @@ func (m *s3Metrics) OnAttemptRate(name string, rate float64) {
 	subRegistry.Gauge("attemptRate").Set(rate)
 }
 
+func (m *s3Metrics) OnProxyRefresh() {
+	m.registry.Counter("proxy/refresh").Inc()
+}
+
+func (m *s3Metrics) OnProxyRefreshError() {
+	m.registry.Counter("proxy/refreshErrors").Inc()
+}
+
 func (m *s3Metrics) OnQuotaExceeded(ctx context.Context, name string) {
 	subRegistry := m.registry.WithTags(map[string]string{
 		"call": name,
