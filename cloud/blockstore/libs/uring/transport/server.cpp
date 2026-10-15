@@ -1016,6 +1016,7 @@ private:
             .OobThreshold = welcome.OobThreshold,
             .SendZeroCopy = Config->SendZeroCopyMode != ESendZeroCopyMode::Off,
             .SendZeroCopyThreshold = Config->SendZeroCopyThreshold,
+            .Counters = Counters,
         };
     }
 

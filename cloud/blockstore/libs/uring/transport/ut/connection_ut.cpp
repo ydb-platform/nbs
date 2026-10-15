@@ -228,6 +228,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .OobThreshold = oobThreshold,
             .SendZeroCopy = zc,
             .SendZeroCopyThreshold = 0,
+            .Counters = MakeCounters(CreateMonitoringServiceStub(), "test"),
         };
     }
 

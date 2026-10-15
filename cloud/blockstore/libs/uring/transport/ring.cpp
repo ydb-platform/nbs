@@ -10,10 +10,13 @@
 #include <errno.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <tuple>
 
 namespace NCloud::NBlockStore::NUring {
 
@@ -30,6 +33,16 @@ const TDuration TICK = TDuration::MilliSeconds(100);
 bool IsUserOp(const TIoOp* op)
 {
     return op->Tag < TAG_RESERVED_BASE;
+}
+
+bool KernelAtLeast(int major, int minor)
+{
+    utsname name{};
+    int kernelMajor = 0;
+    int kernelMinor = 0;
+    return ::uname(&name) == 0 &&
+           sscanf(name.release, "%d.%d", &kernelMajor, &kernelMinor) == 2 &&
+           std::tie(kernelMajor, kernelMinor) >= std::tie(major, minor);
 }
 
 }   // namespace
@@ -126,6 +139,9 @@ NProto::TError TRing::Init()
                 Name << ": IORING_OP_SENDMSG_ZC is not supported, "
                      << "falling back to sendmsg");
         }
+        // 6.1 has zero-copy sends but fails the ones that ask for the usage
+        // report with EINVAL, and no probe tells the two apart
+        ZcReportUsage = ZcSupported && KernelAtLeast(6, 2);
     }
 
     EventFd = eventfd(0, EFD_CLOEXEC);
@@ -400,6 +416,7 @@ void TRing::SendMsg(TIoOp* op, int fd, int flags)
     op->Msg.msg_iov = op->Iov;
     op->Msg.msg_iovlen = op->IovCount;
     const bool zc = op->ZeroCopy && ZcSupported;
+    const bool reportUsage = ZcReportUsage;
     op->ZeroCopy = zc;
     Submit(
         op,
@@ -411,6 +428,9 @@ void TRing::SendMsg(TIoOp* op, int fd, int flags)
                     fd,
                     &op->Msg,
                     flags | MSG_NOSIGNAL);
+                if (reportUsage) {
+                    sqe->ioprio |= IORING_SEND_ZC_REPORT_USAGE;
+                }
             } else {
                 io_uring_prep_sendmsg(sqe, fd, &op->Msg, flags | MSG_NOSIGNAL);
             }

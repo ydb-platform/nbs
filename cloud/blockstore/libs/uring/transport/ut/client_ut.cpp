@@ -1013,6 +1013,33 @@ Y_UNIT_TEST_SUITE(TUringClientTest)
             future.GetValue(TDuration::Seconds(10)).Status);
         UNIT_ASSERT_VALUES_EQUAL(1, ClientCounter("Errors"));
     }
+
+    Y_UNIT_TEST_F(ShouldCountZeroCopySends, TFixture)
+    {
+        StartServer();
+        StartClient();
+        WaitConnected();
+
+        auto payload = Pattern(1 << 20, 11);
+        auto echoed = TString::Uninitialized(payload.size());
+        TGuardedSgList send({TBlockDataRef{payload.data(), payload.size()}});
+        TGuardedSgList recv({TBlockDataRef{echoed.data(), echoed.size()}});
+        auto future = Collector->NewPromiseFuture();
+        Endpoint->SendRequest(MakeRequest("echo", send, recv), nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            future.GetValue(TDuration::Seconds(10)).Status);
+
+        // the response is delivered only once the request's frame is released,
+        // which for a zero-copy send is its notification
+        if (ClientCounter("SendZeroCopySupported")) {
+            UNIT_ASSERT(ClientCounter("SendZcRequests") >= 1);
+            UNIT_ASSERT(ClientCounter("SendZcNotifications") >= 1);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(0, ClientCounter("SendZcRequests"));
+            UNIT_ASSERT_VALUES_EQUAL(0, ClientCounter("SendZcNotifications"));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NUring

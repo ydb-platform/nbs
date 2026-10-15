@@ -82,6 +82,7 @@ private:
     int EventFd = -1;
     int TimerFd = -1;
     bool ZcSupported = false;
+    bool ZcReportUsage = false;
 
     std::atomic<bool> Sleeping = false;
     std::atomic<bool> StopRequested = false;

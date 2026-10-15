@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "counters.h"
 #include "protocol.h"
 #include "ring.h"
 
@@ -30,6 +31,7 @@ struct TConnectionParams
     ui32 OobThreshold = 0;
     bool SendZeroCopy = false;
     ui32 SendZeroCopyThreshold = 0;
+    TCountersPtr Counters;
 };
 
 // Head: TFrameHeader followed by proto bytes. The caller fills Type,

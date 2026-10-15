@@ -223,6 +223,9 @@ void TConnection::StartSend(TStream& stream)
         Params.SendZeroCopy && payload >= Params.SendZeroCopyThreshold;
     stream.SendOp = op;
     Ring.SendMsg(op, stream.Fd, 0);
+    if (op->ZeroCopy) {
+        Params.Counters->SendZcRequests->Inc();
+    }
 }
 
 void TConnection::OnSendComplete(
@@ -232,6 +235,10 @@ void TConnection::OnSendComplete(
     ui32 cqeFlags)
 {
     if (cqeFlags & IORING_CQE_F_NOTIF) {
+        Params.Counters->SendZcNotifications->Inc();
+        if (static_cast<ui32>(res) & IORING_NOTIF_USAGE_ZC_COPIED) {
+            Params.Counters->SendZcCopiedNotifications->Inc();
+        }
         // the kernel released the zero-copy pages, so the chunks can go now;
         // stream.SendOp may already be a newer op
         Ring.FreeOp(op);

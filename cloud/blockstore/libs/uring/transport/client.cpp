@@ -920,6 +920,7 @@ private:
             .OobThreshold = Min(Config->OobThreshold, w.OobThreshold),
             .SendZeroCopy = Config->SendZeroCopyMode != ESendZeroCopyMode::Off,
             .SendZeroCopyThreshold = Config->SendZeroCopyThreshold,
+            .Counters = Counters,
         };
         MaxInflightBytes =
             Min<ui64>(Config->MaxInflightBytes, w.MaxInflightBytes);
