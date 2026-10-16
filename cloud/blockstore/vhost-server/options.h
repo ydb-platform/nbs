@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/diagnostics/latency_thresholds_config.h>
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
 #include <cloud/storage/core/libs/common/affinity.h>
 
@@ -36,6 +37,9 @@ struct TOptions
     ui64 PteFlushByteThreshold = 0;
     ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     ui64 ThreadPoolSize = 0;
+
+    bool LatencyTrackingEnabled = false;
+    TLatencyThresholdLadder LatencyThresholds;
 
     TString LogType = "json";
     TString VerboseLevel = "info";

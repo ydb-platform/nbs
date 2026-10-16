@@ -1,6 +1,7 @@
 #include "backend_rdma.h"
 
 #include "backend.h"
+#include "latency_tracker.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -132,10 +133,11 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
+    TLatencyTracker LatencyTracker;
 
 public:
     explicit TRdmaBackend(ILoggingServicePtr logging);
@@ -155,7 +157,7 @@ private:
     void CompleteRequest(
         struct vhd_io* io,
         TCpuCycles startCycles,
-        bool isError);
+        const NProto::TError& error);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
 };
 
@@ -177,6 +179,9 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     ClientId = options.ClientId;
     ReadOnly = options.ReadOnly;
+    LatencyTracker = TLatencyTracker(
+        options.LatencyTrackingEnabled,
+        options.LatencyThresholds);
 
     BlockSize = options.BlockSize;
     STORAGE_VERIFY(
@@ -394,7 +399,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            CompleteRequest(io, startCycles, error);
         });
 }
 
@@ -436,28 +441,41 @@ void TRdmaBackend::ProcessWriteRequest(
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            CompleteRequest(io, startCycles, error);
         });
 }
 
 void TRdmaBackend::CompleteRequest(
     struct vhd_io* io,
     TCpuCycles startCycles,
-    bool isError)
+    const NProto::TError& error)
 {
     auto* bio = vhd_get_bdev_io(io);
+    const bool isError = HasError(error);
+    const TCpuCycles completed = GetCycleCount();
+    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     ++CompletionStatsData.Completed;
 
     if (!isError) {
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
         CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
+            completed - startCycles);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
+    }
+
+    if (LatencyTracker.IsEnabled()) {
+        // There is no volume throttler on this path, so the whole elapsed
+        // time is service time.
+        LatencyTracker.Record(
+            CompletionStatsData,
+            bio->type,
+            bytes,
+            completed - startCycles,
+            error);
     }
 
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);

@@ -385,8 +385,13 @@ void TBootstrapBase::Init()
             Configs->DiagnosticsConfig,
             inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
-            Timer);
+            Timer,
+            Log);
     }
+    // Some server variants construct VolumeStats while their monitoring
+    // proxy is still deferred. At this point monitoring is ready, so publish
+    // server-level diagnostics before the first volume is mounted.
+    VolumeStats->InitializeMonitoringCounters();
 
     ServerStats = CreateServerStats(
         Configs->ServerConfig,
@@ -549,16 +554,18 @@ void TBootstrapBase::Init()
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
         {
-            vhostEndpointListener = CreateExternalVhostEndpointListener(
-                Configs->ServerConfig,
-                Logging,
-                ServerStats,
-                Executor,
-                Configs->Options->SkipDeviceLocalityValidation
-                    ? TString {}
-                    : FQDNHostName(),
-                RdmaClient && RdmaClient->IsAlignedDataEnabled(),
-                std::move(vhostEndpointListener));
+            vhostEndpointListener =
+                CreateExternalVhostEndpointListenerWithDiagnostics(
+                    Configs->ServerConfig,
+                    Logging,
+                    ServerStats,
+                    Executor,
+                    Configs->Options->SkipDeviceLocalityValidation
+                        ? TString {}
+                        : FQDNHostName(),
+                    RdmaClient && RdmaClient->IsAlignedDataEnabled(),
+                    std::move(vhostEndpointListener),
+                    Configs->DiagnosticsConfig);
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");
         }

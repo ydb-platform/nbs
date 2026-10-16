@@ -68,6 +68,55 @@ struct TRequestStats
 };
 
 template <typename T>
+struct TLatencyCounters
+{
+    T Good = {};
+    T Bad = {};
+    T Skipped = {};
+
+    TLatencyCounters() = default;
+
+    template <typename U>
+    explicit TLatencyCounters(const TLatencyCounters<U>& rhs) noexcept
+        : Good{rhs.Good}
+        , Bad{rhs.Bad}
+        , Skipped{rhs.Skipped}
+    {}
+
+    template <typename U>
+    TLatencyCounters& operator=(const TLatencyCounters<U>& rhs) noexcept
+    {
+        Good = rhs.Good;
+        Bad = rhs.Bad;
+        Skipped = rhs.Skipped;
+
+        return *this;
+    }
+
+    template <typename U>
+    TLatencyCounters& operator+=(const TLatencyCounters<U>& rhs) noexcept
+    {
+        Good += rhs.Good;
+        Bad += rhs.Bad;
+        Skipped += rhs.Skipped;
+
+        return *this;
+    }
+};
+
+template <typename T>
+TLatencyCounters<T> operator-(
+    TLatencyCounters<T> lhs,
+    const TLatencyCounters<T>& rhs) noexcept
+{
+    lhs.Good -= rhs.Good;
+    lhs.Bad -= rhs.Bad;
+    lhs.Skipped -= rhs.Skipped;
+
+    return lhs;
+}
+
+template <typename T>
 TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
 {
     lhs.Count -= rhs.Count;
@@ -91,6 +140,7 @@ struct TStats
     std::array<TRequestStats<T>, 2> Requests = {};
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
+    std::array<TLatencyCounters<T>, 2> LatencyCounters = {};
 
     TStats() = default;
 
@@ -105,6 +155,7 @@ struct TStats
         , Requests{rhs.Requests[0], rhs.Requests[1]}
         , Times{rhs.Times[0], rhs.Times[1]}
         , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
+        , LatencyCounters{rhs.LatencyCounters[0], rhs.LatencyCounters[1]}
     {}
 
     template <typename U>
@@ -119,6 +170,7 @@ struct TStats
         Requests = rhs.Requests;
         Times = rhs.Times;
         Sizes = rhs.Sizes;
+        LatencyCounters = rhs.LatencyCounters;
 
         return *this;
     }
@@ -145,6 +197,10 @@ struct TStats
             Sizes[i] += rhs.Sizes[i];
         }
 
+        for (size_t i = 0; i != LatencyCounters.size(); ++i) {
+            LatencyCounters[i] += rhs.LatencyCounters[i];
+        }
+
         return *this;
     }
 };
@@ -153,9 +209,11 @@ using TAtomicStats = TStats<std::atomic<ui64>>;
 using TSimpleStats = TStats<ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
-struct TCompleteStats {
+struct TCompleteStats
+{
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
+    bool LatencyTrackingEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

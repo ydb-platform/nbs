@@ -301,7 +301,8 @@ void TVolumeState::ResetThrottlingPolicy(
             ThrottlerConfig.MaxWriteCostMultiplier,
             ThrottlerConfig.DefaultPostponedRequestWeight,
             ThrottlingPolicy.GetCurrentBoostBudget(),
-            ThrottlerConfig.UseDiskSpaceScore));
+            ThrottlerConfig.UseDiskSpaceScore,
+            ThrottlerConfig.QuotaDelayAccountingEnabled));
 }
 
 void TVolumeState::ResetThrottlingPolicy(

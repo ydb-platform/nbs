@@ -10,7 +10,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <library/cpp/logger/log.h>
+
 #include <util/datetime/base.h>
+#include <util/generic/maybe.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
 
@@ -81,6 +84,33 @@ struct IVolumeInfo
         ui64 errors,
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist) = 0;
+
+    // Opt-in latency accounting path. Existing request statistics intentionally do
+    // not call this method: only an endpoint that owns the complete logical
+    // operation (after splitting and retries) may do so. Appended after all
+    // legacy methods and defaulted to preserve existing implementations.
+    // quotaDelay is the part of the wait caused by the original performance
+    // profile of the disk, Nothing() if it could not be measured.
+    // quotaRejected means some attempt was rejected because of that profile.
+    virtual void RecordLatencyCompletion(
+        EBlockStoreRequest,
+        ui64 /*requestStarted*/,
+        TMaybe<TDuration> /*quotaDelay*/,
+        bool /*quotaRejected*/,
+        ui64 /*requestBytes*/,
+        const NProto::TError&,
+        ui64 /*responseSent*/)
+    {}
+
+    // Versioned aggregate producers (currently external vhost) report an
+    // exact, mutually exclusive partition of logical operations here. This
+    // is deliberately separate from the legacy BatchCompleted contract.
+    virtual void RecordLatencyBatch(
+        EBlockStoreRequest,
+        ui64,
+        ui64,
+        ui64)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,10 +189,27 @@ struct IVolumeStats
         ui64 connectionId,
         const TString& cellId,
         const TString& fqdn) = 0;
+
+    // Effective startup state after threshold validation. The default keeps
+    // existing implementations source-compatible and disables the optional
+    // request-path bookkeeping for implementations that do not provide it.
+    virtual bool IsLatencyTrackingEnabled() const
+    {
+        return false;
+    }
+
+    // Publishes startup diagnostics after the monitoring service is ready,
+    // without initializing the otherwise lazy volume counters. The default
+    // keeps other implementations source-compatible; TVolumeStats also
+    // publishes the diagnostics lazily on first volume access.
+    virtual void InitializeMonitoringCounters()
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keep the original overloads intact: besides source compatibility, their
+// exact symbols are used by binaries that link this library independently.
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDiagnosticsConfigPtr diagnosticsConfig,
@@ -170,11 +217,29 @@ IVolumeStatsPtr CreateVolumeStats(
     EVolumeStatsType type,
     ITimerPtr timer);
 
+// The extended overload lets server bootstraps provide a real log for eager
+// threshold validation. A default-constructed TLog in the original overload
+// keeps tools and tests on their previous contract.
+IVolumeStatsPtr CreateVolumeStats(
+    IMonitoringServicePtr monitoring,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    TDuration inactiveClientsTimeout,
+    EVolumeStatsType type,
+    ITimerPtr timer,
+    TLog log);
+
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
     ITimerPtr timer);
+
+IVolumeStatsPtr CreateVolumeStats(
+    IMonitoringServicePtr monitoring,
+    TDuration inactiveClientsTimeout,
+    EVolumeStatsType type,
+    ITimerPtr timer,
+    TLog log);
 
 IVolumeStatsPtr CreateVolumeStatsStub();
 

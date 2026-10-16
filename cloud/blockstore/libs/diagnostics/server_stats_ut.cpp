@@ -577,6 +577,158 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldExcludeOnlyOriginalProfileQuotaDelayFromLatency)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+
+        NProto::TDiagnosticsConfig protoConfig;
+        protoConfig.SetLatencyThresholdsEnabled(true);
+        auto* mediaKindThresholds = protoConfig.AddLatencyThresholds();
+        mediaKindThresholds->SetMediaKind(NProto::STORAGE_MEDIA_SSD);
+        auto* bucket = mediaKindThresholds->AddBuckets();
+        bucket->SetMinRequestBytes(0);
+        bucket->SetReadThresholdMs(10);
+        bucket->SetWriteThresholdMs(10);
+        auto diagnosticsConfig =
+            std::make_shared<TDiagnosticsConfig>(protoConfig);
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            diagnosticsConfig,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            diagnosticsConfig,
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
+
+        NProto::TVolume volume;
+        volume.SetBlockSize(4096);
+        volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        serverStats->MountVolume(volume, "client", "instance");
+
+        TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+        serverStats->PrepareMetricRequest(
+            request,
+            "client",
+            "volume",
+            0,
+            4096,
+            false);
+        UNIT_ASSERT(request.VolumeInfo);
+
+        auto counters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "cloud")
+            ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "network-ssd");
+        auto total = counters->GetCounter("LatencyTotalOps");
+        auto good = counters->GetCounter("LatencyGoodOps");
+        auto skipped =
+            counters->GetCounter("LatencyThresholdsSkippedOps");
+
+        const auto makeContext = [](
+            TDuration elapsed,
+            TDuration throttlerDelay,
+            TMaybe<TDuration> quotaDelay,
+            bool quotaRejected = false)
+        {
+            auto callContext = MakeIntrusive<TCallContext>();
+            callContext->SetRequestStartedCycles(1);
+            callContext->SetResponseSentCycles(
+                1 + DurationToCyclesSafe(elapsed));
+            callContext->AddTime(EProcessingStage::Postponed, throttlerDelay);
+            callContext->AccountThrottlerQuota(
+                quotaDelay,
+                throttlerDelay,
+                quotaRejected);
+            return callContext;
+        };
+
+        const auto record = [&](TCallContext& callContext, NProto::TError error)
+        {
+            serverStats->RecordLatencyCompletion(
+                request,
+                callContext,
+                4096,
+                error);
+        };
+
+        // The whole throttler wait was caused by the original profile:
+        // 100ms - 95ms leaves a good 5ms.
+        auto quotaContext = makeContext(
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(95),
+            TDuration::MilliSeconds(95));
+        record(*quotaContext, {});
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // Backpressure throttling, shaping and retry backoff are service
+        // latency and are not subtracted.
+        auto serviceWaitContext = makeContext(
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(95),
+            TDuration::Zero());
+        serviceWaitContext->AddTime(
+            EProcessingStage::Shaping,
+            TDuration::MilliSeconds(95));
+        serviceWaitContext->AddTime(
+            EProcessingStage::Backoff,
+            TDuration::MilliSeconds(95));
+        record(*serviceWaitContext, {});
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // The volume did not report the cause of the throttler wait.
+        auto unknownContext = makeContext(
+            TDuration::MilliSeconds(1),
+            TDuration::MilliSeconds(50),
+            Nothing());
+        record(*unknownContext, {});
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, skipped->Val());
+
+        // An attempt was rejected because the client exceeded its profile.
+        auto rejectedContext = makeContext(
+            TDuration::MilliSeconds(1),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            true);
+        record(*rejectedContext, MakeError(E_BS_THROTTLED));
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, skipped->Val());
+
+        // A final service failure does not need a latency measurement. It
+        // must keep the ordinary classifier semantics: one bad operation,
+        // not a skipped operation.
+        record(*quotaContext, MakeError(E_FAIL));
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, skipped->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore
