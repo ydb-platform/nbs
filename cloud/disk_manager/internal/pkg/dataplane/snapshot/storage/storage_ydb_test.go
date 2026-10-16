@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -350,6 +351,14 @@ func (f *fixture) teardown() {
 	err := f.db.Close(f.ctx)
 	require.NoError(f.t, err)
 	f.cancel()
+}
+
+// A storage of the same database whose follower is another bucket: it keeps
+// the chunks copied to that bucket in a table of its own.
+func (f *fixture) storageWithFollowerChunksTable(name string) Storage {
+	config := proto.Clone(f.config).(*snapshot_config.SnapshotConfig)
+	config.FollowerChunksTableName = &name
+	return newStorage(f.t, f.ctx, config, f.db, f.s3, metrics.NewEmptyRegistry())
 }
 
 func createFixture(t *testing.T) *fixture {
@@ -2083,6 +2092,52 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3"))
+}
+
+// A chunk copied to one follower is unknown to the table of another: a backup
+// to the other follower queues the chunk again, and marks it in its own table.
+func TestBackupChunkCopiedToAnotherFollowerIsEnqueuedAgain(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	second := f.storageWithFollowerChunksTable("follower_chunks_second")
+
+	entry := func(snapshotID string) BackupChunkQueueEntry {
+		return BackupChunkQueueEntry{
+			SnapshotID:   snapshotID,
+			ChunkID:      "t.creator.0",
+			EncryptedDEK: []byte("dek"),
+		}
+	}
+
+	// Copied to the first follower.
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", []BackupChunkQueueEntry{entry("snap1")})
+	require.NoError(t, err)
+	err = f.storage.ChunksBackupCompleted(f.ctx, []BackupChunkQueueEntry{entry("snap1")})
+	require.NoError(t, err)
+
+	// The first follower skips it.
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	// The second follower queues it.
+	err = second.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, []BackupChunkQueueEntry{entry("snap2")}, got)
+
+	// Copied to the second follower: from now on the second skips it too.
+	err = second.ChunksBackupCompleted(f.ctx, []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	err = second.EnqueueBackupChunks(f.ctx, "snap3", []BackupChunkQueueEntry{entry("snap3")})
+	require.NoError(t, err)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
 }
 
 func TestClearBackupChunks(t *testing.T) {

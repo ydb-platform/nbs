@@ -10,10 +10,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The backup queue and follower_chunks are written by every copy task and
-// every snapshot copy at once. They are small, so splitting by size alone
-// keeps them in one or two partitions; they are split by load instead, and
-// not merged back below the minimum between waves of backups.
+// The backup queue and the follower chunks table are written by every copy
+// task and every snapshot copy at once. They are small, so splitting by size
+// alone keeps them in one or two partitions; they are split by load instead,
+// and not merged back below the minimum between waves of backups.
 const (
 	backupTablesMinPartitions = 64
 	backupTablesMaxPartitions = 1024
@@ -177,10 +177,11 @@ func Create(
 	// Chunks queued for the follower or already copied there, whichever
 	// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
 	// the last unref moves it to backup_chunk_delete_queue.
+	// Its name comes from FollowerChunksTableName: one table per follower bucket.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"follower_chunks",
+		config.GetFollowerChunksTableName(),
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
@@ -195,7 +196,7 @@ func Create(
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created follower_chunks table")
+	logging.Info(ctx, "Created %v table", config.GetFollowerChunksTableName())
 
 	// Chunks deleted from chunk_blobs whose follower objects are to be
 	// deleted.
@@ -311,11 +312,11 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped backup_chunk_queue table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), "follower_chunks")
+	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetFollowerChunksTableName())
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped follower_chunks table")
+	logging.Info(ctx, "Dropped %v table", config.GetFollowerChunksTableName())
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
 	if err != nil {

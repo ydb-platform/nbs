@@ -45,6 +45,7 @@ func NewStorage(
 		shallowCopyWorkerCount:   int(config.GetShallowCopyWorkerCount()),
 		shallowCopyInflightLimit: int(config.GetShallowCopyInflightLimit()),
 		chunkCompression:         config.GetChunkCompression(),
+		followerChunksTableName:  config.GetFollowerChunksTableName(),
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
