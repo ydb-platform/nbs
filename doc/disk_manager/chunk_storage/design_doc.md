@@ -51,13 +51,15 @@ The existing [snapshot migration](../../../cloud/disk_manager/internal/pkg/datap
 
 `S3Backends` is a repeated configuration field containing a stable unsigned 32-bit ID, S3 connection settings, bucket, and key prefix. ID `0` denotes the existing singleton S3 backend; `0x7fffffff` denotes YDB chunk data. Other IDs identify additional S3 backends.
 
-Each backend ID MUST have a permanent binding to one storage namespace. Distinct backend IDs identify distinct physical object namespaces. Changing the storage location requires a new ID; rotating credentials for the same location preserves its identity. Reject duplicate IDs, the reserved YDB ID in S3 configuration, and incomplete settings. Accept YDB-only configurations. When an explicit backend list is active, ignore an unused singleton bucket setting during validation.
+Each backend ID MUST have a permanent binding to one storage namespace. Distinct backend IDs identify distinct physical object namespaces. Changing the storage location requires a new ID. Reject duplicate IDs, the reserved YDB ID in S3 configuration, and incomplete settings. Accept YDB-only configurations. When an explicit backend list is active, default S3 backend settings can be omitted. 
 
-The controlplane selects the image or snapshot service default, optionally overridden by an individual creation request. The dataplane request's backend ID is optional, so an explicit `0` remains distinguishable from an absent field.
+The controlplane selects the image or snapshot service default, optionally overridden by an individual creation request. Use a scalar `uint32` backend ID in dataplane creation requests. A zero value selects the existing `UseS3` and inheritance rules; a nonzero value selects that backend directly.
 
-For a request with an explicit backend ID, that ID takes precedence over `UseS3` and applies to both newly written and referenced chunks. Persist the selection before starting chunk work. Retries use the persisted destination across configuration changes.
+For a creation request with a nonzero backend ID, that ID takes precedence over `UseS3` and applies to both newly written and referenced chunks. The reserved YDB ID also uses this path. Persist the selection before starting chunk work. Retries use the persisted destination across configuration changes.
 
-For a snapshot with unspecified backend, `UseS3` selects S3 `0` or YDB for newly written chunks in disk and URL creation, while unchanged chunks reuse their source placement. Snapshot-to-snapshot requests with an absent backend ID inherit completed source locations. Apply these rules to previously persisted tasks, including chunks before their saved milestone, and allow completion with mixed per-chunk placement. References whose placement fields remain empty follow the shared root's inferred location, including changes to its payload location, as described below.
+Snapshot creation tasks in progress must continue across version upgrades. For a snapshot with unspecified backend, infer YDB or S3 `0` from the stored chunk metadata.
+
+Migration requests use their destination ID directly, including ID `0` for the existing S3 backend. Backend IDs in stored placement sets also identify physical backends directly.
 
 Validate each selected backend before creating records, including all-zero inputs. Reject invalid or unknown selections before writes begin. If a validated backend later becomes unavailable, preserve recorded work and retry the operation using the same ID.
 
@@ -116,7 +118,7 @@ Reuse the existing `snapshots.lock_task_id` for the migrating snapshot. In the a
 
 Reference transactions and chunk-wide detach tombstones coordinate physical copies. Children can migrate concurrently, including after their creator's snapshot record has been deleted. Creation locks the source snapshot against deletion while reading its map and registering references. Reusing the existing exclusive source lock can make creation retry while that source is itself being migrated.
 
-The target's existing exclusive lock admits one migration task at a time. Persist `snapshots.pending_backend_id` when admitting a migration. If it is already set to a different destination, reject the new request; a matching request can resume after the previous owner has stopped. Cancellation preserves this destination. Clear it only when migration completes or the snapshot is explicitly deleted.
+The target's existing exclusive lock admits one migration task at a time. Each task stores its destination in its request and uses that destination on retries. After cancellation releases the lock, a later task acquires it and migrates toward the destination in its own request, starting from the recorded chunk placement.
 
 Store a migration execution generation in `snapshots.operation_generation` alongside `lock_task_id`. Advance the generation when a migration execution is admitted or its ownership is revoked. Each migration transaction that updates placement, payloads, detach state, or completion checks Ready status and the current owner/generation. Cancellation releases the lock while preserving the Ready snapshot for continuation, so these checks reject further updates from the cancelled execution as soon as ownership is revoked. Release the lock only for the matching owner/generation. Integrate admission and cancellation with the task framework's execution ownership, and reject ownership acquisition by a cancelled execution.
 
@@ -197,7 +199,7 @@ Protect the source from deletion while reading its map and registering the new r
 
 Resolve unspecified source reference fields using the shared root and preserve the source references' stored fields. In one serializable transaction, require an existing source reference, inspect the root tombstones and source references, register the destination reference with explicit sets, and increment `refcnt` exactly once. Reject registration if the source reference or root is missing, including when the caller supplies a cached chunk-map entry. Reuse requires membership in both effective actual and desired on a reference, together with a tombstone check. Reject tombstoned copies. Actual-only copies may already be undergoing deletion; desired-only copies are unfinished.
 
-For an explicit destination B, reuse B from any qualifying reference by setting both sets on the new reference to exactly `{B}`. If no reusable B exists, register completed, retained source locations in actual and `{B}` in desired. Those actual entries pin the source data while copying B. When creating a snapshot with unspecified backend, inherit completed, retained locations according to the request compatibility rules.
+For a creation request selecting a nonzero destination B, reuse B from any qualifying reference by setting both sets on the new reference to exactly `{B}`. If no reusable B exists, register completed, retained source locations in actual and `{B}` in desired. Those actual entries pin the source data while copying B. When creating a snapshot with unspecified backend, inherit completed, retained locations according to the request compatibility rules.
 
 If B is tombstoned for this chunk, reject the request before adding a reference or issuing PUT. Apply this check to every requesting snapshot, including one requesting B for the first time, because a stale DELETE is tied to the shared chunk key. The tombstone takes precedence over a source's recorded presence on B. Requests to share a chunk preserve its ID and return the tombstone error when that destination has been detached.
 
@@ -310,49 +312,51 @@ sequenceDiagram
 
 ### Copy, then detach
 
-The request stores the dataplane snapshot ID and destination. State stores the phase, a chunk-index milestone for that phase, operation ownership, and a completion flag. The snapshot stores the pending destination so a new task can use that recorded target to continue after cancellation.
+The request stores the dataplane snapshot ID and destination. State stores the phase, a chunk-index milestone for that phase, operation ownership, and a completion flag. Every new migration task starts with the copy phase and scans the current placement of all chunks toward its requested destination.
 
 After Ready-only admission, scan the snapshot map and copy every nonzero chunk to the destination. Each chunk publishes its completed destination before its milestone can advance. Retain source requirements throughout this phase. A source read or destination write failure leaves the original data available and the destination's desired entry available for retry.
 
-Once every chunk has its destination completed, save the transition to the detach phase with a fresh phase milestone. Then release other backends from each reference. Shared copies stay while other snapshots need them; final releases create tombstones and delete the payload. This two-phase ordering preserves the complete source during copying. Detach permanently releases a source backend, and continuation advances toward the requested destination.
+Once every chunk has its destination completed, save the transition to the detach phase with a fresh phase milestone. Then release every other backend in each reference's actual or desired sets, including unfinished writes and pending cleanup from earlier migrations. Shared copies stay while other snapshots need them; final releases create tombstones and delete the payload. This two-phase ordering preserves existing source copies during copying. Detach permanently releases a source backend, and continuation advances toward the requested destination.
 
-If a worker stops before saving a chunk milestone, replay that chunk: completed copies are reused, pending copies repeat immutable writes, and detach resumes from its tombstone and retained entry. If execution stops with completed copies and an unsaved phase transition, rerun the copy scan and skip completed destinations. Begin detachment after that transition is durably recorded. If a new task continues after cancellation with an absent milestone, start the copy scan from the beginning and reuse the completed destination on previously detached chunks.
+If a worker stops before saving a chunk milestone, replay that chunk: completed copies are reused, pending copies repeat immutable writes, and detach resumes from its tombstone and retained entry. If execution stops with completed copies and an unsaved phase transition, rerun the copy scan and skip completed destinations. Begin detachment after that transition is durably recorded. A new task after cancellation starts the copy scan from the beginning, reuses completed copies on its requested destination, and copies the remaining chunks there before entering its detach phase.
 
-When every reference has actual and desired equal to the destination, transactionally set `snapshots.s3_backend_ids` to that destination and clear `pending_backend_id`. Determine completion from this snapshot's reference sets while retaining the source copies required by other snapshots and the detached IDs in root tombstones. Save task completion, then release the owned lock. If completion was saved before unlocking finished, a retry resumes at the unlock and returns success with the completed placement preserved.
+When every reference has actual and desired equal to the destination, transactionally set `snapshots.s3_backend_ids` to that destination. Determine completion from this snapshot's reference sets while retaining the source copies required by other snapshots and the detached IDs in root tombstones. Save task completion, then release the owned lock. If completion was saved before unlocking finished, a retry resumes at the unlock and returns success with the completed placement preserved.
 
 ```mermaid
 sequenceDiagram
     participant Task
     participant DB as YDB metadata
     participant Storage
-    Task->>DB: Admit Ready target, claim lock and persist pending destination
+    Task->>DB: Admit Ready target and claim lock
     Task->>Storage: Copy chunks and publish completed destination entries
     Task->>DB: Save transition to detach phase
     Task->>Storage: Release source requirements, tombstone final releases before DELETE
-    Task->>DB: Set completed destination and clear pending destination
+    Task->>DB: Set completed destination
     Task->>DB: Save task completion
     Task->>DB: Release owned lock
 ```
 
 ### Migration cancellation and continuation
 
-Migration cancellation stops new work, invalidates the execution's ownership, stops and joins workers belonging to that execution where possible, and releases its owned lock. The cancellation handler **retains objects, references, and backend placement for forward continuation**. Preserve actual, desired, root tombstones, pending deletion entries, and `pending_backend_id` exactly as recorded by operations that committed before cancellation.
+Migration cancellation stops new work, invalidates the execution's ownership, stops and joins workers belonging to that execution where possible, and releases its owned lock. The cancellation handler **retains objects, references, and backend placement for forward continuation**. Preserve actual, desired, root tombstones, and pending deletion entries exactly as recorded by operations that committed before cancellation.
 
 An earlier PUT or DELETE may still finish remotely after cancellation. After ownership is revoked, storage ownership checks reject metadata publication and attempts to start another chunk by the stale execution. A completed PUT whose publication was rejected remains represented by desired and can be repeated on continuation. A DELETE already authorized by a tombstone may finish; the retained cleanup entry makes it resumable, and the tombstone rejects reattachment.
 
-Cancellation can run in a different task instance. Joining local workers covers that instance, while storage mutations enforce the ownership checks above against previous executions. Retry a failed cancellation transaction or unlock idempotently, releasing only the cancelled execution's owned lock and preserving the pending destination and any newer owner's lock.
+Cancellation can run in a different task instance. Joining local workers covers that instance, while storage mutations enforce the ownership checks above against previous executions. Retry a failed cancellation transaction or unlock idempotently, releasing only the cancelled execution's owned lock and preserving recorded placement and any newer owner's lock.
 
-A later migration continues toward the same pending destination. A request for another destination is rejected until that continuation finishes. Copy-phase cancellation leaves sources intact. Detach-phase cancellation can leave a mixture of completed releases and pending deletions, with every chunk already present at the requested destination. Continuation completes pending releases and retains tombstones for sources already detached. An explicit snapshot deletion can subsequently clean the resource through the separate deletion procedure.
+A later migration chooses its destination from its own request and starts a full copy scan. For example, after cancelling A-to-B, a task targeting C first establishes C for every chunk, then releases the remaining A and B entries through the detach protocol. A task targeting B reuses the B copies already completed. A tombstoned destination fails that chunk's copy before PUT; completed work remains recorded for a later task. Copy-phase cancellation leaves sources intact. Detach-phase cancellation can leave a mixture of completed releases and pending deletions, with every chunk already present at that task's destination. Later migration completes pending releases during its detach phase and retains tombstones for sources already detached. An explicit snapshot deletion can subsequently clean the resource through the separate deletion procedure.
 
 ```mermaid
 flowchart TD
     Running[Migration is copying or detaching] --> Cancel[Cancel requested]
     Cancel --> Stop[Revoke execution ownership and stop scheduling work]
-    Stop --> Keep[Keep actual, desired, tombstones and pending destination]
+    Stop --> Keep[Keep actual, desired, tombstones and pending cleanup]
     Keep --> Unlock[Release owned snapshot lock]
-    Unlock --> Next{Later migration destination}
-    Next -->|Same destination| Resume[Resume forward from recorded placement]
-    Next -->|Different destination| Reject[Reject until pending migration completes]
+    Unlock --> Next[Later task acquires lock with its requested destination]
+    Next --> Copy[Scan all chunks and reuse or copy to destination]
+    Copy --> Ready{Every destination copy completed?}
+    Ready -->|Yes| Detach[Save detach phase and release remaining placements]
+    Ready -->|Failure| Retry[Retain recorded placement for retry or cancellation]
 ```
 
 This cancellation rule applies to migration. Cancellation of snapshot or image creation retains its existing behavior of deleting the partial destination and cleaning its references through the tombstone-aware deletion protocol. It preserves source snapshots and their backend requirements.
@@ -378,7 +382,7 @@ LIMIT $batch_size;
 
 If the parent stops before scheduling, the saved snapshot ID remains to schedule. If scheduling succeeds and saving the child ID fails, repeat scheduling with the same key to recover that child. If a child sets the completion field before finishing its unlock, the query excludes the snapshot and the parent continues waiting for the saved child. Retain completed child-task records for the supported restart interval so a restarted parent can resolve those IDs.
 
-A child skips a snapshot that is absent or Deleting when it attempts admission; a direct single-snapshot request reports an error. A lock held by another operation causes retry. A different pending destination, unknown backend, or tombstoned destination is an error. Transient source unavailability follows normal retry behavior. Report a permanently failed child as a migration error.
+A child skips a snapshot that is absent or Deleting when it attempts admission; a direct single-snapshot request reports an error. A lock held by another operation causes retry. An unknown backend or tombstoned destination is an error. Transient source unavailability follows normal retry behavior. Report a permanently failed child as a migration error.
 
 After filtering active or unavailable candidates, continue waiting or selecting while the underlying query has candidates or a saved child remains. Complete the bulk task when both the underlying query result and the saved child set are empty. The NULL-only selector targets snapshots awaiting their first completed migration; use explicit single-snapshot requests or a separate source/target selector for later moves.
 
@@ -400,7 +404,7 @@ flowchart TD
 
 Keep existing incremental base lookup and checkpoint handling. A base on a different backend remains usable: register references to unchanged chunk IDs and reuse or copy their payloads to the selected backend. Preserve those IDs and use snapshot storage for any payload transfer when backends differ. Write new or changed chunks directly to the selected backend.
 
-For an explicit backend, complete creation when every nonzero chunk has that destination in actual and temporary-source detachment has finished. Reusable copies register only the requested backend. For a snapshot with unspecified backend, apply the existing per-chunk selection and inheritance rules; completion accepts mixed placement and the recorded or inferred placement of previously processed chunks.
+For a nonzero backend ID, complete creation when every nonzero chunk has that destination in actual and temporary-source detachment has finished. Reusable copies register only the requested backend. For a snapshot with unspecified backend, apply the existing per-chunk selection and inheritance rules; completion accepts mixed placement and the recorded or inferred placement of previously processed chunks.
 
 If a chunk copy fails, preserve its map, reference count, desired destination, and actual source locations for retry. If all copies finish and readiness publication fails, reuse the existing references and completed payloads while retrying readiness publication. If a requested backend was previously detached for a shared chunk, reject creation before issuing PUT for that chunk. Creation cancellation deletes its partial destination through the reference-cleanup protocol while preserving the source's references.
 
@@ -422,8 +426,8 @@ Before retiring a backend, check active references using both explicit sets and 
 
 ## Implementation steps
 
-1. Add stable multi-S3 configuration, request presence handling, and client selection.
-2. Add reference placement sets, root detach tombstones, pending snapshot destination, and migration execution ownership checks, including transactional shadow-table updates.
+1. Add stable multi-S3 configuration, zero-value request compatibility, and client selection.
+2. Add reference placement sets, root detach tombstones, and migration execution ownership checks, including transactional shadow-table updates.
 3. Add consistent unspecified-backend resolution and backend refetching after all attempted locations return NotFound.
 4. Extend writes, reference reuse, copying, detach, and deletion with the transaction and retry rules above.
 5. For migration, require Ready status when acquiring `snapshots.lock_task_id`, save copy/detach phases, and preserve placement on cancellation.
