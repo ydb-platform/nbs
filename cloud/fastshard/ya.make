@@ -1,6 +1,7 @@
 RECURSE(
     bootstrap
     ipc
+    jdserver
     journal
     protos
     sn

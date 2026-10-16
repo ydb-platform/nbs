@@ -861,12 +861,22 @@ TJournal::AdvanceLsnLowWatermark(
     };
 
     auto future = MetaStore->Write(MetadataKey, SerializeMetadata(metadata));
-    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        return MakeFuture<TResponse>(TErrorResponse(error));
-    }
+    return future.Apply(
+        [self = shared_from_this(),
+         lsnLowWatermark](const auto& future) -> TResponse
+        {
+            auto error = UnsafeExtractValue(future);
+            if (HasError(error)) {
+                TResponse response;
+                *response.MutableError() = std::move(error);
+                return response;
+            }
 
-    LsnLowWatermark.store(lsnLowWatermark, std::memory_order_release);
-    return MakeFuture<TResponse>();
+            self->LsnLowWatermark.store(
+                lsnLowWatermark,
+                std::memory_order_release);
+            return TResponse();
+        });
 }
 
 TFuture<TResultOrError<NCloud::NProto::TJournalRecord>>

@@ -247,10 +247,10 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
             MakeConfig("small-log-meta", 1024, 2, 64),
             MakeConfig("no-log-data", 1024, 4, 0),
             MakeConfig("no-data", 68, 4, 64),
-            // the journal metadata must be smaller than the journal data
-            MakeConfig("large-log-meta", 1024, 64, 64),
-            // the journal data must be smaller than the data
-            MakeConfig("large-log-data", 1024, 4, 510),
+            // the journal metadata must not exceed the journal data
+            MakeConfig("large-log-meta", 1024, 65, 64),
+            // the journal data must not exceed the data
+            MakeConfig("large-log-data", 1024, 4, 511),
             MakeConfig("valid", 1024, 4, 64),
         };
 
