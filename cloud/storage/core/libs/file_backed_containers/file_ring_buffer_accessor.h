@@ -2,6 +2,7 @@
 
 #include "file_ring_buffer_format.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/function_ref.h>
@@ -20,7 +21,9 @@ enum class EFileRingBufferAccessorValidationMode
     // validation
     Normal,
 
-    // Header and DataProcessor will be initialized even if validation fails.
+    // Header remains accessible when available. DataProcessor, RawMetadata and
+    // Capabilities are initialized if the header layout is valid, even if
+    // positions or checksums are invalid.
     // This mode is intended for repairing corrupted state.
     Debug
 };
@@ -45,9 +48,46 @@ enum class EFileRingBufferAccessorValidationStatus
     // - DataProcessor, RawMetadata and Capabilities will not be initialized.
     // When EFileRingBufferAccessorValidationMode == Debug:
     // - Header will be accessible if file length >= header size
-    // - DataProcessor, RawMetadata, Capabilities will be initialized if header
-    //   is successfully validated (but data may be corrupted)
+    // - DataProcessor, RawMetadata and Capabilities will be initialized if the
+    //   header layout is valid, even if positions or data are corrupted
     Failed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFileRingBufferValidator
+{
+private:
+    bool ValidateChecksums = false;
+
+public:
+    explicit TFileRingBufferValidator(bool validateChecksums);
+
+    /**
+     * Validates the header fields that define the metadata and data mappings.
+     * ReadPos and WritePos are intentionally not validated here.
+     */
+    static NProto::TError ValidateHeaderLayout(
+        const TFileRingBufferHeader& header,
+        size_t rawDataSize);
+
+    /**
+     * Validates whether readPos and writePos are within dataCapacity and
+     * describe a structurally valid traversal of dataProcessor. Additionally
+     * performs checksum-related validation for payloads and empty/free entries
+     * if ValidateChecksums is set.
+     */
+    NProto::TError ValidateData(
+        const IFileRingBufferDataProcessor& dataProcessor,
+        ui64 dataCapacity,
+        ui64 readPos,
+        ui64 writePos) const;
+
+private:
+    TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
+        const IFileRingBufferDataProcessor& dataProcessor,
+        ui64 pos,
+        const TFileRingBufferCapabilities& capabilities) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,6 +182,7 @@ class TFileMapFileRingBufferAccessor final: public TFileRingBufferAccessor
 private:
     const TString FileName;
     const TMemoryMapCommon::EOpenModeFlag OpenModeFlags;
+    const std::optional<TFile> BackingFile;
 
     std::optional<TFileMap> FileMap;
 
@@ -151,11 +192,18 @@ public:
         EFileRingBufferAccessorValidationMode validationMode,
         TMemoryMapCommon::EOpenModeFlag openModeFlags);
 
+    // Maps this exact open file description and never reopens its pathname.
+    TFileMapFileRingBufferAccessor(
+        TFile file,
+        EFileRingBufferAccessorValidationMode validationMode,
+        TMemoryMapCommon::EOpenModeFlag openModeFlags);
+
     NProto::TError Map();
     NProto::TError ResizeAndRemap(size_t newSize);
     void Close();
 
 private:
+    void CreateFileMap();
     NProto::TError ProcessMap();
 };
 
