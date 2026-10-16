@@ -16,6 +16,8 @@ type storageCommon struct {
 	tablesPath      string
 	tableName       string
 	shadowTableName string
+	// Chunks copied to the follower bucket or queued for it.
+	followerChunksTableName string
 }
 
 func newStorageCommon(
@@ -23,13 +25,15 @@ func newStorageCommon(
 	tablesPath string,
 	tableName string,
 	shadowTableName string,
+	followerChunksTableName string,
 ) storageCommon {
 
 	return storageCommon{
-		db:              db,
-		tablesPath:      tablesPath,
-		tableName:       tableName,
-		shadowTableName: shadowTableName,
+		db:                      db,
+		tablesPath:              tablesPath,
+		tableName:               tableName,
+		shadowTableName:         shadowTableName,
+		followerChunksTableName: followerChunksTableName,
 	}
 }
 
@@ -225,7 +229,7 @@ func (s *storageCommon) unrefChunk(
 
 		$dead_follower_chunks = (
 			select chunk_id
-			from follower_chunks
+			from %[4]v
 			where chunk_id = $chunk_id and
 				$chunk_id in $dead
 		);
@@ -233,7 +237,7 @@ func (s *storageCommon) unrefChunk(
 		upsert into backup_chunk_delete_queue
 		select chunk_id from $dead_follower_chunks;
 
-		delete from follower_chunks
+		delete from %[4]v
 		on select chunk_id from $dead_follower_chunks;
 
 		%[3]v
@@ -243,7 +247,7 @@ func (s *storageCommon) unrefChunk(
 
 		delete from %[1]v
 		on select * from $to_delete;
-	`)),
+	`), s.followerChunksTableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),

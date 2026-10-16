@@ -21,8 +21,10 @@ type storageYDB struct {
 	shallowCopyWorkerCount   int
 	shallowCopyInflightLimit int
 	chunkCompression         string
-	chunkStorageS3           *chunks.StorageS3
-	chunkStorageYDB          *chunks.StorageYDB
+	// Chunks copied to the follower bucket or queued for it.
+	followerChunksTableName string
+	chunkStorageS3          *chunks.StorageS3
+	chunkStorageYDB         *chunks.StorageYDB
 }
 
 var _ ChunkMapRangeReader = (*storageYDB)(nil)

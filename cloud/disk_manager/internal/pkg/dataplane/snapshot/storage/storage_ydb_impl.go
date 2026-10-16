@@ -1600,9 +1600,9 @@ func (s *storageYDB) findCopiedBackupChunkIDsTx(
 		declare $chunk_ids as List<Utf8>;
 
 		select chunk_id
-		from follower_chunks
+		from %v
 		where chunk_id in $chunk_ids and copied
-	`, s.tablesPath),
+	`, s.tablesPath, s.followerChunksTableName),
 		persistence.ValueParam("$chunk_ids", persistence.ListValue(values...)),
 	)
 	if err != nil {
@@ -1675,12 +1675,13 @@ func (s *storageYDB) enqueueBackupChunks(
 		-- The row is written before the copy: the last unref of the chunk
 		-- queues its follower object for deletion even if the copy was
 		-- cancelled after the object was written.
-		upsert into follower_chunks
+		upsert into %v
 		select distinct chunk_id, false as copied
 		from AS_TABLE($entries);
 	`,
 		s.tablesPath,
 		backupChunkQueueEntryStructTypeString(),
+		s.followerChunksTableName,
 	),
 		persistence.ValueParam(
 			"$entries",
@@ -1846,28 +1847,29 @@ func (s *storageYDB) ChunksBackupCompleted(
 	// was deleted from chunk_blobs and its object is queued for deletion.
 	//
 	// The rows are read by key: a join with the table scans it and locks it
-	// whole, so every concurrent write to follower_chunks aborts the
+	// whole, so every concurrent write to the follower chunks table aborts the
 	// transaction.
 	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $keys as List<%v>;
+		pragma TablePathPrefix = "%[1]v";
+		declare $keys as List<%[2]v>;
 		declare $chunk_ids as List<Utf8>;
 
 		$copied = (
 			select chunk_id, true as copied
-			from follower_chunks
+			from %[3]v
 			where chunk_id in $chunk_ids
 		);
 
 		delete from backup_chunk_queue
 		on select * from AS_TABLE($keys);
 
-		upsert into follower_chunks
+		upsert into %[3]v
 		select * from $copied;
 	`,
 		s.tablesPath,
 		backupChunkKeyStructTypeString(),
+		s.followerChunksTableName,
 	),
 		persistence.ValueParam("$keys", backupChunkKeyListValue(entries)),
 		persistence.ValueParam(

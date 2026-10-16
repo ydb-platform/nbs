@@ -35,12 +35,19 @@ func NewStorageS3(
 	tablesPath string,
 	tableName string,
 	shadowTableName string,
+	followerChunksTableName string,
 	metrics metrics.Metrics,
 	probeCompressionPercentage map[string]uint32,
 ) *StorageS3 {
 
 	return &StorageS3{
-		storageCommon:              newStorageCommon(db, tablesPath, tableName, shadowTableName),
+		storageCommon: newStorageCommon(
+			db,
+			tablesPath,
+			tableName,
+			shadowTableName,
+			followerChunksTableName,
+		),
 		s3:                         s3,
 		bucket:                     bucket,
 		keyPrefix:                  keyPrefix,
