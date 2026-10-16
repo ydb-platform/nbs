@@ -791,6 +791,32 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
     }
+
+    Y_UNIT_TEST(ShouldNotRejectSimilarilyNamedDisksFromDifferenCells)
+    {
+        TTestEnv env(1, 2, 4);
+        ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+
+        ui32 nodeIdxB = SetupTestEnvWithCellId(env, "cell-b");
+
+        auto& runtimeB = env.GetRuntime();
+        TServiceClient serviceB(runtimeB, nodeIdxB);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+
+        {
+            service.SendCreateVolumeLinkRequest("vol-1", "vol-1", "cell-b");
+            auto response = service.RecvCreateVolumeLinkResponse();
+            // Expect E_NOT_IMPLEMENTED instead of E_ARGUMENT
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_IMPLEMENTED,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
