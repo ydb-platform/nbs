@@ -801,8 +801,8 @@ TJournal::AdvanceLsnLowWatermark(
     }
 
     //
-    // Let one advance in at a time - the metadata write below yields, and
-    // two of them racing could persist the older watermark last
+    // Let one advance in at a time - the metadata write below is asynchronous,
+    // and two of them racing could persist the older watermark last
     //
 
     if (AdvancingLsnLowWatermark.exchange(true, std::memory_order_acquire)) {
@@ -811,12 +811,9 @@ TJournal::AdvanceLsnLowWatermark(
             TStringBuilder() << "another advance to lsn low watermark "
                              << lsnLowWatermark << " is already in progress"));
     }
-    Y_DEFER
-    {
-        AdvancingLsnLowWatermark.store(false, std::memory_order_release);
-    };
 
     if (lsnLowWatermark <= LsnLowWatermark.load(std::memory_order_acquire)) {
+        AdvancingLsnLowWatermark.store(false, std::memory_order_release);
         return MakeFuture<TResponse>(TErrorResponse(S_ALREADY));
     }
 
@@ -831,12 +828,29 @@ TJournal::AdvanceLsnLowWatermark(
     };
 
     auto future = MetaStore->WriteMeta(SerializeMetadata(metadata));
-    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        return MakeFuture<TResponse>(TErrorResponse(error));
-    }
+    return future.Apply(
+        [self = shared_from_this(),
+         lsnLowWatermark](const auto& future) -> TResponse
+        {
+            Y_DEFER
+            {
+                self->AdvancingLsnLowWatermark.store(
+                    false,
+                    std::memory_order_release);
+            };
 
-    LsnLowWatermark.store(lsnLowWatermark, std::memory_order_release);
-    return MakeFuture<TResponse>();
+            auto error = UnsafeExtractValue(future);
+            if (HasError(error)) {
+                TResponse response;
+                *response.MutableError() = std::move(error);
+                return response;
+            }
+
+            self->LsnLowWatermark.store(
+                lsnLowWatermark,
+                std::memory_order_release);
+            return TResponse();
+        });
 }
 
 TFuture<TResultOrError<NCloud::NProto::TJournalRecord>>

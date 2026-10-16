@@ -188,16 +188,16 @@ TResultOrError<IJournalledDevicePtr> TJournalledDeviceV2Factory::Create(
                              << MinLogMetaBlockCount << " blocks");
     }
 
-    if (logMetaBlockCount >= logDataBlockCount ||
-        logDataBlockCount >= dataBlockCount)
+    if (logMetaBlockCount > logDataBlockCount ||
+        logDataBlockCount > dataBlockCount)
     {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "the journal metadata (" << logMetaBlockCount
-                << " blocks) must be smaller than the journal data ("
-                << logDataBlockCount << " blocks), which must be smaller "
-                << "than the data (" << dataBlockCount << " blocks)");
+                << " blocks) must not exceed the journal data ("
+                << logDataBlockCount << " blocks), which must not exceed "
+                << "the data (" << dataBlockCount << " blocks)");
     }
 
     auto createAdapter = [&](ui64 firstBlockIndex, ui64 regionBlockCount)
