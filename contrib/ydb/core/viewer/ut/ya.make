@@ -22,6 +22,7 @@ PEERDIR(
     library/cpp/http/simple
     contrib/ydb/core/testlib/default
     contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+    yql/essentials/sql/v1
 )
 
 END()

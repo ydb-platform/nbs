@@ -5,6 +5,7 @@ FORK_SUBTESTS()
 SIZE(MEDIUM)
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/testing/unittest
