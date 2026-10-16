@@ -56,6 +56,7 @@ func newStorage(
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
+			config.GetFollowerChunksTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,
@@ -67,6 +68,7 @@ func newStorage(
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
+			config.GetFollowerChunksTableName(),
 			metrics,
 			map[string]uint32{
 				"gzip": 0,

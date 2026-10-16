@@ -2418,6 +2418,50 @@ func TestBackupChunkDeleteQueue(t *testing.T) {
 	}
 }
 
+// The last unref queues for deletion only the chunks known to the follower
+// chunks table of the storage: a chunk of the old follower is left alone.
+func TestBackupChunkDeleteQueueTakesFollowerChunksTableOfConfig(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			useS3 := testCase.useS3
+			second := f.storageWithFollowerChunksTable("follower_chunks_second")
+
+			ofFirst := createSnapshotWithChunk(f, "snap1", useS3)
+			ofSecond := createSnapshotWithChunk(f, "snap2", useS3)
+
+			err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", []BackupChunkQueueEntry{{
+				SnapshotID:   "snap1",
+				ChunkID:      ofFirst,
+				StoredInS3:   useS3,
+				EncryptedDEK: []byte("dek"),
+			}})
+			require.NoError(t, err)
+			err = second.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{{
+				SnapshotID:   "snap2",
+				ChunkID:      ofSecond,
+				StoredInS3:   useS3,
+				EncryptedDEK: []byte("dek"),
+			}})
+			require.NoError(t, err)
+
+			// Both snapshots are deleted by the storage of the second follower.
+			for _, snapshotID := range []string{"snap1", "snap2"} {
+				_, err = second.DeletingSnapshot(f.ctx, snapshotID, "delete")
+				require.NoError(t, err)
+				err = second.DeleteSnapshotData(f.ctx, snapshotID)
+				require.NoError(t, err)
+			}
+
+			got, err := second.GetBackupChunksToDelete(f.ctx, 10)
+			require.NoError(t, err)
+			require.Equal(t, []string{ofSecond}, got)
+		})
+	}
+}
+
 // A worker that copied a chunk after the chunk was deleted does not mark it
 // as copied: the follower object is queued for deletion already.
 func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
