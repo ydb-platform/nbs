@@ -856,6 +856,77 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         UNIT_ASSERT(!ExecuteRequest("backupvolume", argv, client));
     }
+
+    Y_UNIT_TEST(CreateVolumeLinkShouldWorkWithoutFollowerCellId)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        TString leaderDiskId;
+        TString followerDiskId;
+        TString followerCellId;
+
+        client->CreateVolumeLinkHandler = [&](auto request)
+        {
+            leaderDiskId = request->GetLeaderDiskId();
+            followerDiskId = request->GetFollowerDiskId();
+            followerCellId = request->GetFollowerCellId();
+
+            NProto::TCreateVolumeLinkResponse response;
+            *response.MutableError() = MakeError(S_OK);
+            return MakeFuture(response);
+        };
+
+        TVector<TString> argv;
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(
+            TStringBuilder() << "--leader-disk-id="
+                             << "leader_disk_id");
+        argv.emplace_back(
+            TStringBuilder() << "--follower-disk-id="
+                             << "follower_disk_id");
+
+        UNIT_ASSERT(ExecuteRequest("createvolumelink", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL("leader_disk_id", leaderDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("follower_disk_id", followerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("", followerCellId);
+    }
+
+    Y_UNIT_TEST(CreateVolumeLinkShouldWorkWithFollowerCellId)
+    {
+        auto client = std::make_shared<TTestService>();
+
+        TString leaderDiskId;
+        TString followerDiskId;
+        TString followerCellId;
+
+        client->CreateVolumeLinkHandler = [&](auto request)
+        {
+            leaderDiskId = request->GetLeaderDiskId();
+            followerDiskId = request->GetFollowerDiskId();
+            followerCellId = request->GetFollowerCellId();
+
+            NProto::TCreateVolumeLinkResponse response;
+            *response.MutableError() = MakeError(S_OK);
+            return MakeFuture(response);
+        };
+
+        TVector<TString> argv;
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back(
+            TStringBuilder() << "--leader-disk-id="
+                             << "leader_disk_id");
+        argv.emplace_back(
+            TStringBuilder() << "--follower-disk-id="
+                             << "follower_disk_id");
+        argv.emplace_back(
+            TStringBuilder() << "--follower-cell-id="
+                             << "follower_cell_id");
+
+        UNIT_ASSERT(ExecuteRequest("createvolumelink", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL("leader_disk_id", leaderDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("follower_disk_id", followerDiskId);
+        UNIT_ASSERT_VALUES_EQUAL("follower_cell_id", followerCellId);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

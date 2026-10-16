@@ -20,6 +20,7 @@ class TCreateVolumeLinkCommand final: public TCommand
 private:
     TString LeaderDiskId;
     TString FollowerDiskId;
+    TString FollowerCellId;
 
 public:
     explicit TCreateVolumeLinkCommand(IBlockStorePtr client)
@@ -32,6 +33,12 @@ public:
         Opts.AddLongOption("follower-disk-id", "follower volume identifier")
             .RequiredArgument("STR")
             .StoreResult(&FollowerDiskId);
+
+        Opts.AddLongOption(
+                "follower-cell-id",
+                "follower volume cell id, default is same cell as leader")
+            .OptionalArgument("STR")
+            .StoreResult(&FollowerCellId);
     }
 
 protected:
@@ -51,6 +58,7 @@ protected:
         } else {
             request->SetLeaderDiskId(LeaderDiskId);
             request->SetFollowerDiskId(FollowerDiskId);
+            request->SetFollowerCellId(FollowerCellId);
         }
 
         STORAGE_DEBUG("Sending CreateVolumeLink request");
