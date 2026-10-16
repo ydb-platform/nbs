@@ -1005,8 +1005,6 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesSSD() const;
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
-
-    [[nodiscard]] bool GetDiskRegistrySuspendSecureErase() const;
 };
 
 ui64 GetAllocationUnit(

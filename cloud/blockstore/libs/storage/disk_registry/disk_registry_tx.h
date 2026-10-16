@@ -68,6 +68,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
     xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
+    xxx(SuspendSecureErase,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -782,6 +783,30 @@ struct TTxDiskRegistry
         NProto::TError Error;
 
         TWritableState(
+                TRequestInfoPtr requestInfo,
+                bool state)
+            : RequestInfo(std::move(requestInfo))
+            , State(state)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
+        }
+    };
+
+    //
+    // SuspendSecureErase
+    //
+
+    struct TSuspendSecureErase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const bool State;
+
+        NProto::TError Error;
+
+        TSuspendSecureErase(
                 TRequestInfoPtr requestInfo,
                 bool state)
             : RequestInfo(std::move(requestInfo))

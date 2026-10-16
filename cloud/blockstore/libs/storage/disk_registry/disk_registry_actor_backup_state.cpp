@@ -33,6 +33,8 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
         record.MutableMemoryBackup()->CopyFrom(State->BackupState());
         record.MutableMemoryBackup()->MutableConfig()->SetWritableState(
             CurrentState != STATE_READ_ONLY);
+        record.MutableMemoryBackup()->MutableConfig()->SetSuspendSecureErase(
+            State->IsSecureEraseSuspended());
 
         auto response = std::make_unique<
             TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
@@ -66,6 +68,8 @@ bool TDiskRegistryActor::PrepareBackupDiskRegistryState(
         args.MemorySnapshot = State->BackupState();
         args.MemorySnapshot.MutableConfig()->SetWritableState(
             CurrentState != STATE_READ_ONLY);
+        args.MemorySnapshot.MutableConfig()->SetSuspendSecureErase(
+            State->IsSecureEraseSuspended());
     }
 
     TDiskRegistryDatabase db(tx.DB);
@@ -114,7 +118,8 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        suspendSecureErase
     ] = args.Snapshot;
 
     auto copy = [] (auto& src, auto* dst) {
@@ -184,6 +189,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     backup.MutableConfig()->Swap(&config);
     backup.MutableConfig()->SetLastDiskStateSeqNo(lastDiskStateSeqNo);
     backup.MutableConfig()->SetWritableState(writableState);
+    backup.MutableConfig()->SetSuspendSecureErase(suspendSecureErase);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

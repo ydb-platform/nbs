@@ -40,6 +40,7 @@ SRCS(
     disk_registry_actor_placement.cpp
     disk_registry_actor_publish_disk_state.cpp
     disk_registry_actor_writable_state.cpp
+    disk_registry_actor_suspend_secure_erase.cpp
     disk_registry_actor_purge_device_cms.cpp
     disk_registry_actor_purge_host_cms.cpp
     disk_registry_actor_query_agents_info.cpp

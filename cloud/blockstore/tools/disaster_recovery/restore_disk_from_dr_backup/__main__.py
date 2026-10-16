@@ -179,6 +179,14 @@ def request_payload(request, disk_id):
         ) from exc
 
 
+def suspend_secure_erase():
+    send_request(
+        "DiskRegistrySuspendSecureErase",
+        {"state": True},
+        "disk registry",
+    )
+
+
 def send_request(action, request, disk_id):
     args = [
         "blockstore-client", "executeaction",
@@ -273,6 +281,13 @@ def run(old_backup_path, current_backup_path, disk_ids, dry_run):
 
     restore_failed = []
     if not dry_run:
+        try:
+            suspend_secure_erase()
+        except Exception as exc:
+            print(f"Failed to suspend secure erase: {exc}", file=sys.stderr)
+            return 1
+        print("Secure erase suspended")
+
         for disk_id, action, request in disks_to_restore:
             try:
                 send_request(action, request, disk_id)
