@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package NCloud.NFileStore.NWriteBackCacheStateTool.NProto;
 
@@ -14,16 +14,61 @@ enum EStateFileType
 
 message TStateFileInfo
 {
-    string FilePath = 1;
-    string FileSystemId = 2;
-    string SessionId = 3;
-    EStateFileType FileType = 4;
-    uint64 FileSize = 5;
-    bool IsLocked = 6;
+    required string FilePath = 1;
+    required string FileSystemId = 2;
+    required string SessionId = 3;
+    required EStateFileType FileType = 4;
+    required uint64 FileSize = 5;
+    required bool IsLocked = 6;
 }
 
 message TStateFileList
 {
-    string StateDirectory = 1;
+    required string StateDirectory = 1;
     repeated TStateFileInfo Files = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TWriteDataRequestInfo
+{
+    required uint64 NodeId = 1;
+    required uint64 Handle = 2;
+    required uint64 Offset = 3;
+    required uint32 Size = 4;
+}
+
+message TStateFileHeader
+{
+    required uint32 Version = 1;
+    required uint32 HeaderSize = 2;
+    required uint64 MetadataOffset = 3;
+    required uint64 MetadataCapacity = 4;
+    required uint32 MetadataSize = 5;
+    required uint32 MetadataChecksum = 6;
+    required uint64 DataOffset = 7;
+    required uint64 DataCapacity = 8;
+    required uint64 ReadPos = 9;
+    required uint64 WritePos = 10;
+}
+
+message TStateFileEntry
+{
+    required uint32 DataSize = 1;
+    required uint32 DataChecksum = 2;
+    required uint32 Tag = 3;
+    required bool FreeFlag = 4;
+    optional uint32 ActualDataChecksum = 5;
+    required uint64 EntryPos = 6;
+    optional TWriteDataRequestInfo WriteDataRequestInfo = 7;
+}
+
+message TStateFileDump
+{
+    required uint32 Checksum = 1;
+    required bool IsCorrupted = 2;
+    optional uint32 ActualMetadataChecksum = 3;
+    optional TStateFileHeader Header = 4;
+    repeated TStateFileEntry Entries = 5;
+    optional string ValidationError = 6;
 }
