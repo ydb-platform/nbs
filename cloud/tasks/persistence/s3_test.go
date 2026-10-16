@@ -317,7 +317,7 @@ func TestS3ShouldRetryRequests(t *testing.T) {
 
 func TestS3AttemptLimiterSpacesAttempts(t *testing.T) {
 	ctx := newContext()
-	limiter := newS3AttemptLimiter(100)
+	limiter := newS3AttemptLimiter(0, 100, nil)
 
 	start := time.Now()
 	for i := 0; i < 5; i++ {
@@ -330,7 +330,7 @@ func TestS3AttemptLimiterSpacesAttempts(t *testing.T) {
 
 func TestS3AttemptLimiterStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
-	limiter := newS3AttemptLimiter(1)
+	limiter := newS3AttemptLimiter(0, 1, nil)
 
 	require.NoError(t, limiter.wait(ctx))
 
@@ -340,7 +340,7 @@ func TestS3AttemptLimiterStopsOnCancel(t *testing.T) {
 }
 
 func TestS3AttemptLimiterGivesBackSlotsOfCancelledWaits(t *testing.T) {
-	limiter := newS3AttemptLimiter(10)
+	limiter := newS3AttemptLimiter(0, 10, nil)
 
 	// Fifty waits line up for five seconds and are cancelled.
 	ctx, cancel := context.WithCancel(newContext())
@@ -366,7 +366,7 @@ func TestS3AttemptLimiterGivesBackSlotsOfCancelledWaits(t *testing.T) {
 // no two attempts go at the same time, and the cancelled ones leave no gap.
 func TestS3AttemptLimiterKeepsPaceAcrossCancellations(t *testing.T) {
 	const interval = 50 * time.Millisecond
-	limiter := newS3AttemptLimiter(20)
+	limiter := newS3AttemptLimiter(0, 20, nil)
 
 	var mutex sync.Mutex
 	var sent []time.Time
@@ -411,8 +411,57 @@ func TestS3AttemptLimiterKeepsPaceAcrossCancellations(t *testing.T) {
 	require.Less(t, sent[6].Sub(sent[0]), 7*interval)
 }
 
+func TestS3AttemptLimiterAdaptsToThrottling(t *testing.T) {
+	var rates []float64
+	limiter := newS3AttemptLimiter(10, 100, func(rate float64) {
+		rates = append(rates, rate)
+	})
+	require.Equal(t, []float64{10}, rates)
+
+	start := limiter.adjustedAt
+	at := func(windows int) time.Time {
+		return start.Add(time.Duration(windows) * limiter.window)
+	}
+
+	// Within the window nothing changes.
+	limiter.interval(start.Add(limiter.window / 2))
+	require.Equal(t, 10.0, limiter.currentRate())
+
+	// A window without throttling adds the step.
+	limiter.interval(at(1))
+	require.Equal(t, 12.0, limiter.currentRate())
+
+	// A window with a throttled attempt cuts the rate by the factor.
+	limiter.onThrottle()
+	limiter.interval(at(2))
+	require.InDelta(t, 9.6, limiter.currentRate(), 0.001)
+
+	// Not below the minimum.
+	limiter.onThrottle()
+	limiter.interval(at(3))
+	require.Equal(t, 10.0, limiter.currentRate())
+
+	// Not above the maximum.
+	limiter.mutex.Lock()
+	limiter.rate = 99
+	limiter.mutex.Unlock()
+	limiter.interval(at(4))
+	require.Equal(t, 100.0, limiter.currentRate())
+
+	// Spacing follows the rate.
+	require.Equal(t, 10*time.Millisecond, limiter.interval(at(4)))
+	require.Equal(t, []float64{10, 12, 9.6, 10, 100}, rates)
+}
+
+func TestS3AttemptLimiterStaysFixedWithoutMinimum(t *testing.T) {
+	limiter := newS3AttemptLimiter(0, 50, nil)
+	limiter.onThrottle()
+	limiter.interval(limiter.adjustedAt.Add(2 * limiter.window))
+	require.Equal(t, 50.0, limiter.currentRate())
+}
+
 func TestS3AttemptLimiterIsNilForZeroRate(t *testing.T) {
-	require.Nil(t, newS3AttemptLimiter(0))
+	require.Nil(t, newS3AttemptLimiter(0, 0, nil))
 }
 
 // Answers SlowDown to the first throttled requests and records when every
@@ -463,6 +512,111 @@ func TestS3ShouldRejectThrottleRetryDelaysThatPanicTheSDK(t *testing.T) {
 	}
 }
 
+// Throttles every attempt past a quota per 100 ms, like a storage with a
+// request quota.
+type quotaS3 struct {
+	quotaPerBucket int
+
+	mutex     sync.Mutex
+	bucket    int64
+	inBucket  int
+	attempts  int
+	throttled int
+}
+
+func (s *quotaS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mutex.Lock()
+	bucket := time.Now().UnixNano() / int64(100*time.Millisecond)
+	if bucket != s.bucket {
+		s.bucket = bucket
+		s.inBucket = 0
+	}
+	s.inBucket++
+	s.attempts++
+	throttle := s.inBucket > s.quotaPerBucket
+	if throttle {
+		s.throttled++
+	}
+	s.mutex.Unlock()
+
+	if throttle {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(
+			"<Error><Code>SlowDown</Code><Message>slow down</Message></Error>",
+		))
+		return
+	}
+
+	w.Header().Set("ETag", `"etag"`)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *quotaS3) counts() (int, int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return s.attempts, s.throttled
+}
+
+func TestS3AdaptiveLimiterSettlesUnderQuota(t *testing.T) {
+	ctx := newContext()
+
+	// 5 per 100 ms: a quota of 50 attempts per second.
+	storage := &quotaS3{quotaPerBucket: 5}
+	server := httptest.NewServer(storage)
+	defer server.Close()
+
+	s3, err := NewS3Client(
+		server.URL,
+		"region",
+		NewS3Credentials("test", "test"),
+		10*time.Second, // callTimeout
+		empty.NewRegistry(),
+		10,  // maxRetriableErrorCount
+		nil, // availabilityMonitoring
+		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
+		WithS3PutObjectAttemptsPerSecond(10, 200),
+		WithS3ThrottleRetryDelays(time.Millisecond, 2*time.Millisecond),
+	)
+	require.NoError(t, err)
+
+	// Short windows, so that the rate settles within the test.
+	s3.putObjectLimiter.window = 50 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	var puts sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		puts.Add(1)
+		go func() {
+			defer puts.Done()
+			for ctx.Err() == nil {
+				_ = s3.PutObject(ctx, "bucket", "key", S3Object{Data: []byte("x")})
+			}
+		}()
+	}
+
+	// After the climb from 10 the rate hovers below the quota.
+	time.Sleep(1500 * time.Millisecond)
+	attemptsBefore, throttledBefore := storage.counts()
+	time.Sleep(400 * time.Millisecond)
+	attemptsAfter, throttledAfter := storage.counts()
+	cancel()
+	puts.Wait()
+
+	rate := s3.putObjectLimiter.currentRate()
+	require.GreaterOrEqual(t, rate, 30.0)
+	require.LessOrEqual(t, rate, 60.0)
+
+	// Settled: throttled attempts are a small share.
+	attempts := attemptsAfter - attemptsBefore
+	throttled := throttledAfter - throttledBefore
+	require.Greater(t, attempts, 0)
+	require.Less(t, float64(throttled)/float64(attempts), 0.3)
+}
+
 func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 	ctx := newContext()
 
@@ -480,7 +634,7 @@ func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
 		0,   // maxIdleConnsPerHost
-		WithS3PutObjectAttemptsPerSecond(20),
+		WithS3PutObjectAttemptsPerSecond(0, 20),
 		WithS3ThrottleRetryDelays(time.Millisecond, 2*time.Millisecond),
 	)
 	require.NoError(t, err)

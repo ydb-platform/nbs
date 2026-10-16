@@ -2,6 +2,7 @@ package images
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -16,7 +17,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,6 +111,10 @@ func TestBackupImageTask(t *testing.T) {
 		state: &protos.BackupImageTaskState{},
 	}
 
+	// What the copy does last: the meta is in the follower before the wait
+	// ends.
+	putMeta(t, ctx, backupS3, backup.ImageMetaKey("image1"), "image1")
+
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	require.Equal(t, "dataplane1", task.state.DataplaneTaskID)
@@ -115,11 +122,8 @@ func TestBackupImageTask(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 2)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	// The copy writes the meta while it holds the source; the task only
-	// passes it.
+	// The task only passes the meta to the copy.
 	require.Equal(t, backup.ImageMetaKey("image1"), scheduledMetaKey)
-	_, err = backupS3.GetObject(ctx, scheduledMetaKey)
-	require.Error(t, err)
 
 	var meta backup.ImageMeta
 	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
@@ -216,6 +220,10 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 		},
 	}
 
+	// What the copy does last: the meta is in the follower before the wait
+	// ends.
+	putMeta(t, ctx, backupS3, backup.ImageMetaKey("image1"), "image1")
+
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	require.Equal(t, preset, task.state.EncryptedDek)
@@ -298,14 +306,16 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 		state: &protos.BackupImageTaskState{},
 	}
 
+	// What the copy does last: the meta is in the follower before the wait
+	// ends.
+	putMeta(t, ctx, backupS3, backup.ImageMetaKey("image1"), "image1")
+
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	require.Empty(t, task.state.EncryptedDek)
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	_, err = backupS3.GetObject(ctx, backup.ImageMetaKey("image1"))
-	require.Error(t, err)
 }
 
 func TestBackupImageTaskCancelsItsCopy(t *testing.T) {
@@ -420,4 +430,92 @@ func TestBackupImageTaskSkipsBackedUpImage(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 	)
+}
+
+func TestBackupImageTaskDoesNotMarkBackupWithoutMeta(t *testing.T) {
+	ctx := test.NewContext()
+
+	s3, err := test.NewS3Client()
+	require.NoError(t, err)
+
+	exists, err := s3.BucketExists(ctx, backupTestBucket)
+	require.NoError(t, err)
+	if !exists {
+		err = s3.CreateBucket(ctx, backupTestBucket)
+		require.NoError(t, err)
+	}
+
+	image := &resources.ImageMeta{ID: "image1", Ready: true}
+
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	execCtx.On("GetTaskID").Return("backup1")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.BackupSnapshotData",
+		"",
+		mock.Anything,
+	).Return("dataplane1", nil)
+	// The copy ends well, but leaves no meta: a copy of an older build.
+	scheduler.On(
+		"WaitTask",
+		mock.Anything,
+		execCtx,
+		"dataplane1",
+	).Return(&empty.Empty{}, nil)
+
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
+	)
+	require.NoError(t, err)
+
+	task := &backupImageTask{
+		scheduler: scheduler,
+		storage:   storage,
+		backupS3:  backupS3,
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{},
+	}
+
+	// Not marked and not removed from the queue: the storage mock expects
+	// neither.
+	err = task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Writes the meta of an image to the follower, as the copy does last: under a
+// DEK of its own, the kek of backupS3 opens it.
+func putMeta(
+	t *testing.T,
+	ctx context.Context,
+	backupS3 *backup.S3,
+	key string,
+	id string,
+) {
+
+	dek, err := backupS3.EnsureEncryptedDEK(nil)
+	require.NoError(t, err)
+
+	data, err := json.Marshal(backup.ImageMeta{ID: id})
+	require.NoError(t, err)
+
+	err = backupS3.PutObject(ctx, key, dek, persistence.S3Object{Data: data})
+	require.NoError(t, err)
 }

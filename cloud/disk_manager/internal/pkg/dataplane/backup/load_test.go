@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"testing"
@@ -248,4 +249,42 @@ func TestLoadBackupMissingAndInvalidObjects(t *testing.T) {
 			},
 		)
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCheckSnapshotMeta(t *testing.T) {
+	ctx := context.Background()
+	r := newFakeObjectReader()
+	key := SnapshotMetaKey("disk", "snapshot")
+
+	// No meta: the backup is not complete.
+	err := CheckSnapshotMeta(ctx, r, "disk", "snapshot")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// A meta of another snapshot under the key.
+	r.objects[key] = persistence.S3Object{Data: []byte(`{"id": "other"}`)}
+	err = CheckSnapshotMeta(ctx, r, "disk", "snapshot")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Not a meta.
+	r.objects[key] = persistence.S3Object{Data: []byte("garbage")}
+	err = CheckSnapshotMeta(ctx, r, "disk", "snapshot")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	r.objects[key] = persistence.S3Object{Data: []byte(`{"id": "snapshot"}`)}
+	require.NoError(t, CheckSnapshotMeta(ctx, r, "disk", "snapshot"))
+}
+
+func TestCheckImageMeta(t *testing.T) {
+	ctx := context.Background()
+	r := newFakeObjectReader()
+
+	err := CheckImageMeta(ctx, r, "image")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	r.objects[ImageMetaKey("image")] = persistence.S3Object{
+		Data: []byte(`{"id": "image"}`),
+	}
+	require.NoError(t, CheckImageMeta(ctx, r, "image"))
 }

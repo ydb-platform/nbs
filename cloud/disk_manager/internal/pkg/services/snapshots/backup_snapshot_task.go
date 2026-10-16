@@ -124,6 +124,18 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
+	// The copy ends with the meta. A copy that ended without it, such as a
+	// copy of an older build, left the backup incomplete: it is not marked.
+	err = backup.CheckSnapshotMeta(
+		ctx,
+		t.backupS3,
+		meta.Disk.DiskId,
+		snapshotID,
+	)
+	if err != nil {
+		return err
+	}
+
 	// Marks only a ready snapshot: if deletion won before the copy took its
 	// hold, the snapshot is already deleting and the copy copied nothing.
 	err = t.storage.SnapshotBackupCompleted(ctx, snapshotID)
