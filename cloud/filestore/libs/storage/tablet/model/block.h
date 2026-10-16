@@ -18,7 +18,7 @@ namespace NCloud::NFileStore::NStorage {
 constexpr ui32 MaxBlocksCount = 1024;
 
 constexpr ui32 NodeGroupSize = 16;
-constexpr ui32 BlockGroupSize = 64;
+constexpr ui32 BlockGroupSize = 256;
 
 ////////////////////////////////////////////////////////////////////////////////
 
