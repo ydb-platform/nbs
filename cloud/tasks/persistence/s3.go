@@ -45,12 +45,45 @@ func withComponentLoggingField(ctx context.Context) context.Context {
 type s3ClientRetryer struct {
 	client.DefaultRetryer
 	metrics *s3Metrics
+	// Set when requests go through the proxies of the storage.
+	proxies         *s3ProxyChooser
+	proxyMaxRetries uint64
 }
 
 func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
 	r.metrics.OnRetry(req)
 
 	return r.DefaultRetryer.RetryRules(req)
+}
+
+// A 5xx or no answer through a proxy means the proxy may be gone: the next
+// attempt takes another one, and a few retries are enough, as the storage
+// asks. Throttling is about the quota, not the proxy, and keeps its retries.
+func (r *s3ClientRetryer) ShouldRetry(req *request.Request) bool {
+	retry := r.DefaultRetryer.ShouldRetry(req)
+	if r.proxies == nil || isThrottled(req) {
+		return retry
+	}
+
+	if req.HTTPResponse == nil || req.HTTPResponse.StatusCode >= 500 {
+		r.proxies.discard()
+		return retry && uint64(req.RetryCount) < r.proxyMaxRetries
+	}
+
+	return retry
+}
+
+// The storage refused the attempt for its quota: 429, or SlowDown and the
+// like in the error. Unlike the SDK, 502/503/504 alone do not count: a
+// gateway in the way answers them for reasons of its own.
+func isThrottled(req *request.Request) bool {
+	if req.HTTPResponse != nil &&
+		req.HTTPResponse.StatusCode == http.StatusTooManyRequests {
+
+		return true
+	}
+
+	return request.IsErrorThrottle(req.Error)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,6 +156,15 @@ type s3ClientOptions struct {
 	putObjectAttemptsPerSecond uint64
 	minThrottleRetryDelay      time.Duration
 	maxThrottleRetryDelay      time.Duration
+	proxy                      *s3ProxyOptions
+}
+
+type s3ProxyOptions struct {
+	hostnameURL     string
+	httpPort        uint32
+	httpsPort       uint32
+	refreshInterval time.Duration
+	maxRetries      uint64
 }
 
 // S3ClientOption changes only clients whose callers explicitly opt in.
@@ -172,6 +214,30 @@ func WithS3ThrottleRetryDelays(minDelay, maxDelay time.Duration) S3ClientOption 
 	}
 }
 
+// WithS3Proxies sends the requests past the L3 balancer of the storage,
+// straight to its proxies: hostnameURL names a proxy, kept for
+// refreshInterval; httpPort and httpsPort are its ports for the two
+// schemes. A 5xx or no answer through a proxy drops it and is retried at
+// most maxRetries times, each time through another proxy.
+func WithS3Proxies(
+	hostnameURL string,
+	httpPort uint32,
+	httpsPort uint32,
+	refreshInterval time.Duration,
+	maxRetries uint64,
+) S3ClientOption {
+
+	return func(options *s3ClientOptions) {
+		options.proxy = &s3ProxyOptions{
+			hostnameURL:     hostnameURL,
+			httpPort:        httpPort,
+			httpsPort:       httpsPort,
+			refreshInterval: refreshInterval,
+			maxRetries:      maxRetries,
+		}
+	}
+}
+
 func NewS3Client(
 	endpoint string,
 	region string,
@@ -204,6 +270,15 @@ func NewS3Client(
 		availabilityMonitoring,
 	)
 
+	retryer := &s3ClientRetryer{
+		DefaultRetryer: client.DefaultRetryer{
+			NumMaxRetries:    int(maxRetriableErrorCount),
+			MinThrottleDelay: clientOptions.minThrottleRetryDelay,
+			MaxThrottleDelay: clientOptions.maxThrottleRetryDelay,
+		},
+		metrics: s3Metrics,
+	}
+
 	sessionConfig := &aws.Config{
 		Credentials: aws_credentials.NewStaticCredentials(
 			credentials.ID,
@@ -215,20 +290,32 @@ func NewS3Client(
 		S3ForcePathStyle: aws.Bool(
 			true,
 		), // otherwise, we get DNS DDOS errors in tests
-		Retryer: &s3ClientRetryer{
-			DefaultRetryer: client.DefaultRetryer{
-				NumMaxRetries:    int(maxRetriableErrorCount),
-				MinThrottleDelay: clientOptions.minThrottleRetryDelay,
-				MaxThrottleDelay: clientOptions.maxThrottleRetryDelay,
-			},
-
-			metrics: s3Metrics,
-		},
+		Retryer: retryer,
 	}
 
-	var transport = http.DefaultTransport
-	if maxIdleConnsPerHost != 0 {
-		transport = newS3HTTPTransport(maxIdleConnsPerHost)
+	var proxies *s3ProxyChooser
+	if clientOptions.proxy != nil {
+		proxies = newS3ProxyChooser(
+			clientOptions.proxy.hostnameURL,
+			clientOptions.proxy.httpPort,
+			clientOptions.proxy.httpsPort,
+			clientOptions.proxy.refreshInterval,
+			s3Metrics,
+		)
+		retryer.proxies = proxies
+		retryer.proxyMaxRetries = clientOptions.proxy.maxRetries
+	}
+
+	var transport http.RoundTripper = http.DefaultTransport
+	if maxIdleConnsPerHost != 0 || proxies != nil {
+		custom := http.DefaultTransport.(*http.Transport).Clone()
+		if maxIdleConnsPerHost != 0 {
+			custom = newS3HTTPTransport(maxIdleConnsPerHost)
+		}
+		if proxies != nil {
+			custom.Proxy = proxies.proxy
+		}
+		transport = custom
 		sessionConfig.HTTPClient = &http.Client{Transport: transport}
 	}
 
@@ -348,6 +435,26 @@ func NewS3ClientFromConfig(
 		minThrottleRetryDelay,
 		maxThrottleRetryDelay,
 	))
+
+	if len(config.GetProxyHostnameUrl()) != 0 {
+		refreshInterval, err := time.ParseDuration(
+			config.GetProxyRefreshInterval(),
+		)
+		if err != nil {
+			return nil, errors.NewNonRetriableErrorf(
+				"failed to parse ProxyRefreshInterval: %w",
+				err,
+			)
+		}
+
+		options = append(options, WithS3Proxies(
+			config.GetProxyHostnameUrl(),
+			config.GetProxyHttpPort(),
+			config.GetProxyHttpsPort(),
+			refreshInterval,
+			config.GetProxyMaxRetriableErrorCount(),
+		))
+	}
 
 	return NewS3Client(
 		config.GetEndpoint(),

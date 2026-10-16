@@ -39,6 +39,17 @@ message S3Config {
     // defaults, 500ms and 300s.
     optional string MinThrottleRetryDelay = 21;
     optional string MaxThrottleRetryDelay = 22;
+    // Sends requests past the L3 balancer of the storage, straight to its
+    // proxies: the handle names a proxy, e.g. http://s3.mds.yandex.net/hostname.
+    // Empty keeps the balancer.
+    optional string ProxyHostnameUrl = 24;
+    optional uint32 ProxyHttpPort = 25 [default = 4080];
+    optional uint32 ProxyHttpsPort = 26 [default = 4480];
+    // How long a proxy is kept before the handle is asked again.
+    optional string ProxyRefreshInterval = 27 [default = "10s"];
+    // Retries of a request that got a 5xx or no answer through a proxy, each
+    // through another proxy. Throttling keeps MaxRetriableErrorCount.
+    optional uint64 ProxyMaxRetriableErrorCount = 28 [default = 3];
 }
 
 message S3ControlPlaneConfig {

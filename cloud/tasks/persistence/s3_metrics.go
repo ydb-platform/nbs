@@ -134,6 +134,14 @@ func (m *s3Metrics) OnAttemptWait(name string, wait time.Duration) {
 	subRegistry.Counter("attemptWaitMs").Add(wait.Milliseconds())
 }
 
+func (m *s3Metrics) OnProxyRefresh() {
+	m.registry.Counter("proxy/refresh").Inc()
+}
+
+func (m *s3Metrics) OnProxyRefreshError() {
+	m.registry.Counter("proxy/refreshErrors").Inc()
+}
+
 func (m *s3Metrics) OnQuotaExceeded(ctx context.Context, name string) {
 	subRegistry := m.registry.WithTags(map[string]string{
 		"call": name,
