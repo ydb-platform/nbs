@@ -14,6 +14,24 @@ struct THandleStateTag;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECachedWriteDataRequestTag
+{
+    // No specific actions should be taken
+    Unflushed = 0,
+
+    // Handle associated with the request has been released.
+    // Attempts to flush the request should be made using another handle.
+    UnflushedHandleReleased = 1,
+
+    // Request has been flushed and should be evicted on restart
+    Flushed = 2,
+
+    // Used to validate deserialization
+    Max = Flushed
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <class T>
 class TWriteDataRequestBase: public TIntrusiveListItem<T>
 {
