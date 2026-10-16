@@ -366,9 +366,9 @@ func TestBackupChunksTaskLeavesUnreadableChunkInQueue(t *testing.T) {
 		queue,
 	)
 
-	err = storage.CheckBackupChunksCompleted(ctx, "snap1")
+	err = storage.CheckBackupChunksCompleted(ctx, "snap1", "")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snap2"))
+	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snap2", ""))
 
 	// The next task of the range reads it again.
 	task = newBackupChunksTask(unreadableStorage, follower)
@@ -461,9 +461,9 @@ func TestBackupChunksTaskMovesMissingChunkOutOfQueue(t *testing.T) {
 	require.Empty(t, queue)
 
 	// The backup of snap1 fails, the one of snap2 is complete.
-	err = storage.CheckBackupChunksCompleted(ctx, "snap1")
+	err = storage.CheckBackupChunksCompleted(ctx, "snap1", "")
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snap2"))
+	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snap2", ""))
 }
 
 func TestBackupChunksTaskEndsOnEmptyQueue(t *testing.T) {

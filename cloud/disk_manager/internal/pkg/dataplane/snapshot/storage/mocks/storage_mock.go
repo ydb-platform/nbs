@@ -332,9 +332,10 @@ func (s *StorageMock) ChunksBackupCompleted(
 func (s *StorageMock) CheckBackupChunksCompleted(
 	ctx context.Context,
 	snapshotID string,
+	taskID string,
 ) error {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, snapshotID, taskID)
 	return args.Error(0)
 }
 

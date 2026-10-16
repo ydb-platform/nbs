@@ -1724,7 +1724,7 @@ func (s *storageYDB) getQueuedChunksToBackup(
 		declare $last_shard_id as Uint64;
 		declare $limit as Uint64;
 
-		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
+		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek, task_id
 		from backup_chunk_queue
 		where shard_id >= $after_shard_id and shard_id <= $last_shard_id and (
 			shard_id > $after_shard_id or
@@ -1769,6 +1769,7 @@ func (s *storageYDB) getQueuedChunksToBackup(
 					"encrypted_dek",
 					&entry.EncryptedDEK,
 				),
+				persistence.OptionalWithDefault("task_id", &entry.TaskID),
 			)
 			if err != nil {
 				return nil, err
@@ -1978,31 +1979,41 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 func (s *storageYDB) CheckBackupChunksCompleted(
 	ctx context.Context,
 	snapshotID string,
+	taskID string,
 ) (err error) {
 
 	defer s.metrics.StatOperation("CheckBackupChunksCompleted")(&err)
 
 	// A worker removes a chunk from the queue once it is in the follower, or
 	// moves it to backup_chunk_failures if it cannot be copied.
+	// Rows and failures without task_id come from an older build and count
+	// for every copy of the snapshot: a copy moves between nodes, so it may
+	// have queued its chunks on an older build, or an older worker may have
+	// failed its chunk. Missing them, the copy would see an empty queue and
+	// end without the chunk.
 	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
+		declare $task_id as Utf8;
 
 		select chunk_id, error
 		from backup_chunk_failures
-		where snapshot_id = $snapshot_id
+		where snapshot_id = $snapshot_id and
+			(task_id = $task_id or task_id is null)
 		limit 1;
 
 		select chunk_id
 		from backup_chunk_queue view snapshot_id_index
-		where snapshot_id = $snapshot_id
+		where snapshot_id = $snapshot_id and
+			(task_id = $task_id or task_id is null)
 		limit 1;
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$snapshot_id",
 			persistence.UTF8Value(snapshotID),
 		),
+		persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
 	)
 	if err != nil {
 		return err
@@ -2049,15 +2060,26 @@ func (s *storageYDB) BackupChunkFailed(
 		declare $shard_id as Uint64;
 		declare $snapshot_id as Utf8;
 		declare $chunk_id as Utf8;
+		declare $task_id as Utf8;
 		declare $error as Utf8;
 
-		delete from backup_chunk_queue
-		where shard_id = $shard_id and
-			snapshot_id = $snapshot_id and
-			chunk_id = $chunk_id;
+		-- The row of this copy: a copy that ended cleared it, and a later copy of
+		-- the snapshot rewrote it with its own task id.
+		$own = (
+			select shard_id, snapshot_id, chunk_id, task_id
+			from backup_chunk_queue
+			where shard_id = $shard_id and
+				snapshot_id = $snapshot_id and
+				chunk_id = $chunk_id and
+				coalesce(task_id, "") = $task_id
+		);
 
-		upsert into backup_chunk_failures (snapshot_id, chunk_id, error)
-		values ($snapshot_id, $chunk_id, $error);
+		upsert into backup_chunk_failures (snapshot_id, chunk_id, error, task_id)
+		select snapshot_id, chunk_id, $error as error, task_id
+		from $own;
+
+		delete from backup_chunk_queue
+		on select shard_id, snapshot_id, chunk_id from $own;
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$shard_id",
@@ -2071,6 +2093,7 @@ func (s *storageYDB) BackupChunkFailed(
 			"$chunk_id",
 			persistence.UTF8Value(entry.ChunkID),
 		),
+		persistence.ValueParam("$task_id", persistence.UTF8Value(entry.TaskID)),
 		persistence.ValueParam("$error", persistence.UTF8Value(message)),
 	)
 	return err

@@ -320,6 +320,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 				ChunkID:      chunk0,
 				StoredInS3:   true,
 				EncryptedDEK: follower.encryptedDEK,
+				TaskID:       "backup",
 			},
 		},
 		queue,
@@ -420,12 +421,14 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 				ChunkID:      chunk0,
 				StoredInS3:   true,
 				EncryptedDEK: follower.encryptedDEK,
+				TaskID:       "backup",
 			},
 			{
 				SnapshotID:   "snap1",
 				ChunkID:      chunk1,
 				StoredInS3:   true,
 				EncryptedDEK: follower.encryptedDEK,
+				TaskID:       "backup",
 			},
 		},
 		queue,
@@ -504,6 +507,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 				SnapshotID:   "snap1",
 				ChunkID:      chunkID,
 				EncryptedDEK: follower.encryptedDEK,
+				TaskID:       "backup",
 			},
 		},
 		queue,
@@ -818,7 +822,7 @@ func TestBackupSnapshotDataTaskFailsWhenChunkCannotBeCopied(t *testing.T) {
 
 	// The failed copy clears its chunks and releases the snapshot.
 	require.NoError(t, task.Cancel(ctx, execCtx))
-	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snapshot"))
+	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snapshot", "backup"))
 }
 
 // Fails reading a chunk, so the test sees which chunks a copy reads.

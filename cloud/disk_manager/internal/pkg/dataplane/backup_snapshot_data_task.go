@@ -215,6 +215,7 @@ func (t *backupSnapshotDataTask) enqueueChunks(
 			ChunkID:      entry.ChunkID,
 			StoredInS3:   entry.StoredInS3,
 			EncryptedDEK: t.request.EncryptedDek,
+			TaskID:       execCtx.GetTaskID(),
 		})
 
 		if len(batch) >= t.batchSize {
@@ -237,10 +238,15 @@ func (t *backupSnapshotDataTask) enqueueChunks(
 
 func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	ctx context.Context,
+	execCtx tasks.ExecutionContext,
 	snapshotID string,
 ) error {
 
-	err := t.storage.CheckBackupChunksCompleted(ctx, snapshotID)
+	err := t.storage.CheckBackupChunksCompleted(
+		ctx,
+		snapshotID,
+		execCtx.GetTaskID(),
+	)
 	if errors.Is(err, errors.NewInterruptExecutionError()) {
 		logging.Debug(
 			ctx,
@@ -302,7 +308,7 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 		return nil
 	}
 
-	err := t.waitForChunksBackupCompleted(ctx, meta.ID)
+	err := t.waitForChunksBackupCompleted(ctx, execCtx, meta.ID)
 	if err != nil {
 		return err
 	}

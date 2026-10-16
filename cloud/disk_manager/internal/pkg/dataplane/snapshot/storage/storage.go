@@ -45,6 +45,8 @@ type BackupChunkQueueEntry struct {
 	ChunkID      string
 	StoredInS3   bool
 	EncryptedDEK []byte
+	// Id of the copy task that queued the chunk.
+	TaskID string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -217,11 +219,20 @@ type Storage interface {
 	) (shardID uint64, found bool, err error)
 
 	// Returns a non-retriable error if a chunk of the snapshot could not be
-	// copied, and InterruptExecutionError while a chunk of it is queued.
-	CheckBackupChunksCompleted(ctx context.Context, snapshotID string) error
+	// copied, and InterruptExecutionError while a chunk of it is queued. Looks
+	// only at the rows of the copy with taskID; rows and failures without
+	// task_id, written by older builds, count for every copy of the snapshot:
+	// a copy moves between nodes, so it may have queued its chunks on an
+	// older build.
+	CheckBackupChunksCompleted(
+		ctx context.Context,
+		snapshotID string,
+		taskID string,
+	) error
 
 	// Moves a chunk that cannot be copied, such as missing or corrupt data,
-	// out of the queue. The backup of its snapshot then fails.
+	// out of the queue. The backup of its snapshot then fails. Does nothing if
+	// the chunk is not queued or is queued by another copy.
 	BackupChunkFailed(
 		ctx context.Context,
 		entry BackupChunkQueueEntry,

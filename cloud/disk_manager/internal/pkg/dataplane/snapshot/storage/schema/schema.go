@@ -135,6 +135,8 @@ func Create(
 	// Keyed by a hash of the chunk so that copy tasks reading from a random
 	// shard_id take disjoint batches. Per-snapshot operations go through the
 	// snapshot_id index.
+	// A row belongs to the copy with its task_id, the one that queued the
+	// chunk; rows written before the column existed have it null.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
@@ -159,6 +161,10 @@ func Create(
 			persistence.WithColumn(
 				"encrypted_dek",
 				persistence.Optional(persistence.TypeString),
+			),
+			persistence.WithColumn(
+				"task_id",
+				persistence.Optional(persistence.TypeUTF8),
 			),
 			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
 			persistence.WithSecondaryKeyColumn("snapshot_id"),
@@ -216,7 +222,9 @@ func Create(
 	logging.Info(ctx, "Created backup_chunk_delete_queue table")
 
 	// Chunks that could not be copied to the follower: missing or corrupt
-	// data. The backup of their snapshot fails.
+	// data. The backup of the snapshot fails. A row belongs to the copy with
+	// its task_id, the one that failed on the chunk; rows written before the
+	// column existed have it null.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
@@ -225,6 +233,7 @@ func Create(
 			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithColumn("error", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("task_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
 		),
 		dropUnusedColumns,

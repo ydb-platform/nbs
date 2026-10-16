@@ -2009,14 +2009,14 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1", "")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
 	require.NoError(t, err)
 
-	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
-	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap2")
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1", ""))
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap2", "")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
@@ -2091,7 +2091,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
-	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3"))
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3", ""))
 }
 
 // A chunk copied to one follower is unknown to the table of another: a backup
@@ -2200,7 +2200,7 @@ func TestClearBackupChunks(t *testing.T) {
 	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
-	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1", ""))
 
 	// The next attempt enqueues the cleared chunk that was not copied; the
 	// copied ones are already in the follower.
@@ -2245,14 +2245,14 @@ func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:19])
 	require.NoError(t, err)
 
-	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1", "")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	cleared, err := f.storage.ClearBackupChunks(f.ctx, "snap1", 10)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleared)
 
-	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1", ""))
 }
 
 func TestReadChunkBlob(t *testing.T) {
@@ -2515,9 +2515,9 @@ func TestBackupChunkFailed(t *testing.T) {
 
 	// Snapshots A and B share chunk a.
 	entries := []BackupChunkQueueEntry{
-		{SnapshotID: "A", ChunkID: "t.a", EncryptedDEK: []byte("dek")},
-		{SnapshotID: "A", ChunkID: "t.c", EncryptedDEK: []byte("dek")},
-		{SnapshotID: "B", ChunkID: "t.a", EncryptedDEK: []byte("dek")},
+		{SnapshotID: "A", ChunkID: "t.a", EncryptedDEK: []byte("dek"), TaskID: "t1"},
+		{SnapshotID: "A", ChunkID: "t.c", EncryptedDEK: []byte("dek"), TaskID: "t1"},
+		{SnapshotID: "B", ChunkID: "t.a", EncryptedDEK: []byte("dek"), TaskID: "t1"},
 	}
 	err := f.storage.EnqueueBackupChunks(f.ctx, "A", entries[:2])
 	require.NoError(t, err)
@@ -2533,21 +2533,214 @@ func TestBackupChunkFailed(t *testing.T) {
 	require.ElementsMatch(t, []BackupChunkQueueEntry{entries[0], entries[2]}, got)
 
 	// The backup of A fails; B only waits for its chunk.
-	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1")
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.Contains(t, err.Error(), "t.c")
-	err = f.storage.CheckBackupChunksCompleted(f.ctx, "B")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "B", "t1")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	// Clearing A removes its queued and failed chunks, not those of B.
 	cleared, err := f.storage.ClearBackupChunks(f.ctx, "A", 10)
 	require.NoError(t, err)
 	require.Equal(t, 1, cleared)
-	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A"))
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1"))
 
 	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
+}
+
+// Writes a failure the way an older build does: without task_id.
+func writeFailureWithoutTaskID(
+	f *fixture,
+	snapshotID string,
+	chunkID string,
+	message string,
+) {
+
+	_, err := f.db.ExecuteRW(f.ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $chunk_id as Utf8;
+		declare $error as Utf8;
+
+		upsert into backup_chunk_failures (snapshot_id, chunk_id, error)
+		values ($snapshot_id, $chunk_id, $error);
+	`, f.db.AbsolutePath(f.config.GetStorageFolder())),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+		persistence.ValueParam("$error", persistence.UTF8Value(message)),
+	)
+	require.NoError(f.t, err)
+}
+
+func TestBackupChunkFailureOfAnotherCopyDoesNotFailTheCopy(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entry := BackupChunkQueueEntry{
+		SnapshotID:   "A",
+		ChunkID:      "t.a",
+		EncryptedDEK: []byte("dek"),
+		TaskID:       "t1",
+	}
+	err := f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"A",
+		[]BackupChunkQueueEntry{entry},
+	)
+	require.NoError(t, err)
+
+	err = f.storage.BackupChunkFailed(f.ctx, entry, "corrupt")
+	require.NoError(t, err)
+
+	// The failure fails the copy that wrote it, not the next copy of the
+	// snapshot.
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t2"))
+
+	// A failure without task_id may come from an older build that failed a
+	// chunk of any copy.
+	writeFailureWithoutTaskID(f, "A", "t.b", "corrupt")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t2")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Contains(t, err.Error(), "t.b")
+}
+
+func TestBackupChunkFailedOfEndedCopyKeepsTheNextCopy(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	first := BackupChunkQueueEntry{
+		SnapshotID:   "A",
+		ChunkID:      "t.a",
+		EncryptedDEK: []byte("dek"),
+		TaskID:       "t1",
+	}
+	second := first
+	second.TaskID = "t2"
+	err := f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"A",
+		[]BackupChunkQueueEntry{first},
+	)
+	require.NoError(t, err)
+	// The next copy queues the same chunk and rewrites the row.
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"A",
+		[]BackupChunkQueueEntry{second},
+	)
+	require.NoError(t, err)
+
+	// A late worker of the first copy changes nothing.
+	err = f.storage.BackupChunkFailed(f.ctx, first, "corrupt")
+	require.NoError(t, err)
+
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, []BackupChunkQueueEntry{second}, got)
+
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t2")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	// No failure was written for the first copy.
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1"))
+}
+
+// Writes a queue row the way an older build does: without task_id.
+func writeQueuedChunkWithoutTaskID(
+	f *fixture,
+	snapshotID string,
+	chunkID string,
+) {
+
+	_, err := f.db.ExecuteRW(f.ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $shard_id as Uint64;
+		declare $snapshot_id as Utf8;
+		declare $chunk_id as Utf8;
+		declare $stored_in_s3 as Bool;
+		declare $encrypted_dek as String;
+
+		upsert into backup_chunk_queue (
+			shard_id, snapshot_id, chunk_id, stored_in_s3, encrypted_dek
+		)
+		values (
+			$shard_id, $snapshot_id, $chunk_id, $stored_in_s3, $encrypted_dek
+		);
+	`, f.db.AbsolutePath(f.config.GetStorageFolder())),
+		persistence.ValueParam(
+			"$shard_id",
+			persistence.Uint64Value(makeShardID(chunkID)),
+		),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+		persistence.ValueParam("$stored_in_s3", persistence.BoolValue(false)),
+		persistence.ValueParam(
+			"$encrypted_dek",
+			persistence.StringValue([]byte("dek")),
+		),
+	)
+	require.NoError(f.t, err)
+}
+
+func TestBackupChunkQueuedByOlderBuildCountsForEveryCopy(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	writeQueuedChunkWithoutTaskID(f, "A", "t.a")
+
+	// A copy resumed on a newer build still waits for the chunk it queued.
+	err := f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	// A newer worker reads the row with an empty task id and fails it; the
+	// failure keeps the null task_id of the row, so every copy counts it.
+	err = f.storage.BackupChunkFailed(
+		f.ctx,
+		BackupChunkQueueEntry{SnapshotID: "A", ChunkID: "t.a"},
+		"corrupt",
+	)
+	require.NoError(t, err)
+
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Contains(t, err.Error(), "t.a")
+
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestBackupChunkFailedAfterClearWritesNothing(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entry := BackupChunkQueueEntry{
+		SnapshotID:   "A",
+		ChunkID:      "t.a",
+		EncryptedDEK: []byte("dek"),
+		TaskID:       "t1",
+	}
+	err := f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"A",
+		[]BackupChunkQueueEntry{entry},
+	)
+	require.NoError(t, err)
+
+	_, err = f.storage.ClearBackupChunks(f.ctx, "A", 10)
+	require.NoError(t, err)
+
+	// A worker that read the chunk before the clear reports it after.
+	err = f.storage.BackupChunkFailed(f.ctx, entry, "corrupt")
+	require.NoError(t, err)
+
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A", "t1"))
 }
 
 func TestGetQueuedChunksToBackupReadsShardRangeAfterCursor(t *testing.T) {
