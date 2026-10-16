@@ -1297,6 +1297,7 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<TVector<NProto::TDeviceConfig>> Replicas;
+        const TVector<TString> FreshDeviceIds;
         const bool Force;
         const bool KeepBlockCount;
 
@@ -1308,6 +1309,7 @@ struct TTxDiskRegistry
             ui32 blockSize,
             NProto::EStorageMediaKind mediaKind,
             TVector<TVector<NProto::TDeviceConfig>> replicas,
+            TVector<TString> freshDeviceIds,
             bool force,
             bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
@@ -1315,6 +1317,7 @@ struct TTxDiskRegistry
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Replicas(std::move(replicas))
+            , FreshDeviceIds(std::move(freshDeviceIds))
             , Force(force)
             , KeepBlockCount(keepBlockCount)
         {}

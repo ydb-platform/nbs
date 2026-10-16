@@ -60,6 +60,9 @@ message TCreateMirroredDiskFromDevicesRequest
 
     // If true, the block count will not be adjusted.
     bool KeepBlockCount = 5;
+
+    // Devices whose data has not been replicated yet.
+    repeated string FreshDeviceUUIDs = 6;
 }
 
 message TCreateMirroredDiskFromDevicesResponse

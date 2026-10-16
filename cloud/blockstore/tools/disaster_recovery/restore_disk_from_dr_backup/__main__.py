@@ -123,7 +123,31 @@ def build_nonreplicated_disk_request(old_disk, new_devices):
     )
 
 
-def build_mirrored_disk_request(old_master, replicas):
+def resolve_fresh_device_uuids(master, old_by_uuid, current_by_physical):
+    fresh_device_uuids = []
+    for uuid in master.DeviceReplacementUUIDs:
+        old_device = old_by_uuid.get(uuid)
+        if old_device is None:
+            raise RuntimeError(
+                f"fresh device {quote(uuid)} not found in old backup"
+            )
+
+        current_device = current_by_physical.get(
+            (old_device.SerialNumber, old_device.PhysicalOffset)
+        )
+        if current_device is None:
+            raise RuntimeError(
+                f"fresh device {quote(uuid)} with serial number "
+                f"{quote(old_device.SerialNumber)} and physical offset "
+                f"{old_device.PhysicalOffset} not found in current backup"
+            )
+
+        fresh_device_uuids.append(current_device.DeviceUUID)
+
+    return fresh_device_uuids
+
+
+def build_mirrored_disk_request(old_master, replicas, fresh_device_uuids):
     volume_config = {}
     if old_master.BlockSize:
         volume_config["blockSize"] = old_master.BlockSize
@@ -140,6 +164,7 @@ def build_mirrored_disk_request(old_master, replicas):
         ],
         "force": True,
         "keepBlockCount": True,
+        "freshDeviceUUIDs": fresh_device_uuids,
     }
 
 
@@ -184,6 +209,16 @@ def process_disk(
     if not old_disk.MasterDiskId:
         raise RuntimeError("mirrored disk has no master disk id")
 
+    master = disk_id_to_old_config.get(old_disk.MasterDiskId)
+    if master is None:
+        raise RuntimeError(
+            f"master disk {quote(old_disk.MasterDiskId)} not found in old backup"
+        )
+
+    fresh_device_uuids = resolve_fresh_device_uuids(
+        master, old_by_uuid, current_by_physical
+    )
+
     replicas = []
     for replica_index in range(old_disk.ReplicaCount + 1):
         replica_id = build_replica_id(disk_id, replica_index)
@@ -197,7 +232,10 @@ def process_disk(
             )
         )
 
-    return "CreateMirroredDiskFromDevices", build_mirrored_disk_request(old_disk, replicas)
+    return (
+        "CreateMirroredDiskFromDevices",
+        build_mirrored_disk_request(old_disk, replicas, fresh_device_uuids),
+    )
 
 
 def run(old_backup_path, current_backup_path, disk_ids, dry_run):

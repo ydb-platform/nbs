@@ -8439,11 +8439,33 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     return {};
 }
 
+namespace {
+
+bool ReplicaHasAllData(
+    const TVector<NProto::TDeviceConfig>& replica,
+    const THashSet<TString>& freshDeviceIds)
+{
+    if (replica.empty()) {
+        return false;
+    }
+
+    for (const auto& device: replica) {
+        if (freshDeviceIds.contains(device.GetDeviceUUID())) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+}   // namespace
+
 NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas)
+    const TVector<TVector<NProto::TDeviceConfig>>& replicas,
+    const TVector<TDeviceId>& freshDeviceIds)
 {
     NProto::EStorageMediaKind mediaKind = params.MediaKind;
 
@@ -8478,6 +8500,24 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             E_ARGUMENT,
             TStringBuilder()
                 << "disk " << masterId.Quote() << " invalid master disk");
+    }
+
+    const THashSet<TString> freshDeviceIdsSet(
+        freshDeviceIds.begin(),
+        freshDeviceIds.end());
+
+    const bool hasReplicaWithAllData = FindIfPtr(
+        replicas,
+        [&freshDeviceIdsSet] (const auto& replica) {
+            return ReplicaHasAllData(replica, freshDeviceIdsSet);
+        });
+
+    if (!hasReplicaWithAllData) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "mirrored disk " << masterId.Quote()
+                << " has no replica with all data replicated");
     }
 
     if (auto error = CreateMirroredDiskPlacementGroup(db, masterId);
@@ -8525,6 +8565,12 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         }
 
         ReplicaTable.UpdateReplica(masterId, i, deviceIds);
+
+        for (const auto& deviceId: deviceIds) {
+            if (freshDeviceIdsSet.contains(deviceId)) {
+                ReplicaTable.MarkReplacementDevice(masterId, deviceId, true);
+            }
+        }
     }
 
     master->LogicalBlockSize = params.BlockSize;
