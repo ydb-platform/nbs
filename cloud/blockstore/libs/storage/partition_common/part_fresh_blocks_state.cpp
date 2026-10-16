@@ -43,9 +43,7 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     ui64 commitId) const
 {
     TVector<ui64> commitIds;
-    for (const auto& [blobCommitId, blobSize]:
-         UnflushedFreshBlobByteCountByCommitId)
-    {
+    for (const auto& [blobCommitId, blob]: UnflushedFreshBlobsByCommitId) {
         if (blobCommitId > commitId) {
             break;
         }
@@ -54,7 +52,24 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+TInstant TPartitionFreshBlobState::GetLowestCommitIdFreshBlobTimestamp() const
+{
+    if (UnflushedFreshBlobsByCommitId.empty()) {
+        return TInstant::Max();
+    }
+    return UnflushedFreshBlobsByCommitId.begin()->second.Timestamp;
+}
+
+TDuration TPartitionFreshBlobState::GetLowestCommitIdFreshBlobAge(
+    TInstant now) const
+{
+    return now - GetLowestCommitIdFreshBlobTimestamp();
+}
+
+void TPartitionFreshBlobState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant timestamp)
 {
     {
         const bool inserted =
@@ -69,9 +84,13 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
     }
 
     {
-        const bool inserted =
-            UnflushedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
-                .second;
+        const bool inserted = UnflushedFreshBlobsByCommitId
+                                  .emplace(
+                                      commitId,
+                                      TUnflushedFreshBlob{
+                                          .ByteCount = blobSize,
+                                          .Timestamp = timestamp})
+                                  .second;
         STORAGE_VERIFY_C(
             inserted,
             TWellKnownEntityTypes::TABLET,
@@ -102,7 +121,7 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 
 ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
-    auto& blobs = UnflushedFreshBlobByteCountByCommitId;
+    auto& blobs = UnflushedFreshBlobsByCommitId;
 
     auto it = blobs.find(commitId);
     STORAGE_VERIFY_C(
@@ -111,7 +130,7 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
         TabletID,
         "Commit id: " << commitId);
 
-    ui64 blobSize = it->second;
+    ui64 blobSize = it->second.ByteCount;
 
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =

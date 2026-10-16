@@ -537,10 +537,13 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
 
-void TPartitionState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+void TPartitionState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant timestamp)
 {
     Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize);
+    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize, timestamp);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
@@ -963,6 +966,10 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
+        if (GetUnflushedFreshBlobCount() > 0) {
+            state["LowestCommitIdFreshBlobTimestamp"] =
+                GetLowestCommitIdFreshBlobTimestamp().MicroSeconds();
+        }
         state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);
         state["Cleanup"] = ToJson(CleanupState);

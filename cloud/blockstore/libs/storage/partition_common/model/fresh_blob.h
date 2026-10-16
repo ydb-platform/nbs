@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -65,15 +66,20 @@ public:
 
 TString BuildWriteFreshBlocksBlobContent(
     const TVector<TBlockRange32>& blockRanges,
-    const TVector<TGuardHolder>& guardHolders);
+    const TVector<TGuardHolder>& guardHolders,
+    TInstant timestamp);
 
-TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange);
+TString BuildZeroFreshBlocksBlobContent(
+    TBlockRange32 blockRange,
+    TInstant timestamp);
 
+// timestamp is set to TInstant::Zero() if the blob does not contain it.
 NProto::TError ParseFreshBlobContent(
     ui64 commitId,
     TPartialBlobId blobId,
     ui32 blockSize,
     const TString& buffer,
-    TVector<TOwningFreshBlock>& result);
+    TVector<TOwningFreshBlock>& result,
+    TInstant& timestamp);
 
 }   // namespace NCloud::NBlockStore::NStorage

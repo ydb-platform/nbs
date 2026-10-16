@@ -16,10 +16,11 @@ int main(int argc, char** argv)
         const auto blockRanges = GetBlockRanges();
         const auto holders = GetHolders(buffers);
 
+        // Zero timestamp keeps the canonical blob in the original layout.
         const auto blob = BuildWriteFreshBlocksBlobContent(
             blockRanges,
-            holders
-        );
+            holders,
+            TInstant::Zero());
 
         TFile file(
             "fresh_write.blob",
@@ -32,8 +33,8 @@ int main(int argc, char** argv)
         using namespace NCloud::NBlockStore::NStorage;
 
         const auto blob = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+            ZeroFreshBlocksRange,
+            TInstant::Zero());
 
         TFile file(
             "fresh_zero.blob",

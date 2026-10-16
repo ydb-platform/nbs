@@ -1654,6 +1654,73 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     }
 
+    Y_UNIT_TEST(ShouldRecoverFreshBlobTimestampsOnReboot)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto getLowestCommitIdTimestamp = [&]()
+        {
+            auto partitionInfo = partition.GetPartitionInfo();
+            auto value =
+                NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+            const auto& state = value["State"];
+            if (!state.Has("LowestCommitIdFreshBlobTimestamp")) {
+                return TInstant::Max();
+            }
+            return TInstant::MicroSeconds(
+                state["LowestCommitIdFreshBlobTimestamp"].GetUInteger());
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(), getLowestCommitIdTimestamp());
+
+        const auto zeroTime = runtime->GetCurrentTime();
+        partition.ZeroBlocks(1);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        const auto writeTime = runtime->GetCurrentTime();
+        partition.WriteBlocks(2, 2);
+
+        const auto lowestCommitIdTimestamp = getLowestCommitIdTimestamp();
+        UNIT_ASSERT_GE(lowestCommitIdTimestamp, zeroTime);
+        UNIT_ASSERT_LT(lowestCommitIdTimestamp, writeTime);
+
+        // Prevent flush after reboot to keep fresh blobs in the partition.
+        ui32 droppedFlushRequests = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest) {
+                    ++droppedFlushRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+        partition.RebootTablet();
+        partition.WaitReady();
+        UNIT_ASSERT_GT(droppedFlushRequests, 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            lowestCommitIdTimestamp,
+            getLowestCommitIdTimestamp());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
     Y_UNIT_TEST(ShouldRecoverBlocksOnRebootFromFreshChannelWithLongHistory)
     {
         const ui32 blockCount = 1024;
@@ -1731,7 +1798,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto holders = GetHolders(buffers);
             auto blob = BuildWriteFreshBlocksBlobContent(
                 {TBlockRange32::MakeOneBlock(block)},
-                holders);
+                holders,
+                TInstant::Zero());
 
             TPartialBlobId blobId(
                 gen,
@@ -11968,7 +12036,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldCompressFreshBlocks)
     {
-        DoTestCompression(Max<ui32>(), 4107, 43);
+        // Fresh blob: header + meta (including write timestamp) + block.
+        DoTestCompression(Max<ui32>(), 4111, 49);
     }
 
     class TStatsChecker
