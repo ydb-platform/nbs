@@ -157,18 +157,18 @@ public:
                 filter,
                 std::move(requestTypes)));
 
+        if (!parseResult.Has("all-files")) {
+            ProfileLogFiles =
+                SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        }
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filters);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return ProcessProfileLogs(processor);
     }
 };
 

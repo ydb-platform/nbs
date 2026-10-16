@@ -76,7 +76,7 @@ public:
     int Execute() override
     {
         TMaskSensitiveData mask{Mode, Seed, MaxExtensionLength};
-        mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
+        mask.MaskSensitiveData(ProfileLogFiles, PathToOutProfileLog);
         return 0;
     }
 };
@@ -182,29 +182,35 @@ void TMaskSensitiveData::MaskRequest(
 }
 
 void TMaskSensitiveData::MaskSensitiveData(
-    const TString& in,
+    const TVector<TProfileLogFile>& in,
     const TString& out)
 {
-    NEventLog::TOptions options;
-    options.FileName = in;
-
-    // Sort eventlog items by timestamp
-    options.SetForceStrongOrdering(true);
-    CurrentEvent = CreateIterator(options);
-
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
-    while (Advance()) {
-        NProto::TProfileLogRecord recordOut;
-        recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
-
-        while (EventMessageNumber > 0) {
-            auto request = MessagePtr->GetRequests()[--EventMessageNumber];
-            MaskRequest(request);
-            *recordOut.AddRequests() = std::move(request);
+    for (const auto& file: in) {
+        if (in.size() > 1) {
+            PrintProfileLogProgress(file);
         }
-        logFrame.LogEvent(recordOut);
-        logFrame.Flush();
+
+        NEventLog::TOptions options;
+        options.FileName = file.Path;
+
+        // Sort eventlog items within each input by timestamp.
+        options.SetForceStrongOrdering(true);
+        CurrentEvent = CreateIterator(options);
+
+        while (Advance()) {
+            NProto::TProfileLogRecord recordOut;
+            recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
+
+            while (EventMessageNumber > 0) {
+                auto request = MessagePtr->GetRequests()[--EventMessageNumber];
+                MaskRequest(request);
+                *recordOut.AddRequests() = std::move(request);
+            }
+            logFrame.LogEvent(recordOut);
+            logFrame.Flush();
+        }
     }
     eventLog.CloseLog();
 }
