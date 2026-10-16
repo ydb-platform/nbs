@@ -168,9 +168,10 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     EnqueueBlobIndexOpIfNeeded(ctx);
 
     Metrics->WriteData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+    if (!UpdateAccessStats(msg->NodeId, msg->NodeType, ctx.Now()) ||
         !UpdateLatencyStats(
             msg->NodeId,
+            msg->NodeType,
             EFileStoreRequest::WriteData,
             ctx.Now(),
             msg->Time))
@@ -419,9 +420,11 @@ void TIndexTabletActor::CompleteTx_WriteData(
             args.ByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+        const auto nodeType = args.Node->Attrs.GetType();
+        if (!UpdateAccessStats(args.NodeId, nodeType, ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
+                nodeType,
                 EFileStoreRequest::WriteData,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))
@@ -498,6 +501,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
+        args.Node->Attrs.GetType(),
         std::move(blobs),
         TWriteRange{args.NodeId, args.ByteRange.End()},
         ProfileLog,
