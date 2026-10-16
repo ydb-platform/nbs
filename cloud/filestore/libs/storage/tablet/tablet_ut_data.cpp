@@ -4275,6 +4275,45 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(ranges[2], 1);
     }
 
+    TABLET_TEST(ShouldRejectForcedCompactionDuringCompactionMapLoading)
+    {
+        TTestEnv env(testEnvConfig);
+
+        TAutoPtr<IEventHandle> loadChunk;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (!loadChunk &&
+                    event->GetTypeRewrite() ==
+                        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)
+                {
+                    loadChunk = event.Release();
+                    return true;
+                }
+
+                return false;
+            });
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        UNIT_ASSERT(loadChunk);
+
+        tablet.SendForcedOperationRequest(
+            NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
+        auto response = tablet.RecvForcedOperationResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, response->GetStatus());
+    }
+
     TABLET_TEST(ShouldEnqueuePendingForcedCompaction)
     {
         using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
