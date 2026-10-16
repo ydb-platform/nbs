@@ -201,3 +201,74 @@ func Load(
 		ChunkMapData: chunkMapObject.Data,
 	}, nil
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The copy ends with the meta: a backup without it is not complete, whatever
+// the copy reported (a copy of an older build ended well without writing
+// it). Reads the meta and checks that it names the snapshot. A retriable
+// error of the follower is returned as it is.
+func CheckSnapshotMeta(
+	ctx context.Context,
+	reader ObjectReader,
+	diskID string,
+	snapshotID string,
+) error {
+
+	return checkMeta(ctx, reader, SnapshotMetaKey(diskID, snapshotID), snapshotID)
+}
+
+func CheckImageMeta(
+	ctx context.Context,
+	reader ObjectReader,
+	imageID string,
+) error {
+
+	return checkMeta(ctx, reader, ImageMetaKey(imageID), imageID)
+}
+
+func checkMeta(
+	ctx context.Context,
+	reader ObjectReader,
+	key string,
+	id string,
+) error {
+
+	object, err := reader.GetObject(ctx, key)
+	if err != nil {
+		if errors.Is(err, errors.NewEmptyRetriableError()) {
+			return err
+		}
+
+		return errors.NewNonRetriableErrorf(
+			"backup of %v is not complete: no readable %v in the follower: %w",
+			id,
+			key,
+			err,
+		)
+	}
+
+	var meta struct {
+		ID string `json:"id"`
+	}
+	err = json.Unmarshal(object.Data, &meta)
+	if err != nil {
+		return errors.NewNonRetriableErrorf(
+			"backup of %v is not complete: failed to parse %v: %w",
+			id,
+			key,
+			err,
+		)
+	}
+
+	if meta.ID != id {
+		return errors.NewNonRetriableErrorf(
+			"backup of %v is not complete: %v names %q",
+			id,
+			key,
+			meta.ID,
+		)
+	}
+
+	return nil
+}
