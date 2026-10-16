@@ -24,20 +24,20 @@ public:
     {
     }
 
-    TStringBuf GetUnalignedHead() override
+    TStringBuf GetUnalignedHead() const override
     {
         const char* ptr = Buffer.data();
         return { ptr, ByteRange.UnalignedHeadLength() };
     }
 
-    TStringBuf GetUnalignedTail() override
+    TStringBuf GetUnalignedTail() const override
     {
         const auto offset = ByteRange.RelativeUnalignedTailOffset();
         const char* ptr = Buffer.data() + offset;
         return { ptr, ByteRange.UnalignedTailLength() };
     }
 
-    TStringBuf GetBlock(size_t index) override
+    TStringBuf GetBlock(size_t index) const override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         const char* ptr = Buffer.data() + offset;
@@ -59,6 +59,11 @@ public:
         char* ptr = const_cast<char*>(Buffer.data()) + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
+
+    bool UsesLazyAllocation() const override
+    {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,9 +73,9 @@ class TLazyBlockBuffer final
 {
 private:
     const TByteRange ByteRange;
-    TString UnalignedHead;
-    TVector<TString> Blocks;
-    TString UnalignedTail;
+    mutable TString UnalignedHead;
+    mutable TVector<TString> Blocks;
+    mutable TString UnalignedTail;
 
 public:
     explicit TLazyBlockBuffer(TByteRange byteRange)
@@ -79,7 +84,7 @@ public:
     {
     }
 
-    TStringBuf GetUnalignedHead() override
+    TStringBuf GetUnalignedHead() const override
     {
         if (!UnalignedHead) {
             UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
@@ -88,7 +93,7 @@ public:
         return UnalignedHead;
     }
 
-    TStringBuf GetUnalignedTail() override
+    TStringBuf GetUnalignedTail() const override
     {
         if (!UnalignedTail) {
             UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
@@ -97,7 +102,7 @@ public:
         return UnalignedTail;
     }
 
-    TStringBuf GetBlock(size_t index) override
+    TStringBuf GetBlock(size_t index) const override
     {
         auto& block = Blocks[index];
         if (!block) {
@@ -116,6 +121,11 @@ public:
     void ClearBlock(size_t index) override
     {
         Blocks[index].clear();
+    }
+
+    bool UsesLazyAllocation() const override
+    {
+        return true;
     }
 };
 
