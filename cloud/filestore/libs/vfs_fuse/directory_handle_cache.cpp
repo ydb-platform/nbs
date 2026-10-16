@@ -30,14 +30,16 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleModuleStatsPtr stats,
     TDirectoryHandleStoragePtr storage,
-    TDirectoryEntryVersionCachePtr directoryEntryVersionCache)
+    TDirectoryEntryVersionCachePtr directoryEntryVersionCache,
+    ui64 readStatsSizeThreshold)
     : Log(std::move(log))
     , Storage(std::move(storage))
     , DirectoryEntryVersionCache(std::move(directoryEntryVersionCache))
+    , ReadStatsSizeThreshold(readStatsSizeThreshold)
     , Stats(std::move(stats))
 {
     if (Storage) {
-        Storage->LoadHandles(Handles);
+        Storage->LoadHandles(Handles, Stats, ReadStatsSizeThreshold);
         if (DirectoryEntryVersionCache) {
             for (const auto& [_, handle]: Handles) {
                 DirectoryEntryVersionCache->RegisterHandle(handle->Index);
@@ -56,7 +58,8 @@ bool TDirectoryHandleCache::IsPersistent() const
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
 {
     ui64 handleId = 0;
-    auto handle = std::make_shared<TDirectoryHandle>(ino);
+    auto handle =
+        std::make_shared<TDirectoryHandle>(ino, Stats, ReadStatsSizeThreshold);
 
     with_lock (Lock) {
         do {

@@ -81,6 +81,10 @@ private:
     TMap<ui64, TContent> Content;
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
+    // Key of the chunk served by the last UpdateContent or ReadContent.
+    std::optional<ui64> LastReadKey;
+    const ui64 ReadStatsSizeThreshold;
+    TDirectoryHandleModuleStatsPtr Stats;
 
     mutable TMutex Lock;
 
@@ -88,7 +92,10 @@ public:
     const fuse_ino_t Index;
 
 public:
-    explicit TDirectoryHandle(fuse_ino_t ino);
+    TDirectoryHandle(
+        fuse_ino_t ino,
+        TDirectoryHandleModuleStatsPtr stats,
+        ui64 readStatsSizeThreshold);
 
     TDirectoryHandleChunk UpdateContent(
         size_t size,

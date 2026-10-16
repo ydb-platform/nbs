@@ -159,7 +159,10 @@ void TDirectoryHandleStorage::ResetHandle(ui64 handleId)
     UpdateCounters();
 }
 
-void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
+void TDirectoryHandleStorage::LoadHandles(
+    TDirectoryHandleMap& handles,
+    TDirectoryHandleModuleStatsPtr stats,
+    ui64 readStatsSizeThreshold)
 {
     // Since we store data in chunks instead of a single block, in rare cases
     // a crash during the removal process can lead to inconsistent
@@ -200,8 +203,10 @@ void TDirectoryHandleStorage::LoadHandles(TDirectoryHandleMap& handles)
                 TChunkInfo{chunk->UpdateVersion, it.GetIndex()});
 
             if (!handles.contains(handleId)) {
-                handles[handleId] =
-                    std::make_shared<TDirectoryHandle>(chunk->Index);
+                handles[handleId] = std::make_shared<TDirectoryHandle>(
+                    chunk->Index,
+                    stats,
+                    readStatsSizeThreshold);
             }
 
             handles[handleId]->ConsumeChunk(*chunk, Log);
