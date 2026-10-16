@@ -1154,6 +1154,11 @@ struct TTxIndexTablet
         TString ShardIdForUnlink;
         TString ShardNodeNameForUnlink;
         bool SecondPassRequired = false;
+        // Set once PrepareTx sees the rename cross a quota domain boundary:
+        // from that point a null NewChildRef is expected (a cross-domain
+        // rename to a fresh name still runs a second pass just to learn the
+        // moved node's QuotaId), so the NewChildRef-is-null crit is skipped.
+        bool SecondPassForQuotaCheck = false;
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
@@ -1216,6 +1221,7 @@ struct TTxIndexTablet
             ShardNodeNameForUnlink.clear();
 
             SecondPassRequired = false;
+            SecondPassForQuotaCheck = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -1311,6 +1317,8 @@ struct TTxIndexTablet
         TString ShardNodeNameForUnlink;
 
         bool SecondPassRequired = false;
+        // See TRenameNode::SecondPassForQuotaCheck.
+        bool SecondPassForQuotaCheck = false;
 
         TRenameNodeInDestination(
                 TRequestInfoPtr requestInfo,
@@ -1366,6 +1374,7 @@ struct TTxIndexTablet
             ShardNodeNameForUnlink.clear();
 
             SecondPassRequired = false;
+            SecondPassForQuotaCheck = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
