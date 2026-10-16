@@ -50,6 +50,7 @@ struct TClientConfig
     ui8 QpRnrRetryCount = 7;    // inf
     bool UseMemoryWindows = false;
     ui32 MemoryWindowsPoolSize = 0;
+    ui32 MaxEagerRequestBytes = 0;
 
     TClientConfig();
 
