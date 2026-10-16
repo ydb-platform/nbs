@@ -1,0 +1,33 @@
+[Unit]
+Description=Continuous synthetic snapshot backup verification
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Dedicated disposable VM only. Root is necessary for the two raw disks;
+# DevicePolicy below denies other raw block devices. No service-VM deployment.
+User=root
+WorkingDirectory=/opt/snapshot-backup-tester
+ExecStart=/opt/snapshot-backup-tester/venv/bin/python -B -m cloud.disk_manager.test.snapshot_backup --config /etc/snapshot-backup-tester/config.json serve
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+StateDirectory=snapshot-backup-tester
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+DevicePolicy=closed
+DeviceAllow=/dev/disk/by-id/virtio-backup-src rw
+DeviceAllow=/dev/disk/by-id/virtio-backup-dst rw
+ReadWritePaths=/var/lib/snapshot-backup-tester
+# Provider profiles must not require interactive browser authentication or
+# writing tokens under /root. Add only their private cache path if necessary.
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=multi-user.target

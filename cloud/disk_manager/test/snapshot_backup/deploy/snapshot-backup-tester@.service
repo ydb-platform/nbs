@@ -1,0 +1,25 @@
+[Unit]
+Description=Snapshot backup tester one-shot action %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/snapshot-backup-tester
+ExecStart=/opt/snapshot-backup-tester/venv/bin/python -B -m cloud.disk_manager.test.snapshot_backup --config /etc/snapshot-backup-tester/config.json %i
+TimeoutStartSec=1900
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+StateDirectory=snapshot-backup-tester
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+DevicePolicy=closed
+DeviceAllow=/dev/disk/by-id/virtio-backup-src rw
+DeviceAllow=/dev/disk/by-id/virtio-backup-dst rw
+ReadWritePaths=/var/lib/snapshot-backup-tester
+Environment=PYTHONDONTWRITEBYTECODE=1

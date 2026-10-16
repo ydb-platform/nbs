@@ -54,6 +54,7 @@ TasksConfig: <
     ClearEndedTasksTaskScheduleInterval: "11s"
     ClearEndedTasksLimit: 10
     MaxRetriableErrorCount: 1000
+    {backup_task_retry_config}
     MaxPanicCount: 1
     HangingTaskTimeout: "24h"
     InflightHangingTaskTimeout: "100s"
@@ -259,7 +260,9 @@ SnapshotsConfig: <
     UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
     RetryBrokenDRBasedDiskCheckpoint: {retry_broken_disk_registry_based_disk_checkpoint}
+    ScheduleBackupSnapshotTasksScheduleInterval: "2s"
 >
+{backup_config}
 LoggingConfig: <
     LoggingStderr: <>
     Level: LEVEL_DEBUG
@@ -297,7 +300,23 @@ S3Config: <
 >
 """
 
+BACKUP_CONFIG_TEMPLATE = """
+SnapshotStorageBackupConfig: <
+    S3Config: <
+        Endpoint: "http://localhost:{s3_port}"
+        Region: "test"
+        CredentialsFilePath: "{s3_credentials_file}"
+        CallTimeout: "{call_timeout_sec}s"
+        MaxRetriableErrorCount: 0
+    >
+    S3Bucket: "snapshot-backup"
+    S3KeyPrefix: "recipe"
+    {kek_config}
+>
+"""
+
 DATAPLANE_CONFIG_TEMPLATE = """
+{backup_config}
 TasksConfig: <
     ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-shard1"]
     TaskPingPeriod: "1s"
@@ -414,6 +433,7 @@ DataplaneConfig: <
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
     ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
+    BackupChunksTaskScheduleInterval: "2s"
 {migration_config}
 {filesystem_dataplane_config}
 >
@@ -524,7 +544,8 @@ class DiskManagerServer(Daemon):
                  with_nemesis,
                  restart_timings_file,
                  min_restart_period_sec: int = 5,
-                 max_restart_period_sec: int = 30):
+                 max_restart_period_sec: int = 30,
+                 restart_trigger_file=""):
 
         if with_nemesis:
             nemesis_binary_path = yatest_common.binary_path(
@@ -542,6 +563,8 @@ class DiskManagerServer(Daemon):
                 "--restart-timings-file",
                 restart_timings_file,
             ]
+            if restart_trigger_file:
+                command += ["--restart-trigger-file", restart_trigger_file]
         else:
             command = [disk_manager_binary_path]
             command += ["--config", config_file]
@@ -599,6 +622,12 @@ class DiskManagerLauncher:
         # creating an already deleted resourse (see #5539).
         deleted_disk_expiration_timeout="100s",
         released_slot_expiration_timeout="100s",
+        backup_s3_port=None,
+        backup_s3_credentials_file=None,
+        backup_kek_file="",
+        backup_s3_call_timeout_sec=2,
+        backup_task_max_retriable_errors=None,
+        controlled_nemesis=False,
     ):
         self.__idx = idx
 
@@ -614,6 +643,15 @@ class DiskManagerLauncher:
 
         self.__restarts_count_file = os.path.join(working_dir, 'restarts_count_{}.txt'.format(idx))
         restart_timings_file = os.path.join(working_dir, 'restart_timings_{}.txt'.format(idx))
+        self.restart_timings_file = restart_timings_file
+        self.restart_trigger_file = ""
+        if controlled_nemesis:
+            if not with_nemesis:
+                raise ValueError("controlled Nemesis requires a Nemesis process")
+            self.restart_trigger_file = os.path.join(working_dir, f'restart_trigger_{idx}.txt')
+            with open(self.restart_trigger_file, "x") as trigger:
+                os.chmod(self.restart_trigger_file, 0o600)
+                trigger.write("0\n")
         with open(self.__restarts_count_file, 'w') as f:
             if idx % 2 == 0:
                 f.write(str(idx))
@@ -631,9 +669,21 @@ class DiskManagerLauncher:
             'disk_manager_client_config_{}.txt'.format(idx)
         )
         self.__server_config = None
+        backup_config = ""
+        if backup_s3_port is not None:
+            backup_config = BACKUP_CONFIG_TEMPLATE.format(
+                s3_port=backup_s3_port,
+                s3_credentials_file=backup_s3_credentials_file,
+                call_timeout_sec=backup_s3_call_timeout_sec,
+                kek_config=(
+                    f'KekFile: "{backup_kek_file}"\nKekId: "recipe-test-key"'
+                    if backup_kek_file else ""
+                ),
+            )
         if is_dataplane:
             with open(self.config_file, "w") as f:
                 f.write(DATAPLANE_CONFIG_TEMPLATE.format(
+                    backup_config=backup_config,
                     root_certs_file=root_certs_file,
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
@@ -686,6 +736,12 @@ class DiskManagerLauncher:
 
             with open(self.config_file, "w") as f:
                 self.__server_config = CONTROLPLANE_CONFIG_TEMPLATE.format(
+                    backup_config=backup_config,
+                    backup_task_retry_config=(
+                        'MaxRetriableErrorCountByTaskType: <key: "snapshots.BackupSnapshot" '
+                        f'value: {backup_task_max_retriable_errors}>'
+                        if backup_task_max_retriable_errors is not None else ""
+                    ),
                     port=self.__port,
                     hostname=hostname,
                     cert_file=cert_file,
@@ -751,6 +807,7 @@ class DiskManagerLauncher:
             restart_timings_file,
             min_restart_period_sec=min_restart_period_sec,
             max_restart_period_sec=max_restart_period_sec,
+            restart_trigger_file=self.restart_trigger_file,
         )
 
     @property
