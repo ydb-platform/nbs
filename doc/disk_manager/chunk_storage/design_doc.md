@@ -108,7 +108,9 @@ When S3-to-YDB copying atomically writes a complete root payload and publishes t
 
 If a placement transaction fails before commit, its explicit sets and YDB payload remain at their last committed state. If its response is lost after commit, retry from the stored state and preserve populated sets. Concurrent placement and detach transactions resolve references against the same root state or retry. A reader that selected S3 `0` before a YDB copy appeared can discover YDB through the all-NotFound refresh described below if S3 `0` is subsequently deleted. New writers always create explicit sets; enable placement changes only after all dataplane writers understand inference and honor detach tombstones.
 
-## Snapshot lifetime and operation ownership
+## Snapshot lifetime and migration ownership
+
+Creation uses the existing lifecycle checks and worker shutdown. Deletion marks the destination Deleting; creation observes that state through its progress checks and stops its workers. The collector begins physical cleanup after `SnapshotCollectionTimeout`, which defaults to 30 minutes. This ordering relies on creation workers stopping within that interval. A worker stalled beyond the collection delay remains an existing lifecycle edge case.
 
 Reuse the existing `snapshots.lock_task_id` for the migrating snapshot. In the acquisition transaction, require Ready status and claim that lock. Hold it through copying and detachment so deletion tasks wait for migration to release the snapshot. Serve concurrent reads throughout the lock's lifetime.
 
@@ -116,7 +118,7 @@ Reference transactions and chunk-wide detach tombstones coordinate physical copi
 
 The target's existing exclusive lock admits one migration task at a time. Persist `snapshots.pending_backend_id` when admitting a migration. If it is already set to a different destination, reject the new request; a matching request can resume after the previous owner has stopped. Cancellation preserves this destination. Clear it only when migration completes or the snapshot is explicitly deleted.
 
-Store an execution generation in `snapshots.operation_generation` alongside operation ownership (`lock_task_id` for migration and the creation owner for creation). Advance the generation when a new execution is admitted or ownership is revoked. Every chunk-map insertion/update, reference registration, write publication, detach decision, and completion update checks the snapshot lifecycle and current owner/generation in the same snapshot-storage transaction. Reject operations from a stopped execution, including starting new chunks, recreating deleted mappings or references, and clearing a newer owner's lock. Integrate admission and cancellation with the task framework's execution ownership, and reject ownership acquisition by a cancelled execution.
+Store a migration execution generation in `snapshots.operation_generation` alongside `lock_task_id`. Advance the generation when a migration execution is admitted or its ownership is revoked. Each migration transaction that updates placement, payloads, detach state, or completion checks Ready status and the current owner/generation. Cancellation releases the lock while preserving the Ready snapshot for continuation, so these checks reject further updates from the cancelled execution as soon as ownership is revoked. Release the lock only for the matching owner/generation. Integrate admission and cancellation with the task framework's execution ownership, and reject ownership acquisition by a cancelled execution.
 
 If deletion marks the target Deleting before migration admission, reject admission. If migration acquires its lock first, deletion waits. Start chunk operations after admission commits successfully. Resolve a lost admission response by retrying idempotently from the same execution, preserving the recorded destination and lock ownership.
 
@@ -124,15 +126,15 @@ If deletion marks the target Deleting before migration admission, reject admissi
 
 ### Write a new chunk
 
-Preserve the existing ordering: create the `chunk_map` entry before registering or writing the blob. The map-write transaction itself checks destination lifecycle and operation ownership and rejects stale writers. The destination remains Creating while the mapping identifies unfinished work for retry or creation cleanup. Chunk IDs remain deterministic for the creating task and chunk index.
+Preserve the existing ordering: create the `chunk_map` entry before registering or writing the blob. The destination remains Creating while the mapping identifies unfinished work for retry or creation cleanup. Chunk IDs remain deterministic for the creating task and chunk index.
 
-In one serializable transaction, check destination ownership and status, reject a tombstoned backend, insert the reference with empty actual and the backend in desired, and increment `refcnt` only if the reference is new. Resume an existing reference from its recorded sets. Preserve the root's tombstones when initializing its other fields.
+In one serializable transaction, reject a tombstoned backend, insert the reference with empty actual and the backend in desired, and increment `refcnt` only if the reference is new. Resume an existing reference from its recorded sets. Preserve the root's tombstones when initializing its other fields.
 
-For S3, compress the data and PUT it with checksum/compression metadata. After success, publish the backend in actual in a transaction that rechecks ownership, reference existence, desired membership, and absence of a tombstone. For YDB, write the payload and publish actual in the same transaction. Zero chunks need only their applicable map representation.
+For S3, compress the data and PUT it with checksum/compression metadata. After success, publish the backend in actual in a transaction that checks reference existence, desired membership, and absence of a tombstone. For YDB, write the payload and publish actual in the same transaction. Zero chunks need only their applicable map representation.
 
 If the map write fails, retry before creating any blob. If only the map commits, cleanup sees the mapping and treats a missing reference as already cleaned. If reference registration commits but PUT fails or times out, keep desired as pending work and require successful publication before serving reads through that reference. Retry the same immutable payload and ID. If PUT succeeds but publication fails, repeat PUT or verify completion through the normal retry path. Use actual membership to establish completion.
 
-If creation cleanup wins before publication, reject the writer's publication attempt. Its late PUT may still complete remotely. If another reference retains that backend, its requirement keeps the object live; otherwise final cleanup deletes the location using the detach protocol. A PUT that finishes after cleanup can leave an unreferenced object, as described under snapshot deletion. Check destination lifecycle and ownership before registering each chunk to reject a stale worker's next registration.
+Creation cancellation leaves recorded actual and desired entries for the collector to clean through the detach protocol. If another reference retains a backend, its requirement keeps the object live; otherwise final cleanup deletes that location. An S3 PUT with an unknown outcome may finish remotely after the worker has stopped. A PUT that finishes after cleanup can leave an unreferenced object, as described under snapshot deletion.
 
 ```mermaid
 sequenceDiagram
@@ -143,7 +145,7 @@ sequenceDiagram
     Writer->>S3: PUT immutable chunk and metadata
     alt PUT acknowledged
         S3-->>Writer: Success
-        Writer->>DB: Check owner and desired B, reject tombstoned B, publish actual B
+        Writer->>DB: Check reference and desired B, reject tombstoned B, publish actual B
     else PUT outcome unknown
         Note over Writer,DB: Keep desired B, retry can repeat the same write
     end
@@ -191,7 +193,7 @@ If the refreshed set still contains only A, the read has exhausted its candidate
 
 ### Reference an existing chunk
 
-Protect the source from deletion while reading its map and registering the new reference. Write the destination map before or in the same transaction as reference registration, so every counted reference has a discoverable mapping after a crash. A separate map-write transaction also checks destination lifecycle and operation ownership and rejects stale writers.
+Protect the source from deletion while reading its map and registering the new reference. Write the destination map before or in the same transaction as reference registration, so every counted reference has a discoverable mapping after a crash.
 
 Resolve unspecified source reference fields using the shared root and preserve the source references' stored fields. In one serializable transaction, require an existing source reference, inspect the root tombstones and source references, register the destination reference with explicit sets, and increment `refcnt` exactly once. Reject registration if the source reference or root is missing, including when the caller supplies a cached chunk-map entry. Reuse requires membership in both effective actual and desired on a reference, together with a tombstone check. Reject tombstoned copies. Actual-only copies may already be undergoing deletion; desired-only copies are unfinished.
 
@@ -205,13 +207,13 @@ After registering temporary source locations, use the copy operation below. Once
 
 ### Copy to another backend
 
-`replicateChunk(snapshot_id, chunk_id, destination)` preserves the chunk ID, reference, and reference count. Migration invokes it for an existing reference; creation invokes it after registering the destination reference.
+`replicateChunk(snapshot_id, chunk_id, destination)` preserves the chunk ID, reference, and reference count. Migration invokes it for an existing reference and applies its owner/generation checks to each placement transaction. Creation invokes it after registering the destination reference, using the existing creation lifecycle.
 
-In a transaction, check the current operation owner, reference, and root tombstones, resolve and populate this reference's fields if unspecified, then add the destination to desired. Reject a tombstoned destination before any write. If this reference already has a completed, retained destination, the copy is complete. Reuse a completed, retained destination on another reference by registering it transactionally, using its effective sets if its fields are unspecified. Otherwise read compressed data and checksum/compression metadata from an actual source using the read-and-refresh algorithm, then write through the selected destination client.
+In a transaction, check the reference and root tombstones, resolve and populate this reference's fields if unspecified, then add the destination to desired. Reject a tombstoned destination before any write. If this reference already has a completed, retained destination, the copy is complete. Reuse a completed, retained destination on another reference by registering it transactionally, using its effective sets if its fields are unspecified. Otherwise read compressed data and checksum/compression metadata from an actual source using the read-and-refresh algorithm, then write through the selected destination client.
 
-After a successful S3 PUT, publish the destination in actual only if the reference still exists, the operation is current, the backend remains desired, and the root has no tombstone for it. For YDB, write the complete payload and publish actual in the same transaction with those same checks; references whose fields are still empty can then infer YDB presence. S3-to-S3 transfer uses separate clients, allowing different endpoints, buckets, credentials, and regions.
+After a successful S3 PUT, publish the destination in actual only if the reference still exists, the backend remains desired, and the root has no tombstone for it. For YDB, write the complete payload and publish actual in the same transaction with those same checks; references whose fields are still empty can then infer YDB presence. S3-to-S3 transfer uses separate clients, allowing different endpoints, buckets, credentials, and regions.
 
-Begin payload writes after the desired update commits. If that update fails, retry the transaction. If source reading fails, keep desired and all existing actual locations. A PUT timeout leaves an unknown physical outcome, so retry writes the same immutable data. If publication fails after successful PUT, the existing desired entry retains the obligation to complete or clean that write. If publication is rejected because the snapshot is being deleted or the backend is tombstoned, preserve the reference's current metadata state. Another reference's requirement can keep the object live; otherwise final cleanup deletes the location using the detach protocol. A PUT that finishes after cleanup can leave an unreferenced object, as described under snapshot deletion.
+Begin payload writes after the desired update commits. If that update fails, retry the transaction. If source reading fails, keep desired and all existing actual locations. A PUT timeout leaves an unknown physical outcome, so retry writes the same immutable data. If publication fails after successful PUT, the existing desired entry retains the obligation to complete or clean that write. If publication is rejected because the reference was removed, the backend is tombstoned, or migration ownership was revoked, preserve the current metadata state. Another reference's requirement can keep the object live; otherwise final cleanup deletes the location using the detach protocol. A PUT that finishes after cleanup can leave an unreferenced object, as described under snapshot deletion.
 
 Two references may concurrently copy the same chunk to B. Both register desired B before writing and publish completion only on their own references. Duplicate PUTs contain the same immutable payload and metadata. When the faster task releases A, the slower reference's requirement keeps the physical copy on A. Desired-only B likewise retains B while a copy is unfinished.
 
@@ -278,7 +280,7 @@ Keep tombstones through timeouts and individual backend deletions. Remove them w
 
 ### Delete a snapshot reference
 
-Snapshot deletion and creation cancellation mark the destination Deleting, reject new work through lifecycle/ownership checks, and clean its references. Migration cancellation preserves recorded placement for continuation. Keep each chunk-map entry until reference cleanup finishes so a retry can find all remaining work.
+Snapshot deletion and creation cancellation mark the destination Deleting. Existing creation lifecycle checks stop workers, and the collector cleans references after the collection delay. Migration cancellation preserves recorded placement for continuation. Keep each chunk-map entry until reference cleanup finishes so a retry can find all remaining work.
 
 For each backend in this reference's effective actual union desired, including inferred placement when both fields are empty, run the detach protocol. When another reference retains a backend, release only this reference's entries. For the final requirement, keep the reference counted until physical deletion succeeds or returns NotFound. Then remove the entry; remove an empty reference and decrement its count in the same transaction. If this removes the last reference, also delete the root and its tombstones. A retry of a missing reference returns success and preserves the current metadata. After reference cleanup, remove the chunk-map entry.
 
@@ -300,7 +302,7 @@ sequenceDiagram
     Cleanup->>DB: Remove chunk-map entry
     Note over Writer,S3: Earlier PUT may finish after DELETE
     Writer->>DB: Attempt to publish actual B
-    DB-->>Writer: Reject deleted reference and stale ownership
+    DB-->>Writer: Reject deleted reference
     Note over Writer,S3: Any recreated object is unreferenced, chunk K stays retired
 ```
 
@@ -421,7 +423,7 @@ Before retiring a backend, check active references using both explicit sets and 
 ## Implementation steps
 
 1. Add stable multi-S3 configuration, request presence handling, and client selection.
-2. Add reference placement sets, root detach tombstones, pending snapshot destination, and execution ownership checks, including transactional shadow-table updates.
+2. Add reference placement sets, root detach tombstones, pending snapshot destination, and migration execution ownership checks, including transactional shadow-table updates.
 3. Add consistent unspecified-backend resolution and backend refetching after all attempted locations return NotFound.
 4. Extend writes, reference reuse, copying, detach, and deletion with the transaction and retry rules above.
 5. For migration, require Ready status when acquiring `snapshots.lock_task_id`, save copy/detach phases, and preserve placement on cancellation.
