@@ -22,6 +22,10 @@ TESTS = [
         "datashard-like-read-write-with-page-size",
         "cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/datashard-like-read-write-with-page-size.txt"
     ),
+    Case(
+        "datashard-like-read-write-with-page-size-multipage",
+        "cloud/filestore/tests/loadtest/service-kikimr-datashard-like-test/datashard-like-read-write-with-page-size-multipage.txt"
+    ),
 ]
 
 
