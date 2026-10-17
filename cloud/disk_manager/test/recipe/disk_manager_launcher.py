@@ -599,6 +599,8 @@ class DiskManagerLauncher:
         # creating an already deleted resourse (see #5539).
         deleted_disk_expiration_timeout="100s",
         released_slot_expiration_timeout="100s",
+        backup_s3_port=None,
+        backup_s3_credentials_file=None,
     ):
         self.__idx = idx
 
@@ -719,6 +721,52 @@ class DiskManagerLauncher:
                     released_slot_expiration_timeout=released_slot_expiration_timeout,
                 )
                 f.write(self.__server_config)
+
+        if backup_s3_port is not None:
+            # Test-only opt-in; ordinary recipe configurations stay identical.
+            with open(self.config_file) as config:
+                content = config.read()
+            content = content.replace(
+                "NbsConfig: <",
+                'NbsConfig: <\n    Timeout: "10s"\n    DurableClientTimeout: "20s"\n'
+                '    DiscoveryClientHardTimeout: "10s"\n'
+                '    DiscoveryClientSoftTimeout: "5s"\n'
+                '    ServerRequestTimeout: "10s"\n',
+            )
+            content = content.replace(
+                "SnapshotsConfig: <",
+                'SnapshotsConfig: <\n    ScheduleBackupSnapshotTasksScheduleInterval: "10s"\n',
+            ).replace(
+                "ImagesConfig: <",
+                'ImagesConfig: <\n    ScheduleBackupImageTasksScheduleInterval: "10s"\n',
+            ).replace("UseS3Percentage: 0", "UseS3Percentage: 100")
+            content = content.replace(
+                "DataplaneConfig: <",
+                'DataplaneConfig: <\n    BackupChunksTaskScheduleInterval: "10s"\n'
+                '    BackupSnapshotDataBatchSize: 2\n    BackupChunksTaskBatchSize: 2\n'
+                '    BackupChunksInflightLimit: 2\n',
+            )
+            # Primary and follower SDK retries are controlled by the task
+            # scheduler, so the experimental retry bound is explicit.
+            content = content.replace(
+                "S3Config: <",
+                'S3Config: <\n    CallTimeout: "10s"\n    MaxRetriableErrorCount: 0\n',
+            )
+            content += (
+                '\nSnapshotStorageBackupConfig: <\n'
+                '  S3Bucket: "backup"\n'
+                '  S3Config: <\n'
+                '    Endpoint: "http://localhost:{port}"\n'
+                '    Region: "test"\n'
+                '    CredentialsFilePath: "{credentials}"\n'
+                '    CallTimeout: "10s"\n'
+                '    MaxRetriableErrorCount: 0\n'
+                '  >\n>\n'
+            ).format(port=backup_s3_port, credentials=backup_s3_credentials_file)
+            with open(self.config_file, "w") as config:
+                config.write(content)
+            if not is_dataplane:
+                self.__server_config = content
 
         init_database_command = [
             yatest_common.binary_path(

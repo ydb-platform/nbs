@@ -12,6 +12,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_schema_test.go
     common_test.go
     disks_test.go
     filesystems_test.go
