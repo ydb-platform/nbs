@@ -581,6 +581,65 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Visitor.ValidateExpectedCountersWithPredicate(expectedCounters);
     }
 
+    Y_UNIT_TEST(ShouldUseNodeRefCountAsListNodesSizeForPerformanceProfile)
+    {
+        NProto::TDiagnosticsConfig diagConfig;
+        NProto::TFileSystemPerformanceProfile pp;
+        pp.MutableListNodes()->SetRPS(1'000'000);
+        pp.MutableListNodes()->SetThroughput(1);
+        *diagConfig.MutableSSDFileSystemPerformanceProfile() = pp;
+        *diagConfig.MutableHDDFileSystemPerformanceProfile() = pp;
+
+        TTestEnv env({}, {}, nullptr, CreateProfileLogStub(), diagConfig);
+        auto registry = env.GetRegistry();
+
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const ui32 nodeCount = 31;
+        i64 nameBytes = 0;
+        for (ui32 i = 0; i < nodeCount; ++i) {
+            const TString name = TStringBuilder() << "file" << i;
+            nameBytes += name.size();
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+        }
+
+        tablet.ListNodes(RootNodeId);
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "Count"},
+                {"request", "ListNodes"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "RequestBytes"},
+                {"request", "ListNodes"},
+                {"filesystem", "test"}}, nameBytes},
+            {{
+                {"sensor", "ResponseNodeRefs"},
+                {"request", "ListNodes"},
+                {"filesystem", "test"}}, nodeCount},
+        });
+
+        // node refs / window (15-16s) / Throughput(1) * 1000
+        visitor.ValidateExpectedCountersWithPredicate({
+            {{
+                {"sensor", "CurrentLoad"},
+                {"filesystem", "test"}}, [] (i64 val) {
+                    return nodeCount * 1000 / 16 <= val
+                        && val <= nodeCount * 1000 / 15;
+                }},
+        });
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyWriteCompactionStats)
     {
         NProto::TStorageConfig storageConfig;
