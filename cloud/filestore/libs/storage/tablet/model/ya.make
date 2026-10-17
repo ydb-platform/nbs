@@ -45,6 +45,7 @@ SRCS(
     throttler_logger.cpp
     throttling_policy.cpp
     truncate_queue.cpp
+    xattr_acl_helpers.cpp
 )
 
 PEERDIR(
