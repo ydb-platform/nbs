@@ -2,9 +2,8 @@
 
 import argparse
 import json
+import subprocess
 import sys
-
-from subprocess import run
 
 from cloud.blockstore.libs.storage.protos import disk_pb2
 from cloud.storage.core.protos.media_pb2 import (
@@ -58,7 +57,7 @@ def validate_device(old_device, new_device):
     )
 
 
-def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, reserved):
+def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, device_to_disk):
     if len(old_disk.DeviceUUIDs) == 0:
         raise RuntimeError(f"disk {quote(old_disk.DiskId)} has no devices in old backup")
 
@@ -82,10 +81,10 @@ def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, reserved):
                 f"device {quote(uuid)} is inconsistent with device in previous backup"
             )
 
-        if uuid in reserved and reserved[uuid] != old_disk.DiskId:
-            raise RuntimeError(f"device {quote(uuid)} already exists on other disk {quote(reserved[uuid])}")
+        if uuid in device_to_disk and device_to_disk[uuid] != old_disk.DiskId:
+            raise RuntimeError(f"device {quote(uuid)} already exists on other disk {quote(device_to_disk[uuid])}")
 
-        reserved[uuid] = old_disk.DiskId
+        device_to_disk[uuid] = old_disk.DiskId
         devices.append(current_device)
 
     return devices
@@ -100,6 +99,18 @@ def is_mirrored_disk(disk):
 
 def build_replica_id(disk_id, replica_index):
     return f"{disk_id}/{replica_index}"
+
+
+def resolve_master_disk(disk, disk_id_to_old_config):
+    if not disk.MasterDiskId:
+        return disk
+
+    master = disk_id_to_old_config.get(disk.MasterDiskId)
+    if master is None:
+        raise RuntimeError(
+            f"master disk {quote(disk.MasterDiskId)} not found in old backup"
+        )
+    return master
 
 
 def build_nonreplicated_disk_request(old_disk, new_devices):
@@ -189,7 +200,7 @@ def send_request(action, request, disk_id):
         "--verbose", "error",
         "--input-bytes", request_payload(request, disk_id),
     ]
-    run(args, check=True, text=True, stdout=sys.stdout, stderr=sys.stdout)
+    subprocess.run(args, check=True, text=True, stdout=sys.stdout, stderr=sys.stdout)
 
 
 def process_disk(
@@ -198,46 +209,43 @@ def process_disk(
     disk_id_to_old_config,
     old_by_uuid,
     current_by_physical,
-    reserved
+    device_to_disk,
+    seen_master_disks
 ):
     if old_disk is None:
         raise RuntimeError(f" disk with id {quote(disk_id)} not found in old backup")
 
     if not is_mirrored_disk(old_disk):
         devices = resolve_disk_devices(
-            old_disk, old_by_uuid, current_by_physical, reserved
+            old_disk, old_by_uuid, current_by_physical, device_to_disk
         )
         return "CreateDiskFromDevices", build_nonreplicated_disk_request(old_disk, devices)
 
-    if not old_disk.MasterDiskId:
-        raise RuntimeError("mirrored disk has no master disk id")
-
-    master = disk_id_to_old_config.get(old_disk.MasterDiskId)
-    if master is None:
-        raise RuntimeError(
-            f"master disk {quote(old_disk.MasterDiskId)} not found in old backup"
-        )
+    master = resolve_master_disk(old_disk, disk_id_to_old_config)
+    if master.DiskId in seen_master_disks:
+        return None
 
     fresh_device_uuids = resolve_fresh_device_uuids(
         master, old_by_uuid, current_by_physical
     )
 
     replicas = []
-    for replica_index in range(old_disk.ReplicaCount + 1):
-        replica_id = build_replica_id(disk_id, replica_index)
+    for replica_index in range(master.ReplicaCount + 1):
+        replica_id = build_replica_id(master.DiskId, replica_index)
 
         replica = disk_id_to_old_config.get(replica_id)
         if replica is None:
             raise RuntimeError(f"replica {quote(replica_id)} not found in old backup")
         replicas.append(
             resolve_disk_devices(
-                replica, old_by_uuid, current_by_physical, reserved
+                replica, old_by_uuid, current_by_physical, device_to_disk
             )
         )
 
+    seen_master_disks.add(master.DiskId)
     return (
         "CreateMirroredDiskFromDevices",
-        build_mirrored_disk_request(old_disk, replicas, fresh_device_uuids),
+        build_mirrored_disk_request(master, replicas, fresh_device_uuids),
     )
 
 
@@ -249,25 +257,32 @@ def run(old_backup_path, current_backup_path, disk_ids, dry_run):
     _, current_by_physical = build_device_index(current_backup)
 
     disk_id_to_old_config = build_disk_id_to_config(old_backup)
-    reserved = {}
+    device_to_disk = {}
     disks_to_restore = []
     incomplete_disks = []
+    seen_master_disks = set()
 
     for disk_id in disk_ids:
         try:
-            action, request = process_disk(
+            result = process_disk(
                 disk_id,
                 disk_id_to_old_config.get(disk_id),
                 disk_id_to_old_config,
                 old_by_uuid,
                 current_by_physical,
-                reserved
+                device_to_disk,
+                seen_master_disks
             )
         except RuntimeError as exc:
             incomplete_disks.append(disk_id)
             print(f"Disk {quote(disk_id)}: incomplete data to restore: {exc}")
             continue
 
+        if result is None:
+            print(f"Disk {quote(disk_id)}: skip, its master disk is already queued")
+            continue
+
+        action, request = result
         disks_to_restore.append((disk_id, action, request))
         print(f"Disk {quote(disk_id)}: ready to restore")
 
