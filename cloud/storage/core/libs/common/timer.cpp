@@ -1,6 +1,7 @@
 #include "timer.h"
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/utility.h>
 
 namespace NCloud {
 
@@ -45,6 +46,15 @@ class TCpuCycleTimer final
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void ITimer::Sleep(TDuration duration, const std::atomic<bool>& cancelled)
+{
+    while (duration && !cancelled.load(std::memory_order_acquire)) {
+        const TDuration slice = Min(duration, SleepSlice);
+        Sleep(slice);
+        duration -= slice;
+    }
+}
 
 ITimerPtr CreateWallClockTimer()
 {

@@ -1,17 +1,16 @@
 #pragma once
 
+#include "context.h"
 #include "storage_group.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <silk/fibers/fiber.h>
-#include <silk/fibers/future.h>
 #include <silk/util/logger.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
 #include <util/stream/output.h>
-#include <util/string/builder.h>
+#include <util/system/types.h>
 
 #include <type_traits>
 
@@ -49,45 +48,49 @@ inline void FillHeaders(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/**
- * Repeats the call until it succeeds, fails with a non-retriable error or the
- * total timeout is reached. All time arithmetic goes through the provided
- * timer. See TStorageGroupRetryPolicy.
-*/
+// Retries per the policy until the context's deadline or the stop flag.
 template <typename TCall>
 auto CallWithRetries(
+    TFastShardContext& ctx,
     const TStorageGroupRetryPolicy& policy,
-    ITimer& timer,
     TCall call)
 {
-    const TInstant start = timer.Now();
-    ui32 errorCount = 0;
-
-    for (;;) {
+    for (ui32 errorCount = 1;; ++errorCount) {
         auto response = call();
         const auto& error = response.GetError();
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             return response;
         }
 
-        if (timer.Now() - start >= policy.TotalTimeout) {
+        const TDuration backoff = policy.BackoffIncrement * errorCount;
+        if (backoff >= ctx.Deadline - ctx.Timer.Now()) {
             SILK_ERROR(
-                "sg retries timed out after %u errors: %s",
-                errorCount + 1,
+                "sg req %lu: out of time after %u errors: %s",
+                ctx.RequestId,
+                errorCount,
                 FormatError(error).c_str());
 
             return response;
         }
 
-        ++errorCount;
-        const TDuration backoff = policy.BackoffIncrement * errorCount;
         SILK_DEBUG(
-            "sg retry #%u, backoff: %luus, error: %s",
+            "sg req %lu: retry #%u, backoff: %luus, error: %s",
+            ctx.RequestId,
             errorCount,
             backoff.MicroSeconds(),
             FormatError(error).c_str());
 
-        timer.Sleep(backoff);
+        const TInstant start = ctx.Timer.Now();
+        ctx.Timer.Sleep(backoff, ctx.Stopped);
+        ctx.AddBackoffTime(ctx.Timer.Now() - start);
+        if (ctx.IsStopped()) {
+            SILK_DEBUG(
+                "sg req %lu: stopped: %s",
+                ctx.RequestId,
+                FormatError(error).c_str());
+
+            return response;
+        }
     }
 }
 
@@ -112,97 +115,5 @@ void ExtractPageGroups(
     TVector<TPageGroup>* pageGroups);
 
 TString DebugMessage(const NProto::TWriteLogRecordRequest& request);
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TAcquireDevicesParams
-{
-    TStorageDevice Device;
-    NProto::TAcquireDevicesRequest* Request;
-    NProto::TAcquireDevicesResponse* Response;
-    const TStorageGroupRetryPolicy* RetryPolicy;
-    ITimer* Timer;
-};
-
-int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept;
-
-struct TReleaseDevicesParams
-{
-    TStorageDevice Device;
-    NProto::TReleaseDevicesRequest* Request;
-    NProto::TReleaseDevicesResponse* Response;
-    const TStorageGroupRetryPolicy* RetryPolicy;
-    ITimer* Timer;
-};
-
-int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Sends @p request to every device and waits for all of them - an n/n fan-out
- * with no early return. Returns the first error observed, or an empty error if
- * every device acked. The per-device responses go to @p responses if given.
- *
- * Everything the spawned fibers touch lives on this frame, which is safe
- * precisely because the call joins all of them before returning. A fan-out that
- * returns early cannot be written this way.
- */
-template <typename TResponse, typename TRequest, typename TParams>
-NProto::TError MirrorRequest(
-    const TStorageGroupConfig& config,
-    const TVector<TStorageDevice>& devices,
-    ITimer& timer,
-    int (*fiberMain)(TParams*) noexcept,
-    TRequest request,
-    TVector<TResponse>* responses = nullptr)
-{
-    FillHeaders(config, request.MutableHeaders());
-
-    const ui32 count = devices.size();
-    TVector<silk::FiberFuture> futures(count);
-    TVector<TResponse> ownResponses;
-    if (!responses) {
-        responses = &ownResponses;
-    }
-    responses->assign(count, {});
-
-    for (ui32 i = 0; i < count; ++i) {
-        const int r = silk::FiberScheduler::run(
-            fiberMain,
-            TParams{
-                .Device = devices[i],
-                .Request = &request,
-                .Response = &(*responses)[i],
-                .RetryPolicy = &config.RetryPolicy,
-                .Timer = &timer},
-            &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
-    }
-
-    NProto::TError error;
-    for (ui32 i = 0; i < count; ++i) {
-        const int r = futures[i].wait();
-        if (r) {
-            SILK_ERROR("future error: %s", ::strerror(r));
-            if (!HasError(error)) {
-                error = MakeError(MAKE_SYSTEM_ERROR(r));
-            }
-            continue;
-        }
-
-        auto& response = (*responses)[i];
-        if (HasError(response.GetError())) {
-            SILK_ERROR(
-                "node error: %s",
-                FormatError(response.GetError()).c_str());
-            if (!HasError(error)) {
-                error = response.GetError();
-            }
-        }
-    }
-
-    return error;
-}
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

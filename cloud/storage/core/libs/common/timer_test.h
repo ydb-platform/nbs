@@ -20,6 +20,7 @@ private:
 public:
     TInstant Now() override;
     void Sleep(TDuration duration) override;
+    void Sleep(TDuration duration, const std::atomic<bool>& cancelled) override;
 
     void AdvanceTime(TDuration delay);
     [[nodiscard]] const TVector<TDuration>& GetSleepDurations() const;
