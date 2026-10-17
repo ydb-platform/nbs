@@ -35,20 +35,20 @@ NProto::TError ReportMalformedPosixAcl(
 
 NProto::TError PosixAclXattrCount(const TString& xattrAcl, size_t& count)
 {
-    const posix_acl_xattr_header* header =
-        reinterpret_cast<const posix_acl_xattr_header*>(xattrAcl.data());
-
     size_t size = xattrAcl.size();
 
     if (size < sizeof(posix_acl_xattr_header)) {
         return ReportMalformedPosixAcl(xattrAcl);
     }
 
-    if (header->a_version != POSIX_ACL_XATTR_VERSION) {
+    posix_acl_xattr_header header;
+    memcpy(&header, xattrAcl.data(), sizeof(posix_acl_xattr_header));
+
+    if (header.a_version != POSIX_ACL_XATTR_VERSION) {
         return MakeError(
             E_FS_NOTSUPP,
             TStringBuilder() << "Unsupported version of POSIX ACL xattr: "
-                             << header->a_version);
+                             << header.a_version);
     }
 
     size -= sizeof(posix_acl_xattr_header);
@@ -95,7 +95,8 @@ void PosixAclToXattr(const TVector<posix_acl_xattr_entry>& acls, TString& value)
     posix_acl_xattr_entry* entry =
         reinterpret_cast<posix_acl_xattr_entry*>(header + 1);
 
-    *header = posix_acl_xattr_header{POSIX_ACL_XATTR_VERSION};
+    posix_acl_xattr_header srcHeader{POSIX_ACL_XATTR_VERSION};
+    memcpy(header, &srcHeader, sizeof(posix_acl_xattr_header));
 
     for (size_t i = 0; i < acls.size(); ++i, ++entry) {
         memcpy(entry, acls.data() + i, sizeof(posix_acl_xattr_entry));
