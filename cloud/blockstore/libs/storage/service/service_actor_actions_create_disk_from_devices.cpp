@@ -19,8 +19,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER)
 
 namespace {
@@ -234,12 +232,11 @@ void TCreateDiskFromDevicesActor::HandleDescribeVolumeResponse(
     const auto& error = msg->GetError();
 
     if (HasError(error)) {
-        const bool volumeDoesNotExist =
-            FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD &&
-            static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode())) ==
-                NKikimrScheme::StatusPathDoesNotExist;
+        const bool volumeExists =
+            error.GetCode() != E_NOT_FOUND &&
+            error.GetCode() != MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
 
-        if (!volumeDoesNotExist) {
+        if (volumeExists) {
             LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
                 "Describe of volume "
                 << Request.GetDiskId().Quote()

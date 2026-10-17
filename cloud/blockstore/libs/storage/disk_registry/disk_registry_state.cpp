@@ -3256,11 +3256,6 @@ void TDiskRegistryState::SetSuspendSecureErase(bool suspend)
     SuspendSecureErase = suspend;
 }
 
-bool TDiskRegistryState::IsSecureEraseSuspended() const
-{
-    return SuspendSecureErase;
-}
-
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
@@ -7533,6 +7528,7 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
+    config.SetSuspendSecureErase(SuspendSecureErase);
 
     backup.MutableConfig()->Swap(&config);
 

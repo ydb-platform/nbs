@@ -804,8 +804,6 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const bool State;
 
-        NProto::TError Error;
-
         TSuspendSecureErase(
                 TRequestInfoPtr requestInfo,
                 bool state)
@@ -815,7 +813,7 @@ struct TTxDiskRegistry
 
         void Clear()
         {
-            Error.Clear();
+            // nothing to do
         }
     };
 

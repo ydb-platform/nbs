@@ -112,7 +112,8 @@ bool NormalizeLoadState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        suspendSecureErase
     ] = state;
 
     Y_UNUSED(lastDiskStateSeqNo);

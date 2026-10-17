@@ -33,8 +33,6 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
         record.MutableMemoryBackup()->CopyFrom(State->BackupState());
         record.MutableMemoryBackup()->MutableConfig()->SetWritableState(
             CurrentState != STATE_READ_ONLY);
-        record.MutableMemoryBackup()->MutableConfig()->SetSuspendSecureErase(
-            State->IsSecureEraseSuspended());
 
         auto response = std::make_unique<
             TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
@@ -68,8 +66,6 @@ bool TDiskRegistryActor::PrepareBackupDiskRegistryState(
         args.MemorySnapshot = State->BackupState();
         args.MemorySnapshot.MutableConfig()->SetWritableState(
             CurrentState != STATE_READ_ONLY);
-        args.MemorySnapshot.MutableConfig()->SetSuspendSecureErase(
-            State->IsSecureEraseSuspended());
     }
 
     TDiskRegistryDatabase db(tx.DB);
