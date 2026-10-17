@@ -27,12 +27,11 @@ struct TTabletRequestMetrics
     double AverageSecondsPerSecond(TInstant now) const;
     ui64 AverageRequestSize() const;
     TDuration AverageLatency() const;
-
-private:
-    double Rate(
-        TInstant now,
+    ui64 AveragePerRequest(
         const std::atomic<i64>& counter,
         ui64 prevCounter) const;
+    double
+    Rate(TInstant now, const std::atomic<i64>& counter, ui64 prevCounter) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -564,6 +564,8 @@ void TIndexTabletActor::UpdateMetrics(
     FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_UPDATE_REQUEST_METRICS)
 
 #undef FILESTORE_TABLET_UPDATE_REQUEST_METRICS
+
+    Metrics->ListNodesExtra.UpdatePrev();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
