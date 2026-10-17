@@ -151,3 +151,30 @@ func TestValidateIdleCleanupConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateUseReadyBaseDiskAsSrcConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name                  string
+		useReadyBaseDiskAsSrc bool
+		hold                  bool
+		valid                 bool
+	}{
+		{name: "disabled_without_hold", valid: true},
+		{name: "disabled_with_hold", hold: true, valid: true},
+		{name: "enabled_with_hold", useReadyBaseDiskAsSrc: true, hold: true, valid: true},
+		{name: "enabled_without_hold", useReadyBaseDiskAsSrc: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := validateUseReadyBaseDiskAsSrcConfig(
+				testCase.useReadyBaseDiskAsSrc,
+				testCase.hold,
+			)
+			if testCase.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "UseReadyBaseDiskAsSrc")
+				require.ErrorContains(t, err, "HoldBaseDisksWithInflightDependents")
+			}
+		})
+	}
+}
