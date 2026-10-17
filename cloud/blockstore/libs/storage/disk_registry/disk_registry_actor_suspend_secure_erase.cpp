@@ -28,19 +28,15 @@ void TDiskRegistryActor::HandleSetSuspendSecureErase(
         SafeDebugPrint(msg->Record).c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    if (CurrentState != STATE_WORK &&
-        CurrentState != STATE_READ_ONLY &&
+    if (CurrentState != STATE_WORK && CurrentState != STATE_READ_ONLY &&
         CurrentState != STATE_RESTORE)
     {
         const TString errorMsg = TStringBuilder()
-            << "Can't change secure erase state in "
-            << States[CurrentState].Name
-            << " state";
+                                 << "Can't change secure erase state in "
+                                 << States[CurrentState].Name << " state";
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -87,19 +83,12 @@ void TDiskRegistryActor::CompleteSuspendSecureErase(
     const TActorContext& ctx,
     TTxDiskRegistry::TSuspendSecureErase& args)
 {
-    if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "SetSuspendSecureErase error: %s",
-            FormatError(args.Error).c_str());
-    } else {
-        State->SetSuspendSecureErase(args.State);
-    }
+    State->SetSuspendSecureErase(args.State);
 
-    auto response = std::make_unique<
-        TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>(
-            std::move(args.Error));
-
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    NCloud::Reply(
+        ctx,
+        *args.RequestInfo,
+        std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

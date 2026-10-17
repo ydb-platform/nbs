@@ -396,7 +396,7 @@ message TDiskRegistryConfig
     // Last backup timestamp (in milliseconds)
     uint64 LastBackupTs = 8;
 
-    // Secure erase is suspended. Stored separately from the main config row.
+    // Whether all secure erases are suspended.
     bool SuspendSecureErase = 9;
 }
 
