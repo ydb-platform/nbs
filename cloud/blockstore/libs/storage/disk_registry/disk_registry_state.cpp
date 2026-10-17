@@ -8586,6 +8586,8 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     master->State = CalculateDiskState(masterId, *master);
 
     db.UpdateDisk(BuildDiskConfig(masterId, *master));
+
+    AddReallocateRequest(db, masterId);
     return {};
 }
 
