@@ -79,6 +79,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     auto& requestMetrics = behaveAsShard
         ? Metrics->GetNodeAttrInShard : Metrics->GetNodeAttr;
@@ -185,6 +186,26 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
 
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
+        //
+        // The client may cache the NodeRef (lookup) and the Node attrs. The
+        // attrs of an external node are cached from the shard's response.
+        //
+
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        if (args.Name) {
+            AddFileSystemEventNodeRefSubscriber(
+                ctx,
+                pipeServerId,
+                args.NodeId,
+                args.Name);
+        }
+        if (!args.ShardId) {
+            AddFileSystemEventNodeSubscriber(
+                ctx,
+                pipeServerId,
+                args.TargetNodeId);
+        }
+
         auto* node = response->Record.MutableNode();
         if (args.ShardId) {
             node->SetShardFileSystemId(args.ShardId);
@@ -255,6 +276,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(*requestInfo);
 
@@ -395,6 +417,24 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     auto response = std::make_unique<TResponse>(args.Error);
     TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
     if (!HasError(args.Error)) {
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        for (ui32 i = 0; i < args.Response.ResponsesSize(); ++i) {
+            const auto& nodeResponse = args.Response.GetResponses(i);
+            if (HasError(nodeResponse.GetError())) {
+                continue;
+            }
+
+            AddFileSystemEventNodeRefSubscriber(
+                ctx,
+                pipeServerId,
+                args.Request.GetNodeId(),
+                args.Request.GetNames(i));
+            AddFileSystemEventNodeSubscriber(
+                ctx,
+                pipeServerId,
+                nodeResponse.GetNode().GetId());
+        }
+
         response->Record = std::move(args.Response);
 
         Metrics->GetNodeAttrInShard.Update(

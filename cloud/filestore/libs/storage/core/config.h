@@ -376,6 +376,7 @@ public:
     bool GetAllowHandlelessIO() const;
     bool GetFileSystemEventsEnabled() const;
     bool GetFileSystemEventsDryRunModeEnabled() const;
+    TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
 
     bool GetLazyXAttrsEnabled() const;
 

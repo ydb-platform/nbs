@@ -847,7 +847,7 @@ void TIndexTabletState::AddInvalidateNodeRefEvent(
     ui64 nodeId,
     const TString& name)
 {
-    if (!FileSystemEventsEnabled) {
+    if (!FileSystemEventsEnabled || IsShardInternalNodeRef(nodeId)) {
         return;
     }
 
