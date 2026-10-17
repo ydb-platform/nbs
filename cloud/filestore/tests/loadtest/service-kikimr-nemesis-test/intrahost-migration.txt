@@ -24,5 +24,6 @@ Tests {
             MigrationPeriod: 20
             StateTransferDelay: 10
         }
+        ValidateGarbageCollection: true
     }
 }

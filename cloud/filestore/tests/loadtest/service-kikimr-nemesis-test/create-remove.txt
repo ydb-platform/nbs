@@ -20,5 +20,6 @@ Tests {
         }
         IODepth: 32
         TestDuration: 60
+        ValidateGarbageCollection: true
     }
 }

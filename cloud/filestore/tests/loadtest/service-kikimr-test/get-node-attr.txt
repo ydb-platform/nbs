@@ -18,5 +18,6 @@ Tests {
         IODepth: 64
         RequestsCount: 16384
         TestDuration: 60
+        ValidateGarbageCollection: true
     }
 }

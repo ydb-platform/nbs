@@ -25,6 +25,7 @@ Tests {
         }
         IODepth: 4
         TestDuration: 60
+        ValidateGarbageCollection: true
     }
 }
 Tests {
@@ -54,6 +55,7 @@ Tests {
         }
         IODepth: 4
         TestDuration: 60
+        ValidateGarbageCollection: true
     }
 }
 Tests {
@@ -83,5 +85,6 @@ Tests {
         }
         IODepth: 2
         TestDuration: 60
+        ValidateGarbageCollection: true
     }
 }
