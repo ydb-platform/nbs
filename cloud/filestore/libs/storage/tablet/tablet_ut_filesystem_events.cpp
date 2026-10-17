@@ -90,7 +90,7 @@ struct TFileSystemEventsEnv
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CheckFileSystemEventSendsAreCounted(bool dryRun)
+void CheckFileSystemEventsAreSentToSubscribersOnly(bool dryRun)
 {
     NProto::TStorageConfig config;
     config.SetFileSystemEventsEnabled(true);
@@ -98,24 +98,31 @@ void CheckFileSystemEventSendsAreCounted(bool dryRun)
     TFileSystemEventsEnv env(std::move(config));
 
     //
-    // CreateNode registers the first client and produces InvalidateNodeRef
-    // for the new entry: 1 send.
+    // Client 1 creates "f" and gets subscribed to the entry and the node. The
+    // creator doesn't get the event for its own CreateNode - the event is
+    // sent before the creator is subscribed.
     //
 
     auto tablet1 = env.CreateClient("client1", "session1");
     tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"));
 
     //
-    // GetNodeAttr registers the second client.
+    // Client 2 looks "f" up - subscribed to the entry and the node. Client 3
+    // reads the root attrs - subscribed to the root node only.
     //
 
     auto tablet2 = env.CreateClient("client2", "session2");
-    tablet2->GetNodeAttr(RootNodeId);
+    tablet2->GetNodeAttr(RootNodeId, "f");
+
+    auto tablet3 = env.CreateClient("client3", "session3");
+    tablet3->GetNodeAttr(RootNodeId);
+
+    UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
 
     //
     // UnlinkNode produces InvalidateNodeRef for the entry and InvalidateNode
-    // for the removed node: 2 sends each. The parent's MTime/CTime changes
-    // produce nothing.
+    // for the removed node: both go to clients 1 and 2. The root's MTime/CTime
+    // changes produce nothing, so client 3 gets nothing.
     //
 
     tablet1->UnlinkNode(RootNodeId, "f", false /* unlinkDirectory */);
@@ -124,23 +131,36 @@ void CheckFileSystemEventSendsAreCounted(bool dryRun)
         2,
         env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
     UNIT_ASSERT_VALUES_EQUAL(
-        3,
+        2,
         env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 5, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
 
     //
-    // GenerateFileSystemEvent goes through the same path.
+    // GenerateFileSystemEvent goes through the same path: InvalidateNode for
+    // the root goes to client 3 only.
     //
 
     NProto::TFileSystemEvent event;
-    event.MutableInvalidateNode()->SetNodeId(42);
-    const auto response = tablet1->GenerateFileSystemEvent(event);
-    UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetClientCount());
-
+    event.MutableInvalidateNode()->SetNodeId(RootNodeId);
+    auto response = tablet1->GenerateFileSystemEvent(event);
+    UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
     UNIT_ASSERT_VALUES_EQUAL(
-        4,
+        3,
         env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 7, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 5, env.SentEventCount);
+
+    //
+    // Subscriptions are one-shot - client 3 has to read the root again to get
+    // the next event.
+    //
+
+    response = tablet1->GenerateFileSystemEvent(event);
+    UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetClientCount());
+
+    tablet3->GetNodeAttr(RootNodeId);
+    response = tablet1->GenerateFileSystemEvent(event);
+    UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 6, env.SentEventCount);
 }
 
 }   // namespace
@@ -149,14 +169,171 @@ void CheckFileSystemEventSendsAreCounted(bool dryRun)
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
 {
-    Y_UNIT_TEST(ShouldCountFileSystemEventSends)
+    Y_UNIT_TEST(ShouldSendFileSystemEventsToSubscribersOnly)
     {
-        CheckFileSystemEventSendsAreCounted(false /* dryRun */);
+        CheckFileSystemEventsAreSentToSubscribersOnly(false /* dryRun */);
     }
 
     Y_UNIT_TEST(ShouldCountButNotSendFileSystemEventsInDryRunMode)
     {
-        CheckFileSystemEventSendsAreCounted(true /* dryRun */);
+        CheckFileSystemEventsAreSentToSubscribersOnly(true /* dryRun */);
+    }
+
+    Y_UNIT_TEST(ShouldSubscribeUponListNodes)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        const auto nodeId =
+            tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
+
+        auto tablet2 = env.CreateClient("client2", "session2");
+        tablet2->ListNodes(RootNodeId);
+
+        //
+        // Client 2 is subscribed to the listed entry and the listed node,
+        // client 1 - as the creator.
+        //
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+
+        event.Clear();
+        auto* invalidate = event.MutableInvalidateNodeRef();
+        invalidate->SetNodeId(RootNodeId);
+        invalidate->SetName("f");
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(4, env.SentEventCount);
+    }
+
+    Y_UNIT_TEST(ShouldRemoveSubscriptionsUponPipeDisconnect)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        auto tablet2 = env.CreateClient("client2", "session2");
+        tablet2->GetNodeAttr(RootNodeId);
+
+        tablet2->DisconnectPipe();
+        env.Env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
+    }
+
+    Y_UNIT_TEST(ShouldDropSubscriptionsAfterTwoSealPeriods)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        config.SetFileSystemEventSubscriptionsSealPeriod(
+            TDuration::Minutes(1).MilliSeconds());
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        auto tablet2 = env.CreateClient("client2", "session2");
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(RootNodeId);
+
+        //
+        // A registration survives one seal - it's in the sealed generation.
+        //
+
+        tablet2->GetNodeAttr(RootNodeId);
+        tablet1->AdvanceTime(TDuration::Minutes(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+
+        //
+        // The second seal drops it. The seals are triggered by unrelated
+        // registrations (CreateNode of other files) so that the root
+        // registration isn't extracted in between.
+        //
+
+        tablet2->GetNodeAttr(RootNodeId);
+        tablet1->AdvanceTime(TDuration::Minutes(1));
+        tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f1"));
+        tablet1->AdvanceTime(TDuration::Minutes(1));
+        tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreShardInternalNodeRefs)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        tablet1->ConfigureAsShard(1, "test", "main");
+
+        //
+        // In a shard the root contains the shard-resident nodes under the
+        // names generated by the main tablet: neither the subscriptions nor
+        // the events are created for such NodeRefs. The nodes themselves are
+        // tracked as usual.
+        //
+
+        tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"));
+
+        auto tablet2 = env.CreateClient("client2", "session2");
+        tablet2->GetNodeAttr(RootNodeId, "f");
+
+        NProto::TFileSystemEvent event;
+        auto* invalidate = event.MutableInvalidateNodeRef();
+        invalidate->SetNodeId(RootNodeId);
+        invalidate->SetName("f");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+
+        tablet1->UnlinkNode(RootNodeId, "f", false /* unlinkDirectory */);
+
+        //
+        // UnlinkNode produces InvalidateNode only: for client 1 (the creator)
+        // and client 2 (the lookup).
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.SentEventCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotSubscribeIfDisabled)
+    {
+        TFileSystemEventsEnv env({});
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        tablet1->GetNodeAttr(RootNodeId);
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
     }
 
     Y_UNIT_TEST(ShouldNotCountFileSystemEventsIfDisabled)
