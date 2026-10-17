@@ -38,6 +38,10 @@ struct TRequestInfo
     // Request processing start ts. Might be empty.
     TInstant StartedTs;
 
+    // Tablet pipe server that delivered the request. Set only by the
+    // handlers that need it, empty otherwise.
+    NActors::TActorId PipeServerId;
+
     TRequestInfo() = default;
 
     TRequestInfo(
