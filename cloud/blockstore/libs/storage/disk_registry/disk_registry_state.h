@@ -35,6 +35,7 @@ enum class ESecureEraseReadiness {
     AgentAbsent,
     AgentUnavailable,
     DeviceDetached,
+    SecureEraseSuspended,
 };
 
 struct TAgentStorageInfo
@@ -328,6 +329,7 @@ private:
     TDeque<TInstant> AutomaticReplacementTimestamps;
 
     NProto::TDiskRegistryConfig CurrentConfig;
+    bool SuspendSecureErase = false;
 
     struct TDeviceMigrationCompare
     {
@@ -439,6 +441,28 @@ public:
     struct TAllocateCheckpointResult: public TAllocateDiskResult
     {
         TString ShadowDiskId;
+    };
+
+    struct TCreateDiskFromDevicesParams
+    {
+        explicit TCreateDiskFromDevicesParams(
+            const TDiskId& diskId,
+            ui32 blockSize,
+            NProto::EStorageMediaKind mediaKind,
+            bool force,
+            bool keepBlockCount)
+            : DiskId(diskId)
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
+            , Force(force)
+            , KeepBlockCount(keepBlockCount)
+        {}
+
+        const TDiskId& DiskId;
+        ui32 BlockSize;
+        NProto::EStorageMediaKind MediaKind;
+        bool Force = false;
+        bool KeepBlockCount = false;
     };
 
     NProto::TError AllocateDisk(
@@ -779,6 +803,8 @@ public:
 
     bool CanSecureErase(const TDeviceId& uuid) const;
     bool CanSecureErase(const NProto::TDeviceConfig& device) const;
+
+    void SetSuspendSecureErase(bool suspend);
     ESecureEraseReadiness GetSecureEraseReadiness(
         const NProto::TDeviceConfig& device) const;
 
@@ -890,12 +916,16 @@ public:
     NProto::TError CreateDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
-        bool force,
-        const TDiskId& diskId,
-        ui32 blockSize,
-        NProto::EStorageMediaKind mediaKind,
+        const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
         TAllocateDiskResult* result);
+
+    NProto::TError CreateMirroredDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TCreateDiskFromDevicesParams& params,
+        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
+        const TVector<TDeviceId>& freshDeviceIds);
 
     NProto::TError ChangeDiskDevice(
         TInstant now,
@@ -984,6 +1014,13 @@ public:
         const TAgentId& agentId) const;
 
     bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
+
+    NProto::TError CreateMirroredDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        const TVector<NProto::TDeviceConfig>& devices,
+        TAllocateDiskResult* result);
 
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);

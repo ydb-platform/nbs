@@ -34,6 +34,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(FinishMigration,                    __VA_ARGS__)                       \
     xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
     xxx(SetWritableState,                   __VA_ARGS__)                       \
+    xxx(SetSuspendSecureErase,              __VA_ARGS__)                       \
     xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
     xxx(SetUserId,                          __VA_ARGS__)                       \
     xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
@@ -57,6 +58,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
     xxx(EnsureDiskRegistryStateIntegrity,   __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
+    xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -227,6 +229,12 @@ struct TEvDiskRegistry
 
         EvUpdateVolumeHealthRequest = EvBegin + 83,
         EvUpdateVolumeHealthResponse = EvBegin + 84,
+
+        EvCreateMirroredDiskFromDevicesRequest = EvBegin + 85,
+        EvCreateMirroredDiskFromDevicesResponse = EvBegin + 86,
+
+        EvSetSuspendSecureEraseRequest = EvBegin + 87,
+        EvSetSuspendSecureEraseResponse = EvBegin + 88,
 
         EvEnd
     };

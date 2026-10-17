@@ -115,6 +115,7 @@ bool TDiskRegistryActor::LoadState(
         db.ReadDiskStateChanges(args.DiskStateChanges),
         db.ReadLastDiskStateSeqNo(args.LastDiskStateSeqNo),
         db.ReadWritableState(args.WritableState),
+        db.ReadSuspendSecureErase(args.SuspendSecureErase),
         db.ReadDisksToCleanup(args.DisksToCleanup),
         db.ReadOutdatedVolumeConfigs(args.OutdatedVolumeConfigs),
         db.ReadSuspendedDevices(args.SuspendedDevices),
@@ -202,7 +203,9 @@ void TDiskRegistryActor::CompleteLoadState(
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
 
+    const bool suspendSecureErase = args.Snapshot.SuspendSecureErase;
     InitializeState(std::move(args.Snapshot));
+    State->SetSuspendSecureErase(suspendSecureErase);
 
     if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
         const auto deadline = timeout.ToDeadLine(ctx.Now());

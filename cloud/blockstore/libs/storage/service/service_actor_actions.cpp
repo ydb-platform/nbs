@@ -39,6 +39,7 @@ void TServiceActor::HandleExecuteAction(
         TResultOrError<NActors::IActorPtr>(TServiceActor::*)(TRequestInfoPtr, TString);
     const THashMap<TString, TFunc> actions = {
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
+        {"diskregistrysuspendsecureerase",    &TServiceActor::CreateSuspendSecureEraseActionActor          },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },
         {"checkblob",                         &TServiceActor::CreateCheckBlobActionActor                   },
         {"checkrange",                        &TServiceActor::CreateCheckRangeActionActor                  },
@@ -80,6 +81,7 @@ void TServiceActor::HandleExecuteAction(
         {"updateusedblocks",                  &TServiceActor::CreateUpdateUsedBlocksActionActor            },
         {"getdiskregistrytabletinfo",         &TServiceActor::CreateGetDiskRegistryTabletInfo              },
         {"creatediskfromdevices",             &TServiceActor::CreateCreateDiskFromDevicesActionActor       },
+        {"createmirroreddiskfromdevices",     &TServiceActor::CreateCreateMirroredDiskFromDevicesActor     },
         {"changediskdevice",                  &TServiceActor::CreateChangeDiskDeviceActionActor            },
         {"setupchannels",                     &TServiceActor::CreateSetupChannelsActionActor               },
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },

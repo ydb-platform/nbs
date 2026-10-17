@@ -298,6 +298,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateSuspendSecureEraseActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateRebindVolumesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
@@ -379,6 +383,10 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateCreateDiskFromDevicesActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateCreateMirroredDiskFromDevicesActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

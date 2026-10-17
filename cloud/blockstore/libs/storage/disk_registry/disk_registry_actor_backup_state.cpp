@@ -114,7 +114,8 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        suspendSecureErase
     ] = args.Snapshot;
 
     auto copy = [] (auto& src, auto* dst) {
@@ -184,6 +185,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     backup.MutableConfig()->Swap(&config);
     backup.MutableConfig()->SetLastDiskStateSeqNo(lastDiskStateSeqNo);
     backup.MutableConfig()->SetWritableState(writableState);
+    backup.MutableConfig()->SetSuspendSecureErase(suspendSecureErase);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

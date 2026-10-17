@@ -67,6 +67,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
+    xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
+    xxx(SuspendSecureErase,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -794,6 +796,28 @@ struct TTxDiskRegistry
     };
 
     //
+    // SuspendSecureErase
+    //
+
+    struct TSuspendSecureErase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const bool State;
+
+        TSuspendSecureErase(
+                TRequestInfoPtr requestInfo,
+                bool state)
+            : RequestInfo(std::move(requestInfo))
+            , State(state)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
     // FinishMigration
     //
 
@@ -1237,6 +1261,7 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
+        const bool KeepBlockCount;
 
         NProto::TError Error;
         ui64 LogicalBlockCount = 0;
@@ -1247,13 +1272,15 @@ struct TTxDiskRegistry
                 TString diskId,
                 ui32 blockSize,
                 NProto::EStorageMediaKind mediaKind,
-                TVector<NProto::TDeviceConfig> devices)
+                TVector<NProto::TDeviceConfig> devices,
+                bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Devices(std::move(devices))
+            , KeepBlockCount(keepBlockCount)
         {}
 
         void Clear()
@@ -1278,6 +1305,49 @@ struct TTxDiskRegistry
             }
             ss << "]";
             return ss.Str();
+        }
+    };
+
+    //
+    // CreateMirroredDiskFromDevices
+    //
+
+    struct TCreateMirroredDiskFromDevices
+    {
+        const TRequestInfoPtr RequestInfo;
+
+        const TString MasterDiskId;
+        const ui32 BlockSize;
+        const NProto::EStorageMediaKind MediaKind;
+        const TVector<TVector<NProto::TDeviceConfig>> Replicas;
+        const TVector<TString> FreshDeviceIds;
+        const bool Force;
+        const bool KeepBlockCount;
+
+        NProto::TError Error;
+
+        TCreateMirroredDiskFromDevices(
+            TRequestInfoPtr requestInfo,
+            TString masterDiskId,
+            ui32 blockSize,
+            NProto::EStorageMediaKind mediaKind,
+            TVector<TVector<NProto::TDeviceConfig>> replicas,
+            TVector<TString> freshDeviceIds,
+            bool force,
+            bool keepBlockCount)
+            : RequestInfo(std::move(requestInfo))
+            , MasterDiskId(std::move(masterDiskId))
+            , BlockSize(blockSize)
+            , MediaKind(mediaKind)
+            , Replicas(std::move(replicas))
+            , FreshDeviceIds(std::move(freshDeviceIds))
+            , Force(force)
+            , KeepBlockCount(keepBlockCount)
+        {}
+
+        void Clear()
+        {
+            Error.Clear();
         }
     };
 

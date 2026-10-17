@@ -190,6 +190,19 @@ void RestoreWritableState(
         });
 }
 
+void RestoreSuspendSecureErase(
+    bool newSuspendSecureErase,
+    bool currentSuspendSecureErase,
+    TOperations& operations)
+{
+    Y_UNUSED(currentSuspendSecureErase);
+    operations.push(
+        [newSuspendSecureErase = std::move(newSuspendSecureErase)]
+        (TDiskRegistryDatabase& db) {
+            db.WriteSuspendSecureErase(newSuspendSecureErase);
+        });
+}
+
 void RestoreDisksToCleanup(
     TVector<TString> newDisksToCleanup,
     TVector<TString> currentDisksToCleanup,
@@ -367,7 +380,8 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
         outdatedVolumeConfigs,
         suspendedDevices,
         automaticallyReplacedDevices,
-        diskRegistryAgentListParams
+        diskRegistryAgentListParams,
+        suspendSecureErase
     ] = newLoadState;
 
     if (backup.DirtyDevicesSize()) {
@@ -438,6 +452,7 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
 
     lastDiskStateSeqNo = config.GetLastDiskStateSeqNo();
     writableState = config.GetWritableState();
+    suspendSecureErase = config.GetSuspendSecureErase();
 
     return newLoadState;
 }
@@ -560,7 +575,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newOutdatedVolumeConfigs,
         newSuspendedDevices,
         newAutomaticallyReplacedDevices,
-        newDiskRegistryAgentListParams
+        newDiskRegistryAgentListParams,
+        newSuspendSecureErase
     ] = std::move(args.NewState);
 
     auto&& [
@@ -580,7 +596,8 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         currentOutdatedVolumeConfigs,
         currentSuspendedDevices,
         currentAutomaticallyReplacedDevices,
-        currentDiskRegistryAgentListParams
+        currentDiskRegistryAgentListParams,
+        currentSuspendSecureErase
     ] = std::move(args.CurrentState);
 
     RestoreConfig(
@@ -623,6 +640,11 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newWritableState,
         currentWritableState,
         operations);
+    RestoreSuspendSecureErase(
+        newSuspendSecureErase,
+        currentSuspendSecureErase,
+        operations);
+    State->SetSuspendSecureErase(newSuspendSecureErase);
     RestoreDisksToCleanup(
         std::move(newDisksToCleanup),
         std::move(currentDisksToCleanup),
