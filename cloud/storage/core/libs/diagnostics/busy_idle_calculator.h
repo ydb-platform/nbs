@@ -32,6 +32,13 @@ concept TBusyIdleTimeStorage = requires(T t) {
     { t.IncrementState(std::declval<ui64>(), std::declval<EState>()) } -> std::same_as<void>;
 } && std::is_default_constructible<T>::value;
 
+template <typename T>
+concept TRequestDepthTimeStorage = requires(T t) {
+    {
+        t.IncrementDepth(ui64{}, ui32{})
+    } -> std::same_as<void>;
+} && std::is_default_constructible<T>::value;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDynamicCountersStorage
@@ -101,7 +108,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <TBusyIdleTimeStorage T>
+// AccountDepth credits every transition using the previous inflight count.
+// This mode requires external serialization of events and storage reads for
+// coherent snapshots, and checks against inflight underflow and overflow.
+// A custom clock returns monotonic timestamps in the storage's time unit.
+template <typename T, bool AccountDepth = false, typename TClock = ITimerPtr>
+    requires(
+        (AccountDepth && TRequestDepthTimeStorage<T>) ||
+        (!AccountDepth && TBusyIdleTimeStorage<T>))
 class TBusyIdleTimeCalculator
 {
     struct TFields
@@ -118,14 +132,14 @@ class TBusyIdleTimeCalculator
     std::atomic<TFields> Fields;
 
     T Storage;
-    ITimerPtr Timer;
+    TClock Timer;
 
 public:
-    explicit TBusyIdleTimeCalculator(ITimerPtr timer = CreateWallClockTimer())
+    explicit TBusyIdleTimeCalculator(TClock timer = CreateWallClockTimer())
         : Timer(std::move(timer))
     {
         auto fields = Fields.load();
-        fields.Started = Timer->Now().MicroSeconds();
+        fields.Started = ReadTimestamp();
         Fields.store(fields);
     }
 
@@ -144,8 +158,8 @@ public:
             ++newFields.Inflight;
             ++newFields.Gen;
             ui64 val = 0;
-            if (fields.Inflight == 0) {
-                ui64 now = Timer->Now().MicroSeconds();
+            if (AccountDepth || fields.Inflight == 0) {
+                ui64 now = ReadTimestamp();
                 val = now - fields.Started;
                 newFields.Started = now;
             }
@@ -157,7 +171,7 @@ public:
                 std::memory_order_acquire);
             if (success) {
                 if (val) {
-                    Storage.IncrementState(val, EState::IDLE);
+                    AddTime(val, fields.Inflight);
                 }
 
                 break;
@@ -174,8 +188,8 @@ public:
             --newFields.Inflight;
             ++newFields.Gen;
             ui64 val = 0;
-            if (newFields.Inflight == 0) {
-                ui64 now = Timer->Now().MicroSeconds();
+            if (AccountDepth || newFields.Inflight == 0) {
+                ui64 now = ReadTimestamp();
                 val = now - fields.Started;
                 newFields.Started = now;
             }
@@ -187,7 +201,7 @@ public:
                 std::memory_order_acquire);
             if (success) {
                 if (val) {
-                    Storage.IncrementState(val, EState::BUSY);
+                    AddTime(val, fields.Inflight);
                 }
 
                 break;
@@ -197,11 +211,39 @@ public:
 
     void OnUpdateStats()
     {
-        UpdateProgress(IDLE);
-        UpdateProgress(BUSY);
+        if constexpr (AccountDepth) {
+            UpdateProgress(GetInflight() ? BUSY : IDLE);
+        } else {
+            UpdateProgress(IDLE);
+            UpdateProgress(BUSY);
+        }
+    }
+
+    ui32 GetInflight() const
+        requires AccountDepth
+    {
+        return Fields.load(std::memory_order_acquire).Inflight;
     }
 
 private:
+    ui64 ReadTimestamp()
+    {
+        if constexpr (std::is_same_v<TClock, ITimerPtr>) {
+            return Timer->Now().MicroSeconds();
+        } else {
+            return Timer();
+        }
+    }
+
+    void AddTime(ui64 elapsed, ui32 inflight)
+    {
+        if constexpr (AccountDepth) {
+            Storage.IncrementDepth(elapsed, inflight);
+        } else {
+            Storage.IncrementState(elapsed, inflight ? BUSY : IDLE);
+        }
+    }
+
     void UpdateProgress(EState state)
     {
         auto fields = Fields.load(std::memory_order_acquire);
@@ -232,7 +274,7 @@ private:
                 }
             }
 
-            newFields.Started = Timer->Now().MicroSeconds();
+            newFields.Started = ReadTimestamp();
             value = newFields.Started - fields.Started;
 
             const bool success = Fields.compare_exchange_weak(
@@ -241,7 +283,7 @@ private:
                 std::memory_order_release,
                 std::memory_order_acquire);
             if (success) {
-                Storage.IncrementState(value, state);
+                AddTime(value, fields.Inflight);
                 return;
             }
         }
