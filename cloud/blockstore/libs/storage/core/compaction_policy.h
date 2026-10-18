@@ -140,8 +140,7 @@ struct ICompactionPolicy
 
 ui32 GetMaxBlobsPerRange(
     const NProto::TPartitionConfig& partitionConfig,
-    const TStorageConfig& storageConfig,
-    const ui32 siblingCount);
+    const TStorageConfig& storageConfig);
 
 ICompactionPolicyPtr BuildDefaultCompactionPolicy(
     ui32 compactionThreshold,
@@ -168,11 +167,10 @@ TLoadOptimizationCompactionPolicyConfig
 BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 siblingCount);
+    const ui32 maxBlobsPerRange);
 
 ICompactionPolicyPtr BuildCompactionPolicy(
     const NProto::TPartitionConfig& partitionConfig,
-    const TStorageConfig& storageConfig,
-    const ui32 siblingCount);
+    const TStorageConfig& storageConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage

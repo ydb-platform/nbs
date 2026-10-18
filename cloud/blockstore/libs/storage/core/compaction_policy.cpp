@@ -199,8 +199,7 @@ bool IsMixedBlocksCountCompactionEnabled(
 
 ui32 GetMaxBlobsPerRange(
     const NProto::TPartitionConfig& partitionConfig,
-    const TStorageConfig& storageConfig,
-    const ui32 siblingCount)
+    const TStorageConfig& storageConfig)
 {
     auto maxBlobsPerRange = IntegerCast<ui32>(
         partitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
@@ -212,7 +211,6 @@ ui32 GetMaxBlobsPerRange(
                 : storageConfig.GetHDDMaxBlobsPerRange()
     );
 
-    maxBlobsPerRange = Max(maxBlobsPerRange / siblingCount, 1u);
     return maxBlobsPerRange;
 }
 
@@ -285,15 +283,10 @@ TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyCon
 
 ICompactionPolicyPtr BuildCompactionPolicy(
     const NProto::TPartitionConfig& partitionConfig,
-    const TStorageConfig& storageConfig,
-    const ui32 siblingCount)
+    const TStorageConfig& storageConfig)
 {
-    Y_ABORT_UNLESS(siblingCount > 0);
-
-    const auto maxBlobsPerRange = GetMaxBlobsPerRange(
-        partitionConfig,
-        storageConfig,
-        siblingCount);
+    const auto maxBlobsPerRange =
+        GetMaxBlobsPerRange(partitionConfig, storageConfig);
 
     ui64 usedBlocksThresholdForMixedBlocksCompaction =
         GetWriteBlobThreshold(
