@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -23,11 +25,13 @@ using TVolumeUsage = std::pair<ui64, ui64>;
 
 TStorageConfigPtr CreateStorageConfig(
     NProto::EVolumePreemptionType type,
+    bool volumeBalancerEnabled,
     ui32 cpuLackThreshold,
     NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
+    storageConfig.SetVolumeBalancerEnabled(volumeBalancerEnabled);
     storageConfig.SetCpuLackThreshold(cpuLackThreshold);
     if (!featuresConfig) {
         NProto::TFeaturesConfig config;
@@ -114,6 +118,15 @@ NProto::TVolumeBalancerDiskStats CreateVolumeStats(
     return stats;
 }
 
+IVolumeBalancerSwitchPtr CreateSwitch(bool enabled)
+{
+    auto volumeBalancerSwitch = CreateVolumeBalancerSwitch();
+    if (enabled) {
+        volumeBalancerSwitch->EnableVolumeBalancer();
+    }
+    return volumeBalancerSwitch;
+}
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,9 +138,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -150,9 +165,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -175,9 +192,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -199,10 +218,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -246,10 +266,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_NONE,
+            /*volumeBalancerEnabled=*/false,
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
 
         TInstant now = TInstant::Seconds(0);
 
@@ -272,10 +293,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -319,6 +341,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
@@ -340,7 +363,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         auto overlappingPullDelay =
             storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         // Push vol0
@@ -400,9 +423,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -437,6 +462,71 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSelectLightestVolumeWhenEnabledWithPreemptionTypeNone)
+    {
+        TVolumeBalancerState state(
+            CreateStorageConfig(
+                NProto::PREEMPTION_NONE,
+                /*volumeBalancerEnabled=*/true,
+                70,
+                /*featuresConfig=*/nullptr),
+            CreateSwitch(true));
+        TInstant now = TInstant::Seconds(0);
+
+        TVector<NProto::TVolumeBalancerDiskStats> vols{
+            CreateVolumeStats("vol0", "", "", true),
+            CreateVolumeStats("vol1", "", "", true)};
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 10;
+        perfMap["vol1"] = 1;
+
+        state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+        UNIT_ASSERT_VALUES_EQUAL("vol1", state.GetVolumeToPush());
+        UNIT_ASSERT(!state.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr);
+
+        TVolumeBalancerState state(storageConfig, CreateSwitch(false));
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 10;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", false)};
+
+            state.UpdateVolumeStats(vols, perfMap, 40, now);
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
     {
         TVector<NProto::EStorageMediaKind> kinds {
@@ -449,9 +539,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
 
         for (ui32 i = 0; i < kinds.size(); ++i) {
