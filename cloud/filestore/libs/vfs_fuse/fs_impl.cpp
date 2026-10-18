@@ -364,14 +364,17 @@ void TFileSystem::ReplyAttrWithCache(
         return;
     }
 
-    fuse_entry_param entry = {};
-    const bool updated = UpdateNodeAttrsInCache(attrs, entry, version);
+    // NodeCache ref count mirrors the guest's lookup count. attr replies do
+    // not change it, so only check the version.
+    const bool updated = NodeCache.GetNodeVersion(attrs.GetId()) <= version;
+    struct stat attr = {};
+    ConvertAttr(Config->GetPreferredBlockSize(), attrs, attr);
 
     ReplyAttr(
         callContext,
         error,
         req,
-        &entry.attr,
+        &attr,
         updated ? Config->GetAttrTimeout().SecondsFloat() : 0);
 }
 
