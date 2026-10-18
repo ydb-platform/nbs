@@ -215,6 +215,10 @@ message TCreateFileStoreRequest
 
     // Explicitly specified shard count.
     uint32 ShardCount = 10;
+
+    // Blocks per compaction range; selected at creation and immutable.
+    // Zero selects 64. Must be a power of two, at most 1024.
+    uint32 BlockGroupSize = 11;
 }
 
 message TCreateFileStoreResponse

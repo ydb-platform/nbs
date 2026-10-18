@@ -458,6 +458,15 @@ TFileStoreInfo::TPtr TCreateFileStore::CreateFileStoreInfo(
         return nullptr;
     }
 
+    const ui32 blockGroupSize = config.GetBlockGroupSize();
+    if (blockGroupSize &&
+        (blockGroupSize > 1024 || (blockGroupSize & (blockGroupSize - 1))))
+    {
+        status = NKikimrScheme::StatusInvalidParameter;
+        errStr = "Block group size must be a power of two, at most 1024";
+        return nullptr;
+    }
+
     if (config.HasVersion()) {
         status = NKikimrScheme::StatusSchemeError;
         errStr = "Setting version is not allowed";

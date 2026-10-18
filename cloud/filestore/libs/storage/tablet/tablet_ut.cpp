@@ -27,6 +27,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         tablet.WaitReady();
     }
 
+    Y_UNIT_TEST(ShouldPersistBlockGroupSizeAndRejectChanges)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {.BlockGroupSize = 256});
+        UNIT_ASSERT_VALUES_EQUAL(
+            256,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+
+        tablet.UpdateConfig({.CloudId = "updated", .BlockGroupSize = 256});
+        UNIT_ASSERT_VALUES_EQUAL(
+            "updated",
+            GetFileSystemConfig(tablet).GetCloudId());
+        tablet.UpdateConfig({.BlockGroupSize = 64});
+        UNIT_ASSERT_VALUES_EQUAL(
+            256,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+        tablet.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(
+            256,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+    }
+
+    Y_UNIT_TEST(ShouldUseLegacyBlockGroupSizeWhenAbsent)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            64,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+        tablet.UpdateConfig({.BlockGroupSize = 64});
+        tablet.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(
+            64,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+    }
+
     Y_UNIT_TEST(ShouldUpdateConfig)
     {
         TTestEnv env;

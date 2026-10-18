@@ -202,8 +202,9 @@ NProto::TError TIndexTabletState::DeleteRange(
             SplitRange(
                 range.FirstAlignedBlock(),
                 deletedBlockCount,
-                BlockGroupSize,
-                [&] (ui32 blockOffset, ui32 blocksCount) {
+                GetBlockGroupSize(),
+                [&](ui32 blockOffset, ui32 blocksCount)
+                {
                     MarkMixedBlocksDeleted(
                         db,
                         nodeId,
@@ -1514,8 +1515,9 @@ TIndexTabletState::NextPriorityRangeForCleanup() const
         SplitRange(
             one.BlockIndex,
             one.BlockCount,
-            BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
+            GetBlockGroupSize(),
+            [&](ui32 blockOffset, ui32 blocksCount)
+            {
                 PriorityRangesForCleanup.push_back({
                     one.NodeId,
                     one.BlockIndex + blockOffset,

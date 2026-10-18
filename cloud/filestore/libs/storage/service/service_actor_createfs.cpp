@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
+#include <cloud/filestore/libs/storage/tablet/model/block.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -55,6 +56,15 @@ NProto::TError ValidateCreateFileSystemRequest(
     {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid block size: " << blockSize);
+    }
+
+    if (!IsValidBlockGroupSize(
+            GetEffectiveBlockGroupSize(request.GetBlockGroupSize())))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "invalid block group size: " << request.GetBlockGroupSize());
     }
 
     ui64 blocksCount = request.GetBlocksCount();
@@ -158,6 +168,8 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
     config.SetBlocksCount(Request.GetBlocksCount());
     config.SetStorageMediaKind(Request.GetStorageMediaKind());
     config.SetRangeIdHasherType(1);
+    config.SetBlockGroupSize(
+        GetEffectiveBlockGroupSize(Request.GetBlockGroupSize()));
 
     if (StorageConfig->GetAutomaticShardCreationEnabled() ||
         Request.GetShardCount() > 0)

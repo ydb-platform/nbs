@@ -21,6 +21,12 @@ TString ValidateUpdateConfigRequest(
     const NProto::TFileSystem& oldConfig,
     const NProto::TFileSystem& newConfig)
 {
+    if (GetEffectiveBlockGroupSize(oldConfig.GetBlockGroupSize()) !=
+        GetEffectiveBlockGroupSize(newConfig.GetBlockGroupSize()))
+    {
+        return "Block group size cannot be changed after creation";
+    }
+
     const ui32 oldBlockSize = oldConfig.GetBlockSize();
     const ui32 newBlockSize = newConfig.GetBlockSize();
 

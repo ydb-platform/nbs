@@ -62,6 +62,9 @@ message TFileSystem
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 25;
+
+    // Immutable; zero means the legacy value of 64.
+    uint32 BlockGroupSize = 26;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
