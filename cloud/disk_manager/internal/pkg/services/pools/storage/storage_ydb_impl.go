@@ -2354,13 +2354,11 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	// Ready base disks of the pool that new base disks should be created
 	// from (instead of the image). Empty if the feature is disabled or there
 	// are no suitable base disks.
+	// Source base disks are held from deletion while their dependents are
+	// being created (see applyInflightDependents), which requires
+	// holdBaseDisksWithInflightDependents. Fall back to the image otherwise
+	// (the service itself refuses such a config on startup).
 	var srcBaseDisks []baseDisk
-	// Source base disks must be held from deletion while dependents are being
-	// created, so the feature can't work without inflight dependents
-	// accounting (see applyInflightDependents). The service refuses to start
-	// with such a config (see validateUseReadyBaseDiskAsSrcConfig), but the
-	// storage may be used on its own (e.g. by tools), so fall back to the
-	// image here instead of failing.
 	if s.useReadyBaseDiskAsSrc && s.holdBaseDisksWithInflightDependents {
 		srcBaseDisks, err = s.getSrcBaseDiskCandidates(
 			ctx,
@@ -2371,6 +2369,12 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		if err != nil {
 			return nil, err
 		}
+
+		// Spread the load over the source base disks: each new base disk gets
+		// the next candidate, so at most |willCreate| of them are used.
+		if uint64(len(srcBaseDisks)) > willCreate {
+			srcBaseDisks = srcBaseDisks[:willCreate]
+		}
 	}
 
 	var newBaseDisks []baseDisk
@@ -2380,10 +2384,10 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		baseDiskTemplate.id = generateBaseDiskID(s.baseDiskIDPrefix)
 
 		if len(srcBaseDisks) != 0 {
-			// Spread the load over the source base disks.
-			srcBaseDisk := srcBaseDisks[i%uint64(len(srcBaseDisks))]
+			srcBaseDisk := &srcBaseDisks[i%uint64(len(srcBaseDisks))]
 			baseDiskTemplate.srcDiskZoneID = srcBaseDisk.zoneID
 			baseDiskTemplate.srcDiskID = srcBaseDisk.id
+			baseDiskTemplate.srcDiskCheckpointID = srcBaseDisk.checkpointID
 		}
 
 		newBaseDisks = append(newBaseDisks, baseDiskTemplate)
@@ -2403,12 +2407,23 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		})
 	}
 
-	// New base disks created from other base disks hold their source base
-	// disks from deletion until creation is finished (see inflightDependents).
-	// Appends transitions of the source base disks, which should be written
-	// to DB as well (they are no-ops for 'scheduling' and 'free' tables).
-	// Pool counters are not affected: inflight dependents don't change free
-	// slots/units of the source base disks.
+	// Source base disks are rewritten as well: new base disks hold them from
+	// deletion until creation is finished (see inflightDependents). Add their
+	// transitions here, so that applyInflightDependents doesn't need to read
+	// them again.
+	for i := range srcBaseDisks {
+		oldState := srcBaseDisks[i]
+		transitions = append(transitions, baseDiskTransition{
+			oldState: &oldState,
+			state:    &srcBaseDisks[i],
+		})
+	}
+
+	// NOTE: unlike updateBaseDisks, this function doesn't apply invariants
+	// and doesn't touch 'deleting'/'deleted' tables, because new base disks
+	// are generated in a known state and the only thing that changes in the
+	// source base disks is inflightDependents, which affects neither pool
+	// counters nor 'scheduling'/'free' tables.
 	transitions, err = s.applyInflightDependents(ctx, tx, transitions)
 	if err != nil {
 		return nil, err
@@ -3345,7 +3360,8 @@ func (s *storageYDB) getSrcBaseDiskCandidates(
 
 	// Only base disks with free slots are considered. It keeps the lookup
 	// cheap (see 'free' table) and such base disks are the ones that overlay
-	// disks are going to be created from anyway.
+	// disks are going to be created from anyway. Base disks from 'free' table
+	// are never doomed or retiring (they would have no free slots).
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return nil, err
@@ -3353,35 +3369,23 @@ func (s *storageYDB) getSrcBaseDiskCandidates(
 
 	var candidates []baseDisk
 	for _, disk := range freeBaseDisks {
-		// Base disk can be used as a source for other base disks only after
-		// its own creation is finished (it also forbids chains of holds, see
-		// retireBaseDisk and applyInflightDependents).
-		if disk.status != baseDiskStatusReady {
-			continue
+		// Base disk can be used as a source only after its own creation is
+		// finished: its data and checkpoint don't exist until then. It also
+		// keeps chains of holds impossible (see applyInflightDependents).
+		if disk.status == baseDiskStatusReady {
+			candidates = append(candidates, disk)
 		}
-
-		// Retiring base disks are going to be deleted.
-		if disk.retiring || disk.isDoomed() {
-			continue
-		}
-
-		candidates = append(candidates, disk)
 	}
 
 	// Creating a base disk from another base disk reads the whole source
 	// base disk, so prefer base disks that are not serving other transfers
 	// right now (see inflightDependents) and then the least loaded ones.
-	// Order by id as a tiebreaker for determinism.
-	sort.Slice(candidates, func(i, j int) bool {
+	sort.SliceStable(candidates, func(i, j int) bool {
 		if candidates[i].inflightDependents != candidates[j].inflightDependents {
 			return candidates[i].inflightDependents < candidates[j].inflightDependents
 		}
 
-		if candidates[i].activeUnits != candidates[j].activeUnits {
-			return candidates[i].activeUnits < candidates[j].activeUnits
-		}
-
-		return candidates[i].id < candidates[j].id
+		return candidates[i].activeUnits < candidates[j].activeUnits
 	})
 
 	return candidates, nil
@@ -3531,18 +3535,6 @@ func (s *storageYDB) retireBaseDisk(
 			return nil, err
 		}
 	}
-
-	// Prefer ready base disks as rebase targets: overlay disks can't be
-	// rebased onto a base disk until its creation is finished. Base disks
-	// that are still being created are still suitable (see below), e.g. for
-	// idempotent retries, but should only be used as a last resort. That
-	// matters when regular base disks of the pool are created from other
-	// base disks (see useReadyBaseDiskAsSrc).
-	sort.SliceStable(suitableBaseDisks, func(i, j int) bool {
-		iReady := suitableBaseDisks[i].status == baseDiskStatusReady
-		jReady := suitableBaseDisks[j].status == baseDiskStatusReady
-		return iReady && !jReady
-	})
 
 	var baseDiskTransitions []baseDiskTransition
 

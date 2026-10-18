@@ -3871,23 +3871,42 @@ func TestStorageYDBShouldReleaseSrcBaseDiskWhenCreationFailed(t *testing.T) {
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
-	// Failed base disk releases its source and gets deleted itself.
-	err = storage.BaseDiskCreationFailed(ctx, newBaseDisk)
+	// Retire the source and release its only slot, so that the only thing
+	// that keeps it from deletion is the base disk being created from it.
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		source.ID,
+		nil, // srcDisk
+		0,   // useImageSize
+	)
 	require.NoError(t, err)
-	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, newBaseDisk))
+	require.Len(t, rebaseInfos, 1)
+	require.Equal(t, newBaseDisk.ID, rebaseInfos[0].TargetBaseDiskID)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
-	// Source is still ready and in the pool, so the replacement for the failed
-	// base disk should be created from it again.
+	// Failed base disk gets deleted itself and releases its source, which has
+	// nothing to hold it anymore.
+	err = storage.BaseDiskCreationFailed(ctx, newBaseDisk)
+	require.NoError(t, err)
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, newBaseDisk))
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// There are no ready base disks left in the pool, so it is refilled from
+	// the image.
 	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Len(t, toSchedule, 1)
 	require.NotEqual(t, newBaseDisk.ID, toSchedule[0].ID)
-	require.NotNil(t, toSchedule[0].SrcDisk)
-	require.Equal(t, source.ID, toSchedule[0].SrcDisk.DiskId)
+	require.Nil(t, toSchedule[0].SrcDisk)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -3951,8 +3970,8 @@ func TestStorageYDBShouldNotUseCreatingBaseDiskAsSrcWhenScheduling(
 	require.Equal(t, creating.ID, acquired.ID)
 
 	// Pool needs one more base disk, but the only base disk of the pool is
-	// not ready, so it can't be used as a source (it would make a chain of
-	// holds).
+	// not ready, so it can't be used as a source: its data and checkpoint
+	// don't exist yet.
 	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Len(t, toSchedule, 1)
