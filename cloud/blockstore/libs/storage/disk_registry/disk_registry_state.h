@@ -925,7 +925,8 @@ public:
         TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
         const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const TVector<TDeviceId>& freshDeviceIds);
+        const TVector<TDeviceId>& freshDeviceIds,
+        TAllocateDiskResult* result);
 
     NProto::TError ChangeDiskDevice(
         TInstant now,

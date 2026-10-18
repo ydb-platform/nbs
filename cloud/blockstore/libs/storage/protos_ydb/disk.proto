@@ -69,6 +69,9 @@ message TCreateMirroredDiskFromDevicesResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Number of total logical blocks.
+    uint64 BlockCount = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

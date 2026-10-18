@@ -1325,6 +1325,7 @@ struct TTxDiskRegistry
         const bool KeepBlockCount;
 
         NProto::TError Error;
+        ui64 LogicalBlockCount = 0;
 
         TCreateMirroredDiskFromDevices(
             TRequestInfoPtr requestInfo,

@@ -73,6 +73,7 @@ void TDiskRegistryActor::ExecuteCreateMirroredDiskFromDevices(
 {
     TDiskRegistryDatabase db(tx.DB);
 
+    TDiskRegistryState::TAllocateDiskResult result;
     args.Error = State->CreateMirroredDiskFromDevices(
         ctx.Now(),
         db,
@@ -81,10 +82,28 @@ void TDiskRegistryActor::ExecuteCreateMirroredDiskFromDevices(
             args.BlockSize,
             args.MediaKind,
             args.Force,
-            args.KeepBlockCount
-        ),
+            args.KeepBlockCount),
         args.Replicas,
-        args.FreshDeviceIds);
+        args.FreshDeviceIds,
+        &result);
+
+    if (HasError(args.Error)) {
+        return;
+    }
+
+    for (auto& d: result.Devices) {
+        if (!ToLogicalBlocks(d, args.BlockSize)) {
+            args.Error = MakeError(
+                E_FAIL,
+                TStringBuilder() << "CreateMirroredDiskFromDevices: "
+                                    "ToLogicalBlocks failed, device: "
+                                 << d.GetDeviceUUID().Quote().c_str());
+
+            return;
+        }
+
+        args.LogicalBlockCount += d.GetBlocksCount();
+    }
 }
 
 void TDiskRegistryActor::CompleteCreateMirroredDiskFromDevices(
@@ -101,6 +120,8 @@ void TDiskRegistryActor::CompleteCreateMirroredDiskFromDevices(
     auto response = std::make_unique<
         TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesResponse>(
         std::move(args.Error));
+
+    response->Record.SetBlockCount(args.LogicalBlockCount);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

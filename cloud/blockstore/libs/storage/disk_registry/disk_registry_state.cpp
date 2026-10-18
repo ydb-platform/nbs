@@ -8471,8 +8471,10 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     TDiskRegistryDatabase& db,
     const TCreateDiskFromDevicesParams& params,
     const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-    const TVector<TDeviceId>& freshDeviceIds)
+    const TVector<TDeviceId>& freshDeviceIds,
+    TAllocateDiskResult* result)
 {
+    Y_DEBUG_ABORT_UNLESS(result);
     NProto::EStorageMediaKind mediaKind = params.MediaKind;
 
     if (mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
@@ -8514,16 +8516,14 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 
     const bool hasReplicaWithAllData = FindIfPtr(
         replicas,
-        [&freshDeviceIdsSet] (const auto& replica) {
-            return ReplicaHasAllData(replica, freshDeviceIdsSet);
-        });
+        [&freshDeviceIdsSet](const auto& replica)
+        { return ReplicaHasAllData(replica, freshDeviceIdsSet); });
 
     if (!hasReplicaWithAllData) {
         return MakeError(
             E_INVALID_STATE,
-            TStringBuilder()
-                << "mirrored disk " << masterId.Quote()
-                << " has no replica with all data replicated");
+            TStringBuilder() << "mirrored disk " << masterId.Quote()
+                             << " has no replica with all data replicated");
     }
 
     if (auto error = CreateMirroredDiskPlacementGroup(db, masterId);
@@ -8535,7 +8535,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
-        TAllocateDiskResult result;
+        TAllocateDiskResult replicaResult;
         auto error = CreateDiskFromDevices(
             now,
             db,
@@ -8544,10 +8544,9 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 params.BlockSize,
                 mediaKind,
                 params.Force,
-                params.KeepBlockCount
-            ),
+                params.KeepBlockCount),
             replicas[i],
-            &result);
+            &replicaResult);
 
         if (HasError(error)) {
             return error;
@@ -8564,9 +8563,15 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 
         replica.MasterDiskId = masterId;
 
+        // Volume size is equals to the size of one of the replicas.
+        // The other replicas are copies of it.
+        if (i == 0) {
+            result->Devices = replicaResult.Devices;
+        }
+
         TVector<TDeviceId> deviceIds;
-        deviceIds.reserve(result.Devices.size());
-        for (const auto& device: result.Devices) {
+        deviceIds.reserve(replicaResult.Devices.size());
+        for (const auto& device: replicaResult.Devices) {
             deviceIds.push_back(device.GetDeviceUUID());
         }
 
@@ -8595,7 +8600,6 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 
     db.UpdateDisk(BuildDiskConfig(masterId, master));
 
-    AddReallocateRequest(db, masterId);
     return {};
 }
 
