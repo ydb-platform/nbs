@@ -81,10 +81,12 @@ def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, device_to_d
                 f"device {quote(uuid)} is inconsistent with device in previous backup"
             )
 
-        if uuid in device_to_disk and device_to_disk[uuid] != old_disk.DiskId:
-            raise RuntimeError(f"device {quote(uuid)} already exists on other disk {quote(device_to_disk[uuid])}")
+        current_uuid = current_device.DeviceUUID
+        if current_uuid in device_to_disk and device_to_disk[current_uuid] != old_disk.DiskId:
+            raise RuntimeError(f"device {quote(current_uuid)}"
+                f"already exists on other disk {quote(device_to_disk[current_uuid])}")
 
-        device_to_disk[uuid] = old_disk.DiskId
+        device_to_disk[current_uuid] = old_disk.DiskId
         devices.append(current_device)
 
     return devices

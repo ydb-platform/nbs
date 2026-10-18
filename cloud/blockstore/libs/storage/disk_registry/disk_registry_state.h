@@ -446,19 +446,19 @@ public:
     struct TCreateDiskFromDevicesParams
     {
         explicit TCreateDiskFromDevicesParams(
-            const TDiskId& diskId,
+            TDiskId diskId,
             ui32 blockSize,
             NProto::EStorageMediaKind mediaKind,
             bool force,
             bool keepBlockCount)
-            : DiskId(diskId)
+            : DiskId(std::move(diskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Force(force)
             , KeepBlockCount(keepBlockCount)
         {}
 
-        const TDiskId& DiskId;
+        const TDiskId DiskId;
         ui32 BlockSize;
         NProto::EStorageMediaKind MediaKind;
         bool Force = false;
