@@ -335,6 +335,7 @@ def parse_args(argv):
     )
     parser.add_argument(
         "--dry-run",
+        action="store_true",
         help="Check disks data and do not call blockstore-client",
     )
     return parser.parse_args(argv)
