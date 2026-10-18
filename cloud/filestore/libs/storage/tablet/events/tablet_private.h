@@ -355,14 +355,12 @@ struct TEvIndexTabletPrivate
     struct TReadWriteCompleted: TOperationCompleted
     {
         const ui64 NodeId;
-        const ui32 NodeType;
         const bool IsOverloaded;
 
         TReadWriteCompleted(
                 TSet<ui32> mixedBlocksRanges,
                 ui64 commitId,
                 ui64 nodeId,
-                ui32 nodeType,
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
@@ -374,7 +372,6 @@ struct TEvIndexTabletPrivate
                 requestBytes,
                 d)
             , NodeId(nodeId)
-            , NodeType(nodeType)
             , IsOverloaded(isOverloaded)
         {
         }
@@ -388,7 +385,6 @@ struct TEvIndexTabletPrivate
     {
         const ui64 CommitId;
         const ui64 NodeId;
-        const ui32 NodeType;
         const bool IsOverloaded;
 
         TAddDataCompleted(
@@ -397,12 +393,10 @@ struct TEvIndexTabletPrivate
                 TDuration d,
                 ui64 commitId,
                 ui64 nodeId,
-                ui32 nodeType,
                 bool isOverloaded)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CommitId(commitId)
             , NodeId(nodeId)
-            , NodeType(nodeType)
             , IsOverloaded(isOverloaded)
         {
         }
