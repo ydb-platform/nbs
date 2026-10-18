@@ -114,6 +114,17 @@ Y_UNIT_TEST_SUITE(THelpersTest)
             SecondsToDuration(1. / 128),
             CostPerIO(128, 0, 64));
     }
+
+    Y_UNIT_TEST(ShouldCorrectlyCalculateCostPerMultipleIO)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            SecondsToDuration(10. / 128),
+            CostPerIO(128, 1024, 64, 2));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            SecondsToDuration(2. / 128),
+            CostPerIO(128, 0, 64, 2));
+    }
 }
 
 }   // namespace NCloud
