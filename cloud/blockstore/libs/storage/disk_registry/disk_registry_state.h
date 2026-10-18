@@ -1016,13 +1016,6 @@ public:
 
     bool IsDeviceDetached(const NProto::TDeviceConfig& device) const;
 
-    NProto::TError CreateMirroredDiskFromDevices(
-        TInstant now,
-        TDiskRegistryDatabase& db,
-        const TDiskId& diskId,
-        const TVector<NProto::TDeviceConfig>& devices,
-        TAllocateDiskResult* result);
-
 private:
     void ProcessConfig(const NProto::TDiskRegistryConfig& config);
     void ProcessDisks(TVector<NProto::TDiskConfig> disks);
@@ -1606,6 +1599,15 @@ private:
     void DetachPathsOnAgentIfNeeded(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent);
+
+    NProto::TError CanCreateDiskFromDevices(
+        const TCreateDiskFromDevicesParams& params,
+        const TVector<NProto::TDeviceConfig>& devices) const;
+
+    NProto::TError CanCreateMirroredDiskFromDevices(
+        const TCreateDiskFromDevicesParams& params,
+        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
+        const THashSet<TDeviceId>& freshDeviceIds) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
