@@ -8499,9 +8499,9 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 << replicaCount + 1 << " replicas, got " << replicas.size());
     }
 
-    auto* master = Disks.FindPtr(masterId);
-
-    if (!master || !master->Devices.empty()) {
+    if (const auto* existing = Disks.FindPtr(masterId);
+        existing && !existing->Devices.empty())
+    {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
@@ -8577,15 +8577,23 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 ReplicaTable.MarkReplacementDevice(masterId, deviceId, true);
             }
         }
+
+        UpdateDiskPlacementInfo(
+            db,
+            replicaId,
+            TDiskPlacementInfo{GetMirroredDiskGroupId(masterId), 0});
+
+        db.UpdateDisk(BuildDiskConfig(replicaId, replica));
     }
 
-    master->LogicalBlockSize = params.BlockSize;
-    master->ReplicaCount = replicaCount;
-    master->MediaKind = mediaKind;
-    master->StateTs = now;
-    master->State = CalculateDiskState(masterId, *master);
+    auto& master = Disks[masterId];
+    master.LogicalBlockSize = params.BlockSize;
+    master.ReplicaCount = replicaCount;
+    master.MediaKind = mediaKind;
+    master.StateTs = now;
+    master.State = CalculateDiskState(masterId, master);
 
-    db.UpdateDisk(BuildDiskConfig(masterId, *master));
+    db.UpdateDisk(BuildDiskConfig(masterId, master));
 
     AddReallocateRequest(db, masterId);
     return {};
