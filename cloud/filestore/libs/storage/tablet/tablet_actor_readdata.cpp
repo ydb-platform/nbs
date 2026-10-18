@@ -345,7 +345,6 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
     const ui64 NodeId;
-    const ui32 NodeType;
     const TByteRange OriginByteRange;
     const TByteRange ActualRange;
     const ui64 TotalSize;
@@ -369,7 +368,6 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         ui64 nodeId,
-        ui32 nodeType,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -413,7 +411,6 @@ TReadDataActor::TReadDataActor(
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         ui64 nodeId,
-        ui32 nodeType,
         TByteRange originByteRange,
         TByteRange actualRange,
         ui64 totalSize,
@@ -434,7 +431,6 @@ TReadDataActor::TReadDataActor(
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
     , NodeId(nodeId)
-    , NodeType(nodeType)
     , OriginByteRange(originByteRange)
     , ActualRange(actualRange)
     , TotalSize(totalSize)
@@ -527,7 +523,6 @@ void TReadDataActor::ReplyAndDie(
             std::move(MixedBlocksRanges),
             CommitId,
             NodeId,
-            NodeType,
             1,
             OriginByteRange.Length,
             ctx.Now() - RequestInfo->StartedTs,
@@ -716,10 +711,13 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, msg->NodeType, ctx.Now()) ||
+    if (!UpdateAccessStats(
+            msg->NodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now()) ||
         !UpdateLatencyStats(
             msg->NodeId,
-            msg->NodeType,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             ctx.Now(),
             msg->Time))
@@ -821,11 +819,13 @@ void TIndexTabletActor::HandleDescribeData(
 
         // A cache hit here requires a handle, and handles currently target
         // regular nodes only.
-        const ui32 nodeType = NProto::E_REGULAR_NODE;
-        if (!UpdateAccessStats(nodeId, nodeType, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                nodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 nodeId,
-                nodeType,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
                 ctx.Now() - requestInfo->StartedTs))
@@ -1098,11 +1098,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        const auto nodeType = args.Node->Attrs.GetType();
-        if (!UpdateAccessStats(args.NodeId, nodeType, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                args.NodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
-                nodeType,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))
@@ -1194,11 +1196,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        const auto nodeType = args.Node->Attrs.GetType();
-        if (!UpdateAccessStats(args.NodeId, nodeType, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                args.NodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
-                nodeType,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::ReadData,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))
@@ -1230,7 +1234,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
         args.RequestInfo,
         args.CommitId,
         args.NodeId,
-        args.Node->Attrs.GetType(),
         args.OriginByteRange,
         args.ActualRange(),
         args.Node->Attrs.GetSize(),

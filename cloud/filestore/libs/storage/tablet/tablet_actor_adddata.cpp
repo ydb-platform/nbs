@@ -302,7 +302,6 @@ void TIndexTabletActor::CompleteTx_AddData(
         args.RequestInfo,
         args.CommitId,
         args.NodeId,
-        args.Node->Attrs.GetType(),
         std::move(blobs),
         std::move(args.UnalignedDataParts),
         TWriteRange{args.NodeId, args.ByteRange.End()},
@@ -734,10 +733,13 @@ void TIndexTabletActor::HandleAddDataCompleted(
     } else {
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
 
-        if (!UpdateAccessStats(msg->NodeId, msg->NodeType, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                msg->NodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 msg->NodeId,
-                msg->NodeType,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::AddData,
                 ctx.Now(),
                 msg->Time))
