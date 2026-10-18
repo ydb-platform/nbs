@@ -1098,6 +1098,389 @@ func TestStorageYDBImageDeleting(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Simulates pool config written by the previous version of the code (into
+// legacy 'configs' table only, without a row in 'pools' table).
+// TODO: remove after migration is completed.
+func insertLegacyPoolConfig(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	imageID string,
+	zoneID string,
+	capacity uint64,
+) {
+
+	tablesPath := db.AbsolutePath(fmt.Sprintf("storage_ydb_test/%v", t.Name()))
+
+	err := db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $image_id as Utf8;
+				declare $zone_id as Utf8;
+				declare $kind as Int64;
+				declare $capacity as Uint64;
+				declare $image_size as Uint64;
+
+				delete from pools where
+				image_id = $image_id and zone_id = $zone_id;
+
+				upsert into configs (image_id, zone_id, kind, capacity, image_size)
+				values ($image_id, $zone_id, $kind, $capacity, $image_size)
+			`, tablesPath),
+				persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+				persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+				persistence.ValueParam("$kind", persistence.Int64Value(0)),
+				persistence.ValueParam("$capacity", persistence.Uint64Value(capacity)),
+				persistence.ValueParam("$image_size", persistence.Uint64Value(0)),
+			)
+			return err
+		},
+	)
+	require.NoError(t, err)
+}
+
+func deleteLegacyPoolConfig(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	imageID string,
+	zoneID string,
+) {
+
+	tablesPath := db.AbsolutePath(fmt.Sprintf("storage_ydb_test/%v", t.Name()))
+
+	err := db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $image_id as Utf8;
+				declare $zone_id as Utf8;
+
+				delete from configs where
+				image_id = $image_id and zone_id = $zone_id
+			`, tablesPath),
+				persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+				persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+			)
+			return err
+		},
+	)
+	require.NoError(t, err)
+}
+
+func legacyPoolConfigExists(
+	t *testing.T,
+	ctx context.Context,
+	db *persistence.YDBClient,
+	imageID string,
+	zoneID string,
+) bool {
+
+	tablesPath := db.AbsolutePath(fmt.Sprintf("storage_ydb_test/%v", t.Name()))
+
+	var count uint64
+	err := db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $image_id as Utf8;
+				declare $zone_id as Utf8;
+
+				select count(*)
+				from configs
+				where image_id = $image_id and zone_id = $zone_id
+			`, tablesPath),
+				persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+				persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+			)
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+
+			if !res.NextResultSet(ctx) || !res.NextRow() {
+				return nil
+			}
+
+			return res.ScanWithDefaults(&count)
+		},
+	)
+	require.NoError(t, err)
+
+	return count != 0
+}
+
+// Regression test: image is deleted right after its pool has been configured
+// but before the first pools.ScheduleBaseDisks iteration. Config must not be
+// left behind, otherwise base disks would be scheduled for nonexistent image
+// forever. Late pools.ConfigurePool must not resurrect the deleted pool either.
+func TestStorageYDBImageDeletingBeforeFirstScheduling(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	capacity := 2 * makeDefaultConfig().GetMaxActiveSlots()
+
+	err = storage.ConfigurePool(ctx, "image", "zone", capacity, 0)
+	require.NoError(t, err)
+
+	configured, err := storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.True(t, configured)
+
+	// No TakeBaseDisksToSchedule in between.
+	err = storage.ImageDeleting(ctx, "image")
+	require.NoError(t, err)
+
+	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(toSchedule))
+
+	// Late ConfigurePool (its image check raced with deletion): pool is
+	// already marked as deleted.
+	err = storage.ConfigurePool(ctx, "image", "zone", capacity, 0)
+	require.Error(t, err)
+	require.False(t, errors.CanRetry(err))
+
+	// Late AcquireBaseDiskSlot (disk creation raced with image deletion).
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{
+		OverlayDisk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "overlay",
+		},
+	})
+	require.Error(t, err)
+	require.False(t, errors.CanRetry(err))
+	require.False(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+
+	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(toSchedule))
+
+	// Check idempotency.
+	err = storage.ImageDeleting(ctx, "image")
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// Same race for pools created "on demand" by AcquireBaseDiskSlot.
+func TestStorageYDBImageDeletingOnDemandPool(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	slot := Slot{
+		OverlayDisk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "overlay",
+		},
+	}
+
+	// Zero capacity means that pool should be created "on demand".
+	err = storage.ConfigurePool(ctx, "image", "zone", 0, 0)
+	require.NoError(t, err)
+
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	configured, err := storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.True(t, configured)
+
+	// No TakeBaseDisksToSchedule in between.
+	err = storage.ImageDeleting(ctx, "image")
+	require.NoError(t, err)
+
+	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(toSchedule))
+
+	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.Error(t, err)
+	require.False(t, errors.CanRetry(err))
+	require.False(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(toSchedule))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// Pool configs written by the previous version of the code (legacy 'configs'
+// table) should be visible and deletable.
+// TODO: remove after migration is completed.
+func TestStorageYDBLegacyPoolConfig(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	capacity := uint64(2 * makeDefaultConfig().GetMaxActiveSlots())
+
+	insertLegacyPoolConfig(t, ctx, db, "image", "zone", capacity)
+
+	configured, err := storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.True(t, configured)
+
+	poolInfos, err := storage.GetReadyPoolInfos(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(poolInfos)) // Pool is not materialized yet.
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(baseDisks))
+
+	poolInfos, err = storage.GetReadyPoolInfos(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(poolInfos))
+	require.Equal(t, uint32(capacity), poolInfos[0].Capacity)
+
+	// Scheduling migrates the config into 'pools' table, so legacy config is
+	// not needed anymore.
+	deleteLegacyPoolConfig(t, ctx, db, "image", "zone")
+
+	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.True(t, configured)
+
+	poolInfos, err = storage.GetReadyPoolInfos(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(poolInfos))
+	require.Equal(t, uint32(capacity), poolInfos[0].Capacity)
+
+	// Check that dual write keeps legacy config for the previous version of
+	// the code.
+	err = storage.ConfigurePool(ctx, "image", "zone", uint32(capacity), 0)
+	require.NoError(t, err)
+	require.True(t, legacyPoolConfigExists(t, ctx, db, "image", "zone"))
+
+	err = storage.ImageDeleting(ctx, "image")
+	require.NoError(t, err)
+
+	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+	require.False(t, legacyPoolConfigExists(t, ctx, db, "image", "zone"))
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(toSchedule))
+
+	// Legacy config without 'pools' row is deleted by ImageDeleting as well.
+	insertLegacyPoolConfig(t, ctx, db, "image2", "zone", capacity)
+
+	err = storage.ImageDeleting(ctx, "image2")
+	require.NoError(t, err)
+
+	configured, err = storage.IsPoolConfigured(ctx, "image2", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+	require.False(t, legacyPoolConfigExists(t, ctx, db, "image2", "zone"))
+
+	// And by DeletePool.
+	insertLegacyPoolConfig(t, ctx, db, "image3", "zone", capacity)
+
+	err = storage.DeletePool(ctx, "image3", "zone")
+	require.NoError(t, err)
+
+	configured, err = storage.IsPoolConfigured(ctx, "image3", "zone")
+	require.NoError(t, err)
+	require.False(t, configured)
+	require.False(t, legacyPoolConfigExists(t, ctx, db, "image3", "zone"))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// CreateYDBTables backfills 'pools' table from legacy 'configs' table.
+// TODO: remove after migration is completed.
+func TestStorageYDBLegacyPoolConfigMigration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := makeDefaultConfig()
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	capacity := uint64(2 * makeDefaultConfig().GetMaxActiveSlots())
+
+	insertLegacyPoolConfig(t, ctx, db, "image", "zone", capacity)
+
+	// Simulates schema update on deploy.
+	err = CreateYDBTables(ctx, config, db, false /* dropUnusedColumns */)
+	require.NoError(t, err)
+
+	poolInfos, err := storage.GetReadyPoolInfos(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(poolInfos))
+	require.Equal(t, "image", poolInfos[0].ImageID)
+	require.Equal(t, "zone", poolInfos[0].ZoneID)
+	require.Equal(t, uint32(capacity), poolInfos[0].Capacity)
+
+	// Should be idempotent.
+	err = CreateYDBTables(ctx, config, db, false /* dropUnusedColumns */)
+	require.NoError(t, err)
+
+	poolInfos, err = storage.GetReadyPoolInfos(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(poolInfos))
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(baseDisks))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
 func TestStorageYDBBaseDisksDeleted(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
