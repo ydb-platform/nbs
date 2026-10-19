@@ -182,14 +182,14 @@ void TMaskSensitiveData::MaskRequest(
 }
 
 void TMaskSensitiveData::MaskSensitiveData(
-    const TVector<TProfileLogFile>& in,
+    const TVector<TProfileLogFile>& profileLogFiles,
     const TString& out,
     bool ignoreErrors)
 {
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
-    for (const auto& file: in) {
-        if (in.size() > 1) {
+    for (const auto& file: profileLogFiles) {
+        if (profileLogFiles.size() > 1) {
             PrintProfileLogProgress(file);
         }
 
