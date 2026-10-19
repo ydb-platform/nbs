@@ -198,6 +198,95 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevices)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1"),
+                    Device("dev-2", "uuid-1.2"),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-2.1"),
+                    Device("dev-2", "uuid-2.2"),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        auto deviceById = [](const TString& uuid)
+        {
+            NProto::TDeviceConfig config;
+            config.SetDeviceUUID(uuid);
+            return config;
+        };
+
+        const TVector<TVector<NProto::TDeviceConfig>> replicas = {
+            {
+                deviceById("uuid-1.1"),
+                deviceById("uuid-1.2"),
+            },
+            {
+                deviceById("uuid-2.1"),
+                deviceById("uuid-2.2"),
+            },
+        };
+
+        const TVector<TString> freshDeviceUuids = {"uuid-2.2"};
+
+        {
+            diskRegistry.SendCreateMirroredDiskFromDevicesRequest(
+                "mirror-1",
+                DefaultLogicalBlockSize,
+                NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                replicas,
+                freshDeviceUuids);
+
+            auto response =
+                diskRegistry.RecvCreateMirroredDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetBlockCount());
+        }
+
+        {
+            diskRegistry.SendCreateMirroredDiskFromDevicesRequest(
+                "mirror-2",
+                DefaultLogicalBlockSize,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                replicas);
+
+            auto response =
+                diskRegistry.RecvCreateMirroredDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("unsupported media kind"));
+        }
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirror-1");
+            const auto& record = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, record.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, record.GetReplicas(0).DevicesSize());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateDiskFromSuspendedDevices)
     {
         constexpr ui64 localSSDSize = 100'000'000'000; // ~ 93.13 GiB
