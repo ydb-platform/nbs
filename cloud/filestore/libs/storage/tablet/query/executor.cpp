@@ -11,6 +11,8 @@ namespace {
 
 using namespace NKikimr;
 
+////////////////////////////////////////////////////////////////////////////////
+
 bool IsNumber(NScheme::TTypeId type)
 {
     return type == NScheme::NTypeIds::Uint32 ||
@@ -84,8 +86,10 @@ public:
         }
 
         if (std::holds_alternative<TString>(value)) {
-            return type == NScheme::NTypeIds::String ||
-                   Fail("String operand requires a String column");
+            if (type != NScheme::NTypeIds::String) {
+                return Fail("String operand requires a String column");
+            }
+            return true;
         }
 
         const auto other = Resolve(std::get<TColumnRef>(value).Name);
@@ -94,72 +98,93 @@ public:
             return false;
         }
         const auto otherType = other.GetResult().Type.GetTypeId();
-        return type == otherType || (IsNumber(type) && IsNumber(otherType)) ||
-               Fail("Incompatible column types in predicate");
+        if (type != otherType && !(IsNumber(type) && IsNumber(otherType))) {
+            return Fail("Incompatible column types in predicate");
+        }
+        return true;
     }
 
-    bool Validate(const TExpression& expression)
+    template <typename TPredicate>
+    bool ValidatePredicate(const TPredicate& predicate)
     {
-        if (const auto* binary =
-                std::get_if<TBinaryOperatorNode>(&expression.Node))
-        {
-            return std::visit(
-                [this](const auto& predicate)
-                {
-                    const auto column = Resolve(predicate.Column);
-                    if (HasError(column.GetError())) {
-                        Error = column.GetError();
-                        return false;
-                    }
-                    const auto type = column.GetResult().Type.GetTypeId();
-                    if constexpr (std::is_same_v<
-                                      std::decay_t<decltype(predicate)>,
-                                      TSubstrPredicate>)
-                    {
-                        if (type != NScheme::NTypeIds::String) {
-                            return Fail("SUBSTR requires a String column");
-                        }
-                    }
-                    return ValidateValue(type, predicate.Value);
-                }, binary->Operator);
+        const auto column = Resolve(predicate.Column);
+        if (HasError(column.GetError())) {
+            Error = column.GetError();
+            return false;
         }
+        const auto type = column.GetResult().Type.GetTypeId();
+        if constexpr (std::is_same_v<TPredicate, TSubstrPredicate>) {
+            if (type != NScheme::NTypeIds::String) {
+                return Fail("SUBSTR requires a String column");
+            }
+        }
+        return ValidateValue(type, predicate.Value);
+    }
 
-        const auto& multi = std::get<TMultiOperatorNode>(expression.Node);
-        if (const auto* in = std::get_if<TInPredicate>(&multi.Operator)) {
-            const auto column = Resolve(in->Column);
-            if (HasError(column.GetError())) {
-                Error = column.GetError();
+    bool ValidatePredicate(const TInPredicate& predicate)
+    {
+        const auto column = Resolve(predicate.Column);
+        if (HasError(column.GetError())) {
+            Error = column.GetError();
+            return false;
+        }
+        const auto type = column.GetResult().Type.GetTypeId();
+        if (predicate.Values.empty()) {
+            return Fail("IN requires at least one value");
+        }
+        for (const auto& value: predicate.Values) {
+            if (!ValidateValue(type, value)) {
                 return false;
             }
-            const auto type = column.GetResult().Type.GetTypeId();
-            if (in->Values.empty()) {
-                return Fail("IN requires at least one value");
-            }
-            for (const auto& value: in->Values) {
-                if (!ValidateValue(type, value)) {
-                    return false;
-                }
-            }
-            return true;
         }
+        return true;
+    }
 
-        const auto& logical = std::get<TLogicalExpression>(multi.Operator);
+    bool ValidatePredicate(const TLogicalExpression& logical)
+    {
         if (!logical.Left || !logical.Right) {
             return Fail("Logical expression requires two operands");
         }
         return Validate(*logical.Left) && Validate(*logical.Right);
     }
+
+    bool ValidateNode(const TBinaryOperatorNode& binary)
+    {
+        return std::visit(
+            [this](const auto& predicate)
+            { return ValidatePredicate(predicate); },
+            binary.Operator);
+    }
+
+    bool ValidateNode(const TMultiOperatorNode& multi)
+    {
+        return std::visit(
+            [this](const auto& predicate)
+            { return ValidatePredicate(predicate); },
+            multi.Operator);
+    }
+
+    bool Validate(const TExpression& expression)
+    {
+        return std::visit(
+            [this](const auto& node) { return ValidateNode(node); },
+            expression.Node);
+    }
 };
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 TResultOrError<TBoundSelect> Bind(
-    TSelect query, const NKikimr::NTable::TScheme& schema)
+    TSelect query,
+    const NKikimr::NTable::TScheme& schema)
 {
     const auto* tableId = schema.TableNames.FindPtr(query.Table);
     if (!tableId) {
         return MakeError(
-            E_ARGUMENT, TStringBuilder() << "Unknown table " << query.Table);
+            E_ARGUMENT,
+            TStringBuilder() << "Unknown table " << query.Table);
     }
 
     TBoundSelect bound;
@@ -170,14 +195,14 @@ TResultOrError<TBoundSelect> Bind(
 
     TVector<TString> outputColumns = bound.Query.Columns;
     if (outputColumns.empty()) {
-        TVector<ui32> ids;
+        // Hash-map iteration order is unspecified, so sort by column ID.
+        TVector<std::pair<ui32, TString>> columns;
         for (const auto& [id, column]: table.Columns) {
-            ids.push_back(id);
+            columns.emplace_back(id, column.Name);
         }
-        // Output order should not depend on map iteration order
-        Sort(ids);
-        for (const auto id: ids) {
-            outputColumns.push_back(table.Columns.at(id).Name);
+        Sort(columns);
+        for (const auto& column: columns) {
+            outputColumns.push_back(column.second);
         }
     }
 
