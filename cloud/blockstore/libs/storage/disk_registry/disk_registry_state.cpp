@@ -7535,6 +7535,7 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
+    config.SetSuspendSecureErase(SuspendSecureErase);
 
     backup.MutableConfig()->Swap(&config);
 
