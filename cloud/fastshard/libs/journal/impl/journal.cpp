@@ -18,6 +18,7 @@
 #include <util/string/builder.h>
 
 #include <atomic>
+#include <mutex>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -273,6 +274,12 @@ private:
     TLogPageIndex LogPageIndex;
     mutable TLsnBarrier FlushedLsnBarrier;
 
+    // Serializes the steps that span the chain and the page index: finishing
+    // a written record on the device completion thread, erasing the flushed
+    // records and reading the tail on the executor. Taken before the locks
+    // of the chain and the index, never held while waiting for the device.
+    mutable std::mutex ChainLock;
+
     std::atomic<bool> AdvancingLsnLowWatermark = false;
     std::atomic<ui64> LsnLowWatermark = 0;
 
@@ -319,10 +326,21 @@ private:
     NCloud::NProto::TError ValidateWriteRequest(
         const NCloud::NProto::TWriteLogRecordRequest& request) const;
 
-    NProto::TError WriteLogRecord(
+    // Writes the pages and the record to the stores and completes when both
+    // have landed; the pages of a failed record are released. The future
+    // completes on the device completion thread.
+    TFuture<NProto::TError> WriteLogRecord(
         TLogRecord& record,
         const NCloud::NProto::TWriteLogRecordRequest& request);
 
+    // Takes a written record out of the held state - marks it ready and
+    // indexes it, or removes a failed one and fails its writers. Runs on the
+    // device completion thread.
+    void OnLogRecordWritten(
+        const TLogRecordPtr& record,
+        const NProto::TError& error);
+
+    // Requires ChainLock.
     void IndexChainedRecords();
 
     NCloud::NProto::TError FillPageGroups(
@@ -440,6 +458,8 @@ TResultOrError<ui64> TJournal::RestoreFrom(TRestoredBuffers restored)
     // Start the chain, the page index and the flushed lsn at the head of the
     // chain
     //
+
+    std::lock_guard lock(ChainLock);
 
     LogRecordChain.InitLastErasedLsn(headLsn);
     LogPageIndex.InitLastIndexedLsn(headLsn);
@@ -571,12 +591,33 @@ TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
     }
 
     //
-    // Write the record, then take a failed one out of the chain and report
-    // the error through its promise - to the duplicates that have joined it
-    // while it was being written as well - or mark a written one as ready
+    // Write the record and finish it right where the write completes, on the
+    // device completion thread - the chain and the index take ChainLock, so
+    // no trip through the executor is needed
     //
 
-    auto error = WriteLogRecord(*record, request);
+    WriteLogRecord(*record, request)
+        .Subscribe(
+            [self = shared_from_this(),
+             record](const TFuture<NProto::TError>& future)
+            { self->OnLogRecordWritten(record, future.GetValue()); });
+
+    return record->Promise.GetFuture();
+}
+
+void TJournal::OnLogRecordWritten(
+    const TLogRecordPtr& record,
+    const NProto::TError& error)
+{
+    // The promises are completed under the lock as well: a flushed record
+    // erased by CleanupFlushedRecords must find its promise set already
+    std::lock_guard lock(ChainLock);
+
+    //
+    // Take a failed record out of the chain and report the error through its
+    // promise - to the duplicates that have joined it while it was being
+    // written as well - or mark a written one as ready
+    //
 
     const bool completed = HasError(error)
         ? LogRecordChain.Remove(record->PrevLsn)
@@ -587,7 +628,7 @@ TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
 
     if (HasError(error)) {
         record->Promise.SetValue(TErrorResponse(error));
-        return record->Promise.GetFuture();
+        return;
     }
 
     //
@@ -597,8 +638,6 @@ TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
     //
 
     IndexChainedRecords();
-
-    return record->Promise.GetFuture();
 }
 
 NCloud::NProto::TError TJournal::ValidateWriteRequest(
@@ -607,7 +646,7 @@ NCloud::NProto::TError TJournal::ValidateWriteRequest(
     return ValidatePageRanges(request.GetPageGroups(), DevicePageCount);
 }
 
-NProto::TError TJournal::WriteLogRecord(
+TFuture<NProto::TError> TJournal::WriteLogRecord(
     TLogRecord& record,
     const NCloud::NProto::TWriteLogRecordRequest& request)
 {
@@ -622,45 +661,69 @@ NProto::TError TJournal::WriteLogRecord(
 
     auto locations = DataStore->Allocate(pages.size());
     if (locations.empty() && !pages.empty()) {
-        return MakeError(
+        return MakeFuture(MakeError(
             E_REJECTED,
             TStringBuilder() << "not enough free journal pages to write "
-                             << pages.size() << " pages");
+                             << pages.size() << " pages"));
     }
-
-    bool success = false;
-
-    Y_DEFER
-    {
-        if (!success) {
-            auto freeError = DataStore->Free(locations);
-            if (HasError(freeError)) {
-                STORAGE_ERROR(
-                    "unable to free the pages of the failed record with lsn "
-                    << record.Lsn << ": " << FormatError(freeError));
-            }
-        }
-    };
 
     record.PageMappings = CreatePageMappings(requestPageRanges, locations);
 
     //
-    // Write the pages first and the record second: the record is what a
-    // restore finds, so it may only point at pages that are already written
+    // Serialize the record here: the continuations below run on the device
+    // completion thread and must not touch the record
     //
 
-    auto dataFuture = DataStore->Write(locations, pages);
-    if (auto error = Executor->WaitFor(dataFuture); HasError(error)) {
-        return error;
-    }
+    const ui64 lsn = record.Lsn;
+    auto serializedRecord = SerializeRecord(record);
 
-    auto metaFuture = MetaStore->Write(record.Lsn, SerializeRecord(record));
-    if (auto error = Executor->WaitFor(metaFuture); HasError(error)) {
-        return error;
-    }
+    //
+    // Write the pages first and the record second: the record is what a
+    // restore finds, so it may only point at pages that are already written.
+    // The record write is issued right from the completion of the page
+    // write, without a trip through the executor
+    //
 
-    success = true;
-    return {};
+    auto future = DataStore->Write(locations, pages)
+        .Apply(
+            [self = shared_from_this(),
+             lsn,
+             serializedRecord = std::move(serializedRecord)](
+                const TFuture<NProto::TError>& future) mutable
+                -> TFuture<NProto::TError>
+            {
+                if (const auto& error = future.GetValue(); HasError(error)) {
+                    return MakeFuture(error);
+                }
+
+                return self->MetaStore->Write(lsn, std::move(serializedRecord));
+            });
+
+    //
+    // Release the pages of a failed record
+    //
+
+    return future.Apply(
+        [self = shared_from_this(),
+         lsn,
+         locations = std::move(locations)](
+            const TFuture<NProto::TError>& future) -> NProto::TError
+        {
+            const auto& error = future.GetValue();
+            if (!HasError(error)) {
+                return error;
+            }
+
+            auto freeError = self->DataStore->Free(locations);
+            if (HasError(freeError)) {
+                auto& Log = self->Log;
+                STORAGE_ERROR(
+                    "unable to free the pages of the failed record with lsn "
+                    << lsn << ": " << FormatError(freeError));
+            }
+
+            return error;
+        });
 }
 
 void TJournal::IndexChainedRecords()
@@ -751,8 +814,12 @@ TFuture<NCloud::NProto::TReadJournalTailResponse> TJournal::ReadTail(
     ui64 lsnLowWatermark = LsnLowWatermark.load(std::memory_order_acquire);
     ui64 afterLsn = Max(lsnBarrierGuard.GetLsn(), lsnLowWatermark);
 
-    auto records =
-        LogRecordChain.GetReadyRun(afterLsn, request.GetMaxRecordCount());
+    TVector<TLogRecordPtr> records;
+    {
+        std::lock_guard lock(ChainLock);
+        records =
+            LogRecordChain.GetReadyRun(afterLsn, request.GetMaxRecordCount());
+    }
 
     //
     // Fill the response with the records and their page contents
@@ -832,6 +899,7 @@ TJournal::AdvanceLsnLowWatermark(
         [self = shared_from_this(),
          lsnLowWatermark](const auto& future) -> TResponse
         {
+            // the advance is in flight until the watermark is taken
             Y_DEFER
             {
                 self->AdvancingLsnLowWatermark.store(
@@ -917,21 +985,26 @@ TFuture<NCloud::NProto::TError> TJournal::CleanupFlushedRecords()
     // Erase them from the chain and the page index, then release their pages
     //
 
-    // The chain holds the records by their lsn
-    auto recordsOrError = LogRecordChain.EraseBelow(eraseUpToLsn + 1);
+    TVector<TLogRecordPtr> records;
+    {
+        std::lock_guard lock(ChainLock);
 
-    // Verify that the erased run is chained: the barrier never moves past a
-    // record the chain does not hold ready
-    STORAGE_VERIFY_C(
-        !HasError(recordsOrError),
-        "Lsn",
-        eraseUpToLsn,
-        FormatError(recordsOrError.GetError()));
+        // The chain holds the records by their lsn
+        auto recordsOrError = LogRecordChain.EraseBelow(eraseUpToLsn + 1);
 
-    auto records = recordsOrError.ExtractResult();
+        // Verify that the erased run is chained: the barrier never moves
+        // past a record the chain does not hold ready
+        STORAGE_VERIFY_C(
+            !HasError(recordsOrError),
+            "Lsn",
+            eraseUpToLsn,
+            FormatError(recordsOrError.GetError()));
 
-    // The index holds the records by their lsn
-    LogPageIndex.EraseBelow(eraseUpToLsn + 1);
+        records = recordsOrError.ExtractResult();
+
+        // The index holds the records by their lsn
+        LogPageIndex.EraseBelow(eraseUpToLsn + 1);
+    }
 
     auto result = MakeError(S_OK);
     for (const auto& record: records) {
