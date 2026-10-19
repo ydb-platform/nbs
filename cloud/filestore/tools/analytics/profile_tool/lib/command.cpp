@@ -51,8 +51,6 @@ TCommand::TCommand()
             "Report log read errors and continue with the next file")
         .NoArgument()
         .StoreTrue(&IgnoreErrors);
-
-    Opts.SetFreeArgDefaultTitle("PROFILE_LOG", "Additional profile log files");
 }
 
 int TCommand::Run(int argc, const char** argv)
