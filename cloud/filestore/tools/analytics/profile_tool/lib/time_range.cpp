@@ -1,6 +1,7 @@
 #include "time_range.h"
 
 #include <util/folder/dirut.h>
+#include <util/generic/strbuf.h>
 #include <util/system/fstat.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -10,17 +11,13 @@ namespace NCloud::NFileStore::NProfileTool {
 TMaybe<TInstant> GetProfileLogEndTime(const TString& path)
 {
     const auto name = GetBaseName(path);
-    // Heuristic from deployment rotation-name examples, not a log format rule:
-    // interpret the suffix as the UTC end time. See README.md; file pruning
-    // uses this estimate only when --prune-by-time is requested.
-    constexpr size_t SuffixLength = 17;   // .YYYY-MM-DDTHH:MM
-    if (name.size() >= SuffixLength && name[name.size() - SuffixLength] == '.')
+    // Rotated files are named <log>.YYYY-MM-DDTHH:MM (UTC, rotation time).
+    TStringBuf base, suffix;
+    TInstant parsedEndTime;
+    if (TStringBuf(name).TryRSplit('.', base, suffix) && suffix.size() == 16 &&
+        TInstant::TryParseIso8601(TString(suffix) + ":00Z", parsedEndTime))
     {
-        const auto timestamp = name.substr(name.size() - SuffixLength + 1);
-        TInstant endTime;
-        if (TInstant::TryParseIso8601(timestamp + ":00Z", endTime)) {
-            return endTime;
-        }
+        return parsedEndTime;
     }
     const TFileStat stat(path);
     if (stat.IsNull()) {
