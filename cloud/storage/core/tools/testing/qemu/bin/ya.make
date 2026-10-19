@@ -1,6 +1,7 @@
 PACKAGE()
 
 IF(ARCH_X86_64)
+    # cloud/storage/core/tools/testing/qemu/build/__main__.py --co --git-tag v10.1.5 --git https://github.com/qemu/qemu --deps
     FROM_SANDBOX(
         FILE
         44495512181
