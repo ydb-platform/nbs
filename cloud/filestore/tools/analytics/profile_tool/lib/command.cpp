@@ -96,25 +96,32 @@ int TCommand::ProcessProfileLog(
     bool ignoreErrors)
 {
     processor.SetOptions(TEvent::TOutputOptions{});
+    const auto handleReadError = [&path, ignoreErrors](const yexception& error) {
+        Cerr << "Error reading profile log " << path << ": " << error.what()
+             << Endl;
+        if (ignoreErrors) {
+            Cerr << "Skipping unreadable remainder of profile log: " << path
+                 << Endl;
+            return 0;
+        }
+        return 1;
+    };
+
     NEventLog::TOptions options;
     options.FileName = path;
     THolder<NEventLog::IIterator> iterator;
+    try {
+        iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
+    } catch (const yexception& error) {
+        return handleReadError(error);
+    }
+
     for (;;) {
         TConstEventPtr event;
         try {
-            if (!iterator) {
-                iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
-            }
             event = iterator->Next();
         } catch (const yexception& error) {
-            Cerr << "Error reading profile log " << path << ": " << error.what()
-                 << Endl;
-            if (ignoreErrors) {
-                Cerr << "Skipping unreadable remainder of profile log: " << path
-                     << Endl;
-                return 0;
-            }
-            return 1;
+            return handleReadError(error);
         }
         // Processing and output failures must propagate even with ignore-errors.
         if (!event || !processor.CheckedProcessEvent(event.Get())) {
