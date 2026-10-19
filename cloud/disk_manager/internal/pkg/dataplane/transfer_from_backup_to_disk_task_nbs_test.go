@@ -16,7 +16,7 @@ import (
 
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -246,7 +246,7 @@ func (e *restoreTestEnv) backupDisk(
 		createTask.GetResponse().(*protos.CreateSnapshotFromDiskResponse)
 	require.True(t, ok)
 
-	meta, err := backup.NewSnapshotMeta(resources.SnapshotMeta{
+	meta, err := bucket.NewSnapshotMeta(resources.SnapshotMeta{
 		ID:           snapshotID,
 		FolderID:     restoreTestFolderID,
 		Disk:         disk,
@@ -263,7 +263,7 @@ func (e *restoreTestEnv) backupDisk(
 
 	err = e.follower.backupS3.PutObject(
 		ctx,
-		backup.SnapshotMetaKey(disk.DiskId, snapshotID),
+		bucket.SnapshotMetaKey(disk.DiskId, snapshotID),
 		e.follower.encryptedDEK,
 		persistence.S3Object{Data: data},
 	)
@@ -291,15 +291,15 @@ func (e *restoreTestEnv) readSnapshotMeta(
 	ctx context.Context,
 	disk *types.Disk,
 	snapshotID string,
-) backup.SnapshotMeta {
+) bucket.SnapshotMeta {
 
 	object, err := e.follower.getObject(
 		ctx,
-		backup.SnapshotMetaKey(disk.DiskId, snapshotID),
+		bucket.SnapshotMetaKey(disk.DiskId, snapshotID),
 	)
 	require.NoError(t, err)
 
-	var meta backup.SnapshotMeta
+	var meta bucket.SnapshotMeta
 	err = json.Unmarshal(object.Data, &meta)
 	require.NoError(t, err)
 

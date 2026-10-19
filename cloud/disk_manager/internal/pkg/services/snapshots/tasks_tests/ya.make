@@ -5,7 +5,9 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_TEST_SRCS(
     ../backup_snapshot_task_test.go
+    ../create_snapshot_from_disk_task_test.go
     ../delete_backup_meta_task_test.go
+    ../delete_snapshot_task_test.go
 )
 
 IF (RACE)

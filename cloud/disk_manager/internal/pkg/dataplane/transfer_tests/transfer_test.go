@@ -16,6 +16,7 @@ import (
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
@@ -1094,7 +1095,7 @@ func (t *backupTarget) Write(
 
 	err = t.backupS3.PutObject(
 		ctx,
-		backup.ChunkKey(chunkID),
+		bucket.ChunkKey(chunkID),
 		encryptedDEK,
 		chunks.NewS3Object(chunks.ChunkBlob{
 			Data:        data,

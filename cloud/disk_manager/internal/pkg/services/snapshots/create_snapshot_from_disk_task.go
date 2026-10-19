@@ -2,6 +2,7 @@ package snapshots
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -10,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/common"
@@ -18,6 +20,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,6 +29,7 @@ type createSnapshotFromDiskTask struct {
 	scheduler    tasks.Scheduler
 	storage      resources.Storage
 	nbsFactory   nbs.Factory
+	snapshotS3   *bucket.S3
 	request      *protos.CreateSnapshotFromDiskRequest
 	state        *protos.CreateSnapshotFromDiskTaskState
 	cellSelector cells.CellSelector
@@ -138,6 +142,13 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.SnapshotStorageSize = int64(typedResponse.SnapshotStorageSize)
 
 	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// The meta goes to the snapshot bucket right before the snapshot is marked
+	// ready: an S3 snapshot with meta.json there is created, as with a backup.
+	err = t.putMeta(ctx, snapshotMeta, checkpointID, typedResponse)
 	if err != nil {
 		return "", err
 	}
@@ -273,6 +284,17 @@ func (t *createSnapshotFromDiskTask) Cancel(
 		return err
 	}
 
+	if t.snapshotS3 != nil {
+		err = t.snapshotS3.DeleteSnapshotMeta(
+			ctx,
+			snapshotMeta.Disk.GetDiskId(),
+			t.request.DstSnapshotId,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return t.storage.SnapshotDeleted(ctx, t.request.DstSnapshotId, time.Now())
 }
 
@@ -307,4 +329,42 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 		Size:        t.state.SnapshotSize,
 		StorageSize: t.state.SnapshotStorageSize,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Writes meta.json of the snapshot to the snapshot bucket, as the backup
+// writes it to the follower. A snapshot stored in YDB has nothing in the
+// bucket.
+func (t *createSnapshotFromDiskTask) putMeta(
+	ctx context.Context,
+	snapshotMeta resources.SnapshotMeta,
+	checkpointID string,
+	response *dataplane_protos.CreateSnapshotFromDiskResponse,
+) error {
+
+	if t.snapshotS3 == nil || !t.request.UseS3 {
+		return nil
+	}
+
+	// What SnapshotCreated is about to store.
+	snapshotMeta.CheckpointID = checkpointID
+	snapshotMeta.Size = response.SnapshotSize
+	snapshotMeta.StorageSize = response.SnapshotStorageSize
+
+	meta, err := bucket.NewSnapshotMeta(snapshotMeta)
+	if err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return errors.NewNonRetriableError(err)
+	}
+
+	return t.snapshotS3.PutObject(
+		ctx,
+		bucket.SnapshotMetaKey(snapshotMeta.Disk.GetDiskId(), snapshotMeta.ID),
+		persistence.S3Object{Data: data},
+	)
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
@@ -144,7 +144,7 @@ func TestBackupChunksTask(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	object, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
+	object, err := follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 	require.Equal(t, chunkBlob.Data, object.Data)
 	require.Equal(
@@ -153,7 +153,7 @@ func TestBackupChunksTask(t *testing.T) {
 		*object.Metadata["Checksum"],
 	)
 
-	raw, err := follower.getRawObject(ctx, backup.ChunkKey(chunkID))
+	raw, err := follower.getRawObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 	require.NotEqual(t, chunkBlob.Data, raw.Data)
 	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
@@ -199,7 +199,7 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, chunkID := range []string{chunk0, chunk1} {
-		_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+		_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 		require.NoError(t, err)
 	}
 
@@ -246,7 +246,7 @@ func TestBackupChunksTaskCopiesOnlyItsRange(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunk0))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunk0))
 	require.NoError(t, err)
 
 	queue, err := queuedBackupChunks(ctx, storage)
@@ -353,7 +353,7 @@ func TestBackupChunksTaskLeavesUnreadableChunkInQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, unreadableStorage.reads.Load())
 
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 
 	// The unreadable chunk stays queued and its backup waits, it does not
@@ -410,7 +410,7 @@ func TestBackupChunksTaskCopiesSharedChunkOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, countingStorage.reads.Load())
 
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 
 	queue, err := queuedBackupChunks(ctx, storage)
@@ -453,7 +453,7 @@ func TestBackupChunksTaskMovesMissingChunkOutOfQueue(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 
 	queue, err := queuedBackupChunks(ctx, storage)

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -120,7 +121,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 
 	// What the copy does last: the meta is in the follower before the wait
 	// ends.
-	putMeta(t, ctx, backupS3, backup.SnapshotMetaKey("disk1", "snap1"), "snap1")
+	putMeta(t, ctx, backupS3, bucket.SnapshotMetaKey("disk1", "snap1"), "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
@@ -130,13 +131,13 @@ func TestBackupSnapshotTask(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
 	// The task only passes the meta to the copy.
-	require.Equal(t, backup.SnapshotMetaKey("disk1", "snap1"), scheduledMetaKey)
+	require.Equal(t, bucket.SnapshotMetaKey("disk1", "snap1"), scheduledMetaKey)
 
-	var meta backup.SnapshotMeta
+	var meta bucket.SnapshotMeta
 	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
 	require.Equal(
 		t,
-		backup.SnapshotMeta{
+		bucket.SnapshotMeta{
 			ID:                "snap1",
 			FolderID:          "folder",
 			ZoneID:            "zone",
@@ -243,7 +244,7 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 
 	// What the copy does last: the meta is in the follower before the wait
 	// ends.
-	putMeta(t, ctx, backupS3, backup.SnapshotMetaKey("disk1", "snap1"), "snap1")
+	putMeta(t, ctx, backupS3, bucket.SnapshotMetaKey("disk1", "snap1"), "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
@@ -314,7 +315,7 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 		) bool {
 			return request.SnapshotId == "snap1" &&
 				len(request.EncryptedDek) == 0 &&
-				request.MetaKey == backup.SnapshotMetaKey("disk1", "snap1") &&
+				request.MetaKey == bucket.SnapshotMetaKey("disk1", "snap1") &&
 				len(request.Meta) != 0
 		}),
 	).Return("dataplane1", nil)
@@ -338,7 +339,7 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 
 	// What the copy does last: the meta is in the follower before the wait
 	// ends.
-	putMeta(t, ctx, backupS3, backup.SnapshotMetaKey("disk1", "snap1"), "snap1")
+	putMeta(t, ctx, backupS3, bucket.SnapshotMetaKey("disk1", "snap1"), "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
@@ -346,7 +347,7 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	_, err = backupS3.GetObject(ctx, backup.SnapshotMetaKey("disk1", "snap1"))
+	_, err = backupS3.GetObject(ctx, bucket.SnapshotMetaKey("disk1", "snap1"))
 	require.Error(t, err)
 }
 
@@ -509,7 +510,7 @@ func putMeta(
 	dek, err := backupS3.EnsureEncryptedDEK(nil)
 	require.NoError(t, err)
 
-	data, err := json.Marshal(backup.SnapshotMeta{ID: id, DiskID: "disk1"})
+	data, err := json.Marshal(bucket.SnapshotMeta{ID: id, DiskID: "disk1"})
 	require.NoError(t, err)
 
 	err = backupS3.PutObject(ctx, key, dek, persistence.S3Object{Data: data})

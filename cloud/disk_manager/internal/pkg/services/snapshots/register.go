@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
@@ -26,6 +27,7 @@ func RegisterForExecution(
 	cellSelector cells.CellSelector,
 	backupS3 *backup.S3,
 	backupMetricsRegistry metrics.Registry,
+	snapshotS3 *bucket.S3,
 	exportConfigs ...*server_config.ExportConfig,
 ) error {
 
@@ -100,6 +102,7 @@ func RegisterForExecution(
 			scheduler:    taskScheduler,
 			storage:      storage,
 			nbsFactory:   nbsFactory,
+			snapshotS3:   snapshotS3,
 			cellSelector: cellSelector,
 		}
 	})
@@ -198,6 +201,7 @@ func RegisterForExecution(
 			scheduler:  taskScheduler,
 			storage:    storage,
 			nbsFactory: nbsFactory,
+			snapshotS3: snapshotS3,
 		}
 	})
 	if err != nil {
