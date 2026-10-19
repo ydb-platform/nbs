@@ -32,9 +32,7 @@ private:
     NProto::TError Error;
 
 public:
-    TSuspendSecureEraseActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TSuspendSecureEraseActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -52,8 +50,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSuspendSecureEraseActor::TSuspendSecureEraseActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -79,11 +77,11 @@ void TSuspendSecureEraseActor::Bootstrap(const TActorContext& ctx)
 
 void TSuspendSecureEraseActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TDiskRegistrySuspendSecureEraseResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

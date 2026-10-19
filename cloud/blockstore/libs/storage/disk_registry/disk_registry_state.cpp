@@ -3247,8 +3247,7 @@ bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
 bool TDiskRegistryState::CanSecureErase(const NProto::TDeviceConfig& device) const
 {
     return GetSecureEraseReadiness(device) ==
-           ESecureEraseReadiness::ReadyToErase
-           && !SuspendSecureErase;
+           ESecureEraseReadiness::ReadyToErase;
 }
 
 void TDiskRegistryState::SetSuspendSecureErase(bool suspend)
@@ -3256,10 +3255,18 @@ void TDiskRegistryState::SetSuspendSecureErase(bool suspend)
     SuspendSecureErase = suspend;
 }
 
+bool TDiskRegistryState::GetSuspendSecureErase() const
+{
+    return SuspendSecureErase;
+}
+
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
     if (SuspendSecureErase) {
+        STORAGE_DEBUG(
+            "Skip SecureErase for device '%s'. SecureErase is suspended.",
+            device.GetDeviceUUID().c_str());
         return ESecureEraseReadiness::SecureEraseSuspended;
     }
 

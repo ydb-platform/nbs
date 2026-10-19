@@ -805,6 +805,8 @@ public:
     bool CanSecureErase(const NProto::TDeviceConfig& device) const;
 
     void SetSuspendSecureErase(bool suspend);
+    bool GetSuspendSecureErase() const;
+
     ESecureEraseReadiness GetSecureEraseReadiness(
         const NProto::TDeviceConfig& device) const;
 

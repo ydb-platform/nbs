@@ -644,7 +644,6 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
         newSuspendSecureErase,
         currentSuspendSecureErase,
         operations);
-    State->SetSuspendSecureErase(newSuspendSecureErase);
     RestoreDisksToCleanup(
         std::move(newDisksToCleanup),
         std::move(currentDisksToCleanup),

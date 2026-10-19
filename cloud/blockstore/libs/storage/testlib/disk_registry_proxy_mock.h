@@ -81,6 +81,10 @@ private:
                 HandleSetSuspendSecureErase);
 
             HFunc(
+                TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+                HandleSetSuspendSecureErase);
+
+            HFunc(
                 TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
                 HandleBackupDiskRegistryState);
 

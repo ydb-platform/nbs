@@ -230,11 +230,11 @@ struct TEvDiskRegistry
         EvUpdateVolumeHealthRequest = EvBegin + 83,
         EvUpdateVolumeHealthResponse = EvBegin + 84,
 
-        EvCreateMirroredDiskFromDevicesRequest = EvBegin + 85,
-        EvCreateMirroredDiskFromDevicesResponse = EvBegin + 86,
+        EvSetSuspendSecureEraseRequest = EvBegin + 85,
+        EvSetSuspendSecureEraseResponse = EvBegin + 86,
 
-        EvSetSuspendSecureEraseRequest = EvBegin + 87,
-        EvSetSuspendSecureEraseResponse = EvBegin + 88,
+        EvCreateMirroredDiskFromDevicesRequest = EvBegin + 87,
+        EvCreateMirroredDiskFromDevicesResponse = EvBegin + 88,
 
         EvEnd
     };

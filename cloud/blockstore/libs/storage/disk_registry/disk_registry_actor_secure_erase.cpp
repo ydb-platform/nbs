@@ -473,6 +473,15 @@ void TDiskRegistryActor::HandleSecureErase(
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
 
+    if (State->GetSuspendSecureErase()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SecureErase is suspended. Skipping.",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+
     THashMap<TDeviceList::TDeviceId, TDeviceList::TEraseIdempotencyKey>
         eraseIdempotencyKeys;
 
