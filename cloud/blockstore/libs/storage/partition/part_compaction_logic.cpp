@@ -943,7 +943,8 @@ void CompleteRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     TVector<TBlobCompactionRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
-    ui32 maxDiffPercentageForBlobPatching)
+    ui32 maxDiffPercentageForBlobPatching,
+    bool compressionSelected)
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -975,13 +976,15 @@ void CompleteRangeCompaction(
         .DataBlobId = resultBlobIds.DataBlobId,
         .PatchingCandidate = {}};
 
+    const bool compress = compressionSelected &&
+        resultBlobIds.ChannelDataKind == EChannelDataKind::Merged;
     const bool compressedSource = AnyOf(args.AffectedBlobs, [&state](const auto& item) {
         const auto& format = item.second.Format;
         return format.Compression || format.Invalid ||
             (format.LogicalBlocks && !IsDeletionMarker(item.first) &&
              ui64(format.LogicalBlocks) * state.GetBlockSize() != item.first.BlobSize());
     });
-    if (blobPatchingEnabled && !compressedSource) {
+    if (blobPatchingEnabled && !compress && !compressedSource) {
         patchingResult = ResolveBlobPatchingCandidate(
             resultBlobIds.DataBlobId,
             dataBlockCount,
@@ -1013,6 +1016,8 @@ void CompleteRangeCompaction(
         std::move(args.AffectedBlobs),
         std::move(args.AffectedBlocks),
         std::move(buildBlobContentResult.ChecksumFixups));
+
+    rangeCompactionInfos.back().Compress = compress;
 
     if (!patchingResult.DataBlobId && !resultBlobIds.ZeroBlobId) {
         const auto rangeDescr = DescribeRange(args.BlockRange);

@@ -1,10 +1,14 @@
 #include "part_actor.h"
 
+#include "model/merged_blob_compression.h"
+#include "model/merged_blob_compression_policy.h"
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
+#include <util/system/datetime.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -39,15 +43,22 @@ class TWriteMergedBlocksActor final
 public:
     struct TWriteBlobRequest
     {
-        const TPartialBlobId BlobId;
+        TPartialBlobId BlobId;
         const TBlockRange32 WriteRange;
         TVector<ui32> Checksums;
+        bool Compress = false;
+        TMergedBlobCompressionStats CompressionStats;
+        std::shared_ptr<const NProto::TBlobCompression> Compression;
+        TGuardedBuffer<TString> Encoded;
+        TGuardedSgList Content;
 
         TWriteBlobRequest(
                 const TPartialBlobId& blobId,
-                const TBlockRange32& writeRange)
+                const TBlockRange32& writeRange,
+                bool compress)
             : BlobId(blobId)
             , WriteRange(writeRange)
+            , Compress(compress)
         {}
     };
 
@@ -57,12 +68,15 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui64 CommitId;
     const TRequestInfoPtr RequestInfo;
+    std::shared_ptr<void> CompressionBudget;
     TVector<TWriteBlobRequest> WriteBlobRequests;
     TVector<TBlobToConfirm> BlobsToConfirm;
     const bool ReplyLocal;
     const bool ShouldAddUnconfirmedBlobs = false;
     const IWriteBlocksHandlerPtr WriteHandler;
     const ui32 BlockSizeForChecksums;
+    const ui32 BlockSize;
+    const ui32 MinSavingsPercentage;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
     size_t WriteBlobRequestsCompleted = 0;
@@ -83,13 +97,16 @@ public:
         bool replyLocal,
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums);
+        ui32 blockSizeForChecksums,
+        ui32 blockSize,
+        ui32 minSavingsPercentage);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     TGuardedSgList BuildBlobContentAndComputeChecksums(TWriteBlobRequest& request);
 
+    NProto::TError PrepareBlobs();
     void WriteBlobs(const TActorContext& ctx);
     void AddBlobs(const TActorContext& ctx, bool confirmed);
 
@@ -135,7 +152,9 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         bool replyLocal,
         bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums)
+        ui32 blockSizeForChecksums,
+        ui32 blockSize,
+        ui32 minSavingsPercentage)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -146,6 +165,8 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
     , WriteHandler(std::move(writeHandler))
     , BlockSizeForChecksums(blockSizeForChecksums)
+    , BlockSize(blockSize)
+    , MinSavingsPercentage(minSavingsPercentage)
 {}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -160,6 +181,11 @@ void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
 
     Become(&TThis::StateWork);
 
+    auto error = PrepareBlobs();
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
     WriteBlobs(ctx);
     if (ShouldAddUnconfirmedBlobs) {
         AddBlobs(ctx, false /* confirmed */);
@@ -191,17 +217,97 @@ TGuardedSgList TWriteMergedBlocksActor::BuildBlobContentAndComputeChecksums(
     return guardedSgList;
 }
 
+NProto::TError TWriteMergedBlocksActor::PrepareBlobs()
+{
+    ui64 reservation = 0;
+    for (const auto& req: WriteBlobRequests) {
+        if (req.Compress) {
+            reservation += ui64(req.BlobId.BlobSize()) * 3 +
+                MergedBlobCompressionWorkspaceBytes;
+        }
+    }
+    if (reservation) {
+        CompressionBudget = TryAcquireMergedBlobBudget(
+            false, false, reservation);
+    }
+    for (auto& req: WriteBlobRequests) {
+        req.Content = BuildBlobContentAndComputeChecksums(req);
+        if (!req.Compress) {
+            continue;
+        }
+        auto& stats = req.CompressionStats;
+        stats.Attempts = 1;
+        stats.LogicalBytes = req.BlobId.BlobSize();
+        stats.PhysicalBytes = req.BlobId.BlobSize();
+        if (!CompressionBudget) {
+            stats.RawFallback = 1;
+            stats.AdmissionRejected = 1;
+            continue;
+        }
+        const ui64 cpuStart = ThreadCPUTime();
+        auto guard = req.Content.Acquire();
+        if (!guard) {
+            return MakeError(E_CANCELLED, "Merged write buffer was released");
+        }
+        const auto& sglist = guard.Get();
+        const ui64 size = SgListGetSize(sglist);
+        if (size != req.BlobId.BlobSize() ||
+            size > MaxMergedBlobLogicalBytes)
+        {
+            return MakeError(E_ARGUMENT, "Invalid logical Merged write size");
+        }
+        auto raw = TString::Uninitialized(size);
+        SgListCopy(sglist, {raw.data(), raw.size()});
+        NProto::TBlobMeta meta;
+        meta.MutableMergedBlocks()->SetStart(req.WriteRange.Start);
+        meta.MutableMergedBlocks()->SetEnd(req.WriteRange.End);
+        meta.MutableMergedBlocks()->SetSkipped(0);
+        if (BlockSizeForChecksums) {
+            for (size_t offset = 0; offset < raw.size(); offset += BlockSize) {
+                const ui32 checksum =
+                    ComputeDefaultDigest({raw.data() + offset, BlockSize});
+                req.Checksums.push_back(checksum);
+                meta.AddBlockChecksums(checksum);
+            }
+        }
+        TCompressedMergedBlob compressed;
+        auto error = CompressMergedBlob(
+            raw, BlockSize, MinSavingsPercentage, meta, compressed);
+        stats.EncodeCpuMicros = ThreadCPUTime() - cpuStart;
+        if (HasError(error)) {
+            return error;
+        }
+        if (compressed.Payload.empty()) {
+            stats.RawFallback = 1;
+            continue;
+        }
+        stats.Accepted = 1;
+        stats.PhysicalBytes = compressed.Payload.size();
+        stats.MetadataBytes = compressed.MetadataBytes;
+        // Channel selection already happened once. Preserve every id field
+        // except the physical byte size, before PUT and Unconfirmed publication.
+        req.BlobId = TPartialBlobId(
+            req.BlobId.Generation(), req.BlobId.Step(), req.BlobId.Channel(),
+            compressed.Payload.size(), req.BlobId.Cookie(), req.BlobId.PartId());
+        req.Compression = std::make_shared<NProto::TBlobCompression>(
+            std::move(compressed.Compression));
+        req.Encoded = TGuardedBuffer<TString>(std::move(compressed.Payload));
+        req.Content = req.Encoded.GetGuardedSgList();
+    }
+    return {};
+}
+
 void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
 {
     for (ui32 i = 0; i < WriteBlobRequests.size(); ++i) {
         auto& req = WriteBlobRequests[i];
-        auto guardedSglist = BuildBlobContentAndComputeChecksums(req);
-
         auto request = std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
             req.BlobId,
-            std::move(guardedSglist),
-            BlockSizeForChecksums,
+            req.Content,
+            req.Compression ? 0 : BlockSizeForChecksums,
             false); // async
+        request->IsCompressed = bool(req.Compression);
+        request->CompressionStats = req.CompressionStats;
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -238,7 +344,8 @@ void TWriteMergedBlocksActor::AddBlobs(
                 req.BlobId,
                 req.WriteRange,
                 TBlockMask(), // skipMask
-                std::move(req.Checksums));
+                std::move(req.Checksums),
+                req.Compression);
         }
 
         request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -256,8 +363,8 @@ void TWriteMergedBlocksActor::AddBlobs(
             BlobsToConfirm.emplace_back(
                 req.BlobId.UniqueId(),
                 req.WriteRange,
-                // checksums are not ready at this point
-                TVector<ui32>());
+                req.Checksums,
+                req.Compression);
         }
 
         request = std::make_unique<TEvPartitionPrivate::TEvAddUnconfirmedBlobsRequest>(
@@ -378,7 +485,10 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    if (BlobsToConfirm.empty()) {
+    if (WriteBlobRequests[ev->Cookie].Compression) {
+        // Encoded PUTs do not compute logical checksums; they were persisted
+        // together with the final format and id before sending the request.
+    } else if (BlobsToConfirm.empty()) {
         WriteBlobRequests[ev->Cookie].Checksums =
             std::move(msg->BlockChecksums);
     } else {
@@ -532,7 +642,15 @@ void TPartitionActor::WriteMergedBlocks(
             range.Size() * State->GetBlockSize(),
             blobIndex++);
 
-        requests.emplace_back(blobId, range);
+        const bool compress = SelectMergedBlobCompression(
+            *Config,
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId(),
+            commitId,
+            blobIndex - 1,
+            false);
+        requests.emplace_back(blobId, range, compress);
     }
 
     Y_ABORT_UNLESS(requests);
@@ -569,7 +687,9 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.ReplyLocal,
         shouldAddUnconfirmedBlobs,
         std::move(requestInBuffer.Data.Handler),
-        checksumsEnabled ? State->GetBlockSize() : 0
+        checksumsEnabled ? State->GetBlockSize() : 0,
+        State->GetBlockSize(),
+        Config->GetMergedBlobCompressionMinSavingsPercentage()
     );
     Actors.Insert(actor);
 }

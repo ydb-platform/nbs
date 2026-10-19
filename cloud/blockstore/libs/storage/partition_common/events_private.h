@@ -266,6 +266,8 @@ struct TEvPartitionCommonPrivate
         // BlockSize is used to calculate checksums. If it's 0, checksums won't
         // be calculated.
         const ui32 BlockSizeForChecksums;
+        bool IsCompressed = false;
+        TMergedBlobCompressionStats CompressionStats;
         const bool Async;
         const TInstant Deadline;
 
