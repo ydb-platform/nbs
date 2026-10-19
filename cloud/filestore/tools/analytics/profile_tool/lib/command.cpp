@@ -83,7 +83,6 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
         }
         const auto result =
             ProcessProfileLog(file.Path, processor, IgnoreErrors);
-        Cout.Flush();
         if (result) {
             return result;
         }

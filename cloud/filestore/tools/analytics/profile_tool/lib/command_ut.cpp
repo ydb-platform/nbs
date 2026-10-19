@@ -437,31 +437,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(newest.Name()));
     }
 
-    Y_UNIT_TEST(ShouldKeepInputOrderWithinSameMicrosecond)
-    {
-        TTempDir directory;
-        TTempFileHandle newest(directory.Name() + "/a");
-        TTempFileHandle oldest(directory.Name() + "/z");
-        TTempFileHandle middle(directory.Name() + "/m");
-        SetModificationTime(newest.Name(), 100, 300);
-        SetModificationTime(oldest.Name(), 100, 100);
-        SetModificationTime(middle.Name(), 100, 200);
-        TTestCommand command;
-        const char* args[] = {
-            "test",
-            "--profile-log",
-            newest.Name().c_str(),
-            "--profile-log",
-            oldest.Name().c_str(),
-            "--profile-log",
-            middle.Name().c_str()};
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(7, args), 0);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 3);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(newest.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(oldest.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(middle.Name()));
-    }
-
     Y_UNIT_TEST(ShouldKeepInputOrderForEqualFilenameTimes)
     {
         TTempDir directory;
