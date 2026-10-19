@@ -95,7 +95,6 @@ int TCommand::ProcessProfileLog(
     IEventProcessor& processor,
     bool ignoreErrors)
 {
-    processor.SetOptions(TEvent::TOutputOptions{});
     const auto handleReadError = [&path, ignoreErrors](const yexception& error)
     {
         Cerr << "Error reading profile log " << path << ": " << error.what()
