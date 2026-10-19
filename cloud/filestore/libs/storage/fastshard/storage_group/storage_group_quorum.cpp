@@ -13,14 +13,17 @@
 #include <silk/util/logger.h>
 
 #include <util/digest/city.h>
-#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
+#include <cstring>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 namespace {
@@ -293,6 +296,24 @@ public:
         return response.GetError();
     }
 
+    NProto::TError Acquire()
+    {
+        NProto::TAcquireDevicesRequest request;
+        FillHeaders(Config, request.MutableHeaders());
+        request.SetGeneration(Config.AcquireGeneration);
+        request.AddDeviceUUIDs(DeviceUUID);
+
+        auto response = CallWithRetries(
+            Config.RetryPolicy,
+            *Timer,
+            [&]
+            {
+                return StorageNode->AcquireDevices(request);
+            });
+
+        return response.GetError();
+    }
+
 public:
     const TString DeviceUUID;
     const IStorageNodePtr StorageNode;
@@ -305,6 +326,23 @@ private:
 };
 
 using TDeviceProxyPtr = std::shared_ptr<TDeviceProxy>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TGroupState;
+using TGroupStatePtr = std::shared_ptr<TGroupState>;
+
+// A periodic job of the group, with sync stop in TearDown.
+struct TLoop
+{
+    TGroupStatePtr State;
+    TDuration Period;
+    std::function<void(TGroupState&)> Body;
+    silk::FiberScheduler::SleepFuture Sleep;
+    silk::FiberFuture Done;
+};
+
+using TLoopPtr = std::shared_ptr<TLoop>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -324,17 +362,14 @@ struct TGroupState
 
     // Highest lsn acked by every device.
     silk::FiberSequencer LowWatermarkLsn;
+    ui64 LowWatermarkPushed = 0;
 
     TInflight ReadsInflight;
     TInflight WritesInflight;
+    TVector<TLoopPtr> Loops;
 
     std::atomic<bool> Initialized = false;
-    std::atomic<bool> Stopped = false;
-
-    silk::FiberFuture WatermarkLoopStopped;
 };
-
-using TGroupStatePtr = std::shared_ptr<TGroupState>;
 
 TVector<TStorageDevice> CollectDeviceList(const TGroupState& state)
 {
@@ -513,7 +548,10 @@ NProto::TError ValidateGroupConfigAndInitIfNeeded(const TGroupStatePtr& state)
                 .Error = &errors[i],
             },
             &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+        Y_ABORT_UNLESS(
+            r == 0,
+            "failed to spawn fiber: %s",
+            NCloud::NFastShard::SystemErrorText(r).c_str());
     }
 
     NProto::TError error;
@@ -630,7 +668,10 @@ NProto::TError ReplayOnDevicesBehind(
                 .Error = &errors[i]
             },
             &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+        Y_ABORT_UNLESS(
+            r == 0,
+            "failed to spawn fiber: %s",
+            NCloud::NFastShard::SystemErrorText(r).c_str());
     }
 
     NProto::TError error;
@@ -679,7 +720,7 @@ NProto::TError ReadRecordsAbove(
 
 // Reads what the slowest device lacks from the most advanced one and replays
 // it onto everyone behind. Where each device is was learnt at validation:
-// from its header read, or from the claim written to it.
+// from its header read, or from the header page written to it.
 NProto::TError RebuildJournal(const TGroupStatePtr& state)
 {
     TVector<ui64> maxLsnPerDevice(state->Proxies.size());
@@ -724,6 +765,8 @@ NProto::TError RebuildJournal(const TGroupStatePtr& state)
     return {};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TPushWatermarkParams
 {
     TDeviceProxyPtr Proxy;
@@ -749,7 +792,10 @@ void PushLowWatermarkEverywhere(TGroupState& state, ui64 watermark)
                 .Watermark = watermark,
                 .Error = &errors[i]},
             &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+        Y_ABORT_UNLESS(
+            r == 0,
+            "failed to spawn fiber: %s",
+            NCloud::NFastShard::SystemErrorText(r).c_str());
     }
 
     for (ui32 i = 0; i < count; ++i) {
@@ -771,33 +817,102 @@ void PushLowWatermarkEverywhere(TGroupState& state, ui64 watermark)
     }
 }
 
-struct TWatermarkParams
+void PushLowWatermarkIfNeeded(TGroupState& state)
 {
-    TGroupStatePtr State;
+    const ui64 watermark = state.LowWatermarkLsn.get();
+    if (watermark > state.LowWatermarkPushed) {
+        PushLowWatermarkEverywhere(state, watermark);
+        state.LowWatermarkPushed = watermark;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TRenewSessionParams
+{
+    TDeviceProxyPtr Proxy;
+    NProto::TError* Error;
 };
 
-int LowWatermarkFiberMain(TWatermarkParams* params) noexcept
+void RenewSessionsEverywhere(TGroupState& state)
 {
-    auto& state = *params->State;
-    ui64 pushed = 0;   // last watermark pushed
+    const ui32 count = state.Proxies.size();
+    TVector<silk::FiberFuture> futures(count);
+    TVector<NProto::TError> errors(count);
+    for (ui32 i = 0; i < count; ++i) {
+        const int r = silk::FiberScheduler::run<TRenewSessionParams>(
+            [] (TRenewSessionParams* params) noexcept
+            {
+                *params->Error = params->Proxy->Acquire();
+                return 0;
+            },
+            TRenewSessionParams{
+                .Proxy = state.Proxies[i],
+                .Error = &errors[i]},
+            &futures[i]);
+        Y_ABORT_UNLESS(
+            r == 0,
+            "failed to spawn fiber: %s",
+            NCloud::NFastShard::SystemErrorText(r).c_str());
+    }
 
-    for (;;) {
-        state.Timer->Sleep(state.Config.LowWatermarkPeriod);
-        if (state.Stopped || state.Health.IsBroken()) {
-            break;
-        }
-
-        const ui64 watermark = state.LowWatermarkLsn.get();
-        if (watermark <= pushed) {
+    for (ui32 i = 0; i < count; ++i) {
+        futures[i].wait();
+        if (!HasError(errors[i])) {
             continue;
         }
 
-        // A refusal breaks the group; the loop notices after its next sleep,
-        // the only place it ever leaves from.
-        PushLowWatermarkEverywhere(state, watermark);
-        pushed = watermark;
+        const auto kind = GetErrorKind(errors[i]);
+        if (kind == EErrorKind::ErrorSession ||
+            kind == EErrorKind::ErrorFatal)
+        {
+            state.Health.Fail(errors[i], state.Proxies[i]->DeviceUUID);
+            continue;
+        }
+
+        SILK_WARN(
+            "sg session on %s not renewed: %s",
+            state.Proxies[i]->DeviceUUID.c_str(),
+            FormatError(errors[i]).c_str());
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+int LoopFiberMain(TLoopPtr* params) noexcept
+{
+    auto& loop = **params;
+    auto& state = *loop.State;
+    for (;;) {
+        loop.Sleep.reset();
+        silk::FiberScheduler::sleep(loop.Period.NanoSeconds(), &loop.Sleep);
+        if (loop.Sleep.wait() == ECANCELED || state.Health.IsBroken()) {
+            break;
+        }
+
+        loop.Body(state);
+    }
+
     return 0;
+}
+
+TLoopPtr RunLoop(
+    const TGroupStatePtr& state,
+    TDuration period,
+    std::function<void(TGroupState&)> body)
+{
+    auto loop = std::make_shared<TLoop>();
+    loop->State = state;
+    loop->Period = period;
+    loop->Body = std::move(body);
+
+    const int r =
+        silk::FiberScheduler::run(LoopFiberMain, TLoopPtr(loop), &loop->Done);
+    Y_ABORT_UNLESS(
+        r == 0,
+        "failed to spawn fiber: %s",
+        NCloud::NFastShard::SystemErrorText(r).c_str());
+    return loop;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -825,10 +940,6 @@ public:
                     State->Config,
                     State->Timer));
         }
-
-        // Allow TearDown to pass by default. Init resets it upon launching
-        // the loop.
-        State->WatermarkLoopStopped.set(0);
     }
 
     TResultOrError<ui64> Init() override
@@ -856,14 +967,17 @@ public:
             return error;
         }
 
-        if (State->Config.LowWatermarkPeriod != TDuration::Zero()) {
-            State->WatermarkLoopStopped.reset();
-            const int r = silk::FiberScheduler::run(
-                LowWatermarkFiberMain,
-                TWatermarkParams{.State = State},
-                &State->WatermarkLoopStopped);
-            Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
-        }
+        auto loop = RunLoop(
+            State,
+            State->Config.ReacquirePeriod,
+            RenewSessionsEverywhere);
+        State->Loops.push_back(std::move(loop));
+
+        loop = RunLoop(
+            State,
+            State->Config.LowWatermarkPeriod,
+            PushLowWatermarkIfNeeded);
+        State->Loops.push_back(std::move(loop));
 
         State->Initialized = true;
         return State->QuorumLsn.get();
@@ -871,10 +985,17 @@ public:
 
     void TearDown() override
     {
-        State->Stopped = true;
+        for (const auto& loop: State->Loops) {
+            loop->Sleep.cancel();
+        }
 
         // TODO(#6957): Need a proper cancellation token for requests inflight
-        State->WatermarkLoopStopped.wait();
+        for (const auto& loop: State->Loops) {
+            Y_UNUSED(loop->Done.wait());
+        }
+
+        // Each loop holds the state: let go of them, or nobody does.
+        State->Loops.clear();
         State->ReadsInflight.Wait();
         State->WritesInflight.Wait();
 
@@ -928,7 +1049,10 @@ public:
                     .Op = op,
                     .Proxy = proxy},
                 nullptr);
-            Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+            Y_ABORT_UNLESS(
+                r == 0,
+                "failed to spawn fiber: %s",
+                NCloud::NFastShard::SystemErrorText(r).c_str());
         }
 
         const int cancelled = op->Acks.wait(State->WriteQuorum);
