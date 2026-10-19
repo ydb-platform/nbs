@@ -35,6 +35,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCmsHostState,                 __VA_ARGS__)                       \
     xxx(DeleteDiskStateUpdates,             __VA_ARGS__)                       \
     xxx(WritableState,                      __VA_ARGS__)                       \
+    xxx(SuspendSecureErase,                 __VA_ARGS__)                       \
     xxx(StartMigration,                     __VA_ARGS__)                       \
     xxx(StartForceMigration,                __VA_ARGS__)                       \
     xxx(FinishMigration,                    __VA_ARGS__)                       \
@@ -790,6 +791,28 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
+        }
+    };
+
+    //
+    // SuspendSecureErase
+    //
+
+    struct TSuspendSecureErase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const bool State;
+
+        TSuspendSecureErase(
+                TRequestInfoPtr requestInfo,
+                bool state)
+            : RequestInfo(std::move(requestInfo))
+            , State(state)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 

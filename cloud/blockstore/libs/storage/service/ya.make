@@ -62,6 +62,7 @@ SRCS(
     service_actor_actions_update_volume_params.cpp
     service_actor_actions_wait_dependent_disks_switched_node.cpp
     service_actor_actions_writable_state.cpp
+    service_actor_actions_suspend_secure_erase.cpp
     service_actor_actions.cpp
     service_actor_alter.cpp
     service_actor_assign.cpp

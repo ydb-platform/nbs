@@ -35,6 +35,7 @@ enum class ESecureEraseReadiness {
     AgentAbsent,
     AgentUnavailable,
     DeviceDetached,
+    SecureEraseSuspended,
 };
 
 struct TAgentStorageInfo
@@ -328,6 +329,7 @@ private:
     TDeque<TInstant> AutomaticReplacementTimestamps;
 
     NProto::TDiskRegistryConfig CurrentConfig;
+    bool SuspendSecureErase = false;
 
     struct TDeviceMigrationCompare
     {
@@ -779,6 +781,10 @@ public:
 
     bool CanSecureErase(const TDeviceId& uuid) const;
     bool CanSecureErase(const NProto::TDeviceConfig& device) const;
+
+    void SetSuspendSecureErase(bool suspend);
+    bool GetSuspendSecureErase() const;
+
     ESecureEraseReadiness GetSecureEraseReadiness(
         const NProto::TDeviceConfig& device) const;
 

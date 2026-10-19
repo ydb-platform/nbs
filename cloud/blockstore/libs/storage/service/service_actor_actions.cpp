@@ -39,6 +39,7 @@ void TServiceActor::HandleExecuteAction(
         TResultOrError<NActors::IActorPtr>(TServiceActor::*)(TRequestInfoPtr, TString);
     const THashMap<TString, TFunc> actions = {
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
+        {"diskregistrysuspendsecureerase",    &TServiceActor::CreateSuspendSecureEraseActionActor          },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },
         {"checkblob",                         &TServiceActor::CreateCheckBlobActionActor                   },
         {"checkrange",                        &TServiceActor::CreateCheckRangeActionActor                  },

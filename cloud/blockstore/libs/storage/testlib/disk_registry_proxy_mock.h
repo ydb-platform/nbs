@@ -78,6 +78,10 @@ private:
                 HandleSetWritableState);
 
             HFunc(
+                TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+                HandleSetSuspendSecureErase);
+
+            HFunc(
                 TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
                 HandleBackupDiskRegistryState);
 
@@ -565,6 +569,18 @@ private:
 
         auto response = std::make_unique<
             TEvDiskRegistry::TEvSetWritableStateResponse>();
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleSetSuspendSecureErase(
+        const TEvDiskRegistry::TEvSetSuspendSecureEraseRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        State->SuspendSecureErase = ev->Get()->Record.GetState();
+
+        auto response = std::make_unique<
+            TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>();
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }
