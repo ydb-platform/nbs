@@ -1,3 +1,4 @@
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression_policy.h>
 #include "actorsystem.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
@@ -137,6 +138,10 @@ public:
     {
         const auto config = Args.StartupBlockstoreConfig;
         const auto storageConfig = config->GetStorageConfig();
+        NPartition::RegisterMergedBlobCompressionCounters(
+            appData->Counters->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "merged_blob_compression"));
+
 
         storageConfig->Register(*appData->Icb);
 

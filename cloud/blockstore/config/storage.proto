@@ -1734,4 +1734,11 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Physical Merged compression. Writers are opt-in; readers are unconditional.
+    optional uint32 CompactionMergedBlobCompressionPercentage = 542;
+    optional uint32 DirectMergedBlobCompressionPercentage = 543;
+    optional string MergedBlobCompressionCodec = 544;
+    optional uint32 MergedBlobCompressionChunkSize = 545;
+    optional uint32 MergedBlobCompressionMinSavingsPercentage = 546;
 }

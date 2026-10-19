@@ -10,6 +10,7 @@ SRCS(
     compaction_stats_tracker_ut.cpp
     flush_blocks_visitor_ut.cpp
     garbage_queue_ut.cpp
+    merged_blob_compression_ut.cpp
     mixed_blocks_filter_ut.cpp
     mixed_blocks_filter_load_state_ut.cpp
     mixed_index_cache_ut.cpp

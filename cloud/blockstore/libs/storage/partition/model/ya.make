@@ -15,6 +15,8 @@ SRCS(
     compaction_stats_tracker.cpp
     flush_blocks_visitor.cpp
     garbage_queue.cpp
+    merged_blob_compression.cpp
+    merged_blob_compression_policy.cpp
     mixed_blocks_filter.cpp
     mixed_blocks_filter_load_state.cpp
     mixed_index_cache.cpp
@@ -30,6 +32,8 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
 
+    contrib/libs/lz4
+    library/cpp/monlib/dynamic_counters
     library/cpp/protobuf/json
 )
 

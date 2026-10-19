@@ -356,6 +356,118 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionAttempts{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionAccepted{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionRawFallback{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionAdmissionRejected{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionPhysicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionMetadataBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionEncodeCpuMicros{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionReadPhysicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionReadLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionDecodedChunks{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionDecodeCpuMicros{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionDecodeErrors{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionReadAdmissionRejected{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionRawFallbackBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionAcceptedLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionFormatErrors{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionForegroundReadLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionForegroundReadPhysicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionForegroundDecodedChunks{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionForegroundDecodeCpuMicros{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundReadLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundReadPhysicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundDecodedChunks{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundDecodeCpuMicros{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionForegroundRawMergedReadLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundRawMergedReadLogicalBytes{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBlobCompressionBackgroundEncodeCpuMicros{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter UncompressedBytesWritten{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -445,6 +557,34 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::BatchCount>(),
         MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterFalsePositives>(),
         MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterTruePositives>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionAttempts>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionAccepted>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionRawFallback>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionAdmissionRejected>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionPhysicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionMetadataBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionEncodeCpuMicros>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionReadPhysicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionReadLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionDecodedChunks>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionDecodeCpuMicros>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionDecodeErrors>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionReadAdmissionRejected>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionRawFallbackBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionAcceptedLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionFormatErrors>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionForegroundReadLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionForegroundReadPhysicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionForegroundDecodedChunks>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionForegroundDecodeCpuMicros>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundReadLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundReadPhysicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundDecodedChunks>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundDecodeCpuMicros>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionForegroundRawMergedReadLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundRawMergedReadLogicalBytes>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedBlobCompressionBackgroundEncodeCpuMicros>(),
         MakeMeta<&TCumulativeDiskCounters::UncompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByReadStats>(),

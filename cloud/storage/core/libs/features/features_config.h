@@ -44,6 +44,12 @@ public:
 
     bool IsValid() const;
 
+    bool IsFeatureExplicitlyEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& entityId,
+        const TString& featureName) const;
+
     bool IsFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
