@@ -115,7 +115,6 @@ bool TDiskRegistryActor::LoadState(
         db.ReadDiskStateChanges(args.DiskStateChanges),
         db.ReadLastDiskStateSeqNo(args.LastDiskStateSeqNo),
         db.ReadWritableState(args.WritableState),
-        db.ReadSuspendSecureErase(args.SuspendSecureErase),
         db.ReadDisksToCleanup(args.DisksToCleanup),
         db.ReadSuspendSecureErase(args.SuspendSecureErase),
         db.ReadOutdatedVolumeConfigs(args.OutdatedVolumeConfigs),

@@ -76,9 +76,6 @@ private:
             HFunc(
                 TEvDiskRegistry::TEvSetWritableStateRequest,
                 HandleSetWritableState);
-            HFunc(
-                TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
-                HandleSetSuspendSecureErase);
 
             HFunc(
                 TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,

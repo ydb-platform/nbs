@@ -69,7 +69,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
     xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
     xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
-    xxx(SuspendSecureErase,                 __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
