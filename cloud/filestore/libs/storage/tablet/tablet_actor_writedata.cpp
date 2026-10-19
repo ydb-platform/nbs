@@ -40,18 +40,14 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            // Copy payload to buffer only when it is not contigious otherwise
+            // Copy payload to buffer only when it is not contiguous otherwise
             // rope can be flattened several times when request is throttled.
-            TRope rope = msg->GetPayload(0);
+            const TRope& rope = msg->GetPayload(0);
             if (rope.IsContiguous()) {
-                payload = rope.operator TRcBuf();
+                payload = rope.Begin().GetChunk();
                 externalPayload = true;
             } else {
-                msg->Record.MutableBuffer()->ReserveAndResize(rope.size());
-                TRopeUtils::Memcpy(
-                    msg->Record.MutableBuffer()->begin(),
-                    rope.begin(),
-                    rope.size());
+                msg->Record.SetBuffer(rope.ConvertToString());
                 msg->StripPayload();
             }
         }
