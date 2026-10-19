@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
+#include <util/generic/vector.h>
 #include <util/network/socket.h>
 
 namespace NCloud::NJournalled {
@@ -20,6 +21,10 @@ struct TServerConfig
     TNetworkAddress ListenAddress;
     bool JournalEnabled = false;
     ui32 RestoreConcurrency = 4;
+
+    // The executors the connections are spread over, round robin. Empty
+    // means the server's own executor serves every connection.
+    TVector<TExecutorPtr> ConnectionExecutors;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

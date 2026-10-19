@@ -240,7 +240,8 @@ IStartablePtr TServerBuilder::Build()
         ServerConfig.ListenAddress,
         std::move(Logging),
         std::move(Executor),
-        std::move(service));
+        std::move(service),
+        std::move(ServerConfig.ConnectionExecutors));
 }
 
 }   // namespace NCloud::NJournalled
