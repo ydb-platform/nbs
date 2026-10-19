@@ -43,7 +43,8 @@ public:
     void MaskRequest(NProto::TProfileLogRequestInfo& request) const;
     void MaskSensitiveData(
         const TVector<TProfileLogFile>& in,
-        const TString& out);
+        const TString& out,
+        bool ignoreErrors = false);
 };
 
 }   // namespace NCloud::NFileStore::NProfileTool

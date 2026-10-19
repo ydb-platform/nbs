@@ -14,10 +14,9 @@ void PrintProfileLogProgress(const TProfileLogFile& file);
 
 class TCommand
 {
-private:
+protected:
     bool IgnoreErrors = false;
 
-protected:
     NLastGetopt::TOpts Opts;
     TMaybe<NLastGetopt::TOptsParseResultException> OptsParseResult;
 

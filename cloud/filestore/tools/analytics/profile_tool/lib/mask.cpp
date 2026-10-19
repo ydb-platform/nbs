@@ -76,7 +76,7 @@ public:
     int Execute() override
     {
         TMaskSensitiveData mask{Mode, Seed, MaxExtensionLength};
-        mask.MaskSensitiveData(ProfileLogFiles, PathToOutProfileLog);
+        mask.MaskSensitiveData(ProfileLogFiles, PathToOutProfileLog, IgnoreErrors);
         return 0;
     }
 };
@@ -183,7 +183,8 @@ void TMaskSensitiveData::MaskRequest(
 
 void TMaskSensitiveData::MaskSensitiveData(
     const TVector<TProfileLogFile>& in,
-    const TString& out)
+    const TString& out,
+    bool ignoreErrors)
 {
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
@@ -197,9 +198,27 @@ void TMaskSensitiveData::MaskSensitiveData(
 
         // Sort eventlog items within each input by timestamp.
         options.SetForceStrongOrdering(true);
-        CurrentEvent = CreateIterator(options);
+        CurrentEvent.Reset();
 
-        while (Advance()) {
+        for (;;) {
+            try {
+                if (!CurrentEvent) {
+                    CurrentEvent = CreateIterator(options);
+                }
+                if (!Advance()) {
+                    break;
+                }
+            } catch (const yexception& error) {
+                Cerr << "Error reading profile log " << file.Path << ": "
+                     << error.what() << Endl;
+                if (!ignoreErrors) {
+                    throw;
+                }
+                Cerr << "Skipping unreadable remainder of profile log: "
+                     << file.Path << Endl;
+                break;
+            }
+            // Masking and output failures must not be treated as read errors.
             NProto::TProfileLogRecord recordOut;
             recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
 

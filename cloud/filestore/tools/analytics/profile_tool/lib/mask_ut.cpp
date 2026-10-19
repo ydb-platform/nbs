@@ -1,9 +1,12 @@
 #include "mask.h"
+#include "command.h"
+#include "factory.h"
 #include "time_range.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/system/tempfile.h>
+#include <util/folder/tempdir.h>
 
 namespace NCloud::NFileStore::NProfileTool {
 
@@ -11,6 +14,66 @@ namespace NCloud::NFileStore::NProfileTool {
 
 Y_UNIT_TEST_SUITE(TMaskSensitiveData)
 {
+    Y_UNIT_TEST(ShouldSkipTruncatedInputOnlyWhenRequested)
+    {
+        TTempDir directory;
+        TTempFileHandle first(directory.Name() + "/log.2026-09-26T00:01");
+        TTempFileHandle broken(directory.Name() + "/log.2026-09-26T00:02");
+        TTempFileHandle last(directory.Name() + "/log.2026-09-26T00:03");
+        for (const auto* input: {&first, &broken, &last}) {
+            TEventLog log(input->Name(), 0);
+            {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                record.SetFileSystemId(input->Name());
+                auto* node = record.AddRequests()->MutableNodeInfo();
+                node->SetNodeId(42);
+                node->SetNodeName("secret");
+                frame.LogEvent(record);
+                frame.Flush();
+            }
+            log.CloseLog();
+        }
+        broken.Resize(broken.GetLength() - 1);
+
+        for (const bool ignoreErrors: {false, true}) {
+            TTempFileHandle output;
+            const char* args[] = {
+                "masksensitivedata", "--profile-log", first.Name().c_str(),
+                broken.Name().c_str(), last.Name().c_str(),
+                "--out-profile-log", output.Name().c_str(),
+                "--mode", "hash", "--seed", "seed", "--ignore-errors"};
+            auto command = GetCommand("masksensitivedata");
+            if (ignoreErrors) {
+                UNIT_ASSERT_VALUES_EQUAL(command->Run(12, args), 0);
+            } else {
+                UNIT_ASSERT_EXCEPTION(command->Run(11, args), yexception);
+            }
+
+            NEventLog::TOptions options;
+            options.FileName = output.Name();
+            auto iterator = CreateIterator(options);
+            TVector<TString> fileSystems;
+            TMaskSensitiveData mask(TMaskSensitiveData::EMode::Hash, "seed", 0);
+            while (const auto event = iterator->Next()) {
+                const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
+                    event->GetProto());
+                if (record) {
+                    fileSystems.push_back(record->GetFileSystemId());
+                    UNIT_ASSERT_VALUES_EQUAL(record->GetRequests().size(), 1);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        record->GetRequests(0).GetNodeInfo().GetNodeName(),
+                        mask.Transform("secret", 42));
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(fileSystems.size(), ignoreErrors ? 2 : 1);
+            UNIT_ASSERT_VALUES_EQUAL(fileSystems[0], first.Name());
+            if (ignoreErrors) {
+                UNIT_ASSERT_VALUES_EQUAL(fileSystems[1], last.Name());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldMaskMultipleFiles)
     {
         TTempFileHandle first;
