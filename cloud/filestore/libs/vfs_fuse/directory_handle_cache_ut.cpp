@@ -615,6 +615,78 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             entryVersionCache->GetVersion(100, "child"));
     }
 
+    Y_UNIT_TEST(ShouldRestoreLastChunkAfterEmptyFinalPage)
+    {
+        const ui64 handleId = [&]
+        {
+            auto cache = CreateStoredCache();
+
+            const ui64 otherId = cache.CreateHandle(43);
+            const ui64 id = cache.CreateHandle(42);
+            auto handle = cache.FindHandle(id);
+            UNIT_ASSERT(handle);
+
+            auto chunk = handle->UpdateContent(
+                1024,
+                0,
+                CreateContent(1024, 'x'),
+                1,
+                "next");
+            cache.AppendChunk(id, handle, chunk);
+
+            // frees the first storage record, the empty chunk reuses it and
+            // is loaded before the chunk with the same key
+            cache.RemoveHandle(otherId);
+
+            chunk = handle->UpdateContent(
+                1024,
+                1024,
+                std::make_shared<TBuffer>(),
+                2,
+                {});
+            UNIT_ASSERT(!chunk.Key);
+            cache.AppendChunk(id, handle, chunk);
+
+            auto content = handle->ReadContent(1024, 512, Log);
+            UNIT_ASSERT(content);
+            UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+
+            return id;
+        }();
+
+        auto cache = CreateStoredCache();
+        auto handle = cache.FindHandle(handleId);
+        UNIT_ASSERT(handle);
+
+        auto content = handle->ReadContent(1024, 512, Log);
+        UNIT_ASSERT(content);
+        UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+    }
+
+    Y_UNIT_TEST(ShouldSkipEmptyChunkWhenRestoringHandle)
+    {
+        TDirectoryHandle handle(42, CreateDirectoryHandleStatsStub(), 0);
+
+        TDirectoryHandleChunk emptyChunk{
+            .Key = 1024,
+            .UpdateVersion = 2,
+            .Index = 42,
+        };
+        handle.ConsumeChunk(emptyChunk, Log);
+
+        TDirectoryHandleChunk chunk{
+            .Key = 1024,
+            .UpdateVersion = 1,
+            .Index = 42,
+            .Cookie = "next",
+            .DirectoryContent = {.Content = CreateContent(1024, 'x')},
+        };
+        handle.ConsumeChunk(chunk, Log);
+
+        auto content = handle.ReadContent(1024, 512, Log);
+        UNIT_ASSERT(content);
+        UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+    }
 
     Y_UNIT_TEST(ShouldCountOldChunkReads)
     {

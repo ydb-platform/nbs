@@ -730,6 +730,44 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldReturnEmptyPageWhenEntriesAfterCookieAreUnlinked)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        TString cookie;
+        {
+            auto response = tablet.ListNodes(RootNodeId, 1, TString{});
+
+            const auto& names = response->Record.GetNames();
+            UNIT_ASSERT_VALUES_EQUAL(1, names.size());
+            UNIT_ASSERT_VALUES_EQUAL("test1", names[0]);
+
+            cookie = response->Record.GetCookie();
+            UNIT_ASSERT_VALUES_EQUAL("test2", cookie);
+        }
+
+        tablet.UnlinkNode(RootNodeId, "test2", false);
+        tablet.UnlinkNode(RootNodeId, "test3", false);
+
+        {
+            auto response = tablet.ListNodes(RootNodeId, 1, cookie);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.NodesSize());
+            UNIT_ASSERT(response->Record.GetCookie().empty());
+        }
+    }
+
     Y_UNIT_TEST(ShouldLimitListNodesWithFullRowSizeMode)
     {
         // Test that byte size calculation accounts for full TNodeRef size

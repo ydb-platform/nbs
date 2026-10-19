@@ -141,7 +141,6 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
-        .Key = end,
         .Index = Index,
         .DirectoryContent = {
             .Content = content,
@@ -150,11 +149,16 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
             .CacheVersion = cacheVersion,
         },
     };
+    if (!content->Empty()) {
+        chunk.Key = end;
+    }
 
     with_lock (Lock) {
-        Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        Content.try_emplace(end, content, cacheVersion);
-        LastReadKey = end;
+        if (chunk.Key) {
+            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
+            Content.try_emplace(end, content, cacheVersion);
+            LastReadKey = end;
+        }
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -279,7 +283,7 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
         Cookie = std::move(chunk.Cookie);
     }
 
-    if (chunk.Key) {
+    if (chunk.Key && chunk.DirectoryContent.Content) {
         const auto insertResult = Content.emplace(
             chunk.Key.value(),
             std::move(chunk.DirectoryContent.Content));

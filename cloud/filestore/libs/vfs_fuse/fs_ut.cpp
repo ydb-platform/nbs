@@ -1303,6 +1303,226 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 
+    void DoShouldServeLastChunkFromCacheAfterEmptyPage(
+        const TString& nextCookie,
+        const TString& emptyPageCookie)
+    {
+        TBootstrap bootstrap;
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                result.SetCookie(emptyPageCookie);
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie(nextCookie);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+        // ".", "..", "1.txt" and "2.txt" have the same padded dirent size
+        const ui32 size = read.GetValue();
+        UNIT_ASSERT_GT(size, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+        const ui32 entrySize = size / 4;
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        // seekdir() back to "2.txt"
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size - entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyFinalPage)
+    {
+        // tablet: the entries after the cookie were unlinked between pages
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "3.txt" /* nextCookie */,
+            "" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyPageWithCookie)
+    {
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "42" /* nextCookie */,
+            "42" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldRestoreLastChunkAfterEmptyFinalPage)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(256 * 1024);
+
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            UNIT_ASSERT(state.SerializeToString(
+                result.MutableSession()->MutableSessionState()));
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls = 0;
+        auto listNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie("3.txt");
+            return MakeFuture(result);
+        };
+
+        const ui64 nodeId = 123;
+        ui64 handleId = 0;
+        ui32 size = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) /
+            "directory_handles_storage.empty_final_page");
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            auto otherHandle =
+                bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(otherHandle.Wait(WaitTimeout));
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            size = read.GetValue();
+            UNIT_ASSERT_GT(size, 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+
+            // frees the first storage record, the next record reuses it and
+            // is loaded first after the restart
+            auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+                nodeId,
+                otherHandle.GetValue());
+            UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start(false /* sendInitRequest */);
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            // seekdir() back to "2.txt"
+            const ui32 entrySize = size / 4;
+            auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size - entrySize);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+        }
+    }
+
     Y_UNIT_TEST(ShouldDropStoredDirectoryHandleWhenStorageExpansionIsRejected)
     {
         const TString sessionId = CreateGuidAsString();
