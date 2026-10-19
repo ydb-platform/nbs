@@ -16,6 +16,10 @@
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/thread.h>
 
+#include <library/cpp/string_utils/parse_vector/vector_parser.h>
+
+#include <contrib/libs/numa/numa.h>
+
 #ifdef BALLOC
 #include <library/cpp/balloc/optional/operators.h>
 #endif
@@ -42,6 +46,57 @@ LWTRACE_USING(ACTORLIB_PROVIDER)
     ACTORLIB_DEBUG(level, POOL_ID(), " ", WORKER_ID(), " TExecutorThread::", __func__, ": ", __VA_ARGS__)
 
 
+namespace {
+
+TString PrintCpuSet(const cpu_set_t& set)
+{
+    bool first = true;
+    TStringStream ss;
+    ss << '{';
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+        if (CPU_ISSET(cpu, &set)) {
+            if (!first) {
+                ss << ',';
+            }
+            ss << cpu;
+            first = false;
+        }
+    }
+    ss << "}";
+    return ss.Str();
+}
+
+void PinThreadsToCpuSet(const TString& cpuList)
+{
+    cpu_set_t cpuSet;
+    CPU_ZERO(&cpuSet);
+
+    if (!cpuList.empty()) {
+        TVector<ui32> vecCpu;
+        if (!TryParseStringToVector<ui32>(cpuList, vecCpu)) {
+            throw std::runtime_error("Fail to parse cpuList");
+        }
+        for(ui32 cpu : vecCpu) {
+            CPU_SET(cpu, &cpuSet);
+        }
+    }
+    else {
+        throw std::runtime_error("cpuList is empty");
+    }
+
+    const int error =
+        pthread_setaffinity_np(pthread_self(), sizeof(cpuSet), &cpuSet);
+
+    if (error != 0) {
+        throw std::runtime_error(
+            "pthread_setaffinity_np failed: " +
+            TString(std::strerror(error)));
+    }
+
+    std::cerr << "MYAGKOV: Thread successfully pinned to cpu set: " << PrintCpuSet(cpuSet) << std::endl;
+}
+}   // namespace
+
 namespace NActors {
     constexpr TDuration TExecutorThread::DEFAULT_TIME_PER_MAILBOX;
 
@@ -49,12 +104,15 @@ namespace NActors {
             TWorkerId workerId,
             TActorSystem* actorSystem,
             IExecutorPool* executorPool,
-            const TString& threadName)
+            const TString& threadName,
+            const TString& cpuList
+            )
         : ActorSystem(actorSystem)
         , Stats(1)
         , ThreadCtx(workerId, executorPool, nullptr)
         , ExecutionStats()
         , ThreadName(threadName)
+        , CpuList(cpuList)
         , ActorSystemIndex(TActorTypeOperator::GetActorSystemIndex())
     {
         ExecutionStats.Switch(&Stats[0]);
@@ -66,12 +124,14 @@ namespace NActors {
             IExecutorPool* executorPool,
             i16 poolCount,
             const TString& threadName,
+            const TString& cpuList,
             ui64 softProcessingDurationTs)
         : ActorSystem(actorSystem)
         , Stats(poolCount)
         , ThreadCtx(workerId, executorPool, sharedPool)
         , ExecutionStats()
         , ThreadName(threadName)
+        , CpuList(cpuList)
         , SoftProcessingDurationTs(softProcessingDurationTs)
         , ActorSystemIndex(TActorTypeOperator::GetActorSystemIndex())
     {
@@ -435,7 +495,7 @@ namespace NActors {
         IExecutorPool* initPool = ThreadCtx.IsShared() ? ThreadCtx.SharedPool() : ThreadCtx.Pool();
         initPool->Initialize();
         initPool->SetRealTimeMode();
-        TAffinityGuard affinity(initPool->Affinity());
+        //TAffinityGuard affinity(initPool->Affinity());
 
         NHPTimer::STime hpnow = GetCycleCountFast();
         NHPTimer::STime hpprev = hpnow;
@@ -512,6 +572,9 @@ namespace NActors {
 
     void* TExecutorThread::ThreadProc() {
 #ifdef _linux_
+        if (!CpuList.empty()) {
+            PinThreadsToCpuSet(CpuList);
+        }
         pid_t tid = syscall(SYS_gettid);
         AtomicSet(ThreadId, (ui64)tid);
 #endif

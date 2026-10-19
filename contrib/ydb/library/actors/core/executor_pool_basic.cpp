@@ -61,6 +61,7 @@ namespace NActors {
         ui32 threads,
         ui64 spinThreshold,
         const TString& poolName,
+        const TString& cpuList,
         IHarmonizer *harmonizer,
         TAffinity* affinity,
         TDuration timePerMailbox,
@@ -77,6 +78,7 @@ namespace NActors {
         : TBasicExecutorPool(TBasicExecutorPoolConfig{
             .PoolId = poolId,
             .PoolName = poolName,
+            .CpuList = cpuList,
             .Threads = threads,
             .SpinThreshold = spinThreshold,
             .Affinity = (affinity ? static_cast<TCpuMask>(*affinity) : TCpuMask{}),
@@ -102,6 +104,7 @@ namespace NActors {
         , SpinThresholdCyclesPerThread(new NThreading::TPadded<std::atomic<ui64>>[cfg.Threads])
         , WaitingStats(new TWaitingStats<ui64>[cfg.Threads])
         , PoolName(cfg.PoolName)
+        , CpuList(cfg.CpuList)
         , TimePerMailbox(cfg.TimePerMailbox)
         , TimePerMailboxTsValue(NHPTimer::GetClockRate() * cfg.TimePerMailbox.SecondsFloat())
         , EventsPerMailboxValue(cfg.EventsPerMailbox)
@@ -535,7 +538,8 @@ namespace NActors {
                     i,
                     actorSystem,
                     this,
-                    PoolName));
+                    PoolName,
+                    CpuList));
             ScheduleWriters[i].Init(ScheduleReaders[i]);
         }
 

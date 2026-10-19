@@ -97,6 +97,7 @@ message TActorSystemConfig {
         // Tiny YDB
         repeated uint32 AdjacentPools = 22;
         optional uint32 ForcedForeignSlots = 23;
+        optional string CpuList = 24;
     }
 
     message TScheduler {

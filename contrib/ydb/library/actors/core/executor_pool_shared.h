@@ -32,6 +32,7 @@ namespace NActors {
         i16 ForeignSlots = 0;
         bool InPriorityOrder = false;
         TString PoolName;
+        TString CpuList;
         bool ForcedForeignSlots = false;
         std::vector<i16> AdjacentPools;
     };
@@ -79,6 +80,7 @@ namespace NActors {
 
         const ui64 DefaultSpinThresholdCycles;
         const TString PoolName;
+        const TString CpuList;
         const ui64 SoftProcessingDurationTs;
 
         char Barrier[64];

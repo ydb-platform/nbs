@@ -105,6 +105,7 @@ GENERATE_ENUM_SERIALIZATION(actor.h)
 GENERATE_ENUM_SERIALIZATION(log_iface.h)
 
 PEERDIR(
+    contrib/libs/numa
     contrib/ydb/library/actors/actor_type
     contrib/ydb/library/actors/interconnect/rdma
     contrib/ydb/library/actors/core/harmonizer
