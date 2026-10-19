@@ -1680,6 +1680,47 @@ message TCreateVolumeFromDevicesResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Mirrored volume create from devices request/response.
+
+message TCreateMirroredVolumeFromDevicesRequest
+{
+    // Label of volume to create.
+    string MasterDiskId = 1;
+
+    // Owner information.
+    string ProjectId = 2;
+
+    // User folder Id, used for billing.
+    string FolderId = 3;
+
+    // Cloud Id, used for billing.
+    string CloudId = 4;
+
+    // Block size in bytes
+    uint32 BlockSize = 5;
+
+    message Replica
+    {
+        repeated string DeviceUUIDs = 1;
+    }
+
+    // Replicas of the disk
+    repeated Replica Replicas = 6;
+
+    // Force dangerous actions.
+    bool Force = 7;
+
+    // If true, the block count will not be adjusted.
+    bool KeepBlockCount = 8;
+}
+
+message TCreateMirroredVolumeFromDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Update disk registry params
 
 message TUpdateDiskRegistryAgentListParamsRequest

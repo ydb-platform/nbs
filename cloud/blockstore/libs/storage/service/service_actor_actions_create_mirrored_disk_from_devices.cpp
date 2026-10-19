@@ -27,6 +27,42 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NKikimrBlockStore::TVolumeConfig ConvertToVolumeConfig(
+    const NProto::TCreateMirroredVolumeFromDevicesRequest& inRequest)
+{
+    NKikimrBlockStore::TVolumeConfig volumeConfig;
+    volumeConfig.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    volumeConfig.SetDiskId(inRequest.GetMasterDiskId());
+    volumeConfig.SetProjectId(inRequest.GetProjectId());
+    volumeConfig.SetFolderId(inRequest.GetFolderId());
+    volumeConfig.SetCloudId(inRequest.GetCloudId());
+    volumeConfig.SetBlockSize(inRequest.GetBlockSize());
+    return volumeConfig;
+}
+
+std::unique_ptr<TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest> CreateRequest(
+    const NProto::TCreateMirroredVolumeFromDevicesRequest& inRequest)
+{
+    auto outRequest = std::make_unique<
+        TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest>();
+
+    for (const auto& replica: inRequest.GetReplicas()) {
+        auto* outReplica = outRequest->Record.MutableReplicas()->Add();
+        for (const auto& deviceUUID: replica.GetDeviceUUIDs()) {
+            outReplica->MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
+        }
+    }
+
+    *outRequest->Record.MutableVolumeConfig() =
+        ConvertToVolumeConfig(inRequest);
+    outRequest->Record.SetForce(inRequest.GetForce());
+    outRequest->Record.SetKeepBlockCount(inRequest.GetKeepBlockCount());
+
+    return outRequest;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TCreateMirroredDiskFromDevicesActor final
     : public TActorBootstrapped<TCreateMirroredDiskFromDevicesActor>
 {
@@ -35,7 +71,7 @@ private:
     const TStorageConfigConstPtr Config;
     const TString Input;
 
-    NProto::TCreateMirroredDiskFromDevicesRequest Request;
+    NProto::TCreateMirroredVolumeFromDevicesRequest Request;
     ui64 BlockCount = 0;
 
 public:
@@ -88,7 +124,7 @@ void TCreateMirroredDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    const auto& volumeConfig = Request.GetVolumeConfig();
+    const auto& volumeConfig = ConvertToVolumeConfig(Request);
     if (!volumeConfig.GetDiskId()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId cannot be empty"));
         return;
@@ -99,18 +135,16 @@ void TCreateMirroredDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (Request.ReplicasSize() == 0) {
+    if (Request.GetReplicas().size() == 0) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Replicas cannot be empty"));
         return;
     }
 
     Become(&TThis::StateWork);
 
-    auto request = std::make_unique<
-        TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest>();
-    request->Record.CopyFrom(Request);
-
-    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
+    ctx.Send(
+        MakeDiskRegistryProxyServiceId(),
+        CreateRequest(Request).release());
 }
 
 void TCreateMirroredDiskFromDevicesActor::ReplyAndDie(
@@ -119,9 +153,6 @@ void TCreateMirroredDiskFromDevicesActor::ReplyAndDie(
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         std::move(error));
-    google::protobuf::util::MessageToJsonString(
-        NProto::TCreateMirroredDiskFromDevicesResponse(),
-        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -142,7 +173,7 @@ void TCreateMirroredDiskFromDevicesActor::
         const TActorContext& ctx)
 {
     const auto& error = ev->Get()->GetError();
-    const auto& diskId = Request.GetVolumeConfig().GetDiskId();
+    const auto& diskId = Request.GetMasterDiskId();
 
     if (HasError(error)) {
         LOG_ERROR_S(
@@ -174,7 +205,7 @@ void TCreateMirroredDiskFromDevicesActor::HandleDescribeVolumeResponse(
 {
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
-    const auto& diskId = Request.GetVolumeConfig().GetDiskId();
+    const auto& diskId = Request.GetMasterDiskId();
 
     if (HasError(error)) {
         const bool volumeExists =
@@ -193,7 +224,7 @@ void TCreateMirroredDiskFromDevicesActor::HandleDescribeVolumeResponse(
             return;
         }
 
-        auto volumeConfig = Request.GetVolumeConfig();
+        auto volumeConfig = ConvertToVolumeConfig(Request);
 
         TVolumeParams volumeParams{
             .BlockSize = volumeConfig.GetBlockSize(),
@@ -244,7 +275,7 @@ void TCreateMirroredDiskFromDevicesActor::HandleReallocateDiskResponse(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Reallocation of volume "
-                << Request.GetVolumeConfig().GetDiskId().Quote()
+                << Request.GetMasterDiskId().Quote()
                 << " failed: " << error.GetMessage());
     }
 
@@ -262,7 +293,7 @@ void TCreateMirroredDiskFromDevicesActor::HandleCreateVolumeResponse(
         LOG_ERROR_S(
             ctx,
             TBlockStoreComponents::SERVICE,
-            "Creation of disk " << Request.GetVolumeConfig().GetDiskId().Quote()
+            "Creation of disk " << Request.GetMasterDiskId().Quote()
                                 << " failed: " << error.GetMessage());
     }
 
