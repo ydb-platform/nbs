@@ -584,6 +584,55 @@ struct TTestMultiFileSystemEventHandler final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CountXAttrRequests(
+    const NProto::TFileStoreFeatures& features,
+    const TVector<std::pair<TString, TDuration>>& getXAttrs)
+{
+    //
+    // Sends GetXAttr requests for the given names, advancing the time by the
+    // given delay before each request, and returns the number of
+    // GetNodeXAttr requests that were not served from the XAttrCache.
+    //
+
+    auto timer = std::make_shared<TTestTimer>();
+    TBootstrap bootstrap(timer, CreateScheduler(), features);
+    bootstrap.Start();
+    Y_DEFER {
+        bootstrap.Stop();
+    };
+
+    std::atomic<ui32> callCount = 0;
+    bootstrap.Service->SetHandlerGetNodeXAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+
+            ++callCount;
+            NProto::TGetNodeXAttrResponse response;
+            response.SetValue("value_" + request->GetName());
+            response.SetVersion(1);
+            return MakeFuture(response);
+        });
+
+    for (const auto& [name, delay]: getXAttrs) {
+        timer->AdvanceTime(delay);
+        auto xattr =
+            bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(name, 6);
+        UNIT_ASSERT(xattr.Wait(WaitTimeout));
+        UNIT_ASSERT_STRINGS_EQUAL("value_" + name, xattr.GetValue());
+    }
+
+    return callCount.load();
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TFileSystemTest)
 {
     Y_UNIT_TEST(ShouldRegisterFileSystemEventHandlerUnderResolvedFileSystemId)
@@ -2749,6 +2798,53 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
             UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
+    }
+
+    Y_UNIT_TEST(ShouldApplyXAttrCacheLimitFromFeatures)
+    {
+        //
+        // "a", then "b", then "a" again. The time is advanced before each
+        // request so that the eviction order is deterministic.
+        //
+
+        const TVector<std::pair<TString, TDuration>> getXAttrs = {
+            {"a", TDuration::Zero()},
+            {"b", TDuration::Seconds(1)},
+            {"a", TDuration::Seconds(1)},
+        };
+
+        //
+        // The default limit keeps both entries: the second "a" is served from
+        // the cache.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(2, CountXAttrRequests({}, getXAttrs));
+
+        //
+        // With the limit of 1 entry "b" evicts "a".
+        //
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheLimit(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, CountXAttrRequests(features, getXAttrs));
+    }
+
+    Y_UNIT_TEST(ShouldApplyXAttrCacheTimeoutFromFeatures)
+    {
+        const TVector<std::pair<TString, TDuration>> getXAttrs = {
+            {"a", TDuration::Zero()},
+            {"a", TDuration::Seconds(2)},
+        };
+
+        //
+        // The default timeout (15 seconds) keeps the entry.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(1, CountXAttrRequests({}, getXAttrs));
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheTimeout(TDuration::Seconds(1).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(2, CountXAttrRequests(features, getXAttrs));
     }
 
     Y_UNIT_TEST(ShouldNotCacheXAttrWhenErrorHappens)

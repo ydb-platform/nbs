@@ -152,6 +152,8 @@ public:
         const TString& folderId,
         const TString& fsId) const;
 
+    ui32 GetXAttrCacheLimit() const;
+
     bool GetDirectoryHandlesStorageEnabled() const;
     bool GetDirectoryHandlesStorageEnabled(
         const TString& cloudId,

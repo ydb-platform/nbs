@@ -352,6 +352,13 @@ void TTabletMetrics::Register(
         NodeDestructionsDeferralSkipped,
         EMetricType::MT_DERIVATIVE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        InvalidateNodeEventSendCount,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        InvalidateNodeRefEventSendCount,
+        EMetricType::MT_DERIVATIVE);
+
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxWriteBandwidth, EMetricType::MT_ABSOLUTE);

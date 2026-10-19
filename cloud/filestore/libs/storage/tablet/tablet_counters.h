@@ -277,6 +277,11 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> DeferredNodeDestructionsCancelled{0};
     std::atomic<i64> NodeDestructionsDeferralSkipped{0};
 
+    // FileSystemEvents stats: the number of (event, client) pairs, i.e. the
+    // number of event sends. Counted in dry run mode as well.
+    std::atomic<i64> InvalidateNodeEventSendCount{0};
+    std::atomic<i64> InvalidateNodeRefEventSendCount{0};
+
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
     using TLatHistogram =

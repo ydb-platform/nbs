@@ -229,6 +229,8 @@ public:
     TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
+    TDuration GetXAttrCacheTimeout() const;
+    ui32 GetXAttrCacheLimit() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
@@ -373,6 +375,7 @@ public:
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
     bool GetFileSystemEventsEnabled() const;
+    bool GetFileSystemEventsDryRunModeEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 

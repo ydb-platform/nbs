@@ -68,6 +68,23 @@ public:
 
         return MakeFuture<NCloud::NProto::TError>();
     }
+
+    TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        {
+            std::lock_guard lock(Lock);
+
+            // a page that is not stored reads as a zeroed one
+            for (const auto& range: ranges) {
+                for (ui64 i = 0; i < range.PageCount; ++i) {
+                    Pages.erase(range.FirstPageNo + i);
+                }
+            }
+        }
+
+        return MakeFuture<NCloud::NProto::TError>();
+    }
 };
 
 }   // namespace

@@ -948,4 +948,18 @@ message TStorageConfig
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
     // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
     optional bool FileSystemEventsEnabled = 553;
+
+    // If set to true, the tablet counts the FileSystemEvents generated due to
+    // FileSystemEventsEnabled but doesn't send them to its clients.
+    optional bool FileSystemEventsDryRunModeEnabled = 554;
+
+    // XAttr cache timeout. Passed to filestore-vhost via
+    // TCreateSessionResponse via TFilestore::Features, similarly to
+    // EntryTimeout and AttrTimeout. Doesn't have any effect on the tablet
+    // itself.
+    optional uint32 XAttrCacheTimeout = 555;
+
+    // XAttr cache size limit (number of entries). Passed to filestore-vhost
+    // the same way as XAttrCacheTimeout.
+    optional uint32 XAttrCacheLimit = 556;
 }

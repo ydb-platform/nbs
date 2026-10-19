@@ -11,6 +11,7 @@
 #include <cloud/fastshard/journal/impl/journalled_device_v1.h>
 #include <cloud/fastshard/journal/impl/journalled_device_v2.h>
 #include <cloud/fastshard/journal/impl/key_buffer_store.h>
+#include <cloud/fastshard/journal/server/device_manager.h>
 #include <cloud/fastshard/journal/server/server.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -25,6 +26,8 @@
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -36,10 +39,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr NProto::EVolumeAccessMode DefaultAccessMode =
-    NProto::VOLUME_ACCESS_READ_WRITE;
+// Fastshard orders writers by generation only, so the mount sequence number of
+// the disk agent is never used.
 constexpr ui64 DefaultMountSeqNumber = 0;
-constexpr ui64 DefaultVolumeGeneration = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,6 +51,20 @@ void CopyHeaders(
 {
     dst.SetClientId(src.GetClientId());
     dst.SetRequestTimeout(src.GetRequestTimeout());
+}
+
+std::optional<NProto::EVolumeAccessMode> GetVolumeAccessMode(
+    NProto::EAccessMode accessMode)
+{
+    switch (accessMode) {
+        case NProto::ACCESS_READ_WRITE:
+            return NProto::VOLUME_ACCESS_READ_WRITE;
+        case NProto::ACCESS_READ_ONLY:
+            return NProto::VOLUME_ACCESS_READ_ONLY;
+
+        default:
+            return std::nullopt;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,26 +88,139 @@ struct TJournalledDeviceSpec
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TDeviceManager final: public IDeviceManager
+{
+private:
+    const ITimerPtr Timer;
+    const TDeviceClientPtr DeviceClient;
+    TActorSystem* ActorSystem = nullptr;
+    const TActorId DiskAgentActorId;
+
+public:
+    TDeviceManager(
+        ITimerPtr timer,
+        TDeviceClientPtr deviceClient,
+        TActorSystem* actorSystem,
+        const TActorId& diskAgentActorId)
+        : Timer(std::move(timer))
+        , DeviceClient(std::move(deviceClient))
+        , ActorSystem(actorSystem)
+        , DiskAgentActorId(diskAgentActorId)
+    {}
+
+    [[nodiscard]] auto AcquireDevices(
+        NCloud::NProto::TAcquireDevicesRequest request)
+        -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final
+    {
+        const auto accessMode = GetVolumeAccessMode(request.GetAccessMode());
+        if (!accessMode) {
+            return MakeFuture<NCloud::NProto::TAcquireDevicesResponse>(
+                TErrorResponse(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "unknown access mode: "
+                        << static_cast<int>(request.GetAccessMode())));
+        }
+
+        auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
+
+        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
+        ev->Record.MutableDeviceUUIDs()->Assign(
+            request.GetDeviceUUIDs().begin(),
+            request.GetDeviceUUIDs().end());
+        ev->Record.SetAccessMode(*accessMode);
+        ev->Record.SetMountSeqNumber(DefaultMountSeqNumber);
+        ev->Record.SetDiskId(request.GetFastshardId());
+        ev->Record.SetVolumeGeneration(request.GetGeneration());
+
+        auto future = ActorSystem->Ask<TEvDiskAgent::TEvAcquireDevicesResponse>(
+            DiskAgentActorId,
+            THolder(ev.release()));
+
+        return future.Apply(
+            [](const auto& future)
+            {
+                NCloud::NProto::TAcquireDevicesResponse response;
+                const auto& ev = future.GetValue();
+                response.MutableError()->CopyFrom(ev->Record.GetError());
+
+                return response;
+            });
+    }
+
+    [[nodiscard]] auto ReleaseDevices(
+        NCloud::NProto::TReleaseDevicesRequest request)
+        -> TFuture<NCloud::NProto::TReleaseDevicesResponse> final
+    {
+        auto ev = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
+
+        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
+        ev->Record.MutableDeviceUUIDs()->Assign(
+            request.GetDeviceUUIDs().begin(),
+            request.GetDeviceUUIDs().end());
+        ev->Record.SetDiskId(request.GetFastshardId());
+        ev->Record.SetVolumeGeneration(request.GetGeneration());
+
+        auto future = ActorSystem->Ask<TEvDiskAgent::TEvReleaseDevicesResponse>(
+            DiskAgentActorId,
+            THolder(ev.release()));
+
+        return future.Apply(
+            [](const auto& future)
+            {
+                NCloud::NProto::TReleaseDevicesResponse response;
+                const auto& ev = future.GetValue();
+                response.MutableError()->CopyFrom(ev->Record.GetError());
+
+                return response;
+            });
+    }
+
+    [[nodiscard]] NProto::TError AccessDevice(
+        const TString& deviceUUID,
+        const TString& clientId,
+        NProto::EAccessMode accessMode) final
+    {
+        const auto volumeAccessMode = GetVolumeAccessMode(accessMode);
+        if (!volumeAccessMode) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "unknown access mode: " << static_cast<int>(accessMode));
+        }
+
+        auto [_, error] =
+            DeviceClient->AccessDevice(deviceUUID, clientId, *volumeAccessMode);
+        return error;
+    }
+
+    [[nodiscard]] IDevicePtr CreateDevice(
+        const TString& deviceUUID,
+        TPageRangeRef region,
+        ui32 blockSize) final
+    {
+        return CreateDeviceAdapter(
+            Timer,
+            DeviceClient,
+            deviceUUID,
+            region,
+            blockSize);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
-    TActorSystem* ActorSystem = nullptr;
-    const TActorId DiskAgentActorId;
-    const TDeviceClientPtr DeviceClient;
-    const ITimerPtr Timer;
+    const IDeviceManagerPtr DeviceManager;
     const THashMap<TString, TJournalledDeviceSpec> Devices;
 
 public:
     TJournalledDeviceHandler(
-        TActorSystem* actorSystem,
-        const TActorId& diskAgentActorId,
-        TDeviceClientPtr deviceClient,
-        ITimerPtr timer,
+        IDeviceManagerPtr deviceManager,
         THashMap<TString, TJournalledDeviceSpec> devices)
-        : ActorSystem(actorSystem)
-        , DiskAgentActorId(diskAgentActorId)
-        , DeviceClient(std::move(deviceClient))
-        , Timer(std::move(timer))
+        : DeviceManager(std::move(deviceManager))
         , Devices(std::move(devices))
     {}
 
@@ -140,58 +269,14 @@ public:
         NCloud::NProto::TAcquireDevicesRequest request)
         -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final
     {
-        auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
-
-        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
-        ev->Record.MutableDeviceUUIDs()->Assign(
-            request.GetDeviceUUIDs().begin(),
-            request.GetDeviceUUIDs().end());
-        ev->Record.SetAccessMode(DefaultAccessMode);
-        ev->Record.SetMountSeqNumber(DefaultMountSeqNumber);
-        ev->Record.SetDiskId(request.GetHeaders().GetClientId());
-        ev->Record.SetVolumeGeneration(DefaultVolumeGeneration);
-
-        auto future = ActorSystem->Ask<TEvDiskAgent::TEvAcquireDevicesResponse>(
-            DiskAgentActorId,
-            THolder(ev.release()));
-
-        return future.Apply(
-            [](const auto& future)
-            {
-                NCloud::NProto::TAcquireDevicesResponse response;
-                const auto& ev = future.GetValue();
-                response.MutableError()->CopyFrom(ev->Record.GetError());
-
-                return response;
-            });
+        return DeviceManager->AcquireDevices(std::move(request));
     }
 
     [[nodiscard]] auto ReleaseDevices(
         NCloud::NProto::TReleaseDevicesRequest request)
         -> TFuture<NCloud::NProto::TReleaseDevicesResponse> final
     {
-        auto promise = NewPromise<NCloud::NProto::TReleaseDevicesResponse>();
-
-        auto ev = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
-
-        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
-        ev->Record.MutableDeviceUUIDs()->Assign(
-            request.GetDeviceUUIDs().begin(),
-            request.GetDeviceUUIDs().end());
-
-        auto future = ActorSystem->Ask<TEvDiskAgent::TEvReleaseDevicesResponse>(
-            DiskAgentActorId,
-            THolder(ev.release()));
-
-        return future.Apply(
-            [](const auto& future)
-            {
-                NCloud::NProto::TReleaseDevicesResponse response;
-                const auto& ev = future.GetValue();
-                response.MutableError()->CopyFrom(ev->Record.GetError());
-
-                return response;
-            });
+        return DeviceManager->ReleaseDevices(std::move(request));
     }
 
     [[nodiscard]] auto FormatDevice(
@@ -201,7 +286,7 @@ public:
         auto [spec, error] = GetDeviceSpec(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::ACCESS_READ_WRITE);
 
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TFormatDeviceResponse>(
@@ -218,33 +303,19 @@ public:
             return MakeFuture(NCloud::NProto::TFormatDeviceResponse());
         }
 
-        auto [storageAdapter, accessError] =
-            DeviceClient->AccessDevice(request.GetDeviceUUID());
+        TPageRangeRef region{.FirstPageNo = 0, .PageCount = blocksCount};
 
-        if (HasError(accessError)) {
-            return MakeFuture<NCloud::NProto::TFormatDeviceResponse>(
-                TErrorResponse(accessError));
-        }
-
-        auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
-        zeroRequest->SetStartIndex(0);
-        zeroRequest->SetBlocksCount(blocksCount);
-
-        auto future = storageAdapter->ZeroBlocks(
-            Timer->Now(),
-            MakeIntrusive<TCallContext>(),
-            std::move(zeroRequest),
+        auto device = DeviceManager->CreateDevice(
+            request.GetDeviceUUID(),
+            region,
             spec->BlockSize);
 
-        return future.Apply(
+        return device->ZeroPages({region}).Apply(
             [](const auto& future)
             {
-                const auto zeroResponse =
-                    SafeExecute<NProto::TZeroBlocksResponse>(
-                        [&] { return future.GetValue(); });
-
                 NCloud::NProto::TFormatDeviceResponse response;
-                *response.MutableError() = zeroResponse.GetError();
+                *response.MutableError() = SafeExecute<NProto::TError>(
+                    [&] { return future.GetValue(); });
 
                 return response;
             });
@@ -257,7 +328,7 @@ public:
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
-            NProto::VOLUME_ACCESS_READ_ONLY);
+            NProto::ACCESS_READ_ONLY);
 
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadPagesResponse>(
@@ -274,7 +345,7 @@ public:
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::ACCESS_READ_WRITE);
 
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
@@ -291,7 +362,7 @@ public:
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
-            NProto::VOLUME_ACCESS_READ_ONLY);
+            NProto::ACCESS_READ_ONLY);
 
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
@@ -308,7 +379,7 @@ public:
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
-            NProto::VOLUME_ACCESS_READ_WRITE);
+            NProto::ACCESS_READ_WRITE);
 
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
@@ -322,7 +393,7 @@ private:
     TResultOrError<NJournalled::IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EVolumeAccessMode accessMode) const
+        NProto::EAccessMode accessMode) const
     {
         auto [spec, error] = GetDeviceSpec(deviceUUID, clientId, accessMode);
         if (HasError(error)) {
@@ -335,7 +406,7 @@ private:
     TResultOrError<const TJournalledDeviceSpec*> GetDeviceSpec(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EVolumeAccessMode accessMode) const
+        NProto::EAccessMode accessMode) const
     {
         if (deviceUUID.empty()) {
             return MakeError(E_ARGUMENT, "empty device UUID");
@@ -351,8 +422,8 @@ private:
                 << "Device " << deviceUUID.Quote() << " not found");
         }
 
-        auto [storageAdapter, error] =
-            DeviceClient->AccessDevice(deviceUUID, clientId, accessMode);
+        auto error =
+            DeviceManager->AccessDevice(deviceUUID, clientId, accessMode);
 
         if (HasError(error)) {
             return error;
@@ -366,10 +437,9 @@ private:
 
 TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     const TActorContext& ctx,
-    ITimerPtr timer,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    TDeviceClientPtr deviceClient,
+    IDeviceManagerPtr deviceManager,
     const TDiskAgentConfig& agentConfig,
     const TJournalledDeviceConfig& config)
 {
@@ -383,12 +453,11 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
 
     if (!agentConfig.GetJournalEnabled()) {
         // No journal: the whole device holds the data, writes go straight to it.
-        return NJournalled::CreateJournalledDeviceV1(CreateDeviceAdapter(
-            std::move(timer),
-            uuid,
-            blockSize,
-            std::move(deviceClient),
-            {.FirstBlockIndex = 0, .BlockCount = blockCount}));
+        return NJournalled::CreateJournalledDeviceV1(
+            deviceManager->CreateDevice(
+                uuid,
+                {.FirstPageNo = 0, .PageCount = blockCount},
+                blockSize));
     }
 
     // The device is split into three parts: the journal metadata, the journal
@@ -450,13 +519,10 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
 
     auto createAdapter = [&](ui64 firstBlockIndex, ui64 regionBlockCount)
     {
-        return CreateDeviceAdapter(
-            timer,
+        return deviceManager->CreateDevice(
             uuid,
-            blockSize,
-            deviceClient,
-            {.FirstBlockIndex = firstBlockIndex,
-             .BlockCount = regionBlockCount});
+            {.FirstPageNo = firstBlockIndex, .PageCount = regionBlockCount},
+            blockSize);
     };
 
     auto logMetaStore = NJournalled::CreateDeviceKeyBufferStore(
@@ -562,18 +628,22 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
 
     Executor = TExecutor::Create("JD");
 
+    auto deviceManager = std::make_shared<TDeviceManager>(
+        CreateWallClockTimer(),
+        State->GetDeviceClient(),
+        TActivationContext::ActorSystem(),
+        ctx.SelfID);
+
     THashMap<TString, TJournalledDeviceSpec> devices;
-    auto timer = CreateWallClockTimer();
 
     for (const auto& config: configs) {
         const auto& uuid = config.Device.GetDeviceUUID();
 
         auto [device, error] = CreateJournalledDevice(
             ctx,
-            timer,
             Logging,
             Executor,
-            State->GetDeviceClient(),
+            deviceManager,
             *AgentConfig,
             config);
 
@@ -616,10 +686,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             Logging,
             Executor,
             std::make_shared<TJournalledDeviceHandler>(
-                TActivationContext::ActorSystem(),
-                ctx.SelfID,
-                State->GetDeviceClient(),
-                timer,
+                deviceManager,
                 std::move(devices)));
 
         Executor->Start();

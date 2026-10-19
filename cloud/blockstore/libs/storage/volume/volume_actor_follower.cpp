@@ -315,9 +315,9 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
     auto link = TLeaderFollowerLink{
         .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
-        .LeaderShardId = msg->Record.GetLeaderShardId(),
+        .LeaderCellId = msg->Record.GetLeaderCellId(),
         .FollowerDiskId = msg->Record.GetDiskId(),
-        .FollowerShardId = msg->Record.GetFollowerShardId()};
+        .FollowerCellId = msg->Record.GetFollowerCellId()};
 
     LOG_INFO(
         ctx,

@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    device_manager.cpp
     request.cpp
     server.cpp
 )

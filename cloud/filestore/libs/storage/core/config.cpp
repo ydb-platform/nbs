@@ -214,6 +214,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
+    xxx(XAttrCacheTimeout,               TDuration, TDuration::Zero()         )\
+    xxx(XAttrCacheLimit,                 ui32,      0                         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
     xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
@@ -314,6 +316,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ParentlessFilesOnly,               bool,       false                  )\
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
+    xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\

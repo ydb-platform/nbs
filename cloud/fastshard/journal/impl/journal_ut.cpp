@@ -213,6 +213,16 @@ struct TTestDevice final: public IDevice
         return Impl->WritePages(std::move(ranges));
     }
 
+    TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        if (FailWrites.load()) {
+            return MakeFuture(MakeError(E_IO, "zero failed"));
+        }
+
+        return Impl->ZeroPages(std::move(ranges));
+    }
+
     void BlockReadsUntilReleased()
     {
         with_lock (Mutex) {

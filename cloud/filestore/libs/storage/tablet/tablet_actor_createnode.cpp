@@ -972,16 +972,6 @@ void TIndexTabletActor::CompleteTx_CreateNode(
                 MakeError(E_INVALID_STATE, std::move(message));
         }
         response->Record = std::move(args.Response);
-
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* linked = sessionEvent.AddNodeLinked();
-            linked->SetParentNodeId(args.ParentNodeId);
-            linked->SetChildNodeId(args.ChildNodeId);
-            linked->SetName(args.Name);
-        }
-
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     CompleteResponse<TEvService::TCreateNodeMethod>(

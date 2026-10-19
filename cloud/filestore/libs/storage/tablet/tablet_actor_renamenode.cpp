@@ -799,22 +799,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
         }
 
         CommitDupCacheEntry(args.SessionId, args.RequestId);
-
-        // TODO(#1350): support session events for external nodes
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* unlinked = sessionEvent.AddNodeUnlinked();
-            unlinked->SetParentNodeId(args.ParentNodeId);
-            unlinked->SetChildNodeId(args.ChildRef->ChildNodeId);
-            unlinked->SetName(args.Name);
-        }
-        {
-            auto* linked = sessionEvent.AddNodeLinked();
-            linked->SetParentNodeId(args.NewParentNodeId);
-            linked->SetChildNodeId(args.ChildRef->ChildNodeId);
-            linked->SetName(args.NewName);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     RemoveInFlightRequest(*args.RequestInfo);

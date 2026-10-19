@@ -279,6 +279,90 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRejectUnknownAccessMode, TFixture)
+    {
+        const TString clientId = "client-id";
+        const ui64 requestId = 42;
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = FileDevices[0].GetDeviceId();
+            proto.SetAccessMode(static_cast<NCloud::NProto::EAccessMode>(42));
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        {
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
+                response.GetResponseCase());
+
+            const auto& error = response.GetAcquireDevices().GetError();
+
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectOutdatedFastshardGeneration, TFixture)
+    {
+        const TString fastshardId = "fastshard-id";
+        const ui64 requestId = 42;
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        auto acquire = [&](const TString& clientId, ui32 generation)
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = FileDevices[0].GetDeviceId();
+            proto.SetAccessMode(NCloud::NProto::ACCESS_READ_ONLY);
+            proto.SetFastshardId(fastshardId);
+            proto.SetGeneration(generation);
+            client.Send(request);
+
+            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
+                response.GetResponseCase());
+            return response.GetAcquireDevices().GetError();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, acquire("client-1", 5).GetCode());
+
+        // The generation is tracked per fastshard, so a second client of the
+        // same fastshard with an older generation is rejected.
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_INVALID_SESSION,
+            acquire("client-2", 3).GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, acquire("client-2", 6).GetCode());
+    }
+
     Y_UNIT_TEST_F(ShouldRouteRequestsToDevices, TFixture)
     {
         TString clientId = "client-id";

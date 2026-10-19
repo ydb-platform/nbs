@@ -25,12 +25,12 @@ constexpr auto RestartVolumeTabletDelay = TDuration::Seconds(30);
 
 EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 {
-    const bool sameShard = params.FollowerDiskInfo.Link.LeaderShardId ==
-                           params.FollowerDiskInfo.Link.FollowerShardId;
+    const bool sameCell = params.FollowerDiskInfo.Link.LeaderCellId ==
+                           params.FollowerDiskInfo.Link.FollowerCellId;
     const bool bothDiskRegistry =
         IsDiskRegistryMediaKind(params.LeaderMediaKind) &&
         IsDiskRegistryMediaKind(params.FollowerDiskInfo.MediaKind);
-    return (sameShard && bothDiskRegistry) ? EDirectCopyPolicy::CanUse
+    return (sameCell && bothDiskRegistry) ? EDirectCopyPolicy::CanUse
                                            : EDirectCopyPolicy::DoNotUse;
 }
 

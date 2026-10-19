@@ -194,10 +194,6 @@ struct TSession
 
     TInstant InactivityDeadline;
 
-    // TODO: notify event stream
-    ui32 LastEvent = 0;
-    bool NotifyEvents = false;
-
     TSubSessions SubSessions;
 
 private:
