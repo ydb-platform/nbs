@@ -100,6 +100,28 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     {
         ShouldCopyFileDataUnalignedSmall<TRcBuf>();
     }
+
+    Y_UNIT_TEST(ShouldSupportCopyOnWrite)
+    {
+        const ui32 kBlockScount = 4;
+        const ui32 kBlockSize = 4_KB;
+        TRcBuf buffer(TString(kBlockScount * kBlockSize, 'A'));
+        auto blockBuffer = CreateBlockBuffer(
+            TByteRange{0, kBlockScount * kBlockSize, kBlockSize},
+            buffer);
+
+        TString block1(kBlockSize, 'B');
+        blockBuffer->SetBlock(0, block1);
+
+        auto receivedBlock = blockBuffer->GetBlock(0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            block1,
+            TString(receivedBlock.data(), kBlockSize));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(kBlockSize, 'A'),
+            TString(buffer.GetData(), kBlockSize));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
