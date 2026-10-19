@@ -76,6 +76,8 @@ private:
         const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    NProto::TError MakeConcurrentModificationError() const;
+
     void HandleWakeup(
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
@@ -184,6 +186,24 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
     if (HasError(msg->GetError())) {
         if (LeaderResponded && msg->GetError().GetCode() == E_FS_NOENT) {
+            if (LeaderResponse.GetIsNodeRefLocked()) {
+                LOG_INFO(
+                    ctx,
+                    TFileStoreComponents::SERVICE,
+                    "[%s] NodeRef locked under GetNodeAttr for %lu, shard %s, "
+                    "%s",
+                    LogTag.c_str(),
+                    GetNodeAttrRequest.GetNodeId(),
+                    LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+                    LeaderResponse.GetNode()
+                        .GetShardNodeName()
+                        .Quote()
+                        .c_str());
+
+                HandleError(ctx, MakeConcurrentModificationError());
+                return;
+            }
+
             // the node resolved by the leader is gone from the shard - either
             // the nodeRef changed between the two phases (e.g. renamed over)
             // or the node is lost, the leader tells which
@@ -303,24 +323,29 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
     LOG_INFO(
         ctx,
         TFileStoreComponents::SERVICE,
-        "[%s] NodeRef changed under GetNodeAttr for %lu, %s (exists: %d, "
-        "locked: %d)",
+        "[%s] NodeRef changed under GetNodeAttr for %lu, shard %s, %s "
+        "(exists: %d, locked: %d, current: %s)",
         LogTag.c_str(),
         GetNodeAttrRequest.GetNodeId(),
-        GetNodeAttrRequest.GetName().Quote().c_str(),
+        LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+        LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
         exists,
-        locked);
+        locked,
+        msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
+    HandleError(ctx, MakeConcurrentModificationError());
+}
+
+NProto::TError TGetNodeAttrActor::MakeConcurrentModificationError() const
+{
     ui32 flags = 0;
     SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
-    HandleError(
-        ctx,
-        MakeError(
-            E_REJECTED,
-            TStringBuilder()
-                << "concurrent directory modifications for request: "
-                << GetNodeAttrRequest.ShortDebugString().Quote(),
-            flags));
+    return MakeError(
+        E_REJECTED,
+        TStringBuilder()
+            << "concurrent directory modifications for node "
+            << GetNodeAttrRequest.GetNodeId(),
+        flags);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -175,6 +175,7 @@ private:
 
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
+    const bool EnableRdmaForWrites = false;
 
 public:
     TWriteDataActor(
@@ -189,7 +190,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
-        bool externalWriteDataPayloadEnabled)
+        bool externalWriteDataPayloadEnabled,
+        bool enableRdmaForWrites)
         : WriteRequest(std::move(request))
         , Range(range)
         , BlobRange(Range.AlignedSubRange())
@@ -203,6 +205,7 @@ public:
         , MediaKind(mediaKind)
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
+        , EnableRdmaForWrites(enableRdmaForWrites)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -399,10 +402,28 @@ private:
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
 
             if (!iovecs.empty()) {
-                // TODO(myagkov): Implement TEvPut with TRope as a buffer
-                // to remove unnecessary memcpy
-                TString putData;
-                putData.ReserveAndResize(blobId.BlobSize());
+                TRcBuf putData;
+
+                // GetRcBufAllocator is available
+                // starting from ydb/stable-26-1
+                // TODO(myagkov): issue-7526
+                // Remove ifdef OPENSOURCE after backporting
+                // GetRcBufAllocator to 25-* stable
+                // branches or dropping support of 25-* stable branches
+#ifdef OPENSOURCE
+                if (EnableRdmaForWrites) {
+                    IRcBufAllocator* allocator =
+                        ctx.ActorSystem()->GetRcBufAllocator();
+                    if (allocator) {
+                        putData =
+                            allocator->AllocRcBuf(blobId.BlobSize(), 0, 0);
+                    }
+                }
+#endif
+                if (!putData) {
+                    putData = TRcBuf(TString::Uninitialized(blobId.BlobSize()));
+                }
+
                 auto bytesCopied = TRopeUtils::SafeMemcpy(
                     &putData[0],
                     ropeIt,
@@ -1092,7 +1113,8 @@ void TStorageServiceActor::HandleWriteData(
         TraceSerializer,
         session->MediaKind,
         threeStageWriteEnabled,
-        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled());
+        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
+        filestore.GetFeatures().GetEnableRdmaForWrites());
     NCloud::Register(ctx, std::move(actor));
 }
 

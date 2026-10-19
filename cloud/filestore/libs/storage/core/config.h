@@ -476,6 +476,8 @@ public:
     ui32 GetMaxSlowestRequestsEntries() const;
 
     TDuration GetNodeLatencyHalfLife() const;
+
+    [[nodiscard]] bool GetEnableRdmaForWrites() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
