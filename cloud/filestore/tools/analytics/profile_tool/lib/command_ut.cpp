@@ -481,6 +481,17 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(second.Name()));
     }
 
+    Y_UNIT_TEST(ShouldDeferPathValidationUntilInit)
+    {
+        TTempDir directory;
+        const TString missing = directory.Name() + "/missing";
+        const char* args[] = {"test", "--profile-log", missing.c_str()};
+        TTestCommand command;
+        const NLastGetopt::TOptsParseResultException parsed(
+            &command.GetOpts(), 3, args);
+        UNIT_ASSERT(parsed.Has("profile-log"));
+    }
+
     Y_UNIT_TEST(ShouldValidateAllFilesBeforeExecuting)
     {
         TTempFileHandle input;
@@ -501,9 +512,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             input.Name().c_str(),
             "--profile-log",
             missing.c_str()};
-        UNIT_ASSERT_EXCEPTION(
-            optionCommand.Run(5, optionArgs),
-            NLastGetopt::TUsageException);
+        UNIT_ASSERT_VALUES_EQUAL(optionCommand.Run(5, optionArgs), 1);
         UNIT_ASSERT(optionCommand.Inputs.empty());
     }
 }

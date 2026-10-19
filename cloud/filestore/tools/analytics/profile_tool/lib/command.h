@@ -14,6 +14,9 @@ void PrintProfileLogProgress(const TProfileLogFile& file);
 
 class TCommand
 {
+private:
+    TVector<TString> ProfileLogPaths;
+
 protected:
     bool IgnoreErrors = false;
 

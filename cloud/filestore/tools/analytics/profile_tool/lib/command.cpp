@@ -44,11 +44,7 @@ TCommand::TCommand()
             "processed oldest first by filename timestamp, falling back to "
             "mtime)")
         .RequiredArgument("STR")
-        .Handler1T<TString>(
-            [this](TString path)
-            {
-                ProfileLogFiles.push_back(MakeProfileLogFile(std::move(path)));
-            });
+        .AppendTo(&ProfileLogPaths);
 
     Opts.AddLongOption(
             "ignore-errors",
@@ -133,13 +129,17 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
 {
     try {
         for (const auto& path: parseResult.GetFreeArgs()) {
-            ProfileLogFiles.push_back(MakeProfileLogFile(path));
+            ProfileLogPaths.push_back(path);
         }
 
-        if (ProfileLogFiles.empty()) {
+        if (ProfileLogPaths.empty()) {
             ythrow NLastGetopt::TUsageException()
                 << "At least one profile log is required; use --profile-log "
                    "or a positional path";
+        }
+
+        for (const auto& path: ProfileLogPaths) {
+            ProfileLogFiles.push_back(MakeProfileLogFile(path));
         }
 
         StableSort(
