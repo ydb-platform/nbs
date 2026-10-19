@@ -940,50 +940,6 @@ constexpr ui32 DefaultBlockSize = 4_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Serves a region of a device, so the devices created for the regions of the
-// same device share its pages.
-class TRegionDevice final: public IDevice
-{
-private:
-    const IDevicePtr Device;
-    const TPageRangeRef Region;
-
-public:
-    TRegionDevice(IDevicePtr device, TPageRangeRef region)
-        : Device(std::move(device))
-        , Region(region)
-    {}
-
-    [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> final
-    {
-        for (auto& ref: rangeRefs) {
-            ref.FirstPageNo += Region.FirstPageNo;
-        }
-        return Device->ReadPages(std::move(rangeRefs));
-    }
-
-    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
-        -> TFuture<NProto::TError> final
-    {
-        for (auto& range: ranges) {
-            range.FirstPageNo += Region.FirstPageNo;
-        }
-        return Device->WritePages(std::move(ranges));
-    }
-
-    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> rangeRefs)
-        -> TFuture<NProto::TError> final
-    {
-        for (auto& ref: rangeRefs) {
-            ref.FirstPageNo += Region.FirstPageNo;
-        }
-        return Device->ZeroPages(std::move(rangeRefs));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 // Keeps the devices in memory and serves only the clients that have acquired
 // them.
 struct TInMemoryDeviceManager final: public IDeviceManager
@@ -1043,7 +999,7 @@ struct TInMemoryDeviceManager final: public IDeviceManager
             device = CreateInMemoryDevice(blockSize);
         }
 
-        return std::make_shared<TRegionDevice>(device, region);
+        return CreateRegionDevice(device, region);
     }
 };
 
