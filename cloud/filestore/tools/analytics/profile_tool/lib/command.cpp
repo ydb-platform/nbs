@@ -136,6 +136,12 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
             ProfileLogFiles.push_back(MakeProfileLogFile(path));
         }
 
+        if (ProfileLogFiles.empty()) {
+            ythrow NLastGetopt::TUsageException()
+                << "At least one profile log is required; use --profile-log "
+                   "or a positional path";
+        }
+
         StableSort(
             ProfileLogFiles,
             [](const auto& lhs, const auto& rhs)

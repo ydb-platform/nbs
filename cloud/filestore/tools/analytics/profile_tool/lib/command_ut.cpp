@@ -151,6 +151,42 @@ void WriteProfileLog(const TString& path)
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldRejectMissingInput)
+    {
+        const char* dumpArgs[] = {"dumpevents", "--fs-id", "x"};
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            GetCommand("dumpevents")->Run(3, dumpArgs),
+            NLastGetopt::TUsageException,
+            "At least one profile log is required");
+
+        const char* findArgs[] = {
+            "findbytesaccess", "--start", "0", "--count", "1"};
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            GetCommand("findbytesaccess")->Run(5, findArgs),
+            NLastGetopt::TUsageException,
+            "At least one profile log is required");
+
+        TTempDir directory;
+        const auto output = directory.Path() / "out";
+        const char* maskArgs[] = {
+            "masksensitivedata", "--out-profile-log", output.c_str()};
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            GetCommand("masksensitivedata")->Run(3, maskArgs),
+            NLastGetopt::TUsageException,
+            "At least one profile log is required");
+        UNIT_ASSERT(!output.Exists());
+    }
+
+    Y_UNIT_TEST(ShouldAcceptPositionalInputWithoutProfileLogOption)
+    {
+        TTempFileHandle input;
+        const char* args[] = {"test", input.Name().c_str()};
+        TTestCommand command;
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(2, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(input.Name()));
+    }
+
     Y_UNIT_TEST(ShouldBypassFilePruningWhenAllFilesRequested)
     {
         TTempDir directory;
