@@ -8,6 +8,45 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TMergeTest)
 {
+
+    Y_UNIT_TEST(ShouldPreserveCompressedPiecesAndWeakestFormatAcknowledgement)
+    {
+        NProto::TDescribeBlocksResponse source;
+        source.SetBlobFormatVersion(1);
+        auto* piece = source.AddBlobPieces();
+        piece->SetLogicalBlocks(17);
+        piece->SetBSGroupId(42);
+        piece->MutableCompression()->SetVersion(1);
+        piece->MutableCompression()->SetLogicalSize(17 * 4096);
+        piece->MutableCompression()->SetChunkSize(32768);
+        piece->MutableCompression()->AddChunkSizes(42);
+        auto* range = piece->AddRanges();
+        range->SetBlockIndex(1);
+        range->SetBlobOffset(10);
+        range->SetBlocksCount(4);
+        const TString descriptor = piece->GetCompression().SerializeAsString();
+        NProto::TDescribeBlocksResponse result;
+        MergeDescribeBlocksResponse(source, result, 2, 4096, 2, 0);
+        UNIT_ASSERT_VALUES_EQUAL(result.GetBlobFormatVersion(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(result.BlobPiecesSize(), 1);
+        const auto& merged = result.GetBlobPieces(0);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetCompression().SerializeAsString(), descriptor);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetLogicalBlocks(), 17);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetBSGroupId(), 42);
+        UNIT_ASSERT_VALUES_EQUAL(merged.RangesSize(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(0).GetBlockIndex(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(0).GetBlobOffset(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(1).GetBlockIndex(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(1).GetBlobOffset(), 11);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(2).GetBlockIndex(), 8);
+        UNIT_ASSERT_VALUES_EQUAL(merged.GetRanges(2).GetBlobOffset(), 13);
+        NProto::TDescribeBlocksResponse legacy;
+        MergeDescribeBlocksResponse(legacy, result, 2, 4096, 2, 1);
+        UNIT_ASSERT_VALUES_EQUAL(result.GetBlobFormatVersion(), 0);
+        MergeDescribeBlocksResponse(source, result, 2, 4096, 2, 0);
+        UNIT_ASSERT_VALUES_EQUAL(result.GetBlobFormatVersion(), 0);
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyMergeStripedBitMaskSinglePartition)
     {
         const auto originalRange = TBlockRange64::WithLength(0, 6);

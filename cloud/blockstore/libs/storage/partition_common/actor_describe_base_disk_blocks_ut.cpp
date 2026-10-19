@@ -1,4 +1,6 @@
 #include "actor_describe_base_disk_blocks.h"
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression.h>
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression_policy.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
@@ -23,6 +25,7 @@ using namespace NBlobMarkers;
 
 Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
 {
+
     struct TActorSystem
         : NActors::TTestActorRuntimeBase
     {
@@ -48,6 +51,202 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             EdgeActor = ActorSystem.AllocateEdgeActor();
         }
     };
+
+    Y_UNIT_TEST_F(ShouldPreserveCompressionAndNegotiateLegacyProviders, TSetupEnvironment)
+    {
+        const ui32 blockSize = 4096;
+        NProto::TBlobMeta meta;
+        meta.MutableMergedBlocks()->SetEnd(16);
+        NPartition::TCompressedMergedBlob encoded;
+        UNIT_ASSERT(!HasError(NPartition::CompressMergedBlob(
+            TString(17 * blockSize, 'x'), blockSize, 10, meta, encoded)));
+        UNIT_ASSERT(!encoded.Payload.empty());
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        NPartition::RegisterMergedBlobCompressionCounters(counters);
+        auto rejections = counters->GetCounter("CompatibilityRejections", true);
+        for (ui32 scenario = 0; scenario < 7; ++scenario) {
+            const auto before = rejections->Val();
+            auto actor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+                MakeIntrusive<TRequestInfo>(EdgeActor, 0ull, MakeIntrusive<TCallContext>()),
+                "base", "checkpoint", TBlockRange64::WithLength(0, 4),
+                TBlockRange64::WithLength(0, 4), TBlockMarks(4, TEmptyMark{}),
+                blockSize));
+            auto request = ActorSystem.GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
+            UNIT_ASSERT_VALUES_EQUAL(request->Record.GetSupportedBlobFormatVersion(), 1);
+            const auto makeResponse = [&](bool raw) {
+                auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+                auto* piece = response->Record.AddBlobPieces();
+                const NKikimr::TLogoBlobID blobId(
+                    1, 1, 1, 3, raw ? 17 * blockSize : encoded.Payload.size(), 0);
+                LogoBlobIDFromLogoBlobID(blobId, piece->MutableBlobId());
+                piece->SetBSGroupId(42);
+                piece->SetLogicalBlocks(17);
+                if (!raw) {
+                    *piece->MutableCompression() = encoded.Compression;
+                }
+                auto* range = piece->AddRanges();
+                range->SetBlobOffset(0); range->SetBlockIndex(0); range->SetBlocksCount(2);
+                range = piece->AddRanges();
+                range->SetBlobOffset(15); range->SetBlockIndex(2); range->SetBlocksCount(2);
+                return response;
+            };
+            auto response = makeResponse(false);
+            if (scenario != 1 && scenario != 2 && scenario != 6) {
+                response->Record.SetBlobFormatVersion(1);
+            }
+            if (scenario == 3) {
+                response->Record.MutableBlobPieces(0)->MutableCompression()->Clear();
+            } else if (scenario == 4) {
+                response->Record.MutableBlobPieces(0)->MutableCompression()->SetVersion(99);
+            } else if (scenario == 5) {
+                response->Record.MutableBlobPieces(0)->ClearCompression();
+            }
+            ActorSystem.Send(new NActors::IEventHandle(actor, EdgeActor, response.release()));
+            if (scenario == 1 || scenario == 2 || scenario == 6) {
+                request = ActorSystem.GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
+                UNIT_ASSERT_VALUES_EQUAL(request->Record.GetSupportedBlobFormatVersion(), 0);
+                response = scenario == 1 ? makeResponse(true) :
+                    scenario == 6 ? makeResponse(false) :
+                    std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
+                        MakeError(E_NOT_IMPLEMENTED, "raw-only consumer"));
+                ActorSystem.Send(new NActors::IEventHandle(actor, EdgeActor, response.release()));
+            }
+            auto result = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                rejections->Val(), before + (scenario == 2 || scenario == 6 ? 1 : 0));
+            if (scenario >= 2) {
+                UNIT_ASSERT(HasError(result->GetError()));
+                for (const auto& mark: result->BlockMarks) {
+                    UNIT_ASSERT(std::holds_alternative<TEmptyMark>(mark));
+                }
+            } else {
+                UNIT_ASSERT_C(!HasError(result->GetError()), FormatError(result->GetError()));
+                const auto& first = std::get<TBlobMarkOnBaseDisk>(result->BlockMarks[0]);
+                const auto& last = std::get<TBlobMarkOnBaseDisk>(result->BlockMarks[3]);
+                UNIT_ASSERT_VALUES_EQUAL(first.BlobOffset, 0);
+                UNIT_ASSERT_VALUES_EQUAL(last.BlobOffset, 16);
+                UNIT_ASSERT_VALUES_EQUAL(first.Format.LogicalBlocks, 17);
+                UNIT_ASSERT_VALUES_EQUAL(bool(first.Format.Compression), scenario == 0);
+                if (scenario == 0) {
+                    UNIT_ASSERT_VALUES_EQUAL(first.Format.Compression->SerializeAsString(),
+                        encoded.Compression.SerializeAsString());
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectMalformedBlobPiecesWithoutChangingMarks, TSetupEnvironment)
+    {
+        enum class EFailure
+        {
+            LogicalBlocks,
+            LogicalSize,
+            MissingMetadata,
+            EmptyRange,
+            PastLogicalEnd,
+            OffsetOverflow,
+        };
+        for (EFailure failure:
+             {EFailure::LogicalBlocks,
+              EFailure::LogicalSize,
+              EFailure::MissingMetadata,
+              EFailure::EmptyRange,
+              EFailure::PastLogicalEnd, EFailure::OffsetOverflow})
+        {
+            // A legacy 32 MiB blob with 512-byte blocks reaches the ui16
+            // offset limit without exceeding the physical BlobId size limit.
+            const ui32 blockSize =
+                failure == EFailure::OffsetOverflow ? 512 : 4096;
+            NProto::TBlobMeta meta;
+            meta.MutableMergedBlocks()->SetEnd(16);
+            NPartition::TCompressedMergedBlob encoded;
+            UNIT_ASSERT(!HasError(NPartition::CompressMergedBlob(
+                TString(17 * blockSize, 'x'), blockSize, 10, meta, encoded)));
+            UNIT_ASSERT(!encoded.Payload.empty());
+            auto actor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+                MakeIntrusive<TRequestInfo>(
+                    EdgeActor, 0ull, MakeIntrusive<TCallContext>()),
+                "base",
+                "checkpoint",
+                TBlockRange64::WithLength(0, 4),
+                TBlockRange64::WithLength(0, 4),
+                TBlockMarks{
+                    TEmptyMark{},
+                    TFreshMark{},
+                    TEmptyMark{},
+                    TZeroMark{}}, blockSize));
+            auto request =
+                ActorSystem
+                    .GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                request->Record.GetSupportedBlobFormatVersion(), 1);
+            auto response =
+                std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+            response->Record.SetBlobFormatVersion(1);
+            const NKikimr::TLogoBlobID blobId(
+                1, 1, 1, 3, encoded.Payload.size(), 0);
+            auto* first = response->Record.AddBlobPieces();
+            LogoBlobIDFromLogoBlobID(blobId, first->MutableBlobId());
+            first->SetBSGroupId(42);
+            first->SetLogicalBlocks(17);
+            *first->MutableCompression() = encoded.Compression;
+            auto* range = first->AddRanges();
+            range->SetBlobOffset(0);
+            range->SetBlockIndex(0);
+            range->SetBlocksCount(1);
+
+            // Validate the whole response before publishing even the valid
+            // first piece; a malformed later piece must preserve all marks.
+            auto* piece = response->Record.AddBlobPieces();
+            *piece = *first;
+            range = piece->MutableRanges(0);
+            range->SetBlockIndex(2);
+            switch (failure) {
+                case EFailure::LogicalBlocks:
+                    piece->SetLogicalBlocks(16);
+                    break;
+                case EFailure::LogicalSize:
+                    piece->MutableCompression()->SetLogicalSize(
+                        17 * blockSize - 1);
+                    break;
+                case EFailure::MissingMetadata:
+                    piece->ClearCompression();
+                    break;
+                case EFailure::EmptyRange:
+                    range->SetBlocksCount(0);
+                    break;
+                case EFailure::PastLogicalEnd:
+                    range->SetBlobOffset(17);
+                    break;
+                case EFailure::OffsetOverflow: {
+                    piece->ClearCompression();
+                    piece->SetLogicalBlocks(65536);
+                    const NKikimr::TLogoBlobID legacy(
+                        1, 1, 1, 3, 65536 * blockSize, 1);
+                    LogoBlobIDFromLogoBlobID(legacy, piece->MutableBlobId());
+                    range->SetBlobOffset(65535);
+                    break;
+                }
+            }
+            ActorSystem.Send(new NActors::IEventHandle(
+                actor, EdgeActor, response.release()));
+            auto result = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
+            UNIT_ASSERT_VALUES_EQUAL(result->GetError().GetCode(), E_IO);
+            UNIT_ASSERT(!result->GetError().GetMessage().empty());
+            UNIT_ASSERT_VALUES_EQUAL(result->BlockMarks.size(), 4);
+            UNIT_ASSERT(
+                std::holds_alternative<TEmptyMark>(result->BlockMarks[0]));
+            UNIT_ASSERT(
+                std::holds_alternative<TFreshMark>(result->BlockMarks[1]));
+            UNIT_ASSERT(
+                std::holds_alternative<TEmptyMark>(result->BlockMarks[2]));
+            UNIT_ASSERT(
+                std::holds_alternative<TZeroMark>(result->BlockMarks[3]));
+        }
+    }
 
     Y_UNIT_TEST_F(ShouldReadFromOverlayDiskSuccess, TSetupEnvironment)
     {
@@ -110,6 +309,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         TBlobPiece.MutableRanges()->Add(std::move(RangeInBlob));
 
         auto describeResponse = new TEvVolume::TEvDescribeBlocksResponse;
+        describeResponse->Record.SetBlobFormatVersion(1);
         describeResponse->Record.MutableFreshBlockRanges()->Add(
             std::move(freshData));
         describeResponse->Record.MutableBlobPieces()->Add(

@@ -975,7 +975,13 @@ void CompleteRangeCompaction(
         .DataBlobId = resultBlobIds.DataBlobId,
         .PatchingCandidate = {}};
 
-    if (blobPatchingEnabled) {
+    const bool compressedSource = AnyOf(args.AffectedBlobs, [&state](const auto& item) {
+        const auto& format = item.second.Format;
+        return format.Compression || format.Invalid ||
+            (format.LogicalBlocks && !IsDeletionMarker(item.first) &&
+             ui64(format.LogicalBlocks) * state.GetBlockSize() != item.first.BlobSize());
+    });
+    if (blobPatchingEnabled && !compressedSource) {
         patchingResult = ResolveBlobPatchingCandidate(
             resultBlobIds.DataBlobId,
             dataBlockCount,

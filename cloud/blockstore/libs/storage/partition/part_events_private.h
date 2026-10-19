@@ -247,6 +247,7 @@ struct TReadBlocksRequest
     ui32 BlockIndex;
     ui32 GroupId;
     ui32 BlockChecksum;
+    TMergedBlobFormat Format;
 
     TReadBlocksRequest(
             const NKikimr::TLogoBlobID& blobId,
@@ -254,13 +255,15 @@ struct TReadBlocksRequest
             ui16 blobOffset,
             ui32 blockIndex,
             ui32 groupId,
-            ui32 blockChecksum)
+            ui32 blockChecksum,
+            TMergedBlobFormat format = {})
         : BlobId(blobId)
         , BSProxy(proxy)
         , BlobOffset(blobOffset)
         , BlockIndex(blockIndex)
         , GroupId(groupId)
         , BlockChecksum(blockChecksum)
+        , Format(std::move(format))
     {}
 };
 
@@ -533,6 +536,7 @@ struct TEvPartitionPrivate
         struct TBlobMark {
             NKikimr::TLogoBlobID BlobId;
             ui32 BSGroupId;
+            TMergedBlobFormat Format;
 
             TBlobMark(
                     const NKikimr::TLogoBlobID& blobId,

@@ -1,5 +1,8 @@
 #include "part_actor.h"
 
+#include "model/merged_blob_compression.h"
+#include "model/merged_blob_compression_policy.h"
+
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -54,6 +57,17 @@ public:
         ui16 blobOffset) override
     {
         Args.MarkWithBlob(blockIndex, commitId, blobId, blobOffset);
+        return true;
+    }
+
+    bool VisitMerged(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        const TMergedBlobFormat& format) override
+    {
+        Args.MarkWithBlob(blockIndex, commitId, blobId, blobOffset, format);
         return true;
     }
 
@@ -113,7 +127,8 @@ void TPartitionActor::DescribeBlocks(
     TRequestInfoPtr requestInfo,
     ui64 commitId,
     const TBlockRange32& describeRange,
-    bool indexOnly)
+    bool indexOnly,
+    ui32 supportedBlobFormatVersion)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -133,7 +148,8 @@ void TPartitionActor::DescribeBlocks(
             requestInfo,
             commitId,
             describeRange,
-            indexOnly));
+            indexOnly,
+            supportedBlobFormatVersion));
 }
 
 void TPartitionActor::HandleDescribeBlocks(
@@ -214,7 +230,8 @@ void TPartitionActor::HandleDescribeBlocks(
         requestInfo,
         *commitId,
         ConvertRangeSafe(range),
-        msg->Record.GetIndexOnly());
+        msg->Record.GetIndexOnly(),
+        msg->Record.GetSupportedBlobFormatVersion());
 }
 
 bool TPartitionActor::PrepareDescribeBlocks(
@@ -339,6 +356,43 @@ void TPartitionActor::FillDescribeBlocksResponse(
     using TBlobMark = TTxPartition::TDescribeBlocks::TBlobMark;
     using TEmptyMark = TTxPartition::TDescribeBlocks::TEmptyMark;
 
+    response->Record.SetBlobFormatVersion(MergedBlobCompressionVersion);
+    for (const auto& mark: args.Marks) {
+        const auto* blob = std::get_if<TBlobMark>(&mark);
+        if (!blob || IsDeletionMarker(blob->BlobId)) {
+            continue;
+        }
+        const auto& format = blob->Format;
+        NProto::TError error;
+        if (format.Invalid ||
+            (format.LogicalBlocks && !format.Compression &&
+             ui64(format.LogicalBlocks) * State->GetBlockSize() !=
+                blob->BlobId.BlobSize()))
+        {
+            error = MakeError(E_IO, "Inconsistent Merged metadata in DescribeBlocks");
+        } else if (format.Compression) {
+            error = ValidateMergedBlobCompression(
+                *format.Compression, blob->BlobId.BlobSize(), State->GetBlockSize());
+            if (!HasError(error) &&
+                ui64(format.LogicalBlocks) * State->GetBlockSize() !=
+                    format.Compression->GetLogicalSize())
+            {
+                error = MakeError(E_IO, "Invalid logical Merged length");
+            }
+            if (!HasError(error) &&
+                args.SupportedBlobFormatVersion < MergedBlobCompressionVersion)
+            {
+                ReportMergedBlobCompatibilityRejection();
+                error = MakeError(E_NOT_IMPLEMENTED,
+                    "DescribeBlocks consumer does not support compressed blobs");
+            }
+        }
+        if (HasError(error)) {
+            *response->Record.MutableError() = std::move(error);
+            return;
+        }
+    }
+
     for (auto& mark: args.Marks) {
         if (!std::holds_alternative<TFreshMark>(mark)) {
             continue;
@@ -402,6 +456,10 @@ void TPartitionActor::FillDescribeBlocksResponse(
     while (iter != blobMarks.end()) {
         const auto& blobId = iter->BlobId;
         auto* blobPiece = response->Record.AddBlobPieces();
+        blobPiece->SetLogicalBlocks(iter->Format.LogicalBlocks);
+        if (iter->Format.Compression) {
+            *blobPiece->MutableCompression() = *iter->Format.Compression;
+        }
 
         LogoBlobIDFromLogoBlobID(
             MakeBlobId(TabletID(), blobId),

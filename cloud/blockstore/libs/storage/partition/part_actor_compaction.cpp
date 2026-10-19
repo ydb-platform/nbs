@@ -614,6 +614,11 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             readBlobDeadline, // deadline
             shouldCalculateChecksums
         );
+        if (const auto* affected =
+                batch.RangeCompactionInfo->AffectedBlobs.FindPtr(batch.BlobId))
+        {
+            request->Format = affected->Format;
+        }
 
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -980,7 +985,8 @@ void TCompactionActor::NotifyCompleted(
         ui64 blocksCount = 0;
         ui64 realBlocksCount = 0;
         for (auto& rc: RangeCompactionInfos) {
-            const ui32 curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
+            const ui32 curBlocksCount = rc.DataBlobId
+                ? rc.BlockRange.Size() - rc.DataBlobSkipMask.Count() : 0;
             blocksCount += curBlocksCount;
             realBlocksCount += rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
         }

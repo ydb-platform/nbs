@@ -1,4 +1,5 @@
 #include "part.h"
+#include "model/merged_blob_compression.h"
 
 #include "part_events_private.h"
 
@@ -670,6 +671,7 @@ private:
     TPartitionContent BasePartitionContent;
     ui32 BlockCount;
     ui32 BaseBlockSize;
+    bool SupportsCompressedBlobs;
 
 public:
     TTestVolumeProxyActor(
@@ -678,7 +680,8 @@ public:
         const TString& baseDiskCheckpointId,
         const TPartitionContent& basePartitionContent,
         ui32 blockCount,
-        ui32 baseBlockSize = DefaultBlockSize);
+        ui32 baseBlockSize = DefaultBlockSize,
+        bool supportsCompressedBlobs = false);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -705,18 +708,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestVolumeProxyActor::TTestVolumeProxyActor(
-        ui64 baseTabletId,
-        const TString& baseDiskId,
-        const TString& baseDiskCheckpointId,
-        const TPartitionContent& basePartitionContent,
-        ui32 blockCount,
-        ui32 baseBlockSize)
+    ui64 baseTabletId,
+    const TString& baseDiskId,
+    const TString& baseDiskCheckpointId,
+    const TPartitionContent& basePartitionContent,
+    ui32 blockCount, ui32 baseBlockSize, bool supportsCompressedBlobs)
     : BaseTabletId(baseTabletId)
     , BaseDiskId(baseDiskId)
     , BaseDiskCheckpointId(baseDiskCheckpointId)
     , BasePartitionContent(std::move(basePartitionContent))
     , BlockCount(blockCount)
     , BaseBlockSize(baseBlockSize)
+    , SupportsCompressedBlobs(supportsCompressedBlobs)
 {}
 
 void TTestVolumeProxyActor::Bootstrap(const TActorContext& ctx)
@@ -739,6 +742,9 @@ void TTestVolumeProxyActor::HandleDescribeBlocksRequest(
     UNIT_ASSERT_VALUES_EQUAL(BaseDiskCheckpointId, checkpoint);
 
     auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+    if (SupportsCompressedBlobs) {
+        response->Record.SetBlobFormatVersion(MergedBlobCompressionVersion);
+    }
     auto blockIndex = 0;
 
     for (const auto& descr: BasePartitionContent) {
@@ -976,7 +982,7 @@ TPartitionWithRuntime SetupOverlayPartition(
     ui32 blockSize = DefaultBlockSize,
     ui32 blockCount = 1024,
     const NProto::TStorageServiceConfig& config = DefaultConfig(),
-    TMaybe<ui32> MaxBlocksInBlob = {})
+    TMaybe<ui32> MaxBlocksInBlob = {}, bool supportsCompressedBlobs = false)
 {
     TPartitionWithRuntime result;
 
@@ -984,22 +990,17 @@ TPartitionWithRuntime SetupOverlayPartition(
         config,
         blockCount,
         channelsCount,
-        {
-            "overlay-disk",
-            "base-disk",
-            "checkpoint",
-            overlayTabletId,
-            baseTabletId,
-            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-            MaxBlocksInBlob
-        },
+        {"overlay-disk",
+         "base-disk",
+         "checkpoint",
+         overlayTabletId,
+         baseTabletId, NCloud::NProto::STORAGE_MEDIA_DEFAULT, MaxBlocksInBlob},
         std::make_unique<TTestVolumeProxyActor>(
             baseTabletId,
             "base-disk",
             "checkpoint",
             basePartitionContent,
-            blockCount,
-            blockSize));
+            blockCount, blockSize, supportsCompressedBlobs));
 
     bool baseDiskIsMapped = false;
     result.Runtime->SetEventFilter([&]
@@ -7964,6 +7965,137 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(4, stats.GetLogicalUsedBlocksCount());
     }
 
+    Y_UNIT_TEST(ShouldReadCompressedBaseBlobThroughOverlayAndLocalApi)
+    {
+        TPartitionContent content = {
+            TBlob(1, 1), TFresh(2), TBlob(2, 3, 4), TEmpty(),
+            TBlob(1, 4), TFresh(5), TBlob(2, 6)
+        };
+        auto setup = SetupOverlayPartition(TestTabletId, TestTabletId2, content);
+        auto& runtime = *setup.Runtime;
+        auto& partition = *setup.Partition;
+        TString raw;
+        for (ui32 i = 0; i < 256; ++i) {
+            raw.append(TString(DefaultBlockSize, char(i)));
+        }
+        NProto::TBlobMeta meta;
+        meta.MutableMergedBlocks()->SetEnd(255);
+        NPartition::TCompressedMergedBlob compressed;
+        UNIT_ASSERT(!HasError(NPartition::CompressMergedBlob(
+            raw, DefaultBlockSize, 10, meta, compressed)));
+        UNIT_ASSERT(!compressed.Payload.empty());
+        ui32 compressedGets = 0;
+        THashMap<TActorId, std::pair<ui64, ui64>> describeBounds;
+        runtime.SetEventFilter([&](TTestActorRuntimeBase& rt, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvVolume::EvDescribeBlocksRequest) {
+                const auto& request =
+                    event->Get<TEvVolume::TEvDescribeBlocksRequest>()->Record;
+                describeBounds[event->Sender] = {
+                    request.GetStartIndex(),
+                    request.GetStartIndex() + request.GetBlocksCount()};
+            }
+            if (event->GetTypeRewrite() == TEvVolume::EvDescribeBlocksResponse) {
+                auto* response = event->Get<TEvVolume::TEvDescribeBlocksResponse>();
+                response->Record.SetBlobFormatVersion(1);
+                const auto it = describeBounds.find(event->Recipient);
+                UNIT_ASSERT(it != describeBounds.end());
+                const auto [begin, end] = it->second;
+                describeBounds.erase(it);
+                // The legacy fixture returns its entire content. A real
+                // provider restricts all ranges to the requested interval.
+                auto* pieces = response->Record.MutableBlobPieces();
+                for (int i = pieces->size() - 1; i >= 0; --i) {
+                    auto* ranges = pieces->Mutable(i)->MutableRanges();
+                    for (int j = ranges->size() - 1; j >= 0; --j) {
+                        auto* range = ranges->Mutable(j);
+                        const ui64 oldBegin = range->GetBlockIndex();
+                        const ui64 first = Max(begin, oldBegin);
+                        const ui64 last = Min(end, oldBegin + range->GetBlocksCount());
+                        if (first >= last) {
+                            ranges->DeleteSubrange(j, 1);
+                        } else {
+                            range->SetBlobOffset(range->GetBlobOffset() + first - oldBegin);
+                            range->SetBlockIndex(first);
+                            range->SetBlocksCount(last - first);
+                        }
+                    }
+                    if (ranges->empty()) {
+                        pieces->DeleteSubrange(i, 1);
+                    }
+                }
+                auto* fresh = response->Record.MutableFreshBlockRanges();
+                for (int i = fresh->size() - 1; i >= 0; --i) {
+                    auto* range = fresh->Mutable(i);
+                    const ui64 oldBegin = range->GetStartIndex();
+                    const ui64 first = Max(begin, oldBegin);
+                    const ui64 last = Min(end, oldBegin + range->GetBlocksCount());
+                    if (first >= last) {
+                        fresh->DeleteSubrange(i, 1);
+                    } else {
+                        range->SetBlocksContent(range->GetBlocksContent().substr(
+                            (first - oldBegin) * DefaultBlockSize,
+                            (last - first) * DefaultBlockSize));
+                        range->SetStartIndex(first);
+                        range->SetBlocksCount(last - first);
+                    }
+                }
+                for (auto& piece: *response->Record.MutableBlobPieces()) {
+                    const auto old = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
+                    UNIT_ASSERT_VALUES_EQUAL(old.TabletID(), TestTabletId2);
+                    UNIT_ASSERT_VALUES_EQUAL(old.PartId(), 0);
+                    const TLogoBlobID id(
+                        old.TabletID(), old.Generation(), old.Step(), old.Channel(),
+                        compressed.Payload.size(), old.Cookie());
+                    LogoBlobIDFromLogoBlobID(id, piece.MutableBlobId());
+                    piece.SetLogicalBlocks(256);
+                    *piece.MutableCompression() = compressed.Compression;
+                }
+            }
+            if (event->GetTypeRewrite() != TEvBlobStorage::TEvGet::EventType) {
+                return false;
+            }
+            const auto* get = event->Get<TEvBlobStorage::TEvGet>();
+            if (!get->QuerySize || get->Queries[0].Id.TabletID() != TestTabletId2) {
+                return false;
+            }
+            ++compressedGets;
+            auto response = std::make_unique<TEvBlobStorage::TEvGetResult>(
+                NKikimrProto::OK, get->QuerySize, 0);
+            for (ui32 i = 0; i < get->QuerySize; ++i) {
+                const auto& query = get->Queries[i];
+                UNIT_ASSERT_VALUES_EQUAL(query.Id.BlobSize(), compressed.Payload.size());
+                UNIT_ASSERT(ui64(query.Shift) + query.Size <= compressed.Payload.size());
+                auto& part = response->Responses[i];
+                part.Id = query.Id;
+                part.Status = NKikimrProto::OK;
+                part.Shift = query.Shift;
+                part.RequestedSize = query.Size;
+                part.Buffer = TRope(compressed.Payload.substr(query.Shift, query.Size));
+            }
+            rt.Schedule(new IEventHandle(
+                event->Sender, event->Recipient, response.release(), 0, event->Cookie),
+                TDuration());
+            return true;
+        });
+        const auto range = TBlockRange32::WithLength(0, 10);
+        TString expected = GetBlocksContent(content);
+        UNIT_ASSERT_VALUES_EQUAL(GetBlocksContent(partition.ReadBlocks(range)), expected);
+        partition.WriteBlocks(0, 'Z');
+        expected.replace(0, DefaultBlockSize, TString(DefaultBlockSize, 'Z'));
+        partition.Compaction(0);
+        partition.RebootTablet();
+        partition.WaitReady();
+        partition.Cleanup();
+        TString output(10 * DefaultBlockSize, '?');
+        TSgList destination;
+        for (ui32 i = 0; i < 10; ++i) {
+            destination.emplace_back(output.data() + i * DefaultBlockSize, DefaultBlockSize);
+        }
+        partition.ReadBlocksLocal(range, destination);
+        UNIT_ASSERT_VALUES_EQUAL(output, expected);
+        UNIT_ASSERT(compressedGets > 0);
+    }
+
     Y_UNIT_TEST(ShouldReadBlocksFromBaseDisk)
     {
         TPartitionContent baseContent = {
@@ -8339,34 +8471,62 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldSendBlocksCountToReadInDescribeBlocksRequest)
     {
-        auto partitionWithRuntime =
-            SetupOverlayPartition(TestTabletId, TestTabletId2, {});
-        auto& partition = *partitionWithRuntime.Partition;
-        auto& runtime = *partitionWithRuntime.Runtime;
+        for (bool supportsCompressedBlobs: {false, true}) {
+            const TPartitionContent baseContent = {
+                TBlob(1, 11, 4),
+                TEmpty{},
+                TEmpty{},
+                TFresh(6),
+                TBlob(2, 21, 2)};
+            auto partitionWithRuntime = SetupOverlayPartition(
+                TestTabletId,
+                TestTabletId2,
+                baseContent,
+                {},
+                DefaultBlockSize,
+                1024,
+                DefaultConfig(),
+                {}, supportsCompressedBlobs);
+            auto& partition = *partitionWithRuntime.Partition;
+            auto& runtime = *partitionWithRuntime.Runtime;
 
-        partition.WriteBlocks(4, 1);
-        partition.WriteBlocks(5, 1);
+            partition.WriteBlocks(4, 1);
+            partition.WriteBlocks(5, 1);
 
-        int describeBlocksCount = 0;
-
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvVolume::EvDescribeBlocksRequest: {
-                        auto* msg = event->Get<TEvVolume::TEvDescribeBlocksRequest>();
-                        auto& record = msg->Record;
+            TVector<ui32> requestedVersions;
+            TTestActorRuntimeBase::TEventFilter previousFilter;
+            previousFilter = runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase& rt, TAutoPtr<IEventHandle>& event)
+                {
+                    // Count actual sends; an observer can revisit edge events.
+                    if (event->GetTypeRewrite() ==
+                        TEvVolume::EvDescribeBlocksRequest)
+                    {
+                        const auto& record =
+                            event->Get<TEvVolume::TEvDescribeBlocksRequest>()
+                                ->Record;
                         UNIT_ASSERT_VALUES_EQUAL(
-                            7,
-                            record.GetBlocksCountToRead()
-                        );
-                        ++describeBlocksCount;
-                        break;
+                            7, record.GetBlocksCountToRead());
+                        requestedVersions.push_back(
+                            record.GetSupportedBlobFormatVersion());
                     }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+                    return previousFilter(rt, event);
+                });
 
-        partition.ReadBlocks(TBlockRange32::WithLength(0, 9));
-        UNIT_ASSERT_VALUES_EQUAL(1, describeBlocksCount);
+            const auto response =
+                partition.ReadBlocks(TBlockRange32::WithLength(0, 9));
+            runtime.SetEventFilter(std::move(previousFilter));
+            const TVector<ui32> expectedVersions = supportsCompressedBlobs
+                                                       ? TVector<ui32>{1}
+                                                       : TVector<ui32>{1, 0};
+            UNIT_ASSERT_VALUES_EQUAL(requestedVersions, expectedVersions);
+
+            TString expected;
+            for (ui8 value: {11, 12, 13, 14, 1, 1, 6, 21, 22}) {
+                expected += GetBlockContent(value);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(GetBlocksContent(response), expected);
+        }
     }
 
     Y_UNIT_TEST(ShouldGetUsedBlocks)

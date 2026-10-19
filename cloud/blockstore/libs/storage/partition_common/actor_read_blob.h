@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression.h>
+
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -40,6 +42,12 @@ private:
     TInstant ResponseReceived;
 
     bool DeadlineSeen = false;
+    TVector<NPartition::TCompressedBlobChunk> CompressedChunks;
+    TVector<size_t> SortedBlockPositions;
+    ui64 PhysicalBytes = 0;
+    ui64 CompressionCpuStart = 0;
+    TMergedBlobCompressionStats CompressionStats;
+    std::shared_ptr<void> CompressionBudget;
 
 public:
     TReadBlobActor(
@@ -59,6 +67,9 @@ public:
 
 private:
     void SendGetRequest(const NActors::TActorContext& ctx);
+    void HandleCompressedResult(
+        const NKikimr::TEvBlobStorage::TEvGetResult& result,
+        const NActors::TActorContext& ctx);
     void NotifyCompleted(
         const NActors::TActorContext& ctx,
         const NProto::TError& error);

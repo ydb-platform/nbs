@@ -52,6 +52,9 @@ void MergeDescribeBlocksResponse(
     const ui32 partitionsCount,
     const ui32 partitionId)
 {
+    dst.SetBlobFormatVersion(dst.HasBlobFormatVersion()
+        ? std::min(dst.GetBlobFormatVersion(), src.GetBlobFormatVersion())
+        : src.GetBlobFormatVersion());
     for (const auto& freshBlockRange: src.GetFreshBlockRanges()) {
         SplitFreshBlockRangeFromRelativeToGlobalIndices(
             freshBlockRange,
@@ -65,9 +68,8 @@ void MergeDescribeBlocksResponse(
     const auto& srcBlobPieces = src.GetBlobPieces();
 
     for (const auto& blobPiece: srcBlobPieces) {
-        NProto::TBlobPiece dstBlobPiece;
-        dstBlobPiece.MutableBlobId()->CopyFrom(blobPiece.GetBlobId());
-        dstBlobPiece.SetBSGroupId(blobPiece.GetBSGroupId());
+        NProto::TBlobPiece dstBlobPiece = blobPiece;
+        dstBlobPiece.ClearRanges();
 
         for (const auto& srcRange: blobPiece.GetRanges()) {
             SplitBlobPieceRangeFromRelativeToGlobalIndices(
