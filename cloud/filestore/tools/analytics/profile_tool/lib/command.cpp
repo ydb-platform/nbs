@@ -81,7 +81,8 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
         if (ProfileLogFiles.size() > 1) {
             PrintProfileLogProgress(file);
         }
-        const auto result = ProcessProfileLog(file.Path, processor, IgnoreErrors);
+        const auto result =
+            ProcessProfileLog(file.Path, processor, IgnoreErrors);
         Cout.Flush();
         if (result) {
             return result;
@@ -96,7 +97,8 @@ int TCommand::ProcessProfileLog(
     bool ignoreErrors)
 {
     processor.SetOptions(TEvent::TOutputOptions{});
-    const auto handleReadError = [&path, ignoreErrors](const yexception& error) {
+    const auto handleReadError = [&path, ignoreErrors](const yexception& error)
+    {
         Cerr << "Error reading profile log " << path << ": " << error.what()
              << Endl;
         if (ignoreErrors) {
@@ -123,7 +125,8 @@ int TCommand::ProcessProfileLog(
         } catch (const yexception& error) {
             return handleReadError(error);
         }
-        // Processing and output failures must propagate even with ignore-errors.
+        // Processing and output failures must propagate even with
+        // ignore-errors.
         if (!event || !processor.CheckedProcessEvent(event.Get())) {
             return 0;
         }
