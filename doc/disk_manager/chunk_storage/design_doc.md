@@ -37,15 +37,17 @@ Migration first replicates chunks to the destination, then detaches the old copi
 
 The [schema](../../../cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema/schema.go) has snapshot records with status, base snapshot, sizes, encryption information, and `lock_task_id`. `chunk_map` maps a snapshot and chunk index to `chunk_id` and currently includes `stored_in_s3`. In `chunk_blobs`, the row with `referer = ""` holds `refcnt` and the optional YDB payload, checksum, and compression format. Rows with `referer = snapshot_id` represent references. S3 objects hold compressed data and checksum/compression metadata.
 
-The rows with `referer = snapshot_id` make reference counting idempotent. Insert a missing reference and increment the root's `refcnt` in one transaction; remove an existing reference and decrement the count in one transaction. Retries check whether that reference exists, so each snapshot contributes to the count exactly once.
+The rows with `referer = snapshot_id` make reference counting idempotent. Inserting a missing reference increments the root's `refcnt` in the same transaction; removing an existing reference decrements it in the same transaction. Retries check whether that reference exists, so each snapshot contributes to the count exactly once.
 
-[Snapshot sources](../../../cloud/disk_manager/internal/pkg/dataplane/snapshot/source.go) cache chunk-map entries. Cache chunk IDs and resolve their placement from `chunk_blobs` on each read to follow migrations and select among configured backends.
+[Snapshot sources](../../../cloud/disk_manager/internal/pkg/dataplane/snapshot/source.go) cache chunk-map entries, including `chunk_id` and `stored_in_s3`. Reads use the cached `stored_in_s3` value to select YDB or the singleton S3 backend.
 
-[ShallowCopyChunk](../../../cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_impl.go) already shares a chunk by adding a reference to its ID. Extend it to register backend requirements and copy the payload when the requested backend has no reusable copy.
+[ShallowCopyChunk](../../../cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_impl.go) already shares a chunk by adding a reference to its ID.
 
-[backupChunksTask](../../../cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go) copies compressed chunks to separate backup S3 storage. [backupSnapshotDataTask](../../../cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go) saves chunk maps and coordinates chunk backups. Their reads must also resolve current placement.
+[backupChunksTask](../../../cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go) copies compressed chunks to separate backup S3 storage. [backupSnapshotDataTask](../../../cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go) saves chunk maps and coordinates chunk backups.
 
-The existing [snapshot migration](../../../cloud/disk_manager/internal/pkg/dataplane/migrate_snapshot.go) and [database migration](../../../cloud/disk_manager/internal/pkg/dataplane/migrate_snapshot_database_task.go) copy data into another database. Reuse their resumable transfer and child-task scheduling patterns within the existing snapshot database. Reference transactions support migration in any chunk-creator order.
+The existing [snapshot migration](../../../cloud/disk_manager/internal/pkg/dataplane/migrate_snapshot.go) copies a snapshot to a separately configured combination of a YDB database and an optional S3 backend. It recreates the snapshot under the same ID in the destination database and writes its data under new chunk IDs. Shared source chunks become separate copies for each migrated snapshot, so incremental sharing is lost. The source snapshot remains in its original storage. [Database migration](../../../cloud/disk_manager/internal/pkg/dataplane/migrate_snapshot_database_task.go) schedules these copies across snapshots, processing base snapshots before their children.
+
+S3-to-S3 copying through this workflow requires a separate destination snapshot database. Moving or replicating existing shared chunks between S3 backends within the same snapshot database is unsupported.
 
 ## Configuration and stored fields
 
@@ -53,17 +55,17 @@ The existing [snapshot migration](../../../cloud/disk_manager/internal/pkg/datap
 
 `DEFAULT_BACKEND_ID` denotes the configured `DefaultS3BackendID`, initially `0`. The singleton S3 configuration defines the backend with that ID. `S3Backends` defines additional backends, each with a stable unsigned 32-bit ID, S3 connection settings, bucket, and key prefix. ID `0x7fffffff` denotes YDB chunk data.
 
-Keep the singleton settings alongside `S3Backends` to serve requests using the default. When replacing the default S3 backend, give its new singleton configuration a fresh ID and retain the former configuration in `S3Backends` under its original ID until it is unused.
+Keep the singleton settings alongside `S3Backends` to serve requests using the default. Keep that backend as the default until every chunk using it has been replicated to another backend or deleted, and every remaining chunk reference has explicit backend IDs. Apply a default change at a configuration change barrier after all tasks using the old configuration have completed. Promote the destination backend to the singleton configuration using its existing ID and remove its duplicate entry from `S3Backends`.
 
 Each backend ID MUST remain bound to one storage namespace (an S3 endpoint, bucket, and chunk key prefix). Give each namespace its own ID. Reject duplicate IDs, the reserved YDB ID in S3 configuration, and incomplete settings. YDB-only configurations remain valid when S3 fallback is disabled.
 
-The controlplane selects the image or snapshot service default, optionally overridden by an individual creation request. Use a scalar `uint32` backend ID in dataplane creation requests. A zero value follows the existing `UseS3` and inheritance rules: new S3 chunks use `DEFAULT_BACKEND_ID`, and new YDB chunks use the YDB ID. A nonzero value selects that backend directly. Resolve and persist the numeric destination before chunk work so retries keep that selection.
+The controlplane selects the image or snapshot service default, optionally overridden by an individual creation request. Use a scalar `uint32` backend ID in dataplane creation requests. A zero value follows the existing `UseS3` and inheritance rules: new S3 chunks use `DEFAULT_BACKEND_ID`, and new YDB chunks use the YDB ID. A nonzero value selects that backend directly.
 
-For a creation request with a nonzero backend ID, that ID takes precedence over `UseS3` and applies to both newly written and referenced chunks. The reserved YDB ID also uses this path. Persist the selection before starting chunk work. Retries use the persisted destination across configuration changes.
+For a creation request with a nonzero backend ID, that ID takes precedence over `UseS3` and applies to both newly written and referenced chunks. The reserved YDB ID also uses this path.
 
-Snapshot creation tasks in progress must continue across version upgrades. For a snapshot with unspecified backend, infer YDB or S3 `0` from the stored chunk metadata.
+Snapshot creation tasks in progress must continue across version upgrades. For a snapshot with unspecified backend, infer YDB or the default S3 backend from the stored chunk metadata.
 
-A zero destination in a new migration request resolves to `DEFAULT_BACKEND_ID`; save the resolved ID in task state before admission and pass it directly to child tasks. Stored placement IDs and inferred historical S3 ID `0` keep their original namespace identity as the configured default changes.
+A zero destination in a migration request resolves to `DEFAULT_BACKEND_ID`. Parent and child tasks use the same backend selection rules. Requests with destination zero started after the configuration change barrier use the updated default; explicit IDs stored in chunk placement retain their physical backend identity.
 
 Validate each selected backend before creating records, including all-zero inputs. Reject invalid or unknown selections before writes begin. If a validated backend later becomes unavailable, preserve recorded work and retry the operation using the same ID.
 
@@ -78,7 +80,7 @@ Add `s3_backend_ids` and `desired_backend_ids` to each `chunk_blobs` reference r
 - **Actual** (`s3_backend_ids`) records completed copies available to this reference. During detachment, an actual entry remains until physical deletion is acknowledged; a read can therefore encounter NotFound and refresh its locations.
 - **Desired** (`desired_backend_ids`) records this reference's requirements, including unfinished writes. Readers use completed copies recorded in actual. During cleanup of an unfinished write, a desired-only entry can remain solely to identify outstanding deletion work.
 
-State examples use **desired → actual**. To add backend A to a reference on backend `0`, first record `{0,A} → {0}`, then copy the data and publish `{0,A} → {0,A}`. The first state reserves A before its payload is written.
+State examples use **desired → actual**. To add backend B to a reference on backend A, first record `{A,B} → {A}`, then copy the data and publish `{A,B} → {A,B}`. The first state reserves B before its payload is written.
 
 Add **`detached_backend_ids`** and **`last_tombstone_at`** to the shared row with `referer = ""`, alongside `refcnt`. Write a backend's tombstone and update the timestamp when its final reference authorizes physical deletion. Refresh the timestamp when acknowledged cleanup removes the retained backend entry. Use database time and strictly advance the timestamp, including updates within one clock tick. A shared timestamp conservatively extends the reuse delay for all tombstones on that chunk.
 
@@ -108,15 +110,15 @@ All mutations compute their result from the main chunk table and mirror it to th
 
 ### Resolve a snapshot with unspecified backend
 
-When both placement fields are empty on an existing reference, read that reference and the root row in one consistent database read. Infer YDB presence from the root's payload: non-empty `data` identifies YDB; an empty payload identifies existing S3 backend `0`. An S3 copy stores its payload and checksum/compression metadata in the S3 object. Use payload presence for inference, since uncompressed YDB chunks have empty compression. Identify zero chunks from `chunk_map` and store only their applicable map representation. Report a missing root for an existing reference as a metadata error.
+When both placement fields are empty on an existing reference, read that reference and the root row in one consistent database read. Infer YDB presence from the root's payload: non-empty `data` identifies YDB; an empty payload identifies the default S3 backend (`DEFAULT_BACKEND_ID`). An S3 copy stores its payload and checksum/compression metadata in the S3 object. Use payload presence for inference, since uncompressed YDB chunks have empty compression. Identify zero chunks from `chunk_map` and store only their applicable map representation. Report a missing root for an existing reference as a metadata error.
 
-Resolve an existing reference with both fields empty as having actual and desired both equal to the inferred backend. For an S3-backed chunk, interpret both empty fields as `{0}`. Apply this interpretation to reads, reuse, and every detach decision, including checks of other references. The chunk's stored state determines this interpretation.
+Resolve an existing reference with both fields empty as having actual and desired both equal to the inferred backend. For an S3-backed chunk, interpret both empty fields as `{DEFAULT_BACKEND_ID}`. Apply this interpretation to reads, reuse, and every detach decision, including checks of other references. The chunk's stored state determines this interpretation.
 
-Populate explicit sets only on the reference being changed, using its inferred placement in the same transaction as the update. For an S3-backed reference, requesting A changes `"" → ""` to `{0,A} → {0}` in desired → actual notation. During S3-to-S3 migration, other empty references continue to retain backend `0` through inference.
+Populate explicit sets only on the reference being changed, using its inferred placement in the same transaction as the update. For an S3-backed reference, requesting A changes `"" → ""` to `{DEFAULT_BACKEND_ID,A} → {DEFAULT_BACKEND_ID}` in desired → actual notation. During S3-to-S3 migration, other empty references continue to retain the default S3 backend through inference.
 
-When S3-to-YDB copying atomically writes a complete root payload and publishes the copying reference's actual YDB entry, other references with both fields empty begin resolving to YDB. Their unspecified placement follows the new root payload. Detach decisions count them as retaining YDB and keep the payload while any such reference remains. Explicit requirements for S3 `0` continue to retain that copy independently. When moving a reference from YDB to S3, populate its inferred YDB entries before changing them; other empty references still retain YDB.
+When S3-to-YDB copying atomically writes a complete root payload and publishes the copying reference's actual YDB entry, other references with both fields empty begin resolving to YDB. Their unspecified placement follows the new root payload. Detach decisions count them as retaining YDB and keep the payload while any such reference remains. Explicit S3 requirements continue to retain their copies independently. When moving a reference from YDB to S3, populate its inferred YDB entries before changing them; other empty references still retain YDB.
 
-If a placement transaction fails before commit, its explicit sets and YDB payload remain at their last committed state. If its response is lost after commit, retry from the stored state and preserve populated sets. Concurrent placement and detach transactions resolve references against the same root state or retry. A reader that selected S3 `0` before a YDB copy appeared can discover YDB through the all-NotFound refresh described below if S3 `0` is subsequently deleted. New writers always create explicit sets; enable placement changes only after all dataplane writers understand inference and honor detach tombstones.
+If a placement transaction fails before commit, its explicit sets and YDB payload remain at their last committed state. If its response is lost after commit, retry from the stored state and preserve populated sets. Concurrent placement and detach transactions resolve references against the same root state or retry. A reader that selected the default S3 backend before a YDB copy appeared can discover YDB through the all-NotFound refresh described below if that S3 copy is subsequently deleted. New writers always create explicit sets; enable placement changes only after all dataplane writers understand inference and honor detach tombstones.
 
 ## Snapshot lifetime and migration ownership
 
@@ -126,11 +128,11 @@ Reuse the existing `snapshots.lock_task_id` for the migrating snapshot. In the a
 
 Reference transactions and chunk-wide detach tombstones coordinate physical copies. Children can migrate concurrently, including after their creator's snapshot record has been deleted. Creation locks the source snapshot against deletion while reading its map and registering references. Reusing the existing exclusive source lock can make creation retry while that source is itself being migrated.
 
-The target's existing exclusive lock admits one migration task at a time. Each task stores its requested destination in its request and its resolved ID in state, then uses the resolved ID on retries. After cancellation releases the lock, a later task acquires it and migrates toward its own destination, starting from the recorded chunk placement.
+The target's existing exclusive lock admits one migration task at a time. Each task uses the destination in its request, resolving zero through `DEFAULT_BACKEND_ID`. After cancellation releases the lock, a later task acquires it and migrates toward its own destination, starting from the recorded chunk placement.
 
 Store a migration ownership generation in `snapshots.operation_generation` alongside `lock_task_id`. Advance it on initial admission and ownership revocation. The orchestrator holds the lock across replication and detachment and passes its owner/generation to both child tasks. Ordinary retries resume the admitted token. Each migration transaction that updates placement, payloads, detach state, or completion checks Ready status and that token. Cancellation revokes the token before cancelling children, then releases the owned lock after their cancellation completes. Integrate admission and cancellation with the task framework's ownership, and reject acquisition by a cancelled task.
 
-If deletion marks the target Deleting before migration admission, reject admission. If migration acquires its lock first, deletion waits. Start chunk operations after admission commits successfully. Resolve a lost admission response by retrying idempotently from the same execution, preserving the recorded destination and lock ownership.
+If deletion marks the target Deleting before migration admission, reject admission. If migration acquires its lock first, deletion waits. Start chunk operations after admission commits successfully. Resolve a lost admission response by retrying idempotently from the same execution, preserving lock ownership.
 
 ## Chunk operations
 
@@ -163,7 +165,7 @@ sequenceDiagram
 
 ### Read a chunk
 
-Get the chunk ID from `chunk_map` and pass the snapshot referer through the read API. Read the reference's actual and desired sets together with the root's `last_tombstone_at` consistently. If both placement fields are empty on an existing reference, resolve them from that root using the compatibility rules above. A missing reference is NotFound. Invalid metadata and unknown backend IDs are errors. An empty actual set with non-empty desired represents an unfinished write and returns NotFound. Read candidates come from the effective actual set.
+Cache chunk IDs from `chunk_map` and pass the snapshot referer through the read API. Resolve placement from `chunk_blobs` on each read: read the reference's actual and desired sets together with the root's `last_tombstone_at` consistently. If both placement fields are empty on an existing reference, resolve them from that root using the compatibility rules above. A missing reference is NotFound. Invalid metadata and unknown backend IDs are errors. An empty actual set with non-empty desired represents an unfinished write and returns NotFound. Read candidates come from the effective actual set.
 
 Track each attempted location as `(backend_id, observed last_tombstone_at)`:
 
@@ -329,7 +331,7 @@ sequenceDiagram
 
 ### Replication and detachment tasks
 
-The migration task orchestrates two child tasks: replication followed by detachment. Its request contains the dataplane snapshot ID and destination. Save the resolved destination before admission, then acquire the Ready snapshot's lock and persist the owner/generation before scheduling children. The parent also saves child task IDs and a completion flag, and holds the lock until both children finish. Child requests carry the resolved destination and the parent's ownership token; each child stores its own chunk-index milestone.
+The migration task orchestrates two child tasks: replication followed by detachment. Its request contains the dataplane snapshot ID and destination. Acquire the Ready snapshot's lock and persist the owner/generation before scheduling children. The parent also saves child task IDs and a completion flag, and holds the lock until both children finish. Child requests carry the parent's requested destination and ownership token; each child stores its own chunk-index milestone.
 
 Schedule the replication task with a stable key derived from the migration task ID, save its task ID, and wait for success. Replication scans every nonzero chunk, reuses or creates the destination copy, and publishes actual before advancing its milestone. It retains all source requirements. A source read or destination write failure leaves those copies available and the desired destination recorded for retry. A destination whose reuse delay is pending causes a retriable error.
 
@@ -392,7 +394,7 @@ This cancellation rule applies to migration. Cancellation of snapshot or image c
 
 ## Bulk migration
 
-The bulk request contains a dataplane snapshot ID prefix and destination backend ID. Validate the destination and save a cutoff once. Wait for creation tasks started before the backend change before capturing that cutoff, because `created_at` records creation completion.
+The bulk request contains a dataplane snapshot ID prefix and destination backend ID. Validate the destination and save a cutoff once. When draining the default backend, first direct new creation to an explicit destination backend ID. Wait for creation tasks started before that routing change before capturing the cutoff, because `created_at` records creation completion.
 
 Select Ready snapshots before the cutoff whose completion field is unset:
 
@@ -449,7 +451,9 @@ Preserve compressed data, checksums, and compression metadata. Backup objects re
 
 Configure new backends in the dataplane before selecting them for new writes. Plan for source and destination payloads to coexist during replication. Shared source copies remain until every reference releases them. Count physical copies by `(chunk_id, backend_id)` when estimating capacity. Configure simultaneous-snapshot, chunk-operation, and byte limits, with separate request and bandwidth limits per backend.
 
-Deploy schema and compatible dataplane reads/writes first. Enable changes to the singleton namespace, default backend ID, and chunk placement once all writers register explicit actual/desired state and honor tombstones. Existing controlplane requests and saved tasks continue using the unspecified-backend rules. After dataplane rollout, enable controlplane backend selection and migrations.
+Deploy schema and compatible dataplane reads/writes first. Enable controlplane backend selection and migrations once all writers register explicit actual/desired state and honor tombstones. Existing controlplane requests and saved tasks continue using the unspecified-backend rules across version upgrades.
+
+For a default change, direct new creation to explicit destination IDs, replicate or delete the remaining chunks on the current default, and verify that every remaining chunk reference has explicit backend IDs. At the configuration change barrier, pause new top-level task admission and finish admitted work, including queued tasks, child tasks, retries, and cancellation. Complete the retirement checks below before replacing the old singleton settings. Promote the destination backend to the singleton configuration under its existing ID on all dataplane instances, then resume admission.
 
 Before retiring a backend, check active references using both explicit sets and unspecified-backend resolution, outstanding creation/migration destinations, and pending physical cleanup. Finish or explicitly resolve those operations, including ambiguous S3 requests. Preserve remaining tombstones and timestamps when removing backend configuration. Eligible reattachment removes a backend's tombstone; final chunk deletion removes the root and all remaining tombstones.
 
