@@ -43,25 +43,22 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
         return {};
     }
 
-    const auto drift = TDuration::Seconds(300);
-    size_t selected = 0;
-    TMaybe<TInstant> previousEnd;
+    constexpr auto MaxRotationDrift = TDuration::Seconds(300);
+    TVector<TProfileLogFile> result;
+    TMaybe<TInstant> fileStart;   // First file is unbounded below.
     for (size_t i = 0; i < files.size(); ++i) {
-        // Preserve the original bounds before compacting the vector.
-        const auto start = previousEnd;
-        previousEnd = files[i].EndTime;
-        const auto end = i + 1 < files.size() ? previousEnd : Nothing();
-        const bool afterSince = !since || !end || *end + drift >= *since;
-        const bool beforeUntil = !until || !start || *start <= *until + drift;
-        if (afterSince && beforeUntil) {
-            if (selected != i) {
-                files[selected] = std::move(files[i]);
-            }
-            ++selected;
+        const bool isLast = i + 1 == files.size();   // Last is unbounded above.
+        const auto fileEnd = isLast ? Nothing() : files[i].EndTime;
+        const bool endsAfterSince =
+            !since || !fileEnd || *fileEnd + MaxRotationDrift >= *since;
+        const bool startsBeforeUntil =
+            !until || !fileStart || *fileStart <= *until + MaxRotationDrift;
+        fileStart = files[i].EndTime;
+        if (endsAfterSince && startsBeforeUntil) {
+            result.push_back(std::move(files[i]));
         }
     }
-    files.resize(selected);
-    return files;
+    return result;
 }
 
 }   // namespace NCloud::NFileStore::NProfileTool
