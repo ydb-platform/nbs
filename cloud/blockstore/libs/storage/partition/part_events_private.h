@@ -75,16 +75,19 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const std::shared_ptr<const NProto::TBlobCompression> Compression;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
             const TBlockRange32& blockRange,
             const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            std::shared_ptr<const NProto::TBlobCompression> compression = {})
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , Compression(std::move(compression))
     {}
 };
 
@@ -172,6 +175,7 @@ struct TAffectedBlob
     TMaybe<NProto::TBlobMeta> BlobMeta;
 
     TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
+    TMergedBlobFormat Format;
 };
 
 using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;

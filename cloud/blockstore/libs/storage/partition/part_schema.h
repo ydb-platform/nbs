@@ -160,6 +160,12 @@ struct TPartitionSchema
             using Type = TStringBuf;    // TBlockMask
         };
 
+        struct Compression
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = TString;
+        };
+
         using TKey = TableKey<RangeEnd, CommitId>;
         using TColumns = TableColumns<
             RangeStart,
@@ -167,7 +173,8 @@ struct TPartitionSchema
             CommitId,
             BlobId,
             HoleMask,
-            SkipMask
+            SkipMask,
+            Compression
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
@@ -191,7 +198,8 @@ struct TPartitionSchema
         struct BlobMeta
             : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TBlobMeta;
+            // Decode explicitly: malformed durable metadata must not abort
+            // the process in NIceDb's protobuf conversion.
         };
 
         struct BlockMask
@@ -265,11 +273,17 @@ struct TPartitionSchema
         {
         };
 
+        struct LogicalBlocks
+            : public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
         using TKey = TableKey<DeletionCommitId, CommitId, BlobId>;
         using TColumns = TableColumns<
             DeletionCommitId,
             CommitId,
-            BlobId
+            BlobId,
+            LogicalBlocks
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
@@ -412,12 +426,19 @@ struct TPartitionSchema
         {
         };
 
+        struct Metadata
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = TString;
+        };
+
         using TKey = TableKey<CommitId, BlobId>;
         using TColumns = TableColumns<
             CommitId,
             BlobId,
             RangeStart,
-            RangeEnd
+            RangeEnd,
+            Metadata
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

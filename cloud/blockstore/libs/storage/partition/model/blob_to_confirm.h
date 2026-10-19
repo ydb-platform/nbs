@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
+
 #include <cloud/blockstore/libs/common/block_range.h>
 
 #include <util/generic/hash.h>
@@ -16,14 +18,17 @@ struct TBlobToConfirm
     ui64 UniqueId;
     TBlockRange32 BlockRange;
     TVector<ui32> Checksums;
+    std::shared_ptr<const NProto::TBlobCompression> Compression;
 
     TBlobToConfirm(
             ui64 uniqueId,
             const TBlockRange32& blockRange,
-            const TVector<ui32>& checksums)
+            const TVector<ui32>& checksums,
+            std::shared_ptr<const NProto::TBlobCompression> compression = {})
         : UniqueId(uniqueId)
         , BlockRange(blockRange)
         , Checksums(checksums)
+        , Compression(std::move(compression))
     {}
 
 };

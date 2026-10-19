@@ -1,4 +1,5 @@
 #include "part_actor.h"
+#include "model/merged_blob_compression.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
@@ -370,6 +371,9 @@ private:
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
+        if (blob.Compression) {
+            *blobMeta.MutableCompression() = *blob.Compression;
+        }
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
@@ -396,7 +400,11 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
+        db.WriteMergedBlocks(
+            blob.BlobId,
+            blob.BlockRange,
+            blob.SkipMask,
+            blob.Compression.get());
 
         // update counters
         IncrementBlobCounters(
@@ -838,7 +846,8 @@ private:
                 }
 
                 bool inserted = State.GetCleanupQueue().Add(
-                    {kv.first, DeletionCommitId, std::move(blobMeta)});
+                    {kv.first, DeletionCommitId, std::move(blobMeta),
+                     kv.second.Format.LogicalBlocks});
 
                 STORAGE_VERIFY_DEBUG_C(
                     inserted,
@@ -846,7 +855,8 @@ private:
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
-                    db.WriteCleanupQueue(kv.first, DeletionCommitId);
+                    db.WriteCleanupQueue(
+                        kv.first, DeletionCommitId, kv.second.Format.LogicalBlocks);
                 }
             }
         }
@@ -920,6 +930,35 @@ void TPartitionActor::HandleAddBlobs(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    // Validate all results before starting a transaction. Recovery must not
+    // publish a malformed UnconfirmedBlobs descriptor over confirmed data.
+    for (const auto& blob: msg->MergedBlobs) {
+        NProto::TError error;
+        const ui64 skipped = blob.SkipMask.Count();
+        if (skipped >= blob.BlockRange.Size()) {
+            error = MakeError(E_IO, "Invalid Merged blob skip mask");
+        } else if (blob.Compression) {
+            error = ValidateMergedBlobCompression(
+                *blob.Compression, blob.BlobId.BlobSize(), State->GetBlockSize());
+            if (!HasError(error) &&
+                ui64(blob.BlockRange.Size() - skipped) * State->GetBlockSize() !=
+                    blob.Compression->GetLogicalSize())
+            {
+                error = MakeError(E_IO, "Compressed Merged publication size mismatch");
+            }
+        } else if (!IsDeletionMarker(blob.BlobId) &&
+                   ui64(blob.BlockRange.Size() - skipped) * State->GetBlockSize() !=
+                       blob.BlobId.BlobSize())
+        {
+            error = MakeError(E_IO, "Missing Merged publication compression metadata");
+        }
+        if (HasError(error)) {
+            NCloud::Reply(ctx, *ev,
+                std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>(error));
+            return;
+        }
+    }
 
     if (CompactionMapLoadState) {
         const THashSet<ui32> rangeIndices =

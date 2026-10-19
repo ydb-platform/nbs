@@ -982,6 +982,7 @@ struct TTxPartition
             ui64 CommitId = 0;
             ui32 BlockIndex = 0;
             ui16 BlobOffset = 0;
+            bool CompressionError = false;
         };
 
         TVector<TBlockMark> BlockMarks_Index;

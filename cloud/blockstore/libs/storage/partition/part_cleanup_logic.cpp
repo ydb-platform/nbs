@@ -7,10 +7,12 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <util/generic/algorithm.h>
+#include <util/string/builder.h>
 
 #include <ranges>
 
@@ -297,6 +299,22 @@ bool PrepareCleanupTransaction(
                 ToString(MakeBlobId(tabletId, item.BlobId)).data());
             auto& meta = blobMetas[item.BlobId];
             meta = std::move(blobMeta.GetRef());
+
+            if (!meta.HasMixedBlocks() && !meta.HasMergedBlocks()) {
+                // A failed parse has no trustworthy block map. Retain the
+                // blob and its index entries even when verification is off.
+                blobIdsToRemoveFromQueue.insert(item.BlobId);
+                // Durable corruption is diagnosable input, not a reason to
+                // abort a debug server while retaining the affected blob.
+                NCloud::ReportCriticalEvent(
+                    GetCriticalEventForCleanupBlobMetaBlocksMismatch(),
+                    TStringBuilder()
+                        << "diskId:" << diskId << " tabletId:" << tabletId
+                        << " blobId:" << MakeBlobId(tabletId, item.BlobId)
+                        << " error:invalid serialized blob metadata",
+                    false);   // verifyDebug
+                continue;
+            }
 
             const bool needToVerify = args.VerifyRecreatedBlobMetasOnCleanup &&
                                       hasValidMetaInCleanupQueue;
