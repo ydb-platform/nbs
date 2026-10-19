@@ -11,8 +11,8 @@ TMaybe<TInstant> GetProfileLogEndTime(const TString& path)
 {
     const auto name = GetBaseName(path);
     // Heuristic from deployment rotation-name examples, not a log format rule:
-    // interpret the suffix as the UTC end time. See README.md; --all-files
-    // disables pruning when a deployment uses a different convention.
+    // interpret the suffix as the UTC end time. See README.md; file pruning
+    // uses this estimate only when --prune-by-time is requested.
     constexpr size_t SuffixLength = 17;   // .YYYY-MM-DDTHH:MM
     if (name.size() >= SuffixLength && name[name.size() - SuffixLength] == '.')
     {

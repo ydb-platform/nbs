@@ -187,7 +187,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(input.Name()));
     }
 
-    Y_UNIT_TEST(ShouldBypassFilePruningWhenAllFilesRequested)
+    Y_UNIT_TEST(ShouldReadAllFilesUnlessPruningRequested)
     {
         TTempDir directory;
         TTempFileHandle oldFile(
@@ -211,15 +211,15 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             if (TStringBuf(name) == "findbytesaccess") {
                 args.insert(args.end(), {"--start", "0", "--count", "1"});
             }
-            // The old, truncated log is outside the estimated time range.
-            UNIT_ASSERT_VALUES_EQUAL(
-                GetCommand(name)->Run(args.size(), args.data()),
-                0);
-            args.push_back("--all-files");
-            // Reading it now must expose its error; pruning would hide it.
+            // Default reading exposes even errors outside the estimated range.
             UNIT_ASSERT_VALUES_EQUAL(
                 GetCommand(name)->Run(args.size(), args.data()),
                 1);
+            args.push_back("--prune-by-time");
+            // Only explicit pruning skips the old, truncated log.
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetCommand(name)->Run(args.size(), args.data()),
+                0);
         }
     }
 

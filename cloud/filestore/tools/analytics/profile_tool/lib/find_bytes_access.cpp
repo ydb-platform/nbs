@@ -157,7 +157,7 @@ public:
                 filter,
                 std::move(requestTypes)));
 
-        if (!parseResult.Has("all-files")) {
+        if (parseResult.Has("prune-by-time")) {
             ProfileLogFiles =
                 SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
         }
