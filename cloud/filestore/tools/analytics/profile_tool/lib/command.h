@@ -37,11 +37,6 @@ public:
 protected:
     int ProcessProfileLogs(IEventProcessor& processor);
 
-    static int ProcessProfileLog(
-        const TString& path,
-        IEventProcessor& processor,
-        bool ignoreErrors);
-
     virtual bool Init(NLastGetopt::TOptsParseResultException& parseResult);
     virtual int Execute() = 0;
 };

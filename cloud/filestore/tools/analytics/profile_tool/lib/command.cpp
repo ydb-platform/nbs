@@ -23,6 +23,47 @@ TProfileLogFile MakeProfileLogFile(TString path)
     return {std::move(path), endTime};
 }
 
+int ProcessProfileLog(
+    const TString& path,
+    IEventProcessor& processor,
+    bool ignoreErrors)
+{
+    const auto handleReadError = [&path, ignoreErrors](const yexception& error)
+    {
+        Cerr << "Error reading profile log " << path << ": " << error.what()
+             << Endl;
+        if (ignoreErrors) {
+            Cerr << "Skipping unreadable remainder of profile log: " << path
+                 << Endl;
+            return 0;
+        }
+        return 1;
+    };
+
+    NEventLog::TOptions options;
+    options.FileName = path;
+    THolder<NEventLog::IIterator> iterator;
+    try {
+        iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
+    } catch (const yexception& error) {
+        return handleReadError(error);
+    }
+
+    for (;;) {
+        TConstEventPtr event;
+        try {
+            event = iterator->Next();
+        } catch (const yexception& error) {
+            return handleReadError(error);
+        }
+        // Processing and output failures must propagate even with
+        // ignore-errors.
+        if (!event || !processor.CheckedProcessEvent(event.Get())) {
+            return 0;
+        }
+    }
+}
+
 }   // namespace
 
 void PrintProfileLogProgress(const TProfileLogFile& file)
@@ -88,47 +129,6 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
         }
     }
     return 0;
-}
-
-int TCommand::ProcessProfileLog(
-    const TString& path,
-    IEventProcessor& processor,
-    bool ignoreErrors)
-{
-    const auto handleReadError = [&path, ignoreErrors](const yexception& error)
-    {
-        Cerr << "Error reading profile log " << path << ": " << error.what()
-             << Endl;
-        if (ignoreErrors) {
-            Cerr << "Skipping unreadable remainder of profile log: " << path
-                 << Endl;
-            return 0;
-        }
-        return 1;
-    };
-
-    NEventLog::TOptions options;
-    options.FileName = path;
-    THolder<NEventLog::IIterator> iterator;
-    try {
-        iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
-    } catch (const yexception& error) {
-        return handleReadError(error);
-    }
-
-    for (;;) {
-        TConstEventPtr event;
-        try {
-            event = iterator->Next();
-        } catch (const yexception& error) {
-            return handleReadError(error);
-        }
-        // Processing and output failures must propagate even with
-        // ignore-errors.
-        if (!event || !processor.CheckedProcessEvent(event.Get())) {
-            return 0;
-        }
-    }
 }
 
 bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
