@@ -1,8 +1,8 @@
 # Multiple storage backends for Disk Manager chunks
 
-An image or snapshot can store its chunks on one or several backends. The dataplane copies each chunk to every requested backend. A request for `[A, B]` keeps copies on both A and B. This supports replication as well as migration.
+An image or snapshot can store its chunks on one or several backends. A creation request for `[A, B]` writes each chunk to both backends. Replication adds copies: a request for `[B, C]` copies chunks to B and C while keeping existing copies on A.
 
-Migration changes the requested list. For example, `[A]` to `[A, B]` adds a replica. `[A]` to `[B]` copies the data to B, then removes A where other snapshots no longer need it. Both operations keep chunk IDs and shared references.
+Migration has one destination backend. Migration to B first copies every chunk to B, then detaches the other backends from that snapshot. Other snapshots keep the copies they still need. Replication and migration preserve chunk IDs and shared references.
 
 ## Purpose and scope
 
@@ -17,7 +17,7 @@ flowchart LR
     DM -->|Store metadata and optional chunk data| YDB[YDB]
 ```
 
-The controlplane passes a backend list to the dataplane. The dataplane supports YDB and several S3 backends. Each snapshot keeps its own list for each shared chunk.
+The controlplane passes a backend list when creating a snapshot. The dataplane supports YDB and several S3 backends. Each snapshot keeps its own list for each shared chunk.
 
 Migration accepts **Ready** snapshots. Images use the same dataplane snapshot records. Readers continue working during migration. The migration task holds the snapshot's existing lock to prevent deletion.
 
@@ -49,7 +49,7 @@ This S3-to-S3 copy requires a separate destination snapshot database. It cannot 
 
 Each ID always identifies the same S3 endpoint, bucket, and key prefix. Each such combination has its own ID. The dataplane rejects duplicate IDs, incomplete settings, and the YDB ID in S3 settings. The singleton settings remain required when S3 fallback is enabled. YDB-only configurations remain valid.
 
-Creation and migration requests contain a `BackendIds` list:
+Creation requests contain a `BackendIds` list:
 
 - `[]` uses the default rules below.
 - `[0]` selects backend zero, even when `DEFAULT_BACKEND_ID` is different.
@@ -57,13 +57,13 @@ Creation and migration requests contain a `BackendIds` list:
 
 For creation, an empty list keeps the existing `UseS3` and inheritance rules. New S3 chunks use `DEFAULT_BACKEND_ID`; new YDB chunks use YDB. Unchanged chunks inherit their source copies. A non-empty list overrides `UseS3` and applies to every chunk, including shared chunks.
 
-For migration, an empty list selects `[DEFAULT_BACKEND_ID]`. The migration steps below use this list after applying the default. Parent and child tasks use the same rule.
+The replication task also accepts a list of destination backends. It adds copies on those backends and keeps existing copies. Migration and bulk migration take one destination backend ID. The migration parent passes `[destination]` to its replication child.
 
-Creation, migration, and bulk tasks sort and deduplicate their lists. They validate every selected backend before creating records, even for an all-zero snapshot. An unavailable configured backend causes a retry; an unknown ID causes a non-retriable error.
+Creation and replication tasks sort and deduplicate their lists. All tasks validate every selected backend before creating records, even for an all-zero snapshot. An unavailable configured backend causes a retry; an unknown ID causes a non-retriable error.
 
 Snapshot creation tasks must survive version upgrades. Their saved requests have an empty list and keep the existing behavior. For a snapshot with unspecified backend, the reader infers YDB or the default S3 backend from chunk metadata.
 
-The current backend stays the default until its chunks have been replicated or deleted and every remaining reference has explicit backend IDs. All tasks using the old configuration finish before the default changes. The deployment steps below describe this barrier. Tasks read their backend lists from their requests.
+The current backend stays the default until its chunks have been migrated to other backends or deleted and every remaining reference has explicit backend IDs. All tasks using the old configuration finish before the default changes. The deployment steps below describe this barrier. Each task uses the backend IDs in its request.
 
 ### References, copies, and tombstones
 
@@ -74,33 +74,37 @@ For each snapshot and chunk, the writer stores two lists in the reference row:
 
 The writer first saves desired. It then copies the chunk to each backend in desired but missing from actual. After each successful copy, it adds that backend to actual. It can reuse a completed copy that another snapshot still needs.
 
-The detach task removes backends that the snapshot no longer needs. It keeps the object if another reference lists that backend in actual **or** desired. For the final reference, it writes a **tombstone** on the root row before deleting the object. The tombstone blocks new writes to that chunk and backend while deletion finishes.
+To **detach a backend from a snapshot**, the task removes that backend from the snapshot's chunk references. It keeps a chunk's stored copy if another reference lists that backend in actual **or** desired. Otherwise, it writes a **tombstone** on the root row to block new writes to that chunk on that backend. It then calls [S3Client.DeleteObject](../../../cloud/tasks/persistence/s3.go) for an S3 copy, or removes a YDB payload in a transaction. For that S3 deletion, the task keeps its backend entry until it records success or NotFound. A retry can then find unfinished work.
 
 Examples use **desired → actual**. A new chunk requested on A and B starts as `{A,B} → {}`. After A succeeds, it becomes `{A,B} → {A}`. After B succeeds, it becomes `{A,B} → {A,B}`.
 
 ```mermaid
 flowchart LR
-    Map["chunk_map: snapshot S and chunk K"] --> Ref["Reference S: desired A,B and actual A,B"]
-    Ref --- Root["Root K: reference count and tombstones"]
-    Ref --> A[Copy on A]
-    Ref --> B[Copy on B]
+    Map1["Snapshot S1, chunk K"] --> Ref1["Reference S1: desired A,B and actual A,B"]
+    Map2["Snapshot S2, chunk K"] --> Ref2["Reference S2: desired B,C and actual B,C"]
+    Ref1 --- Root["Root K: refcnt 2 and tombstones"]
+    Ref2 --- Root
+    Ref1 --> A["Chunk K on A"]
+    Ref1 --> B["Chunk K on B"]
+    Ref2 --> B
+    Ref2 --> C["Chunk K on C"]
 ```
 
-We add `detached_backend_ids` and `last_tombstone_at` to the root row. The detach task updates the timestamp when it writes a tombstone and when it records a completed DELETE. The database supplies the time. Each update must advance it, even within one clock tick.
+We add `detached_backend_ids` and `last_tombstone_at` to the root row. The detach task advances the timestamp when it writes a tombstone. For S3, it advances it again when a transaction removes the pending entry after `DeleteObject` succeeds or returns NotFound. For YDB, the task writes the tombstone and removes the payload in one transaction. The database supplies the time. Each timestamp update must advance it, even within one clock tick.
 
 A writer can reuse a tombstoned backend after deletion finishes and `BackendReattachDelay` passes. Its transaction checks both conditions, removes that tombstone, and adds the backend to desired. Until then, the writer retries. A timestamp update delays reuse of all tombstoned backends on that chunk.
 
-The delay must cover outstanding DELETE requests and stalled workers. A DELETE that arrives after this delay can delete a new copy. Tombstones stay until reuse or final chunk deletion removes them.
+The delay must cover outstanding `DeleteObject` requests and stalled workers. A `DeleteObject` that arrives after this delay can delete a new copy. Tombstones stay until reuse or final chunk deletion removes them.
 
 The storage layer encodes each list as sorted, unique, four-byte big-endian IDs in a YDB `String`. NULL and empty bytes mean an empty list; ID zero uses four bytes. The storage layer rejects malformed lists and unknown active IDs. Tombstones can keep IDs whose backend configuration has been removed.
 
-Every new reference starts with non-empty desired. A transaction that empties an explicit reference removes the row and decrements `refcnt`. References waiting for DELETE still count. The last reference removal also removes the root and its tombstones. New chunks use fresh IDs; retries of the same chunk use the same ID.
+Every new reference starts with non-empty desired. A transaction that empties an explicit reference removes the row and decrements `refcnt`. References waiting for `DeleteObject` still count. The last reference removal also removes the root and its tombstones. New chunks use fresh IDs; retries of the same chunk use the same ID.
 
 Each change to `chunk_blobs` uses a serializable transaction. The transaction reads the main table and writes the same result to the configured shadow table. It preserves existing counts, payloads, tombstones, and timestamps unless the operation changes them. After a failed or lost commit response, the task rereads the rows and retries from their saved state.
 
 ### Snapshots with unspecified backend
 
-Both lists can be empty on an existing reference. The reader reads that reference and its root together. A non-empty root payload means YDB. An empty payload means `DEFAULT_BACKEND_ID`. Empty compression alone says nothing: uncompressed YDB chunks also have empty compression. The chunk map identifies zero chunks, which need no payload.
+Both lists can be empty on an existing reference. The reader reads that reference and its root together. A non-empty root payload means YDB. An empty payload means `DEFAULT_BACKEND_ID`. The chunk map identifies zero chunks, which need no payload.
 
 All operations treat both empty lists as containing the inferred backend. A missing reference returns NotFound. A missing root for an existing reference is a metadata error. Only the reference being changed gets explicit lists.
 
@@ -112,13 +116,13 @@ A failed transaction leaves the old payload and lists intact. Concurrent copy an
 
 Creation uses the existing lifecycle checks. Deletion marks the snapshot Deleting. The creator sees that status in its progress checks and stops its workers. The collector deletes chunks after `SnapshotCollectionTimeout`, currently 30 minutes. This relies on workers stopping within that delay; a worker stalled longer remains an existing race.
 
-The migration task checks Ready status and takes `snapshots.lock_task_id` in one transaction. It holds this lock through replication and detachment. Deletion waits for the lock; readers continue. If deletion marks the snapshot first, migration fails admission.
+The migration task checks Ready status and takes `snapshots.lock_task_id` in one transaction. It keeps this lock until both the replication and detach children finish. Deletion waits for the lock; readers continue. If deletion marks the snapshot first, migration fails admission.
 
 Incremental creation uses the same lock on its source snapshot. Creation retries while migration holds it. Migration likewise waits for a creator holding the lock. Snapshots that share chunks can otherwise migrate independently, even after the chunk's original snapshot has been deleted.
 
 The parent task also uses `snapshots.operation_generation`. It advances this value when it takes ownership or cancels. Children receive the parent's task ID and generation. Every migration write checks Ready status, that ID, and that generation. Retries keep the same generation. A cancelled task cannot take the lock again.
 
-If the admission response is lost, the task recovers its existing lock and generation. After cancellation, a new task can take the lock and request a different backend list.
+If the admission response is lost, the task recovers its existing lock and generation. After cancellation, a new migration task can take the lock and choose another destination backend.
 
 ## Chunk operations
 
@@ -177,7 +181,7 @@ sequenceDiagram
     Task->>B: Copy chunk
     B-->>Task: Success
     Task->>DB: Add B to actual, then mark A for deletion
-    Task->>A: DELETE chunk
+    Task->>A: DeleteObject(chunk)
     A-->>Task: Success
     Task->>DB: Remove A from actual
     Reader->>A: Read chunk
@@ -194,9 +198,9 @@ The creator locks the source against deletion while reading its map and adding r
 
 A transaction checks that the source reference and root still exist. It uses only copies that appear in both actual and desired on a source reference and have no tombstone. This check covers reused, inherited, and temporary source copies. The new reference gets the requested list in desired. Its actual list contains reusable destinations and source copies needed to finish replication. The transaction increments `refcnt` once.
 
-For an empty creation list, the new reference puts these usable source backends in both desired and actual. For a non-empty list, the creator copies to every missing destination. It detaches temporary source copies only after all requested copies exist. A failed copy leaves the source copies readable.
+For an empty creation list, the new reference puts these usable source backends in both desired and actual. For a non-empty list, the creator copies to every missing destination. It detaches temporary source backends from the new snapshot only after all requested copies exist. A failed copy leaves the source copies readable.
 
-If a requested backend is tombstoned, registration waits for deletion and the reuse delay. A new reference and a final detach check the same root in their transactions. If registration wins, its lists keep the object alive. If detach wins, the tombstone makes registration retry. A retry after registration reuses the saved reference and count. A cached chunk ID cannot replace the source-reference check.
+If a requested backend is tombstoned, registration waits for deletion and the reuse delay. The transaction that adds a reference and the detach transaction check the same root. If registration commits first, the new lists keep the object alive. If detach commits first, the tombstone makes registration retry. A retry after registration reuses the saved reference and count. A cached chunk ID cannot replace the source-reference check.
 
 ### Replicate a chunk
 
@@ -204,7 +208,7 @@ The replication task keeps the chunk ID and reference count. It checks tombstone
 
 The task records each successful copy in actual with the same checks as a new write. Migration also checks the parent's ownership generation. The task advances its chunk milestone only after every requested copy is recorded. A source read failure or failed destination leaves the successful copies and remaining desired entries for retry.
 
-Two tasks can write the same chunk concurrently. Their PUTs use the same immutable data and metadata. Each task updates its own reference. One task's detach keeps the source object while the other reference still lists it.
+Two tasks can write the same chunk concurrently. Their PUTs use the same immutable data and metadata. Each task updates its own reference. When one task detaches a source backend from its snapshot, the other reference keeps the source object.
 
 ```mermaid
 sequenceDiagram
@@ -222,28 +226,28 @@ sequenceDiagram
     S2->>B: PUT the same chunk K
     B-->>S2: Success
     S2->>DB: Add actual B to reference 2, mark final A for deletion
-    S2->>A: DELETE chunk K
+    S2->>A: DeleteObject(K)
     A-->>S2: Success
     S2->>DB: Finish deletion of A
 ```
 
-If this reference has a pending DELETE for a requested backend, the task finishes that DELETE first while keeping another usable copy. It then waits for the reuse delay. If another reference owns the pending DELETE, that snapshot's migration or deletion must finish it. A retry reports the blocking snapshot. A cancelled owner needs a new migration or snapshot deletion to finish this work.
+If this reference has a pending `DeleteObject` for a requested backend, the task finishes that `DeleteObject` first while keeping another usable copy. It then waits for the reuse delay. If another reference owns the pending `DeleteObject`, that snapshot's migration or deletion must finish it. A retry reports the blocking snapshot. A cancelled owner needs a new migration or snapshot deletion to finish this work.
 
 The writer starts PUT only after desired commits. If cancellation, deletion, or a tombstone blocks the actual update, the writer leaves metadata as it stands. A late PUT can leave an unreferenced object after deletion, as described below.
 
-### Detach one backend
+### Detach a backend from a snapshot
 
-The detach task removes one backend from one snapshot's reference. Its transaction reads the root and all references, including references of Deleting snapshots. It infers any unspecified lists before checking them.
+The detach task handles each chunk reference of that snapshot. For each chunk, its transaction reads the root and all references, including references of Deleting snapshots. It infers any unspecified lists before checking them.
 
-If the backend is already absent, the operation succeeds. Otherwise, the transaction requires another backend in both actual and desired on this reference, with no tombstone. An attempt to remove the last usable copy returns a **non-retriable error** before any change or DELETE. During migration, every requested backend must be usable before any old backend is detached.
+If the backend is already absent, the operation succeeds. Otherwise, the transaction requires another backend in both actual and desired on this reference, with no tombstone. An attempt to remove the last usable copy returns a **non-retriable error** before any change or `DeleteObject`. During migration, the destination backend must be usable before the task detaches any other backend from the snapshot.
 
-If another reference lists the backend in actual **or** desired, the task removes only its own entries. The object stays. If this is the final reference to that backend, the transaction adds a root tombstone and advances its timestamp. It removes desired but keeps actual as a pending DELETE record. For an unfinished write with only desired, it keeps that desired entry instead.
+If another reference lists the backend in actual **or** desired, the task removes only its own entries. The object stays. If this is the final reference to that backend, the transaction adds a root tombstone and advances its timestamp. For S3, it removes desired but keeps actual as a pending `DeleteObject` record. If the S3 write has only a desired entry, it keeps that entry instead.
 
-The task issues S3 DELETE only when its pending entry and tombstone both exist. After success or NotFound, a transaction removes the entry and advances the timestamp. This starts the reuse delay. For YDB, one transaction writes the tombstone, removes the payload, checksum, and compression fields, and releases the entry.
+The task issues S3 `DeleteObject` only when its pending entry and tombstone both exist. After success or NotFound, a transaction removes the entry and advances the timestamp. This starts the reuse delay. For YDB, one transaction writes the tombstone and removes the payload, checksum, compression fields, and backend entry.
 
-Concurrent releases run their checks in serializable transactions. One may release its entry while another still keeps the object. The final releaser records the DELETE. Concurrent releases on the same reference cannot remove its last usable copy.
+Concurrent detach tasks run their checks in serializable transactions. One task may remove its entry while another reference keeps the object. For S3, the last task records the pending `DeleteObject`. These checks prevent the tasks from removing the same snapshot's last usable copy.
 
-If the tombstone transaction fails, the task retries before DELETE. If DELETE fails, or its final metadata update fails, the task keeps the pending entry and tombstone and retries. A retry after the entry was removed succeeds without another DELETE. A completed tombstone alone never authorizes DELETE.
+If the tombstone transaction fails, the task retries before `DeleteObject`. If `DeleteObject` fails, or its final metadata update fails, the task keeps the pending entry and tombstone and retries. A retry after the entry was removed succeeds without another `DeleteObject`. A completed tombstone alone never authorizes `DeleteObject`.
 
 ```mermaid
 sequenceDiagram
@@ -252,9 +256,9 @@ sequenceDiagram
     participant A as Backend A
     participant Writer as Later writer
     Task->>DB: Keep B, mark final A for deletion
-    Task->>A: DELETE attempt 1
+    Task->>A: DeleteObject attempt 1
     Note over Task,A: Request times out and may still arrive
-    Task->>A: DELETE retry
+    Task->>A: DeleteObject retry
     A-->>Task: Success
     Task->>DB: Remove pending A entry and update timestamp
     Writer->>DB: Request A again
@@ -268,17 +272,17 @@ sequenceDiagram
     end
 ```
 
-The reuse transaction and DELETE completion transaction check the same root. A conflict makes one retry. The delay protects a recreated copy only if earlier DELETEs finish within the configured bound.
+The reuse transaction and the transaction that records `DeleteObject` completion check the same root. A conflict makes one retry. The delay protects a recreated copy only if earlier `DeleteObject` requests finish within the configured bound.
 
 ### Delete a snapshot reference
 
-Snapshot deletion and creation cancellation mark the snapshot Deleting. After the collection delay, the collector visits each chunk-map entry. It releases every backend in actual or desired using the detach deletion steps above. Snapshot deletion may remove the last usable copy.
+Snapshot deletion and creation cancellation mark the snapshot Deleting. After the collection delay, the collector visits each chunk-map entry. It detaches every backend in actual or desired from the snapshot using the procedure above. Snapshot deletion may remove the last usable copy.
 
-The collector keeps each reference until its S3 DELETEs succeed or return NotFound. It then removes the reference and decrements `refcnt` in one transaction. The last removal also deletes any YDB payload and the root with its tombstones. The collector removes the map entry last. A missing reference means its deletion already finished.
+The collector keeps each reference until its S3 `DeleteObject` requests succeed or return NotFound. It then removes the reference and decrements `refcnt` in one transaction. The last removal also deletes any YDB payload and the root with its tombstones. The collector removes the map entry last. A missing reference means its deletion already finished.
 
 A crash leaves either a map and reference to finish, or a map whose reference is already gone. Retries handle both without changing `refcnt` twice. Concurrent snapshot deletions use the same final-reference checks as detach.
 
-An earlier PUT can finish after DELETE and leave an unreferenced S3 object. Its actual update fails because the reference is gone. Separate orphan cleanup must remove that object. A later snapshot creation uses fresh chunk IDs, so an old DELETE cannot delete its data. The same snapshot ID becomes available only after its deletion finishes.
+An earlier PUT can finish after `DeleteObject` and leave an unreferenced S3 object. Its actual update fails because the reference is gone. Separate orphan cleanup must remove that object. A later snapshot creation uses fresh chunk IDs, so an old `DeleteObject` cannot delete its data. The same snapshot ID becomes available only after its deletion finishes.
 
 ```mermaid
 sequenceDiagram
@@ -289,7 +293,7 @@ sequenceDiagram
     Writer->>S3: PUT chunk K
     Note over Writer,S3: Request remains outstanding
     Collector->>DB: Mark final copy of K for deletion
-    Collector->>S3: DELETE K
+    Collector->>S3: DeleteObject(K)
     S3-->>Collector: Success
     Collector->>DB: Remove final reference and root together
     Collector->>DB: Remove map entry
@@ -301,37 +305,37 @@ sequenceDiagram
 
 ## Snapshot migration
 
-### Replication, then detachment
+### Replicate, then detach other backends
 
-The parent request contains a snapshot ID and backend list. The parent takes the Ready snapshot's lock and saves its ownership generation. It starts two children in order:
+The parent request contains a snapshot ID and one destination backend ID. The parent takes the Ready snapshot's lock and saves its ownership generation. It starts two children in order:
 
-1. The replication child adds all requested backends to each chunk's desired list. It copies missing data and saves its milestone after all requested copies of that chunk are in actual.
-2. After replication finishes for the whole snapshot, the detachment child removes backends outside the requested list. Before each removal, it checks that all requested copies are in actual and desired and have no tombstones. A missing requested copy causes a non-retriable error before removal.
+1. The replication child adds the destination to each chunk's desired list. It copies missing data and saves its milestone after the destination is in actual.
+2. After replication finishes for the whole snapshot, the detach child detaches every other backend from the snapshot. Before each removal, it checks that the destination is in actual and desired and has no tombstone. A missing destination copy causes a non-retriable error before removal.
 
-The children receive the parent's requested list and ownership token. Each has its own chunk milestone. The parent holds the lock until both finish. For `[A, B]`, both copies stay; for `[B]`, A can be removed after B is ready.
+The replication child receives `[destination]`. The detach child receives the destination to keep. Both children receive the parent's ownership token and save their own chunk milestones. The parent holds the lock until both finish.
 
 The parent uses a stable scheduling key for each child and saves the child IDs. If scheduling succeeds but saving the ID fails, the parent recovers the same child with that key. If a child stops before saving progress, it repeats the current chunk from stored lists. A permanent child failure fails the parent; completed copies remain available.
 
-When every reference has actual and desired equal to the requested list, the parent writes that list to `snapshots.s3_backend_ids`. It then saves completion and releases its lock. A retry after completion only finishes the unlock. Other snapshots can still keep copies on additional backends.
+When every reference has only the destination in actual and desired, the parent writes `[destination]` to `snapshots.s3_backend_ids`. It then saves completion and releases its lock. A retry after completion only finishes the unlock. Other snapshots can still keep copies on additional backends.
 
 ```mermaid
 sequenceDiagram
     participant Parent
     participant DB as YDB metadata
     participant Copy as Replication child
-    participant Detach as Detachment child
+    participant Detach as Detach child
     Parent->>DB: Lock Ready snapshot and save ownership
-    Parent->>Copy: Request copies on B and C
-    Copy->>DB: Record B and C for every chunk
+    Parent->>Copy: Request destination B
+    Copy->>DB: Record B for every chunk
     Copy-->>Parent: Success
-    Parent->>Detach: Remove backends outside B,C
-    Detach->>DB: Check B and C before each removal
-    alt All requested copies exist
+    Parent->>Detach: Detach other backends from the snapshot
+    Detach->>DB: Check B before each removal
+    alt Destination copy exists
         Detach-->>Parent: Success
-        Parent->>DB: Save completed list B,C
+        Parent->>DB: Save completed destination B
         Parent->>DB: Save task completion
         Parent->>DB: Release lock
-    else A requested copy is missing
+    else Destination copy is missing
         Detach-->>Parent: Non-retriable error
     end
 ```
@@ -340,9 +344,9 @@ sequenceDiagram
 
 The parent stops scheduling, revokes its ownership generation, and keeps the snapshot lock. It recovers any child whose scheduling result was lost, cancels active children, and waits for their cancellation. It then releases its own lock.
 
-Migration cancellation keeps all objects, references, actual and desired lists, tombstones, timestamps, and pending DELETEs. An already issued PUT or DELETE may still finish. The revoked generation blocks further metadata writes from old workers.
+Migration cancellation keeps all objects, references, actual and desired lists, tombstones, timestamps, and pending `DeleteObject` requests. An already issued PUT or `DeleteObject` may still finish. The revoked generation blocks further metadata writes from old workers.
 
-A later task starts replication with its own requested list. For example, after a cancelled move to `[B]`, a request for `[C, D]` creates both C and D before detaching A or B. A request that includes a tombstoned backend first waits for its DELETE and reuse delay. Every cancellation step retries safely and leaves any newer owner's lock intact.
+A later migration can choose another destination. After a cancelled move to B, migration to C copies every chunk to C before detaching A or B from the snapshot. If C is tombstoned, the task first waits for its `DeleteObject` and reuse delay. Every cancellation step retries safely and leaves any newer owner's lock intact.
 
 ```mermaid
 flowchart TD
@@ -350,16 +354,16 @@ flowchart TD
     Revoke --> Keep[Data and pending work stay recorded]
     Keep --> Wait[Parent cancels children and waits]
     Wait --> Unlock[Parent releases its lock]
-    Unlock --> Later[Later task requests a backend list]
-    Later --> Copy[Task copies to every requested backend]
-    Copy --> Detach[Task detaches other backends]
+    Unlock --> Later[Later migration chooses one destination]
+    Later --> Copy[Task copies every chunk to that destination]
+    Copy --> Detach[Task detaches other backends from the snapshot]
 ```
 
 Creation cancellation keeps its existing behavior: the collector deletes the partial snapshot and its references. Source snapshots keep their copies.
 
 ## Bulk migration
 
-The bulk request contains a snapshot ID prefix and backend list. The parent validates the list and saves a cutoff once. To drain the default backend, the controlplane first sends new creation to explicit backend lists. The bulk task waits for earlier creation tasks before taking its cutoff, because `created_at` is the creation completion time.
+The bulk request contains a snapshot ID prefix and one destination backend ID. The parent validates the destination and saves a cutoff once. To drain the default backend, the controlplane first sends new creation to explicit backend lists. The bulk task waits for earlier creation tasks before taking its cutoff, because `created_at` is the creation completion time.
 
 The task selects Ready snapshots whose completed backend list is unset:
 
@@ -374,11 +378,11 @@ ORDER BY created_at, id
 LIMIT $batch_size;
 ```
 
-The parent runs up to ten snapshot migrations at once by default. It saves snapshot IDs before scheduling, uses a stable key per snapshot, and saves child IDs before waiting. Each child receives the same requested list. Shared chunks impose no parent-snapshot ordering.
+The parent runs up to ten snapshot migrations at once by default. It saves snapshot IDs before scheduling, uses a stable key per snapshot, and saves child IDs before waiting. Each child receives the same destination backend ID. Shared chunks impose no parent-snapshot ordering.
 
 After a restart, the parent recovers unsaved child IDs with the same keys. It waits for every saved child, even if the query already excludes that snapshot. Completed child records must remain available for the supported restart interval. The parent removes finished children from state and selects again. It finishes only when the query and saved child list are both empty.
 
-A bulk child skips an absent or Deleting snapshot; a direct migration reports an error. A busy lock, unavailable backend, pending DELETE, or reuse delay causes a retry. An unknown backend or missing required copy causes a non-retriable error. The parent reports permanent child failures.
+A bulk child skips an absent or Deleting snapshot; a direct migration reports an error. A busy lock, unavailable backend, pending `DeleteObject`, or reuse delay causes a retry. An unknown backend or missing required copy causes a non-retriable error. The parent reports permanent child failures.
 
 This query covers a snapshot's first completed migration. Later moves use direct requests or another selector. Cancellation stops scheduling, recovers uncertain child IDs, cancels all children, and waits. Children keep their data and pending work.
 
@@ -397,7 +401,7 @@ flowchart TD
 
 Creation keeps the existing base lookup and checkpoints. For unchanged chunks, it adds references to the same chunk IDs and copies only to missing requested backends. It writes changed chunks to every requested backend. A base on another backend remains usable.
 
-For a non-empty request list, creation finishes when every nonzero chunk has all requested copies and temporary source copies have been detached. For an empty list, creation keeps the existing per-chunk rules and accepts mixed backends. A retry preserves chunks written before its saved milestone.
+For a non-empty request list, creation finishes when every nonzero chunk has all requested copies and temporary source backends have been detached from the new snapshot. For an empty list, creation keeps the existing per-chunk rules and accepts mixed backends. A retry preserves chunks written before its saved milestone.
 
 A failed copy keeps its map, reference, successful copies, and remaining desired entries. If all copies succeed but marking the snapshot Ready fails, the task retries that step using the saved copies. Tombstones cause retries after deletion and the reuse delay. Creation cancellation deletes the partial destination through the reference deletion procedure.
 
@@ -418,19 +422,19 @@ The rollout first adds the schema and compatible readers and writers. Backend se
 To change the default, operators:
 
 1. Configure destination backends and route new creation to explicit lists.
-2. Replicate or delete chunks on the current default and check that every remaining reference has explicit IDs.
+2. Migrate snapshots off the current default or delete them. Check that every remaining reference has explicit IDs.
 3. Pause new top-level task admission and finish queued tasks, child tasks, retries, and cancellation.
-4. Finish old-backend DELETEs and check that references and unfinished tasks no longer need it.
+4. Finish old-backend `DeleteObject` requests and check that references and unfinished tasks no longer need it.
 5. Move the destination's settings to the singleton configuration with its existing ID, remove its duplicate `S3Backends` entry, and update all dataplane instances before resuming admission.
 
-Any backend removal requires the same reference, task, and pending-DELETE checks. Remaining tombstones keep their IDs and timestamps after configuration removal.
+Any backend removal requires the same reference, task, and pending `DeleteObject` checks. Remaining tombstones keep their IDs and timestamps after configuration removal.
 
 ## Implementation steps
 
 1. Add backend configuration, request lists, and client selection.
 2. Add reference lists, root tombstones and timestamps, and migration ownership checks.
 3. Update reads, writes, sharing, replication, detach, and deletion, including shadow-table writes.
-4. Add replication and detachment children, then bulk scheduling.
+4. Add replication and detach children, then bulk scheduling.
 5. Update creation, backup, and database migration to use the lists.
 
 ## Details to settle
@@ -438,4 +442,4 @@ Any backend removal requires the same reference, task, and pending-DELETE checks
 - Does a copy keep the source storage class or use the destination's class?
 - What are the default transfer limits and completed-task retention period?
 - Which database access path supports the bulk query?
-- What value of `BackendReattachDelay` covers outstanding DELETEs and stalled workers?
+- What value of `BackendReattachDelay` covers outstanding `DeleteObject` requests and stalled workers?
