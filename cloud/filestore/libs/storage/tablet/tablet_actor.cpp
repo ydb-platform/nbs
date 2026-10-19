@@ -1549,19 +1549,21 @@ void TIndexTabletActor::HandleForcedOperationStatus(
                     response->Record.SetProcessedRangeCount(state.Current);
                     response->Record.SetLastProcessedRangeId(
                         state.GetCurrentRange());
-                    response->Record.SetStatus(state.Status);
-                    response->Record.MutableError()->CopyFrom(state.Error);
+                    response->Record.SetOperationStatus(state.Status);
+                    response->Record.MutableOperationError()->CopyFrom(
+                        state.Error);
                 },
                 [&](const TForcedTabletOperationState& state)
                 {
-                    response->Record.SetStatus(state.Status);
-                    response->Record.MutableError()->CopyFrom(state.Error);
+                    response->Record.SetOperationStatus(state.Status);
+                    response->Record.MutableOperationError()->CopyFrom(
+                        state.Error);
                 }},
             *state);
     } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
-        response->Record.SetStatus(TStatus::E_PENDING);
+        response->Record.SetOperationStatus(TStatus::E_PENDING);
     } else {
-        response->Record.SetStatus(TStatus::E_UNKNOWN);
+        response->Record.SetOperationStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "
