@@ -768,6 +768,10 @@ STFUNC(TDiskRegistryActor::StateWork)
             HandleEnsureDiskRegistryStateIntegrityResponse
         )
 
+        HFunc(
+            TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+            HandleSetSuspendSecureErase);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
@@ -799,8 +803,6 @@ STFUNC(TDiskRegistryActor::StateRestore)
         HFunc(
             TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
             HandleBackupDiskRegistryState);
-        HFunc(TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
-            HandleSetSuspendSecureErase);
         HFunc(
             TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest,
             HandleRestoreDiskRegistryState);
@@ -862,8 +864,6 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
 
         HFunc(TEvDiskRegistry::TEvSetWritableStateRequest,
             HandleSetWritableState);
-        HFunc(TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
-            HandleSetSuspendSecureErase);
 
         HFunc(
             TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
