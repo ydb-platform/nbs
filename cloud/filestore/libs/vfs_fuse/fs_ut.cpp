@@ -7247,16 +7247,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             Service->GetNodeAttrHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
+                GetNodeAttrResponse = promise;
                 GetNodeAttrRequestEvent.Signal();
-                GetNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
-                return GetNodeAttrResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->ListNodesHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TListNodesResponse>();
+                ListNodesResponse = promise;
                 ListNodesRequestEvent.Signal();
-                ListNodesResponse = NewPromise<NProto::TListNodesResponse>();
-                return ListNodesResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->WriteDataHandler = [&](auto, const auto& rq)
