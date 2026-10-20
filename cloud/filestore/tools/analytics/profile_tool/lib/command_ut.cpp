@@ -33,6 +33,8 @@ void SetModificationTime(const TString& path, i64 seconds, i64 nanoseconds = 0)
 
 class TTestCommand final: public TCommand
 {
+    const TCommonFilterParams CommonFilterParams{Opts};
+
 public:
     TVector<TString> Inputs;
 
@@ -132,13 +134,14 @@ class TFailingOutput: public IOutputStream
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void WriteProfileLog(const TString& path)
+void WriteProfileLog(const TString& path, ui64 timestamp = 1000)
 {
     TEventLog log(path, 0);
     {
         TSelfFlushLogFrame frame(log);
         NProto::TProfileLogRecord record;
         record.SetFileSystemId(path);
+        record.AddRequests()->SetTimestampMcs(TInstant::Seconds(timestamp).MicroSeconds());
         frame.LogEvent(record);
         frame.Flush();
     }
@@ -194,7 +197,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             directory.Name() + "/profile.log.1970-01-01T00:16");
         TTempFileHandle currentFile(directory.Name() + "/profile.log");
         WriteProfileLog(oldFile.Name());
-        WriteProfileLog(currentFile.Name());
+        WriteProfileLog(currentFile.Name(), 2400);
         oldFile.Resize(oldFile.GetLength() - 1);
         SetModificationTime(currentFile.Name(), 3000);
 
@@ -294,8 +297,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
     Y_UNIT_TEST(ShouldReadOnlyPreselectedFiles)
     {
-        TTempFileHandle first;
-        TTempFileHandle second;
+        TTempDir directory;
+        TTempFileHandle first(directory.Name() + "/log.1970-01-01T00:16");
+        TTempFileHandle second(directory.Name() + "/log.1970-01-01T00:33");
         TTempFileHandle third;
         first.Write("not a log", 9);
         second.Write("not a log", 9);
@@ -304,6 +308,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             TSelfFlushLogFrame frame(log);
             NProto::TProfileLogRecord record;
             record.SetFileSystemId("selected");
+            record.AddRequests()->SetTimestampMcs(TInstant::Seconds(2400).MicroSeconds());
             frame.LogEvent(record);
             frame.Flush();
             log.CloseLog();
@@ -320,9 +325,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             "--since",
             "1970-01-01T00:38:21Z",
             "--until",
-            "1970-01-01T00:41:40Z"};
+            "1970-01-01T00:41:40Z",
+            "--prune-by-time"};
         TReadTestCommand command;
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(10, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.FilesSelected, 1);
         UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems.size(), 1);
         UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], "selected");
@@ -406,7 +412,28 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
     }
 
-    Y_UNIT_TEST(ShouldSortByFilenameTimeWithMtimeFallback)
+    Y_UNIT_TEST(ShouldProbeUndatedFilesOnlyWhenPruningRequested)
+    {
+        TTempFileHandle newer;
+        TTempFileHandle older;
+        WriteProfileLog(newer.Name(), 2000);
+        WriteProfileLog(older.Name(), 1000);
+        const char* args[] = {
+            "test", "--profile-log", newer.Name().c_str(), older.Name().c_str(),
+            "--prune-by-time"};
+        TTestCommand unprobed;
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Run(4, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[0], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[1], RealPath(older.Name()));
+        TTestCommand probed;
+        UNIT_ASSERT_VALUES_EQUAL(probed.Run(5, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(newer.Name()));
+    }
+
+    Y_UNIT_TEST(ShouldSortByFilenameTimeWithRecordFallback)
     {
         TTempDir directory;
         const TString base = directory.Name() + "/nfs-vhost-profile.log";
@@ -414,9 +441,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle newer(base + ".2026-09-22T15:22");
         TTempFileHandle oldest(base + ".2026-09-21T15:42");
         TTempFileHandle newest(base + ".2026-09-22T15:32");
-        SetModificationTime(
+        WriteProfileLog(
             current.Name(),
             TInstant::ParseIso8601("2026-09-22T15:27:00Z").Seconds());
+        SetModificationTime(current.Name(), 1);
         // Mtimes deliberately disagree with the dated filenames.
         SetModificationTime(newer.Name(), 200);
         SetModificationTime(oldest.Name(), 300);
@@ -428,8 +456,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             current.Name().c_str(),
             newer.Name().c_str(),
             oldest.Name().c_str(),
-            newest.Name().c_str()};
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
+            newest.Name().c_str(),
+            "--prune-by-time"};
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(7, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(oldest.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));

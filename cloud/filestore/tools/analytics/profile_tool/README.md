@@ -28,18 +28,27 @@ normal read-error handling. The exact per-request `--since` and `--until` filter
 apply regardless of file pruning.
 
 Use `--prune-by-time` to opt in to skipping files using estimated time ranges
-before reading their contents. The filename heuristic comes from deployment
+before processing all their records. The filename heuristic comes from deployment
 rotation examples supplied when multi-file support was introduced, such as
 `nfs-vhost-profile.log.2026-09-26T10:25`. This is not a repository-defined log
 format or a guarantee about every deployment's rotation configuration.
 
 The tool interprets a `.YYYY-MM-DDTHH:MM` suffix as the file's **end time in UTC**,
-with zero seconds. It uses filesystem modification time when the suffix is absent
-or invalid. Files are sorted by these estimated end times; each file starts at
-the previous file's end. The first is unbounded below and the last unbounded
-above. Selection allows 300 seconds of drift on each side of the requested range.
+with zero seconds, without opening dated files. Only with `--prune-by-time`, when
+the suffix is absent or invalid, it opens the log and decodes the first and last
+non-empty profile records. Without the flag, undated files keep unknown bounds
+and retain their input order relative to other undated files.
+The earliest request timestamp in the first record supplies the start; the latest
+in the last record supplies the end. It locates boundary frames from either end
+and does not decode intervening frames. Filesystem modification time is not used.
+Empty or unreadable logs retain unknown bounds for normal read-error handling.
 
-Local-time suffixes, suffixes denoting file start times, changed mtimes, gaps in
+Files are sorted by end time. Pruning uses detected record bounds when available.
+For files with only a filename end time, the start is inferred from the previous
+file's end, with the first open below and the last open above. Selection allows
+300 seconds of drift on each side of the requested range.
+
+Local-time suffixes, suffixes denoting file start times, gaps in
 the supplied rotation chain, or out-of-order records can make these estimates
 incorrect and cause matching records to be skipped when pruning is enabled.
 Leave `--prune-by-time` unset when these assumptions do not hold or when checking
@@ -50,7 +59,7 @@ completeness:
 ```
 
 Add `--prune-by-time` to enable the optimization when the metadata assumptions
-are appropriate for the supplied logs. File ordering is unchanged by this flag.
+are appropriate for the supplied logs. The flag can also change the ordering of undated files by detecting their end times.
 
 ## Options for particular commands
 
