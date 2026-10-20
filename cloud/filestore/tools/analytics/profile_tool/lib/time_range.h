@@ -22,9 +22,9 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords = false)
 
 // Files must be sorted by EndTime. Use detected record bounds when available;
 // dated files use the preceding end as their start, with open first/last bounds.
-// Selection uses metadata only, allowing 300 seconds of drift on each side.
-// Unknown bounds are unbounded. Since >= until returns an empty list;
-// otherwise a single-file list is always retained.
+// Selection uses previously computed time bounds and does not open files.
+// It allows 300 seconds of drift on each side.
+// Unknown bounds are unbounded.
 TVector<TProfileLogFile> SelectProfileLogFiles(
     TVector<TProfileLogFile> files,
     const TMaybe<TInstant>& since,

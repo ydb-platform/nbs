@@ -104,18 +104,6 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     const TMaybe<TInstant>& since,
     const TMaybe<TInstant>& until)
 {
-    if (files.size() <= 1) {
-        return files;
-    }
-    if (since && until && *since >= *until) {
-        for (const auto& file: files) {
-            Cerr << "Skipping profile log " << file.Path
-                 << ": empty or reversed interval (--since " << *since
-                 << " >= --until " << *until << ")" << Endl;
-        }
-        return {};
-    }
-
     constexpr auto MaxRotationDrift = TDuration::Seconds(300);
     TVector<TProfileLogFile> result;
     TMaybe<TInstant> fileStart;   // Fallback for files without a detected start.

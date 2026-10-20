@@ -78,7 +78,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             {"first", "middle", "last"});
     }
 
-    Y_UNIT_TEST(ShouldAlwaysKeepSingleFile)
+    Y_UNIT_TEST(ShouldKeepSingleFileWithoutDetectedStart)
     {
         const TVector<TProfileLogFile> files = {{"only", Time(200000)}};
         AssertPaths(SelectProfileLogFiles(files, {}, Time(1)), {"only"});
@@ -108,12 +108,12 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
         AssertPaths(SelectProfileLogFiles(files, Time(0), Time(1)), {"first", "second"});
     }
 
-    Y_UNIT_TEST(ShouldRejectEmptyOrReversedQueryBeforeDrift)
+    Y_UNIT_TEST(ShouldUseNormalBoundsForEmptyOrReversedQuery)
     {
         const TVector<TProfileLogFile> files = {
             {"first", Time(1000)}, {"middle", Time(2000)}, {"last", Time(3000)}};
-        AssertPaths(SelectProfileLogFiles(files, Time(1500), Time(1500)), {});
-        AssertPaths(SelectProfileLogFiles(files, Time(1501), Time(1500)), {});
+        AssertPaths(SelectProfileLogFiles(files, Time(1500), Time(1500)), {"middle"});
+        AssertPaths(SelectProfileLogFiles(files, Time(1501), Time(1500)), {"middle"});
         AssertPaths(SelectProfileLogFiles(files, Time(3000), Time(1000)), {});
         AssertPaths(SelectProfileLogFiles({}, {}, {}), {});
     }
@@ -232,6 +232,10 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
         AssertPaths(SelectProfileLogFiles(files, Time(100), Time(699)), {});
         AssertPaths(SelectProfileLogFiles(files, Time(6301), {}), {});
         AssertPaths(SelectProfileLogFiles(files, Time(1500), Time(1600)), {"first"});
+        const TVector<TProfileLogFile> single = {{"only", Time(2000), Time(1000)}};
+        AssertPaths(SelectProfileLogFiles(single, Time(2301), {}), {});
+        AssertPaths(SelectProfileLogFiles(single, {}, Time(699)), {});
+        AssertPaths(SelectProfileLogFiles(single, Time(1500), Time(1600)), {"only"});
     }
 }
 
