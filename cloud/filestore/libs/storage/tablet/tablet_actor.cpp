@@ -568,7 +568,11 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         return error;
     }
 
-    if (validateHandle) {
+    const bool writebackCacheHandlelessIo =
+        request.GetHeaders().GetFromWriteBackCache() &&
+        request.GetHandle() == InvalidHandle;
+
+    if (validateHandle && !writebackCacheHandlelessIo) {
         auto* handle = FindHandle(request.GetHandle());
         if (!handle || handle->GetSessionId() != GetSessionId(request)) {
             return ErrorInvalidHandle(request.GetHandle());

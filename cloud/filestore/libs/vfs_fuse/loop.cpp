@@ -1149,7 +1149,10 @@ private:
                          FileSystemConfig->GetZeroCopyWriteEnabled(),
                      .FlushWritesInParallelEnabled =
                          FileSystemConfig
-                             ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
+                             ->GetServerWriteBackCacheFlushWritesInParallelEnabled(),
+                     .HandlelessIoEnabled =
+                         FileSystemConfig
+                             ->GetServerWriteBackCacheHandlelessIoEnabled()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                     auto future = WriteBackCache.Drain();
@@ -1397,6 +1400,8 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
+        config.SetServerWriteBackCacheHandlelessIoEnabled(
+            features.GetServerWriteBackCacheHandlelessIoEnabled());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 

@@ -23,11 +23,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
     const TFlushBatchLimits& flushBatchLimits,
-    TString logTag)
+    TString logTag,
+    bool handlelessIoEnabled)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , FlushBatchLimits(flushBatchLimits)
+    , HandlelessIoEnabled(handlelessIoEnabled)
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , RequestManager(
@@ -533,8 +535,11 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.HandlesWithReleaseRequests.erase(handle);
     }
 
-    if (nodeState.Handles.empty()) {
-        // No live handles remaining - drop all unflushed requests
+    if (nodeState.Handles.empty() &&
+        (!HandlelessIoEnabled || error.GetCode() == E_FS_NOENT))
+    {
+        // Without live handles, retry only if handleless IO can still write
+        // the node. An unlinked node may have been deleted on handle release.
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
         Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);

@@ -43,7 +43,8 @@ public:
               Stats->GetWriteDataRequestManagerStats(),
               Stats->GetNodeStateHolderStats(),
               TFlushBatchLimits{},
-              "[tag]")
+              "[tag]",
+              /* handlelessIoEnabled = */ false)
     {
         State.Init();
 

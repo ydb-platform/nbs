@@ -139,4 +139,7 @@ message TFileSystemConfig
 
     // Maximum number of operations in one HandleOpsQueue batch.
     optional uint32 AsyncHandleOperationBatchSize = 41;
+
+    // Flush write-back cache data without a file handle.
+    optional bool ServerWriteBackCacheHandlelessIoEnabled = 42;
 }

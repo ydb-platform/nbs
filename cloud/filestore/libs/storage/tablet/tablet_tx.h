@@ -2328,6 +2328,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui32 WriteBlobThreshold;
         const ui64 Handle;
+        const bool WriteBackCacheHandlelessIo;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
         // Used when we want to write data to a specific node, not the node
@@ -2350,6 +2351,9 @@ struct TTxIndexTablet
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())
+            , WriteBackCacheHandlelessIo(
+                  request.GetHeaders().GetFromWriteBackCache() &&
+                  request.GetHandle() == InvalidHandle)
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
             , ExplicitNodeId(request.GetNodeId())
@@ -2387,6 +2391,7 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
+        const bool WriteBackCacheHandlelessIo;
         const TByteRange ByteRange;
         // Used when we want to access a specific node, not the node
         // inferred from the handle.
@@ -2405,6 +2410,9 @@ struct TTxIndexTablet
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
+            , WriteBackCacheHandlelessIo(
+                  request.GetHeaders().GetFromWriteBackCache() &&
+                  request.GetHandle() == InvalidHandle)
             , ByteRange(byteRange)
             , ExplicitNodeId(request.GetNodeId())
         {}

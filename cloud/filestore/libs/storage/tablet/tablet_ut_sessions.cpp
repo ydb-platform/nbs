@@ -1427,6 +1427,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheHandlelessIoEnabled(true);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1467,6 +1468,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheHandlelessIoEnabled(true);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);

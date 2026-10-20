@@ -203,7 +203,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     args.CommitId = GetCurrentCommitId();
 
-    if (Config->GetAllowHandlelessIO()) {
+    if (Config->GetAllowHandlelessIO() || args.WriteBackCacheHandlelessIo) {
         if (args.ExplicitNodeId == InvalidNodeId) {
             args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
             return true;
@@ -240,7 +240,9 @@ bool TIndexTabletActor::PrepareTx_WriteData(
 
     // It is possible to explicitly pass a nodeId that is non-existent
     // in the handleless mode. This should not lead to a TABLET_VERIFY.
-    TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+    TABLET_VERIFY(
+        args.Node || Config->GetAllowHandlelessIO() ||
+        args.WriteBackCacheHandlelessIo);
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;
