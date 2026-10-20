@@ -297,8 +297,9 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
-        BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        GetBlockGroupSize(),
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             MarkMixedBlocksDeleted(
                 *db,
                 args.NodeId,
@@ -437,8 +438,9 @@ void TIndexTabletActor::CompleteTx_WriteData(
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
-        BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        GetBlockGroupSize(),
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             TBlock block {
                 args.NodeId,
                 IntegerCast<ui32>(

@@ -18,7 +18,19 @@ namespace NCloud::NFileStore::NStorage {
 constexpr ui32 MaxBlocksCount = 1024;
 
 constexpr ui32 NodeGroupSize = 16;
+// Legacy grouping for filesystems created without an explicit value.
 constexpr ui32 BlockGroupSize = 64;
+
+inline ui32 GetEffectiveBlockGroupSize(ui32 blockGroupSize)
+{
+    return blockGroupSize ? blockGroupSize : BlockGroupSize;
+}
+
+inline bool IsValidBlockGroupSize(ui32 blockGroupSize)
+{
+    return blockGroupSize && blockGroupSize <= MaxBlocksCount &&
+           !(blockGroupSize & (blockGroupSize - 1));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -249,7 +261,9 @@ struct IBlockLocation2RangeIndex
     [[nodiscard]] virtual ui32 Calc(ui64 nodeId, ui32 blockIndex) const = 0;
 };
 
-IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type);
+IBlockLocation2RangeIndexPtr CreateRangeIdHasher(
+    ui32 type,
+    ui32 blockGroupSize = BlockGroupSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 

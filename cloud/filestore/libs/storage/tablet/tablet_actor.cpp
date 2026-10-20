@@ -974,7 +974,7 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     const double rangeCount =
         Config->GetCalculateCleanupScoreBasedOnUsedBlocksCount()
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
-                  (BlockGroupSize * NodeGroupSize)
+                  (GetBlockGroupSize() * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
 
     const auto avgCleanupScore = rangeCount > 0.0

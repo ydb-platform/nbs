@@ -1,6 +1,7 @@
 #include "helpers.h"
 
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/tablet/model/block.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
@@ -263,6 +264,7 @@ void Convert(
     dst.SetBlocksCount(src.GetBlocksCount());
     dst.SetNodesCount(src.GetNodesCount());
     dst.SetRangeIdHasherType(src.GetRangeIdHasherType());
+    dst.SetBlockGroupSize(GetEffectiveBlockGroupSize(src.GetBlockGroupSize()));
     dst.SetStorageMediaKind(mediaKind);
 
     {
@@ -323,6 +325,7 @@ void Convert(
     dst.SetBlocksCount(src.GetBlocksCount());
     dst.SetNodesCount(src.GetNodesCount());
     dst.SetRangeIdHasherType(src.GetRangeIdHasherType());
+    dst.SetBlockGroupSize(GetEffectiveBlockGroupSize(src.GetBlockGroupSize()));
     dst.SetStorageMediaKind(mediaKind);
 
     dst.MutablePerformanceProfile()->CopyFrom(src.GetPerformanceProfile());
