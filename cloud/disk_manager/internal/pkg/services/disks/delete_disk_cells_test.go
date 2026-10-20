@@ -41,6 +41,7 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 					request:      &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "zone"}, DeleteIfNonExistent: true, Sync: sync}, state: &protos.DeleteDiskTaskState{}}
 				ids := []string{"toplevel_task_id_delete_disk_from_cell_cell-a", "toplevel_task_id_delete_disk_from_cell_cell-b"}
 				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+				storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 				storage.On("PrepareDiskCleanup", ctx, "disk", ids).Return(true, nil).Once()
 				execCtx.On("SaveState", ctx).Return(nil).Twice()
 				schedule := func(i int, err error) {
@@ -186,5 +187,32 @@ func TestDeleteDiskBackgroundReservationFailure(t *testing.T) {
 			require.NoError(t, err)
 		}
 		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	}
+}
+
+func TestDeleteDiskTaskAlreadyCompleted(t *testing.T) {
+	for _, readError := range []bool{false, true} {
+		ctx := context.Background()
+		storage := storage_mocks.NewStorageMock()
+		execCtx := newExecutionContextMock()
+		// No selector, scheduler, or NBS factory: completed deletion needs none.
+		task := &deleteDiskTask{storage: storage,
+			request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "unknown-zone"}, DeleteIfNonExistent: true, Sync: true},
+			state:   &protos.DeleteDiskTaskState{}}
+		storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+		var readErr error
+		if readError {
+			readErr = assert.AnError
+		}
+		storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(true, readErr).Once()
+		err := task.Run(ctx, execCtx)
+		if readError {
+			require.True(t, errors.Is(err, readErr))
+		} else {
+			require.NoError(t, err)
+		}
+		storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
+		storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+		mock.AssertExpectationsForObjects(t, storage, execCtx)
 	}
 }

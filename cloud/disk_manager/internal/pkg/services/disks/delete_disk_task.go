@@ -74,8 +74,15 @@ func (t *deleteDiskTask) deleteDisk(
 
 	zoneID := ""
 	if diskMeta == nil {
-		// Disk does not exist in the database.
+		// The record may be missing, already deleted, or reserved for cell cleanup.
 		if !t.request.DeleteIfNonExistent {
+			return nil
+		}
+		completed, err := t.storage.IsDiskDeletionCompleted(ctx, diskID)
+		if err != nil {
+			return err
+		}
+		if completed {
 			return nil
 		}
 

@@ -704,7 +704,7 @@ func (s *storageYDB) clearDeletedDisks(
 				declare $status as Int64;
 
 				delete from disks
-				where id = $disk_id and status = $status and deleted_at = $deleted_at;
+				where id = $disk_id and status = $status;
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id

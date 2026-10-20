@@ -46,6 +46,31 @@ func diskCleanupIDs(state diskState) ([]string, error) {
 	return ids, err
 }
 
+// A zero timestamp is persisted as the Unix epoch; legacy NULLs scan as Go zero.
+func diskDeletionCompleted(state diskState) bool {
+	return state.status == diskStatusDeleted && state.deletedAt.After(time.Unix(0, 0))
+}
+
+func (s *storageYDB) IsDiskDeletionCompleted(
+	ctx context.Context,
+	diskID string,
+) (completed bool, err error) {
+	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		tx, err := session.BeginRWTransaction(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		state, err := s.loadDiskCleanupState(ctx, tx, diskID)
+		if err != nil {
+			return err
+		}
+		completed = diskDeletionCompleted(state)
+		return tx.Commit(ctx)
+	})
+	return completed, err
+}
+
 // PrepareDiskCleanup reserves the ID before background tasks can be scheduled.
 // A concurrently recreated disk must never be included in the old cleanup.
 func (s *storageYDB) PrepareDiskCleanup(
@@ -63,8 +88,9 @@ func (s *storageYDB) PrepareDiskCleanup(
 		if err != nil {
 			return err
 		}
-		if state.status != diskStatusDeleted && state.status != diskStatusDeletingFromCells {
-			// Also skip a missing reservation: DeleteDisk must establish it first.
+		if diskDeletionCompleted(state) ||
+			(state.status != diskStatusDeleted && state.status != diskStatusDeletingFromCells) {
+			// Completed deletion must never be restarted. DeleteDisk must also establish a reservation first.
 			prepared = false
 			return tx.Commit(ctx)
 		}
