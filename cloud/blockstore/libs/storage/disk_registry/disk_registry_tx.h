@@ -99,6 +99,7 @@ struct TTxDiskRegistry
         bool RestoreState = false;
         TInstant LastBackupTime;
         TDiskRegistryStateSnapshot Snapshot;
+        bool SuspendSecureErase = false;
 
         TLoadState() = default;
 
@@ -111,6 +112,7 @@ struct TTxDiskRegistry
             RestoreState = false;
             LastBackupTime = {};
             Snapshot.Clear();
+            SuspendSecureErase = false;
         }
     };
 

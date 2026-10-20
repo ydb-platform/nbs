@@ -26,6 +26,7 @@ GO_TEST_SRCS(
     acquire_base_disk_task_test.go
     configure_pool_task_test.go
     optimize_base_disks_task_test.go
+    register_test.go
     release_base_disk_task_test.go
     retire_base_disk_task_test.go
 )
