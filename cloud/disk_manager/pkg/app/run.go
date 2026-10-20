@@ -19,6 +19,7 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
@@ -307,6 +308,10 @@ func run(
 		}
 	}
 
+	// The snapshot bucket: the meta of every created S3 snapshot goes next to
+	// its chunks, as to the follower.
+	var snapshotS3 *bucket.S3
+
 	dataplaneConfig := config.GetDataplaneConfig()
 	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
@@ -379,6 +384,12 @@ func run(
 			if err != nil {
 				return err
 			}
+
+			snapshotS3 = bucket.NewS3(
+				s3,
+				s3Bucket,
+				snapshotConfig.GetChunkBlobsS3KeyPrefix(),
+			)
 		}
 
 		var migrationDstDB *persistence.YDBClient
@@ -427,6 +438,7 @@ func run(
 			migrationDstDB,
 			migrationDstS3,
 			backupS3,
+			snapshotS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)
@@ -505,6 +517,7 @@ func run(
 			nfsClientMetricsRegistry,
 			nfsTlsProvider,
 			backupS3,
+			snapshotS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

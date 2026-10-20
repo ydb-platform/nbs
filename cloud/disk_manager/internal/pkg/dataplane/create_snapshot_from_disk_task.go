@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -16,6 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +27,7 @@ type createSnapshotFromDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	nbsFactory        nbs_client.Factory
 	storage           storage.Storage
+	snapshotS3        *bucket.S3
 	request           *protos.CreateSnapshotFromDiskRequest
 	state             *protos.CreateSnapshotFromDiskTaskState
 }
@@ -394,6 +397,13 @@ func (t *createSnapshotFromDiskTask) run(
 	t.state.TransferredDataSize =
 		uint64(t.state.TransferredChunkCount) * chunkSize
 
+	// The chunk map goes to the snapshot bucket before the snapshot is marked
+	// created, so a created S3 snapshot always has its map there.
+	err = t.putChunkMap(ctx)
+	if err != nil {
+		return err
+	}
+
 	err = execCtx.SaveState(ctx)
 	if err != nil {
 		return err
@@ -415,6 +425,36 @@ func (t *createSnapshotFromDiskTask) run(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Writes the chunk map of the snapshot to the snapshot bucket, next to the
+// chunks, as the backup writes it to the follower. A snapshot stored in YDB
+// has nothing in the bucket.
+func (t *createSnapshotFromDiskTask) putChunkMap(ctx context.Context) error {
+	if t.snapshotS3 == nil || !t.request.UseS3 {
+		return nil
+	}
+
+	chunkMap, err := readChunkMap(
+		ctx,
+		t.storage,
+		t.request.DstSnapshotId,
+		t.state.ChunkCount,
+	)
+	if err != nil {
+		return err
+	}
+
+	data, err := proto.Marshal(chunkMap)
+	if err != nil {
+		return errors.NewNonRetriableError(err)
+	}
+
+	return t.snapshotS3.PutObject(
+		ctx,
+		bucket.ChunkMapKey(t.request.DstSnapshotId),
+		persistence.S3Object{Data: data},
+	)
+}
 
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,

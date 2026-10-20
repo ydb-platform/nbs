@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     backup_chunks_task.go
     backup_snapshot_data_task.go
+    chunk_map.go
     collect_snapshot_metrics_task.go
     collect_snapshots_task.go
     consts.go
@@ -38,6 +39,7 @@ END()
 
 RECURSE(
     backup
+    bucket
     common
     config
     filesystem

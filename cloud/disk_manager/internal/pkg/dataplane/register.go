@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
@@ -33,6 +34,7 @@ func RegisterForExecution(
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
 	backupS3 *backup.S3,
+	snapshotS3 *bucket.S3,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -41,6 +43,7 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			nbsFactory:        nbsFactory,
 			storage:           storage,
+			snapshotS3:        snapshotS3,
 		}
 	})
 	if err != nil {
@@ -168,6 +171,7 @@ func RegisterForExecution(
 		return &deleteSnapshotDataTask{
 			performanceConfig: performanceConfig,
 			storage:           storage,
+			snapshotS3:        snapshotS3,
 		}
 	})
 	if err != nil {

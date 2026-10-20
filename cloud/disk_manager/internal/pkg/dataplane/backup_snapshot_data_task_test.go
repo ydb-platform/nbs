@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -99,7 +100,7 @@ func newBackupSnapshotDataTask(
 }
 
 func backupTestMetaKey(snapshotID string) string {
-	return backup.SnapshotMetaKey("disk", snapshotID)
+	return bucket.SnapshotMetaKey("disk", snapshotID)
 }
 
 func backupTestMeta(snapshotID string) []byte {
@@ -237,14 +238,14 @@ func readBackupChunkMap(
 	snapshotID string,
 ) *protos.BackupChunkMap {
 
-	object, err := follower.getObject(ctx, backup.ChunkMapKey(snapshotID))
+	object, err := follower.getObject(ctx, bucket.ChunkMapKey(snapshotID))
 	require.NoError(t, err)
 
 	chunkMap := &protos.BackupChunkMap{}
 	err = proto.Unmarshal(object.Data, chunkMap)
 	require.NoError(t, err)
 
-	raw, err := follower.getRawObject(ctx, backup.ChunkMapKey(snapshotID))
+	raw, err := follower.getRawObject(ctx, bucket.ChunkMapKey(snapshotID))
 	require.NoError(t, err)
 	require.NotEqual(t, object.Data, raw.Data)
 	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
@@ -307,7 +308,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	_, err = storage.DeletingSnapshot(ctx, "snap1", "delete")
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	_, err = follower.getObject(ctx, bucket.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
 	queue, err := queuedBackupChunks(ctx, storage)
@@ -520,7 +521,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	object, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
+	object, err := follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 	require.Equal(t, chunkBlob.Data, object.Data)
 	require.Equal(
@@ -577,7 +578,7 @@ func TestBackupSnapshotDataTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	_, err = follower.getObject(ctx, bucket.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
 	_, err = storage.DeletingSnapshot(ctx, "snap1", "delete")
@@ -633,7 +634,7 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 	err = newBackupChunksTask(storage, follower).Run(ctx, workerCtx)
 	require.NoError(t, err)
 	require.NoError(t, task.Run(ctx, execCtx))
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunk0))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunk0))
 	require.NoError(t, err)
 
 	queue, err := queuedBackupChunks(ctx, storage)
@@ -667,7 +668,7 @@ func TestBackupSnapshotDataTaskSkipsDeletedSnapshot(t *testing.T) {
 	require.Empty(t, queue)
 
 	// Nothing is written: the deletion would not wait for the copy.
-	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	_, err = follower.getObject(ctx, bucket.ChunkMapKey("snap1"))
 	require.Error(t, err)
 	requireNoBackupMeta(t, ctx, follower, "snap1")
 }
@@ -813,7 +814,7 @@ func TestBackupSnapshotDataTaskFailsWhenChunkCannotBeCopied(t *testing.T) {
 	// The corrupt chunk fails the copy instead of holding the snapshot
 	// forever; no map is written.
 	require.True(t, errors.Is(task.Run(ctx, execCtx), errors.NewEmptyNonRetriableError()))
-	_, err := follower.getObject(ctx, backup.ChunkMapKey("snapshot"))
+	_, err := follower.getObject(ctx, bucket.ChunkMapKey("snapshot"))
 	require.Error(t, err)
 
 	// The failed copy clears its chunks and releases the snapshot.

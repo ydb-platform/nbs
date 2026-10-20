@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -85,7 +85,7 @@ func backUpChunk(
 	err := task.Run(ctx, mocks.NewExecutionContextMock())
 	require.NoError(t, err)
 
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 }
 
@@ -103,7 +103,7 @@ func TestDeleteBackupChunksTask(t *testing.T) {
 
 	// The chunk is alive: nothing to delete.
 	runDeleteBackupChunksTask(t, ctx, storage, follower)
-	_, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err := follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 
 	finishSnapshotDeletion(t, ctx, storage, "snap1")
@@ -113,7 +113,7 @@ func TestDeleteBackupChunksTask(t *testing.T) {
 	require.EqualValues(t, 1, length)
 
 	runDeleteBackupChunksTask(t, ctx, storage, follower)
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.Error(t, err)
 }
 
@@ -138,12 +138,12 @@ func TestDeleteBackupChunksTaskKeepsSharedChunk(t *testing.T) {
 
 	finishSnapshotDeletion(t, ctx, storage, "src")
 	runDeleteBackupChunksTask(t, ctx, storage, follower)
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 
 	finishSnapshotDeletion(t, ctx, storage, "dst")
 	runDeleteBackupChunksTask(t, ctx, storage, follower)
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.Error(t, err)
 }
 
@@ -161,11 +161,11 @@ func TestDeleteBackupChunksTaskDeletesChunkOfCancelledCopy(t *testing.T) {
 
 	_, err := storage.ClearBackupChunks(ctx, "snap1", 10)
 	require.NoError(t, err)
-	putFollowerObject(t, ctx, follower, backup.ChunkKey(chunkID))
+	putFollowerObject(t, ctx, follower, bucket.ChunkKey(chunkID))
 
 	finishSnapshotDeletion(t, ctx, storage, "snap1")
 	runDeleteBackupChunksTask(t, ctx, storage, follower)
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.Error(t, err)
 }
 

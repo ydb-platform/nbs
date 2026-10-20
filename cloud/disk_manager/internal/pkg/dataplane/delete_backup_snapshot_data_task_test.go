@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
@@ -88,7 +88,7 @@ func TestDeleteBackupSnapshotDataTaskWaitsUntilDeletion(t *testing.T) {
 
 	follower := newTestFollower(t, ctx)
 	createSnapshotWithChunk(t, ctx, storage, "snap1")
-	putFollowerObject(t, ctx, follower, backup.ChunkMapKey("snap1"))
+	putFollowerObject(t, ctx, follower, bucket.ChunkMapKey("snap1"))
 
 	task := newDeleteBackupSnapshotDataTask(storage, follower, "snap1")
 	err := task.Run(ctx, newBackupExecutionContext(ctx))
@@ -99,7 +99,7 @@ func TestDeleteBackupSnapshotDataTaskWaitsUntilDeletion(t *testing.T) {
 	err = task.Run(ctx, newBackupExecutionContext(ctx))
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	_, err = follower.getObject(ctx, bucket.ChunkMapKey("snap1"))
 	require.NoError(t, err)
 }
 
@@ -111,19 +111,19 @@ func TestDeleteBackupSnapshotDataTask(t *testing.T) {
 
 	follower := newTestFollower(t, ctx)
 	chunkID := createSnapshotWithChunk(t, ctx, storage, "snap1")
-	putFollowerObject(t, ctx, follower, backup.ChunkKey(chunkID))
-	putFollowerObject(t, ctx, follower, backup.ChunkMapKey("snap1"))
+	putFollowerObject(t, ctx, follower, bucket.ChunkKey(chunkID))
+	putFollowerObject(t, ctx, follower, bucket.ChunkMapKey("snap1"))
 	removeSnapshot(t, ctx, storage, "snap1")
 
 	task := newDeleteBackupSnapshotDataTask(storage, follower, "snap1")
 	err := task.Run(ctx, newBackupExecutionContext(ctx))
 	require.NoError(t, err)
 
-	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	_, err = follower.getObject(ctx, bucket.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
 	// Chunks are deleted by dataplane.DeleteBackupChunks.
-	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	_, err = follower.getObject(ctx, bucket.ChunkKey(chunkID))
 	require.NoError(t, err)
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -61,9 +62,9 @@ func Load(
 			)
 		}
 
-		key = SnapshotMetaKey(options.DiskID, options.ID)
+		key = bucket.SnapshotMetaKey(options.DiskID, options.ID)
 	case protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE:
-		key = ImageMetaKey(options.ID)
+		key = bucket.ImageMetaKey(options.ID)
 	default:
 		return nil, errors.NewNonRetriableErrorf(
 			"unknown backup source kind %v",
@@ -93,7 +94,7 @@ func Load(
 
 	var meta Meta
 	if options.Kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT {
-		var snapshot SnapshotMeta
+		var snapshot bucket.SnapshotMeta
 		err = json.Unmarshal(object.Data, &snapshot)
 		if err == nil && snapshot.DiskID != options.DiskID {
 			return nil, errors.NewNonRetriableErrorf(
@@ -113,7 +114,7 @@ func Load(
 			EncryptionKeyHash: snapshot.EncryptionKeyHash,
 		}
 	} else {
-		var image ImageMeta
+		var image bucket.ImageMeta
 		err = json.Unmarshal(object.Data, &image)
 		meta = Meta{
 			ID:                image.ID,
@@ -170,7 +171,7 @@ func Load(
 		)
 	}
 
-	key = ChunkMapKey(options.ID)
+	key = bucket.ChunkMapKey(options.ID)
 	chunkMapObject, err := reader.GetObject(ctx, key)
 	if err != nil {
 		return nil, err
@@ -215,7 +216,7 @@ func CheckSnapshotMeta(
 	snapshotID string,
 ) error {
 
-	return checkMeta(ctx, reader, SnapshotMetaKey(diskID, snapshotID), snapshotID)
+	return checkMeta(ctx, reader, bucket.SnapshotMetaKey(diskID, snapshotID), snapshotID)
 }
 
 func CheckImageMeta(
@@ -224,7 +225,7 @@ func CheckImageMeta(
 	imageID string,
 ) error {
 
-	return checkMeta(ctx, reader, ImageMetaKey(imageID), imageID)
+	return checkMeta(ctx, reader, bucket.ImageMetaKey(imageID), imageID)
 }
 
 func checkMeta(
