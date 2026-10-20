@@ -918,15 +918,7 @@ public:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<NProto::TDeviceConfig>& devices,
-        TAllocateDiskResult* result);
-
-    NProto::TError CreateMirroredDiskFromDevices(
-        TInstant now,
-        TDiskRegistryDatabase& db,
-        const TCreateDiskFromDevicesParams& params,
         const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const TVector<TDeviceId>& freshDeviceIds,
         TAllocateDiskResult* result);
 
     NProto::TError ChangeDiskDevice(
@@ -1601,14 +1593,20 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent);
 
-    NProto::TError CanCreateDiskFromDevices(
+    NProto::TError CanCreateNonreplicatedDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices) const;
 
-    NProto::TError CanCreateMirroredDiskFromDevices(
+    NProto::TError CreateNonreplicatedDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const THashSet<TDeviceId>& freshDeviceIds) const;
+        const TVector<NProto::TDeviceConfig>& devices,
+        TAllocateDiskResult* result);
+
+    NProto::TError CanCreateDiskFromDevices(
+        const TCreateDiskFromDevicesParams& params,
+        const TVector<TVector<NProto::TDeviceConfig>>& replicas) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
