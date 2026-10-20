@@ -73,6 +73,11 @@ message TRdmaServer
     // "ibv_modify_qp()" function. Valid values are in range [0, 31].
     // See TRdmaClient::QpMinRnrTimer comment for the value reference
     optional uint32 QpMinRnrTimer = 21;
+
+    // The largest user payload that can be received alongside
+    // `TRequestMessage`. Sending both in one go makes a separate `RDMA_READ`
+    // unnecessary. Rounded up to a page multiple. 0 disables.
+    uint32 MaxEagerRequestBytes = 22;
 }
 
 message TRdmaClient
@@ -143,4 +148,10 @@ message TRdmaClient
     // Size of the memory windows pool. If not specified or 0, will be set to
     // RecvQueueSize * 2.
     uint32 MemoryWindowsPoolSize = 23;
+
+    // The largest user payload that can be sent alongside `TRequestMessage`.
+    // Sending both in one go makes a separate `RDMA_READ` unnecessary. Rounded
+    // up to a page multiple, the effective limit is min(client, server).
+    // 0 disables.
+    uint32 MaxEagerRequestBytes = 24;
 }
