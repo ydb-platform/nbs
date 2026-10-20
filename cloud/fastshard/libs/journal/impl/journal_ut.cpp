@@ -40,9 +40,6 @@ constexpr ui32 DefaultPageSize = 4;
 constexpr ui64 DefaultPageCount = 64;
 constexpr ui64 DevicePageCount = 1024;
 
-// the key the journal keeps its metadata under
-constexpr ui64 MetadataKey = Max<ui64>();
-
 // "<firstPageNo>x<pageCount>" pairs
 using TGroups = TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>;
 
@@ -262,7 +259,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
 
     struct TBlockedWrite
     {
-        ui64 Key = 0;
+        std::optional<ui64> Key;   // none for a metadata write
         TBuffer Buffer;
         TPromise<NCloud::NProto::TError> Error;
     };
@@ -272,29 +269,52 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     TManualEvent WriteBlocked;
     TVector<TBlockedWrite> BlockedWrites;
 
-    TFuture<TResultOrError<TVector<TKeyBuffer>>> Restore() override
+    TFuture<TRestoreResult> Restore() override
     {
         if (FailRestore.load()) {
-            return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
+            return MakeFuture<TRestoreResult>(
                 MakeError(E_IO, "restore failed"));
         }
 
         auto response = Impl->Restore().GetValueSync();
         if (HasError(response)) {
-            return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
-                response.GetError());
+            return MakeFuture<TRestoreResult>(response.GetError());
         }
 
         // the interface promises no particular order, so hand the buffers
         // back reversed - restoring must not depend on how they arrive
-        auto buffers = response.ExtractResult();
-        Reverse(buffers.begin(), buffers.end());
+        auto restored = response.ExtractResult();
+        Reverse(restored.KeyBuffers.begin(), restored.KeyBuffers.end());
 
-        return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
-            std::move(buffers));
+        return MakeFuture<TRestoreResult>(std::move(restored));
     }
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
+    {
+        return WriteOrHold(key, std::move(buffer));
+    }
+
+    TFuture<NCloud::NProto::TError> WriteMeta(TBuffer buffer) override
+    {
+        return WriteOrHold(std::nullopt, std::move(buffer));
+    }
+
+    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
+    {
+        return Impl->EraseBelow(key);
+    }
+
+    void BlockWritesUntilReleased()
+    {
+        with_lock (Mutex) {
+            BlockWrites = true;
+        }
+    }
+
+private:
+    TFuture<NCloud::NProto::TError> WriteOrHold(
+        std::optional<ui64> key,
+        TBuffer buffer)
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "meta write failed"));
@@ -310,20 +330,20 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
             }
         }
 
-        return Impl->Write(key, std::move(buffer));
+        return WriteThrough(key, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
+    TFuture<NCloud::NProto::TError> WriteThrough(
+        std::optional<ui64> key,
+        TBuffer buffer)
     {
-        return Impl->EraseBelow(key);
-    }
-
-    void BlockWritesUntilReleased()
-    {
-        with_lock (Mutex) {
-            BlockWrites = true;
+        if (key) {
+            return Impl->Write(*key, std::move(buffer));
         }
+        return Impl->WriteMeta(std::move(buffer));
     }
+
+public:
 
     void ReleaseWrites()
     {
@@ -337,7 +357,8 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
 
         for (auto& write: blocked) {
             write.Error.SetValue(
-                Impl->Write(write.Key, std::move(write.Buffer)).GetValueSync());
+                WriteThrough(write.Key, std::move(write.Buffer))
+                    .GetValueSync());
         }
     }
 };
@@ -553,30 +574,53 @@ struct TFixture: public NUnitTest::TBaseFixture
         PutBuffer(key, SerializeRecord(record));
     }
 
+    void PutMetaBuffer(TBuffer buffer)
+    {
+        const auto error =
+            MetaStore->Impl->WriteMeta(std::move(buffer)).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
     void PutMetadata(ui64 lsnLowWatermark)
     {
-        PutBuffer(
-            MetadataKey,
-            SerializeMetadata(
-                {.Version = CurrentFormatVersion,
-                 .LsnLowWatermark = lsnLowWatermark}));
+        PutMetaBuffer(SerializeMetadata(
+            {.Version = CurrentFormatVersion,
+             .LsnLowWatermark = lsnLowWatermark}));
+    }
+
+    TRestoredBuffers StoredBuffers()
+    {
+        auto response = MetaStore->Impl->Restore().GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        return response.ExtractResult();
     }
 
     // "1,2,meta" - the keys the meta store holds, a record under its lsn
     TString StoredKeys()
     {
-        auto response = MetaStore->Impl->Restore().GetValueSync();
-        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
-
-        auto buffers = response.ExtractResult();
+        auto buffers = StoredBuffers().KeyBuffers;
         SortBy(buffers, [](const auto& keyBuffer) { return keyBuffer.Key; });
 
         TVector<TString> keys;
         for (const auto& [key, buffer]: buffers) {
-            keys.push_back(key == MetadataKey ? "meta" : ToString(key));
+            keys.push_back(ToString(key));
         }
 
         return JoinSeq(",", keys);
+    }
+
+    // "lsn=2" - the lsn low watermark the meta store holds in its metadata,
+    // "none" before the first advance
+    TString StoredMetadata()
+    {
+        auto buffer = StoredBuffers().MetaBuffer;
+        if (buffer.Empty()) {
+            return "none";
+        }
+
+        auto metadata = DeserializeMetadata(buffer);
+        UNIT_ASSERT_C(metadata, "the stored metadata does not deserialize");
+        return TStringBuilder() << "lsn=" << metadata->LsnLowWatermark;
     }
 
     // Writes three single page records, one page each, and returns with the
@@ -727,7 +771,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldFailToRestoreCorruptedMetadata, TFixture)
     {
-        PutGarbage(MetadataKey, "not a metadata buffer");
+        constexpr TStringBuf garbage = "not a metadata buffer";
+        PutMetaBuffer(TBuffer(garbage.data(), garbage.size()));
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
@@ -815,7 +860,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the erased records are all flushed, none of them is stranded
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(5));
         FlushUpTo(5);
-        UNIT_ASSERT_VALUES_EQUAL("meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
@@ -966,15 +1011,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "10:[A010,A011,A012]",
             DescribeGroups(response));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetLastAckedLogSequenceNumber());
-    }
-
-    Y_UNIT_TEST_F(ShouldRejectTheLsnReservedForTheMetadata, TFixture)
-    {
-        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            WriteRecord(MetadataKey, 1, 'A', {{10, 1}}));
     }
 
     Y_UNIT_TEST_F(ShouldAnswerARetryOfAnIndexedRecord, TFixture)
@@ -1473,7 +1509,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
-        UNIT_ASSERT_VALUES_EQUAL("1,2,3,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("1,2,3", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("lsn=2", StoredMetadata());
 
         // it only moves forward
         UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(2));
@@ -1619,12 +1656,12 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
-        UNIT_ASSERT_VALUES_EQUAL("1,2,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("1,2", StoredKeys());
 
         FlushUpTo(1);
 
         // the record is gone from the meta store, its pages are free again
-        UNIT_ASSERT_VALUES_EQUAL("2,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("2", StoredKeys());
         UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{10, 2}})));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 2}}));
 
@@ -1651,7 +1688,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         FlushUpTo(2);
 
-        UNIT_ASSERT_VALUES_EQUAL("3,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("3", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("lsn=2", StoredMetadata());
 
         RecreateJournal();
 
@@ -1674,7 +1712,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // must stay put even though the flusher is done with them
         Journal->MarkRecordAsFlushed(2);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
-        UNIT_ASSERT_VALUES_EQUAL("1,2,3,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("1,2,3", StoredKeys());
 
         Device->ReleaseReads();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1683,7 +1721,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // once it is done the cleanup goes through
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
-        UNIT_ASSERT_VALUES_EQUAL("3,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("3", StoredKeys());
     }
 }
 
