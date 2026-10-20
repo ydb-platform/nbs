@@ -2,7 +2,7 @@
 
 An image or snapshot can store its chunks on one or several backends. A creation request for `[A, B]` writes each chunk to both backends. Replication adds copies: a request for `[B, C]` copies chunks to B and C while keeping existing copies on A.
 
-Migration has one destination backend. Migration to B first copies every chunk to B, then detaches the other backends from that snapshot. Other snapshots keep the copies they still need. Replication and migration preserve chunk IDs and shared references.
+Migration takes a destination list. To move from `[A, B]` to `[C, D]`, it first creates both new copies, then detaches A and B from that snapshot: `[A, B] → [A, B, C, D] → [C, D]`. Other snapshots keep the copies they still need. Replication and migration preserve chunk IDs and shared references.
 
 ## Purpose and scope
 
@@ -57,9 +57,9 @@ Creation requests contain a `BackendIds` list:
 
 For creation, an empty list keeps the existing `UseS3` and inheritance rules. New S3 chunks use `DEFAULT_BACKEND_ID`; new YDB chunks use YDB. Unchanged chunks inherit their source copies. A non-empty list overrides `UseS3` and applies to every chunk, including shared chunks.
 
-The replication task also accepts a list of destination backends. It adds copies on those backends and keeps existing copies. Migration and bulk migration take one destination backend ID. The migration parent passes `[destination]` to its replication child.
+Replication accepts a destination list and adds copies while keeping existing copies. Migration and bulk migration take a non-empty destination list. Migration first replicates to every destination, then detaches backends outside that list. Bulk migration passes the same list to each snapshot migration.
 
-Creation and replication tasks sort and deduplicate their lists. All tasks validate every selected backend before creating records, even for an all-zero snapshot. An unavailable configured backend causes a retry; an unknown ID causes a non-retriable error.
+Tasks sort and deduplicate their backend lists. They validate every selected backend before creating records, even for an all-zero snapshot. An unavailable configured backend causes a retry; an unknown ID causes a non-retriable error.
 
 Snapshot creation tasks must survive version upgrades. Their saved requests have an empty list and keep the existing behavior. For a snapshot with unspecified backend, the reader infers YDB or the default S3 backend from chunk metadata.
 
@@ -122,7 +122,7 @@ Incremental creation uses the same lock on its source snapshot. Creation retries
 
 The parent task also uses `snapshots.operation_generation`. It advances this value when it takes ownership or cancels. Children receive the parent's task ID and generation. Every migration write checks Ready status, that ID, and that generation. Retries keep the same generation. A cancelled task cannot take the lock again.
 
-If the admission response is lost, the task recovers its existing lock and generation. After cancellation, a new migration task can take the lock and choose another destination backend.
+If the admission response is lost, the task recovers its existing lock and generation. After cancellation, a new migration task can take the lock and choose another destination list.
 
 ## Chunk operations
 
@@ -239,7 +239,7 @@ The writer starts PUT only after desired commits. If cancellation, deletion, or 
 
 The detach task handles each chunk reference of that snapshot. For each chunk, its transaction reads the root and all references, including references of Deleting snapshots. It infers any unspecified lists before checking them.
 
-If the backend is already absent, the operation succeeds. Otherwise, the transaction requires another backend in both actual and desired on this reference, with no tombstone. An attempt to remove the last usable copy returns a **non-retriable error** before any change or `DeleteObject`. During migration, the destination backend must be usable before the task detaches any other backend from the snapshot.
+If the backend is already absent, the operation succeeds. Otherwise, the transaction requires another backend in both actual and desired on this reference, with no tombstone. An attempt to remove the last usable copy returns a **non-retriable error** before any change or `DeleteObject`. During migration, every backend in the destination list must be usable before the task detaches a backend outside that list.
 
 If another reference lists the backend in actual **or** desired, the task removes only its own entries. The object stays. If this is the final reference to that backend, the transaction adds a root tombstone and advances its timestamp. For S3, it removes desired but keeps actual as a pending `DeleteObject` record. If the S3 write has only a desired entry, it keeps that entry instead.
 
@@ -307,16 +307,18 @@ sequenceDiagram
 
 ### Replicate, then detach other backends
 
-The parent request contains a snapshot ID and one destination backend ID. The parent takes the Ready snapshot's lock and saves its ownership generation. It starts two children in order:
+The parent request contains a snapshot ID and a destination backend list. The parent takes the Ready snapshot's lock and saves its ownership generation. It starts two children in order:
 
-1. The replication child adds the destination to each chunk's desired list. It copies missing data and saves its milestone after the destination is in actual.
-2. After replication finishes for the whole snapshot, the detach child detaches every other backend from the snapshot. Before each removal, it checks that the destination is in actual and desired and has no tombstone. A missing destination copy causes a non-retriable error before removal.
+1. The replication child adds every destination to each chunk's desired list and keeps the source backends. It copies missing data and saves its milestone after all destinations are in actual.
+2. After replication finishes for the whole snapshot, the detach child removes backends outside the destination list. Before each removal, it checks that every destination is in actual and desired and has no tombstone. Any missing destination copy causes a non-retriable error before removal.
 
-The replication child receives `[destination]`. The detach child receives the destination to keep. Both children receive the parent's ownership token and save their own chunk milestones. The parent holds the lock until both finish.
+Both children receive the destination list and the parent's ownership token. Each child saves its own chunk milestone. The parent holds the lock until both finish.
+
+For `[A, B] → [C, D]`, the replication child keeps A and B while copying to C and D. If C succeeds and D fails, it keeps A, B, and C and retries D. Detachment starts only after every chunk has both C and D.
 
 The parent uses a stable scheduling key for each child and saves the child IDs. If scheduling succeeds but saving the ID fails, the parent recovers the same child with that key. If a child stops before saving progress, it repeats the current chunk from stored lists. A permanent child failure fails the parent; completed copies remain available.
 
-When every reference has only the destination in actual and desired, the parent writes `[destination]` to `snapshots.s3_backend_ids`. It then saves completion and releases its lock. A retry after completion only finishes the unlock. Other snapshots can still keep copies on additional backends.
+When actual and desired on every reference equal the destination list, the parent writes that list to `snapshots.s3_backend_ids`. It then saves completion and releases its lock. A retry after completion only finishes the unlock. Other snapshots can still keep copies on additional backends.
 
 ```mermaid
 sequenceDiagram
@@ -325,17 +327,19 @@ sequenceDiagram
     participant Copy as Replication child
     participant Detach as Detach child
     Parent->>DB: Lock Ready snapshot and save ownership
-    Parent->>Copy: Request destination B
-    Copy->>DB: Record B for every chunk
+    Parent->>Copy: Request destinations C and D
+    Note over Copy,DB: Keep A and B while copying to C and D
+    Copy->>DB: Record actual A,B,C,D for every chunk
     Copy-->>Parent: Success
-    Parent->>Detach: Detach other backends from the snapshot
-    Detach->>DB: Check B before each removal
-    alt Destination copy exists
+    Parent->>Detach: Detach A and B from the snapshot
+    Detach->>DB: Check C and D before each removal
+    alt Both destination copies exist
+        Detach->>DB: Remove A,B entries and keep actual C,D
         Detach-->>Parent: Success
-        Parent->>DB: Save completed destination B
+        Parent->>DB: Save completed list C,D
         Parent->>DB: Save task completion
         Parent->>DB: Release lock
-    else Destination copy is missing
+    else A destination copy is missing
         Detach-->>Parent: Non-retriable error
     end
 ```
@@ -346,7 +350,7 @@ The parent stops scheduling, revokes its ownership generation, and keeps the sna
 
 Migration cancellation keeps all objects, references, actual and desired lists, tombstones, timestamps, and pending `DeleteObject` requests. An already issued PUT or `DeleteObject` may still finish. The revoked generation blocks further metadata writes from old workers.
 
-A later migration can choose another destination. After a cancelled move to B, migration to C copies every chunk to C before detaching A or B from the snapshot. If C is tombstoned, the task first waits for its `DeleteObject` and reuse delay. Every cancellation step retries safely and leaves any newer owner's lock intact.
+A later migration can choose another destination list. After a cancelled move to `[C, D]`, migration to `[E, F]` creates both E and F before detaching any other backend. For a tombstoned destination, the task first waits for its `DeleteObject` and reuse delay. Every cancellation step retries safely and leaves any newer owner's lock intact.
 
 ```mermaid
 flowchart TD
@@ -354,8 +358,8 @@ flowchart TD
     Revoke --> Keep[Data and pending work stay recorded]
     Keep --> Wait[Parent cancels children and waits]
     Wait --> Unlock[Parent releases its lock]
-    Unlock --> Later[Later migration chooses one destination]
-    Later --> Copy[Task copies every chunk to that destination]
+    Unlock --> Later[Later migration chooses a destination list]
+    Later --> Copy[Task copies every chunk to every destination]
     Copy --> Detach[Task detaches other backends from the snapshot]
 ```
 
@@ -363,7 +367,7 @@ Creation cancellation keeps its existing behavior: the collector deletes the par
 
 ## Bulk migration
 
-The bulk request contains a snapshot ID prefix and one destination backend ID. The parent validates the destination and saves a cutoff once. To drain the default backend, the controlplane first sends new creation to explicit backend lists. The bulk task waits for earlier creation tasks before taking its cutoff, because `created_at` is the creation completion time.
+The bulk request contains a snapshot ID prefix and a destination backend list. The parent validates every destination and saves a cutoff once. To drain the default backend, the controlplane first sends new creation to explicit backend lists. The bulk task waits for earlier creation tasks before taking its cutoff, because `created_at` is the creation completion time.
 
 The task selects Ready snapshots whose completed backend list is unset:
 
@@ -378,7 +382,7 @@ ORDER BY created_at, id
 LIMIT $batch_size;
 ```
 
-The parent runs up to ten snapshot migrations at once by default. It saves snapshot IDs before scheduling, uses a stable key per snapshot, and saves child IDs before waiting. Each child receives the same destination backend ID. Shared chunks impose no parent-snapshot ordering.
+The parent runs up to ten snapshot migrations at once by default. It saves snapshot IDs before scheduling, uses a stable key per snapshot, and saves child IDs before waiting. Each child receives the same destination list. Shared chunks impose no parent-snapshot ordering.
 
 After a restart, the parent recovers unsaved child IDs with the same keys. It waits for every saved child, even if the query already excludes that snapshot. Completed child records must remain available for the supported restart interval. The parent removes finished children from state and selects again. It finishes only when the query and saved child list are both empty.
 
