@@ -65,15 +65,20 @@ struct TCall
     TDeque<TResponse> ResponseQueue;
 
     // While paused, a call is held until the test lets it through, one per
-    // Step, or all of them for good with Unpause; it is logged once through.
+    // Step, or all the parked ones with Unpause; it is logged once through.
     std::atomic<bool> Paused = false;
     std::atomic<ui32> Parked = 0;
     silk::FiberSequencer Allowed;
 
     TResponse Call(TRequest request)
     {
-        if (Paused) {
-            const ui64 ticket = ++Parked;
+        ui64 ticket = 0;
+        with_lock (Lock) {
+            if (Paused) {
+                ticket = ++Parked;
+            }
+        }
+        if (ticket) {
             Y_UNUSED(Allowed.wait(ticket));
         }
 
@@ -118,8 +123,10 @@ struct TCall
 
     void Unpause()
     {
-        Paused = false;
-        Allowed.advance(Max<ui64>());
+        with_lock (Lock) {
+            Paused = false;
+            Allowed.advance(Parked);
+        }
     }
 };
 
@@ -1336,9 +1343,11 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
     auto roundParked = [&](ui32 round)
     {
         for (ui32 i = 0; i < DeviceCount; ++i) {
-            ASSERT_TRUE(
-                WaitFor([&] { return fx[i].Acquires.Parked == round + 1; }));
+            if (!WaitFor([&] { return fx[i].Acquires.Parked == round + 1; })) {
+                return false;
+            }
         }
+        return true;
     };
     auto step = [&]
     {
@@ -1349,7 +1358,7 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
 
     // A storage node lets go of a session that stops being renewed, so Init's
     // acquire is repeated on every device for as long as the group lives.
-    roundParked(1);
+    ASSERT_TRUE(roundParked(1));
     step();
     for (ui32 i = 0; i < DeviceCount; ++i) {
         ASSERT_TRUE(WaitFor([&] { return fx[i].Acquires.Count() == 2; }));
@@ -1363,13 +1372,13 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
     // A retriable or aborted refusal is no verdict on the session: the group
     // carries on, and the next round is the retry.
     fx[2].Acquires.Reply(MakeError(E_REJECTED, "busy"));
-    roundParked(2);
+    ASSERT_TRUE(roundParked(2));
     step();
     error = Write(*fx.Group);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     fx[2].Acquires.Reply(MakeError(E_ABORTED, "shutting down"));
-    roundParked(3);
+    ASSERT_TRUE(roundParked(3));
     step();
     error = Write(*fx.Group, Lsn + 1);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
@@ -1377,7 +1386,7 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
     // The device belongs to someone else now, which is not a device this
     // group can go on writing to.
     fx[2].Acquires.Reply(MakeError(E_BS_MOUNT_CONFLICT, "another writer"));
-    roundParked(4);
+    ASSERT_TRUE(roundParked(4));
     step();
     TVector<TPageGroup> pageGroups;
     ASSERT_TRUE(
