@@ -19,6 +19,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
+    yql/essentials/sql/v1
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/public/lib/idx_test
     contrib/ydb/public/lib/yson_value

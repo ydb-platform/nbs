@@ -12,6 +12,7 @@ PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/graph/shard
     contrib/ydb/core/graph/service
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()
