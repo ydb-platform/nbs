@@ -58,7 +58,6 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
     xxx(EnsureDiskRegistryStateIntegrity,   __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
-    xxx(CreateMirroredDiskFromDevices,      __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -232,9 +231,6 @@ struct TEvDiskRegistry
 
         EvSetSuspendSecureEraseRequest = EvBegin + 85,
         EvSetSuspendSecureEraseResponse = EvBegin + 86,
-
-        EvCreateMirroredDiskFromDevicesRequest = EvBegin + 87,
-        EvCreateMirroredDiskFromDevicesResponse = EvBegin + 88,
 
         EvEnd
     };

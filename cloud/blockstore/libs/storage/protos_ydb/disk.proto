@@ -21,51 +21,22 @@ message TCreateDiskFromDevicesRequest
 
     NKikimrBlockStore.TVolumeConfig VolumeConfig = 3;
 
-    // List of devices (agentId & device name) that make up the disk.
-    repeated TDeviceConfig Devices = 4;
-
-    // If true, the block count will not be adjusted.
-    bool KeepBlockCount = 5;
-}
-
-message TCreateDiskFromDevicesResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Number of total logical blocks.
-    uint64 BlockCount = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Create mirrored disk from devices
-
-message TCreateMirroredDiskFromDevicesRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    NKikimrBlockStore.TVolumeConfig VolumeConfig = 2;
-
-    message TReplicaConfig
+    message DeviceList
     {
         repeated TDeviceConfig Devices = 1;
     }
 
-    // List of devices for each replica.
-    repeated TReplicaConfig Replicas = 3;
+    // List of devices (agentId & device name) that make up the disk.
+    DeviceList Devices = 4;
 
-    // Force dangerous actions.
-    bool Force = 4;
+    // Replicas for mirrored disks.
+    repeated DeviceList Replicas = 5;
 
     // If true, the block count will not be adjusted.
-    bool KeepBlockCount = 5;
-
-    // Devices whose data has not been replicated yet.
-    repeated string FreshDeviceUUIDs = 6;
+    bool KeepBlockCount = 6;
 }
 
-message TCreateMirroredDiskFromDevicesResponse
+message TCreateDiskFromDevicesResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

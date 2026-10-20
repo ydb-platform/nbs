@@ -1144,40 +1144,6 @@ public:
         return request;
     }
 
-    auto CreateCreateMirroredDiskFromDevicesRequest(
-        const TString& diskId,
-        ui32 blockSize,
-        NProto::EStorageMediaKind mediaKind,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const TVector<TString>& freshDeviceUuids = {},
-        bool force = false,
-        bool keepBlockCount = false)
-    {
-        auto request = std::make_unique<
-            TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest>();
-
-        auto* volume = request->Record.MutableVolumeConfig();
-        volume->SetDiskId(diskId);
-        volume->SetBlockSize(blockSize);
-        volume->SetStorageMediaKind(mediaKind);
-
-        request->Record.SetForce(force);
-        request->Record.SetKeepBlockCount(keepBlockCount);
-
-        for (const auto& replicaDevices: replicas) {
-            auto* replica = request->Record.AddReplicas();
-            for (const auto& device: replicaDevices) {
-                *replica->AddDevices() = device;
-            }
-        }
-
-        request->Record.MutableFreshDeviceUUIDs()->Assign(
-            freshDeviceUuids.begin(),
-            freshDeviceUuids.end());
-
-        return request;
-    }
-
     auto CreateStartForceMigrationRequest(
         const TString& sourceDiskId,
         const TString& sourceDeviceId,

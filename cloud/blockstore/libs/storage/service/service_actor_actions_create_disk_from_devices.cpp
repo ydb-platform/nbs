@@ -29,7 +29,7 @@ NKikimrBlockStore::TVolumeConfig ConvertToVolumeConfig(
     const NProto::TCreateVolumeFromDevicesRequest& inRequest)
 {
     NKikimrBlockStore::TVolumeConfig volumeConfig;
-    volumeConfig.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    volumeConfig.SetStorageMediaKind(inRequest.GetStorageMediaKind());
     volumeConfig.SetDiskId(inRequest.GetDiskId());
     volumeConfig.SetProjectId(inRequest.GetProjectId());
     volumeConfig.SetFolderId(inRequest.GetFolderId());
@@ -46,6 +46,13 @@ std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
 
     for (const auto& deviceUUID: inRequest.GetDeviceUUIDs()) {
         outRequest->Record.MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
+    }
+
+    for (const auto& replica: inRequest.GetReplicas()) {
+        auto* outReplica = outRequest->Record.MutableReplicas()->Add();
+        for (const auto& deviceUUID: replica.GetDeviceUUIDs()) {
+            outReplica->MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
+        }
     }
 
     *outRequest->Record.MutableVolumeConfig() =
