@@ -768,6 +768,10 @@ STFUNC(TDiskRegistryActor::StateWork)
             HandleEnsureDiskRegistryStateIntegrityResponse
         )
 
+        HFunc(
+            TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+            HandleSetSuspendSecureErase);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(

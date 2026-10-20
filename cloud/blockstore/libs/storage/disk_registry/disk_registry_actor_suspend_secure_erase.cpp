@@ -31,25 +31,6 @@ void TDiskRegistryActor::HandleSetSuspendSecureErase(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    if (CurrentState != STATE_WORK && CurrentState != STATE_READ_ONLY &&
-        CurrentState != STATE_RESTORE)
-    {
-        const TString errorMsg = TStringBuilder()
-                                 << "Can't change secure erase state in "
-                                 << States[CurrentState].Name << " state";
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "%s SetSuspendSecureErase error: %s",
-            LogTitle.GetWithTime().c_str(),
-            errorMsg.c_str());
-        auto response =
-            std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>(
-                MakeError(E_REJECTED, errorMsg));
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
-    }
-
     ExecuteTx<TSuspendSecureErase>(
         ctx,
         std::move(requestInfo),
