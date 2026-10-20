@@ -20,6 +20,7 @@ ENDIF()
 PEERDIR(
     cloud/filestore/private/api/protos
 
+    cloud/fastshard/common
     cloud/fastshard/protos
     cloud/fastshard/sn/iface
 
