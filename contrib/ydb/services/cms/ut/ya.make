@@ -17,6 +17,7 @@ PEERDIR(
     library/cpp/svnversion
     contrib/ydb/core/testlib/default
     contrib/ydb/services/cms
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

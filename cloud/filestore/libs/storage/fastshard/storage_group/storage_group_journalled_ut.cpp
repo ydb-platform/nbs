@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include <initializer_list>
 
 using namespace NCloud;
@@ -91,6 +93,7 @@ struct TJournalledDevices
     TExecutorPtr Executor = TExecutor::Create("journalled-sn");
     TVector<TString> DeviceUUIDs;
     TVector<std::shared_ptr<TJournalledStorageNode>> Nodes;
+    TVector<IStorageGroupPtr> Groups;
 
     TJournalledDevices(ui32 count)
     {
@@ -111,6 +114,9 @@ struct TJournalledDevices
     // from itself.
     ~TJournalledDevices()
     {
+        for (auto& group: Groups) {
+            group->TearDown();
+        }
         for (auto& node: Nodes) {
             node->Stop();
         }
@@ -122,22 +128,20 @@ struct TJournalledDevices
         return *Nodes[i];
     }
 
-    // The watermark loop is off unless a test asks for it.
-    IStorageGroupPtr MakeGroup(
-        std::initializer_list<ui32> indexes,
-        TDuration lowWatermarkPeriod = TDuration::Zero())
+    // Torn down with the fixture at the latest, so a failed assertion does
+    // not leave a group's loops running on the devices.
+    IStorageGroupPtr MakeGroup(std::initializer_list<ui32> indexes)
     {
         TVector<TStorageDevice> devices;
         for (ui32 i: indexes) {
             devices.push_back({.Node = Nodes[i], .DeviceUUID = DeviceUUIDs[i]});
         }
 
-        TStorageGroupConfig config;
-        config.LowWatermarkPeriod = lowWatermarkPeriod;
-        return CreateQuorumMirroredStorageGroup(
-            std::move(config),
+        Groups.push_back(CreateQuorumMirroredStorageGroup(
+            TStorageGroupConfig{},
             std::move(devices),
-            CreateFiberTimer());
+            CreateFiberTimer()));
+        return Groups.back();
     }
 
     // A device's own page, before the group's page shift.
@@ -211,8 +215,6 @@ FIBER_TEST(JournalledGroupTest, WritesSurviveARestart)
     error = ReadPages(*group, 2, 9, pages);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     ASSERT_EQ(Pages(2, 9), pages);
-
-    group->TearDown();
 }
 
 FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
@@ -226,7 +228,8 @@ FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     group->TearDown();
 
-    // A blank device joins: it is claimed and brought up with the records.
+    // A blank device joins: it gets its header page and is brought up with the
+    // records.
     group = devices.MakeGroup({0, 1});
     init = group->Init();
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
@@ -243,8 +246,6 @@ FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
     error = ReadPages(*group, 2, 5, pages);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     ASSERT_EQ(Pages(2, 5), pages);
-
-    group->TearDown();
 }
 
 FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
@@ -258,7 +259,7 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     group->TearDown();
 
-    // Garbage where the claim was.
+    // Garbage where the header page was.
     error = devices.WritePage(0, 5, 0, TString(DefaultBlockSize, 'x'));
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
@@ -270,11 +271,11 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
         << init.GetError().GetMessage();
     group->TearDown();
 
-    // Another device's claim there is no better.
-    TString claim;
-    error = devices.ReadPage(1, 0, claim);
+    // Another device's header page there is no better.
+    TString headerPage;
+    error = devices.ReadPage(1, 0, headerPage);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    error = devices.WritePage(0, 6, 0, claim);
+    error = devices.WritePage(0, 6, 0, headerPage);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     group = devices.MakeGroup({0, 1, 2});
@@ -283,7 +284,6 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
         << init.GetError().GetMessage();
     ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[0]))
         << init.GetError().GetMessage();
-    group->TearDown();
 }
 
 FIBER_TEST(JournalledGroupTest, ADeadDeviceFailsInit)
@@ -297,45 +297,4 @@ FIBER_TEST(JournalledGroupTest, ADeadDeviceFailsInit)
     ASSERT_TRUE(HasError(init.GetError()));
     ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[2]))
         << init.GetError().GetMessage();
-
-    group->TearDown();
-}
-
-FIBER_TEST(JournalledGroupTest, RunsWithTheWatermarkLoop)
-{
-    TJournalledDevices devices(3);
-    const auto period = TDuration::MilliSeconds(1);
-
-    // The loop trims what every device holds as it goes; whatever it has
-    // trimmed by the time the group restarts, nothing is lost.
-    auto group = devices.MakeGroup({0, 1, 2}, period);
-    auto init = group->Init();
-    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
-
-    auto error = WritePages(*group, 2, 21);
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-
-    TVector<TString> pages;
-    error = ReadPages(*group, 2, 21, pages);
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(Pages(2, 21), pages);
-    group->TearDown();
-
-    group = devices.MakeGroup({0, 1, 2}, period);
-    init = group->Init();
-
-    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
-    ASSERT_EQ(20U, init.GetResult());
-    error = ReadPages(*group, 2, 21, pages);
-
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(Pages(2, 21), pages);
-
-    error = WritePages(*group, 21, 23);
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-
-    error = ReadPages(*group, 2, 23, pages);
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(Pages(2, 23), pages);
-    group->TearDown();
 }

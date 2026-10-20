@@ -17,6 +17,7 @@ PEERDIR(
     library/cpp/svnversion
     contrib/ydb/core/client/scheme_cache_lib
     contrib/ydb/core/testlib/default
+    yql/essentials/sql/v1_dummy
 )
 
 END()

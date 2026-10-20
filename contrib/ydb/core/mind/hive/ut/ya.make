@@ -12,6 +12,7 @@ PEERDIR(
     contrib/ydb/core/mind
     contrib/ydb/core/mind/hive
     contrib/ydb/core/testlib/default
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()
@@ -21,6 +22,7 @@ SRCS(
     scale_recommender_policy_ut.cpp
     sequencer_ut.cpp
     storage_pool_info_ut.cpp
+    tenants_ut.cpp
     hive_ut.cpp
     hive_impl_ut.cpp
 )

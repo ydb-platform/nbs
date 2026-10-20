@@ -90,7 +90,7 @@ inline void FastGenDataForLZ4(size_t size, ui64 seed, ResultContainer& data) {
         }                                                       \
         if (size) {                                             \
             memcpy(ptr, blk, size);                             \
-         }                                                      \
+        }                                                       \
     } while (false);
 
     switch (runLen) {
