@@ -30,6 +30,11 @@ type storageYDB struct {
 
 	// TODO: remove after deployment of this version is finished.
 	holdBaseDisksWithInflightDependents bool
+
+	// Use ready base disks of a pool as a source for new base disks of that
+	// pool (instead of creating them from the image). Takes effect only if
+	// holdBaseDisksWithInflightDependents is enabled.
+	useReadyBaseDiskAsSrc bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -590,5 +595,7 @@ func NewStorage(
 		baseDiskOverSubscription: uint64(config.GetBaseDiskOverSubscription()),
 
 		holdBaseDisksWithInflightDependents: config.GetHoldBaseDisksWithInflightDependents(),
+
+		useReadyBaseDiskAsSrc: config.GetUseReadyBaseDiskAsSrc(),
 	}, nil
 }

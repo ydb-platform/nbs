@@ -159,7 +159,6 @@ struct TDiskRegistryStateSnapshot
     TVector<NProto::TSuspendedDevice> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
-    bool SuspendSecureErase = false;
 
     void Clear()
     {
@@ -180,7 +179,6 @@ struct TDiskRegistryStateSnapshot
         SuspendedDevices.clear();
         AutomaticallyReplacedDevices.clear();
         DiskRegistryAgentListParams.clear();
-        SuspendSecureErase = false;
     }
 };
 
