@@ -5433,6 +5433,71 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             readDataResult->Record.GetBuffer().size());
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
     }
+
+    Y_UNIT_TEST(ShouldDropThreeStageWriteToNodeRemovedMidWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(1);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        // Hold the AddBlob that AddData produces: the blob is already in
+        // BlobStorage, the index is not updated yet
+        auto& runtime = env.GetRuntime();
+        TAutoPtr<IEventHandle> heldAddBlob;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvIndexTabletPrivate::EvAddBlobRequest &&
+                    !heldAddBlob)
+                {
+                    heldAddBlob = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        const auto data = GenerateValidateData(DefaultBlockSize * BlockGroupSize);
+        service.SendWriteDataRequest(headers, fs, nodeId, handle, 0, data);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!heldAddBlob; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldAddBlob);
+        UNIT_ASSERT(runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+
+        // The file is removed while the write is in flight
+        service.UnlinkNode(headers, RootNodeId, "file");
+        service.DestroyHandle(headers, fs, nodeId, handle);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(heldAddBlob.Release(), nodeIdx);
+
+        // The write completes, the data is dropped together with the file
+        auto response = service.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        service.SendGetNodeAttrRequest(headers, fs, RootNodeId, "file");
+        auto attrs = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, attrs->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

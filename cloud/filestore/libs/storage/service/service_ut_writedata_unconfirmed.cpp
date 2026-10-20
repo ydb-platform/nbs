@@ -1578,6 +1578,67 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             CityHash64(actualSecondBuffer),
             "Data mismatch for unaligned iovec write after tablet reboot");
     }
+
+    Y_UNIT_TEST(ShouldDropUnconfirmedWriteToNodeRemovedMidWrite)
+    {
+        TTestSetup setup;
+        auto& runtime = setup.GetRuntime();
+
+        // Hold the ConfirmAddData request: the blob is already in
+        // BlobStorage, the unconfirmed data entry is registered in the tablet
+        // and waits for confirmation
+        TAutoPtr<IEventHandle> heldConfirm;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvIndexTablet::EvConfirmAddDataRequest &&
+                    !heldConfirm)
+                {
+                    heldConfirm = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        TString data = GenerateValidateData(256_KB);
+        setup.Service->SendWriteDataRequest(
+            setup.Headers,
+            setup.FileSystemId,
+            setup.NodeId,
+            setup.Handle,
+            0,
+            data);
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!heldConfirm; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldConfirm);
+
+        // The file is removed while the write is in flight
+        setup.Service->UnlinkNode(setup.Headers, RootNodeId, "file");
+        setup.Service->DestroyHandle(
+            setup.Headers,
+            setup.FileSystemId,
+            setup.NodeId,
+            setup.Handle);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(heldConfirm.Release(), setup.NodeIdx);
+
+        // The write completes, the data is dropped together with the file
+        auto response = setup.Service->RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        setup.Service->SendGetNodeAttrRequest(
+            setup.Headers,
+            setup.FileSystemId,
+            RootNodeId,
+            "file");
+        auto attrs = setup.Service->RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, attrs->GetStatus());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

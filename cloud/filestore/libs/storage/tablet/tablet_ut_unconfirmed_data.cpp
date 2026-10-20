@@ -2853,6 +2853,110 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
             ReadData(tablet, handle, block, writeOffset));
         AssertStorageStats(tablet, 0, 0);
     }
+
+    Y_UNIT_TEST(ShouldSkipAddBlobForNodeRemovedDuringUnconfirmedWrite)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Blob ids are generated and the blob is written, but the write is
+        // not confirmed yet
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, tablet, id, handle, 0, block, 'a');
+        AssertStorageStats(tablet, 1, 0);
+
+        // The file is removed while the write is still in flight
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.DestroyHandle(handle);
+
+        // ConfirmAddData must not crash the tablet - the data is dropped
+        // together with the node
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+        AssertStorageStats(tablet, 0, 0);
+
+        // The unconfirmed data entry is deleted and is not replayed after a
+        // restart
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+        AssertStorageStats(tablet, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetStorageStats(tablet).GetUsedNodesCount());
+    }
+
+    Y_UNIT_TEST(ShouldSkipFreshBytesForNodeRemovedDuringUnconfirmedWrite)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        constexpr ui64 writeOffset = 100;
+        constexpr ui64 alignedOffset = block;
+        constexpr ui64 alignedLength = block;
+        constexpr ui64 tailOffset = alignedOffset + alignedLength;
+
+        auto request = tablet.CreateGenerateBlobIdsRequest(
+            id,
+            handle,
+            alignedOffset,
+            alignedLength);
+        auto* head = request->Record.AddUnalignedDataRanges();
+        head->SetOffset(writeOffset);
+        head->SetContent(TString(alignedOffset - writeOffset, 'h'));
+
+        auto* tail = request->Record.AddUnalignedDataRanges();
+        tail->SetOffset(tailOffset);
+        tail->SetContent(TString(300, 't'));
+
+        tablet.SendRequest(std::move(request));
+        auto gbi = tablet.RecvGenerateBlobIdsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, gbi->GetStatus());
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+
+        const ui64 commitId =
+            GenerateBlobIdsAndPutBlob(env, *gbi, TString(alignedLength, 'a'));
+        AssertStorageStats(tablet, 1, 0);
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.DestroyHandle(handle);
+
+        tablet.SendConfirmAddDataRequest(commitId);
+        tablet.AssertConfirmAddDataResponse(S_OK);
+        AssertStorageStats(tablet, 0, 0);
+
+        // Neither the aligned part nor the unaligned head/tail must leave
+        // anything behind for the removed node
+        const auto stats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedNodesCount());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
