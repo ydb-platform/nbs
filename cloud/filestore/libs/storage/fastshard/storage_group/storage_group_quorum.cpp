@@ -957,6 +957,12 @@ public:
             return error;
         }
 
+        auto loop = RunLoop(
+                  State,
+                  State->Config.ReacquirePeriod,
+                  RenewSessionsEverywhere);
+        State->Loops.push_back(std::move(loop));
+
         error = ValidateGroupConfigAndInitIfNeeded(State);
         if (HasError(error)) {
             return error;
@@ -966,12 +972,6 @@ public:
         if (HasError(error)) {
             return error;
         }
-
-        auto loop = RunLoop(
-            State,
-            State->Config.ReacquirePeriod,
-            RenewSessionsEverywhere);
-        State->Loops.push_back(std::move(loop));
 
         loop = RunLoop(
             State,
