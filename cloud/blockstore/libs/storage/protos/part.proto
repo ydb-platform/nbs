@@ -189,6 +189,29 @@ message TPartitionMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TBlobCompression
+{
+    enum ECodec
+    {
+        CODEC_UNSPECIFIED = 0;
+        // library/cpp/blockcodecs: lz4-fast14-safe.
+        LZ4 = 1;
+        // library/cpp/blockcodecs: zstd08_1 (compression level 1).
+        ZSTD = 2;
+    }
+
+    ECodec Codec = 1;
+
+    // Sizes in bytes of independently compressed chunks, in blob order.
+    // The last chunk may contain fewer than ChunkSize uncompressed bytes.
+    repeated uint32 ChunkSizes = 2;
+
+    // Uncompressed chunk size in bytes used when writing this blob.
+    uint32 ChunkSize = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TBlobMeta
 {
     message TMixedBlocks

@@ -10,6 +10,7 @@ SRCS(
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     actor_writefreshblocks.cpp
+    blob_compressor.cpp
     checkpoints_in_flight.cpp
     commit_ids_state.cpp
     commit_queue.cpp
@@ -32,11 +33,13 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/partition_common/model
+    cloud/blockstore/libs/storage/protos
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/tablet
     contrib/ydb/library/actors/core
     contrib/ydb/core/base
+    library/cpp/blockcodecs
 )
 
 END()
