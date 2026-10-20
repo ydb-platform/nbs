@@ -192,7 +192,7 @@ public:
         EFileRingBufferAccessorValidationMode validationMode,
         TMemoryMapCommon::EOpenModeFlag openModeFlags);
 
-    // Maps this exact open file description and never reopens its pathname.
+    // Maps this exact open file descriptor and never reopens its pathname
     TFileMapFileRingBufferAccessor(
         TFile file,
         EFileRingBufferAccessorValidationMode validationMode,

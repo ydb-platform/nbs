@@ -140,7 +140,6 @@ public:
     {
         UpdateRawData(rawData);
     }
-
 };
 
 }   // namespace
