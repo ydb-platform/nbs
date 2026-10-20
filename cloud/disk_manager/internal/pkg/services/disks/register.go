@@ -106,6 +106,15 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution("disks.DeleteDiskFromCell", func() tasks.Task {
+		return &deleteDiskFromCellTask{deleteDiskTask: deleteDiskTask{
+			storage: resourceStorage, scheduler: taskScheduler, nbsFactory: nbsFactory,
+		}}
+	})
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("disks.ResizeDisk", func() tasks.Task {
 		return &resizeDiskTask{
 			nbsFactory: nbsFactory,

@@ -55,9 +55,8 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
+	if len(t.state.CleanupCellIds) != 0 {
+		return t.scheduleDiskCleanup(ctx, execCtx)
 	}
 
 	selfTaskID := execCtx.GetTaskID()
@@ -89,25 +88,32 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = diskMeta.ZoneID
 	}
 
-	zoneIDs := []string{zoneID}
 	if diskMeta == nil {
-		zoneIDs, err = t.cellSelector.ResolveCells(zoneID)
+		cellIDs, err := t.cellSelector.ResolveCells(zoneID)
+		if err != nil {
+			return err
+		}
+		if len(cellIDs) == 0 {
+			return errors.NewNonRetriableErrorf("no cells for zone %q", zoneID)
+		}
+		t.state.CleanupCellIds = cellIDs
+		// Persist the target set before reserving the ID or scheduling any worker.
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+		return t.scheduleDiskCleanup(ctx, execCtx)
+	}
+
+	if diskMeta != nil {
+		err = t.setEstimate(ctx, execCtx)
 		if err != nil {
 			return err
 		}
 	}
-
-	for _, cellID := range zoneIDs {
-		idempotencyKey := selfTaskID + "_delete_disk_from_incremental"
-		if cellID != zoneID {
-			// Keep the original key for disks with metadata and legacy zones.
-			idempotencyKey += "_" + cellID
-		}
-
-		err = t.deleteDiskInCell(ctx, execCtx, cellID, idempotencyKey)
-		if err != nil {
-			return err
-		}
+	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
+	if err != nil {
+		return err
 	}
 
 	// Only overlay disks (created from image) should be released.
@@ -135,6 +141,41 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+}
+
+func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	cleanupIDs := make([]string, 0, len(t.state.CleanupCellIds))
+	for _, cellID := range t.state.CleanupCellIds {
+		cleanupIDs = append(cleanupIDs, execCtx.GetTaskID()+"_delete_disk_from_cell_"+cellID)
+	}
+	if !t.state.CleanupPrepared {
+		prepared, err := t.storage.PrepareDiskCleanup(ctx, t.request.Disk.DiskId, cleanupIDs)
+		if err != nil {
+			return err
+		}
+		if !prepared {
+			return nil
+		}
+		t.state.CleanupPrepared = true
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	for i, cellID := range t.state.CleanupCellIds {
+		_, err := t.scheduler.ScheduleNonCancellableTask(
+			headers.SetIncomingIdempotencyKey(ctx, cleanupIDs[i]),
+			"disks.DeleteDiskFromCell", "", "",
+			&protos.DeleteDiskFromCellRequest{
+				Disk: &types.Disk{ZoneId: cellID, DiskId: t.request.Disk.DiskId},
+				Sync: t.request.Sync, CleanupId: cleanupIDs[i],
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *deleteDiskTask) deleteDiskInCell(

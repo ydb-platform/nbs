@@ -135,6 +135,12 @@ type Storage interface {
 		deletingAt time.Time,
 	) (*DiskMeta, error)
 
+	// Reserve a deleted disk ID until every background cleanup completes.
+	// Returns false if the reservation expired or a new disk already exists.
+	PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string) (bool, error)
+	IsDiskCleanupPending(ctx context.Context, diskID string, cleanupID string) (bool, error)
+	CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error
+
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 
 	ClearDeletedDisks(ctx context.Context, deletedBefore time.Time, limit int) error

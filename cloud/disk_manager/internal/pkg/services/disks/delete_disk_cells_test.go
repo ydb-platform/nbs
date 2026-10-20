@@ -2,6 +2,7 @@ package disks
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -20,155 +21,170 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
-////////////////////////////////////////////////////////////////////////////////
-
-func TestDeleteDiskTaskCells(t *testing.T) {
-	config := &cells_config.CellsConfig{
-		Cells: map[string]*cells_config.ZoneCells{
-			"zone":        {Cells: []string{"cell-a", "cell-b"}},
-			"single-zone": {Cells: []string{"cell-a"}},
-		},
+func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
+	for _, sync := range []bool{false, true} {
+		for _, failScheduling := range []bool{false, true} {
+			t.Run(fmt.Sprintf("sync=%t/scheduling_error=%t", sync, failScheduling), func(t *testing.T) {
+				ctx := context.Background()
+				storage := storage_mocks.NewStorageMock()
+				scheduler := tasks_mocks.NewSchedulerMock()
+				factory := nbs_mocks.NewFactoryMock()
+				pool := pools_mocks.NewServiceMock()
+				execCtx := newExecutionContextMock()
+				config := &cells_config.CellsConfig{Cells: map[string]*cells_config.ZoneCells{"zone": {Cells: []string{"cell-a", "cell-b"}}}}
+				task := &deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory, poolService: pool,
+					cellSelector: cells.NewCellSelector(config, nil, nil, nil),
+					request:      &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "zone"}, DeleteIfNonExistent: true, Sync: sync}, state: &protos.DeleteDiskTaskState{}}
+				ids := []string{"toplevel_task_id_delete_disk_from_cell_cell-a", "toplevel_task_id_delete_disk_from_cell_cell-b"}
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+				storage.On("PrepareDiskCleanup", ctx, "disk", ids).Return(true, nil).Once()
+				execCtx.On("SaveState", ctx).Return(nil).Twice()
+				schedule := func(i int, err error) {
+					scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, ids[i]), "disks.DeleteDiskFromCell", "", "",
+						&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: []string{"cell-a", "cell-b"}[i]}, Sync: sync, CleanupId: ids[i]}).Return("worker", err).Once()
+				}
+				schedule(0, nil)
+				if failScheduling {
+					schedule(1, assert.AnError)
+				} else {
+					schedule(1, nil)
+				}
+				err := task.Run(ctx, execCtx)
+				if failScheduling {
+					require.True(t, errors.Is(err, assert.AnError))
+					// A resumed parent must not resolve a different cell set or touch metadata again.
+					state, err := task.Save()
+					require.NoError(t, err)
+					request, err := proto.Marshal(task.request)
+					require.NoError(t, err)
+					require.NoError(t, task.Load(request, state))
+					task.cellSelector = nil
+					schedule(0, nil)
+					schedule(1, nil)
+					require.NoError(t, task.Run(ctx, execCtx))
+				} else {
+					require.NoError(t, err)
+				}
+				mock.AssertExpectationsForObjects(t, storage, scheduler, factory, pool, execCtx)
+				scheduler.AssertNotCalled(t, "WaitTask", mock.Anything, mock.Anything, mock.Anything)
+				factory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
+				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+			})
+		}
 	}
+}
 
-	testCases := []struct {
-		name          string
-		requestZone   string
-		cells         []string
-		withoutConfig bool
-		withMetadata  bool
-		sync          bool
-		cancel        bool
-		notFound      bool
-		errorAt       string
+func TestDeleteDiskFromCellTask(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		pending  bool
+		sync     bool
+		errorAt  string
+		notFound bool
 	}{
-		{name: "one cell", requestZone: "single-zone", cells: []string{"cell-a"}},
-		{name: "multiple cells", requestZone: "zone", cells: []string{"cell-a", "cell-b"}},
-		{name: "sync multiple cells", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, sync: true},
-		{name: "cancel multiple cells", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, cancel: true},
-		{name: "already absent in NBS", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, notFound: true},
-		{name: "sync already absent in NBS", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, sync: true, notFound: true},
-		{name: "explicit cell", requestZone: "cell-a", cells: []string{"cell-a"}},
-		{name: "cells disabled", requestZone: "zone", cells: []string{"zone"}, withoutConfig: true},
-		{name: "saved cell overrides public zone", requestZone: "zone", cells: []string{"cell-b"}, withMetadata: true},
-		{name: "saved cell overrides unknown zone", requestZone: "unknown", cells: []string{"cell-b"}, withMetadata: true},
-		{name: "schedule failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, errorAt: "ScheduleTask"},
-		{name: "cleanup failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, errorAt: "WaitTask"},
-		{name: "client failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, errorAt: "GetClient"},
-		{name: "delete failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, errorAt: "Delete"},
-		{name: "sync delete failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, sync: true, errorAt: "Delete"},
-		{name: "cancel delete failure and retry", requestZone: "zone", cells: []string{"cell-a", "cell-b"}, cancel: true, errorAt: "Delete"},
-	}
-
-	for _, tc := range testCases {
+		{name: "ordinary", pending: true}, {name: "sync", pending: true, sync: true},
+		{name: "already completed"}, {name: "not found", pending: true, notFound: true},
+		{name: "reservation read failure", pending: true, errorAt: "IsDiskCleanupPending"},
+		{name: "incremental failure", pending: true, errorAt: "WaitTask"},
+		{name: "unavailable cell", pending: true, errorAt: "GetClient"},
+		{name: "delete failure", pending: true, errorAt: "Delete"},
+		{name: "completion failure", pending: true, errorAt: "CompleteDiskCleanup"},
+		{name: "task commit failure", pending: true, errorAt: "FinishWithPreparation"},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := logging.SetLogger(context.Background(), logging.NewStderrLogger(logging.WarnLevel))
+			ctx := context.Background()
 			storage := storage_mocks.NewStorageMock()
 			scheduler := tasks_mocks.NewSchedulerMock()
-			poolService := pools_mocks.NewServiceMock()
 			factory := nbs_mocks.NewFactoryMock()
-			execCtx := newExecutionContextMock()
-			cellsConfig := config
-			if tc.withoutConfig {
-				cellsConfig = nil
-			}
-			var meta *resources.DiskMeta
-			if tc.withMetadata {
-				meta = &resources.DiskMeta{ZoneID: "cell-b"}
-			}
-			task := &deleteDiskTask{
-				storage: storage, scheduler: scheduler, poolService: poolService,
-				nbsFactory: factory, cellSelector: cells.NewCellSelector(cellsConfig, nil, nil, nil),
-				request: &protos.DeleteDiskRequest{
-					Disk:                &types.Disk{DiskId: "disk", ZoneId: tc.requestZone},
-					DeleteIfNonExistent: true, Sync: tc.sync,
-				},
-				state: &protos.DeleteDiskTaskState{},
-			}
-			// Exercise request/state round-trip as done when a task is resumed.
-			state, err := task.Save()
+			client := nbs_mocks.NewClientMock()
+			execCtx := tasks_mocks.NewExecutionContextMock()
+			task := &deleteDiskFromCellTask{deleteDiskTask: deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory}}
+			request, err := proto.Marshal(&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, Sync: tc.sync, CleanupId: "cleanup"})
 			require.NoError(t, err)
-			request, err := proto.Marshal(task.request)
-			require.NoError(t, err)
-			require.NoError(t, task.Load(request, state))
-
-			var clients []*nbs_mocks.ClientMock
-			setup := func(errorAt string) {
+			require.NoError(t, task.Load(request, nil))
+			errorFor := func(step string) error {
+				if step == tc.errorAt {
+					return assert.AnError
+				}
+				return nil
+			}
+			setup := func() {
+				storage.On("IsDiskCleanupPending", ctx, "disk", "cleanup").Return(tc.pending, errorFor("IsDiskCleanupPending")).Once()
+				if !tc.pending || tc.errorAt == "IsDiskCleanupPending" {
+					return
+				}
+				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "cleanup_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "",
+					&dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
+				scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, errorFor("WaitTask")).Once()
+				if tc.errorAt == "WaitTask" {
+					return
+				}
+				factory.On("GetClient", ctx, "cell").Return(client, errorFor("GetClient")).Once()
+				if tc.errorAt == "GetClient" {
+					return
+				}
+				method := "Delete"
 				if tc.sync {
-					storage.On("GetDiskMeta", ctx, "disk").Return(meta, nil).Once()
+					method = "DeleteSync"
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return(meta, nil).Once()
-				for _, cellID := range tc.cells {
-					// Fail on the second cell after the first cell has succeeded.
-					errorFor := func(step string) error {
-						if cellID == "cell-b" && step == errorAt {
-							return assert.AnError
-						}
-						return nil
-					}
-					key := "toplevel_task_id_delete_disk_from_incremental"
-					if !tc.withMetadata && cellID != tc.requestZone {
-						key += "_" + cellID
-					}
-					scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, key),
-						"dataplane.DeleteDiskFromIncremental", "",
-						&dataplane_protos.DeleteDiskFromIncrementalRequest{
-							Disk: &types.Disk{ZoneId: cellID, DiskId: "disk"},
-						}).Return(cellID, errorFor("ScheduleTask")).Once()
-					if errorFor("ScheduleTask") != nil {
-						return
-					}
-					scheduler.On("WaitTask", ctx, execCtx, cellID).Return(nil, errorFor("WaitTask")).Once()
-					if errorFor("WaitTask") != nil {
-						return
-					}
-					client := nbs_mocks.NewClientMock()
-					clients = append(clients, client)
-					factory.On("GetClient", ctx, cellID).Return(client, errorFor("GetClient")).Once()
-					if errorFor("GetClient") != nil {
-						return
-					}
-					method := "Delete"
-					if tc.sync {
-						method = "DeleteSync"
-					}
-					deleteErr := errorFor("Delete")
-					if tc.notFound && cellID == "cell-a" {
-						deleteErr = &nbs_client.ClientError{Code: nbs_client.E_NOT_FOUND}
-					}
-					client.On(method, ctx, "disk").Return(deleteErr).Once()
-					if errorFor("Delete") != nil {
-						return
-					}
+				deleteErr := errorFor("Delete")
+				if tc.notFound {
+					deleteErr = &nbs_client.ClientError{Code: nbs_client.E_NOT_FOUND}
 				}
-				storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
+				client.On(method, ctx, "disk").Return(deleteErr).Once()
+				if tc.errorAt == "Delete" {
+					return
+				}
+				tx := &persistence.Transaction{}
+				storage.On("CompleteDiskCleanup", ctx, tx, "disk", "cleanup").Return(errorFor("CompleteDiskCleanup")).Once()
+				finishErr := errorFor("CompleteDiskCleanup")
+				if finishErr == nil {
+					finishErr = errorFor("FinishWithPreparation")
+				}
+				execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+					prep := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+					require.Equal(t, errorFor("CompleteDiskCleanup"), prep(ctx, tx))
+				}).Return(finishErr).Once()
 			}
-			run := func() error {
-				if tc.cancel {
-					return task.Cancel(ctx, execCtx)
-				}
-				return task.Run(ctx, execCtx)
-			}
+			setup()
+			err = task.Run(ctx, execCtx)
 			if tc.errorAt != "" {
-				setup(tc.errorAt)
-				err := run()
 				require.True(t, errors.Is(err, assert.AnError))
-				if !tc.cancel {
-					retryError, ok := err.(*errors.RetriableError)
-					require.True(t, ok)
-					require.True(t, retryError.IgnoreRetryLimit)
-				}
-				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+				retry, ok := err.(*errors.RetriableError)
+				require.True(t, ok)
+				require.True(t, retry.IgnoreRetryLimit)
+			} else {
+				require.NoError(t, err)
+				storage.On("IsDiskCleanupPending", ctx, "disk", "cleanup").Return(false, nil).Once()
+				require.NoError(t, task.Run(ctx, execCtx))
 			}
-			setup("")
-			require.NoError(t, run())
-			mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, factory, execCtx)
-			for _, client := range clients {
-				client.AssertExpectations(t)
-			}
+			mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
 		})
+	}
+}
+
+func TestDeleteDiskBackgroundReservationFailure(t *testing.T) {
+	for _, prepareError := range []bool{false, true} {
+		ctx := context.Background()
+		storage := storage_mocks.NewStorageMock()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		execCtx := newExecutionContextMock()
+		task := &deleteDiskTask{storage: storage, scheduler: scheduler, request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk"}}, state: &protos.DeleteDiskTaskState{CleanupCellIds: []string{"cell"}}}
+		var e error
+		if prepareError {
+			e = assert.AnError
+		}
+		storage.On("PrepareDiskCleanup", ctx, "disk", []string{"toplevel_task_id_delete_disk_from_cell_cell"}).Return(false, e).Once()
+		err := task.Run(ctx, execCtx)
+		if prepareError {
+			require.True(t, errors.Is(err, e))
+		} else {
+			require.NoError(t, err)
+		}
+		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 	}
 }

@@ -601,3 +601,15 @@ func NewStorageMock() *StorageMock {
 func assertStorageMockIsStorage(arg *StorageMock) resources.Storage {
 	return arg
 }
+
+func (s *StorageMock) PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string) (bool, error) {
+	args := s.Called(ctx, diskID, cleanupIDs)
+	return args.Bool(0), args.Error(1)
+}
+func (s *StorageMock) IsDiskCleanupPending(ctx context.Context, diskID string, cleanupID string) (bool, error) {
+	args := s.Called(ctx, diskID, cleanupID)
+	return args.Bool(0), args.Error(1)
+}
+func (s *StorageMock) CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error {
+	return s.Called(ctx, tx, diskID, cleanupID).Error(0)
+}

@@ -9,6 +9,7 @@ SRCS(
     create_disk_from_snapshot_task.go
     create_empty_disk_task.go
     create_overlay_disk_task.go
+    delete_disk_from_cell_task.go
     delete_disk_task.go
     migrate_disk_task.go
     resize_disk_task.go

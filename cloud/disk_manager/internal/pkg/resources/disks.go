@@ -23,10 +23,11 @@ func (s *diskStatus) UnmarshalYDB(res persistence.RawValue) error {
 
 // NOTE: These values are stored in DB, do not shuffle them around.
 const (
-	diskStatusCreating diskStatus = iota
-	diskStatusReady    diskStatus = iota
-	diskStatusDeleting diskStatus = iota
-	diskStatusDeleted  diskStatus = iota
+	diskStatusCreating          diskStatus = iota
+	diskStatusReady             diskStatus = iota
+	diskStatusDeleting          diskStatus = iota
+	diskStatusDeleted           diskStatus = iota
+	diskStatusDeletingFromCells diskStatus = iota
 )
 
 func diskStatusToString(status diskStatus) string {
@@ -39,6 +40,8 @@ func diskStatusToString(status diskStatus) string {
 		return "deleting"
 	case diskStatusDeleted:
 		return "deleted"
+	case diskStatusDeletingFromCells:
+		return "deleting_from_cells"
 	}
 
 	return fmt.Sprintf("unknown_%v", status)
@@ -72,7 +75,8 @@ type diskState struct {
 	deletingAt    time.Time
 	deletedAt     time.Time
 
-	status diskStatus
+	status         diskStatus
+	cleanupTaskIDs string
 
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
@@ -134,6 +138,7 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
+		persistence.StructFieldValue("cleanup_task_ids", persistence.UTF8Value(s.cleanupTaskIDs)),
 
 		persistence.StructFieldValue("scanned_at", persistence.TimestampValue(s.scannedAt)),
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
@@ -165,6 +170,7 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("cleanup_task_ids", &state.cleanupTaskIDs),
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
@@ -217,6 +223,7 @@ func diskStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		status: Int64,
+		cleanup_task_ids: Utf8,
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
@@ -250,6 +257,7 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("cleanup_task_ids", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithColumn("scanned_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
@@ -524,7 +532,7 @@ func (s *storageYDB) deleteDisk(
 			}
 
 			// Should be idempotent.
-			if state.status == diskStatusDeleted {
+			if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
 				return nil, nil
 			}
 
@@ -555,7 +563,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
 		return nil, nil
 	}
 
@@ -603,7 +611,7 @@ func (s *storageYDB) diskDeleted(
 
 	state := states[0]
 
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -696,7 +704,7 @@ func (s *storageYDB) clearDeletedDisks(
 				declare $status as Int64;
 
 				delete from disks
-				where id = $disk_id and status = $status;
+				where id = $disk_id and status = $status and deleted_at = $deleted_at;
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id

@@ -18,4 +18,13 @@ message DeleteDiskRequest {
     bool DeleteIfNonExistent = 4;
 }
 
-message DeleteDiskTaskState {}
+message DeleteDiskTaskState {
+    repeated string CleanupCellIds = 1;
+    bool CleanupPrepared = 2;
+}
+
+message DeleteDiskFromCellRequest {
+    types.Disk Disk = 1;
+    bool Sync = 2;
+    string CleanupId = 3;
+}
