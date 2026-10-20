@@ -1712,6 +1712,9 @@ message TCreateMirroredVolumeFromDevicesRequest
 
     // If true, the block count will not be adjusted.
     bool KeepBlockCount = 8;
+
+    // Devices whose data has not been replicated yet.
+    repeated string FreshDeviceUUIDs = 9;
 }
 
 message TCreateMirroredVolumeFromDevicesResponse
