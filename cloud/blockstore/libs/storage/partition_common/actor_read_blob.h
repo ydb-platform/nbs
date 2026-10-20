@@ -1,5 +1,7 @@
 #pragma once
 
+#include "blob_compressor.h"
+
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -7,7 +9,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -36,6 +37,8 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
+    const std::shared_ptr<TBlobCompressor> BlobCompressor;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
 
@@ -53,11 +56,14 @@ public:
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui64 bsGroupOperationId,
-        bool passTraceIdToBlobstorage);
+        bool passTraceIdToBlobstorage,
+        std::shared_ptr<TBlobCompressor> blobCompressor = nullptr);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    TBlobCompressor::TReadPlan GetQueries() const;
+
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
         const NActors::TActorContext& ctx,
@@ -70,10 +76,25 @@ private:
     void ReplyError(
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
+        const NProto::TError& error);
+
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const NKikimr::TEvBlobStorage::TEvGetResult& response,
         const TString& description);
 
 private:
     STFUNC(StateWork);
+
+    TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
+        const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
+        const TSgList& outputBuffers,
+        const NActors::TActorContext& ctx);
+
+    TResultOrError<TVector<ui32>> CopyReadResultToSglist(
+        const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
+        const TSgList& outputBuffers,
+        const NActors::TActorContext& ctx);
 
     void HandleGetResult(
         const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,

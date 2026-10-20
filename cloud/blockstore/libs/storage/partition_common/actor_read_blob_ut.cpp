@@ -1,10 +1,15 @@
 #include "actor_read_blob.h"
 
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
+
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+#include <util/generic/cast.h>
+#include <util/system/unaligned_mem.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -12,8 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TReadBlobTests)
 {
-    struct TActorSystem
-        : NActors::TTestActorRuntimeBase
+    struct TActorSystem: NActors::TTestActorRuntimeBase
     {
         void Start()
         {
@@ -26,8 +30,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         }
     };
 
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         TActorSystem ActorSystem;
         NActors::TActorId EdgeActor;
@@ -38,6 +41,214 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             EdgeActor = ActorSystem.AllocateEdgeActor();
         }
     };
+
+    struct TCompressedReadEnvironment: TSetupEnvironment
+    {
+        static constexpr ui64 TabletId = 142;
+        static constexpr ui32 GroupId = 12;
+        static constexpr ui32 BlockSize = 512;
+        static constexpr ui32 ChunkSize = 4 * BlockSize;
+
+        const TVector<ui16> BlobOffsets = {4, 5, 5, 8, 16};
+        TBlobCompressor::TCompressedBlob Blob;
+        NKikimr::TLogoBlobID BlobId;
+        TVector<TString> Blocks;
+        TGuardedSgList GuardedSglist;
+        NActors::TActorId ReadActor;
+        THolder<NKikimr::TEvBlobStorage::TEvGet> ReadRequest;
+
+        void StartCompressedRead(
+            NProto::TBlobCompression::ECodec codec,
+            bool shouldCalculateChecksums)
+        {
+            TString payload;
+            for (ui32 i = 0; i < 17; ++i) {
+                payload.append(TString(BlockSize, 'a' + i));
+            }
+            const TBlobCompressor writer(TabletId, BlockSize, ChunkSize, codec);
+            Blob = writer.CompressBlob(payload);
+            BlobId = NKikimr::TLogoBlobID(
+                TabletId, 1, 2, 3, SafeIntegerCast<ui32>(Blob.Data.size()), 4);
+            GuardedSglist = TGuardedSgList(ResizeBlocks(
+                Blocks, BlobOffsets.size(), TString(BlockSize, '?')));
+
+            auto request =
+                std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    BlobId,
+                    EdgeActor,
+                    BlobOffsets,
+                    GuardedSglist,
+                    GroupId,
+                    false,             // async
+                    TInstant::Max(),   // deadline
+                    shouldCalculateChecksums);
+            request->CompressionInfo = Blob.Compression;
+
+            // Reads must use the blob's metadata, including its chunk size
+            // and codec, rather than the reader's write settings.
+            auto reader = std::make_shared<TBlobCompressor>(
+                TabletId,
+                BlockSize, 2 * BlockSize, NProto::TBlobCompression::LZ4);
+            ReadActor = ActorSystem.Register(new TReadBlobActor(
+                MakeIntrusive<TRequestInfo>(
+                    EdgeActor, 0ull, MakeIntrusive<TCallContext>()),
+                EdgeActor,
+                NActors::TActorId(),
+                TabletId,
+                BlockSize,
+                shouldCalculateChecksums,
+                EStorageAccessMode::Default,
+                std::move(request),
+                TDuration(), 0ull, false, std::move(reader)));
+            ReadRequest =
+                ActorSystem.GrabEdgeEvent<NKikimr::TEvBlobStorage::TEvGet>();
+        }
+
+        std::unique_ptr<NKikimr::TEvBlobStorage::TEvGetResult> MakeReadResult()
+        {
+            auto result =
+                std::make_unique<NKikimr::TEvBlobStorage::TEvGetResult>(
+                    NKikimrProto::OK, ReadRequest->QuerySize, GroupId);
+            for (size_t i = 0; i < ReadRequest->QuerySize; ++i) {
+                const auto& query = ReadRequest->Queries[i];
+                auto& response = result->Responses[i];
+                response.Status = NKikimrProto::OK;
+                response.Id = BlobId;
+                response.Shift = query.Shift;
+                response.RequestedSize = query.Size;
+                response.Buffer = TRope(TString(
+                    TStringBuf(Blob.Data).SubStr(query.Shift, query.Size)));
+            }
+            return result;
+        }
+
+        THolder<TEvPartitionCommonPrivate::TEvReadBlobResponse> FinishRead(
+            std::unique_ptr<NKikimr::TEvBlobStorage::TEvGetResult> result)
+        {
+            ActorSystem.Send(new NActors::IEventHandle(
+                ReadActor, EdgeActor, result.release()));
+            auto response = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+            auto completed = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                response->GetError().GetCode(),
+                completed->GetError().GetCode());
+            UNIT_ASSERT(completed->BlobId == BlobId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlobOffsets.size() * BlockSize, completed->BytesCount);
+            return response;
+        }
+    };
+
+    Y_UNIT_TEST_F(ShouldReadCompressedBlob, TCompressedReadEnvironment)
+    {
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            for (const bool checksums: {false, true}) {
+                StartCompressedRead(codec, checksums);
+
+                // Chunks 1 and 2 are adjacent, while chunk 4 is a partial
+                // final chunk. Chunks 0 and 3 must not be read.
+                UNIT_ASSERT_VALUES_EQUAL(2, ReadRequest->QuerySize);
+                UNIT_ASSERT(ReadRequest->Queries[0].Id == BlobId);
+                UNIT_ASSERT(ReadRequest->Queries[1].Id == BlobId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Blob.Compression.GetChunkSizes(0),
+                    ReadRequest->Queries[0].Shift);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Blob.Compression.GetChunkSizes(1) +
+                        Blob.Compression.GetChunkSizes(2),
+                    ReadRequest->Queries[0].Size);
+                ui32 lastChunkOffset = 0;
+                for (size_t i = 0; i < 4; ++i) {
+                    lastChunkOffset += Blob.Compression.GetChunkSizes(i);
+                }
+                UNIT_ASSERT_VALUES_EQUAL(
+                    lastChunkOffset, ReadRequest->Queries[1].Shift);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Blob.Compression.GetChunkSizes(4),
+                    ReadRequest->Queries[1].Size);
+
+                const auto response = FinishRead(MakeReadResult());
+                UNIT_ASSERT_C(
+                    !HasError(response->GetError()),
+                    FormatError(response->GetError()));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    checksums ? BlobOffsets.size() : 0,
+                    response->BlockChecksums.size());
+                for (size_t i = 0; i < BlobOffsets.size(); ++i) {
+                    const TString expected(BlockSize, 'a' + BlobOffsets[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(expected, Blocks[i]);
+                    if (checksums) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            ComputeDefaultDigest(
+                                {expected.data(), expected.size()}),
+                            response->BlockChecksums[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectTruncatedCompressedBlob, TCompressedReadEnvironment)
+    {
+        StartCompressedRead(NProto::TBlobCompression::LZ4, true);
+        auto result = MakeReadResult();
+        const auto& query = ReadRequest->Queries[0];
+        result->Responses[0].Buffer = TRope(
+            TString(TStringBuf(Blob.Data).SubStr(query.Shift, query.Size - 1)));
+
+        const auto response = FinishRead(std::move(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->GetError().GetMessage(), "Incomplete compressed chunk");
+        UNIT_ASSERT(response->BlockChecksums.empty());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectCorruptCompressedChunk, TCompressedReadEnvironment)
+    {
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            StartCompressedRead(codec, true);
+            auto result = MakeReadResult();
+            TString corrupt(ReadRequest->Queries[0].Size, '\xff');
+            WriteUnaligned<ui64>(corrupt.begin(), ChunkSize);
+            result->Responses[0].Buffer = TRope(corrupt);
+
+            const auto response = FinishRead(std::move(result));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED, response->GetError().GetCode());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetError().GetMessage(),
+                "Failed to decompress chunk");
+            UNIT_ASSERT(response->BlockChecksums.empty());
+            for (const auto& block: Blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectFailedCompressedBlobRead, TCompressedReadEnvironment)
+    {
+        StartCompressedRead(NProto::TBlobCompression::LZ4, true);
+        auto result = MakeReadResult();
+        result->Responses[1].Status = NKikimrProto::ERROR;
+
+        const auto response = FinishRead(std::move(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "read error", response->GetError().GetMessage());
+        UNIT_ASSERT(response->BlockChecksums.empty());
+        for (const auto& block: Blocks) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
+        }
+    }
 
     Y_UNIT_TEST_F(ShouldReadBlobSuccess, TSetupEnvironment)
     {

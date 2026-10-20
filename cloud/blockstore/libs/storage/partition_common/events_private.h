@@ -96,6 +96,7 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
+        std::optional<NProto::TBlobCompression> CompressionInfo;
 
         TReadBlobRequest() = default;
 
