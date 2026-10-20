@@ -139,6 +139,20 @@ ui64 CalculateByteCount<NProto::TReadDataResponse>(
     return response.GetLength();
 }
 
+template <>
+ui64 CalculateByteCount<NProtoPrivate::TDescribeDataRequest>(
+    const NProtoPrivate::TDescribeDataRequest& request)
+{
+    return request.GetLength();
+}
+
+template <>
+ui64 CalculateByteCount<NProtoPrivate::TGenerateBlobIdsRequest>(
+    const NProtoPrivate::TGenerateBlobIdsRequest& request)
+{
+    return request.GetLength();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Indexed by EFileStoreRequest. The ReservedN request types keep their
