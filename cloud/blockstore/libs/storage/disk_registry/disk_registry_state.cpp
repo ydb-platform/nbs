@@ -3263,13 +3263,6 @@ bool TDiskRegistryState::GetSuspendSecureErase() const
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
-    if (SuspendSecureErase) {
-        STORAGE_DEBUG(
-            "Skip SecureErase for device '%s'. SecureErase is suspended.",
-            device.GetDeviceUUID().c_str());
-        return ESecureEraseReadiness::SecureEraseSuspended;
-    }
-
     if (DeviceList.IsSuspendedAndNotResumingDevice(device.GetDeviceUUID())) {
         STORAGE_DEBUG(
             "Skip SecureErase for device '%s'. Device is suspended.",
@@ -7535,7 +7528,6 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 
     auto config = GetConfig();
     config.SetLastDiskStateSeqNo(NotificationSystem.GetDiskStateSeqNo());
-    config.SetSuspendSecureErase(SuspendSecureErase);
 
     backup.MutableConfig()->Swap(&config);
 

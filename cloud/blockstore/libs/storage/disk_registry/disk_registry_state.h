@@ -35,7 +35,6 @@ enum class ESecureEraseReadiness {
     AgentAbsent,
     AgentUnavailable,
     DeviceDetached,
-    SecureEraseSuspended,
 };
 
 struct TAgentStorageInfo
