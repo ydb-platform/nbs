@@ -62,6 +62,7 @@ double TNodeLatencyStatsTracker::CalculateLatencyDecay(
 
 bool TNodeLatencyStatsTracker::UpdateLatencyStats(
     ui64 nodeId,
+    ui32 nodeType,
     EFileStoreRequest requestType,
     TInstant now,
     TDuration latency)
@@ -77,6 +78,7 @@ bool TNodeLatencyStatsTracker::UpdateLatencyStats(
         stats = *oldStats;
     }
     stats.NodeId = nodeId;
+    stats.NodeType = nodeType;
     stats.RequestType = requestType;
     ++stats.RequestCount;
     stats.TotalLatencyUs += latency.MicroSeconds();
