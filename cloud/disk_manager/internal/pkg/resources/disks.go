@@ -544,8 +544,8 @@ func (s *storageYDB) deleteDisk(
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
+		// Leave deletedAt unset until background cleanup finishes in every cell.
 		state.status = diskStatusDeleted
-		state.deletedAt = deletingAt
 	}
 
 	state.id = diskID

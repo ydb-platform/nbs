@@ -142,3 +142,65 @@ func TestDiskCleanupKeepsFreshTombstone(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, actual)
 }
+
+func TestDiskCleanupSetsDeletedAtOnlyAfterCompletion(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	readState := func() diskState {
+		var state diskState
+		err := db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+			tx, err := session.BeginRWTransaction(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+			state, err = storage.(*storageYDB).loadDiskCleanupState(ctx, tx, "disk")
+			if err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		})
+		require.NoError(t, err)
+		return state
+	}
+	// The persistence layer represents an unset timestamp as the Unix epoch.
+	unset := time.Unix(0, 0).UTC()
+	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, unset, readState().deletedAt)
+
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", []string{"cell-a", "cell-b"})
+	require.NoError(t, err)
+	require.True(t, prepared)
+	require.Equal(t, unset, readState().deletedAt)
+
+	require.NoError(t, finishDiskCleanup(ctx, db, storage, "disk", "cell-a"))
+	state := readState()
+	require.Equal(t, diskStatusDeletingFromCells, state.status)
+	require.Equal(t, unset, state.deletedAt)
+
+	err = db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		tx, err := session.BeginRWTransaction(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		// A failed completion commit must not persist the deletion timestamp.
+		return storage.CompleteDiskCleanup(ctx, tx, "disk", "cell-b")
+	})
+	require.NoError(t, err)
+	state = readState()
+	require.Equal(t, diskStatusDeletingFromCells, state.status)
+	require.Equal(t, unset, state.deletedAt)
+
+	beforeCompletion := time.Now().Truncate(time.Microsecond)
+	require.NoError(t, finishDiskCleanup(ctx, db, storage, "disk", "cell-b"))
+	state = readState()
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.deletedAt.Before(beforeCompletion))
+	require.False(t, state.deletedAt.After(time.Now()))
+	deletedAt := state.deletedAt
+	require.NoError(t, finishDiskCleanup(ctx, db, storage, "disk", "cell-b"))
+	require.Equal(t, deletedAt, readState().deletedAt)
+}
