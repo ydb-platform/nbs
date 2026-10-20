@@ -6,7 +6,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
