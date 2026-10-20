@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -237,12 +238,13 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	}
 
 	task := &deleteDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.DeleteDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		cellSelector: cells.NewCellSelector(nil, nil, nil, nil),
+		request:      request,
+		state:        &protos.DeleteDiskTaskState{},
 	}
 
 	// There is no such disk in the database, return nil.

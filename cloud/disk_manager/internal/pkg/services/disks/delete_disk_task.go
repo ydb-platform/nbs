@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
@@ -29,6 +30,7 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
+	cellSelector      cells.CellSelector
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
 }
@@ -60,7 +62,6 @@ func (t *deleteDiskTask) deleteDisk(
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
-	sync := t.request.Sync
 
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
@@ -88,10 +89,67 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = diskMeta.ZoneID
 	}
 
+	zoneIDs := []string{zoneID}
+	if diskMeta == nil {
+		zoneIDs, err = t.cellSelector.ResolveCells(zoneID)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, cellID := range zoneIDs {
+		idempotencyKey := selfTaskID + "_delete_disk_from_incremental"
+		if cellID != zoneID {
+			// Keep the original key for disks with metadata and legacy zones.
+			idempotencyKey += "_" + cellID
+		}
+
+		err = t.deleteDiskInCell(ctx, execCtx, cellID, idempotencyKey)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Only overlay disks (created from image) should be released.
+	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+		taskID, err := t.poolService.ReleaseBaseDisk(
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				selfTaskID+"_release_base_disk",
+			),
+			&pools_protos.ReleaseBaseDiskRequest{
+				OverlayDisk: &types.Disk{
+					ZoneId: zoneID,
+					DiskId: diskID,
+				},
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+}
+
+func (t *deleteDiskTask) deleteDiskInCell(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	zoneID string,
+	idempotencyKey string,
+) error {
+
+	diskID := t.request.Disk.DiskId
+
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			selfTaskID+"_delete_disk_from_incremental",
+			idempotencyKey,
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
@@ -116,40 +174,16 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	if sync {
+	if t.request.Sync {
 		err = client.DeleteSync(ctx, diskID)
 	} else {
 		err = client.Delete(ctx, diskID)
 	}
-	if err != nil {
+	if err != nil && !nbs.IsDiskNotFoundError(err) {
 		return err
 	}
 
-	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
-		taskID, err = t.poolService.ReleaseBaseDisk(
-			headers.SetIncomingIdempotencyKey(
-				ctx,
-				selfTaskID+"_release_base_disk",
-			),
-			&pools_protos.ReleaseBaseDiskRequest{
-				OverlayDisk: &types.Disk{
-					ZoneId: zoneID,
-					DiskId: diskID,
-				},
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-		if err != nil {
-			return err
-		}
-	}
-
-	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	return nil
 }
 
 func (t *deleteDiskTask) Run(

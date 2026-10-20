@@ -99,6 +99,7 @@ func RegisterForExecution(
 			scheduler:         taskScheduler,
 			poolService:       poolService,
 			nbsFactory:        nbsFactory,
+			cellSelector:      cellSelector,
 		}
 	})
 	if err != nil {
