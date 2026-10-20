@@ -12,22 +12,9 @@
 #include <util/folder/tempdir.h>
 #include <util/system/tempfile.h>
 
-#include <chrono>
-#include <filesystem>
-
 namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-void SetModificationTime(const TString& path, i64 seconds, i64 nanoseconds = 0)
-{
-    std::filesystem::last_write_time(
-        path.c_str(),
-        std::filesystem::file_time_type{} + std::chrono::seconds(seconds) +
-            std::chrono::nanoseconds(nanoseconds));
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -199,7 +186,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         WriteProfileLog(oldFile.Name());
         WriteProfileLog(currentFile.Name(), 2400);
         oldFile.Resize(oldFile.GetLength() - 1);
-        SetModificationTime(currentFile.Name(), 3000);
 
         for (const auto* name: {"dumpevents", "findbytesaccess"}) {
             TVector<const char*> args = {
@@ -253,8 +239,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle second;
         WriteProfileLog(first.Name());
         WriteProfileLog(second.Name());
-        SetModificationTime(first.Name(), 100);
-        SetModificationTime(second.Name(), 200);
         const char* args[] = {
             "test",
             "--profile-log",
@@ -313,9 +297,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             frame.Flush();
             log.CloseLog();
         }
-        SetModificationTime(first.Name(), 1000);
-        SetModificationTime(second.Name(), 2000);
-        SetModificationTime(third.Name(), 3000);
         const char* args[] = {
             "test",
             "--profile-log",
@@ -351,8 +332,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             log.CloseLog();
         }
         broken.Resize(broken.GetLength() - 1);
-        SetModificationTime(broken.Name(), 100);
-        SetModificationTime(good.Name(), 200);
 
         const char* strictArgs[] = {
             "test",
@@ -394,9 +373,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle first;
         TTempFileHandle second;
         TTempFileHandle third;
-        SetModificationTime(first.Name(), 100);
-        SetModificationTime(second.Name(), 100);
-        SetModificationTime(third.Name(), 100);
         TTestCommand command;
         const char* args[] = {
             "test",
@@ -444,11 +420,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         WriteProfileLog(
             current.Name(),
             TInstant::ParseIso8601("2026-09-22T15:27:00Z").Seconds());
-        SetModificationTime(current.Name(), 1);
-        // Mtimes deliberately disagree with the dated filenames.
-        SetModificationTime(newer.Name(), 200);
-        SetModificationTime(oldest.Name(), 300);
-        SetModificationTime(newest.Name(), 100);
         TTestCommand command;
         const char* args[] = {
             "test",
@@ -471,8 +442,6 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempDir directory;
         TTempFileHandle first(directory.Name() + "/first.2026-09-26T10:25");
         TTempFileHandle second(directory.Name() + "/second.2026-09-26T10:25");
-        SetModificationTime(first.Name(), 300);
-        SetModificationTime(second.Name(), 100);
         TTestCommand command;
         const char* args[] = {
             "test",

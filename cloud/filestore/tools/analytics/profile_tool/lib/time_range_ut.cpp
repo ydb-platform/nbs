@@ -6,9 +6,6 @@
 #include <library/cpp/eventlog/eventlog.h>
 #include <util/system/tempfile.h>
 
-#include <chrono>
-#include <filesystem>
-
 namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
@@ -152,7 +149,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             *file.EndTime, TInstant::ParseIso8601("2026-09-26T10:25:00Z"));
     }
 
-    Y_UNIT_TEST(ShouldReadBoundaryRecordsInsteadOfMtime)
+    Y_UNIT_TEST(ShouldReadBoundaryRecordsForUndatedFiles)
     {
         TTempFileHandle base;
         for (const auto* suffix: {
@@ -172,9 +169,6 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
                 frame.Flush();
             }
             log.CloseLog();
-            std::filesystem::last_write_time(
-                input.Name().c_str(),
-                std::filesystem::file_time_type{} + std::chrono::seconds(100));
             const auto unprobed = GetProfileLogFile(input.Name());
             UNIT_ASSERT(!unprobed.StartTime);
             UNIT_ASSERT(!unprobed.EndTime);
