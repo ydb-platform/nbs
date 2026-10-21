@@ -103,14 +103,18 @@ public:
             CheckResponse(statusResponse);
 
             using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
-            const auto status = statusResponse.GetStatus();
+            const auto status = statusResponse.GetOperationStatus();
             if (status == TStatus::E_PENDING) {
                 Cerr << "pending" << Endl;
                 InterruptibleSleep(TDuration::Seconds(1));
                 continue;
             }
 
-            // Older tablets do not populate Status.
+            if (status == TStatus::E_FAILED) {
+                STORAGE_THROW_SERVICE_ERROR(statusResponse.GetOperationError());
+            }
+
+            // Older tablets do not populate OperationStatus.
             const bool completedWithoutStatus =
                 status == TStatus::E_UNKNOWN &&
                 statusResponse.GetProcessedRangeCount() >=
