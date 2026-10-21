@@ -1,5 +1,8 @@
 #include "tablet.h"
+#include "tablet_counters.h"
 
+#include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -581,7 +584,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Visitor.ValidateExpectedCountersWithPredicate(expectedCounters);
     }
 
-    Y_UNIT_TEST(ShouldUseNodeRefCountAsListNodesSizeForPerformanceProfile)
+    Y_UNIT_TEST(ShouldUseNodeRefsAsListNodesWeightForLoadAndSuffer)
+    {
+        NProto::TDiagnosticsConfig diagProto;
+        auto& pp = *diagProto.MutableSSDFileSystemPerformanceProfile();
+        pp.MutableListNodes()->SetRPS(1000);
+        pp.MutableListNodes()->SetThroughput(1000);
+        TDiagnosticsConfig diagConfig(std::move(diagProto));
+
+        NProto::TFileSystem fileSystem;
+        fileSystem.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+
+        TTabletMetrics metrics(NMetrics::CreateMetricsRegistryStub());
+
+        auto now = TInstant::Seconds(1);
+        metrics.ListNodes.UpdatePrev(now);
+        metrics.ListNodesExtra.UpdatePrev();
+
+        // 3 requests: 1000 name bytes, 100 node refs and 10s latency each
+        for (ui32 i = 0; i < 3; ++i) {
+            metrics.ListNodes.Update(1, 1000, TDuration::Seconds(10));
+            metrics.ListNodesExtra.ResponseNodeRefs.fetch_add(100);
+        }
+
+        now += TDuration::Seconds(15);
+        metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);
+
+        // load = (3 / 15s) / 1000 + (300 refs / 15s) / 1000
+        UNIT_ASSERT_VALUES_EQUAL(20, metrics.CurrentLoad.load());
+        // expected latency = (1 / 1000 + 100 refs / 1000) * 32 = 3.232s < 10s
+        UNIT_ASSERT_VALUES_EQUAL(1, metrics.Suffer.load());
+
+        metrics.ListNodes.UpdatePrev(now);
+        metrics.ListNodesExtra.UpdatePrev();
+
+        now += TDuration::Seconds(15);
+        metrics.UpdatePerformanceMetrics(now, diagConfig, fileSystem);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, metrics.CurrentLoad.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, metrics.Suffer.load());
+    }
+
+    Y_UNIT_TEST(ShouldTrackListNodesNodeRefsForPerformanceProfile)
     {
         NProto::TDiagnosticsConfig diagConfig;
         NProto::TFileSystemPerformanceProfile pp;
@@ -610,7 +654,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         tablet.ListNodes(RootNodeId);
 
         tablet.AdvanceTime(TDuration::Seconds(15));
-        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         TTestRegistryVisitor visitor;
         registry->Visit(TInstant::Zero(), visitor);
@@ -628,15 +672,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"request", "ListNodes"},
                 {"filesystem", "test"}}, nodeCount},
         });
-
-        // node refs / window (15-16s) / Throughput(1) * 1000
         visitor.ValidateExpectedCountersWithPredicate({
             {{
                 {"sensor", "CurrentLoad"},
-                {"filesystem", "test"}}, [] (i64 val) {
-                    return nodeCount * 1000 / 16 <= val
-                        && val <= nodeCount * 1000 / 15;
-                }},
+                {"filesystem", "test"}}, [] (i64 val) { return val > 0; }},
+        });
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "CurrentLoad"},
+                {"filesystem", "test"}}, 0},
         });
     }
 
