@@ -21,7 +21,7 @@ private:
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
-    const ui64 ReadStatsSizeThreshold;
+    const ui64 ChunkSwitchStatsMinHandleSize;
 
     TDirectoryHandleModuleStatsPtr Stats;
 
@@ -35,7 +35,7 @@ public:
         TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage,
         TDirectoryEntryVersionCachePtr directoryEntryVersionCache,
-        ui64 readStatsSizeThreshold);
+        ui64 chunkSwitchStatsMinHandleSize);
 
     bool IsPersistent() const;
 
