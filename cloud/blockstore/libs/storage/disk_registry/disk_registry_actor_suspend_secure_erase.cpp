@@ -63,15 +63,14 @@ void TDiskRegistryActor::CompleteSuspendSecureErase(
     const TActorContext& ctx,
     TTxDiskRegistry::TSuspendSecureErase& args)
 {
-    SuspendSecureErase = args.State;
-    State->SetSuspendSecureErase(SuspendSecureErase);
+    State->SetSuspendSecureErase(args.State);
 
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>());
 
-    if (!SuspendSecureErase) {
+    if (!args.State) {
         SecureErase(ctx);
     }
 }
