@@ -145,7 +145,9 @@ ssh -L 8766:localhost:8766 <vm_ip>
 - `7-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
   it requires KVM and the QEMU binary and guest image from `buildall`.
   Add `--cell2` to use the second cell, its socket directory, and its QMP/SSH ports.
-- `8-make-disks.sh` creates a selection of disks and placement groups.
+- `8-make-disks.sh` creates a selection of disks and placement groups in cell-1.
+  Add `--cell2` to create the same set in cell-2, with `-cell2` appended to
+  disk and placement-group names.
 - `copy_volume.py` exercises volume links to copy a volume.
 - `cleanup.sh` removes generated configs, backups, and runtime symlinks. Stop all
   processes first. The persistent files in `$PERSISTENT_TMP_DIR` remain on disk.
