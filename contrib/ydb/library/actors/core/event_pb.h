@@ -419,6 +419,7 @@ namespace NActors {
                 copy.MergeFrom(base);
                 base.Swap(&copy);
                 PreSerializedData.clear();
+                TBase::InvalidateCachedByteSize(); // cached size may be incorrect now
             }
             return TBase::Record;
         }
@@ -451,14 +452,6 @@ namespace NActors {
 
         ui32 CalculateSerializedSize() const override {
             return PreSerializedData.size() + TBase::CalculateSerializedSize();
-        }
-
-        size_t GetCachedByteSize() const {
-            return PreSerializedData.size() + TBase::GetCachedByteSize();
-        }
-
-        ui32 CalculateSerializedSizeCached() const override {
-            return GetCachedByteSize();
         }
 
         TEventSerializationInfo CreateSerializationInfo(bool allowExternalDataChannel = true) const override {
