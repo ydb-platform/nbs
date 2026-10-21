@@ -64,6 +64,7 @@ namespace {
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
+    xxx(BlobCompressionChunkSizes,      TVector<ui32>,           {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
     xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
     xxx(VolumeCriticalEventsReportingMode,                                                               \
@@ -131,6 +132,12 @@ TVector<TString> ConvertValue(
 }
 
 template <>
+TVector<ui32> ConvertValue(const google::protobuf::RepeatedField<ui32>& value)
+{
+    return {value.begin(), value.end()};
+}
+
+template <>
 TVector<TSizeInterval> ConvertValue(
     const google::protobuf::RepeatedPtrField<
         NProto::TDiagnosticsConfig::TInterval>& value)
@@ -148,8 +155,8 @@ void DumpImpl(const T& t, IOutputStream& os)
     os << t;
 }
 
-template <>
-void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+template <typename T>
+void DumpImpl(const TVector<T>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
         if (i) {

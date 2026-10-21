@@ -147,6 +147,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobContent.GetGuardedSgList(),
                 0,      // blockSizeForChecksums
                 true,   // async
+                false,  // compressedSizeEstimationCandidate
                 BlobStorageAsyncRequestTimeout
                     ? ctx.Now() + BlobStorageAsyncRequestTimeout
                     : TInstant::Max()   // deadline

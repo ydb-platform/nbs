@@ -3,6 +3,7 @@
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -36,10 +37,10 @@ struct TStorageStatsServiceState: TAtomicRefCount<TStorageStatsServiceState>
 {
     TPartitionDiskCounters Counters{
         EPublishingPolicy::DiskRegistryBased,
-        EHistogramCounterOption::ReportMultipleCounters};
+        TDiagnosticsConfig{}};
     TPartitionDiskCounters AggregatedCounters{
         EPublishingPolicy::DiskRegistryBased,
-        EHistogramCounterOption::ReportMultipleCounters};
+        TDiagnosticsConfig{}};
 };
 
 using TStorageStatsServiceStatePtr = TIntrusivePtr<TStorageStatsServiceState>;

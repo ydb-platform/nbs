@@ -3,7 +3,11 @@
 #include "histogram.h"
 #include "storage_request_counters.h"
 
+#include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/diagnostics/solomon_counters.h>
+
+#include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -921,6 +925,16 @@ static_assert(
      std::size(TTransportCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobCompressionCounters
+{
+    TCumulativeCounter UncompressedBytesWritten{
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCumulativeCounter CompressedBytesWritten{
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+};
+
 struct TPartitionDiskCounters
 {
     TSimpleDiskCounters Simple;
@@ -929,16 +943,13 @@ struct TPartitionDiskCounters
     THistogramCounters Histogram;
     TTransportCounters Rdma;
     TTransportCounters Interconnect;
+    THashMap<ui32, TBlobCompressionCounters> BlobCompression;
 
     EPublishingPolicy Policy;
 
     TPartitionDiskCounters(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
-        : RequestCounters(histCounterOptions)
-        , Histogram(histCounterOptions)
-        , Policy(policy)
-    {}
+        EPublishingPolicy policy,
+        const TDiagnosticsConfig& diagnosticsConfig);
 
     void Add(const TPartitionDiskCounters& source);
     void AggregateWith(const TPartitionDiskCounters& source);
@@ -986,7 +997,7 @@ struct TVolumeSelfCounters
 
 TPartitionDiskCountersPtr CreatePartitionDiskCounters(
     EPublishingPolicy policy,
-    EHistogramCounterOptions histCounterOptions);
+    const TDiagnosticsConfig& diagnosticsConfig);
 TVolumeSelfCountersPtr CreateVolumeSelfCounters(
     EPublishingPolicy policy,
     EHistogramCounterOptions histCounterOptions);

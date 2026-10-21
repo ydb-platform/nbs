@@ -297,4 +297,11 @@ message TDiagnosticsConfig
     // Selects the critical event metrics to report.
     optional EVolumeCriticalEventsReportingMode
         VolumeCriticalEventsReportingMode = 60;
+
+    // Chunk sizes, in consecutive blocks, for the blob compression experiment.
+    // Fixed for the process lifetime; changing the list requires a restart.
+    // Each size has separate compression_chunk_size counters. Zero means
+    // compressing the whole blob. An empty list keeps the legacy whole-blob
+    // compression counters without a chunk-size label.
+    repeated uint32 BlobCompressionChunkSizes = 61;
 }

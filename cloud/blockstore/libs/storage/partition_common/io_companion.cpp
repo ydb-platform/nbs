@@ -2,11 +2,24 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
+#include <util/generic/algorithm.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+namespace {
+
+TVector<ui32> GetCompressionChunkSizes(const TDiagnosticsConfig& config)
+{
+    auto sizes = config.GetBlobCompressionChunkSizes();
+    SortUnique(sizes);
+    return sizes;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,6 +47,7 @@ TIOCompanion::TIOCompanion(
     , BlobCodec(blobCodec)
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , BlobCompressionChunkSizes(GetCompressionChunkSizes(*DiagnosticsConfig))
     , StorageAccessMode(storageAccessMode)
     , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
     , BSGroupOperationId(bsGroupOperationId)

@@ -29,6 +29,30 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 EstimateCompressedSize(
+    const NBlockCodecs::ICodec& codec,
+    TStringBuf blobContent,
+    ui64 chunkSize)
+{
+    if (!chunkSize) {
+        chunkSize = blobContent.size();
+    }
+
+    TString out;
+    ui64 compressedSize = 0;
+    while (blobContent) {
+        const auto chunk = blobContent.SubStr(
+            0,
+            Min<ui64>(chunkSize, blobContent.size()));
+        out.ReserveAndResize(codec.MaxCompressedLength(chunk));
+        compressedSize += codec.Compress(chunk, out.begin());
+        blobContent.Skip(chunk.size());
+    }
+    return compressedSize;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBlobActor final
     : public TActorBootstrapped<TWriteBlobActor>
     , public TLongRunningOperationCompanion
@@ -344,7 +368,9 @@ void TIOCompanion::HandleWriteBlob(
 {
     auto msg = ev->Release();
     const ui32 compRate = Config->GetBlobCompressionRate();
-    if (BlobCodec && compRate && msg->BlobId.GetHash() % compRate == 0) {
+    if (msg->CompressedSizeEstimationCandidate && BlobCodec && compRate &&
+        msg->BlobId.GetHash() % compRate == 0)
+    {
         TString blobContent;
 
         if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&msg->Data)) {
@@ -358,13 +384,30 @@ void TIOCompanion::HandleWriteBlob(
         }
 
         if (blobContent) {
-            TString out;
-            out.ReserveAndResize(BlobCodec->MaxCompressedLength(blobContent));
-            const size_t sz = BlobCodec->Compress(blobContent, out.begin());
-            PartCounters->Access([&](auto& counters) {
-                counters->Cumulative.UncompressedBytesWritten.Increment(blobContent.size());
-                counters->Cumulative.CompressedBytesWritten.Increment(sz);
-            });
+            const auto size =
+                EstimateCompressedSize(*BlobCodec, blobContent, 0);
+            PartCounters->Access(
+                [&](auto& counters)
+                {
+                    counters->Cumulative.UncompressedBytesWritten.Increment(
+                        blobContent.size());
+                    counters->Cumulative.CompressedBytesWritten.Increment(size);
+                });
+            for (const ui32 blocksPerChunk: BlobCompressionChunkSizes) {
+                const auto size = EstimateCompressedSize(
+                    *BlobCodec,
+                    blobContent,
+                    ui64(blocksPerChunk) * PartitionConfig.GetBlockSize());
+                PartCounters->Access(
+                    [&](auto& counters)
+                    {
+                        auto& compression =
+                            counters->BlobCompression.at(blocksPerChunk);
+                        compression.UncompressedBytesWritten.Increment(
+                            blobContent.size());
+                        compression.CompressedBytesWritten.Increment(size);
+                    });
+            }
         }
     }
 

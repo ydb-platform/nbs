@@ -1,6 +1,8 @@
 #include "disk_counters.h"
 
-#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+
+#include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -8,8 +10,35 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TPartitionDiskCounters::TPartitionDiskCounters(
+        EPublishingPolicy policy,
+        const TDiagnosticsConfig& diagnosticsConfig)
+    : RequestCounters(diagnosticsConfig.GetHistogramCounterOptions())
+    , Histogram(diagnosticsConfig.GetHistogramCounterOptions())
+    , Policy(policy)
+{
+    if (Policy != EPublishingPolicy::DiskRegistryBased) {
+        for (const ui32 chunkSize:
+             diagnosticsConfig.GetBlobCompressionChunkSizes())
+        {
+            BlobCompression.try_emplace(chunkSize);
+        }
+    }
+}
+
 void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 {
+    for (const auto& [chunkSize, sourceCounters]: source.BlobCompression) {
+        if (auto it = BlobCompression.find(chunkSize);
+            it != BlobCompression.end())
+        {
+            it->second.UncompressedBytesWritten.Add(
+                sourceCounters.UncompressedBytesWritten);
+            it->second.CompressedBytesWritten.Add(
+                sourceCounters.CompressedBytesWritten);
+        }
+    }
+
     for (auto meta: TSimpleDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
         counter.Add(meta.GetValue(source.Simple));
@@ -48,6 +77,17 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 {
+    for (const auto& [chunkSize, sourceCounters]: source.BlobCompression) {
+        if (auto it = BlobCompression.find(chunkSize);
+            it != BlobCompression.end())
+        {
+            it->second.UncompressedBytesWritten.AggregateWith(
+                sourceCounters.UncompressedBytesWritten);
+            it->second.CompressedBytesWritten.AggregateWith(
+                sourceCounters.CompressedBytesWritten);
+        }
+    }
+
     for (auto meta: TSimpleDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
         counter.AggregateWith(meta.GetValue(source.Simple));
@@ -86,6 +126,11 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::Publish(TInstant now)
 {
+    for (auto& [chunkSize, counters]: BlobCompression) {
+        counters.UncompressedBytesWritten.Publish(now);
+        counters.CompressedBytesWritten.Publish(now);
+    }
+
     for (auto meta: TSimpleDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
         if (Policy == EPublishingPolicy::All ||
@@ -163,6 +208,18 @@ void TPartitionDiskCounters::Register(
     NMonitoring::TDynamicCountersPtr counters,
     bool aggregate)
 {
+    for (auto& [chunkSize, compression]: BlobCompression) {
+        auto subgroup = counters->GetSubgroup(
+            "compression_chunk_size",
+            ToString(chunkSize));
+        compression.UncompressedBytesWritten.Register(
+            subgroup,
+            "UncompressedBytesWritten");
+        compression.CompressedBytesWritten.Register(
+            subgroup,
+            "CompressedBytesWritten");
+    }
+
     ERequestCounterOptions requestCounterOptions;
     if (aggregate) {
         requestCounterOptions =
@@ -254,6 +311,11 @@ void TPartitionDiskCounters::Register(
 
 void TPartitionDiskCounters::Reset()
 {
+    for (auto& [chunkSize, counters]: BlobCompression) {
+        counters.UncompressedBytesWritten.Reset();
+        counters.CompressedBytesWritten.Reset();
+    }
+
     for (auto meta: TSimpleDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
         counter.Reset();
@@ -469,9 +531,11 @@ TVolumeSelfCountersPtr CreateVolumeSelfCounters(
 
 TPartitionDiskCountersPtr CreatePartitionDiskCounters(
     EPublishingPolicy policy,
-    EHistogramCounterOptions histCounterOptions)
+    const TDiagnosticsConfig& diagnosticsConfig)
 {
-    return std::make_unique<TPartitionDiskCounters>(policy, histCounterOptions);
+    return std::make_unique<TPartitionDiskCounters>(
+        policy,
+        diagnosticsConfig);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

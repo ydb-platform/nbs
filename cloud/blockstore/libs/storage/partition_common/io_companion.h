@@ -44,6 +44,7 @@ private:
     const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TVector<ui32> BlobCompressionChunkSizes;
     const EStorageAccessMode StorageAccessMode;
 
     TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;

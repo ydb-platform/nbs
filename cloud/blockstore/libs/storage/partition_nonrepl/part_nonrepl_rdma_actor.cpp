@@ -59,7 +59,7 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
           TLogTitle::TPartitionNonreplRdma{.DiskId = PartConfig->GetName()})
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
-          DiagnosticsConfig->GetHistogramCounterOptions()))
+          *DiagnosticsConfig))
 {}
 
 TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor() = default;
