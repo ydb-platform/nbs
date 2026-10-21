@@ -91,11 +91,9 @@ public:
     void Stop() override
     {
         auto future = RunOnDevices(
-            Devices.size(),
+            static_cast<ui32>(Devices.size()),
             [](const TString& /*uuid*/, const IJournalledDevicePtr& device)
-            {
-                return device->Stop().IgnoreResult();
-            });
+            { return device->Stop().IgnoreResult(); });
 
         future.Wait();
     }
@@ -246,7 +244,7 @@ public:
 private:
     // Runs an operation on every device with at most |limit| of them in
     // flight: each device that completes lets the next one in.
-    TFuture<void> RunOnDevices(size_t limit, TDeviceOperation operation) const
+    TFuture<void> RunOnDevices(ui32 limit, TDeviceOperation operation) const
     {
         if (Devices.empty()) {
             return MakeFuture();
