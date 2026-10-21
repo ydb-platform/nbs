@@ -101,14 +101,19 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     IStartablePtr Build(
         bool journalEnabled,
-        TVector<TJournalledDeviceConfig> configs)
+        TVector<TJournalledDeviceConfig> configs,
+        ui32 restoreConcurrency = 1)
     {
         return TServerBuilder(
                    Logging,
                    Executor,
                    DeviceManager,
-                   TNetworkAddress{0},   // the server is never started
-                   journalEnabled,
+                   TServerConfig{
+                       // the server is never started
+                       .ListenAddress = TNetworkAddress{0},
+                       .JournalEnabled = journalEnabled,
+                       .RestoreConcurrency = restoreConcurrency,
+                   },
                    std::move(configs))
             .Build();
     }
