@@ -55,6 +55,11 @@ public:
 
         // Number of initialized queries, after deduplication and coalescing.
         size_t QueriesCount = 0;
+
+        // Block offsets for each request.
+        // ith element contains list of block offsets which depend on the ith
+        // query.
+        TVector<TVector<ui32>> BlockOffsetsForEachRequest;
     };
 
 private:
@@ -131,7 +136,8 @@ public:
         const TVector<TRope>& compressedBuffers,
         const TSgList& outputBuffers,
         const NProto::TBlobCompression& compression,
-        const TVector<ui16>& blockOffsets) const;
+        const TVector<ui16>& blockOffsets,
+        TVector<ui32>* blockChecksums) const;
 
     /**
      * Plans reads of the complete compressed chunks needed for the requested
