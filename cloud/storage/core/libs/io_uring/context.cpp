@@ -19,6 +19,50 @@ const TDuration DefaultTimeout = TDuration::Minutes(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Wraps the caller's completion to account the operation in the stats right
+// before the caller's completion is invoked
+struct TAccountedCompletion final
+    : TFileIOCompletion
+{
+    TFileIOStats& Stats;
+    TFileIOCompletion* const Completion;
+    const EFileIORequest Request;
+    const ui64 RequestBytes;
+    const ui64 StartCycles;
+
+    TAccountedCompletion(
+            TFileIOStats& stats,
+            TFileIOCompletion* completion,
+            EFileIORequest request,
+            ui64 requestBytes)
+        : TFileIOCompletion{.Func = &TAccountedCompletion::Complete}
+        , Stats(stats)
+        , Completion(completion)
+        , Request(request)
+        , RequestBytes(requestBytes)
+        , StartCycles(Stats.RequestStarted(request))
+    {}
+
+    static void Complete(
+        TFileIOCompletion* self,
+        const NProto::TError& error,
+        ui32 bytes)
+    {
+        std::unique_ptr<TAccountedCompletion> ptr{
+            static_cast<TAccountedCompletion*>(self)};
+
+        ptr->Stats.RequestCompleted(
+            ptr->Request,
+            ptr->StartCycles,
+            ptr->RequestBytes,
+            HasError(error));
+
+        ptr->Completion->Func(ptr->Completion, error, bytes);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError MakeSystemError(int code, TStringBuf message)
 {
     return MakeError(
@@ -143,7 +187,8 @@ NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner, ui32 fl
 ////////////////////////////////////////////////////////////////////////////////
 
 TContext::TContext(TParams params)
-    : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
+    : Stats(std::move(params.Stats))
+    , SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
     , CompletionThread(
           std::bind_front(
               &TContext::CompletionThreadProc,
@@ -151,6 +196,8 @@ TContext::TContext(TParams params)
               std::move(params.CompletionThreadName)))
     , PropagateAffinityToKernelWorkers(params.PropagateAffinityToKernelWorkers)
 {
+    Y_ABORT_UNLESS(Stats);
+
     const auto error = InitRing(
         &Ring,
         params.SubmissionQueueEntries,
@@ -240,6 +287,14 @@ void TContext::AsyncIO(
     SubmissionThread->ExecuteSimple(
         [=, this]
         { SubmitIO(op, fd, addr, len, offset, completion, sqeFlags, rwFlags); });
+}
+
+TFileIOCompletion* TContext::StartRequest(
+    EFileIORequest request,
+    ui64 requestBytes,
+    TFileIOCompletion* completion)
+{
+    return new TAccountedCompletion(*Stats, completion, request, requestBytes);
 }
 
 void TContext::AsyncNOP(TFileIOCompletion* completion, ui32 flags)
@@ -416,7 +471,7 @@ void TContext::AsyncWrite(
         buffer.data(),
         buffer.size(),
         offset,
-        completion,
+        StartRequest(EFileIORequest::Write, buffer.size(), completion),
         sqeFlags,
         rwFlags);
 }
@@ -434,7 +489,7 @@ void TContext::AsyncRead(
         buffer.data(),
         buffer.size(),
         offset,
-        completion,
+        StartRequest(EFileIORequest::Read, buffer.size(), completion),
         flags);
 }
 
@@ -452,7 +507,10 @@ void TContext::AsyncWriteV(
         buffers.data(),
         buffers.size(),
         offset,
-        completion,
+        StartRequest(
+            EFileIORequest::Write,
+            GetTotalBufferSize(buffers),
+            completion),
         sqeFlags,
         rwFlags);
 }
@@ -470,7 +528,10 @@ void TContext::AsyncReadV(
         buffers.data(),
         buffers.size(),
         offset,
-        completion,
+        StartRequest(
+            EFileIORequest::Read,
+            GetTotalBufferSize(buffers),
+            completion),
         flags);
 }
 

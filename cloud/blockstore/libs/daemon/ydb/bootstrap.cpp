@@ -61,6 +61,7 @@
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -499,7 +500,12 @@ void TBootstrapYdb::InitDiskAgentBackend()
     Y_ABORT_IF(LocalStorageProvider);
     Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(Logging, config);
+    if (config.GetFileIOStatsEnabled()) {
+        FileIOStatsRegistry = std::make_shared<TFileIOStatsRegistry>();
+    }
+
+    auto r =
+        CreateDiskAgentBackendComponents(Logging, config, FileIOStatsRegistry);
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);

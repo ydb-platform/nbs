@@ -157,6 +157,7 @@ public:
 
     [[nodiscard]] TString GetJournalledDeviceTcpServerListenAddress() const;
     [[nodiscard]] bool GetJournalEnabled() const;
+    [[nodiscard]] bool GetFileIOStatsEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

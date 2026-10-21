@@ -43,10 +43,13 @@ struct TConcurrentAioServiceFactory final: IFileIOServiceFactory
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(
+    const TDiskAgentConfig& config,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
     auto factory = NCloud::CreateAIOServiceFactory(
-        {.MaxEvents = config.GetMaxAIOContextEvents()});
+        {.MaxEvents = config.GetMaxAIOContextEvents()},
+        std::move(statsRegistry));
 
     if (config.GetUseOneSubmissionThreadPerAIOServiceEnabled()) {
         factory =
@@ -57,7 +60,8 @@ IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
 }
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
     TIoUringServiceParams params{
         .SubmissionQueueEntries = config.GetMaxAIOContextEvents()};
@@ -66,30 +70,37 @@ IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
         return NCloud::CreateIoUringServiceNullFactory(std::move(params));
     }
 
-    return NCloud::CreateIoUringServiceFactory(std::move(params));
+    return NCloud::CreateIoUringServiceFactory(
+        std::move(params),
+        std::move(statsRegistry));
 }
 
 IFileIOServiceFactoryPtr CreateFileIOServiceFactory(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
     switch (config.GetBackend()) {
         case NProto::DISK_AGENT_BACKEND_SPDK:
         case NProto::DISK_AGENT_BACKEND_NULL:
             break;
         case NProto::DISK_AGENT_BACKEND_AIO:
-            return CreateAIOServiceFactory(config);
+            return CreateAIOServiceFactory(config, std::move(statsRegistry));
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            return CreateIoUringServiceFactory(config);
+            return CreateIoUringServiceFactory(
+                config,
+                std::move(statsRegistry));
     }
 
     return nullptr;
 }
 
 NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
-    IFileIOServiceFactoryPtr factory = CreateFileIOServiceFactory(config);
+    IFileIOServiceFactoryPtr factory =
+        CreateFileIOServiceFactory(config, std::move(statsRegistry));
     if (!factory) {
         return nullptr;
     }
@@ -188,7 +199,8 @@ NNvme::INvmeManagerPtr CreateNvmeManager(
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     ILoggingServicePtr logging,
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TFileIOStatsRegistryPtr fileIOStatsRegistry)
 {
     Y_ABORT_UNLESS(logging);
 
@@ -197,7 +209,8 @@ TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     }
 
     auto nvmeManager = CreateNvmeManager(std::move(logging), config);
-    auto provider = CreateFileIOServiceProvider(config);
+    auto provider =
+        CreateFileIOServiceProvider(config, std::move(fileIOStatsRegistry));
 
     return {
         .NvmeManager = nvmeManager,

@@ -26,6 +26,7 @@ SRCS(
     disjoint_interval_map_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp
+    file_io_stats_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
     lru_cache_ut.cpp

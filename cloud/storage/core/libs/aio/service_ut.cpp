@@ -1,6 +1,7 @@
 #include "service.h"
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -241,6 +242,99 @@ Y_UNIT_TEST_SUITE(TAioTest)
                 UNIT_ASSERT_VALUES_EQUAL('X', val);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldCollectStats)
+    {
+        auto registry = std::make_shared<TFileIOStatsRegistry>();
+        auto service =
+            CreateAIOServiceFactory({}, registry)->CreateFileIOService();
+        service->Start();
+        // the stats are not checked after Stop: the shutdown read may be
+        // accounted
+        Y_DEFER { service->Stop(); };
+
+        const auto& stats = *registry->GetEntries()[0].Stats;
+
+        const ui32 blockSize = 4_KB;
+        const ui64 blockCount = 1024;
+        const auto filePath = TryGetRamDrivePath() / "test";
+
+        TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned | Sync);
+        fileData.Resize(blockCount * blockSize);
+
+        const ui64 length = 2 * blockSize;
+
+        std::shared_ptr<char> memory {
+            static_cast<char*>(std::aligned_alloc(blockSize, length)),
+            std::free
+        };
+
+        TArrayRef<char> buffer {memory.get(), length};
+
+        TVector<TArrayRef<char>> buffers{
+            {memory.get(), blockSize},
+            {memory.get() + blockSize, blockSize}};
+
+        TVector<TArrayRef<const char>> constBuffers{
+            {memory.get(), blockSize},
+            {memory.get() + blockSize, blockSize}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncWrite(fileData, 0, buffer).GetValueSync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncWriteV(fileData, 0, constBuffers).GetValueSync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncRead(fileData, 0, buffer).GetValueSync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncReadV(fileData, 0, buffers).GetValueSync());
+
+        // a partial read at the end of the file is a successful operation
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockSize,
+            service
+                ->AsyncRead(fileData, (blockCount - 1) * blockSize, buffer)
+                .GetValueSync());
+
+        // failed operation
+        {
+            TFileHandle invalid;
+            UNIT_ASSERT_EXCEPTION(
+                service->AsyncRead(invalid, 0, buffer).GetValueSync(),
+                TServiceError);
+        }
+
+        const auto reads = stats.GetStats(EFileIORequest::Read);
+        UNIT_ASSERT_VALUES_EQUAL(3, reads.Count);
+        UNIT_ASSERT_VALUES_EQUAL(1, reads.Errors);
+        UNIT_ASSERT_VALUES_EQUAL(4 * length, reads.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, reads.InProgress);
+
+        const auto writes = stats.GetStats(EFileIORequest::Write);
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.Count);
+        UNIT_ASSERT_VALUES_EQUAL(0, writes.Errors);
+        UNIT_ASSERT_VALUES_EQUAL(2 * length, writes.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, writes.InProgress);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterStats)
+    {
+        auto registry = std::make_shared<TFileIOStatsRegistry>();
+        auto factory = CreateAIOServiceFactory({}, registry);
+
+        auto service1 = factory->CreateFileIOService();
+        auto service2 = factory->CreateFileIOService();
+
+        const auto entries = registry->GetEntries();
+        UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+        UNIT_ASSERT_VALUES_EQUAL("aio", entries[0].Backend);
+        UNIT_ASSERT_VALUES_EQUAL("0", entries[0].ServiceId);
+        UNIT_ASSERT_VALUES_EQUAL("aio", entries[1].Backend);
+        UNIT_ASSERT_VALUES_EQUAL("1", entries[1].ServiceId);
     }
 
     Y_UNIT_TEST(ShouldRetryIoSetupErrors)

@@ -25,7 +25,8 @@ struct TIoUringServiceParams
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    TIoUringServiceParams params);
+    TIoUringServiceParams params,
+    TFileIOStatsRegistryPtr statsRegistry = nullptr);
 
 IFileIOServiceFactoryPtr CreateIoUringServiceNullFactory(
     TIoUringServiceParams params);

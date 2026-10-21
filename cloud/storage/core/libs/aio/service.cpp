@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/write_sync_flags.h>
 
@@ -24,6 +25,7 @@ namespace {
 
 constexpr ui32 MAX_EVENTS_BATCH = 32;
 constexpr timespec WAIT_TIMEOUT = {1, 0}; // 1 sec
+constexpr TStringBuf BackendName = "aio";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -40,6 +42,23 @@ auto MakeIOError(i64 ret)
         ? MakeSystemError(-ret, "async IO operation failed")
         : NProto::TError {};
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAioRequest
+    : iocb
+{
+    EFileIORequest Request;
+    ui64 StartCycles;
+    ui64 RequestBytes;
+
+    TAioRequest(EFileIORequest request, ui64 startCycles, ui64 requestBytes)
+        : iocb{}
+        , Request(request)
+        , StartCycles(startCycles)
+        , RequestBytes(requestBytes)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -124,14 +143,17 @@ class TAIOService final
     : public IFileIOService
 {
 private:
+    const TFileIOStatsPtr Stats;
+
     TAsyncIOContext IOContext;
 
     TThread PollerThread;
     std::atomic_flag ShouldStop = false;
 
 public:
-    explicit TAIOService(TAioServiceParams params)
-        : IOContext(params.MaxEvents)
+    TAIOService(TAioServiceParams params, TFileIOStatsPtr stats)
+        : Stats(std::move(stats))
+        , IOContext(params.MaxEvents)
         , PollerThread(
               std::bind_front(
                   &TAIOService::Run,
@@ -175,7 +197,7 @@ public:
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) override
     {
-        auto req = std::make_unique<iocb>();
+        auto req = CreateRequest(EFileIORequest::Read, buffer.size());
 
         io_prep_pread(
             req.get(),
@@ -184,9 +206,7 @@ public:
             buffer.size(),
             offset);
 
-        req->data = completion;
-
-        Submit(std::move(req));
+        Submit(std::move(req), completion);
     }
 
     void AsyncReadV(
@@ -195,7 +215,9 @@ public:
         const TVector<TArrayRef<char>>& buffers,
         TFileIOCompletion* completion) override
     {
-        auto req = std::make_unique<iocb>();
+        auto req = CreateRequest(
+            EFileIORequest::Read,
+            GetTotalBufferSize<char>(buffers));
 
         TVector<iovec> iov(buffers.size());
         for (ui32 i = 0; i < buffers.size(); ++i) {
@@ -210,9 +232,7 @@ public:
             iov.size(),
             offset);
 
-        req->data = completion;
-
-        Submit(std::move(req));
+        Submit(std::move(req), completion);
     }
 
     void AsyncWrite(
@@ -222,7 +242,8 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        auto req = std::make_unique<iocb>();
+        auto req = CreateRequest(EFileIORequest::Write, buffer.size());
+
         const ui32 syncFlags = GetWriteSyncFlags(flags);
         iovec iov;
         iov.iov_base = const_cast<char*>(buffer.data());
@@ -235,9 +256,7 @@ public:
             offset,
             syncFlags);
 
-        req->data = completion;
-
-        Submit(std::move(req));
+        Submit(std::move(req), completion);
     }
 
     void AsyncWriteV(
@@ -247,7 +266,10 @@ public:
         TFileIOCompletion* completion,
         ui32 flags) override
     {
-        auto req = std::make_unique<iocb>();
+        auto req = CreateRequest(
+            EFileIORequest::Write,
+            GetTotalBufferSize<const char>(buffers));
+
         const ui32 syncFlags = GetWriteSyncFlags(flags);
 
         TVector<iovec> iov(buffers.size());
@@ -263,22 +285,42 @@ public:
             offset,
             syncFlags);
 
-        req->data = completion;
-
-        Submit(std::move(req));
+        Submit(std::move(req), completion);
     }
 
 private:
+    std::unique_ptr<TAioRequest> CreateRequest(
+        EFileIORequest request,
+        ui64 requestBytes)
+    {
+        return std::make_unique<TAioRequest>(
+            request,
+            Stats->RequestStarted(request),
+            requestBytes);
+    }
+
     void Complete(
-        TFileIOCompletion* completion,
+        const TAioRequest& req,
         const NProto::TError& error,
         ui32 bytes)
     {
+        auto* completion = static_cast<TFileIOCompletion*>(req.data);
+
+        Stats->RequestCompleted(
+            req.Request,
+            req.StartCycles,
+            req.RequestBytes,
+            HasError(error));
+
         std::invoke(completion->Func, completion, error, bytes);
     }
 
-    void Submit(std::unique_ptr<iocb> request)
+    void Submit(
+        std::unique_ptr<TAioRequest> request,
+        TFileIOCompletion* completion)
     {
+        request->data = completion;
+
         iocb* ptr = request.get();
 
 #if defined(_tsan_enabled_)
@@ -288,7 +330,7 @@ private:
         auto error = IOContext.Submit(ptr);
 
         if (HasError(error)) {
-            Complete(static_cast<TFileIOCompletion*>(ptr->data), error, 0);
+            Complete(*request, error, 0);
         } else {
             Y_UNUSED(request.release());  // ownership transferred
         }
@@ -305,18 +347,16 @@ private:
 
         while (!ShouldStop.test()) {
             for (auto& ev: IOContext.GetEvents(events, timeout)) {
-                std::unique_ptr<iocb> ptr {ev.obj};
+                std::unique_ptr<TAioRequest> req {
+                    static_cast<TAioRequest*>(ev.obj)};
 
 #if defined(_tsan_enabled_)
                 // tsan is not aware of barrier between io_submit/io_getevents
-                AtomicGet(*(TAtomicBase*)ptr.get());
+                AtomicGet(*(TAtomicBase*)static_cast<iocb*>(req.get()));
 #endif
                 const i64 ret = static_cast<i64>(ev.res); // it is really signed
 
-                Complete(
-                    static_cast<TFileIOCompletion*>(ev.data),
-                    MakeIOError(ret),
-                    ev.res);
+                Complete(*req, MakeIOError(ret), ev.res);
             }
         }
     }
@@ -329,11 +369,15 @@ class TAIOServiceFactory final
 {
 private:
     const TAioServiceParams Params;
+    const TFileIOStatsRegistryPtr StatsRegistry;
     ui32 Index = 0;
 
 public:
-    explicit TAIOServiceFactory(TAioServiceParams params)
+    explicit TAIOServiceFactory(
+            TAioServiceParams params,
+            TFileIOStatsRegistryPtr statsRegistry = nullptr)
         : Params(std::move(params))
+        , StatsRegistry(std::move(statsRegistry))
     {}
 
     IFileIOServicePtr CreateFileIOService() final
@@ -343,7 +387,9 @@ public:
         params.CompletionThreadName = TStringBuilder()
                                       << params.CompletionThreadName << index;
 
-        return std::make_shared<TAIOService>(std::move(params));
+        return std::make_shared<TAIOService>(
+            std::move(params),
+            RegisterFileIOStats(StatsRegistry, TString(BackendName)));
     }
 };
 
@@ -368,9 +414,13 @@ IFileIOServicePtr CreateThreadedAIOService(
     return CreateRoundRobinFileIOService(threadCount, factory);
 }
 
-IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params)
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(
+    TAioServiceParams params,
+    TFileIOStatsRegistryPtr statsRegistry)
 {
-    return std::make_shared<TAIOServiceFactory>(std::move(params));
+    return std::make_shared<TAIOServiceFactory>(
+        std::move(params),
+        std::move(statsRegistry));
 }
 
 }   // namespace NCloud
