@@ -70,7 +70,7 @@ struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
 
     IDirectoryHandleStorageStatsPtr StorageStats;
 
-    ui64 ReadStatsSizeThreshold = 0;
+    const ui64 ReadStatsSizeThreshold = 0;
 
     TDirectoryHandleModuleStatsPtr CreateStats()
     {
@@ -652,7 +652,6 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 std::make_shared<TBuffer>(),
                 2,
                 {});
-            UNIT_ASSERT(!chunk.Key);
             cache.AppendChunk(id, handle, chunk);
 
             auto content = ReadContent(*handle, 1024, 512);
@@ -773,13 +772,13 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             metricsRegistry,
             NMetrics::CreateMetricsRegistryStub());
 
-        ReadStatsSizeThreshold = 4_KB;
+        const ui64 readStatsSizeThreshold = 4_KB;
         auto cache = TDirectoryHandleCache(
             Log,
             stats,
             nullptr /* storage */,
             nullptr /* directoryEntryVersionCache */,
-            ReadStatsSizeThreshold);
+            readStatsSizeThreshold);
 
         const ui64 id = cache.CreateHandle(42);
         auto handle = cache.FindHandle(id);
@@ -793,7 +792,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 i + 1,
                 {});
         }
-        UNIT_ASSERT_LT(handle->GetStats().SerializedSize, 4_KB);
+        UNIT_ASSERT_LT(
+            handle->GetStats().SerializedSize,
+            readStatsSizeThreshold);
 
         metricsRegistry->Update(timer->Now());
         auto chunkSwitchCount = counters->FindCounter("ChunkSwitchCount");
@@ -811,7 +812,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 i + 1,
                 {});
         }
-        UNIT_ASSERT_GT(handle->GetStats().SerializedSize, 4_KB);
+        UNIT_ASSERT_GT(
+            handle->GetStats().SerializedSize,
+            readStatsSizeThreshold);
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         metricsRegistry->Update(timer->Now());

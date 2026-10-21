@@ -170,58 +170,51 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     return chunk;
 }
 
-TResultOrError<TMaybe<TDirectoryContent>>
-TDirectoryHandle::ReadContent(size_t size, size_t offset)
+TResultOrError<TMaybe<TDirectoryContent>> TDirectoryHandle::ReadContent(
+    size_t size,
+    size_t offset)
 {
-    size_t end = 0;
     bool chunkSwitch = false;
-    bool beyondCachedContent = false;
-    TBufferPtr content = nullptr;
-    ui64 cacheVersion = 0;
+    TDirectoryContent result;
 
     with_lock (Lock) {
         auto it = Content.upper_bound(offset);
-        if (it != Content.end()) {
-            end = it->first;
-            if (SerializedSize > ReadStatsSizeThreshold) {
-                chunkSwitch = LastReadKey != end;
+        if (it == Content.end()) {
+            if (!Cookie) {
+                return TMaybe<TDirectoryContent>(TDirectoryContent{});
             }
-            LastReadKey = end;
-            content = it->second.Buffer;
-            cacheVersion = it->second.CacheVersion;
-        } else if (Cookie) {
             const ui64 cachedEnd =
                 Content.empty() ? 0 : Content.rbegin()->first;
-            if (offset == cachedEnd) {
-                return TMaybe<TDirectoryContent>();
+            if (offset != cachedEnd) {
+                return MakeError(
+                    E_FS_INVAL,
+                    TStringBuilder()
+                        << "offset " << offset << " is beyond cached content");
             }
-            beyondCachedContent = true;
+            return TMaybe<TDirectoryContent>();
         }
-    }
 
-    if (chunkSwitch) {
-        Stats->IncrementChunkSwitchCount();
-    }
-
-    TDirectoryContent result;
-    if (content) {
-        const size_t start = end - content->size();
+        const auto& content = it->second.Buffer;
+        const size_t start = it->first - content->size();
         if (offset < start) {
             return MakeError(
                 E_FS_INVAL,
                 TStringBuilder() << "offset " << offset
                                  << " is before cached chunk " << start);
         }
+
+        chunkSwitch =
+            SerializedSize > ReadStatsSizeThreshold && LastReadKey != it->first;
+        LastReadKey = it->first;
         result = {
             .Content = content,
             .Offset = offset - start,
             .Size = size,
-            .CacheVersion = cacheVersion};
-    } else if (beyondCachedContent) {
-        return MakeError(
-            E_FS_INVAL,
-            TStringBuilder()
-                << "offset " << offset << " is beyond cached content");
+            .CacheVersion = it->second.CacheVersion};
+    }
+
+    if (chunkSwitch) {
+        Stats->IncrementChunkSwitchCount();
     }
 
     return TMaybe<TDirectoryContent>(result);

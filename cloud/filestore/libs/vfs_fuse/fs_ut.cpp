@@ -88,21 +88,25 @@ constexpr ui32 FirstChunkEntryCount = 600;
 constexpr ui32 SecondChunkEntryCount = 300;
 
 static const TString FileSystemId = "fs1";
+static const TString SessionId = CreateGuidAsString();
+
+static const TTempDir TempDir;
+
+TString GetFirstChunkFileName(ui32 index)
+{
+    return "first_chunk_file_" + ToString(index) + ".txt";
+}
 
 i64 GetFirstChunkSize()
 {
     i64 size = dotSize + dotDotSize;
     for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-        const TString name = "first_chunk_file_" + ToString(i) + ".txt";
         size += AlignUp<ui64>(
-            sizeof(fuse_direntplus) + name.size(),
+            sizeof(fuse_direntplus) + GetFirstChunkFileName(i).size(),
             sizeof(ui64));
     }
     return size;
 }
-static const TString SessionId = CreateGuidAsString();
-
-static const TTempDir TempDir;
 
 TString CreateBuffer(size_t len, char fill = 0)
 {
@@ -1867,8 +1871,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -2067,8 +2070,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -2358,8 +2360,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                 if (!request->GetCookie()) {
                     for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                        result.AddNames()->assign(
-                            "first_chunk_file_" + ToString(i) + ".txt");
+                        result.AddNames()->assign(GetFirstChunkFileName(i));
                         auto* node = result.AddNodes();
                         node->SetId(100 + i);
                         node->SetType(NProto::E_REGULAR_NODE);
