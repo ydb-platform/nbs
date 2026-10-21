@@ -17,8 +17,8 @@ SET(RECIPE_ARGS
     --restart-interval $NFS_RESTART_INTERVAL
 )
 
+# Use XDC only in open-source builds as YDB Storage doesn't enable it by default
 IF (OPENSOURCE)
-    # Use XDC only in open-source builds as YDB doesn't enable it by default.
     SET_APPEND(RECIPE_ARGS --enable-external-data-channel)
 ENDIF()
 
