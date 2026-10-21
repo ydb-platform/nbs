@@ -91,7 +91,6 @@ private:
     bool UsersNotificationInProgress = false;
     bool DiskStatesPublicationInProgress = false;
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
-    bool SuspendSecureErase = false;
 
     THashSet<TString> SecureEraseInProgressPerPool;
     THashMap<TString, TInstant> DeviceEraseStartTs;

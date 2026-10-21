@@ -16,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx/schemeshard/ut_helpers
+    yql/essentials/sql/v1_dummy
 )
 
 SRCS(

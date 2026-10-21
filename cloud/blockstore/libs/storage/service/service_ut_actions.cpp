@@ -468,7 +468,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT(!drState->SuspendSecureErase);
 
-        NPrivateProto::TDiskRegistrySuspendSecureEraseRequest request;
+        NProto::TSetSuspendSecureEraseRequest request;
         request.SetState(true);
 
         TString buf;

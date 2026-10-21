@@ -16,6 +16,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     contrib/ydb/apps/version
     contrib/ydb/core/blobstorage/dsproxy/mock
     contrib/ydb/core/blobstorage/nodewarden
@@ -26,6 +27,7 @@ PEERDIR(
     yql/essentials/minikql/comp_nodes/llvm16
     yql/essentials/public/udf/service/stub
     yql/essentials/sql/pg_dummy
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

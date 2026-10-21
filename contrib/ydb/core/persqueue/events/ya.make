@@ -10,6 +10,7 @@ PEERDIR(
     contrib/ydb/core/keyvalue
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
+    contrib/ydb/public/api/grpc/draft
     contrib/ydb/public/api/protos
     contrib/ydb/library/persqueue/topic_parser
 )
