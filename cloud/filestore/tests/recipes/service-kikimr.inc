@@ -18,6 +18,7 @@ SET(RECIPE_ARGS
 )
 
 IF (OPENSOURCE)
+    # Use XDC only in open-source builds as YDB doesn't enable it by default.
     SET_APPEND(RECIPE_ARGS --enable-external-data-channel)
 ENDIF()
 

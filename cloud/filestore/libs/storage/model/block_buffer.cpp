@@ -10,20 +10,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TBuffer>
+template <typename TBufferImpl>
 class TBlockBuffer final: public IBlockBuffer
 {
     static_assert(
-        std::is_same_v<TBuffer, TString> || std::is_same_v<TBuffer, TRcBuf>,
+        std::is_same_v<TBufferImpl, TString> ||
+            std::is_same_v<TBufferImpl, TRcBuf>,
         "TBlockBuffer supports only TString and TRcBuf");
 
 private:
     const TByteRange ByteRange;
-    TBuffer Buffer;
+    TBufferImpl Buffer;
 
-    char* GetMutableData()
+    char* AccessMutableData()
     {
-        if constexpr (std::is_same_v<TBuffer, TRcBuf>) {
+        if constexpr (std::is_same_v<TBufferImpl, TRcBuf>) {
             // Copy TString-backed buffer into an internal backend before
             // modification to avoid changing storage shared with other owners.
             // In std::string builds, TString::IsDetached() always returns true,
@@ -44,30 +45,29 @@ private:
     }
 
 public:
-    TBlockBuffer(TByteRange byteRange, TBuffer buffer)
+    TBlockBuffer(TByteRange byteRange, TBufferImpl buffer)
         : ByteRange(byteRange)
         , Buffer(std::move(buffer))
-    {
-    }
+    {}
 
     TStringBuf GetUnalignedHead() override
     {
         const char* ptr = Buffer.data();
-        return { ptr, ByteRange.UnalignedHeadLength() };
+        return {ptr, ByteRange.UnalignedHeadLength()};
     }
 
     TStringBuf GetUnalignedTail() override
     {
         const auto offset = ByteRange.RelativeUnalignedTailOffset();
         const char* ptr = Buffer.data() + offset;
-        return { ptr, ByteRange.UnalignedTailLength() };
+        return {ptr, ByteRange.UnalignedTailLength()};
     }
 
     TStringBuf GetBlock(size_t index) override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         const char* ptr = Buffer.data() + offset;
-        return { ptr, ByteRange.BlockSize };
+        return {ptr, ByteRange.BlockSize};
     }
 
     void SetBlock(size_t index, TStringBuf block) override
@@ -75,14 +75,14 @@ public:
         Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
 
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = GetMutableData() + offset;
+        char* ptr = AccessMutableData() + offset;
         memcpy(ptr, block.data(), ByteRange.BlockSize);
     }
 
     void ClearBlock(size_t index) override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = GetMutableData() + offset;
+        char* ptr = AccessMutableData() + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
 };

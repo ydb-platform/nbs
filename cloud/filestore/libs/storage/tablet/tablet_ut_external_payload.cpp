@@ -60,15 +60,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_ExternalPayload)
             storageConfig);
         tablet.InitSession("client", "session");
 
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
-        auto data = GenerateValidateData(dataSize);
+        TString data = GenerateValidateData(dataSize);
         auto request = tablet.CreateWriteDataRequest(
             handle,
             0,
             data.size(),
-            data.c_str());
+            data.data());
         request->StripPayload();
 
         TRope rope;
@@ -97,7 +97,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_ExternalPayload)
     TABLET_TEST(ShouldPassDataAsPayloadTest)
     {
         std::vector<ui32> dataSizes = {124, 1_KB, 64_KB, 100_KB, 256_KB};
-        for (auto dataSize : dataSizes) {
+        for (ui32 dataSize: dataSizes) {
             ShouldPassDataAsPayload(
                 tabletConfig,
                 testEnvConfig,
@@ -155,7 +155,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_ExternalPayload)
         config.PerformanceProfile.DefaultPostponedRequestWeight = 1_KB;
         tablet.UpdateConfig(config);
 
-        const auto id =
+        const ui64 id =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const ui64 handle = CreateHandle(tablet, id);
 
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_ExternalPayload)
         tablet.SendWriteDataRequest(handle, block, block, 'b');
         tablet.AssertWriteDataQuickResponse(S_OK);
 
-        const auto data = GenerateValidateData(block);
+        const TString data = GenerateValidateData(block);
         auto request = tablet.CreateWriteDataRequest(
             handle,
             2 * block,
