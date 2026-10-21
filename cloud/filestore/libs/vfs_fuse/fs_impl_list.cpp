@@ -222,8 +222,7 @@ void TFileSystem::ReadDir(
                     SafeIntegerCast<size_t>(offset),
                     builder.Finish(),
                     version,
-                    response.GetCookie(),
-                    self->Log);
+                    response.GetCookie());
 
                 STORAGE_TRACE(
                     "# " << fuse_req_unique(req) << " offset: " << offset

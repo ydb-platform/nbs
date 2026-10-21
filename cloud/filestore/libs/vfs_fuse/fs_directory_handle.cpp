@@ -139,8 +139,7 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t offset,
     const TBufferPtr& content,
     ui64 cacheVersion,
-    TString cookie,
-    TLog& Log)
+    TString cookie)
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
@@ -152,30 +151,20 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
             .CacheVersion = cacheVersion,
         },
     };
+    if (!content->Empty()) {
+        chunk.Key = end;
+    }
 
-    size_t cachedEnd = 0;
     with_lock (Lock) {
-        cachedEnd = Content.empty() ? 0 : Content.rbegin()->first;
-        if (offset == cachedEnd) {
-            if (!content->Empty()) {
-                chunk.Key = end;
-                Content[end] = {
-                    .Buffer = content,
-                    .CacheVersion = cacheVersion};
-                LastReadKey = end;
-            }
-            Cookie = std::move(cookie);
+        if (chunk.Key) {
+            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
+            Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
+            LastReadKey = end;
         }
+        Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
         SerializedSize += chunk.GetSerializedSize();
-    }
-
-    if (offset != cachedEnd) {
-        STORAGE_ERROR(
-            "off %lu is not at the end of cached content %lu",
-            offset,
-            cachedEnd);
     }
 
     return chunk;

@@ -103,8 +103,7 @@ public:
         size_t offset,
         const TBufferPtr& content,
         ui64 cacheVersion,
-        TString cookie,
-        TLog& Log);
+        TString cookie);
 
     TResultOrError<TMaybe<TDirectoryContent>>
     ReadContent(size_t size, size_t offset);
