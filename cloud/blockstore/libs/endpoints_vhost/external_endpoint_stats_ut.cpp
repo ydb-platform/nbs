@@ -190,34 +190,41 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         reader.Update(snapshot(1, 5)); // duplicate
         reader.Update(snapshot(2, 7));
         reader.Update(snapshot(1, 5)); // out of order
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(7, group->GetCounter("LatencyGoodOps", true)->Val());
         reader.Update(snapshot(3, 9, false)); // stale completion snapshot
         reader.Update(snapshot(4, 11)); // gap: four operations become Unknown
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
         auto mismatched = snapshot(5, 12);
         mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
         reader.Update(mismatched);
         reader.Update(snapshot(6, 1)); // reset: no unsigned subtraction
         reader.Update(snapshot(7, 2));
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyUnknownOps", true)->Val());
         auto otherEpoch = snapshot(8, 999);
         otherEpoch["latency_sli"]["epoch"] = "another-process";
         reader.Update(otherEpoch);
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyTotalOps", true)->Val());
         // A restarted child owns a fresh stats pipe and a new reader.
         TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
         restarted.Update(snapshot(1, 3));
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
         auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
             {"count", ui64(2)}, {"errors", ui64(1)}}}};
         restarted.Update(legacy);
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(9, group->GetCounter("LatencyUnknownOps", true)->Val());
         auto missing = snapshot(2, 4);
         missing["read"].EraseValue("latency_good");
         restarted.Update(missing);
         restarted.Update(snapshot(3, 5)); // rebaseline, do not replay old Good
         restarted.Update(snapshot(4, 6));
+        f.ServerStats->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(12, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyUnknownOps", true)->Val());
     }

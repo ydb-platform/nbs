@@ -12,6 +12,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <util/datetime/cputimer.h>
 
+#include <thread>
+
 namespace NCloud::NBlockStore {
 namespace {
 
@@ -148,6 +150,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(1500, 0, S_OK, false, 4096, false, true, 600, 600);
         f.Complete(1500, 0, S_OK, true);
         f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
+        f.Server->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(5, f.Read->GetCounter("LatencyTotalOps", true)->Val());
@@ -159,6 +162,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         TFixture f;
         f.Complete(500, 0, S_OK, false, 12288, false, true, 0, 0, 8192);
         f.Complete(500, 0, S_OK, false, 12288);
+        f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
     }
@@ -174,6 +178,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(500, 0, S_OK, false, 4096, false, false);
         f.Complete(500, 0, E_REJECTED, false, 4096, false, false);
         f.Complete(2000, 1500, E_REJECTED, false, 4096, false, true, 0, 0, 0, Nothing(), false);
+        f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
@@ -188,10 +193,120 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, Nothing(), false);
         // Known zero quota wait must not be confused with missing attribution.
         f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, 0);
+        f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldPublishAllOutcomesOnlyOnStatsUpdate)
+    {
+        TFixture f;
+        f.Complete(500);
+        f.Complete(1500);
+        f.Complete(500, 0, S_OK, false, 16384);
+        for (const auto* name:
+             {"LatencyGoodOps",
+              "LatencyBadOps", "LatencyTotalOps", "LatencyUnknownOps"})
+        {
+            UNIT_ASSERT_VALUES_EQUAL(0, f.Read->GetCounter(name, true)->Val());
+        }
+        f.Server->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Read->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
+        f.Complete(500);
+        f.Server->UpdateStats(true);
+        f.Server->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFlushBatchesAndPreserveReusedCounters)
+    {
+        NMonitoring::TDynamicCounters group;
+        const auto config = TLatencySliConfig::Parse("1;0:1:8193:100");
+        {
+            TLatencySliCounters counters(config, group);
+            counters.Add(5, 3, 2);
+            counters.Publish();
+            counters.Add(7, 0, 1);
+        }
+        {
+            TLatencySliCounters counters(config, group);
+            counters.Add(2, 4, 8);
+            counters.Publish();
+            counters.Publish();
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            14, group.GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            7, group.GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            21, group.GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            11, group.GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotLoseConcurrentCompletionsOrPublications)
+    {
+        NMonitoring::TDynamicCounters group;
+        TLatencySliCounters counters({}, group);
+        constexpr ui64 iterations = 10000;
+        std::atomic<bool> done = false;
+        auto publish = [&]
+        {
+            while (!done.load(std::memory_order_relaxed)) {
+                counters.Publish();
+                std::this_thread::yield();
+            }
+        };
+        std::thread collector1(publish);
+        std::thread collector2(publish);
+        std::thread good(
+            [&]
+            {
+                for (ui64 i = 0; i < iterations; ++i) {
+                    counters.Add(1, 0, 0);
+                }
+            });
+        std::thread bad(
+            [&]
+            {
+                for (ui64 i = 0; i < iterations; ++i) {
+                    counters.Add(0, 1, 0);
+                }
+            });
+        std::thread unknown(
+            [&]
+            {
+                for (ui64 i = 0; i < iterations; ++i) {
+                    counters.Add(0, 0, 1);
+                }
+            });
+        good.join();
+        bad.join();
+        unknown.join();
+        done.store(true, std::memory_order_relaxed);
+        collector1.join();
+        collector2.join();
+        counters.Publish();
+        UNIT_ASSERT_VALUES_EQUAL(
+            iterations, group.GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            iterations, group.GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            iterations * 2, group.GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            iterations, group.GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldBeDisabledByDefaultAndLeaveClientStatsUsable)
