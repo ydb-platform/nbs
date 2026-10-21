@@ -49,7 +49,7 @@ struct TFileIORequestStats
 class TFileIOStats
 {
 private:
-    struct alignas(64) TCounters
+    struct Y_CACHE_ALIGNED TCounters
     {
         std::atomic<ui64> Count = 0;
         std::atomic<ui64> Errors = 0;
