@@ -1,18 +1,9 @@
 #pragma once
 
 #include <contrib/ydb/library/actors/core/actorid.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/actors/util/funnel_queue.h>
 
-#include "events/events.h"
-
-#include <util/generic/hash.h>
 #include <util/generic/ptr.h>
-#include <util/system/mutex.h>
-
-#include <atomic>
-#include <memory>
 
 namespace NActors {
 
@@ -52,119 +43,6 @@ namespace NActors {
 
         // Removes a previously registered callback. Thread-safe.
         virtual void UnregisterReceiveCallback(const TActorId& localActorId) = 0;
-    };
-
-    // Direct session backing a classic (v1) TInterconnectSessionTCP connection.
-    //
-    // Design: the producer side (Send / Register / Unregister, callable from arbitrary threads) never
-    // takes a lock. Registration changes are pushed to a lock-free MPSC queue; when the queue turns
-    // non-empty the (stable) session actor is woken to drain it. The callback table itself is owned by
-    // the session/input-session mailbox thread -- the session and its TInputSessionTCP share one
-    // mailbox (RegisterWithSameMailbox), so the table is applied and looked up from a single thread
-    // without any synchronization. The queue is drained on the wake event and also right before an
-    // incoming event is dispatched, so a reply can never overtake its registration.
-    //
-    // Outgoing events are routed through the actor system, which delivers them to the peer via the
-    // existing interconnect machinery.
-    class TDirectSessionV1 final : public IDirectSession {
-    public:
-        TDirectSessionV1(TActorSystem* actorSystem, const TActorId& sessionId, ui32 peerNodeId)
-            : ActorSystem(actorSystem)
-            , SessionId(sessionId)
-            , PeerNodeId(peerNodeId)
-        {}
-
-        // ---- producer side (arbitrary threads), lock-free ----
-
-        bool Send(TAutoPtr<IEventHandle> ev, TIntrusivePtr<IReceiveCallback> replyCallback = nullptr) override {
-            if (!Connected.load(std::memory_order_acquire)) {
-                return false;
-            }
-            if (replyCallback) {
-                EnqueueCommand(ev->Sender, std::move(replyCallback));
-            }
-            Y_ABORT_UNLESS(ev->GetRecipientRewrite().NodeId() == PeerNodeId);
-            ActorSystem->Send(ev);
-            return true;
-        }
-
-        void RegisterReceiveCallback(const TActorId& localActorId, TIntrusivePtr<IReceiveCallback> callback) override {
-            if (Connected.load(std::memory_order_acquire)) {
-                EnqueueCommand(localActorId, std::move(callback));
-            }
-        }
-
-        void UnregisterReceiveCallback(const TActorId& localActorId) override {
-            if (Connected.load(std::memory_order_acquire)) {
-                EnqueueCommand(localActorId, nullptr);
-            }
-        }
-
-        // ---- consumer side (session/input-session mailbox thread only) ----
-
-        // Applies every queued registration command into the table. Called on the
-        // EvProcessDirectSessionQueue wake and before dispatching incoming events.
-        void ApplyPendingCommands(bool drop = false) {
-            while (!CommandQueue.IsEmpty()) {
-                TCommand& cmd = CommandQueue.Top();
-                if (!drop) {
-                    if (cmd.Callback) {
-                        Callbacks[cmd.ActorId] = std::move(cmd.Callback);
-                    } else {
-                        Callbacks.erase(cmd.ActorId);
-                    }
-                }
-                CommandQueue.Pop();
-            }
-        }
-
-        // Delivers an incoming event to the callback registered for its Recipient, if any. Returns true
-        // if a callback consumed the event (ev is moved out), false otherwise (ev is left untouched and
-        // the caller should deliver the event through the actor system).
-        bool DeliverIncoming(TAutoPtr<IEventHandle>& ev) {
-            ApplyPendingCommands();
-            if (Callbacks.empty()) {
-                return false;
-            }
-            // just received -> Recipient and RecipientRewrite are guaranteed to match
-            Y_DEBUG_ABORT_UNLESS(ev->Recipient == ev->GetRecipientRewrite());
-            if (const auto it = Callbacks.find(ev->Recipient); it != Callbacks.end()) {
-                it->second->Receive(std::move(ev));
-                return true;
-            }
-            return false;
-        }
-
-        // Transitions the handle into the disconnected state. Called by the session on teardown, on the
-        // same mailbox thread that owns the table, so it can safely drop the callbacks.
-        void Shutdown() {
-            Connected.store(false, std::memory_order_release);
-            ApplyPendingCommands(true); // drain the queue to release its entries
-            Callbacks.clear();
-        }
-
-    private:
-        struct TCommand {
-            TActorId ActorId;
-            TIntrusivePtr<IReceiveCallback> Callback; // null => unregister
-        };
-
-        void EnqueueCommand(const TActorId& actorId, TIntrusivePtr<IReceiveCallback> callback) {
-            if (CommandQueue.Push(TCommand{actorId, std::move(callback)})) {
-                // queue went empty -> non-empty: wake the stable session actor to drain the queue
-                ActorSystem->Send(new IEventHandle(static_cast<ui32>(ENetwork::EvProcessDirectSessionQueue),
-                    0, SessionId, TActorId(), nullptr, 0));
-            }
-        }
-
-    private:
-        TActorSystem* const ActorSystem;
-        const TActorId SessionId;
-        const ui32 PeerNodeId;
-        std::atomic<bool> Connected = true;
-        TFunnelQueue<TCommand> CommandQueue; // MPSC: many producers, single consumer (mailbox thread)
-        // touched only on the session/input-session mailbox thread
-        THashMap<TActorId, TIntrusivePtr<IReceiveCallback>, TActorId::THash> Callbacks;
     };
 
 }

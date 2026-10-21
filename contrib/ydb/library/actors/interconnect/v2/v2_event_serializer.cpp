@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/rope.h>
-#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
+#include <contrib/ydb/library/actors/interconnect/v2/protos/interconnect_v2.pb.h>
 
 #include <cstring>
 #include <util/string/builder.h>
@@ -413,9 +413,10 @@ namespace NActors {
                     } else if (ev.HasEvent()) {
                         IEventBase *event = ev.GetBase();
                         queue.SerializeStage = ESerializeStage::kChunkSerializer;
-                        queue.CoroutineChunkSerializer.SetSerializingEvent(event, /*withCachedSizes=*/ true,
-                            /*withCords=*/ true);
-                        queue.EvSerInfoHolder = event->CreateSerializationInfo(UseExternalDataChannel);
+                        queue.CoroutineChunkSerializer.SetSerializingEvent(event, /*withCord=*/ true);
+                        // Sections are only consulted when UseXdcForEvent is set, so always building
+                        // them (core has no allowExternalDataChannel flag) is harmless without XDC.
+                        queue.EvSerInfoHolder = event->CreateSerializationInfo();
                         queue.EvSerInfo = &queue.EvSerInfoHolder;
                         queue.SerializedBytesPending = event->CalculateSerializedSizeCached();
                     } else {

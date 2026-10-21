@@ -7,6 +7,8 @@
 #include <contrib/ydb/library/actors/wilson/wilson_trace.h>
 #include <contrib/ydb/library/actors/util/rc_buf.h>
 
+#include "v2_chunk_serializer.h"
+
 #define XXH_INLINE_ALL
 #include <contrib/libs/xxhash/xxhash.h>
 
@@ -151,7 +153,7 @@ namespace NActors {
             size_t EventHeaderOffset = 0;
             TIntrusivePtr<TEventSerializedData> Buffer;
             TRope::TConstIterator Iter;
-            TCoroutineChunkSerializer CoroutineChunkSerializer;
+            TCoroutineChunkSerializerV2 CoroutineChunkSerializer;
             ESerializeStage SerializeStage = ESerializeStage::kInitial;
             TEventSerializationInfo EvSerInfoHolder;
             const TEventSerializationInfo *EvSerInfo;

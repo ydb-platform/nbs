@@ -1,7 +1,7 @@
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/interconnect/v2_event_serializer.h>
-#include <contrib/ydb/library/actors/interconnect/v2_serialize_window.h>
+#include <contrib/ydb/library/actors/interconnect/v2/v2_event_serializer.h>
+#include <contrib/ydb/library/actors/interconnect/v2/v2_serialize_window.h>
 #include <contrib/ydb/library/actors/protos/unittests.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -13,6 +13,14 @@ namespace {
     constexpr size_t MaxWindow = 64 * 1024;
 
     struct TEvPayload: TEventPB<TEvPayload, TMessageWithPayload, EventSpaceBegin(TEvents::ES_PRIVATE)> {};
+
+    // Core has no IEventHandle::Preserialize: rebuild the handle around its serialized buffer so the
+    // serializer takes the buffer path, as it does for events that arrive already serialized.
+    void Preserialize(std::unique_ptr<IEventHandle>& h) {
+        auto buffer = h->ReleaseChainBuffer();
+        h = std::make_unique<IEventHandle>(h->Type, h->Flags, h->Recipient, h->Sender, std::move(buffer), h->Cookie,
+            nullptr, std::move(h->TraceId));
+    }
 }
 
 Y_UNIT_TEST_SUITE(InterconnectV2SerializeWindow) {
@@ -93,7 +101,7 @@ Y_UNIT_TEST_SUITE(InterconnectV2SerializeWindow) {
                 auto handle = std::make_unique<IEventHandle>(TActorId(2, 0, 1, 0), TActorId(1, 0, 1, 0),
                     ev.release(), 0, i);
                 if (preserialize) {
-                    handle->Preserialize(true);
+                    Preserialize(handle);
                 }
                 serializer.Push(std::move(handle));
             }

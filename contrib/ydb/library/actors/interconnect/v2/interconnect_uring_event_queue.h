@@ -2,6 +2,9 @@
 
 #include "interconnect_direct_session.h"
 
+#include <atomic>
+#include <memory>
+
 namespace NActors {
 
     class TIncomingEventQueue {

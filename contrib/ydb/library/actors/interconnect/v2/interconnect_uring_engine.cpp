@@ -5,14 +5,15 @@
 #include "v2_event_serializer.h"
 #include "v2_io_buffers.h"
 #include "v2_serialize_window.h"
-#include "interconnect_common.h"
 #include "interconnect_direct_session.h"
 #include "interconnect_uring_event_queue.h"
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 
-#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
+#include <contrib/ydb/library/actors/interconnect/v2/protos/interconnect_v2.pb.h>
 
 // Must be included AFTER YDB headers because linux/uapi headers pulled by
 // liburing may define macros that clash with project headers.
@@ -21,6 +22,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/hash.h>
 #include <util/system/env.h>
 #include <util/system/hp_timer.h>
 
@@ -29,6 +31,7 @@
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
 
+#include <atomic>
 #include <cerrno>
 #include <deque>
 #include <memory>
@@ -40,6 +43,20 @@
 namespace NActors {
 
     namespace {
+        // Engine-internal events. They never leave the engine, but live in the interconnect event space
+        // after the range used by ENetwork local events, so they cannot collide with them.
+        enum class EUringEngineEvent : ui32 {
+            EvRegisterCallback = EventSpaceBegin(TEvents::ES_INTERCONNECT_TCP) + 128,
+            EvRegisterSession,
+            EvUnregisterSession,
+            EvStop,
+            EvUringMonRequest,
+            EvUringQueueOverload,
+            EvUringEventTooLarge,
+        };
+
+        constexpr TDuration DefaultDeadPeerTimeout = TDuration::Seconds(10);
+
         constexpr ui32 RingQueueDepth = 4096;
         constexpr unsigned CqeBatchSize = 64;
         constexpr size_t MaxSpansPerWrite = 64;
@@ -79,7 +96,7 @@ namespace NActors {
         }
 
         TDuration CalculateDeadPeerTimeout(const TInterconnectSettings& settings) {
-            return settings.DeadPeer ? settings.DeadPeer : DEFAULT_DEADPEER_TIMEOUT;
+            return settings.DeadPeer ? settings.DeadPeer : DefaultDeadPeerTimeout;
         }
 
         TDuration CalculatePingPeriod(const TInterconnectSettings& settings, TDuration deadPeerTimeout) {
@@ -95,7 +112,7 @@ namespace NActors {
         }
     }
 
-    struct TEvUringMonRequest : TEventLocal<TEvUringMonRequest, static_cast<ui32>(ENetwork::EvUringMonRequest)> {
+    struct TEvUringMonRequest : TEventLocal<TEvUringMonRequest, static_cast<ui32>(EUringEngineEvent::EvUringMonRequest)> {
         NMon::TEvHttpInfoRes::TPtr Ev;
 
         TEvUringMonRequest(NMon::TEvHttpInfoRes::TPtr ev)
@@ -1074,7 +1091,7 @@ namespace NActors {
                 ++*SessionsRegistered;
 
                 // this would be the session's first event, so its sequencing is not the problem
-                SendInternal(reinterpret_cast<ui64>(session.release()), static_cast<ui32>(ENetwork::EvRegisterSession),
+                SendInternal(reinterpret_cast<ui64>(session.release()), static_cast<ui32>(EUringEngineEvent::EvRegisterSession),
                     {}, nullptr, false);
             }
 
@@ -1083,7 +1100,7 @@ namespace NActors {
 
                 // this event isn't the first one, but its sequence doesn't matter, because all further events are kept
                 // in order and forwarded to the new processor
-                SendInternal(reinterpret_cast<ui64>(session.release()), static_cast<ui32>(ENetwork::EvRegisterSession),
+                SendInternal(reinterpret_cast<ui64>(session.release()), static_cast<ui32>(EUringEngineEvent::EvRegisterSession),
                     {}, nullptr, false);
             }
 
@@ -1115,12 +1132,12 @@ namespace NActors {
                 const size_t size = ev->HasBuffer() ? ev->GetChainBuffer()->GetSize() :
                     ev->HasEvent() ? ev->GetBase()->CalculateSerializedSizeCached() : 0;
                 if (size > Engine.Common->Settings.MaxSerializedEventSize) {
-                    return SendInternal(conn, static_cast<ui32>(ENetwork::EvUringEventTooLarge), {}, nullptr, true);
+                    return SendInternal(conn, static_cast<ui32>(EUringEngineEvent::EvUringEventTooLarge), {}, nullptr, true);
                 }
                 auto& session = *reinterpret_cast<TSession*>(conn);
                 const ui64 newQueueSize = size + session.TotalOutputQueueSize.fetch_add(size, std::memory_order_relaxed);
                 if (const ui64 limit = Engine.Common->Settings.SendBufferDieLimitInMB; limit && newQueueSize > limit * 1_MB) {
-                    return SendInternal(conn, static_cast<ui32>(ENetwork::EvUringQueueOverload), {}, nullptr, true);
+                    return SendInternal(conn, static_cast<ui32>(EUringEngineEvent::EvUringQueueOverload), {}, nullptr, true);
                 }
 
                 // this event is strictly sequenced
@@ -1131,20 +1148,20 @@ namespace NActors {
                 ++*SessionsUnregistered;
 
                 // this event is sequenced too
-                SendInternal(conn, static_cast<ui32>(ENetwork::EvUnregisterSession), {}, nullptr, true);
+                SendInternal(conn, static_cast<ui32>(EUringEngineEvent::EvUnregisterSession), {}, nullptr, true);
             }
 
             void RegisterReceiveCallback(ui64 conn, TActorId localActorId, TIntrusivePtr<IReceiveCallback> callback) {
                 ++*(callback ? DirectReceiveCallbacksRegistered : DirectReceiveCallbacksUnregistered);
 
                 // this event's ordering is important
-                SendInternal(conn, static_cast<ui32>(ENetwork::EvRegisterCallback), localActorId, std::move(callback),
+                SendInternal(conn, static_cast<ui32>(EUringEngineEvent::EvRegisterCallback), localActorId, std::move(callback),
                     true);
             }
 
             void Stop() {
                 if (Worker.joinable()) {
-                    SendInternal(0, static_cast<ui32>(ENetwork::EvStop), {}, nullptr, false);
+                    SendInternal(0, static_cast<ui32>(EUringEngineEvent::EvStop), {}, nullptr, false);
                     Worker.join();
                     // The worker is stopped, so it is now safe to touch the sessions directly. Shut every
                     // socket down so the peer observes the disconnect promptly instead of only when this shard
@@ -1170,7 +1187,7 @@ namespace NActors {
             // TSession handed off via an unprocessed EvRegisterSession.
             void DrainQueue() {
                 while (auto record = IncomingEventQueue.Pop()) {
-                    if (record->Ev->Type == static_cast<ui32>(ENetwork::EvRegisterSession)) {
+                    if (record->Ev->Type == static_cast<ui32>(EUringEngineEvent::EvRegisterSession)) {
                         delete reinterpret_cast<TSession*>(record->Conn);
                     }
                 }
@@ -1382,7 +1399,7 @@ namespace NActors {
 
                 while (auto record = IncomingEventQueue.Pop()) {
                     progress = true;
-                    if (record->Ev->Type == static_cast<ui32>(ENetwork::EvStop)) {
+                    if (record->Ev->Type == static_cast<ui32>(EUringEngineEvent::EvStop)) {
                         *stopping = true;
                         break;
                     }
@@ -1403,7 +1420,7 @@ namespace NActors {
                             ++*OutOfOrderCameIn;
                         } else {
                             // process this event
-                            const bool isUnregister = record->Ev->Type == static_cast<ui32>(ENetwork::EvUnregisterSession);
+                            const bool isUnregister = record->Ev->Type == static_cast<ui32>(EUringEngineEvent::EvUnregisterSession);
                             ProcessIncomingEvent(&record.value());
                             if (!isUnregister) {
                                 ++session.ExpectedSeqNo;
@@ -1439,7 +1456,7 @@ namespace NActors {
 
             void ProcessIncomingEvent(TIncomingEventQueue::TRecord *record) {
                 switch (record->Ev->Type) {
-                    case static_cast<ui32>(ENetwork::EvRegisterCallback):
+                    case static_cast<ui32>(EUringEngineEvent::EvRegisterCallback):
                         if (TSession& session = GetSession(record); record->Callback) {
                             session.ReceiveCallbacks[record->Ev->Sender] = std::move(record->Callback);
                         } else {
@@ -1447,7 +1464,7 @@ namespace NActors {
                         }
                         break;
 
-                    case static_cast<ui32>(ENetwork::EvRegisterSession): {
+                    case static_cast<ui32>(EUringEngineEvent::EvRegisterSession): {
                         std::unique_ptr<TSession> session(reinterpret_cast<TSession*>(record->Conn));
                         session->PreferredRingIdx = OpShift++ % Rings.size();
                         session->OwnerShard.store(ShardIdx, std::memory_order_release);
@@ -1458,7 +1475,7 @@ namespace NActors {
                         break;
                     }
 
-                    case static_cast<ui32>(ENetwork::EvUnregisterSession): {
+                    case static_cast<ui32>(EUringEngineEvent::EvUnregisterSession): {
                         TSession& session = GetSession(record);
                         // Do NOT free the session while it still has an armed recv or an in-flight
                         // writev: their io_uring completions carry a raw pointer to this object and
@@ -1478,20 +1495,20 @@ namespace NActors {
                         break;
                     }
 
-                    case static_cast<ui32>(ENetwork::EvStop):
+                    case static_cast<ui32>(EUringEngineEvent::EvStop):
                         Y_ABORT();
 
-                    case static_cast<ui32>(ENetwork::EvUringMonRequest):
+                    case static_cast<ui32>(EUringEngineEvent::EvUringMonRequest):
                         ProcessMonRequest(GetSession(record), std::move(record->Ev->Get<TEvUringMonRequest>()->Ev));
                         break;
 
-                    case static_cast<ui32>(ENetwork::EvUringQueueOverload): {
+                    case static_cast<ui32>(EUringEngineEvent::EvUringQueueOverload): {
                         TSession& session = GetSession(record);
                         session.Disconnect(TDisconnectReason::QueueOverload());
                         break;
                     }
 
-                    case static_cast<ui32>(ENetwork::EvUringEventTooLarge): {
+                    case static_cast<ui32>(EUringEngineEvent::EvUringEventTooLarge): {
                         TSession& session = GetSession(record);
                         session.Disconnect(TDisconnectReason::EventTooLarge());
                         break;

@@ -1,7 +1,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
-#include <contrib/ydb/library/actors/interconnect/v2_event_serializer.h>
+#include <contrib/ydb/library/actors/interconnect/v2/v2_event_serializer.h>
 #include <contrib/ydb/library/actors/protos/unittests.pb.h>
 
 #include <contrib/restricted/abseil-cpp-tstring/y_absl/strings/cord.h>
@@ -30,6 +30,14 @@ struct TEventProcessor : TEventDeserializer::IEventProcessor {
 
     void Process(NActorsInterconnect::TSystemPayloadV2&) override {}
 };
+
+// Core has no IEventHandle::Preserialize: rebuild the handle around its serialized buffer so the
+// serializer takes the buffer path, as it does for events that arrive already serialized.
+void Preserialize(std::unique_ptr<IEventHandle>& h) {
+    auto buffer = h->ReleaseChainBuffer();
+    h = std::make_unique<IEventHandle>(h->Type, h->Flags, h->Recipient, h->Sender, std::move(buffer), h->Cookie,
+        nullptr, std::move(h->TraceId));
+}
 
 // deterministic payload for the event with the given index, so that the receiver can validate consistency
 TString MakeSomeData(ui64 index, size_t len) {
@@ -658,7 +666,7 @@ Y_UNIT_TEST_SUITE(EventSerializerV2) {
         ev->AddPayload(TRope(TString(payloadLen, 'P')));
         auto h = std::make_unique<IEventHandle>(recipient, sender, ev.release(), 0, cookie);
         if (buffer) {
-            h->Preserialize(/*allowExternalDataChannel=*/true);
+            Preserialize(h);
         }
 
         TEventSerializer ser(true, /*useExternalDataChannel=*/true);
@@ -727,7 +735,7 @@ Y_UNIT_TEST_SUITE(EventSerializerV2) {
         for (bool preserialize : {false, true}) {
             auto h = MakeIndexedEvent(1, 7, 8192, true);
             if (preserialize) {
-                h->Preserialize(/*allowExternalDataChannel=*/true);
+                Preserialize(h);
             }
             TEventSerializer ser(false, true);
             ser.Push(std::move(h));
@@ -970,7 +978,7 @@ Y_UNIT_TEST_SUITE(EventSerializerV2) {
         auto h = std::make_unique<IEventHandle>(TActorId(2, 3, 4, 5), TActorId(1, 2, 3, 4), ev.release(),
             extraFlags, 777);
         if (preserialize) {
-            h->Preserialize(/*allowExternalDataChannel=*/true);
+            Preserialize(h);
         }
 
         TEventSerializer ser(true, /*useExternalDataChannel=*/true);
@@ -1096,7 +1104,7 @@ Y_UNIT_TEST_SUITE(EventSerializerV2) {
             auto h = std::make_unique<IEventHandle>(TActorId(2, 3, 4, 5), TActorId(1, 2, 3, 4),
                 ev.release(), IEventHandle::MakeFlags(1, 0), i);
             if (preserialize) {
-                h->Preserialize(/*allowExternalDataChannel=*/true);
+                Preserialize(h);
             }
             ser.Push(std::move(h));
         }
