@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -102,6 +103,135 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig();
+    }
+
+    Y_UNIT_TEST(ShouldNotStartPartitionV2ConfiguredWhenDisabled)
+    {
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto disabledPartitionCounter = counters->GetCounter(
+            GetAppCriticalEventForPartitionV2Disabled(), true);
+
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        ui32 bootRequests = 0;
+        ui32 partitionStarts = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvBootExternalRequest) {
+                    ++bootRequests;
+                } else if (event->GetTypeRewrite() == TEvBootstrapper::EvStart)
+                {
+                    ++partitionStarts;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = volume.CreateUpdateVolumeConfigRequest();
+        request->Record.MutableVolumeConfig()->SetTabletVersion(2);
+        volume.SendToPipe(std::move(request));
+        auto updateResponse = volume.RecvUpdateVolumeConfigResponse();
+        UNIT_ASSERT(
+            updateResponse->Record.GetStatus() == NKikimrBlockStore::OK);
+
+        volume.SendWaitReadyRequest();
+        UNIT_ASSERT(!volume.TryRecvResponse<TEvVolume::TEvWaitReadyResponse>(
+            TDuration::Seconds(1)));
+        UNIT_ASSERT_VALUES_EQUAL(bootRequests, 0);
+        UNIT_ASSERT_VALUES_EQUAL(partitionStarts, 0);
+        UNIT_ASSERT_VALUES_EQUAL(disabledPartitionCounter->Val(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldNotStartPartitionV2ReportedByHiveWhenDisabled)
+    {
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto disabledPartitionCounter = counters->GetCounter(
+            GetAppCriticalEventForPartitionV2Disabled(), true);
+
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        ui32 bootResponses = 0;
+        ui32 partitionStarts = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvBootExternalResponse) {
+                    ++bootResponses;
+                    auto* msg =
+                        event->Get<TEvHiveProxy::TEvBootExternalResponse>();
+                    msg->StorageInfo->TabletType =
+                        TTabletTypes::BlockStorePartition2;
+                } else if (event->GetTypeRewrite() == TEvBootstrapper::EvStart)
+                {
+                    ++partitionStarts;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        volume.UpdateVolumeConfig();
+        volume.SendWaitReadyRequest();
+        UNIT_ASSERT(!volume.TryRecvResponse<TEvVolume::TEvWaitReadyResponse>(
+            TDuration::Seconds(1)));
+        UNIT_ASSERT_VALUES_EQUAL(bootResponses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(partitionStarts, 0);
+        UNIT_ASSERT_VALUES_EQUAL(disabledPartitionCounter->Val(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldStartPartitionV2WhenEnabled)
+    {
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto disabledPartitionCounter = counters->GetCounter(
+            GetAppCriticalEventForPartitionV2Disabled(), true);
+
+        NProto::TFeaturesConfig featuresConfig;
+        auto* feature = featuresConfig.AddFeatures();
+        feature->SetName("PartitionV2");
+        feature->SetCloudProbability(1);
+        auto runtime = PrepareTestActorRuntime({}, {}, featuresConfig);
+        TVolumeClient volume(*runtime);
+
+        ui32 bootResponses = 0;
+        ui32 partitionStarts = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvBootExternalResponse) {
+                    ++bootResponses;
+                    auto* msg =
+                        event->Get<TEvHiveProxy::TEvBootExternalResponse>();
+                    msg->StorageInfo->TabletType =
+                        TTabletTypes::BlockStorePartition2;
+                } else if (event->GetTypeRewrite() == TEvBootstrapper::EvStart)
+                {
+                    ++partitionStarts;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = volume.CreateUpdateVolumeConfigRequest();
+        request->Record.MutableVolumeConfig()->SetTabletVersion(2);
+        request->Record.MutableVolumeConfig()->SetStorageMediaKind(
+            NProto::STORAGE_MEDIA_SSD);
+        volume.SendToPipe(std::move(request));
+        auto updateResponse = volume.RecvUpdateVolumeConfigResponse();
+        UNIT_ASSERT(
+            updateResponse->Record.GetStatus() == NKikimrBlockStore::OK);
+
+        volume.WaitReady();
+        UNIT_ASSERT_VALUES_EQUAL(bootResponses, 1);
+        UNIT_ASSERT_VALUES_EQUAL(partitionStarts, 1);
+        UNIT_ASSERT_VALUES_EQUAL(disabledPartitionCounter->Val(), 0);
     }
 
     Y_UNIT_TEST(ShouldLazilyStartPartitions)
@@ -8010,61 +8140,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->Send(
             new IEventHandle(partActorId, sender, new TEvents::TEvPoisonPill()));
         volume.WaitReady();
-    }
-
-    Y_UNIT_TEST(ShouldStartFreshBlocksWriterOnlyForPartitionTablet)
-    {
-        const auto runTest = [](TTabletTypes::EType tabletType)
-        {
-            NProto::TStorageServiceConfig config;
-            config.SetFreshBlocksWriterEnabled(true);
-
-            auto runtime = PrepareTestActorRuntime(config);
-            TVolumeClient volume(*runtime);
-
-            ui32 freshBlocksWriterWaitReadyRequests = 0;
-
-            runtime->SetObserverFunc(
-                [&](TAutoPtr<IEventHandle>& event)
-                {
-                    switch (event->GetTypeRewrite()) {
-                        case TEvHiveProxy::EvBootExternalResponse: {
-                            auto* msg = event->Get<
-                                TEvHiveProxy::TEvBootExternalResponse>();
-                            auto* storageInfo = const_cast<TTabletStorageInfo*>(
-                                msg->StorageInfo.Get());
-                            storageInfo->TabletType = tabletType;
-                            break;
-                        }
-                        case NFreshBlocksWriter::TEvFreshBlocksWriter::
-                            EvWaitReadyRequest: {
-                            ++freshBlocksWriterWaitReadyRequests;
-                            break;
-                        }
-                    }
-
-                    return TTestActorRuntime::DefaultObserverFunc(event);
-                });
-
-            volume.UpdateVolumeConfig();
-            volume.WaitReady();
-
-            return freshBlocksWriterWaitReadyRequests;
-        };
-
-        {
-            const auto freshWaitReadyRequests =
-                runTest(TTabletTypes::BlockStorePartition);
-
-            UNIT_ASSERT_VALUES_UNEQUAL(0, freshWaitReadyRequests);
-        }
-
-        {
-            const auto freshWaitReadyRequests =
-                runTest(TTabletTypes::BlockStorePartition2);
-
-            UNIT_ASSERT_VALUES_EQUAL(0, freshWaitReadyRequests);
-        }
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateDiskRegistryPartitionParameters)

@@ -5,10 +5,11 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -43,6 +44,9 @@ private:
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
     const TDuration Timeout;
+    TChildLogTitle LogTitle;
+
+    const bool PassTraceIdToBlobstorage;
 
     TVector<TPartialBlobId> NewBlobs;
     TVector<TPartialBlobId> GarbageBlobs;
@@ -68,7 +72,9 @@ public:
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
-        TDuration timeout);
+        TChildLogTitle logTitle,
+        TDuration timeout,
+        bool passTraceIdToBlobstorage);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -111,7 +117,9 @@ TCollectGarbageActor::TCollectGarbageActor(
         TVector<TPartialBlobId> garbageBlobs,
         TVector<ui32> mixedAndMergedChannels,
         bool cleanupWholeHistory,
-        TDuration timeout)
+        TChildLogTitle logTitle,
+        TDuration timeout,
+        bool passTraceIdToBlobstorage)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , VolumeLabels(std::move(volumeLabels))
@@ -121,6 +129,8 @@ TCollectGarbageActor::TCollectGarbageActor(
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
     , Timeout(timeout)
+    , LogTitle(std::move(logTitle))
+    , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
     , NewBlobs(std::move(newBlobs))
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
@@ -182,15 +192,26 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 false,                              // multi collect not allowed
                 false);                             // soft barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] %s",
-                TabletInfo->TabletID,
-                request->Print(true).data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                request->Print(true).c_str());
+
+            NWilson::TTraceId traceId;
+            if (PassTraceIdToBlobstorage) {
+                traceId = GetTraceIdForRequestId(
+                    RequestInfo->CallContext->LWOrbit,
+                    RequestInfo->CallContext->RequestId);
+            }
 
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release());
+                request.release(),
+                RequestInfo->Cookie,
+                std::move(traceId));
 
             ++RequestsInFlight;
         }
@@ -216,7 +237,7 @@ void TCollectGarbageActor::NotifyCompleted(
     const NProto::TError& error)
 {
     auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageCompleted>(error);
-    request->CommitId = CollectCommitId;
+
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
 
@@ -230,7 +251,7 @@ void TCollectGarbageActor::HandleError(NProto::TError error)
             ReportCollectGarbageError(
                 VolumeLabels,
                 TStringBuilder()
-                    << "Garbage collection failed: " << FormatError(error));
+                    << "Garbage collection error: " << FormatError(error));
         }
 
         Error = std::move(error);
@@ -332,6 +353,7 @@ private:
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
     const TDuration Timeout;
+    TChildLogTitle LogTitle;
 
     TVector<TPartialBlobId> KnownBlobIds;
 
@@ -351,6 +373,7 @@ public:
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels,
+        TChildLogTitle logTitle,
         TDuration timeout);
 
     void Bootstrap(const TActorContext& ctx);
@@ -360,6 +383,7 @@ private:
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
     void HandleError(NProto::TError error);
+
     void ReplyAndDie(const TActorContext& ctx);
 
 private:
@@ -386,6 +410,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
         ui32 perGenerationCounter,
         TVector<TPartialBlobId> knownBlobIds,
         TVector<ui32> mixedAndMergedChannels,
+        TChildLogTitle logTitle,
         TDuration timeout)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
@@ -395,6 +420,7 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
     , Timeout(timeout)
+    , LogTitle(std::move(logTitle))
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
@@ -442,10 +468,12 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
                 false,                              // multi collect not allowed
                 true);                              // hard barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] %s",
-                TabletInfo->TabletID,
-                request->Print(true).data());
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "%s %s",
+                LogTitle.GetWithTime().c_str(),
+                request->Print(true).c_str());
 
             SendToBSProxy(
                 ctx,
@@ -462,7 +490,7 @@ void TCollectGarbageHardActor::NotifyCompleted(
     const NProto::TError& error)
 {
     auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageCompleted>(error);
-    request->CommitId = CollectCommitId;
+
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
 
@@ -476,7 +504,7 @@ void TCollectGarbageHardActor::HandleError(NProto::TError error)
             ReportCollectGarbageError(
                 VolumeLabels,
                 TStringBuilder()
-                    << "Hard garbage collection failed: " << FormatError(error));
+                    << "Hard garbage collection error: " << FormatError(error));
         }
 
         Error = std::move(error);
@@ -552,7 +580,7 @@ STFUNC(TCollectGarbageHardActor::StateWork)
 
 void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 {
-    if (State->GetCollectGarbageStatus() != EOperationStatus::Idle) {
+    if (State->GetCollectGarbageState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
     }
@@ -560,9 +588,8 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
     if (!State->CollectGarbageHardRequested) {
         ui64 commitId = State->GetCollectCommitId();
 
-        auto& garbageQueue = State->GetGarbageQueue();
-        size_t pendingBlobs = garbageQueue.GetNewBlobsCount(commitId)
-                            + garbageQueue.GetGarbageBlobsCount(commitId);
+        size_t pendingBlobs = State->GetGarbageQueue().GetNewBlobsCount(commitId)
+                            + State->GetGarbageQueue().GetGarbageBlobsCount(commitId);
 
         if (pendingBlobs < Config->GetCollectGarbageThreshold() &&
             State->GetStartupGcExecuted())
@@ -572,23 +599,29 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         }
     }
 
-    State->SetCollectGarbageStatus(EOperationStatus::Enqueued);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Enqueued,
+        ctx.Now());
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvCollectGarbageRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
     if (State->GetCollectTimeout()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] CollectGarbage request scheduled: %lu, %s",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s CollectGarbage request scheduled: %lu, %s",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId,
-            State->GetCollectTimeout().ToString().c_str());
+            FormatDuration(State->GetCollectTimeout()).c_str());
 
         ctx.Schedule(State->GetCollectTimeout(), request.release());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] CollectGarbage request sent: %lu",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s CollectGarbage request sent: %lu",
+            LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId);
 
         NCloud::Send(
@@ -637,55 +670,66 @@ void TPartitionActor::HandleCollectGarbage(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (State->GetCollectGarbageStatus() == EOperationStatus::Started) {
+    if (State->GetCollectGarbageState().Status == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "collection already started");
         return;
     }
 
-    ui64 commitId = State->GetCollectCommitId();
+    const ui64 commitId = State->GetCollectCommitId();
+    // use tablet generation as record generation
+    const ui32 recordGeneration = Executor()->Generation();
 
     if (State->CollectGarbageHardRequested) {
         State->CollectGarbageHardRequested = false;
 
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] Start hard GC @%lu",
-            TabletID(),
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Start hard GC @%lu",
+            LogTitle.GetWithTime().c_str(),
             commitId);
 
-        State->SetCollectGarbageStatus(EOperationStatus::Started);
+        State->GetCollectGarbageState().SetStatus(
+            EOperationStatus::Started,
+            ctx.Now());
 
         AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
-        ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
+        ExecuteTx(ctx, CreateTx<TCollectGarbage>(requestInfo, commitId));
         return;
     }
 
-    auto& garbageQueue = State->GetGarbageQueue();
-    auto newBlobs = garbageQueue.GetNewBlobs(commitId);
-    auto garbageBlobs = garbageQueue.GetGarbageBlobs(commitId);
+    auto newBlobs = State->GetGarbageQueue().GetNewBlobs(commitId);
+    auto garbageBlobs = State->GetGarbageQueue().GetGarbageBlobs(commitId);
 
     if (!newBlobs && !garbageBlobs && State->GetStartupGcExecuted()) {
-        State->SetCollectGarbageStatus(EOperationStatus::Idle);
+        State->GetCollectGarbageState().SetStatus(
+            EOperationStatus::Idle,
+            ctx.Now());
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to collect");
         return;
     }
 
-    const ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbage");
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%lu] Start GC @%lu @%u (new: %u, garbage: %u)",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Start GC @%lu @%lu (new: %u, garbage: %u)",
+        LogTitle.GetWithTime().c_str(),
         commitId,
         nextPerGenerationCounter,
         static_cast<ui32>(newBlobs.size()),
         static_cast<ui32>(garbageBlobs.size()));
 
-    State->SetCollectGarbageStatus(EOperationStatus::Started);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Started,
+        ctx.Now());
 
     TVector<ui32> mixedAndMergedChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged;
@@ -700,17 +744,25 @@ void TPartitionActor::HandleCollectGarbage(
         Info(),
         State->GetLastCollectCommitId(),
         commitId,
-        Executor()->Generation(),
+        recordGeneration,
         nextPerGenerationCounter,
         std::move(newBlobs),
         std::move(garbageBlobs),
         std::move(mixedAndMergedChannels),
         !State->GetStartupGcExecuted(),
-        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
-            Config->GetCollectGarbageTimeoutSSD() :
-            Config->GetCollectGarbageTimeoutHDD());
+        LogTitle.GetChild(GetCycleCount()),
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetCollectGarbageTimeoutSSD()
+            : Config->GetCollectGarbageTimeoutHDD(),
+        DiagnosticsConfig->GetPassTraceIdToBlobstorage());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Partition registered TCollectGarbageActor with id [%lu]",
+        LogTitle.GetWithTime().c_str(),
+        ToString(actor).c_str());
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 void TPartitionActor::HandleCollectGarbageCompleted(
@@ -720,32 +772,41 @@ void TPartitionActor::HandleCollectGarbageCompleted(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-            "[" << TabletID() << "]"
-                << " GC failed: " << msg->GetStatus()
-                << " reason: " << msg->GetError().GetMessage().Quote());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s GC failed. error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->GetError()).c_str());
 
         State->RegisterCollectError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] GC completed @%lu",
-            TabletID(),
-            msg->CommitId);
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s GC completed",
+            LogTitle.GetWithTime().c_str());
 
         State->RegisterCollectSuccess();
         State->SetStartupGcExecuted();
+        if (!IsFirstGarbageCollectionCompleted()) {
+            SetFirstGarbageCollectionCompleted();
+            SendGarbageCollectorCompleted(ctx);
+        }
     }
 
-    UpdateCPUUsageStat(ctx, msg->ExecCycles);
+    State->GetCollectGarbageState().SetStatus(
+        EOperationStatus::Idle,
+        ctx.Now());
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
-    PartCounters->RequestCounters.CollectGarbage.AddRequest(time);
+    Actors.Erase(ev->Sender);
 
-    State->SetCollectGarbageStatus(EOperationStatus::Idle);
-
-    Actors.erase(ev->Sender);
+    UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueCollectGarbageIfNeeded(ctx);
+
+    ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    PartCounters->RequestCounters.CollectGarbage.AddRequest(time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -760,7 +821,7 @@ bool TPartitionActor::PrepareCollectGarbage(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    return db.ReadKnownBlobIds(args.KnownBlobIds)
+    return db.ReadNewBlobs(args.KnownBlobIds)
         && db.ReadGarbageBlobs(args.KnownBlobIds);
 }
 
@@ -782,15 +843,15 @@ void TPartitionActor::CompleteCollectGarbage(
 
     RemoveTransaction(*args.RequestInfo);
 
-    TVector<ui32> mixedAndMergedChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged;
-    });
-
-    const ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbageHard");
         return;
     }
+
+    TVector<ui32> mixedAndMergedChannels = State->GetChannelsByKind([](auto kind){
+        return kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged;
+    });
 
     auto actor = NCloud::Register<TCollectGarbageHardActor>(
         ctx,
@@ -803,11 +864,18 @@ void TPartitionActor::CompleteCollectGarbage(
         nextPerGenerationCounter,
         std::move(args.KnownBlobIds),
         std::move(mixedAndMergedChannels),
+        LogTitle.GetChild(GetCycleCount()),
         PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD ?
             Config->GetCollectGarbageTimeoutSSD() :
             Config->GetCollectGarbageTimeoutHDD());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "%s Partition registered TCollectGarbageHardActor with id %s",
+        LogTitle.GetWithTime().c_str(),
+        actor.ToString().c_str());
 
-    Actors.insert(actor);
+    Actors.Insert(actor);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

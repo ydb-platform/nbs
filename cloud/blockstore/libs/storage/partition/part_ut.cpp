@@ -9116,7 +9116,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto groupCount = channelCount - DataChannelOffset;
 
         auto config = DefaultConfig();
-        config.SetDontEnqueueCollectGarbageUponPartitionStartup(true);
 
         TTestEnv env(0, 1, channelCount, groupCount);
         auto& runtime = env.GetRuntime();
@@ -9205,7 +9204,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotReportCriticalEventForRetriableHardCollectGarbageError)
     {
         auto config = DefaultConfig();
-        config.SetDontEnqueueCollectGarbageUponPartitionStartup(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 

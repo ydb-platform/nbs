@@ -21,6 +21,22 @@ NActors::IActorPtr CreatePartitionTablet(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
     EStorageAccessMode storageAccessMode,
+    ui32 partitionIndex,
+    ui32 siblingCount,
+    const NActors::TActorId& volumeActorId,
+    ui64 volumeTabletId);
+
+// Compatibility entry point for existing Partition 2 callers.  Partition 2
+// historically did not receive the volume partition index.
+NActors::IActorPtr CreatePartitionTablet(
+    const NActors::TActorId& owner,
+    NKikimr::TTabletStorageInfoPtr storage,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    NProto::TPartitionConfig partitionConfig,
+    EStorageAccessMode storageAccessMode,
     ui32 siblingCount,
     const NActors::TActorId& volumeActorId,
     ui64 volumeTabletId);

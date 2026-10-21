@@ -38,10 +38,7 @@ void TPartitionActor::HandleAddGarbage(
 
     AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(*requestInfo);
 
-    ExecuteTx<TAddGarbage>(
-        ctx,
-        requestInfo,
-        std::move(msg->BlobIds));
+    ExecuteTx(ctx, CreateTx<TAddGarbage>(requestInfo, std::move(msg->BlobIds)));
 }
 
 bool TPartitionActor::PrepareAddGarbage(
@@ -54,7 +51,7 @@ bool TPartitionActor::PrepareAddGarbage(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    return db.ReadKnownBlobIds(args.KnownBlobIds)
+    return db.ReadNewBlobs(args.KnownBlobIds)
         && db.ReadGarbageBlobs(args.KnownBlobIds);
 }
 
@@ -77,19 +74,18 @@ void TPartitionActor::ExecuteAddGarbage(
         args.KnownBlobIds.begin(), args.KnownBlobIds.end(),
         std::inserter(diff, diff.begin()));
 
-    auto& garbageQueue = State->GetGarbageQueue();
     for (const auto& blobId: diff) {
-        if (!IsDeletionMarker(blobId)) {
-            LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Add garbage blob: %s",
-                TabletID(),
-                ToString(MakeBlobId(TabletID(), blobId)).data());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Add garbage blob: %s",
+            LogTitle.GetWithTime().c_str(),
+            ToString(MakeBlobId(TabletID(), blobId)).Quote().c_str());
 
-            bool added = garbageQueue.AddGarbageBlob(blobId);
-            Y_ABORT_UNLESS(added);
+        bool added = State->GetGarbageQueue().AddGarbageBlob(blobId);
+        Y_ABORT_UNLESS(added);
 
-            db.WriteGarbageBlob(blobId);
-        }
+        db.WriteGarbageBlob(blobId);
     }
 }
 

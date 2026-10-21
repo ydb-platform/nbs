@@ -112,6 +112,18 @@ void UpdatePartitionCounters(
             *l.MutableSysWriteCounters(),
             r.GetSysWriteCounters());
     }
+
+    if (r.HasRealSysReadCounters()) {
+        UpdateIOCounters(
+            *l.MutableRealSysReadCounters(),
+            r.GetRealSysReadCounters());
+    }
+
+    if (r.HasRealSysWriteCounters()) {
+        UpdateIOCounters(
+            *l.MutableRealSysWriteCounters(),
+            r.GetRealSysWriteCounters());
+    }
 }
 
 template void UpdatePartitionCounters(
