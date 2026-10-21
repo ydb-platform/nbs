@@ -946,6 +946,71 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
     }
+
+    Y_UNIT_TEST(ShouldSuspendSecureErase)
+    {
+        const auto agent1 = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB),
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents({agent1})
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1}));
+
+        RegisterAndWaitForAgents(*runtime, {agent1});
+
+        {
+            auto request =
+                std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
+            request->Record.SetState(true);
+            diskRegistry.SendRequest(std::move(request));
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskRegistry.RecvResponse<TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>()
+                    ->GetStatus());
+        }
+
+        diskRegistry.AllocateDisk("disk-1", 20_GB);
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.DeallocateDisk("disk-1");
+
+        const auto dirtyDevices = [&] {
+            return diskRegistry.BackupDiskRegistryState(NProto::BDRSS_MEMORY)
+                ->Record.GetMemoryBackup().DirtyDevicesSize();
+        };
+        UNIT_ASSERT_VALUES_EQUAL(agent1.DevicesSize(), dirtyDevices());
+
+        TVector<NProto::TDeviceConfig> devices;
+        for (const auto& d: agent1.GetDevices()) {
+            auto& device = devices.emplace_back();
+            device.SetNodeId(runtime->GetNodeId(0));
+            device.SetDeviceUUID(d.GetDeviceUUID());
+        }
+        diskRegistry.SendSecureEraseRequest(devices);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            diskRegistry.RecvSecureEraseResponse()->GetStatus());
+
+        {
+            auto request =
+                std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
+            request->Record.SetState(false);
+            diskRegistry.SendRequest(std::move(request));
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                diskRegistry.RecvResponse<TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>()
+                    ->GetStatus());
+        }
+
+        WaitForSecureErase(*runtime, {agent1});
+        UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
