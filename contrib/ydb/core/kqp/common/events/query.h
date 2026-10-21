@@ -78,7 +78,7 @@ public:
         return true;
     }
 
-    TEventSerializationInfo CreateSerializationInfo() const override { return {}; }
+    TEventSerializationInfo CreateSerializationInfo(bool /*allowExternalDataChannel*/ = true) const override { return {}; }
 
     const TString& GetDatabase() const {
         return RequestCtx ? Database : Record.GetRequest().GetDatabase();

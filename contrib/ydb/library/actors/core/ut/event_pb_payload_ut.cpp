@@ -56,7 +56,7 @@ Y_UNIT_TEST_SUITE(TEventProtoWithPayload) {
 
         TString chunkerRes;
         TCoroutineChunkSerializer chunker;
-        chunker.SetSerializingEvent(&msg);
+        chunker.SetSerializingEvent(&msg, true);
         while (!chunker.IsComplete()) {
             char buffer[4096];
             auto range = chunker.FeedBuf(buffer, sizeof(buffer));

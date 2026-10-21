@@ -42,6 +42,8 @@ SRCS(
     interconnect_tcp_session.h
     interconnect_tcp_session_v2.cpp
     interconnect_tcp_session_v2.h
+    interconnect_uring_engine.cpp
+    interconnect_uring_engine.h
     interconnect_zc_processor.cpp
     interconnect_zc_processor.h
     load.cpp
@@ -63,6 +65,7 @@ IF (OS_LINUX)
     SRCS(
         uring_context.cpp
         uring_context.h
+        uring_recv_buffer_pool.h
     )
 ENDIF()
 

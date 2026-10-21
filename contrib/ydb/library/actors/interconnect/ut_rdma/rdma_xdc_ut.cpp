@@ -38,7 +38,7 @@ struct TEvSerializeToRopeFailure : public TEventBase<TEvSerializeToRopeFailure, 
         return std::nullopt;
     }
 
-    TEventSerializationInfo CreateSerializationInfo() const override {
+    TEventSerializationInfo CreateSerializationInfo(bool /*allowExternalDataChannel*/ = true) const override {
         TEventSerializationInfo info;
         info.Sections.push_back(TEventSectionInfo{0, Payload.size(), 0, 0, false, true});
         return info;

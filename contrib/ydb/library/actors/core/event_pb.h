@@ -81,7 +81,7 @@ namespace NActors {
         TCoroutineChunkSerializer();
         ~TCoroutineChunkSerializer();
 
-        void SetSerializingEvent(const IEventBase *event);
+        void SetSerializingEvent(const IEventBase *event, bool withCachedSizes);
         void DiscardEvent() { Event = nullptr; };
         void Abort();
         std::span<TChunk> FeedBuf(void* data, size_t size);
@@ -125,6 +125,7 @@ namespace NActors {
         bool AbortFlag;
         bool SerializationSuccess;
         bool Finished = false;
+        bool WithCachedSizes = false;
     };
 
     struct TProtoArenaHolder : public TAtomicRefCount<TProtoArenaHolder> {
@@ -249,8 +250,10 @@ namespace NActors {
             CachedByteSize = 0;
         }
 
-        TEventSerializationInfo CreateSerializationInfo() const override {
-            return CreateSerializationInfoImpl(0, static_cast<const TEv&>(*this).AllowExternalDataChannel(), GetPayload(), Record.ByteSize());
+        TEventSerializationInfo CreateSerializationInfo(bool allowExternalDataChannel = true) const override {
+            // Keep the event's own size gate for the historical no-argument call.
+            const bool allow = allowExternalDataChannel && static_cast<const TEv&>(*this).AllowExternalDataChannel();
+            return CreateSerializationInfoImpl(0, allow, GetPayload(), Record.ByteSize());
         }
 
         bool AllowExternalDataChannel() const {
@@ -438,8 +441,9 @@ namespace NActors {
             return GetCachedByteSize();
         }
 
-        TEventSerializationInfo CreateSerializationInfo() const override {
-            return CreateSerializationInfoImpl(PreSerializedData.size(), static_cast<const TEv&>(*this).AllowExternalDataChannel(), TBase::GetPayload(), Record.ByteSize());
+        TEventSerializationInfo CreateSerializationInfo(bool allowExternalDataChannel = true) const override {
+            const bool allow = allowExternalDataChannel && static_cast<const TEv&>(*this).AllowExternalDataChannel();
+            return CreateSerializationInfoImpl(PreSerializedData.size(), allow, TBase::GetPayload(), Record.ByteSize());
         }
     };
 

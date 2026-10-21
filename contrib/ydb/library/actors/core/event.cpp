@@ -51,6 +51,15 @@ namespace NActors {
         return new TEventSerializedData;
     }
 
+    void IEventHandle::Preserialize() {
+        if (Event && !Buffer) {
+            TAllocChunkSerializer serializer;
+            Event->SerializeToArcadiaStream(&serializer);
+            Buffer = serializer.Release(Event->CreateSerializationInfo(false));
+            Event.Reset();
+        }
+    }
+
     bool IEventBase::DoExecute(IActor* /*actor*/, std::unique_ptr<IEventHandle> /*eventPtr*/) {
         Y_DEBUG_ABORT_UNLESS(false);
         return false;

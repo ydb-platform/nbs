@@ -50,7 +50,9 @@ namespace NActors {
         virtual ui32 CalculateSerializedSizeCached() const {
             return CalculateSerializedSize();
         }
-        virtual TEventSerializationInfo CreateSerializationInfo() const { return {}; }
+        // Default true keeps the historical no-argument call. Passing false
+        // disables the external data channel (used by preserialization).
+        virtual TEventSerializationInfo CreateSerializationInfo(bool /*allowExternalDataChannel*/ = true) const { return {}; }
     };
 
     template <typename TEventType>
@@ -304,6 +306,7 @@ namespace NActors {
 
         TIntrusivePtr<TEventSerializedData> GetChainBuffer();
         TIntrusivePtr<TEventSerializedData> ReleaseChainBuffer();
+        void Preserialize();
 
         ui32 GetSize() const {
             if (Buffer) {
