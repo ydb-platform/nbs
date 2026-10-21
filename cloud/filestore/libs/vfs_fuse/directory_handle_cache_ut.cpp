@@ -670,6 +670,31 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
     }
 
+    Y_UNIT_TEST(ShouldSkipEmptyChunkWhenRestoringHandle)
+    {
+        TDirectoryHandle handle(42, CreateDirectoryHandleStatsStub(), 0);
+
+        TDirectoryHandleChunk emptyChunk{
+            .Key = 1024,
+            .UpdateVersion = 2,
+            .Index = 42,
+        };
+        handle.ConsumeChunk(emptyChunk, Log);
+
+        TDirectoryHandleChunk chunk{
+            .Key = 1024,
+            .UpdateVersion = 1,
+            .Index = 42,
+            .Cookie = "next",
+            .DirectoryContent = {.Content = CreateContent(1024, 'x')},
+        };
+        handle.ConsumeChunk(chunk, Log);
+
+        auto content = ReadContent(handle, 1024, 512);
+        UNIT_ASSERT(content);
+        UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+    }
+
     Y_UNIT_TEST(ShouldRejectReadOutsideCachedContent)
     {
         TDirectoryHandle handle(42, CreateDirectoryHandleStatsStub(), 0);
