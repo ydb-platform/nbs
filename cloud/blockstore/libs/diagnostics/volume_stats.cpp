@@ -1047,6 +1047,9 @@ public:
 
             for (auto& [key, instance]: holder.VolumeInfos) {
                 instance->RequestCounters.UpdateStats(updateIntervalFinished);
+                if (instance->LatencySli) {
+                    instance->LatencySli->Publish();
+                }
                 if (updateIntervalFinished) {
                     Y_DEBUG_ABORT_UNLESS(instance->HasDowntimeCounter);
                     if (instance->HasDowntimeCounter) {

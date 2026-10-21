@@ -3,6 +3,9 @@
 #include <cloud/blockstore/libs/common/latency_sli.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <atomic>
+#include <mutex>
+
 namespace NCloud::NBlockStore {
 
 class TLatencySliCounters
@@ -18,6 +21,13 @@ private:
     };
     TCounters Counters;
 
+    // Only the outcome is updated on the request path. Exported counters are
+    // advanced together by the periodic stats collector.
+    std::atomic<ui64> PendingGood = 0;
+    std::atomic<ui64> PendingBad = 0;
+    std::atomic<ui64> PendingUnknown = 0;
+    std::mutex PublishLock;
+
 public:
     TLatencySliCounters(
         TLatencySliConfig config,
@@ -31,6 +41,11 @@ public:
             group.GetCounter("LatencyUnknownOps", true)};
     }
 
+    ~TLatencySliCounters()
+    {
+        Publish();
+    }
+
     const TLatencySliConfig& GetConfig() const
     {
         return Config;
@@ -38,18 +53,39 @@ public:
 
     void Add(ui64 good, ui64 bad, ui64 unknown)
     {
-        auto& c = Counters;
         if (good) {
-            c.Good->Add(good);
+            PendingGood.fetch_add(good, std::memory_order_relaxed);
         }
         if (bad) {
-            c.Bad->Add(bad);
-        }
-        if (good || bad) {
-            c.Total->Add(good + bad);
+            PendingBad.fetch_add(bad, std::memory_order_relaxed);
         }
         if (unknown) {
-            c.Unknown->Add(unknown);
+            PendingUnknown.fetch_add(unknown, std::memory_order_relaxed);
+        }
+    }
+
+    void Publish()
+    {
+        // Stats updates may overlap. Serialize publication, never completions.
+        const std::lock_guard guard(PublishLock);
+        const auto good = PendingGood.exchange(0, std::memory_order_relaxed);
+        const auto bad = PendingBad.exchange(0, std::memory_order_relaxed);
+        const auto unknown = PendingUnknown.exchange(0, std::memory_order_relaxed);
+
+        // Add deltas to preserve existing values if the group is reused. Publish
+        // Total first so the numerator cannot advance ahead of its denominator.
+        // Dynamic counters do not provide an atomic multi-counter snapshot.
+        if (good || bad) {
+            Counters.Total->Add(good + bad);
+        }
+        if (good) {
+            Counters.Good->Add(good);
+        }
+        if (bad) {
+            Counters.Bad->Add(bad);
+        }
+        if (unknown) {
+            Counters.Unknown->Add(unknown);
         }
     }
 
