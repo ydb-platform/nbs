@@ -17,11 +17,31 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVector<const TJournalledDeviceSpec*> SortDevices(
+    const THashMap<TString, TJournalledDeviceSpec>& devices)
+{
+    TVector<const TJournalledDeviceSpec*> sorted;
+    sorted.reserve(devices.size());
+
+    for (const auto& [uuid, spec]: devices) {
+        sorted.push_back(&spec);
+    }
+
+    Sort(sorted, [](const auto* lhs, const auto* rhs) {
+        return lhs->Config.DeviceUUID < rhs->Config.DeviceUUID;
+    });
+
+    return sorted;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
     const IDeviceManagerPtr DeviceManager;
     const THashMap<TString, TJournalledDeviceSpec> Devices;
+    const TVector<const TJournalledDeviceSpec*> SortedDevices;
 
 public:
     TJournalledDeviceHandler(
@@ -29,6 +49,7 @@ public:
         THashMap<TString, TJournalledDeviceSpec> devices)
         : DeviceManager(std::move(deviceManager))
         , Devices(std::move(devices))
+        , SortedDevices(SortDevices(Devices))
     {}
 
     // IServerBackend
@@ -130,21 +151,14 @@ public:
     {
         Y_UNUSED(request);
 
-        TVector<TString> uuids;
-        uuids.reserve(Devices.size());
-        for (const auto& [uuid, spec]: Devices) {
-            uuids.push_back(uuid);
-        }
-        Sort(uuids);
-
         NProto::TListDevicesResponse response;
 
-        for (const auto& uuid: uuids) {
-            const auto& config = Devices.at(uuid).Config;
+        for (const auto& device: SortedDevices) {
+            const auto& config = device->Config;
             const ui64 deviceSize = config.BlocksCount * config.BlockSize;
 
             auto& info = *response.AddDevices();
-            info.SetDeviceUUID(uuid);
+            info.SetDeviceUUID(config.DeviceUUID);
             info.SetBlockSize(config.BlockSize);
             info.SetLogMetaSize(config.LogMetaSize);
             info.SetLogDataSize(config.LogDataSize);
