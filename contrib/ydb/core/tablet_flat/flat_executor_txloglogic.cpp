@@ -1,4 +1,5 @@
 #include "flat_executor_txloglogic.h"
+#include "flat_boot_cookie.h"
 #include "flat_executor_counters.h"
 #include "flat_exec_seat.h"
 #include "flat_exec_commit_mgr.h"
@@ -207,7 +208,7 @@ TLogicRedo::TCommitRWTransactionResult TLogicRedo::CommitRWTransaction(
                 tx->TxSpan.Link(Batch->Commit->TraceId, {});
             }
         }
-        
+
         Batch->Commit->PushTx(seat.Get());
 
         CompletionQueue.push_back({ seat, Batch->Commit->Step });
@@ -228,11 +229,18 @@ void TLogicRedo::MakeLogEntry(TLogCommit &commit, TString redo, TArrayRef<const 
 
         Cookies->Switch(commit.Step, true /* require step switch */);
 
-        auto coded = NPageCollection::TSlicer::Lz4()->Encode(redo);
+        const bool compressionEnabled =
+            NBoot::TCookie(Cookies->CookieRange.Head).Index() ==
+            NBoot::TCookie::EIdx::RedoLz4;
+
+        auto coded = compressionEnabled
+            ? NPageCollection::TSlicer::Lz4()->Encode(redo)
+            : std::move(redo);
 
         Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
 
-        if (embed && coded.size() <= MaxSizeToEmbedInLog) {
+        // Embedded redo has no codec marker and must always be LZ4 encoded.
+        if (compressionEnabled && embed && coded.size() <= MaxSizeToEmbedInLog) {
             // Note: Encode reserves MaxCompressedLength bytes
             NUtil::ShrinkToFit(coded);
 

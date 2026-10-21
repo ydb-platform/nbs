@@ -17,7 +17,8 @@ void TStages::FinalizeLeaderLogics(TResult &result, TSteppedCookieAllocatorFacto
 
     result.CommitManager = new TCommitManager(steppedCookieAllocatorFactory, waste, result.GcLogic.Get());
     result.Snap = new TLogicSnap(steppedCookieAllocatorFactory.Sys(EIdx::SnapLz4), waste, Back->Snap);
-    result.Redo = new TLogicRedo(steppedCookieAllocatorFactory.Sys(EIdx::RedoLz4), result.CommitManager.Get(), Back->Redo);
+    const auto redoIndex = Logic->RedoLogCompressionEnabled ? EIdx::RedoLz4 : EIdx::Redo;
+    result.Redo = new TLogicRedo(steppedCookieAllocatorFactory.Sys(redoIndex), result.CommitManager.Get(), Back->Redo);
 }
 
 }

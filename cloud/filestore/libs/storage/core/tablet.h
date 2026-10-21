@@ -104,6 +104,11 @@ public:
         , TxRescheduler(std::move(txRescheduler))
     {}
 
+    bool RedoLogCompressionEnabled() const override
+    {
+        return false;
+    }
+
 protected:
     ITxReschedulerPtr TxRescheduler;
 

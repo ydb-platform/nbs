@@ -503,6 +503,9 @@ namespace NFlatExecutorSetup {
 
         virtual void ScanComplete(NTable::EAbort status, TAutoPtr<IDestructable> prod, ui64 cookie, const TActorContext &ctx);
 
+        // Controls new redo records; existing records are decoded by their cookies.
+        virtual bool RedoLogCompressionEnabled() const { return true; }
+
         virtual bool ReassignChannelsEnabled() const;
         virtual void OnYellowChannelsChanged();
         virtual void OnRejectProbabilityRelaxed();

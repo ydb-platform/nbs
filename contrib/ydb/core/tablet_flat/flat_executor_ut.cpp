@@ -1,5 +1,8 @@
 #include "flat_dbase_sz_env.h"
 #include "flat_executor_ut_common.h"
+#include "flat_boot_cookie.h"
+#include "flat_executor_txloglogic.h"
+#include "logic_redo_queue.h"
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/testlib/actors/block_events.h>
 
@@ -3285,6 +3288,44 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_MoveTableData) {
 
 }
 
+Y_UNIT_TEST_SUITE(TFlatTableExecutor_RedoCompression) {
+    void CheckLogEntry(bool compressed, bool embed) {
+        using TCookie = NBoot::TCookie;
+        const auto index = compressed ? TCookie::EIdx::RedoLz4 : TCookie::EIdx::Redo;
+        const NPageCollection::TSlot slot{1, 0};
+        auto cookies = new NPageCollection::TSteppedCookieAllocator(
+            123, NTable::TTxStamp(1, 0), TCookie::CookieRange(index), {slot});
+        TLogicRedo redo(cookies, nullptr, new NRedo::TQueue({}));
+        TExecutorCounters counters;
+        redo.InstallCounters(&counters, nullptr);
+
+        const TString body(128, 'x');
+        TLogCommit commit(false, 1, ECommit::Redo, {});
+        redo.MakeLogEntry(commit, body, {1}, embed);
+
+        TString stored;
+        if (compressed && embed) {
+            UNIT_ASSERT(commit.Refs.empty());
+            stored = commit.Embedded;
+        } else {
+            UNIT_ASSERT(commit.Embedded.empty());
+            UNIT_ASSERT(!commit.Refs.empty());
+            for (const auto& ref : commit.Refs) {
+                UNIT_ASSERT_VALUES_EQUAL(ui32(TCookie(ref.Id.Cookie()).Index()), ui32(index));
+                stored.append(ref.Buffer);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            compressed ? NPageCollection::TSlicer::Lz4()->Decode(stored) : stored,
+            body);
+    }
+
+    Y_UNIT_TEST(CompressedEmbedded) { CheckLogEntry(true, true); }
+    Y_UNIT_TEST(CompressedExternal) { CheckLogEntry(true, false); }
+    Y_UNIT_TEST(UncompressedExternal) { CheckLogEntry(false, false); }
+    Y_UNIT_TEST(UncompressedCannotEmbed) { CheckLogEntry(false, true); }
+}
+
 Y_UNIT_TEST_SUITE(TFlatTableExecutor_Follower) {
 
     struct TTxCheckStep : public ITransaction {
@@ -3376,14 +3417,34 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_Follower) {
         }
     };
 
-    Y_UNIT_TEST(BasicFollowerRead) {
+    class TUncompressedDummy : public NFake::TDummy {
+    public:
+        using NFake::TDummy::TDummy;
+
+        bool RedoLogCompressionEnabled() const override {
+            return false;
+        }
+    };
+
+    void FireUncompressedTablet(TMyEnvBase& env) {
+        env.FireTablet(env.Edge, env.Tablet, [&env](const TActorId& tablet, TTabletStorageInfo* info) {
+            return new TUncompressedDummy(tablet, info, env.Edge, ui32(NFake::TDummy::EFlg::Comp));
+        });
+        env.WaitFor<NFake::TEvReady>();
+    }
+
+    void TestBasicFollowerRead(bool compressed) {
         TMyEnvBase env;
         TRowsModel rows;
 
         //env->SetLogPriority(NKikimrServices::RESOURCE_BROKER, NActors::NLog::PRI_DEBUG);
         //env->SetLogPriority(NKikimrServices::TABLET_EXECUTOR, NActors::NLog::PRI_DEBUG);
 
-        env.FireDummyTablet(ui32(NFake::TDummy::EFlg::Comp));
+        if (compressed) {
+            env.FireDummyTablet(ui32(NFake::TDummy::EFlg::Comp));
+        } else {
+            FireUncompressedTablet(env);
+        }
         env.FireDummyFollower(1);
 
         TIntrusivePtr<TCompactionPolicy> policy = new TCompactionPolicy;
@@ -3416,6 +3477,36 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_Follower) {
                 "Key 4 = Upsert value = Set key4value\n"
                 "Key 5 = Upsert value = Set key5value\n");
         }
+    }
+
+    Y_UNIT_TEST(BasicFollowerRead) {
+        TestBasicFollowerRead(true);
+    }
+
+    Y_UNIT_TEST(UncompressedRedoFollowerRead) {
+        TestBasicFollowerRead(false);
+    }
+
+    Y_UNIT_TEST(RedoCompressionSwitchRecovery) {
+        TMyEnvBase env;
+        TRowsModel rows;
+        FireUncompressedTablet(env);
+        env.SendSync(rows.MakeScheme(new TCompactionPolicy));
+
+        env.SendSync(rows.RowTo(1).MakeRows(1));
+        env.RestartTablet(ui32(NFake::TDummy::EFlg::Comp));
+
+        TString data;
+        env.SendSync(new NFake::TEvExecute{new TTxCheckRows(data)}, true);
+        UNIT_ASSERT_VALUES_EQUAL(data, "Key 1 = Upsert value = Set value\n");
+
+        env.SendSync(rows.MakeRows(1));
+        env.SendSync(new TEvents::TEvPoison, false, true);
+        FireUncompressedTablet(env);
+        env.SendSync(new NFake::TEvExecute{new TTxCheckRows(data)}, true);
+        UNIT_ASSERT_VALUES_EQUAL(data,
+            "Key 1 = Upsert value = Set value\n"
+            "Key 2 = Upsert value = Set value\n");
     }
 
     struct TFollowerEarlyRebootObserver {
