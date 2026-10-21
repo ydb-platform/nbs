@@ -2,6 +2,8 @@
 
 #include "device_manager.h"
 
+#include <cloud/fastshard/journal/iface/journalled_device.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
@@ -30,7 +32,7 @@ public:
 
     // IServerBackend
 
-    TFuture<NProto::TError> Start() override
+    void Start() override
     {
         TVector<TFuture<NProto::TError>> futures;
         futures.reserve(Devices.size());
@@ -52,11 +54,10 @@ public:
             futures.push_back(std::move(future));
         }
 
-        return WaitAll(futures).Apply([](const auto&)
-                                      { return NProto::TError(); });
+        WaitAll(futures).Wait();
     }
 
-    TFuture<NProto::TError> Stop() override
+    void Stop() override
     {
         TVector<TFuture<NProto::TError>> futures;
         futures.reserve(Devices.size());
@@ -65,8 +66,7 @@ public:
             futures.push_back(spec.Device->Stop());
         }
 
-        return WaitAll(futures).Apply([](const auto&)
-                                      { return NProto::TError(); });
+        WaitAll(futures).Wait();
     }
 
     [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)

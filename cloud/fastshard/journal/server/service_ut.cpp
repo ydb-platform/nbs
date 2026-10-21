@@ -3,6 +3,7 @@
 #include "device_manager.h"
 
 #include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/journal/iface/journalled_device.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -570,10 +571,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         Devices[0]->StartError = MakeError(E_IO, "start failed");
 
-        {
-            const auto error = Service->Start().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
-        }
+        Service->Start();
 
         for (const auto& device: Devices) {
             UNIT_ASSERT_VALUES_EQUAL_C(1, device->StartCount, device->Name);
@@ -583,10 +581,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
             1,
             CriticalEventCount("JournalledDeviceCreationError"));
 
-        {
-            const auto error = Service->Stop().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
-        }
+        Service->Stop();
 
         for (const auto& device: Devices) {
             UNIT_ASSERT_VALUES_EQUAL_C(1, device->StopCount, device->Name);
