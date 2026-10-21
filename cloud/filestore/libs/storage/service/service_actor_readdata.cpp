@@ -215,6 +215,8 @@ public:
 private:
     void StartRequest(const TActorContext& ctx);
 
+    void ReplyFakeAndDie(const TActorContext& ctx);
+
     STFUNC(StateIdle);
     STFUNC(StateWork);
 
@@ -409,7 +411,7 @@ void TReadDataActor::StartRequest(const TActorContext& ctx)
     auto& state = *RequestState;
     ++RequestGeneration;
 
-    if (state.UseTwoStageRead) {
+    if (state.UseTwoStageRead || state.ReadBlobDisabled) {
         if (!state.ZeroCopyReadEnabled) {
             // BlockBuffer should not be initialized in constructor, because
             // creating a block buffer leads to memory allocation (and
@@ -628,13 +630,7 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
     auto& state = *RequestState;
 
-    if (state.DescribeResponse.GetFakeResponse() || state.ReadBlobDisabled) {
-        if (state.ReadBlobDisabled) {
-            ReportFakeBlobWasRead();
-            ReplyTwoStageAndDie(ctx);
-            return;
-        }
-
+    if (state.DescribeResponse.GetFakeResponse()) {
         ReportUnexpectedFakeDescribeDataResponse(state.LogTag);
 
         // It is better to hang IO, otherwise, returning a fatal error or
@@ -913,6 +909,17 @@ void TReadDataActor::ReadData(
     const TString& fallbackReason)
 {
     auto& state = *RequestState;
+
+    if (state.ReadBlobDisabled) {
+        FILESTORE_TRACK(
+            RequestReceived_ServiceWorker,
+            state.MainInFlightRequest->CallContext,
+            "ReadData");
+
+        ReportFakeBlobWasRead();
+        ReplyFakeAndDie(ctx);
+        return;
+    }
 
     FILESTORE_TRACK(
         RequestReceived_ServiceWorker,
@@ -1207,6 +1214,28 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
         } else {
             response->Record.SetLength(length);
         }
+    }
+
+    MoveBufferToIovecsIfNeeded(ctx, response->Record);
+    SendResponseAndDie(ctx, std::move(response));
+}
+
+void TReadDataActor::ReplyFakeAndDie(const TActorContext& ctx)
+{
+    auto& state = *RequestState;
+    const ui64 length = state.ReadRequest.GetLength();
+
+    // Keep the worker lifecycle for pooling benchmarks, but return the entire
+    // requested range without consulting the tablet for the actual file size.
+    if (length) {
+        TRopeUtils::Memset(state.TargetBuffers.Begin(), 0, length);
+    }
+
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+    if (state.ZeroCopyReadEnabled) {
+        response->Record.SetLength(length);
+    } else {
+        response->Record.set_allocated_buffer(state.BlockBuffer.release());
     }
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
@@ -1513,7 +1542,7 @@ void TStorageServiceActor::HandleReadData(
             ProfileLog,
             TraceSerializer,
             InFlightRequests,
-            ctx.SelfID);
+            TActorId{});
 
         actor->Initialize(
             std::move(msg->Record),
