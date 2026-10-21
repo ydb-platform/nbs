@@ -1,4 +1,5 @@
 #include "blob_compressor.h"
+#include "cloud/blockstore/libs/diagnostics/block_digest.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -148,7 +149,8 @@ NProto::TError TBlobCompressor::DecompressBlob(
     const TVector<TRope>& compressedBuffers,
     const TSgList& outputBuffers,
     const NProto::TBlobCompression& compression,
-    const TVector<ui16>& blockOffsets) const
+    const TVector<ui16>& blockOffsets,
+    TVector<ui32>* blockChecksums) const
 {
     STORAGE_VERIFY(
         outputBuffers.size() == blockOffsets.size(),
@@ -156,14 +158,10 @@ NProto::TError TBlobCompressor::DecompressBlob(
     STORAGE_VERIFY(
         IsSorted(blockOffsets.begin(), blockOffsets.end()),
         TWellKnownEntityTypes::TABLET, TabletId);
-
-    const NBlockCodecs::ICodec* codec =
-        GetCodec(TabletId, compression.GetCodec());
-
-    const ui32 chunkSize = GetChunkSize(TabletId, compression, BlockSize);
     for (const auto size: compression.GetChunkSizes()) {
         STORAGE_VERIFY(size, TWellKnownEntityTypes::TABLET, TabletId);
     }
+    const ui32 chunkSize = GetChunkSize(TabletId, compression, BlockSize);
     for (size_t i = 0; i < blockOffsets.size(); ++i) {
         STORAGE_VERIFY(
             static_cast<ui64>(blockOffsets[i]) * BlockSize / chunkSize <
@@ -182,6 +180,9 @@ NProto::TError TBlobCompressor::DecompressBlob(
         }
         return {};
     }
+
+    const NBlockCodecs::ICodec* codec =
+        GetCodec(TabletId, compression.GetCodec());
 
     TRope::TConstIterator iter = compressedBuffers.front().Begin();
     TRope::TConstIterator end = compressedBuffers.front().End();
@@ -236,9 +237,15 @@ NProto::TError TBlobCompressor::DecompressBlob(
                 "Requested block is outside the decompressed chunk");
         }
 
+        if (blockChecksums) {
+            blockChecksums->push_back(
+                ComputeDefaultDigest({decoded.data() + offset, BlockSize}));
+        }
+
         std::memcpy(
             const_cast<char*>(outputBuffers[i].Data()),
-            decoded.data() + offset, BlockSize);
+            decoded.data() + offset,
+            BlockSize);
     }
 
     if (remainingBytes != 0) {
@@ -278,9 +285,13 @@ TBlobCompressor::TReadPlan TBlobCompressor::PlanReadBlob(
     }
 
     using TQuery = NKikimr::TEvBlobStorage::TEvGet::TQuery;
+
     TArrayHolder<TQuery> queries(new TQuery[blockOffsets.size()]);
     size_t queriesCount = 0;
     size_t nextChunk = 0;
+
+    TVector<TVector<ui32>> blockOffsetsForEachRequest;
+
     for (const auto blockOffset: blockOffsets) {
         const ui64 blockStart = static_cast<ui64>(blockOffset) * BlockSize;
         const size_t chunk = blockStart / chunkSize;
@@ -290,6 +301,7 @@ TBlobCompressor::TReadPlan TBlobCompressor::PlanReadBlob(
             TabletId);
 
         if (chunk < nextChunk) {
+            blockOffsetsForEachRequest.back().emplace_back(blockOffset);
             continue;
         }
 
@@ -311,11 +323,16 @@ TBlobCompressor::TReadPlan TBlobCompressor::PlanReadBlob(
                 blobId,
                 SafeIntegerCast<ui32>(offset),
                 SafeIntegerCast<ui32>(size));
+            blockOffsetsForEachRequest.emplace_back();
         }
+        blockOffsetsForEachRequest.back().emplace_back(blockOffset);
         nextChunk = chunk + 1;
     }
 
-    return {.Queries = std::move(queries), .QueriesCount = queriesCount};
+    return {
+        .Queries = std::move(queries),
+        .QueriesCount = queriesCount,
+        .BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest)};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

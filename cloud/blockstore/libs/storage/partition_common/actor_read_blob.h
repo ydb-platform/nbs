@@ -39,6 +39,8 @@ private:
 
     const std::shared_ptr<TBlobCompressor> BlobCompressor;
 
+    TVector<TVector<ui32>> BlockOffsetsForEachRequest;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
 
@@ -86,15 +88,34 @@ private:
 private:
     STFUNC(StateWork);
 
+    struct TDataThatCanBeProcessed
+    {
+        TSgList Sglist;
+        TVector<ui16> BlockOffsets;
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> Responses;
+    };
+
+    TDataThatCanBeProcessed FillBrokenDataAndFilterItOut(
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+        const TSgList& sglist,
+        const NActors::TActorContext& ctx);
+
     TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
-        const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
-        const TSgList& outputBuffers,
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse>& responses,
+        const TSgList& sglist,
+        const TVector<ui16>& blockOffsets,
         const NActors::TActorContext& ctx);
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(
-        const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
-        const TSgList& outputBuffers,
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse>& responses,
+        const TSgList& sglist,
+        const TVector<ui16>& blockOffsets,
         const NActors::TActorContext& ctx);
+
+    TVector<ui32> FillBlockChecksumsForRecoveredBlocksIfNeeded(
+        const TVector<ui16>& originalBlockOffsets,
+        const TVector<ui16>& newBlockOffsets,
+        TVector<ui32> newBlockChecksums);
 
     void HandleGetResult(
         const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,

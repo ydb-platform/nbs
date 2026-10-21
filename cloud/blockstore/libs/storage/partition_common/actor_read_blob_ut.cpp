@@ -1,6 +1,7 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
@@ -49,7 +50,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         static constexpr ui32 BlockSize = 512;
         static constexpr ui32 ChunkSize = 4 * BlockSize;
 
-        const TVector<ui16> BlobOffsets = {4, 5, 5, 8, 16};
+        TVector<ui16> BlobOffsets = {4, 5, 5, 8, 16};
         TBlobCompressor::TCompressedBlob Blob;
         NKikimr::TLogoBlobID BlobId;
         TVector<TString> Blocks;
@@ -59,7 +60,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
         void StartCompressedRead(
             NProto::TBlobCompression::ECodec codec,
-            bool shouldCalculateChecksums)
+            bool shouldCalculateChecksums,
+            EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
         {
             TString payload;
             for (ui32 i = 0; i < 17; ++i) {
@@ -97,7 +99,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 TabletId,
                 BlockSize,
                 shouldCalculateChecksums,
-                EStorageAccessMode::Default,
+                storageAccessMode,
                 std::move(request),
                 TDuration(), 0ull, false, std::move(reader)));
             ReadRequest =
@@ -189,6 +191,107 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     }
                 }
             }
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRepairFailedCompressedBlobReads, TCompressedReadEnvironment)
+    {
+        const TString markerBlock =
+            TString(GetBrokenDataMarker()).resize(BlockSize, '\0');
+
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            for (const bool checksums: {false, true}) {
+                for (const auto status:
+                     {NKikimrProto::NODATA, NKikimrProto::ERROR})
+                {
+                    // Cover coalesced adjacent chunks as well as three
+                    // separate ranges, including duplicate block offsets.
+                    for (const auto& offsets: TVector<TVector<ui16>>{
+                             {4, 5, 5, 8, 16}, {0, 1, 1, 8, 16}})
+                    {
+                        BlobOffsets = offsets;
+                        const ui32 queryCount = offsets.front() == 4 ? 2 : 3;
+                        for (ui32 failed = 1; failed < (1u << queryCount);
+                             ++failed)
+                        {
+                            StartCompressedRead(
+                                codec, checksums, EStorageAccessMode::Repair);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                queryCount, ReadRequest->QuerySize);
+                            auto result = MakeReadResult();
+                            for (ui32 i = 0; i < queryCount; ++i) {
+                                if (failed & (1u << i)) {
+                                    result->Responses[i].Status = status;
+                                    result->Responses[i].Buffer = TRope();
+                                }
+                            }
+
+                            const auto response = FinishRead(std::move(result));
+                            UNIT_ASSERT_C(
+                                !HasError(response->GetError()),
+                                FormatError(response->GetError()));
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                checksums ? BlobOffsets.size() : 0,
+                                response->BlockChecksums.size());
+                            for (size_t i = 0; i < BlobOffsets.size(); ++i) {
+                                const ui32 queryIndex = queryCount == 2
+                                    ? (BlobOffsets[i] == 16 ? 1 : 0)
+                                    : BlobOffsets[i] / 8;
+                                const TString expected =
+                                    failed & (1u << queryIndex)
+                                        ? markerBlock
+                                        : TString(
+                                              BlockSize, 'a' + BlobOffsets[i]);
+                                UNIT_ASSERT_VALUES_EQUAL(expected, Blocks[i]);
+                                if (checksums) {
+                                    UNIT_ASSERT_VALUES_EQUAL(
+                                        ComputeDefaultDigest(
+                                            {expected.data(), expected.size()}),
+                                        response->BlockChecksums[i]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectMissingCompressedBlobInDefaultMode,
+        TCompressedReadEnvironment)
+    {
+        StartCompressedRead(NProto::TBlobCompression::LZ4, true);
+        auto result = MakeReadResult();
+        result->Responses[0].Status = NKikimrProto::NODATA;
+        result->Responses[0].Buffer = TRope();
+
+        const auto response = FinishRead(std::move(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT(response->BlockChecksums.empty());
+        for (const auto& block: Blocks) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRejectTransientCompressedBlobReadErrorInRepairMode,
+        TCompressedReadEnvironment)
+    {
+        StartCompressedRead(
+            NProto::TBlobCompression::LZ4, true, EStorageAccessMode::Repair);
+        auto result = MakeReadResult();
+        result->Responses[1].Status = NKikimrProto::TIMEOUT;
+        result->Responses[1].Buffer = TRope();
+
+        const auto response = FinishRead(std::move(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT(response->BlockChecksums.empty());
+        for (const auto& block: Blocks) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
         }
     }
 

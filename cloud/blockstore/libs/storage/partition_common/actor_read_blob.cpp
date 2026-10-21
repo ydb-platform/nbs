@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -11,6 +12,17 @@ using namespace NActors;
 using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBrokenDataMarkerBlock(ui32 blockSize)
+{
+    return TString(GetBrokenDataMarker()).resize(blockSize, '\0');
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,6 +92,8 @@ TBlobCompressor::TReadPlan TReadBlobActor::GetQueries() const
     TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
     size_t queriesCount = 0;
 
+    TVector<TVector<ui32>> blockOffsetsForEachRequest;
+
     for (size_t i = 0; i < blocksCount; ++i) {
         if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i-1] + 1) {
             // extend range
@@ -89,15 +103,22 @@ TBlobCompressor::TReadPlan TReadBlobActor::GetQueries() const
                 Request->BlobId,
                 Request->BlobOffsets[i] * BlockSize,
                 BlockSize);
+            blockOffsetsForEachRequest.emplace_back();
         }
+
+        blockOffsetsForEachRequest.back().push_back(Request->BlobOffsets[i]);
     }
 
-    return {.Queries = std::move(queries), .QueriesCount = queriesCount};
+    return {
+        .Queries = std::move(queries),
+        .QueriesCount = queriesCount,
+        .BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest)};
 }
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
-    auto [queries, queriesCount] = GetQueries();
+    auto [queries, queriesCount, blockOffsetsForEachRequest] = GetQueries();
+    BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest);
 
     auto request = std::make_unique<TEvBlobStorage::TEvGet>(
         queries,
@@ -197,101 +218,131 @@ void TReadBlobActor::ReplyError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+auto TReadBlobActor::FillBrokenDataAndFilterItOut(
+    TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+    const TSgList& sglist,
+    const NActors::TActorContext& ctx) -> TDataThatCanBeProcessed
+{
+    if (StorageAccessMode != EStorageAccessMode::Repair) {
+        return {
+            .Sglist = sglist,
+            .BlockOffsets = Request->BlobOffsets,
+            .Responses = std::move(responses)};
+    }
+
+    STORAGE_VERIFY(
+        BlockOffsetsForEachRequest.size() == responses.size(),
+        TWellKnownEntityTypes::TABLET,
+        PartitionTabletId);
+
+
+    THashMap<ui16, size_t> responseIndexForEachBlockOffset;
+    for (size_t i = 0; i < BlockOffsetsForEachRequest.size(); ++i) {
+        for (const auto& blockOffset: BlockOffsetsForEachRequest[i]) {
+            responseIndexForEachBlockOffset[blockOffset] = i;
+        }
+    }
+
+    const auto markerBlock = GetBrokenDataMarkerBlock(BlockSize);
+    STORAGE_VERIFY(
+        markerBlock.size() == BlockSize,
+        TWellKnownEntityTypes::TABLET,
+        PartitionTabletId);
+
+    TSgList sglistForBlocksWithNoBrokenData;
+    TVector<ui16> blockOffsetsWithNoBrokenData;
+    for (size_t i = 0; i < sglist.size(); ++i) {
+        const size_t blockOffset = Request->BlobOffsets[i];
+
+        size_t responseIndex = responseIndexForEachBlockOffset[blockOffset];
+
+        auto& response = responses[responseIndex];
+        if (response.Status != NKikimrProto::OK &&
+            NCloud::IsUnrecoverable(response.Status))
+        {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION_COMMON,
+                "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
+                PartitionTabletId,
+                NKikimrProto::EReplyStatus_Name(response.Status).data(),
+                "TODO: add response print");
+
+            auto& block = sglist[i];
+            Y_ABORT_UNLESS(block.Data());
+            memcpy(
+                const_cast<char*>(block.Data()),
+                markerBlock.data(),
+                markerBlock.size());
+            continue;
+        }
+
+        sglistForBlocksWithNoBrokenData.push_back(sglist[i]);
+        blockOffsetsWithNoBrokenData.push_back(Request->BlobOffsets[i]);
+    }
+
+    auto toRemove = std::ranges::remove_if(
+        responses,
+        [](const auto& response)
+        {
+            return response.Status != NKikimrProto::OK &&
+                   NCloud::IsUnrecoverable(response.Status);
+        });
+
+    responses.erase(toRemove.begin(), toRemove.end());
+
+    return {
+        .Sglist = std::move(sglistForBlocksWithNoBrokenData),
+        .BlockOffsets = std::move(blockOffsetsWithNoBrokenData),
+        .Responses = std::move(responses)};
+}
+
 TResultOrError<TVector<ui32>> TReadBlobActor::DecompressReadResultToSglist(
-    const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
-    const TSgList& outputBuffers,
+    TVector<TEvBlobStorage::TEvGetResult::TResponse>& responses,
+    const TSgList& sglist,
+    const TVector<ui16>& blockOffsets,
     const NActors::TActorContext&)
 {
-    auto* msg = ev->Get();
-
     TVector<TRope> compressedBuffers;
-    for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        auto& response = msg->Responses[i];
-        if (response.Status != NKikimrProto::OK) {
-            return MakeError(E_REJECTED, "read error");
-        }
+    for (auto& response: responses) {
+        STORAGE_VERIFY(
+            response.Status == NKikimrProto::OK,
+            TWellKnownEntityTypes::TABLET,
+            PartitionTabletId);
         compressedBuffers.push_back(std::move(response.Buffer));
     }
 
+    TVector<ui32> blockChecksums;
+
     auto error = BlobCompressor->DecompressBlob(
         compressedBuffers,
-        outputBuffers,
+        sglist,
         *Request->CompressionInfo,
-        Request->BlobOffsets);
+        blockOffsets,
+        ShouldCalculateChecksums ? &blockChecksums : nullptr);
     if (HasError(error)) {
         return error;
-    }
-
-    if (!ShouldCalculateChecksums) {
-        return TVector<ui32>{};
-    }
-
-    TVector<ui32> blockChecksums;
-    for (auto outputBuffer: outputBuffers) {
-        blockChecksums.push_back(
-            ComputeDefaultDigest({outputBuffer.Data(), outputBuffer.Size()}));
     }
 
     return std::move(blockChecksums);
 }
 
 TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
-    const NKikimr::TEvBlobStorage::TEvGetResult::TPtr& ev,
+    TVector<TEvBlobStorage::TEvGetResult::TResponse>& responses,
     const TSgList& sglist,
+    const TVector<ui16>& blockOffsets,
     const NActors::TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    Y_UNUSED(ctx);
 
     size_t sglistIndex = 0;
     TVector<ui32> blockChecksums;
 
-    for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        auto& response = msg->Responses[i];
-
-        if (response.Status != NKikimrProto::OK) {
-            if (NCloud::IsUnrecoverable(response.Status) &&
-                StorageAccessMode == EStorageAccessMode::Repair)
-            {
-                LOG_WARN(
-                    ctx,
-                    TBlockStoreComponents::PARTITION_COMMON,
-                    "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
-                    PartitionTabletId,
-                    NKikimrProto::EReplyStatus_Name(response.Status).data(),
-                    msg->Print(false).data());
-
-                const auto marker = GetBrokenDataMarker();
-                auto& block = sglist[sglistIndex];
-                Y_ABORT_UNLESS(block.Data());
-                memcpy(
-                    const_cast<char*>(block.Data()),
-                    marker.data(),
-                    Min(block.Size(), marker.size()));
-                ++sglistIndex;
-
-                while (sglistIndex < sglist.size()) {
-                    const ui16 offset = Request->BlobOffsets[sglistIndex];
-                    const ui16 prevOffset =
-                        Request->BlobOffsets[sglistIndex - 1];
-                    if (offset != prevOffset + 1) {
-                        break;
-                    }
-
-                    auto& block = sglist[sglistIndex];
-                    Y_ABORT_UNLESS(block.Data());
-                    memcpy(
-                        const_cast<char*>(block.Data()),
-                        marker.data(),
-                        Min(block.Size(), marker.size()));
-
-                    ++sglistIndex;
-                }
-
-                continue;
-            } else {
-                return MakeError(E_REJECTED, "read error");
-            }
-        }
+    for (auto& response: responses) {
+        STORAGE_VERIFY(
+            response.Status == NKikimrProto::OK,
+            TWellKnownEntityTypes::TABLET,
+            PartitionTabletId);
 
         if (response.Id != Request->BlobId || response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
@@ -320,11 +371,61 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
         }
     }
 
-    if (sglistIndex != Request->BlobOffsets.size()) {
+    if (sglistIndex != blockOffsets.size()) {
         return MakeError(E_REJECTED, "invalid response received");
     }
 
     return std::move(blockChecksums);
+}
+
+TVector<ui32> TReadBlobActor::FillBlockChecksumsForRecoveredBlocksIfNeeded(
+    const TVector<ui16>& originalBlockOffsets,
+    const TVector<ui16>& newBlockOffsets,
+    TVector<ui32> newBlockChecksums)
+{
+    if (!ShouldCalculateChecksums ||
+        originalBlockOffsets.size() == newBlockOffsets.size())
+    {
+        return newBlockChecksums;
+    }
+
+    TVector<ui32> blockChecksums;
+    blockChecksums.reserve(originalBlockOffsets.size());
+
+    STORAGE_VERIFY(
+        originalBlockOffsets.size() >= newBlockOffsets.size(),
+        TWellKnownEntityTypes::TABLET,
+        PartitionTabletId);
+
+    const auto markerBlock = GetBrokenDataMarkerBlock(BlockSize);
+    const ui32 markerBlockChecksum =
+        ComputeDefaultDigest({markerBlock.data(), markerBlock.size()});
+
+    size_t originalIdx = 0;
+    size_t newIdx = 0;
+    while (originalIdx < originalBlockOffsets.size() &&
+           newIdx < newBlockOffsets.size())
+    {
+        if (originalBlockOffsets[originalIdx] == newBlockOffsets[newIdx]) {
+            blockChecksums.push_back(newBlockChecksums[newIdx]);
+            ++originalIdx;
+            ++newIdx;
+        } else {
+            blockChecksums.push_back(markerBlockChecksum);
+            ++originalIdx;
+        }
+    }
+
+    STORAGE_VERIFY(
+        newIdx == newBlockOffsets.size(),
+        TWellKnownEntityTypes::TABLET,
+        PartitionTabletId);
+
+    for (; originalIdx < originalBlockOffsets.size(); ++originalIdx) {
+        blockChecksums.push_back(markerBlockChecksum);
+    }
+
+    return blockChecksums;
 }
 
 void TReadBlobActor::HandleGetResult(
@@ -347,12 +448,36 @@ void TReadBlobActor::HandleGetResult(
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
 
+        TVector<TEvBlobStorage::TEvGetResult::TResponse> responses;
+        responses.reserve(msg->ResponseSz);
+        for (size_t i = 0; i < msg->ResponseSz; ++i) {
+            responses.push_back(msg->Responses[i]);
+        }
+
+        auto [newSglist, newBlockOffsets, newResponses] =
+            FillBrokenDataAndFilterItOut(std::move(responses), sglist, ctx);
+
+        for (auto& response: newResponses) {
+            if (response.Status != NKikimrProto::OK) {
+                ReplyError(ctx, *msg, "read error");
+                return;
+            }
+        }
+
         TResultOrError<TVector<ui32>> checksumsOrError = [&]()
         {
             if (Request->CompressionInfo) {
-                return DecompressReadResultToSglist(ev, sglist, ctx);
+                return DecompressReadResultToSglist(
+                    newResponses,
+                    newSglist,
+                    newBlockOffsets,
+                    ctx);
             }
-            return CopyReadResultToSglist(ev, sglist, ctx);
+            return CopyReadResultToSglist(
+                newResponses,
+                newSglist,
+                newBlockOffsets,
+                ctx);
         }();
 
         if (HasError(checksumsOrError.GetError())) {
@@ -360,8 +485,10 @@ void TReadBlobActor::HandleGetResult(
             return;
         }
 
-        blockChecksums = checksumsOrError.ExtractResult();
-
+        blockChecksums = FillBlockChecksumsForRecoveredBlocksIfNeeded(
+            Request->BlobOffsets,
+            newBlockOffsets,
+            checksumsOrError.ExtractResult());
     } else {
         ReplyAndDie(
             ctx,
