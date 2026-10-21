@@ -174,8 +174,7 @@ TResultOrError<TMaybe<TDirectoryContent>>
 TDirectoryHandle::ReadContent(size_t size, size_t offset)
 {
     size_t end = 0;
-    bool oldChunk = false;
-    bool nonSequential = false;
+    bool chunkSwitch = false;
     bool beyondCachedContent = false;
     TBufferPtr content = nullptr;
     ui64 cacheVersion = 0;
@@ -185,12 +184,7 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset)
         if (it != Content.end()) {
             end = it->first;
             if (SerializedSize > ReadStatsSizeThreshold) {
-                oldChunk = std::next(it) != Content.end();
-                if (LastReadKey) {
-                    nonSequential = *LastReadKey != end &&
-                        (it == Content.begin() ||
-                         std::prev(it)->first != *LastReadKey);
-                }
+                chunkSwitch = LastReadKey != end;
             }
             LastReadKey = end;
             content = it->second.Buffer;
@@ -205,11 +199,8 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset)
         }
     }
 
-    if (oldChunk) {
-        Stats->IncrementOldChunkReadCount();
-    }
-    if (nonSequential) {
-        Stats->IncrementNonSequentialReadCount();
+    if (chunkSwitch) {
+        Stats->IncrementChunkSwitchCount();
     }
 
     TDirectoryContent result;

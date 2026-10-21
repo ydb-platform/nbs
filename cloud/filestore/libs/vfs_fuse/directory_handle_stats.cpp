@@ -49,15 +49,8 @@ void TDirectoryHandleModuleStats::RegisterCounters(
         NMetrics::EAggregationType::AT_SUM,
         NMetrics::EMetricType::MT_DERIVATIVE);
     localMetricsRegistry->Register(
-        {NMetrics::CreateSensor("OldChunkReadCount")},
-        NMetrics::CreateMetric([self]
-                               { return self->OldChunkReadCount.Get(); }),
-        NMetrics::EAggregationType::AT_SUM,
-        NMetrics::EMetricType::MT_DERIVATIVE);
-    localMetricsRegistry->Register(
-        {NMetrics::CreateSensor("NonSequentialReadCount")},
-        NMetrics::CreateMetric(
-            [self] { return self->NonSequentialReadCount.Get(); }),
+        {NMetrics::CreateSensor("ChunkSwitchCount")},
+        NMetrics::CreateMetric([self] { return self->ChunkSwitchCount.Get(); }),
         NMetrics::EAggregationType::AT_SUM,
         NMetrics::EMetricType::MT_DERIVATIVE);
 
@@ -93,14 +86,9 @@ void TDirectoryHandleModuleStats::IncrementRewindCount()
     RewindCount.Inc();
 }
 
-void TDirectoryHandleModuleStats::IncrementOldChunkReadCount()
+void TDirectoryHandleModuleStats::IncrementChunkSwitchCount()
 {
-    OldChunkReadCount.Inc();
-}
-
-void TDirectoryHandleModuleStats::IncrementNonSequentialReadCount()
-{
-    NonSequentialReadCount.Inc();
+    ChunkSwitchCount.Inc();
 }
 
 void TDirectoryHandleModuleStats::UpdateStats(TInstant now)

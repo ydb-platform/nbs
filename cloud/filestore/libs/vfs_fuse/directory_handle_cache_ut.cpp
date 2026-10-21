@@ -694,49 +694,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_VALUES_EQUAL(0, content->GetSize());
     }
 
-    Y_UNIT_TEST(ShouldCountOldChunkReads)
-    {
-        auto timer = CreateWallClockTimer();
-        auto stats =
-            CreateDirectoryHandleStats(timer, nullptr /* storageStats */);
-
-        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        auto metricsRegistry = NMetrics::CreateMetricsRegistry({}, counters);
-        stats->RegisterCounters(
-            metricsRegistry,
-            NMetrics::CreateMetricsRegistryStub());
-
-        auto cache = TDirectoryHandleCache(
-            Log,
-            stats,
-            nullptr /* storage */,
-            nullptr /* directoryEntryVersionCache */,
-            ReadStatsSizeThreshold);
-
-        const ui64 id = cache.CreateHandle(42);
-        auto handle = cache.FindHandle(id);
-        UNIT_ASSERT(handle);
-
-        handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
-        handle->UpdateContent(1024, 1024, CreateContent(1024, 'y'), 2, {});
-
-        metricsRegistry->Update(timer->Now());
-        auto oldChunkReadCount = counters->FindCounter("OldChunkReadCount");
-        UNIT_ASSERT(oldChunkReadCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, oldChunkReadCount->Val());
-
-        UNIT_ASSERT(ReadContent(*handle, 1024, 1024));
-        UNIT_ASSERT(ReadContent(*handle, 1024, 1536));
-        metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(0, oldChunkReadCount->Val());
-
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
-        UNIT_ASSERT(ReadContent(*handle, 1024, 512));
-        metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(2, oldChunkReadCount->Val());
-    }
-
-    Y_UNIT_TEST(ShouldCountNonSequentialReads)
+    Y_UNIT_TEST(ShouldCountChunkSwitches)
     {
         auto timer = CreateWallClockTimer();
         auto stats =
@@ -769,39 +727,38 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         }
 
         metricsRegistry->Update(timer->Now());
-        auto nonSequentialReadCount =
-            counters->FindCounter("NonSequentialReadCount");
-        UNIT_ASSERT(nonSequentialReadCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, nonSequentialReadCount->Val());
+        auto chunkSwitchCount = counters->FindCounter("ChunkSwitchCount");
+        UNIT_ASSERT(chunkSwitchCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
         UNIT_ASSERT(ReadContent(*handle, 1024, 2560));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(0, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         UNIT_ASSERT(ReadContent(*handle, 1024, 512));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(1, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, chunkSwitchCount->Val());
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 1024));
         UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(1, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, chunkSwitchCount->Val());
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(2, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, chunkSwitchCount->Val());
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(3, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, chunkSwitchCount->Val());
 
         handle->ResetContent();
         handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(3, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, chunkSwitchCount->Val());
     }
 
     Y_UNIT_TEST(ShouldRecordReadStatsOnlyForHandlesOverThreshold)
@@ -839,16 +796,12 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT_LT(handle->GetStats().SerializedSize, 4_KB);
 
         metricsRegistry->Update(timer->Now());
-        auto oldChunkReadCount = counters->FindCounter("OldChunkReadCount");
-        auto nonSequentialReadCount =
-            counters->FindCounter("NonSequentialReadCount");
-        UNIT_ASSERT(oldChunkReadCount);
-        UNIT_ASSERT(nonSequentialReadCount);
+        auto chunkSwitchCount = counters->FindCounter("ChunkSwitchCount");
+        UNIT_ASSERT(chunkSwitchCount);
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(0, oldChunkReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
         for (ui64 i = 2; i < 4; ++i) {
             handle->UpdateContent(
@@ -862,8 +815,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
 
         UNIT_ASSERT(ReadContent(*handle, 1024, 256));
         metricsRegistry->Update(timer->Now());
-        UNIT_ASSERT_VALUES_EQUAL(1, oldChunkReadCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, nonSequentialReadCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, chunkSwitchCount->Val());
     }
 }
 

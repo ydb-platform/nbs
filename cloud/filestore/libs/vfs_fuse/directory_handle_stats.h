@@ -26,8 +26,7 @@ private:
     TMaxCounter<DirectoryHandleMaxBucketCount> OpenHandleCount;
     TMaxCounter<DirectoryHandleMaxBucketCount> EntryVersionCacheEntryCount;
     TRelaxedCounter RewindCount;
-    TRelaxedCounter OldChunkReadCount;
-    TRelaxedCounter NonSequentialReadCount;
+    TRelaxedCounter ChunkSwitchCount;
     // Optional; when null no storage sensors are registered or updated.
     IDirectoryHandleStorageStatsPtr StorageStats;
 
@@ -48,8 +47,7 @@ public:
     void ChangeOpenHandleCount(i64 delta);
     void ChangeEntryVersionCacheEntryCount(i64 delta);
     void IncrementRewindCount();
-    void IncrementOldChunkReadCount();
-    void IncrementNonSequentialReadCount();
+    void IncrementChunkSwitchCount();
 
     void UpdateStats(TInstant now) override;
 };
