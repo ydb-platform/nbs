@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
             cat <<EOF
 Usage: ./3-start_nbs.sh [--one-nbs] [--skip-nbs] [--skip-da] [-- NBS_ARGS...]
 
-Start two NBS nodes and five disk agents in the local stand.
+Start two NBS nodes and five disk agents in the current cell.
 --one-nbs   Start only the first NBS node.
 --skip-nbs  Start only disk agents; NBS must already be running.
 --skip-da   Start only NBS nodes.
@@ -82,6 +82,7 @@ start_nbs() {
         --storage-file       "nbs/nbs-storage$suffix.txt" \
         --naming-file        nbs/nbs-names.txt \
         --diag-file          nbs/nbs-diag.txt \
+        --cells-file         nbs/nbs-cells.txt \
         --features-file      nbs/nbs-features.txt \
         --auth-file          nbs/nbs-auth.txt \
         --dr-proxy-file      nbs/nbs-dr-proxy.txt \

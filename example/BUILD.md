@@ -20,7 +20,7 @@ cd example
 
 Follow [README.md](README.md) to start the stand.
 
-The scripts use Bash, Python 3 (for `copy_volume.py`), OpenSSL, GNU coreutils,
+The scripts use Bash, Python 3 (for configuration generation and `copy_volume.py`), OpenSSL, GNU coreutils,
 and GNU getopt. NBD attachment requires `sudo` and the kernel `nbd` module;
 QEMU requires KVM. Setup uses sparse files; their physical disk usage grows as
 the stand writes data.

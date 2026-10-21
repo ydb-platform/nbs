@@ -9,10 +9,11 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./7-run_qemu.sh [-hkds]
+Usage: ./7-run_qemu.sh [--cell2] [-hkds]
 Run qemu
 -h, --help                     Display help
 -d, --diskid                   NBS Disk ID
+--cell2                        Use NBS and QEMU ports of cell-2 (default: cell-1)
 -s, --socket                   Socket path
 -k, --encryption-key-path      Encryption key path
 -e, --encrypted                Use default encryption key
@@ -23,7 +24,7 @@ EOF
 encryption=""
 diskid=""
 socket=""
-options=$(getopt -l "help,key:,diskid:,socket:,encryption-key-path:,encrypted" -o "hk:d:s:e" -a -- "$@")
+options=$(getopt -l "help,cell2,key:,diskid:,socket:,encryption-key-path:,encrypted" -o "hk:d:s:e" -a -- "$@")
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -37,6 +38,13 @@ do
     -h | --help )
         show_help
         exit 0
+        ;;
+    --cell2 )
+        NBS_CLIENT_PORT=19766
+        QEMU_QMP_PORT=${QEMU_QMP_PORT:-18678}
+        QEMU_SSH_PORT=${QEMU_SSH_PORT:-18679}
+        BIN_DIR="$EXAMPLE_DIR/cell2"
+        shift
         ;;
     -k | --encryption-key-path )
         encryption="--encryption-mode=aes-xts --encryption-key-path=${2}"

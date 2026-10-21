@@ -11,3 +11,5 @@ ydbd
 *.sock
 result.bin
 __pycache__/
+
+cell2/

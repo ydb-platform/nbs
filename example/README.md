@@ -17,11 +17,22 @@ cd example
 ./0-setup.sh
 ```
 
-Setup creates sparse YDB disks (64 GiB + 64 GiB + 32 GiB), file devices for
-five disk agents, and self-signed development certificates. Runtime files are
-stored in `$HOME/tmp/nbs` and linked as `data`, `certs`, and `logs`.
-Override `PERSISTENT_TMP_DIR` when running setup to use another location.
-Setup recreates the YDB disks; run it only when initializing a fresh stand.
+Setup prepares both cells. For each cell, it creates sparse YDB disks
+(64 GiB + 64 GiB + 32 GiB), file devices for five disk agents, and self-signed
+development certificates. The first cell's runtime files are stored in
+`$HOME/tmp/nbs` and linked as `data`, `certs`, and `logs`; the second
+cell's files are stored in `$HOME/tmp/nbs-cell2` and linked under `cell2/`.
+Override `PERSISTENT_TMP_DIR` and `CELL2_PERSISTENT_TMP_DIR`, respectively,
+when running setup to use other locations.
+Setup recreates both cells' YDB disks; run it only when initializing a fresh stand.
+
+`prepare_cells.py` generates the NBS cells configurations for both cells and
+the second cell's YDB/NBS configurations from the shared source files.
+To regenerate these configurations without initializing disks or certificates:
+
+```bash
+python3 ./prepare_cells.py
+```
 
 Run all scripts from this directory. Binaries are taken from
 `cloud/blockstore/buildall` relative to the repository root.
@@ -71,7 +82,7 @@ when NBS is already running:
 ./3-start_nbs.sh --skip-nbs
 ```
 
-These flags can be combined with `--one-nbs`.
+These flags can be combined with `--one-nbs`, including on the second cell.
 The script waits for NBS to answer and configures Disk Registry before starting
 agents. If both `--skip-nbs` and `--skip-da` are passed, it exits without starting
 services.
@@ -83,7 +94,7 @@ The agent monitoring ports are 9100–9104.
 
 The example preserves the source stand's experimental storage settings,
 including RDMA and disk-agent chaos injection. For deterministic debugging,
-disable `ChaosConfig` in `0-setup.sh` before setup. On a host without RDMA,
+disable `ChaosConfig` in `setup_cell.sh` before setup. On a host without RDMA,
 set `UseRdma` and `UseNonreplicatedRdmaActor` to `false` in
 `nbs/nbs-storage.txt` and `nbs/nbs-storage2.txt`, and disable the RDMA endpoints
 in `nbs/nbs-rdma.txt`.
@@ -93,6 +104,9 @@ Run the following command in a new tab to create new disk:
 ```bash
 ./5-create_disk.sh -k ssd
 ```
+Add `--cell2` to create the disk in the second cell. By default, it is created
+in the first cell.
+
 Storage kind may by overridden by ```-k``` option, following values are supported:
 * **ssd** (default) - replicated network disk, ```id=vol0```
 * **nonreplicated** - nonreplicated disk, ```id=nbr0```
@@ -130,6 +144,7 @@ ssh -L 8766:localhost:8766 <vm_ip>
 - `disk-agent.sh` starts one agent using `LOCATION_FILE` and `DISK_AGENT_FILE`.
 - `7-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
   it requires KVM and the QEMU binary and guest image from `buildall`.
+  Add `--cell2` to use the second cell, its socket directory, and its QMP/SSH ports.
 - `8-make-disks.sh` creates a selection of disks and placement groups.
 - `copy_volume.py` exercises volume links to copy a volume.
 - `cleanup.sh` removes generated configs, backups, and runtime symlinks. Stop all
@@ -137,3 +152,82 @@ ssh -L 8766:localhost:8766 <vm_ip>
 
 YDB monitoring: http://localhost:8765/. NBS logs: `logs/nbs.1.log` and
 `logs/nbs.2.log`; agent logs: `logs/remote-da0.log` through `logs/remote-da4.log`.
+
+## Run two cells (shards)
+
+Each cell has its own independent YDB cluster, NBS, and five disk agents.
+YDB does not use cell IDs. NBS uses `nbs/nbs-cells.txt` to identify its local
+cell and reach the peer NBS over gRPC. The first cell is `cell-1`; the second
+is `cell-2`.
+
+Start the first cell with the commands above. If it is already running,
+restart NBS with the updated `3-start_nbs.sh` to load the cells configuration;
+do not rerun setup on an existing stand.
+
+Both cells are prepared by the single `./0-setup.sh` command above.
+The generated configurations and shared-script links for the second cell are
+under `cell2/`. If the first cell already has data, run
+`python3 ./prepare_cells.py` to refresh the configurations and initialize only
+the new cell's disks with `./run-cell2.sh setup_cell.sh`.
+
+Start the second YDB in a separate terminal:
+
+```bash
+./1-start_storage_cell2.sh
+```
+
+Initialize it once, then start NBS and disk agents together in a separate terminal:
+
+```bash
+./2-init_storage_cell2.sh
+./3-start_nbs_cell2.sh
+```
+
+`./2-init_storage_cell2.sh --tenant` also supports initializing only the
+NBS tenant when the second cell's YDB is already configured.
+
+The second cell's ports are the first cell's ports plus 10000:
+
+| Service | cell-1 | cell-2 |
+| --- | --- | --- |
+| YDB gRPC | 9001 | 19001 |
+| YDB interconnect | 29501 | 39501 |
+| YDB monitoring | 8765 | 18765 |
+| NBS API (nodes 1 / 2) | 9766 / 9786 | 19766 / 19786 |
+| NBS data (nodes 1 / 2) | 9767 / 9787 | 19767 / 19787 |
+| NBS TLS (nodes 1 / 2) | 9768 / 9788 | 19768 / 19788 |
+| NBS interconnect (nodes 1 / 2) | 29502 / 29522 | 39502 / 39522 |
+| NBS monitoring (nodes 1 / 2) | 8766 / 8786 | 18766 / 18786 |
+| Disk-agent monitoring | 9100–9104 | 19100–19104 |
+
+Use `--cell2` to create a disk in the second cell and the client wrapper to
+inspect it:
+
+```bash
+./5-create_disk.sh --cell2 -k ssd --disk-id cell2-volume
+./blockstore-client_cell2.sh describevolume --disk-id cell2-volume
+# Mount the second cell's volume through the first cell's NBS:
+./blockstore-client.sh startendpoint --ipc-type vhost \
+    --socket "$PWD/data/cell2-volume.sock" --disk-id cell2-volume \
+    --client-id cell1-client --instance-id local
+```
+
+Disk creation and ordinary `DescribeVolume` target the selected cell.
+Endpoint creation searches for the volume across cells and mounts it through
+NBS's cell routing. Use different disk IDs across cells to avoid ambiguous
+lookups. As with the first cell, wait for device secure erase before creating
+nonreplicated or mirrored disks.
+
+`3-start_nbs_cell2.sh` starts both NBS nodes and all five disk agents within
+cell-2. `--one-nbs`, `--skip-nbs`, and `--skip-da` work the same way as in the
+first cell.
+`run-cell2.sh` also supports `6-attach_disk.sh`, `7-run_qemu.sh`, and `cleanup.sh`.
+Start QEMU against the second cell directly:
+
+```bash
+./7-run_qemu.sh --cell2 --diskid cell2-volume
+```
+
+QEMU uses separate QMP and SSH ports, 18678 and 18679. Select a different NBD
+device when attaching disks from both cells. Logs and generated device
+configurations for the second cell are under `cell2/`.

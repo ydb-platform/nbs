@@ -9,11 +9,12 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./5-create_disk.sh [-hkd]
+Usage: ./5-create_disk.sh [--cell2] [-hkd]
 Creates disk with requested kind and attach it to device
 -h, --help                     Display help
 -k, --kind                     Kind of disk ssd|hdd|hybrid|nonreplicated|mirror2|mirror3|local (default: ssd)
 -d, --disk-id                  disk-id
+--cell2                        Create disk in cell-2 (default: cell-1)
 --cloud-id                     cloud-id
 --folder-id                    folder-id
 -b, --base-disk-id             the base disk if you want to create an overlay disk. Should use together with the base-disk-checkpoint-id
@@ -27,7 +28,7 @@ kind="ssd"
 disk_id=""
 cloud_id="test-cloud"
 folder_id="test-folder"
-options=$(getopt -l "help,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
+options=$(getopt -l "help,cell2,kind:,disk-id:,encrypted,base-disk-id:,base-disk-checkpoint-id:,cloud-id:,folder-id:" -o "hk:d:eb:c:" -a -- "$@")
 block_size=4096
 encryption=""
 base_disk_id=""
@@ -45,6 +46,10 @@ do
     -h | --help )
         show_help
         exit 0
+        ;;
+    --cell2 )
+        NBS_CLIENT_PORT=19766
+        shift
         ;;
     -k | --kind )
         kind=${2}
