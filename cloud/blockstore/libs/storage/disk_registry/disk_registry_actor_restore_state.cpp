@@ -534,7 +534,9 @@ void TDiskRegistryActor::ExecuteRestoreDiskRegistryState(
     TDiskRegistryDatabase db(tx.DB);
     db.WriteRestoreState(true);
 
-    InitializeState(args.NewState);
+    const bool suspendSecureErase = State->GetSuspendSecureErase();
+    InitializeState(std::move(args.NewState));
+    State->SetSuspendSecureErase(suspendSecureErase);
 }
 
 void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
