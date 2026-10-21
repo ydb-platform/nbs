@@ -129,14 +129,13 @@ TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
         std::move(dataStore),
         uuid);
 
-    STORAGE_DEBUG(
+    STORAGE_INFO(
         "Journalled device "
         << uuid.Quote() << " created: journal "
         << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
-        << ", journal data "
-        << FormatByteSize(logDataBlockCount * blockSize) << ", data "
-        << FormatByteSize(dataBlockCount * blockSize) << ", block size "
-        << blockSize);
+        << ", journal data " << FormatByteSize(logDataBlockCount * blockSize)
+        << ", data " << FormatByteSize(dataBlockCount * blockSize)
+        << ", block size " << blockSize);
 
     return journalledDevice;
 }
@@ -194,13 +193,6 @@ IStartablePtr TServerBuilder::Build()
         }
 
         devices.emplace_back(std::move(device), config);
-    }
-
-    if (devices.empty()) {
-        STORAGE_THROW_SERVICE_ERROR(MakeError(
-            E_NOT_FOUND,
-            TStringBuilder() << "none of the " << DeviceConfigs.size()
-                             << " journalled devices could be created"));
     }
 
     return CreateServer(

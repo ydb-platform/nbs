@@ -437,6 +437,10 @@ void TServer::HandleRequest(
             ProcessRequest<TFormatDeviceMethod>(conn, std::move(request));
             break;
         }
+        case ERequestCase::kListDevices: {
+            ProcessRequest<TListDevicesMethod>(conn, std::move(request));
+            break;
+        }
         case ERequestCase::kReadPages: {
             ProcessRequest<TReadPagesMethod>(conn, std::move(request));
             break;
