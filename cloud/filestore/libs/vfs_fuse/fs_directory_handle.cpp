@@ -1,5 +1,7 @@
 #include "fs_directory_handle.h"
 
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 namespace {
@@ -137,7 +139,8 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t offset,
     const TBufferPtr& content,
     ui64 cacheVersion,
-    TString cookie)
+    TString cookie,
+    TLog& Log)
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
@@ -149,31 +152,42 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
             .CacheVersion = cacheVersion,
         },
     };
-    if (!content->Empty()) {
-        chunk.Key = end;
-    }
 
+    size_t cachedEnd = 0;
     with_lock (Lock) {
-        if (chunk.Key) {
-            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-            Content.try_emplace(end, content, cacheVersion);
-            LastReadKey = end;
+        cachedEnd = Content.empty() ? 0 : Content.rbegin()->first;
+        if (offset == cachedEnd) {
+            if (!content->Empty()) {
+                chunk.Key = end;
+                Content[end] = {
+                    .Buffer = content,
+                    .CacheVersion = cacheVersion};
+                LastReadKey = end;
+            }
+            Cookie = std::move(cookie);
         }
-        Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
         SerializedSize += chunk.GetSerializedSize();
     }
 
+    if (offset != cachedEnd) {
+        STORAGE_ERROR(
+            "off %lu is not at the end of cached content %lu",
+            offset,
+            cachedEnd);
+    }
+
     return chunk;
 }
 
-TMaybe<TDirectoryContent>
-TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
+TResultOrError<TMaybe<TDirectoryContent>>
+TDirectoryHandle::ReadContent(size_t size, size_t offset)
 {
     size_t end = 0;
     bool oldChunk = false;
     bool nonSequential = false;
+    bool beyondCachedContent = false;
     TBufferPtr content = nullptr;
     ui64 cacheVersion = 0;
 
@@ -193,7 +207,12 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
             content = it->second.Buffer;
             cacheVersion = it->second.CacheVersion;
         } else if (Cookie) {
-            return Nothing();
+            const ui64 cachedEnd =
+                Content.empty() ? 0 : Content.rbegin()->first;
+            if (offset == cachedEnd) {
+                return TMaybe<TDirectoryContent>();
+            }
+            beyondCachedContent = true;
         }
     }
 
@@ -206,19 +225,26 @@ TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
 
     TDirectoryContent result;
     if (content) {
-        offset = offset - (end - content->size());
-        if (offset >= content->size()) {
-            STORAGE_ERROR("off %lu size %lu", offset, content->size());
-            return Nothing();
+        const size_t start = end - content->size();
+        if (offset < start) {
+            return MakeError(
+                E_FS_INVAL,
+                TStringBuilder() << "offset " << offset
+                                 << " is before cached chunk " << start);
         }
         result = {
             .Content = content,
-            .Offset = offset,
+            .Offset = offset - start,
             .Size = size,
             .CacheVersion = cacheVersion};
+    } else if (beyondCachedContent) {
+        return MakeError(
+            E_FS_INVAL,
+            TStringBuilder()
+                << "offset " << offset << " is beyond cached content");
     }
 
-    return result;
+    return TMaybe<TDirectoryContent>(result);
 }
 
 void TDirectoryHandle::ResetContent()

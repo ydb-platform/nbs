@@ -101,9 +101,15 @@ void TFileSystem::ReadDir(
         if (!handle->IsEmpty()) {
             DirectoryHandleCache->ResetHandle(fi->fh);
         }
-    } else if (auto content = handle->ReadContent(size, offset, Log)) {
-        reply(*this, *content);
-        return;
+    } else {
+        auto result = handle->ReadContent(size, offset);
+        if (!CheckError(*callContext, req, result.GetError())) {
+            return;
+        }
+        if (const auto& content = result.GetResult()) {
+            reply(*this, *content);
+            return;
+        }
     }
 
     auto request = StartRequest<NProto::TListNodesRequest>(ino);
@@ -216,7 +222,8 @@ void TFileSystem::ReadDir(
                     SafeIntegerCast<size_t>(offset),
                     builder.Finish(),
                     version,
-                    response.GetCookie());
+                    response.GetCookie(),
+                    self->Log);
 
                 STORAGE_TRACE(
                     "# " << fuse_req_unique(req) << " offset: " << offset

@@ -4,6 +4,7 @@
 
 #include "fs.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/buffer.h>
@@ -102,10 +103,11 @@ public:
         size_t offset,
         const TBufferPtr& content,
         ui64 cacheVersion,
-        TString cookie);
+        TString cookie,
+        TLog& Log);
 
-    TMaybe<TDirectoryContent>
-    ReadContent(size_t size, size_t offset, TLog& Log);
+    TResultOrError<TMaybe<TDirectoryContent>>
+    ReadContent(size_t size, size_t offset);
     void ResetContent();
     TString GetCookie();
 
