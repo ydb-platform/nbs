@@ -20,6 +20,7 @@ PEERDIR(
     contrib/ydb/core/util
     contrib/ydb/core/wrappers/ut_helpers
     contrib/ydb/core/ydb_convert
+    contrib/ydb/public/lib/ydb_cli/dump/util
     yql/essentials/sql/pg
     yql/essentials/parser/pg_wrapper
 )

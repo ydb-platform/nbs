@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 
+#include <cloud/fastshard/common/error.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <silk/fibers/fiber.h>
@@ -14,23 +16,11 @@
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
 
-#include <cstring>
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-//
-// The GNU strerror_r variant - the build defines _GNU_SOURCE. Thread-safe,
-// unlike strerror.
-//
-
-inline TString FiberSpawnErrorText(int err)
-{
-    char buf[64] = {};
-    return ::strerror_r(err, buf, sizeof(buf));
-}
 
 /**
  * Tracks the termination futures of the fibers spawned by TFiberShard so
@@ -106,7 +96,7 @@ public:
             if (fiberResult) {
                 SILK_WARN(
                     "shard fiber exited with error: %s",
-                    FiberSpawnErrorText(fiberResult).c_str());
+                    NCloud::NFastShard::SystemErrorText(fiberResult).c_str());
             }
         }
     }
@@ -260,7 +250,8 @@ public:
             promise.SetValue(MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
+                    << "failed to spawn fiber: "
+                        << NCloud::NFastShard::SystemErrorText(r)));
         }
 
         return future;
@@ -281,7 +272,8 @@ public:
             promise.SetValue(MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
+                    << "failed to spawn fiber: "
+                        << NCloud::NFastShard::SystemErrorText(r)));
         }
 
         return future;
@@ -298,7 +290,7 @@ public:
             InflightFibers.Remove(fiberFuture);
             SILK_ERROR(
                 "failed to spawn tear-down fiber: %s",
-                FiberSpawnErrorText(r).c_str());
+                NCloud::NFastShard::SystemErrorText(r).c_str());
         }
     }
 
@@ -325,7 +317,8 @@ public:
             *response.MutableError() = MakeError(                              \
                 E_FAIL,                                                        \
                 TStringBuilder()                                               \
-                    << "failed to spawn fiber: " << FiberSpawnErrorText(r));   \
+                    << "failed to spawn fiber: "                               \
+                    << NCloud::NFastShard::SystemErrorText(r));                \
             promise.SetValue(std::move(response));                             \
         }                                                                      \
                                                                                \
@@ -358,7 +351,8 @@ public:
             promise.SetValue(MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
+                    << "failed to spawn fiber: "
+                        << NCloud::NFastShard::SystemErrorText(r)));
         }
 
         return future;
