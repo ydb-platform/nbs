@@ -195,11 +195,12 @@ TResultOrError<TReadContentResult> TDirectoryHandle::ReadContent(
                                  << " is before cached chunk " << start);
         }
 
-        const bool chunkSwitched = LastReadKey != it->first;
+        const bool chunkSwitched = LastReadKey && *LastReadKey != it->first &&
+                                   std::next(it) != Content.end();
         LastReadKey = it->first;
         return TReadContentResult{
             .Status = EStatus::Hit,
-            .Content =
+            .DirectoryContent =
                 {.Content = content,
                  .Offset = offset - start,
                  .Size = size,

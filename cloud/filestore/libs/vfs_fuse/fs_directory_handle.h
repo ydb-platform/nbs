@@ -78,7 +78,7 @@ struct TReadContentResult
         Eof
     };
     EStatus Status = EStatus::Miss;
-    TDirectoryContent Content;
+    TDirectoryContent DirectoryContent;
     bool ChunkSwitched = false;
     ui64 HandleSize = 0;
 };

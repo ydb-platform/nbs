@@ -109,7 +109,7 @@ void TFileSystem::ReadDir(
         const auto& readResult = result.GetResult();
         DirectoryHandleCache->RecordRead(readResult);
         if (readResult.Status != TReadContentResult::EStatus::Miss) {
-            reply(*this, readResult.Content);
+            reply(*this, readResult.DirectoryContent);
             return;
         }
     }
