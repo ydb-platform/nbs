@@ -1,8 +1,10 @@
-# For build via 'cloud/blockstore/buildall'
-BUILD_ROOT="../cloud/blockstore/buildall"
+#!/usr/bin/env bash
 
-# For direct targets build
-#BUILD_ROOT="../."
+EXAMPLE_DIR=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+REPO_ROOT=$(cd -- "$EXAMPLE_DIR/.." && pwd)
+# Override BUILD_ROOT with the repository root for directly built targets.
+BUILD_ROOT=${BUILD_ROOT:-$REPO_ROOT/cloud/blockstore/buildall}
+BUILD_ROOT=$(realpath -m -- "$BUILD_ROOT")
 
 YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
 YDB_BIN="$BUILD_ROOT/contrib/ydb/apps/ydb/ydb"
@@ -13,47 +15,38 @@ DISK_AGENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/disk_agent/diskagentd"
 BLOCKSTORE_NBD_BIN="$BUILD_ROOT/cloud/blockstore/tools/nbd/blockstore-nbd"
 QEMU_TAR="$BUILD_ROOT/cloud/storage/core/tools/testing/qemu/bin/qemu-bin.tar.gz"
 
-for bin in $YDBD_BIN $NBSD_BIN $BLOCKSTORE_CLIENT_BIN $BLOCKSTORE_VHOST_SERVER_BIN $DISK_AGENT_BIN $BLOCKSTORE_NBD_BIN $QEMU_TAR
-do
-  if ! test -f $bin; then
-    echo "$bin not found, build all targets first"
-    return 1
-  fi
-done
-
 function ydb {
-  LD_LIBRARY_PATH=$(dirname $YDB_BIN) $YDB_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$YDB_BIN")" "$YDB_BIN" "$@"
 }
 
 function ydbd {
-  LD_LIBRARY_PATH=$(dirname $YDBD_BIN) $YDBD_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$YDBD_BIN")" "$YDBD_BIN" "$@"
 }
 
 function nbsd {
-  LD_LIBRARY_PATH=$(dirname $NBSD_BIN) $NBSD_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$NBSD_BIN")" "$NBSD_BIN" "$@"
 }
 
 function blockstore-client {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_CLIENT_BIN) $BLOCKSTORE_CLIENT_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$BLOCKSTORE_CLIENT_BIN")" "$BLOCKSTORE_CLIENT_BIN" "$@" ${NBS_CLIENT_PORT:+--port="$NBS_CLIENT_PORT"}
 }
 
 function blockstore-vhost-server {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_VHOST_SERVER_BIN) $BLOCKSTORE_VHOST_SERVER_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$BLOCKSTORE_VHOST_SERVER_BIN")" "$BLOCKSTORE_VHOST_SERVER_BIN" "$@"
 }
 
 function diskagentd {
-  LD_LIBRARY_PATH=$(dirname $DISK_AGENT_BIN) $DISK_AGENT_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$DISK_AGENT_BIN")" "$DISK_AGENT_BIN" "$@"
 }
 
 function blockstore-nbd {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_NBD_BIN) $BLOCKSTORE_NBD_BIN "$@"
+  LD_LIBRARY_PATH="$(dirname "$BLOCKSTORE_NBD_BIN")" "$BLOCKSTORE_NBD_BIN" "$@" ${NBS_CLIENT_PORT:+--port="$NBS_CLIENT_PORT"}
 }
 
 function sudo-blockstore-nbd {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_NBD_BIN)
-  sudo LD_LIBRARY_PATH=$LD_LIBRARY_PATH $BLOCKSTORE_NBD_BIN "$@"
+  sudo LD_LIBRARY_PATH="$(dirname "$BLOCKSTORE_NBD_BIN")" "$BLOCKSTORE_NBD_BIN" "$@" ${NBS_CLIENT_PORT:+--port="$NBS_CLIENT_PORT"}
 }
 
 function qemu_bin_dir {
-  echo $(dirname $QEMU_TAR)
+  dirname -- "$QEMU_TAR"
 }

@@ -5,7 +5,7 @@ To build `nbsd`, `blockstore-client`, `diskagentd`, `blockstore-nbd` and `ydbd` 
 ```bash
 ./ya make cloud/blockstore/buildall -r
 ```
-For more info check [build instruction](BUILD.md)
+The package contains all required binaries and QEMU artifacts; see [BUILD.md](BUILD.md).
 
 ## Prepare current directory
 Move to example directory
@@ -16,6 +16,16 @@ cd example
 ```bash
 ./0-setup.sh
 ```
+
+Setup creates sparse YDB disks (64 GiB + 64 GiB + 32 GiB), file devices for
+five disk agents, and self-signed development certificates. Runtime files are
+stored in `$HOME/tmp/nbs` and linked as `data`, `certs`, and `logs`.
+Override `PERSISTENT_TMP_DIR` when running setup to use another location.
+Setup recreates the YDB disks; run it only when initializing a fresh stand.
+
+Run all scripts from this directory. Binaries are taken from
+`cloud/blockstore/buildall` relative to the repository root.
+The default ports must be free, including those used by another local stand.
 
 ## Start ydbd storage node
 Run the following command in a new tab:
@@ -32,21 +42,51 @@ going through the filestore manual.
 ```
 
 OR if you already have a configured ydbd instance you should run another command
-which omits some of the initialization steps:
+which skips storage pool and root storage initialization. The existing YDB must
+use domain `Root`, ClusterUUID `local`, and storage pool kinds `ssd` and `rot`:
 ```bash
-./2-init_nbs_storage_tenant.sh
+./2-init_storage.sh --tenant
 ```
 
-## Start nbsd
-Run the following command in a new tab:
+## Start NBS and disk agents
+Run the following command in a new tab to start two NBS nodes and five disk agents:
 ```bash
 ./3-start_nbs.sh
 ```
 
-## Configure and start disk agent (optional, used only by nonreplicated disks)
+All processes run under this script and stop together on Ctrl+C or if any
+process exits. Monitoring ports are 8766 and 8786; API ports are 9766 and 9786.
+Logs and profiles are separate for each node.
+To start only the first node, pass `--one-nbs`:
+
 ```bash
-./4-start_disk_agent.sh
+./3-start_nbs.sh --one-nbs
 ```
+
+Use `--skip-da` to start only NBS, or `--skip-nbs` to start only disk agents
+when NBS is already running:
+
+```bash
+./3-start_nbs.sh --skip-da
+./3-start_nbs.sh --skip-nbs
+```
+
+These flags can be combined with `--one-nbs`.
+The script waits for NBS to answer and configures Disk Registry before starting
+agents. If both `--skip-nbs` and `--skip-da` are passed, it exits without starting
+services.
+
+Wait for agents to register and for the initial secure erase to finish before
+creating nonreplicated or mirrored disks. Secure erase starts after a 30-second
+cooldown; device readiness is visible in Disk Registry monitoring.
+The agent monitoring ports are 9100–9104.
+
+The example preserves the source stand's experimental storage settings,
+including RDMA and disk-agent chaos injection. For deterministic debugging,
+disable `ChaosConfig` in `0-setup.sh` before setup. On a host without RDMA,
+set `UseRdma` and `UseNonreplicatedRdmaActor` to `false` in
+`nbs/nbs-storage.txt` and `nbs/nbs-storage2.txt`, and disable the RDMA endpoints
+in `nbs/nbs-rdma.txt`.
 
 ## Create and attach disk
 Run the following command in a new tab to create new disk:
@@ -83,3 +123,17 @@ If the blockstore server is running on a virtual machine, you must first configu
 ```bash
 ssh -L 8766:localhost:8766 <vm_ip>
 ```
+
+## Additional scripts
+
+- `blockstore-client.sh` passes arguments to the local client (API 9766).
+- `disk-agent.sh` starts one agent using `LOCATION_FILE` and `DISK_AGENT_FILE`.
+- `7-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
+  it requires KVM and the QEMU binary and guest image from `buildall`.
+- `8-make-disks.sh` creates a selection of disks and placement groups.
+- `copy_volume.py` exercises volume links to copy a volume.
+- `cleanup.sh` removes generated configs, backups, and runtime symlinks. Stop all
+  processes first. The persistent files in `$PERSISTENT_TMP_DIR` remain on disk.
+
+YDB monitoring: http://localhost:8765/. NBS logs: `logs/nbs.1.log` and
+`logs/nbs.2.log`; agent logs: `logs/remote-da0.log` through `logs/remote-da4.log`.

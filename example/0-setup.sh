@@ -14,6 +14,13 @@ BIN_DIR=`find_bin_dir`
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
 source ./prepare_binaries.sh || exit 1
 
+set -e
+
+test -x "$BLOCKSTORE_VHOST_SERVER_BIN" || {
+    echo "$BLOCKSTORE_VHOST_SERVER_BIN not found; build cloud/blockstore/buildall first"
+    exit 1
+}
+
 for dir in $DATA_DIRS; do
     mkdir -p "$PERSISTENT_TMP_DIR/$dir"
     ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$BIN_DIR/$dir"
@@ -32,6 +39,9 @@ generate_cert() {
     openssl rsa -passin pass:$pass -in $dir/$name.key -out $dir/$name.key
     rm $dir/$name.csr $dir/$fallback_name.csr
 }
+
+ln -sfn "$BLOCKSTORE_VHOST_SERVER_BIN" data/blockstore-vhost-server
+mkdir -p data/endpoints data/endpoints2 backups.1 backups.2
 
 generate_cert "server" "certs"
 

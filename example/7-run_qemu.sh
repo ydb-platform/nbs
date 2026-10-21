@@ -66,20 +66,21 @@ if [ -z "$diskid" ] ; then
 fi
 
 if [ -z "$socket" ] ; then
-    socket="/tmp/$diskid.sock"
+    socket="$BIN_DIR/data/$diskid.sock"
 fi
 
 # prepare qemu image
 
-QEMU_BIN_DIR=$BIN_DIR/$(qemu_bin_dir)
+QEMU_BIN_DIR=$(qemu_bin_dir)
 QEMU_BIN_TAR=$QEMU_BIN_DIR/qemu-bin.tar.gz
 QEMU=$QEMU_BIN_DIR/usr/bin/qemu-system-x86_64
 QEMU_FIRMWARE=$QEMU_BIN_DIR/usr/share/qemu
 DISK_IMAGE=$QEMU_BIN_DIR/../image-noble/rootfs.img
 
-[[ ( ! -x $QEMU ) ]] &&
-      echo expand qemu tar from [$QEMU_BIN_TAR]
-      tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
+if [[ ! -x "$QEMU" ]]; then
+    echo "expand qemu tar from [$QEMU_BIN_TAR]"
+    tar -xzf "$QEMU_BIN_TAR" -C "$QEMU_BIN_DIR"
+fi
 
 # start endpoint for disk
 echo "starting endpoint [${socket}] for disk [${diskid}]"
@@ -88,8 +89,8 @@ blockstore-client startendpoint --ipc-type vhost --socket $socket --client-id cl
 sleep 1
 
 # run qemu with secondary disk
-qmp_port=8678
-ssh_port=8679
+qmp_port=${QEMU_QMP_PORT:-8678}
+ssh_port=${QEMU_SSH_PORT:-8679}
 
 MACHINE_ARGS=" \
     -L $QEMU_FIRMWARE \

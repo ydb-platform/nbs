@@ -102,7 +102,7 @@ case $kind in
     ;;
 esac
 
-if [ $disk_id == ""] ; then
+if [ -z "$disk_id" ]; then
   disk_id=$default_id
 fi
 
@@ -121,7 +121,7 @@ blockstore-client createvolume \
     --disk-id $disk_id \
     --cloud-id $cloud_id \
     --folder-id $folder_id \
-    $encryption $base_disk \
+    $encryption $base_disk
 
 if [ $? -ne 0 ]; then
     echo "Disk $disk_id creation failed"

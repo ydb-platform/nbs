@@ -12,7 +12,8 @@ BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
 
 start_disk-agent() {
-    diskagentd \
+    export LD_LIBRARY_PATH=$(dirname -- "$DISK_AGENT_BIN")
+    exec "$DISK_AGENT_BIN" \
         --domain Root \
         --node-broker localhost:$GRPC_PORT \
         --ic-port $IC_PORT \
@@ -28,5 +29,5 @@ start_disk-agent() {
         --auth-file $BIN_DIR/nbs/nbs-auth.txt \
         --dr-proxy-file $BIN_DIR/nbs/nbs-dr-proxy.txt \
         --load-configs-from-cms \
-        $@
+        "$@"
 }
