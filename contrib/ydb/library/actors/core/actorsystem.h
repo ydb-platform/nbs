@@ -13,6 +13,7 @@
 #include <contrib/ydb/library/actors/util/ticket_lock.h>
 
 #include <util/generic/vector.h>
+#include <vector>
 #include <util/datetime/base.h>
 #include <util/system/mutex.h>
 
@@ -121,6 +122,8 @@ namespace NActors {
         TLocalServices LocalServices;
 
         std::shared_ptr<IRcBufAllocator> RcBufAllocator;
+
+        std::vector<std::function<void(TActorSystem*)>> OnActorSystemCreated;
 
         ui32 GetExecutorsCount() const {
             return Executors ? ExecutorsCount : CpuManager.GetExecutorsCount();
