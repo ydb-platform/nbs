@@ -60,8 +60,8 @@ Y_UNIT_TEST_SUITE(TEventProtoWithPayload) {
         while (!chunker.IsComplete()) {
             char buffer[4096];
             auto range = chunker.FeedBuf(buffer, sizeof(buffer));
-            for (auto [data, size] : range) {
-                chunkerRes += TString(data, size);
+            for (const auto& chunk : range) {
+                chunkerRes += TString(chunk.Buf, chunk.Size);
             }
         }
         UNIT_ASSERT_VALUES_EQUAL(chunkerRes, ser);
