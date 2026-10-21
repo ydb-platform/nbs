@@ -5,15 +5,15 @@
 #include "v2_event_serializer.h"
 #include "v2_io_buffers.h"
 #include "v2_serialize_window.h"
+#include "interconnect_common.h"
 #include "interconnect_direct_session.h"
 #include "interconnect_uring_event_queue.h"
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 
-#include <contrib/ydb/library/actors/interconnect/v2/protos/interconnect_v2.pb.h>
+#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
 
 // Must be included AFTER YDB headers because linux/uapi headers pulled by
 // liburing may define macros that clash with project headers.

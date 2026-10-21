@@ -1,4 +1,4 @@
-#include <contrib/ydb/library/actors/interconnect/v2/v2_chunk_serializer.h>
+#include <contrib/ydb/library/actors/interconnect/v2_chunk_serializer.h>
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/events.h>

@@ -1,7 +1,7 @@
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/interconnect/v2/v2_event_serializer.h>
-#include <contrib/ydb/library/actors/interconnect/v2/v2_serialize_window.h>
+#include <contrib/ydb/library/actors/interconnect/v2_event_serializer.h>
+#include <contrib/ydb/library/actors/interconnect/v2_serialize_window.h>
 #include <contrib/ydb/library/actors/protos/unittests.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>

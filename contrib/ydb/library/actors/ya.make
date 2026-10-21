@@ -6,7 +6,6 @@ RECURSE(
     helpers
     http
     interconnect
-    interconnect/v2
     log_backend
     memory_log
     prof

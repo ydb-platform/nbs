@@ -7,8 +7,8 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-#include <contrib/ydb/library/actors/interconnect/interconnect_stream.h>
-#include <contrib/ydb/library/actors/interconnect/types.h>
+#include "interconnect_stream.h"
+#include "types.h"
 
 #include <memory>
 #include <vector>

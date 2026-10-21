@@ -2,7 +2,7 @@
 
 #include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/rope.h>
-#include <contrib/ydb/library/actors/interconnect/v2/protos/interconnect_v2.pb.h>
+#include <contrib/ydb/library/actors/protos/interconnect.pb.h>
 
 #include <cstring>
 #include <util/string/builder.h>

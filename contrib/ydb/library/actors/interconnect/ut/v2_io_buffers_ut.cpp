@@ -1,4 +1,4 @@
-#include <contrib/ydb/library/actors/interconnect/v2/v2_io_buffers.h>
+#include <contrib/ydb/library/actors/interconnect/v2_io_buffers.h>
 #include <contrib/ydb/library/actors/util/rc_buf.h>
 
 #include <library/cpp/testing/unittest/registar.h>

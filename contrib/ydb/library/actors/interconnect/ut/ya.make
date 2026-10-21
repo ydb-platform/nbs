@@ -17,6 +17,10 @@ SRCS(
     poller_actor_ut.cpp
     dynamic_proxy_ut.cpp
     sticking_ut.cpp
+    v2_chunk_serializer_ut.cpp
+    v2_event_serializer_ut.cpp
+    v2_io_buffers_ut.cpp
+    v2_serialize_window_ut.cpp
 )
 
 PEERDIR(
