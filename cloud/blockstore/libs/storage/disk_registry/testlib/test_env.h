@@ -1130,17 +1130,33 @@ public:
         const TString& diskId,
         ui32 blockSize,
         TVector<NProto::TDeviceConfig> devices,
-        bool force = false)
+        NProto::EStorageMediaKind mediaKind =
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        TVector<TVector<NProto::TDeviceConfig>> replicas = {},
+        bool force = false,
+        bool keepBlockCount = false)
     {
         auto request = std::make_unique<
             TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
 
         request->Record.MutableVolumeConfig()->SetDiskId(diskId);
         request->Record.MutableVolumeConfig()->SetBlockSize(blockSize);
+        request->Record.MutableVolumeConfig()->SetStorageMediaKind(mediaKind);
 
         request->Record.SetForce(force);
+        request->Record.SetKeepBlockCount(keepBlockCount);
         request->Record.MutableDevices()->Assign(devices.begin(), devices.end());
 
+        if (!replicas.empty()) {
+
+            for (const auto& replicaDevices: replicas) {
+                auto* replica = request->Record.AddReplicas();
+
+                for (const auto& device: replicaDevices) {
+                    *replica->AddSlots()->MutableSlot() = device;
+                }
+            }
+        }
         return request;
     }
 

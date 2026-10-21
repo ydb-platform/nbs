@@ -242,18 +242,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             },
         };
 
-        const TVector<TString> freshDeviceUuids = {"uuid-2.2"};
-
         {
-            diskRegistry.SendCreateMirroredDiskFromDevicesRequest(
+            diskRegistry.SendCreateDiskFromDevicesRequest(
                 "mirror-1",
                 DefaultLogicalBlockSize,
+                {},
                 NProto::STORAGE_MEDIA_SSD_MIRROR2,
-                replicas,
-                freshDeviceUuids);
+                replicas);
 
-            auto response =
-                diskRegistry.RecvCreateMirroredDiskFromDevicesResponse();
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
@@ -262,17 +259,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            diskRegistry.SendCreateMirroredDiskFromDevicesRequest(
+            diskRegistry.SendCreateDiskFromDevicesRequest(
                 "mirror-2",
                 DefaultLogicalBlockSize,
+                {},
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 replicas);
 
-            auto response =
-                diskRegistry.RecvCreateMirroredDiskFromDevicesResponse();
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             UNIT_ASSERT(
-                response->GetErrorReason().Contains("unsupported media kind"));
+                response->GetErrorReason().Contains("unexpected replicas count"));
         }
 
         diskRegistry.RebootTablet();

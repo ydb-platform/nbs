@@ -8427,6 +8427,9 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
         deviceIds.push_back(config.GetDeviceUUID());
     }
 
+    const TDiskId& diskId = params.DiskId;
+    auto& disk = Disks[diskId];
+
     disk.Devices = deviceIds;
     disk.LogicalBlockSize = blockSize;
     disk.StateTs = now;
@@ -8482,7 +8485,7 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
                     << "non-replicated disk " << params.DiskId.Quote()
                     << " unexpected replicas count");
         }
-        return CanCreateSimpleDiskFromDevices(params, replicas.front());
+        return CanCreateSimpleDiskFromDevices(params, devices);
     }
 
     const ui32 replicaCount = mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
@@ -8538,7 +8541,7 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
                 mediaKind,
                 params.Force,
                 params.KeepBlockCount),
-            replicas[i]);
+            devices); // TODO: devices with slots!
 
         if (HasError(error)) {
             return error;
@@ -8557,14 +8560,18 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
         }
 
         for (const auto& device: replicas[i]) {
-            if (reservedDevices.contains(device.GetDeviceUUID())) {
+            if (!device.has_value()) {
+                continue;
+            }
+
+            if (reservedDevices.contains(device->GetDeviceUUID())) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
-                        << "device " << device.GetDeviceUUID().Quote()
+                        << "device " << device->GetDeviceUUID().Quote()
                         << " is already reserved");
             }
-            reservedDevices.insert(device.GetDeviceUUID());
+            reservedDevices.insert(device->GetDeviceUUID());
         }
     }
 
@@ -8618,7 +8625,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
                 mediaKind,
                 params.Force,
                 params.KeepBlockCount),
-            replicas[i],
+            replicas[i], // TODO: devices with slots!
             &replicaResult);
 
         Y_DEBUG_ABORT_UNLESS(!HasError(error));

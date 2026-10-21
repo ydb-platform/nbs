@@ -17,7 +17,6 @@ SRCS(
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
     disk_registry_actor_create_disk_from_devices.cpp
-    disk_registry_actor_create_mirrored_disk_from_devices.cpp
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_ensure_state_integrity.cpp

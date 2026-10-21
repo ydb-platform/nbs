@@ -45,11 +45,20 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         record.GetDevices().end());
 
     TVector<TVector<std::optional<NProto::TDeviceConfig>>> replicas;
+    replicas.reserve(record.ReplicasSize());
+
     for (const auto& replica: record.GetReplicas()) {
-        replicas.push_back(
-            TVector<std::optional<NProto::TDeviceConfig>>(
-                replica.GetSlots().begin(),
-                replica.GetSlots().end()));
+        TVector<std::optional<NProto::TDeviceConfig>> slots;
+        slots.reserve(replica.SlotsSize());
+
+        for (const auto& slot: replica.GetSlots()) {
+            if (slot.HasSlot()) {
+                slots.push_back(slot.GetSlot());
+            } else {
+                slots.push_back(std::nullopt);
+            }
+        }
+        replicas.push_back(std::move(slots));
     }
 
     ExecuteTx<TCreateDiskFromDevices>(
