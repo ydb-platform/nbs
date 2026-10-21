@@ -1568,8 +1568,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 256);
-        b.TempFileHandle.Flush();
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto* dataProcessor = accessor.GetDataProcessor();
+            const auto entryPos = accessor.GetHeader()->ReadPos;
+            auto header = dataProcessor->ReadEntryHeader(entryPos);
+            header.DataChecksum ^= 1;
+            UNIT_ASSERT(dataProcessor->WriteEntryHeader(entryPos, header));
+        }
 
         b.RecreateCache();
 

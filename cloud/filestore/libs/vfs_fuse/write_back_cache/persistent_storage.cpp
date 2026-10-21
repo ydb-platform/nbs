@@ -58,7 +58,7 @@ public:
             .WriteKey("Version")
             .WriteULongLong(Storage.GetVersion())
             .WriteKey("RawCapacityByteCount")
-            .WriteULongLong(Storage.GetRawCapacity())
+            .WriteULongLong(Storage.GetDataCapacity())
             .WriteKey("RawUsedByteCount")
             .WriteULongLong(Storage.GetRawUsedBytesCount())
             .WriteKey("EntryCount")
@@ -194,7 +194,7 @@ private:
     void SetCounters()
     {
         Stats->SetPersistentStorageCounters({
-            .RawCapacityBytesCount = Storage.GetRawCapacity(),
+            .RawCapacityBytesCount = Storage.GetDataCapacity(),
             .RawUsedBytesCount = Storage.GetRawUsedBytesCount(),
             .EntryCount = Storage.Size(),
             .MaxObservedEntryByteCount =
