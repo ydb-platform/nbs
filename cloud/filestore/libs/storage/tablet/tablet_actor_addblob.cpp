@@ -83,8 +83,6 @@ private:
         IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
-        Y_UNUSED(ctx);
-
         TABLET_VERIFY(!args.SrcBlobs);
         TABLET_VERIFY(!args.MixedBlobs);
 
@@ -103,6 +101,12 @@ private:
         }
 
         for (const auto& part: args.UnalignedDataParts) {
+            if (!args.Nodes.contains(part.NodeId)) {
+                // node removed while the write was in flight, see
+                // UpdateNodeAttrs
+                continue;
+            }
+
             const auto offset = part.OffsetInBlock
                 + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
             auto error = Tablet.CheckFreshBytes(
@@ -122,7 +126,8 @@ private:
             auto& block = blob.Block;
 
             if (!args.Nodes.contains(block.NodeId)) {
-                // already deleted
+                // node removed while the write was in flight, see
+                // UpdateNodeAttrs
                 continue;
             }
 
@@ -158,6 +163,12 @@ private:
         }
 
         for (const auto& part: args.UnalignedDataParts) {
+            if (!args.Nodes.contains(part.NodeId)) {
+                // node removed while the write was in flight, see
+                // UpdateNodeAttrs
+                continue;
+            }
+
             const auto offset = part.OffsetInBlock
                 + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
             Tablet.WriteFreshBytes(
@@ -168,7 +179,7 @@ private:
                 part.Data);
         }
 
-        UpdateNodeAttrs(db, args);
+        UpdateNodeAttrs(ctx, db, args);
     }
 
     TByteRange CalculateCacheBypassRange(
@@ -406,12 +417,28 @@ private:
     }
 
     void UpdateNodeAttrs(
+        const TActorContext& ctx,
         IIndexTabletDatabase& db,
         TTxIndexTablet::TAddBlob& args)
     {
         for (auto [id, maxOffset]: args.WriteRanges) {
             auto it = args.Nodes.find(id);
-            TABLET_VERIFY(it != args.Nodes.end());
+            if (it == args.Nodes.end()) {
+                // The node was removed while the write was in flight - the
+                // write is dropped. The tx must still complete: for
+                // unconfirmed writes it deletes the UnconfirmedData entry,
+                // which would otherwise be replayed on every restart.
+                LOG_INFO(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s AddBlob: node removed while the write was in flight,"
+                    " dropping the write: nodeId=%lu, commitId=%lu, mode=%u",
+                    LogTag.c_str(),
+                    id,
+                    args.CommitId,
+                    static_cast<ui32>(args.Mode));
+                continue;
+            }
 
             // mtime is always updated, ctime - only if the file size changes
             auto attrs = CopyAttrs(
@@ -503,8 +530,10 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
         }
 
         if (!ready || !node) {
-            // FIXME: should not allow to write to remove node
-            // either not ready or already deleted
+            // Either the page is not loaded yet, or the node was removed
+            // while the write was in flight. A removed node is skipped by
+            // every step of the write, see UpdateNodeAttrs in
+            // TAddBlobsExecutor.
             continue;
         }
 

@@ -1,5 +1,6 @@
 RECURSE(
     bootstrap
+    common
     ipc
     journal
     protos

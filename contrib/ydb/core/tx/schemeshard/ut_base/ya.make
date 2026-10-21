@@ -9,6 +9,7 @@ ENDIF()
 SIZE(MEDIUM)
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     library/cpp/getopt
     library/cpp/regex/pcre
     library/cpp/svnversion
@@ -16,6 +17,7 @@ PEERDIR(
     contrib/ydb/core/testlib/pg
     contrib/ydb/core/tx
     contrib/ydb/core/tx/schemeshard/ut_helpers
+    contrib/ydb/public/api/protos
     yql/essentials/public/udf/service/exception_policy
 )
 

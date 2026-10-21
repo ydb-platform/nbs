@@ -4156,7 +4156,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(
                 NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED),
-            static_cast<int>(status->Record.GetStatus()));
+            static_cast<int>(status->Record.GetOperationStatus()));
     }
 
     TABLET_TEST(ShouldReturnForcedOperationCompletionError)
@@ -4209,14 +4209,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         statusRequest->Record.SetOperationId(operationId);
         tablet.SendRequest(std::move(statusRequest));
         auto status = tablet.RecvForcedOperationStatusResponse();
-        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), status->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, status->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetMessage(),
-            status->Record.GetError().GetMessage());
+            status->Record.GetOperationError().GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(
                 NProtoPrivate::TForcedOperationStatusResponse::E_FAILED),
-            static_cast<int>(status->Record.GetStatus()));
+            static_cast<int>(status->Record.GetOperationStatus()));
         UNIT_ASSERT_VALUES_EQUAL(3, status->Record.GetRangeCount());
         UNIT_ASSERT_VALUES_EQUAL(1, status->Record.GetProcessedRangeCount());
     }
@@ -4366,7 +4366,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto runningStatus = tablet.RecvForcedOperationStatusResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(TStatus::E_RUNNING),
-            static_cast<int>(runningStatus->Record.GetStatus()));
+            static_cast<int>(runningStatus->Record.GetOperationStatus()));
 
         auto pendingRequest = tablet.CreateForcedRangeOperationRequest(
             ::xrange(1, 2, 1),
@@ -4384,7 +4384,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_C(SUCCEEDED(status->GetStatus()), status->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(TStatus::E_PENDING),
-            static_cast<int>(status->Record.GetStatus()));
+            static_cast<int>(status->Record.GetOperationStatus()));
 
         env.GetRuntime().Send(request.Release(), 1 /* node index */);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
@@ -4397,7 +4397,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto completedStatus = tablet.RecvForcedOperationStatusResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(TStatus::E_COMPLETED),
-            static_cast<int>(completedStatus->Record.GetStatus()));
+            static_cast<int>(completedStatus->Record.GetOperationStatus()));
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             completedStatus->Record.GetProcessedRangeCount());
@@ -4840,7 +4840,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             status->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(TStatus::E_COMPLETED),
-            static_cast<int>(status->Record.GetStatus()));
+            static_cast<int>(status->Record.GetOperationStatus()));
 
         if (operation.Mode == EMode::Flush) {
             auto stats = tablet.GetStorageStats();
@@ -5204,7 +5204,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 status->GetErrorReason());
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(TStatus::E_COMPLETED),
-                static_cast<int>(status->Record.GetStatus()));
+                static_cast<int>(status->Record.GetOperationStatus()));
         }
     }
 
@@ -10084,6 +10084,165 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto& payload = response->GetPayload(0);
         UNIT_ASSERT_VALUES_EQUAL(data.size(), payload.size());
         UNIT_ASSERT_VALUES_EQUAL(data, payload.ConvertToString());
+    }
+
+    TABLET_TEST(ShouldSkipAddBlobForNodeRemovedDuringWrite)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Hold the AddBlob of an ordinary write: the blob has already been
+        // written to BlobStorage but is not indexed yet
+        auto& runtime = env.GetRuntime();
+        TAutoPtr<IEventHandle> heldAddBlob;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvIndexTabletPrivate::EvAddBlobRequest &&
+                    !heldAddBlob)
+                {
+                    heldAddBlob = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendWriteDataRequest(handle, 0, block * BlockGroupSize, 'a');
+        runtime.DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!heldAddBlob; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldAddBlob);
+
+        // The file is removed while AddBlob is pending
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.DestroyHandle(handle);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(heldAddBlob.Release(), nodeIdx);
+
+        // The write completes, the data is dropped together with the node
+        auto response = tablet.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        const auto stats = tablet.GetStorageStats()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedNodesCount());
+    }
+
+    TABLET_TEST(ShouldSkipAddBlobForNodeRemovedDuringAddData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // Three-stage write without the unconfirmed flow: GenerateBlobIds,
+        // put the blob directly to BlobStorage, AddData
+        auto gbi = tablet.GenerateBlobIds(
+            id,
+            handle,
+            0,
+            block,
+            false /* unconfirmedFlowRequested */)->Record;
+        UNIT_ASSERT(!gbi.GetUnconfirmedFlowEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
+        const auto blobId =
+            LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
+
+        auto& runtime = env.GetRuntime();
+
+        auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
+            blobId,
+            TString(block, 'a'),
+            TInstant::Max(),
+            NKikimrBlobStorage::UserData);
+        const auto proxy =
+            MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
+        runtime.Send(CreateEventForBSProxy(
+            runtime.AllocateEdgeActor(proxy.NodeId()),
+            proxy,
+            evPut.release(),
+            blobId.Cookie()));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // Hold the AddBlob that AddData produces after its own tx
+        TAutoPtr<IEventHandle> heldAddBlob;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvIndexTabletPrivate::EvAddBlobRequest &&
+                    !heldAddBlob)
+                {
+                    heldAddBlob = event.Release();
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendAddDataRequest(
+            id,
+            handle,
+            0,
+            block,
+            TVector<NKikimr::TLogoBlobID>({blobId}),
+            gbi.GetCommitId());
+        runtime.DispatchEvents(
+            NActors::TDispatchOptions{
+                .CustomFinalCondition = [&]() { return !!heldAddBlob; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldAddBlob);
+
+        // The file is removed while AddBlob is pending
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.DestroyHandle(handle);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(heldAddBlob.Release(), nodeIdx);
+
+        // AddData completes, the data is dropped together with the node
+        auto response = tablet.RecvAddDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        const auto stats = tablet.GetStorageStats()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedNodesCount());
     }
 }
 

@@ -95,8 +95,11 @@ struct TStorageGroupConfig
 
     TStorageGroupRetryPolicy RetryPolicy;
 
-    // How often the low watermark is pushed to the devices; zero never.
+    // How often the low watermark is pushed to the devices.
     TDuration LowWatermarkPeriod = TDuration::Seconds(1);
+
+    // How often the device sessions are renewed.
+    TDuration ReacquirePeriod = TDuration::Seconds(4);
 
     ui32 PageSize = DefaultBlockSize;
 };
