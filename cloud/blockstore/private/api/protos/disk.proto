@@ -84,18 +84,6 @@ message TDiskRegistrySetWritableStateResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// DiskRegistrySuspendSecureErase request/response.
-
-message TDiskRegistrySuspendSecureEraseRequest
-{
-    bool State = 1;
-}
-
-message TDiskRegistrySuspendSecureEraseResponse
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // GetClusterCapacity request/response.
 
 message TClusterCapacityInfo

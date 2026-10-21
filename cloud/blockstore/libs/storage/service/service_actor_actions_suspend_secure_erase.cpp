@@ -50,7 +50,7 @@ TSuspendSecureEraseActor::TSuspendSecureEraseActor(
 
 void TSuspendSecureEraseActor::Bootstrap(const TActorContext& ctx)
 {
-    NPrivateProto::TDiskRegistrySuspendSecureEraseRequest proto;
+    NProto::TSetSuspendSecureEraseRequest proto;
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &proto).ok()) {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
@@ -72,7 +72,7 @@ void TSuspendSecureEraseActor::ReplyAndDie(const TActorContext& ctx)
     auto response =
         std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TDiskRegistrySuspendSecureEraseResponse(),
+        NProto::TSetSuspendSecureEraseResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
