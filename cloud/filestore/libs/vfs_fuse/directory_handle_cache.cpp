@@ -39,7 +39,7 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     , Stats(std::move(stats))
 {
     if (Storage) {
-        Storage->LoadHandles(Handles, Stats, ReadStatsSizeThreshold);
+        Storage->LoadHandles(Handles);
         if (DirectoryEntryVersionCache) {
             for (const auto& [_, handle]: Handles) {
                 DirectoryEntryVersionCache->RegisterHandle(handle->Index);
@@ -58,8 +58,7 @@ bool TDirectoryHandleCache::IsPersistent() const
 ui64 TDirectoryHandleCache::CreateHandle(fuse_ino_t ino)
 {
     ui64 handleId = 0;
-    auto handle =
-        std::make_shared<TDirectoryHandle>(ino, Stats, ReadStatsSizeThreshold);
+    auto handle = std::make_shared<TDirectoryHandle>(ino);
 
     with_lock (Lock) {
         do {
@@ -175,6 +174,13 @@ void TDirectoryHandleCache::AppendChunk(
 
     if (Storage) {
         Storage->UpdateHandle(handleId, *handle, handleChunk);
+    }
+}
+
+void TDirectoryHandleCache::RecordRead(const TReadContentResult& result)
+{
+    if (result.ChunkSwitched && result.HandleSize > ReadStatsSizeThreshold) {
+        Stats->IncrementChunkSwitchCount();
     }
 }
 

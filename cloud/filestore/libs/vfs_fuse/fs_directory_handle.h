@@ -69,6 +69,22 @@ struct TDirectoryHandleStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReadContentResult
+{
+    enum class EStatus
+    {
+        Hit,
+        Miss,
+        Eof
+    };
+    EStatus Status = EStatus::Miss;
+    TDirectoryContent Content;
+    bool ChunkSwitched = false;
+    ui64 HandleSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDirectoryHandle
 {
 private:
@@ -84,8 +100,6 @@ private:
     ui64 SerializedSize = 0;
     // Key of the chunk served by the last UpdateContent or ReadContent.
     std::optional<ui64> LastReadKey;
-    const ui64 ReadStatsSizeThreshold;
-    TDirectoryHandleModuleStatsPtr Stats;
 
     mutable TMutex Lock;
 
@@ -93,10 +107,7 @@ public:
     const fuse_ino_t Index;
 
 public:
-    TDirectoryHandle(
-        fuse_ino_t ino,
-        TDirectoryHandleModuleStatsPtr stats,
-        ui64 readStatsSizeThreshold);
+    explicit TDirectoryHandle(fuse_ino_t ino);
 
     TDirectoryHandleChunk UpdateContent(
         size_t size,
@@ -105,8 +116,7 @@ public:
         ui64 cacheVersion,
         TString cookie);
 
-    TResultOrError<TMaybe<TDirectoryContent>>
-    ReadContent(size_t size, size_t offset);
+    TResultOrError<TReadContentResult> ReadContent(size_t size, size_t offset);
     void ResetContent();
     TString GetCookie();
 

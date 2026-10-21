@@ -1751,10 +1751,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                  .PersistentHandleMaxSize = 2ull * 1024 * 1024 * 1024});
 
             TDirectoryHandleMap handles;
-            storage->LoadHandles(
-                handles,
-                CreateDirectoryHandleStatsStub(),
-                0 /* readStatsSizeThreshold */);
+            storage->LoadHandles(handles);
 
             UNIT_ASSERT(!handles.contains(handleId));
         }

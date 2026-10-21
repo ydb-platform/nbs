@@ -50,6 +50,7 @@ public:
         ui64 handleId,
         const std::shared_ptr<TDirectoryHandle>& handle,
         const TDirectoryHandleChunk& handleChunk);
+    void RecordRead(const TReadContentResult& result);
 
     void Clear();
     void Reset();

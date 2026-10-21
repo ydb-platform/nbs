@@ -122,17 +122,10 @@ std::optional<TDirectoryHandleChunk> TDirectoryHandleChunk::Deserialize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDirectoryHandle::TDirectoryHandle(
-    fuse_ino_t ino,
-    TDirectoryHandleModuleStatsPtr stats,
-    ui64 readStatsSizeThreshold)
+TDirectoryHandle::TDirectoryHandle(fuse_ino_t ino)
     : SerializedSize(BaseSerializedSize)
-    , ReadStatsSizeThreshold(readStatsSizeThreshold)
-    , Stats(std::move(stats))
     , Index(ino)
-{
-    Y_ABORT_UNLESS(Stats);
-}
+{}
 
 TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     size_t size,
@@ -170,18 +163,17 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     return chunk;
 }
 
-TResultOrError<TMaybe<TDirectoryContent>> TDirectoryHandle::ReadContent(
+TResultOrError<TReadContentResult> TDirectoryHandle::ReadContent(
     size_t size,
     size_t offset)
 {
-    bool chunkSwitch = false;
-    TDirectoryContent result;
+    using EStatus = TReadContentResult::EStatus;
 
     with_lock (Lock) {
         auto it = Content.upper_bound(offset);
         if (it == Content.end()) {
             if (!Cookie) {
-                return TMaybe<TDirectoryContent>(TDirectoryContent{});
+                return TReadContentResult{.Status = EStatus::Eof};
             }
             const ui64 cachedEnd =
                 Content.empty() ? 0 : Content.rbegin()->first;
@@ -191,7 +183,7 @@ TResultOrError<TMaybe<TDirectoryContent>> TDirectoryHandle::ReadContent(
                     TStringBuilder()
                         << "offset " << offset << " is beyond cached content");
             }
-            return TMaybe<TDirectoryContent>();
+            return TReadContentResult{.Status = EStatus::Miss};
         }
 
         const auto& content = it->second.Buffer;
@@ -203,21 +195,18 @@ TResultOrError<TMaybe<TDirectoryContent>> TDirectoryHandle::ReadContent(
                                  << " is before cached chunk " << start);
         }
 
-        chunkSwitch =
-            SerializedSize > ReadStatsSizeThreshold && LastReadKey != it->first;
+        const bool chunkSwitched = LastReadKey != it->first;
         LastReadKey = it->first;
-        result = {
-            .Content = content,
-            .Offset = offset - start,
-            .Size = size,
-            .CacheVersion = it->second.CacheVersion};
+        return TReadContentResult{
+            .Status = EStatus::Hit,
+            .Content =
+                {.Content = content,
+                 .Offset = offset - start,
+                 .Size = size,
+                 .CacheVersion = it->second.CacheVersion},
+            .ChunkSwitched = chunkSwitched,
+            .HandleSize = SerializedSize};
     }
-
-    if (chunkSwitch) {
-        Stats->IncrementChunkSwitchCount();
-    }
-
-    return TMaybe<TDirectoryContent>(result);
 }
 
 void TDirectoryHandle::ResetContent()

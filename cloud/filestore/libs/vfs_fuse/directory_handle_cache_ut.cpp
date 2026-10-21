@@ -50,12 +50,25 @@ TBufferPtr CreateContent(size_t size, char value)
     return content;
 }
 
-TMaybe<TDirectoryContent>
+using EStatus = TReadContentResult::EStatus;
+
+TReadContentResult
 ReadContent(TDirectoryHandle& handle, size_t size, size_t offset)
 {
     auto result = handle.ReadContent(size, offset);
     UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
     return result.ExtractResult();
+}
+
+void ReadAndRecord(
+    TDirectoryHandleCache& cache,
+    TDirectoryHandle& handle,
+    size_t size,
+    size_t offset)
+{
+    const auto result = ReadContent(handle, size, offset);
+    UNIT_ASSERT_EQUAL(EStatus::Hit, result.Status);
+    cache.RecordRead(result);
 }
 
 struct TDirectoryHandleCacheTestFixture: public NUnitTest::TBaseFixture
@@ -148,7 +161,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
-        storage->LoadHandles(handles, CreateDirectoryHandleStatsStub(), 0);
+        storage->LoadHandles(handles);
 
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
         UNIT_ASSERT(!handles.contains(handleId));
@@ -203,7 +216,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
-        storage->LoadHandles(handles, CreateDirectoryHandleStatsStub(), 0);
+        storage->LoadHandles(handles);
 
         UNIT_ASSERT(!handles.contains(id));
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
@@ -237,7 +250,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
-        storage->LoadHandles(handles, CreateDirectoryHandleStatsStub(), 0);
+        storage->LoadHandles(handles);
 
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
         UNIT_ASSERT(!handles.contains(handleId));
@@ -248,7 +261,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         const ui64 handleId = 42;
         {
             auto storage = CreateStorage(CreateStats());
-            TDirectoryHandle handle(100, CreateDirectoryHandleStatsStub(), 0);
+            TDirectoryHandle handle(100);
             storage->StoreHandle(
                 handleId,
                 handle,
@@ -272,7 +285,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto storage = CreateStorage(stats, 512);
 
         TDirectoryHandleMap handles;
-        storage->LoadHandles(handles, CreateDirectoryHandleStatsStub(), 0);
+        storage->LoadHandles(handles);
 
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
         UNIT_ASSERT(!handles.contains(handleId));
@@ -290,7 +303,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         const ui64 handleId = 42;
         {
             auto storage = CreateStorage(CreateStats());
-            TDirectoryHandle handle(100, CreateDirectoryHandleStatsStub(), 0);
+            TDirectoryHandle handle(100);
 
             storage->StoreHandle(
                 handleId,
@@ -315,7 +328,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto storage = CreateStorage(CreateStats());
 
         TDirectoryHandleMap handles;
-        storage->LoadHandles(handles, CreateDirectoryHandleStatsStub(), 0);
+        storage->LoadHandles(handles);
 
         UNIT_ASSERT(!handles.contains(handleId));
         UNIT_ASSERT_VALUES_EQUAL(0, handles.size());
@@ -339,9 +352,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 {});
             cache.AppendChunk(loadedHandleId, handle, chunk);
 
-            auto content = ReadContent(*handle, 1024, 0);
-            UNIT_ASSERT(content);
-            UNIT_ASSERT_VALUES_EQUAL(10, content->CacheVersion);
+            auto result = ReadContent(*handle, 1024, 0);
+            UNIT_ASSERT_EQUAL(EStatus::Hit, result.Status);
+            UNIT_ASSERT_VALUES_EQUAL(10, result.Content.CacheVersion);
         }
 
         auto cache = CreateStoredCache();
@@ -349,9 +362,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto loadedHandle = cache.FindHandle(loadedHandleId);
         UNIT_ASSERT(loadedHandle);
 
-        auto loadedContent = ReadContent(*loadedHandle, 1024, 0);
-        UNIT_ASSERT(loadedContent);
-        UNIT_ASSERT_VALUES_EQUAL(0, loadedContent->CacheVersion);
+        auto loadedResult = ReadContent(*loadedHandle, 1024, 0);
+        UNIT_ASSERT_EQUAL(EStatus::Hit, loadedResult.Status);
+        UNIT_ASSERT_VALUES_EQUAL(0, loadedResult.Content.CacheVersion);
 
         const ui64 newHandleId = cache.CreateHandle(200);
         auto newHandle = cache.FindHandle(newHandleId);
@@ -365,13 +378,13 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             {});
         cache.AppendChunk(newHandleId, newHandle, chunk);
 
-        auto newContent = ReadContent(*newHandle, 1024, 0);
-        UNIT_ASSERT(newContent);
-        UNIT_ASSERT_VALUES_EQUAL(20, newContent->CacheVersion);
+        auto newResult = ReadContent(*newHandle, 1024, 0);
+        UNIT_ASSERT_EQUAL(EStatus::Hit, newResult.Status);
+        UNIT_ASSERT_VALUES_EQUAL(20, newResult.Content.CacheVersion);
 
-        loadedContent = ReadContent(*loadedHandle, 1024, 0);
-        UNIT_ASSERT(loadedContent);
-        UNIT_ASSERT_VALUES_EQUAL(0, loadedContent->CacheVersion);
+        loadedResult = ReadContent(*loadedHandle, 1024, 0);
+        UNIT_ASSERT_EQUAL(EStatus::Hit, loadedResult.Status);
+        UNIT_ASSERT_VALUES_EQUAL(0, loadedResult.Content.CacheVersion);
     }
 
     Y_UNIT_TEST(ShouldRegisterMetrics)
@@ -587,7 +600,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         const ui64 handleId = 42;
         {
             auto storage = CreateStorage(CreateStats());
-            TDirectoryHandle handle(100, CreateDirectoryHandleStatsStub(), 0);
+            TDirectoryHandle handle(100);
             storage->StoreHandle(
                 handleId,
                 handle,
@@ -654,9 +667,9 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
                 {});
             cache.AppendChunk(id, handle, chunk);
 
-            auto content = ReadContent(*handle, 1024, 512);
-            UNIT_ASSERT(content);
-            UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+            auto result = ReadContent(*handle, 1024, 512);
+            UNIT_ASSERT_EQUAL(EStatus::Hit, result.Status);
+            UNIT_ASSERT_VALUES_EQUAL(512, result.Content.GetSize());
 
             return id;
         }();
@@ -665,14 +678,14 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto handle = cache.FindHandle(handleId);
         UNIT_ASSERT(handle);
 
-        auto content = ReadContent(*handle, 1024, 512);
-        UNIT_ASSERT(content);
-        UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+        auto result = ReadContent(*handle, 1024, 512);
+        UNIT_ASSERT_EQUAL(EStatus::Hit, result.Status);
+        UNIT_ASSERT_VALUES_EQUAL(512, result.Content.GetSize());
     }
 
     Y_UNIT_TEST(ShouldSkipEmptyChunkWhenRestoringHandle)
     {
-        TDirectoryHandle handle(42, CreateDirectoryHandleStatsStub(), 0);
+        TDirectoryHandle handle(42);
 
         TDirectoryHandleChunk emptyChunk{
             .Key = 1024,
@@ -690,14 +703,14 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         };
         handle.ConsumeChunk(chunk, Log);
 
-        auto content = ReadContent(handle, 1024, 512);
-        UNIT_ASSERT(content);
-        UNIT_ASSERT_VALUES_EQUAL(512, content->GetSize());
+        auto result = ReadContent(handle, 1024, 512);
+        UNIT_ASSERT_EQUAL(EStatus::Hit, result.Status);
+        UNIT_ASSERT_VALUES_EQUAL(512, result.Content.GetSize());
     }
 
     Y_UNIT_TEST(ShouldRejectReadOutsideCachedContent)
     {
-        TDirectoryHandle handle(42, CreateDirectoryHandleStatsStub(), 0);
+        TDirectoryHandle handle(42);
 
         handle.UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, "c1");
 
@@ -705,17 +718,19 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, result.GetError().GetCode());
 
-        UNIT_ASSERT(!ReadContent(handle, 1024, 1024));
+        UNIT_ASSERT_EQUAL(
+            EStatus::Miss,
+            ReadContent(handle, 1024, 1024).Status);
 
         auto content = ReadContent(handle, 1024, 512);
-        UNIT_ASSERT(content);
-        UNIT_ASSERT_VALUES_EQUAL('x', *content->GetData());
+        UNIT_ASSERT_EQUAL(EStatus::Hit, content.Status);
+        UNIT_ASSERT_VALUES_EQUAL('x', *content.Content.GetData());
 
         handle.UpdateContent(1024, 1024, CreateContent(1024, 'y'), 2, {});
 
         content = ReadContent(handle, 1024, 5120);
-        UNIT_ASSERT(content);
-        UNIT_ASSERT_VALUES_EQUAL(0, content->GetSize());
+        UNIT_ASSERT_EQUAL(EStatus::Eof, content.Status);
+        UNIT_ASSERT_VALUES_EQUAL(0, content.Content.GetSize());
     }
 
     Y_UNIT_TEST(ShouldCountChunkSwitches)
@@ -755,32 +770,32 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         UNIT_ASSERT(chunkSwitchCount);
         UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
-        UNIT_ASSERT(ReadContent(*handle, 1024, 2560));
+        ReadAndRecord(cache, *handle, 1024, 2048);
+        ReadAndRecord(cache, *handle, 1024, 2560);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
-        UNIT_ASSERT(ReadContent(*handle, 1024, 512));
+        ReadAndRecord(cache, *handle, 1024, 256);
+        ReadAndRecord(cache, *handle, 1024, 512);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(1, chunkSwitchCount->Val());
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 1024));
-        UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
+        ReadAndRecord(cache, *handle, 1024, 1024);
+        ReadAndRecord(cache, *handle, 1024, 2048);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(3, chunkSwitchCount->Val());
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
+        ReadAndRecord(cache, *handle, 1024, 256);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(4, chunkSwitchCount->Val());
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 2048));
+        ReadAndRecord(cache, *handle, 1024, 2048);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(5, chunkSwitchCount->Val());
 
         handle->ResetContent();
         handle->UpdateContent(1024, 0, CreateContent(1024, 'x'), 1, {});
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
+        ReadAndRecord(cache, *handle, 1024, 256);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(5, chunkSwitchCount->Val());
     }
@@ -825,7 +840,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
         auto chunkSwitchCount = counters->FindCounter("ChunkSwitchCount");
         UNIT_ASSERT(chunkSwitchCount);
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
+        ReadAndRecord(cache, *handle, 1024, 256);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(0, chunkSwitchCount->Val());
 
@@ -841,7 +856,7 @@ Y_UNIT_TEST_SUITE_F(TDirectoryHandleCacheTest, TDirectoryHandleCacheTestFixture)
             handle->GetStats().SerializedSize,
             readStatsSizeThreshold);
 
-        UNIT_ASSERT(ReadContent(*handle, 1024, 256));
+        ReadAndRecord(cache, *handle, 1024, 256);
         metricsRegistry->Update(timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(1, chunkSwitchCount->Val());
     }

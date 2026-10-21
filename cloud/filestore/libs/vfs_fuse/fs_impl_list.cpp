@@ -106,8 +106,10 @@ void TFileSystem::ReadDir(
         if (!CheckError(*callContext, req, result.GetError())) {
             return;
         }
-        if (const auto& content = result.GetResult()) {
-            reply(*this, *content);
+        const auto& readResult = result.GetResult();
+        DirectoryHandleCache->RecordRead(readResult);
+        if (readResult.Status != TReadContentResult::EStatus::Miss) {
+            reply(*this, readResult.Content);
             return;
         }
     }
