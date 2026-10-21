@@ -272,12 +272,13 @@ void InitTestActorRuntime(
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {},
+    NCloud::NProto::TFeaturesConfig featuresConfig = {})
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
+            std::move(featuresConfig))
     );
 
     NProto::TPartitionConfig partConfig;
@@ -393,7 +394,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {},
+    NCloud::NProto::TFeaturesConfig featuresConfig = {})
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -442,7 +444,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         std::move(tabletInfo),
         testPartitionInfo,
         storageAccessMode,
-        std::move(diagnosticsConfig)
+        std::move(diagnosticsConfig),
+        std::move(featuresConfig)
     );
 
     return runtime;
@@ -11918,10 +11921,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         ui32 writeBlobThreshold,
         ui32 uncompressedExpected,
         ui32 compressedExpected,
-        ui32 chunkSize = 0)
+        ui32 chunkSize = 0,
+        NCloud::NProto::TFeaturesConfig featuresConfig = {},
+        ui32 compressionRate = 1)
     {
         auto config = DefaultConfig();
-        config.SetBlobCompressionRate(1);
+        config.SetBlobCompressionRate(compressionRate);
         config.SetWriteBlobThreshold(writeBlobThreshold);
         config.SetFreshChannelWriteRequestsEnabled(true);
         NProto::TDiagnosticsConfig diagnosticsConfig;
@@ -11936,7 +11941,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             TTestPartitionInfo(),
             {},
             EStorageAccessMode::Default,
-            std::move(diagnosticsConfig));
+            std::move(diagnosticsConfig),
+            std::move(featuresConfig));
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11987,6 +11993,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldCompressBlobs)
     {
         DoTestCompression(1, DefaultBlockSize, 34);
+    }
+
+    Y_UNIT_TEST(ShouldEnableBlobCompressionEstimationForSelectedDisk)
+    {
+        NCloud::NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("BlobCompressionRate");
+        feature->SetValue("1");
+        feature->MutableWhitelist()->AddEntityIds("test");
+        DoTestCompression(1, DefaultBlockSize, 34, 0, std::move(features), 0);
+    }
+
+    Y_UNIT_TEST(ShouldDisableBlobCompressionEstimationForSelectedDisk)
+    {
+        NCloud::NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("BlobCompressionRate");
+        feature->SetValue("0");
+        feature->MutableWhitelist()->AddEntityIds("test");
+        DoTestCompression(1, 0, 0, 1, std::move(features));
     }
 
     Y_UNIT_TEST(ShouldSkipCompressionForFreshBlocks)

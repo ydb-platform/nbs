@@ -15,6 +15,88 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldOverrideBlobCompressionRateForDiskFolderAndCloud)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetBlobCompressionRate(100);
+        NCloud::NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("BlobCompressionRate");
+        feature->SetValue("10");
+        feature->MutableWhitelist()->AddCloudIds("selected-cloud");
+        feature->MutableWhitelist()->AddFolderIds("selected-folder");
+        feature->MutableWhitelist()->AddEntityIds("selected-disk");
+        feature->MutableBlacklist()->AddEntityIds("excluded-disk");
+
+        const TStorageConfig config(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>(features));
+        UNIT_ASSERT_VALUES_EQUAL(100, config.GetBlobCompressionRate());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            config.GetBlobCompressionRateFeatureValue(
+                "selected-cloud", "folder", "disk"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            config.GetBlobCompressionRateFeatureValue(
+                "cloud", "selected-folder", "disk"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            config.GetBlobCompressionRateFeatureValue(
+                "cloud", "folder", "selected-disk"));
+        UNIT_ASSERT(
+            !config.GetBlobCompressionRateFeatureValue(
+                "cloud", "folder", "disk"));
+        UNIT_ASSERT(
+            !config.GetBlobCompressionRateFeatureValue(
+                "selected-cloud", "selected-folder", "excluded-disk"));
+    }
+
+    Y_UNIT_TEST(ShouldDisableBlobCompressionRateViaFeature)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetBlobCompressionRate(100);
+        NCloud::NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("BlobCompressionRate");
+        feature->SetValue("0");
+        feature->MutableWhitelist()->AddEntityIds("disk");
+
+        const TStorageConfig config(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>(features));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            config.GetBlobCompressionRateFeatureValue("cloud", "folder", "disk"));
+    }
+
+    Y_UNIT_TEST(ShouldReturnNoBlobCompressionRateForMissingOrInvalidFeature)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetBlobCompressionRate(100);
+        const TStorageConfig config(
+            proto,
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        UNIT_ASSERT(
+            !config.GetBlobCompressionRateFeatureValue(
+                "cloud", "folder", "disk"));
+
+        for (const TString value: {"", "invalid", "-1", "4294967296"}) {
+            NCloud::NProto::TFeaturesConfig features;
+            auto* feature = features.AddFeatures();
+            feature->SetName("BlobCompressionRate");
+            feature->SetValue(value);
+            feature->MutableWhitelist()->AddEntityIds("disk");
+            const TStorageConfig invalidConfig(
+                proto,
+                std::make_shared<NFeatures::TFeaturesConfig>(features));
+            UNIT_ASSERT_C(
+                !invalidConfig.GetBlobCompressionRateFeatureValue(
+                    "cloud", "folder", "disk"),
+                value);
+        }
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(

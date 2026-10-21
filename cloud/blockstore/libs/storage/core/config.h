@@ -557,6 +557,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] std::optional<ui32> GetBlobCompressionRateFeatureValue(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TString GetSSDSystemChannelPoolKindFeatureValue(
         const TString& cloudId,
         const TString& folderId,

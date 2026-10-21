@@ -1428,6 +1428,27 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
+std::optional<ui32> TStorageConfig::GetBlobCompressionRateFeatureValue(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId) const
+{
+    const auto value = Impl->FeaturesConfig->GetFeatureValue(
+        cloudId,
+        folderId,
+        diskId,
+        "BlobCompressionRate");
+    if (!value) {
+        return std::nullopt;
+    }
+
+    ui32 rate = 0;
+    if (TryFromString(value, rate)) {
+        return rate;
+    }
+    return std::nullopt;
+}
+
 TStorageConfigConstPtr TStorageConfig::Merge(
     TStorageConfigConstPtr config,
     const NProto::TStorageServiceConfig& patch)

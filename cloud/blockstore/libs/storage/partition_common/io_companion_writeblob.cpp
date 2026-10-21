@@ -367,7 +367,16 @@ void TIOCompanion::HandleWriteBlob(
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
-    const ui32 compRate = Config->GetBlobCompressionRate();
+
+    ui32 compRate = Config->GetBlobCompressionRate();
+    if (auto featureCompRate = Config->GetBlobCompressionRateFeatureValue(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId()))
+    {
+        compRate = *featureCompRate;
+    }
+
     if (msg->CompressedSizeEstimationCandidate && BlobCodec && compRate &&
         msg->BlobId.GetHash() % compRate == 0)
     {
