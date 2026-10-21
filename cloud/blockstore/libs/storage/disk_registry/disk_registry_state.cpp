@@ -8323,7 +8323,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     return true;
 }
 
-NProto::TError TDiskRegistryState::CanCreateNonreplicatedDiskFromDevices(
+NProto::TError TDiskRegistryState::CanCreateSimpleDiskFromDevices(
     const TCreateDiskFromDevicesParams& params,
     const TVector<NProto::TDeviceConfig>& devices) const
 {
@@ -8405,7 +8405,7 @@ NProto::TError TDiskRegistryState::CanCreateNonreplicatedDiskFromDevices(
     return {};
 }
 
-NProto::TError TDiskRegistryState::CreateNonreplicatedDiskFromDevices(
+NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TCreateDiskFromDevicesParams& params,
@@ -8413,7 +8413,7 @@ NProto::TError TDiskRegistryState::CreateNonreplicatedDiskFromDevices(
     TAllocateDiskResult* result)
 {
     Y_DEBUG_ABORT_UNLESS(result);
-    Y_DEBUG_ABORT_UNLESS(!HasError(CanCreateNonreplicatedDiskFromDevices(params, devices)));
+    Y_DEBUG_ABORT_UNLESS(!HasError(CanCreateSimpleDiskFromDevices(params, devices)));
 
     ui32 blockSize = params.BlockSize;
 
@@ -8465,30 +8465,10 @@ NProto::TError TDiskRegistryState::CreateNonreplicatedDiskFromDevices(
     return {};
 }
 
-namespace {
-
-bool ReplicaHasAllData(
-    const TVector<NProto::TDeviceConfig>& replica,
-    const THashSet<TString>& freshDeviceIds)
-{
-    if (replica.empty()) {
-        return false;
-    }
-
-    for (const auto& device: replica) {
-        if (freshDeviceIds.contains(device.GetDeviceUUID())) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-}   // namespace
-
 NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
     const TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas) const
+    const TVector<NProto::TDeviceConfig>& devices,
+    const TVector<TVector<DeviceSlot>>& replicas) const
 {
     const NProto::EStorageMediaKind mediaKind = params.MediaKind;
 
@@ -8502,7 +8482,7 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
                     << "non-replicated disk " << params.DiskId.Quote()
                     << " unexpected replicas count");
         }
-        return CanCreateNonreplicatedDiskFromDevices(params, replicas.front());
+        return CanCreateSimpleDiskFromDevices(params, replicas.front());
     }
 
     const ui32 replicaCount = mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
@@ -8528,11 +8508,15 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
                 << "disk " << masterId.Quote() << " invalid master disk");
     }
 
-    // TODO: correct freshDevices processing
     const bool hasReplicaWithAllData = FindIfPtr(
         replicas,
-        [&freshDeviceIds](const auto& replica)
-        { return ReplicaHasAllData(replica, freshDeviceIds); });
+        [](const auto& replica)
+        {
+            return std::all_of(
+                replica.begin(),
+                replica.end(),
+                [&](const auto& device) { return device.has_value(); });
+        });
 
     if (!hasReplicaWithAllData) {
         return MakeError(
@@ -8547,7 +8531,7 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
-        auto error = CanCreateNonreplicatedDiskFromDevices(
+        auto error = CanCreateSimpleDiskFromDevices(
             TCreateDiskFromDevicesParams(
                 replicaId,
                 params.BlockSize,
@@ -8591,7 +8575,8 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas,
+    const TVector<NProto::TDeviceConfig>& devices,
+    const TVector<TVector<DeviceSlot>>& replicas,
     TAllocateDiskResult* result)
 {
     Y_DEBUG_ABORT_UNLESS(result);
@@ -8607,13 +8592,8 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     if (mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
         mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR3)
     {
-        return CreateNonreplicatedDiskFromDevices(now, db, params, devices, result);
+        return CreateSimpleDiskFromDevices(now, db, params, devices, result);
     }
-
-    // TODO: correct freshDevices processing
-    const THashSet<TString> freshDeviceIdsSet(
-        freshDeviceIds.begin(),
-        freshDeviceIds.end());
 
     const TDiskId& masterId = params.DiskId;
 
@@ -8626,8 +8606,10 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
+        // !!! TODO: allocate fresh devices
+
         TAllocateDiskResult replicaResult;
-        auto error = CreateNonreplicatedDiskFromDevices(
+        auto error = CreateSimpleDiskFromDevices(
             now,
             db,
             TCreateDiskFromDevicesParams(
@@ -8657,12 +8639,6 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
         }
 
         ReplicaTable.UpdateReplica(masterId, i, deviceIds);
-
-        for (const auto& deviceId: deviceIds) {
-            if (freshDeviceIdsSet.contains(deviceId)) {
-                ReplicaTable.MarkReplacementDevice(masterId, deviceId, true);
-            }
-        }
 
         UpdateDiskPlacementInfo(
             db,

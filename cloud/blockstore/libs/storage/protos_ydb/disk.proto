@@ -21,21 +21,21 @@ message TCreateDiskFromDevicesRequest
 
     NKikimrBlockStore.TVolumeConfig VolumeConfig = 3;
 
+    // List of devices (agentId & device name) that make up the disk.
+    repeated TDeviceConfig Devices = 4;
+
     message TDeviceSlot
     {
         optional TDeviceConfig Slot = 1;
     }
 
-    message TDeviceList
+    message TDeviceSlotList
     {
-        repeated TDeviceSlot Devices = 1;
+        repeated TDeviceSlot Slots = 1;
     }
 
-    // List of devices (agentId & device name) that make up the disk.
-    TDeviceList Devices = 4;
-
     // Replicas for mirrored disks.
-    repeated TDeviceList Replicas = 5;
+    repeated TDeviceSlotList Replicas = 5;
 
     // If true, the block count will not be adjusted.
     bool KeepBlockCount = 6;

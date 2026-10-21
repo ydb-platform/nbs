@@ -304,6 +304,8 @@ class TDiskRegistryState
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
     using TBrokenDisks = TMap<TDiskId, TInstant>;
 
+    using DeviceSlot = std::optional<NProto::TDeviceConfig>;
+
 private:
     TLog Log;
 
@@ -918,7 +920,8 @@ public:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
+        const TVector<NProto::TDeviceConfig>& devices,
+        const TVector<TVector<DeviceSlot>>& replicas,
         TAllocateDiskResult* result);
 
     NProto::TError ChangeDiskDevice(
@@ -1593,11 +1596,11 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent);
 
-    NProto::TError CanCreateNonreplicatedDiskFromDevices(
+    NProto::TError CanCreateSimpleDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices) const;
 
-    NProto::TError CreateNonreplicatedDiskFromDevices(
+    NProto::TError CreateSimpleDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
@@ -1606,7 +1609,8 @@ private:
 
     NProto::TError CanCreateDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas) const;
+        const TVector<NProto::TDeviceConfig>& devices,
+        const TVector<TVector<DeviceSlot>>& replicas) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

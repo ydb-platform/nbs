@@ -1255,6 +1255,8 @@ struct TTxDiskRegistry
 
     struct TCreateDiskFromDevices
     {
+        using DeviceSlot = std::optional<NProto::TDeviceConfig>;
+
         const TRequestInfoPtr RequestInfo;
 
         const bool Force;
@@ -1262,7 +1264,7 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
-        const TVector<TVector<NProto::TDeviceConfig>> Replicas;
+        const TVector<TVector<DeviceSlot>> Replicas;
         const bool KeepBlockCount;
 
         NProto::TError Error;
@@ -1275,7 +1277,7 @@ struct TTxDiskRegistry
                 ui32 blockSize,
                 NProto::EStorageMediaKind mediaKind,
                 TVector<NProto::TDeviceConfig> devices,
-                TVector<TVector<NProto::TDeviceConfig>> replicas,
+                TVector<TVector<DeviceSlot>> replicas,
                 bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
