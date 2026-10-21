@@ -171,7 +171,7 @@ namespace NActors {
                         State = EState::BODY;
                         IEventBase *base = event.Event.Get();
                         if (event.EventSerializedSize) {
-                            Chunker.SetSerializingEvent(base, /*withCachedSizes=*/ true);
+                            Chunker.SetSerializingEvent(base, /*withCachedSizes=*/ true, /*withCord=*/ false);
                         }
                         SerializationInfoContainer = base->CreateSerializationInfo();
                         SerializationInfo = &SerializationInfoContainer;
