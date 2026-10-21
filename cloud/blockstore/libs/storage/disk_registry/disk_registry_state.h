@@ -1598,7 +1598,8 @@ private:
 
     NProto::TError CanCreateSimpleDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
-        const TVector<NProto::TDeviceConfig>& devices) const;
+        const TVector<DeviceSlot>& devices,
+        bool allowFreshDevices) const;
 
     NProto::TError CreateSimpleDiskFromDevices(
         TInstant now,
@@ -1611,6 +1612,16 @@ private:
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
         const TVector<TVector<DeviceSlot>>& replicas) const;
+
+    NProto::TError AllocateFreshDevicesForReplica(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& replicaId,
+        ui32 replicaIndex,
+        const TVector<DeviceSlot>& referenceReplica,
+        const TVector<TVector<DeviceSlot>>& replicas,
+        ui32 blockSize,
+        TVector<NProto::TDeviceConfig>& resolvedReplica);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
