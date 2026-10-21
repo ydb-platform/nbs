@@ -3,9 +3,9 @@
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/library/actors/util/rope.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/size_literals.h>
@@ -64,11 +64,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_ExternalPayload)
         ui64 handle = CreateHandle(tablet, id);
 
         TString data = GenerateValidateData(dataSize);
-        auto request = tablet.CreateWriteDataRequest(
-            handle,
-            0,
-            data.size(),
-            data.data());
+        auto request =
+            tablet.CreateWriteDataRequest(handle, 0, data.size(), data.data());
         request->StripPayload();
 
         TRope rope;
