@@ -13,6 +13,7 @@ SRCS(
     events_local.h
     interconnect_channel.cpp
     interconnect_channel.h
+    interconnect_common.cpp
     interconnect_common.h
     interconnect_counters.cpp
     interconnect.h
@@ -58,6 +59,13 @@ SRCS(
     watchdog_timer.h
 )
 
+IF (OS_LINUX)
+    SRCS(
+        uring_context.cpp
+        uring_context.h
+    )
+ENDIF()
+
 PEERDIR(
     contrib/libs/libc_compat
     contrib/libs/openssl
@@ -74,6 +82,7 @@ PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/wilson
+    contrib/ydb/library/uring
     library/cpp/digest/crc32c
     library/cpp/json
     library/cpp/lwtrace
