@@ -235,6 +235,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(BlobCompressionRate,             ui32,                  0             )\
     xxx(BlobCompressionCodec,            TString,               "lz4"         )\
     xxx(BlobCompressionChunkSize,        ui32,                  80_KB         )\
+    xxx(RedoLogCompressionEnabled,       bool,                  true          )\
                                                                                \
     xxx(MaxZeroCompactionRangesToDeletePerTx,           ui32,      10000      )\
     xxx(ChannelFreeSpaceThreshold,                      ui32,      25         )\

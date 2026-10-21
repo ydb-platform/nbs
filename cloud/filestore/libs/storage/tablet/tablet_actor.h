@@ -276,6 +276,7 @@ private:
     void Enqueue(STFUNC_SIG) override;
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
+    bool RedoLogCompressionEnabled() const override;
     bool ReassignChannelsEnabled() const override;
     void RegisterEvPutResult(
         const NActors::TActorContext& ctx,

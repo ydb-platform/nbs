@@ -304,6 +304,7 @@ public:
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
     ui32 GetBlobCompressionChunkSize() const;
+    bool GetRedoLogCompressionEnabled() const;
 
     ui32 GetNonNetworkMetricsBalancingFactor() const;
 
