@@ -56,20 +56,26 @@ protected:
         auto node = index.LookupNode(RootNodeId);
         UNIT_ASSERT_C(node, "Failed to lookup RootNode");
 
-        // Inode allocation order is filesystem-dependent. Create siblings and
-        // sort their actual node ids before arranging them into a nested path.
-        // Renaming within the same filesystem preserves the node ids.
+        // Inode allocation order is filesystem-dependent. First create all
+        // directories as siblings: root/node-0, root/node-1, etc. These are
+        // temporary names, distinct from the final names in root/0/1/2/...
+        // so a rename destination cannot collide with an unmoved sibling.
+        // TMap sorts the directories by their actual inode ids, not names.
         TMap<ui64, TFsPath> dirs;
         for (ui32 i = 0; i < pathLen; ++i) {
             TString name = "node-" + ToString(i);
             auto path = RootPath / name;
             path.MkDir();
 
+            // Create() opens the directory made by MkDir() and reads its inode.
+            // Do not register the temporary name in the index.
             auto childNode = TIndexNode::Create(*node, name);
             UNIT_ASSERT_C(childNode, "Failed to create node: " << name);
             UNIT_ASSERT(dirs.emplace(childNode->GetNodeId(), path).second);
         }
 
+        // Select the inode order along the final chain: ascending by default,
+        // descending when reversed. paths still contains root/node-N paths.
         TVector<TFsPath> paths(pathLen);
         ui32 position = 0;
         for (const auto& [nodeId, path]: dirs) {
@@ -77,6 +83,10 @@ protected:
             ++position;
         }
 
+        // Move the sorted siblings into root/0/1/2/... . Final names denote
+        // depth, not the original node-N suffix: root/node-2 might become
+        // root/0, and root/node-0 might become root/0/1. Renaming on the same
+        // filesystem preserves inode ids, so the selected order is retained.
         auto path = RootPath;
         for (ui32 i = 0; i < pathLen; ++i) {
             TString name = ToString(i);
@@ -86,6 +96,7 @@ protected:
             auto childNode = TIndexNode::Create(*node, name);
             UNIT_ASSERT_C(childNode, "Failed to create node: " << name);
 
+            // Compare only the created directories, the root has a special id.
             if (i > 0) {
                 if (reversed) {
                     UNIT_ASSERT_LT(
@@ -98,11 +109,13 @@ protected:
                 }
             }
 
+            // Persist the final name and parent relationship for recovery.
             auto inserted =
                 index.TryInsertNode(childNode, node->GetNodeId(), name);
             UNIT_ASSERT_C(inserted, "Failed to insert node: " << name);
 
             nodeMap.emplace(name, childNode->GetNodeId());
+            // The next directory will be moved inside this one.
             node = childNode;
         }
     }
