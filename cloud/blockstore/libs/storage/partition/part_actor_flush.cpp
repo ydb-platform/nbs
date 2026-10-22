@@ -455,7 +455,7 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
     }
 
     const auto ageThreshold = Config->GetFreshBlobAgeFlushThreshold();
-    if (!ageThreshold || ctx.Monotonic() < FreshBlobAgeFlushRetryAt) {
+    if (!ageThreshold) {
         return false;
     }
 
@@ -806,7 +806,6 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
-        FreshBlobAgeFlushRetryAt = TMonotonic::Zero();
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
             State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
                 i.CommitId,
@@ -828,9 +827,6 @@ void TPartitionActor::HandleFlushCompleted(
             SharedState->UnflushedFreshBlocksCount.fetch_sub(
                 msg->FlushedBlocksCount);
         }
-    } else {
-        // Reuse the periodic check for age-based retries, without a new timer.
-        FreshBlobAgeFlushRetryAt = ctx.Monotonic() + UpdateCountersInterval;
     }
 
     State->AccessFlushedCommitIdsInProgress().clear();

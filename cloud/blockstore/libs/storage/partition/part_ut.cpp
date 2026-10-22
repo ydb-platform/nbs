@@ -2595,69 +2595,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
     }
 
-    Y_UNIT_TEST(ShouldBackOffAfterFailedAgeFlush)
-    {
-        auto config = DefaultConfig();
-        config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetFreshBlobAgeFlushThreshold(60000);
-
-        auto runtime = PrepareTestActorRuntime(config);
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-        partition.WriteBlocks(1, 1);
-
-        bool failFlush = true;
-        ui32 flushRequests = 0;
-        ui32 flushCompletions = 0;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() ==
-                    TEvPartitionPrivate::EvFlushRequest) {
-                    ++flushRequests;
-                } else if (
-                    event->GetTypeRewrite() ==
-                    TEvPartitionPrivate::EvFlushCompleted)
-                {
-                    ++flushCompletions;
-                } else if (
-                    failFlush &&
-                    event->GetTypeRewrite() ==
-                        TEvPartitionCommonPrivate::EvWriteBlobResponse)
-                {
-                    auto* msg = event->Get<
-                        TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
-                    const_cast<NProto::TError&>(msg->Error).SetCode(E_REJECTED);
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
-        partition.SendToPipe(
-            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
-        runtime->WaitFor("failed age flush",
-                         [&] { return flushCompletions == 1; });
-
-        failFlush = false;
-        partition.WriteBlocks(2, 2);
-        partition.SendToPipe(
-            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
-        UNIT_ASSERT_VALUES_EQUAL(1, flushRequests);
-
-        runtime->AdvanceCurrentTime(TDuration::Seconds(16));
-        partition.SendToPipe(
-            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
-        runtime->WaitFor("age flush retry",
-                         [&] { return flushCompletions == 2; });
-        UNIT_ASSERT_VALUES_EQUAL(2, flushRequests);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
-    }
-
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
     {
         auto config = DefaultConfig();

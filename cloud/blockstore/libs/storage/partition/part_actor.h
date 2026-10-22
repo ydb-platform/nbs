@@ -145,7 +145,6 @@ private:
 
     bool UpdateCountersScheduled = false;
     bool UpdateYellowStateScheduled = false;
-    NActors::TMonotonic FreshBlobAgeFlushRetryAt;
     TInstant ReassignRequestSentTs;
 
     // Pending requests
