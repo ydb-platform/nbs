@@ -43,12 +43,19 @@ TPartitionThreadSafeState::StartFreshWrite(
     TGuard guard(StateLock);
 
     ui64 commitId = GenerateCommitIdImpl();
-    const auto timestamp = GetFreshWriteTimestamp(ctx);
+    const auto timestamp = GetFreshWriteTimestampImpl(ctx);
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
     CommitQueue.AcquireBarrier(commitId);
     FreshWritesCommitQueue.AcquireBarrier(commitId);
     return {.CommitId = commitId, .Timestamp = timestamp};
+}
+
+TInstant TPartitionThreadSafeState::GetFreshWriteTimestamp(
+    const NActors::TActorContext& ctx)
+{
+    TGuard guard(StateLock);
+    return GetFreshWriteTimestampImpl(ctx);
 }
 
 void TPartitionThreadSafeState::FinishFreshWrite(
@@ -221,7 +228,7 @@ ui64 TPartitionThreadSafeState::GetLastCommitIdImpl() const
     return MakeCommitId(Generation, LastCommitId);
 }
 
-TInstant TPartitionThreadSafeState::GetFreshWriteTimestamp(
+TInstant TPartitionThreadSafeState::GetFreshWriteTimestampImpl(
     const NActors::TActorContext& ctx)
 {
     const auto monotonic = ctx.Monotonic();

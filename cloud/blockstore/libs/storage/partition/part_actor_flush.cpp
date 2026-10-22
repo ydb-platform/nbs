@@ -439,25 +439,48 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
 {
-    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
-        // already enqueued
-        return;
-    }
-
     const ui32 freshBlockByteCount =
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool shouldFlush =
-        !State->IsLoadStateFinished() ||
+    if (!State->IsLoadStateFinished() ||
         freshBlockByteCount >= Config->GetFlushThreshold() ||
         freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold())
+    {
+        return true;
+    }
 
-    if (!shouldFlush) {
+    const auto ageThreshold = Config->GetFreshBlobAgeFlushThreshold();
+    if (!ageThreshold || ctx.Monotonic() < FreshBlobAgeFlushRetryAt) {
+        return false;
+    }
+
+    const auto timestamp = State->GetOldestUnflushedFreshBlobTimestamp();
+    if (timestamp == TInstant::Max()) {
+        return false;
+    }
+    if (timestamp == TInstant::Zero()) {
+        return true;
+    }
+
+    const auto now = SharedState->GetFreshWriteTimestamp(ctx);
+    return now >= timestamp && now - timestamp >= ageThreshold;
+}
+
+void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+{
+    if (State->GetFlushState().GetOperationState().Status !=
+        EOperationStatus::Idle)
+    {
+        // already enqueued
+        return;
+    }
+
+    if (!ShouldFlush(ctx)) {
         return;
     }
 
@@ -471,6 +494,9 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvFlushRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
+    // Recovery flush must run even though load finishes before this is handled.
+    request->CheckThresholds =
+        Config->GetFreshBlobAgeFlushThreshold() && State->IsLoadStateFinished();
 
     NCloud::Send(
         ctx,
@@ -518,7 +544,7 @@ void TPartitionActor::HandleFlush(
     }
 
     ui64 blocksCount = State->GetUnflushedFreshBlocksCount();
-    if (!blocksCount) {
+    if (!blocksCount || (msg->CheckThresholds && !ShouldFlush(ctx))) {
         State->AccessFlushState().SetIdle(ctx.Now());
 
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
@@ -780,6 +806,7 @@ void TPartitionActor::HandleFlushCompleted(
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     if (!HasError(msg->Error)) {
+        FreshBlobAgeFlushRetryAt = TMonotonic::Zero();
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
             State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
                 i.CommitId,
@@ -801,6 +828,9 @@ void TPartitionActor::HandleFlushCompleted(
             SharedState->UnflushedFreshBlocksCount.fetch_sub(
                 msg->FlushedBlocksCount);
         }
+    } else {
+        // Reuse the periodic check for age-based retries, without a new timer.
+        FreshBlobAgeFlushRetryAt = ctx.Monotonic() + UpdateCountersInterval;
     }
 
     State->AccessFlushedCommitIdsInProgress().clear();

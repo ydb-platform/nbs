@@ -2394,6 +2394,269 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFlushIdleFreshBlobsByAgeOnlyWhenEnabled)
+    {
+        for (bool enabled: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetFreshChannelZeroRequestsEnabled(true);
+            config.SetFreshBlobAgeFlushThreshold(enabled ? 60000 : 0);
+
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            partition.WriteBlocks(1, 1);
+            partition.ZeroBlocks(2);
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                partition.StatPartition()
+                    ->Record.GetStats()
+                    .GetFreshBlocksCount());
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(31));
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 0 : 2,
+                partition.StatPartition()
+                    ->Record.GetStats()
+                    .GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1),
+                                     GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(TString(),
+                                     GetBlockContent(partition.ReadBlocks(2)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFlushUnknownTimestampsAndWaitForFutureTimestamps)
+    {
+        for (bool unknownTimestamp: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetFreshBlobAgeFlushThreshold(60000);
+
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                    {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::
+                                                   TEvAddFreshBlocksRequest>();
+                        msg->Timestamp = unknownTimestamp
+                                             ? TInstant::Zero()
+                                             : runtime->GetCurrentTime() +
+                                                   TDuration::Seconds(120);
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.WriteBlocks(1, 1);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                unknownTimestamp ? 0 : 1,
+                partition.StatPartition()
+                    ->Record.GetStats()
+                    .GetFreshBlocksCount());
+
+            runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                partition.StatPartition()
+                    ->Record.GetStats()
+                    .GetFreshBlocksCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIncludeObsoleteBlobsInAgeFlushAfterWrite)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThreshold(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.WriteBlocks(1, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(2),
+                                 GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldExcludeFlushedBlobsAwaitingTrimFromAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThreshold(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool trimRequested = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
+                {
+                    trimRequested = true;
+                    return true;
+                }
+                return false;
+            });
+
+        partition.WriteBlocks(1, 1);
+        partition.Flush();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(trimRequested);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+        partition.WriteBlocks(2, 2);
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldRecheckQueuedAgeFlushAndPreserveExplicitFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThreshold(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TAutoPtr<IEventHandle> queuedFlush;
+        bool interceptFlush = true;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (interceptFlush &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvFlushRequest &&
+                    event->Get<TEvPartitionPrivate::TEvFlushRequest>()
+                        ->CheckThresholds)
+                {
+                    queuedFlush = std::move(event);
+                    return true;
+                }
+                return false;
+            });
+
+        partition.WriteBlocks(1, 1);
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(queuedFlush);
+
+        partition.Flush();
+        partition.WriteBlocks(2, 2);
+        interceptFlush = false;
+        runtime->Send(queuedFlush.Release());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        partition.Flush();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldBackOffAfterFailedAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThreshold(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(1, 1);
+
+        bool failFlush = true;
+        ui32 flushRequests = 0;
+        ui32 flushCompletions = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest) {
+                    ++flushRequests;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushCompleted)
+                {
+                    ++flushCompletions;
+                } else if (
+                    failFlush &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvWriteBlobResponse)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                    const_cast<NProto::TError&>(msg->Error).SetCode(E_REJECTED);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->WaitFor("failed age flush",
+                         [&] { return flushCompletions == 1; });
+
+        failFlush = false;
+        partition.WriteBlocks(2, 2);
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, flushRequests);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(16));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->WaitFor("age flush retry",
+                         [&] { return flushCompletions == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(2, flushRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
 
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
     {

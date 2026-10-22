@@ -1734,4 +1734,8 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Age (in milliseconds) of an untrimmed, unflushed fresh blob that triggers
+    // flushing in partition v1. Zero disables age-based flushing.
+    optional uint32 FreshBlobAgeFlushThreshold = 542;
 }

@@ -62,6 +62,21 @@ TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp() const
     return UntrimmedFreshBlobsByCommitId.begin()->second.Timestamp;
 }
 
+TInstant TPartitionFreshBlobState::GetOldestUnflushedFreshBlobTimestamp() const
+{
+    if (!OldestUnflushedFreshBlobTimestamp) {
+        auto timestamp = TInstant::Max();
+        for (const auto& blob: UnflushedFreshBlobByteCountByCommitId) {
+            const auto it = UntrimmedFreshBlobsByCommitId.find(blob.first);
+            if (it != UntrimmedFreshBlobsByCommitId.end()) {
+                timestamp = Min(timestamp, it->second.Timestamp);
+            }
+        }
+        OldestUnflushedFreshBlobTimestamp = timestamp;
+    }
+    return *OldestUnflushedFreshBlobTimestamp;
+}
+
 void TPartitionFreshBlobState::AddFreshBlob(
     ui64 commitId,
     ui64 blobSize,
@@ -93,10 +108,16 @@ void TPartitionFreshBlobState::AddFreshBlob(
         UnflushedFreshBlobByteCount =
             SafeIncrement(UnflushedFreshBlobByteCount, blobSize);
     }
+
+    if (OldestUnflushedFreshBlobTimestamp) {
+        OldestUnflushedFreshBlobTimestamp =
+            Min(*OldestUnflushedFreshBlobTimestamp, timestamp);
+    }
 }
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
+    OldestUnflushedFreshBlobTimestamp.reset();
     auto& blobs = UntrimmedFreshBlobsByCommitId;
 
     while (blobs && blobs.begin()->first <= commitId) {
@@ -130,6 +151,7 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
     blobs.erase(it);
+    OldestUnflushedFreshBlobTimestamp.reset();
 
     return blobSize;
 }

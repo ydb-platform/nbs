@@ -336,6 +336,7 @@ struct TEvPartitionPrivate
 
     struct TFlushRequest
     {
+        bool CheckThresholds = false;
     };
 
     struct TFlushResponse

@@ -16,6 +16,8 @@
 #include <util/generic/set.h>
 #include <util/system/types.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,6 +145,10 @@ private:
     ui64 UnflushedFreshBlobByteCount = 0;
     TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
 
+    // Recompute after flush or trim, rather than scanning on every write.
+    mutable std::optional<TInstant> OldestUnflushedFreshBlobTimestamp =
+        TInstant::Max();
+
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
         : TabletID(tabletID)
@@ -169,6 +175,9 @@ public:
     // Usually the oldest timestamp, but ordering is not guaranteed across
     // tablet restarts.
     [[nodiscard]] TInstant GetFirstUntrimmedFreshBlobTimestamp() const;
+
+    // Includes obsolete blobs; excludes already flushed or trimmed blobs.
+    [[nodiscard]] TInstant GetOldestUnflushedFreshBlobTimestamp() const;
 
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
     void TrimFreshBlobs(ui64 commitId);

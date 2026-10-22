@@ -166,6 +166,10 @@ public:
     TFreshWriteInfo StartFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 blockCount);
+
+    // Read the same clock without allocating a commit id.
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
+
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -260,7 +264,7 @@ public:
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
-    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
+    TInstant GetFreshWriteTimestampImpl(const NActors::TActorContext& ctx);
 
     void ExecuteTxs(
         const NActors::TActorContext& ctx,
