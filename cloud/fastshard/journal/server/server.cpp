@@ -237,7 +237,7 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Backend->Start().Wait();
+    Backend->Start();
 
     auto future = Executor->Execute([this] { StartListen(); });
     future.GetValueSync();
@@ -248,7 +248,7 @@ void TServer::Stop()
     auto future = Executor->Execute([this] { StopImpl(); });
     future.Wait();
 
-    Backend->Stop().Wait();
+    Backend->Stop();
 }
 
 // TContListener::ICallBack
@@ -435,6 +435,10 @@ void TServer::HandleRequest(
         }
         case ERequestCase::kFormatDevice: {
             ProcessRequest<TFormatDeviceMethod>(conn, std::move(request));
+            break;
+        }
+        case ERequestCase::kListDevices: {
+            ProcessRequest<TListDevicesMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kReadPages: {

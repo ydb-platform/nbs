@@ -3,16 +3,26 @@
 #include "device_manager.h"
 
 #include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/journal/iface/journalled_device.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/async.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
+#include <util/string/printf.h>
+#include <util/system/mutex.h>
+#include <util/thread/pool.h>
+
+#include <optional>
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -168,7 +178,15 @@ struct TTestJournalledDevice final: public IJournalledDevice
     const TString Name;
     NProto::TError StartError;
 
+    // When set, Start does not complete until CompleteStart is called.
+    bool DeferStart = false;
+
+    // The service starts a deferred device from the thread that completes
+    // the previous one, so the start state is shared between threads.
+    TMutex Lock;
+    std::optional<TPromise<NProto::TError>> StartPromise;
     ui32 StartCount = 0;
+
     ui32 StopCount = 0;
 
     explicit TTestJournalledDevice(TString name)
@@ -177,9 +195,61 @@ struct TTestJournalledDevice final: public IJournalledDevice
 
     TFuture<NProto::TError> Start() final
     {
+        auto guard = Guard(Lock);
+
         ++StartCount;
-        return MakeFuture(StartError);
+
+        if (!DeferStart) {
+            return MakeFuture(StartError);
+        }
+
+        //
+        // Fail a double start instead of asserting on it: Start may not
+        // throw, so the start counts are checked at the end of the test
+        //
+
+        if (StartPromise) {
+            return MakeFuture(
+                MakeError(E_FAIL, Name + " is already starting"));
+        }
+
+        StartPromise = NewPromise<NProto::TError>();
+        return StartPromise->GetFuture();
     }
+
+    void CompleteStart()
+    {
+        auto promise = TakeStartPromise();
+        UNIT_ASSERT_C(promise, Name + " is not starting");
+
+        //
+        // Set the value outside the lock: the service starts the next device
+        // right in the subscriber of this promise
+        //
+
+        promise->SetValue(StartError);
+    }
+
+    bool IsStarting()
+    {
+        auto guard = Guard(Lock);
+        return StartPromise.has_value();
+    }
+
+    ui32 GetStartCount()
+    {
+        auto guard = Guard(Lock);
+        return StartCount;
+    }
+
+private:
+    std::optional<TPromise<NProto::TError>> TakeStartPromise()
+    {
+        auto guard = Guard(Lock);
+        return std::exchange(StartPromise, std::nullopt);
+    }
+
+public:
 
     TFuture<NProto::TError> Stop() final
     {
@@ -249,10 +319,17 @@ struct TFixture: public NUnitTest::TBaseFixture
     TVector<std::shared_ptr<TTestJournalledDevice>> Devices;
     IServerBackendPtr Service;
 
+    // The devices of the last CreateDeferredStartService call, so that a
+    // failed test can still let a pending start finish.
+    TVector<std::shared_ptr<TTestJournalledDevice>> DeferredDevices;
+    TThreadPool StartThread;
+
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(Counters);
+
+        StartThread.Start(1);
 
         DeviceManager = std::make_shared<TTestDeviceManager>();
         DeviceManager->Clients.insert(ClientId);
@@ -265,7 +342,120 @@ struct TFixture: public NUnitTest::TBaseFixture
             specs.push_back({.Device = std::move(device), .Config = config});
         }
 
-        Service = CreateService(DeviceManager, std::move(specs));
+        Service = CreateService(
+            DeviceManager,
+            std::move(specs),
+            std::size(Configs)   // restoreConcurrency
+        );
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*context*/) override
+    {
+        //
+        // Complete the starts a failed test has left pending, otherwise the
+        // service's Start never returns and the thread cannot be stopped
+        //
+
+        while (StartingCount(DeferredDevices)) {
+            CompleteAnyStart(DeferredDevices);
+        }
+
+        StartThread.Stop();
+    }
+
+    // Creates a service over |count| devices that complete their start only
+    // when told to.
+    auto CreateDeferredStartService(ui32 count, ui32 restoreConcurrency)
+        -> std::pair<
+            IServerBackendPtr,
+            TVector<std::shared_ptr<TTestJournalledDevice>>>
+    {
+        TVector<std::shared_ptr<TTestJournalledDevice>> devices;
+        TVector<TJournalledDeviceSpec> specs;
+
+        for (ui32 i = 0; i != count; ++i) {
+            auto config = Configs[0];
+            config.DeviceUUID = Sprintf("deferred-%02u", i);
+
+            auto device =
+                std::make_shared<TTestJournalledDevice>(config.DeviceUUID);
+            device->DeferStart = true;
+
+            devices.push_back(device);
+            specs.push_back({.Device = std::move(device), .Config = config});
+        }
+
+        auto service =
+            CreateService(DeviceManager, std::move(specs), restoreConcurrency);
+
+        DeferredDevices = devices;
+
+        return {std::move(service), std::move(devices)};
+    }
+
+    // The service's Start blocks until every device has started, while the
+    // deferred devices complete only when the test tells them to, so the
+    // start runs on its own thread.
+    TFuture<void> StartInBackground(IServerBackendPtr service)
+    {
+        return Async(
+            [service = std::move(service)] { service->Start(); },
+            StartThread);
+    }
+
+    // Polls until the condition holds; fails the test after a while.
+    template <typename TCondition>
+    static void WaitUntil(const TString& what, TCondition condition)
+    {
+        const auto deadline = TInstant::Now() + TDuration::Seconds(30);
+
+        while (!condition()) {
+            UNIT_ASSERT_C(
+                TInstant::Now() < deadline,
+                "timed out waiting for " + what);
+
+            Sleep(TDuration::MilliSeconds(1));
+        }
+    }
+
+    using TTestDevices = TVector<std::shared_ptr<TTestJournalledDevice>>;
+
+    static size_t StartingCount(const TTestDevices& devices)
+    {
+        return CountIf(
+            devices,
+            [](const auto& device) { return device->IsStarting(); });
+    }
+
+    static size_t StartedCount(const TTestDevices& devices)
+    {
+        return CountIf(
+            devices,
+            [](const auto& device) { return device->GetStartCount() != 0; });
+    }
+
+    // A double start fails the device instead of the test, so the start
+    // counts are checked at the end.
+    static void AssertStartedOnce(const TTestDevices& devices)
+    {
+        for (const auto& device: devices) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                device->GetStartCount(),
+                device->Name);
+        }
+    }
+
+    // The service starts the devices in no particular order, so the tests
+    // complete whichever device is starting.
+    static void CompleteAnyStart(const TTestDevices& devices)
+    {
+        auto it = FindIf(
+            devices,
+            [](const auto& device) { return device->IsStarting(); });
+
+        UNIT_ASSERT_C(it != devices.end(), "no device is starting");
+        (*it)->CompleteStart();
     }
 
     i64 CriticalEventCount(const TString& name) const
@@ -564,16 +754,96 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         UNIT_ASSERT_VALUES_EQUAL("zero failed", error.GetMessage());
     }
 
+    Y_UNIT_TEST_F(ShouldListDevices, TFixture)
+    {
+        NProto::TListDevicesRequest request;
+        request.MutableHeaders()->SetClientId(ClientId);
+
+        const auto response =
+            Service->ListDevices(std::move(request)).GetValueSync();
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        // The data part is what the journal leaves of the device, a device
+        // without a journal is all data
+
+        UNIT_ASSERT_VALUES_EQUAL(std::size(Configs), response.DevicesSize());
+
+        for (size_t i = 0; i != std::size(Configs); ++i) {
+            const auto& config = Configs[i];
+            const auto& info = response.GetDevices(i);
+
+            UNIT_ASSERT_VALUES_EQUAL(config.DeviceUUID, info.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(config.BlockSize, info.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(config.LogMetaSize, info.GetLogMetaSize());
+            UNIT_ASSERT_VALUES_EQUAL(config.LogDataSize, info.GetLogDataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                config.BlocksCount * config.BlockSize - config.LogMetaSize -
+                    config.LogDataSize,
+                info.GetDataSize());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldListDevicesSortedByUUID, TFixture)
+    {
+        constexpr ui32 DeviceCount = 32;
+
+        TVector<TJournalledDeviceSpec> specs;
+        for (ui32 i = DeviceCount; i != 0; --i) {
+            const TString uuid = Sprintf("uuid-%02u", i);
+            specs.push_back(
+                {.Device = std::make_shared<TTestJournalledDevice>(uuid),
+                 .Config = {
+                     .DeviceUUID = uuid,
+                     .BlocksCount = 1024,
+                     .BlockSize = DefaultBlockSize}});
+        }
+
+        auto service = CreateService(DeviceManager, std::move(specs), 1);
+
+        const auto response =
+            service->ListDevices(NProto::TListDevicesRequest()).GetValueSync();
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(DeviceCount, response.DevicesSize());
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                Sprintf("uuid-%02u", i + 1),
+                response.GetDevices(i).GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldListDevicesWithoutAccessCheck, TFixture)
+    {
+        // Listing does not touch the devices, so any client may list them
+
+        for (const TString clientId: {"", "unknown-client"}) {
+            NProto::TListDevicesRequest request;
+            request.MutableHeaders()->SetClientId(clientId);
+
+            const auto response =
+                Service->ListDevices(std::move(request)).GetValueSync();
+            const auto& error = response.GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(
+                std::size(Configs),
+                response.DevicesSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->AccessDeviceCalls.size());
+    }
+
     Y_UNIT_TEST_F(ShouldStartAndStopDevices, TFixture)
     {
         // A device that fails to start is reported, the others keep working
 
         Devices[0]->StartError = MakeError(E_IO, "start failed");
 
-        {
-            const auto error = Service->Start().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
-        }
+        Service->Start();
 
         for (const auto& device: Devices) {
             UNIT_ASSERT_VALUES_EQUAL_C(1, device->StartCount, device->Name);
@@ -583,14 +853,121 @@ Y_UNIT_TEST_SUITE(TServiceTest)
             1,
             CriticalEventCount("JournalledDeviceCreationError"));
 
-        {
-            const auto error = Service->Stop().GetValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
-        }
+        Service->Stop();
 
         for (const auto& device: Devices) {
             UNIT_ASSERT_VALUES_EQUAL_C(1, device->StopCount, device->Name);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreJournalsWithLimitedConcurrency, TFixture)
+    {
+        constexpr ui32 DeviceCount = 8;
+        constexpr ui32 RestoreConcurrency = 3;
+
+        auto [service, devices] =
+            CreateDeferredStartService(DeviceCount, RestoreConcurrency);
+
+        auto started = StartInBackground(service);
+
+        //
+        // Wait for the first devices to come up: only RestoreConcurrency of
+        // them restore at once, the rest are held back
+        //
+
+        WaitUntil(
+            "the first devices to start",
+            [&] { return StartedCount(devices) == RestoreConcurrency; });
+
+        UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartingCount(devices));
+        UNIT_ASSERT(!started.HasValue());
+
+        //
+        // Complete the devices one by one: each device that completes lets
+        // exactly one more in
+        //
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            CompleteAnyStart(devices);
+
+            const ui32 completed = i + 1;
+            const ui32 expectedStarted =
+                Min(DeviceCount, completed + RestoreConcurrency);
+
+            WaitUntil(
+                "the next device to start",
+                [&] { return StartedCount(devices) == expectedStarted; });
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStarted - completed,
+                StartingCount(devices),
+                i);
+
+            if (completed != DeviceCount) {
+                UNIT_ASSERT_C(!started.HasValue(), i);
+            }
+        }
+
+        started.GetValueSync();
+        AssertStartedOnce(devices);
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreJournalsOneAtATimeWithZeroConcurrency, TFixture)
+    {
+        //
+        // Treat a zero restore concurrency as one rather than holding every
+        // device back forever
+        //
+
+        constexpr ui32 DeviceCount = 3;
+
+        auto [service, devices] = CreateDeferredStartService(DeviceCount, 0);
+
+        auto started = StartInBackground(service);
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            WaitUntil(
+                "the next device to start",
+                [&] { return StartedCount(devices) == i + 1; });
+
+            UNIT_ASSERT_VALUES_EQUAL_C(1, StartingCount(devices), i);
+            UNIT_ASSERT_C(!started.HasValue(), i);
+
+            CompleteAnyStart(devices);
+        }
+
+        started.GetValueSync();
+        AssertStartedOnce(devices);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportDevicesThatFailToRestore, TFixture)
+    {
+        //
+        // Check that a failed restore does not hold the others back: the next
+        // device is let in and the start completes
+        //
+
+        constexpr ui32 DeviceCount = 3;
+
+        auto [service, devices] = CreateDeferredStartService(DeviceCount, 1);
+        devices[0]->StartError = MakeError(E_IO, "restore failed");
+
+        auto started = StartInBackground(service);
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            WaitUntil(
+                "the next device to start",
+                [&] { return StartedCount(devices) == i + 1; });
+
+            CompleteAnyStart(devices);
+        }
+
+        started.GetValueSync();
+        AssertStartedOnce(devices);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalledDeviceCreationError"));
     }
 }
 

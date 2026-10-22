@@ -175,13 +175,13 @@ public:
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
-    TFuture<NProto::TError> Start() override
+    TFuture<NProto::TError> Start() noexcept override
     {
         return Execute<NProto::TError>([](auto& self)
                                        { return self.DoStart(); });
     }
 
-    TFuture<NProto::TError> Stop() override
+    TFuture<NProto::TError> Stop() noexcept override
     {
         ShouldStop.store(true);
 

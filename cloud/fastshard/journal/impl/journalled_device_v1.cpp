@@ -36,12 +36,12 @@ public:
 
     // IJournalledDevice
 
-    TFuture<NProto::TError> Start() final
+    TFuture<NProto::TError> Start() noexcept final
     {
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Stop() final
+    TFuture<NProto::TError> Stop() noexcept final
     {
         return MakeFuture<NProto::TError>();
     }

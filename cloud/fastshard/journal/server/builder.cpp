@@ -129,14 +129,13 @@ TResultOrError<IJournalledDevicePtr> CreateJournalledDevice(
         std::move(dataStore),
         uuid);
 
-    STORAGE_DEBUG(
+    STORAGE_INFO(
         "Journalled device "
         << uuid.Quote() << " created: journal "
         << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
-        << ", journal data "
-        << FormatByteSize(logDataBlockCount * blockSize) << ", data "
-        << FormatByteSize(dataBlockCount * blockSize) << ", block size "
-        << blockSize);
+        << ", journal data " << FormatByteSize(logDataBlockCount * blockSize)
+        << ", data " << FormatByteSize(dataBlockCount * blockSize)
+        << ", block size " << blockSize);
 
     return journalledDevice;
 }
@@ -149,14 +148,12 @@ TServerBuilder::TServerBuilder(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IDeviceManagerPtr deviceManager,
-    const TNetworkAddress& listenAddress,
-    bool journalEnabled,
+    TServerConfig serverConfig,
     TVector<TJournalledDeviceConfig> deviceConfigs)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , DeviceManager(std::move(deviceManager))
-    , ListenAddress(listenAddress)
-    , JournalEnabled(journalEnabled)
+    , ServerConfig(std::move(serverConfig))
     , DeviceConfigs(std::move(deviceConfigs))
 {}
 
@@ -169,7 +166,9 @@ IStartablePtr TServerBuilder::Build()
     for (const auto& config: DeviceConfigs) {
         const auto& uuid = config.DeviceUUID;
 
-        if (!JournalEnabled && (config.LogMetaSize || config.LogDataSize)) {
+        if (!ServerConfig.JournalEnabled &&
+            (config.LogMetaSize || config.LogDataSize))
+        {
             ReportJournalledDeviceCreationError(
                 TStringBuilder()
                 << "the journal is disabled, but the device " << uuid.Quote()
@@ -183,7 +182,7 @@ IStartablePtr TServerBuilder::Build()
             Logging,
             Executor,
             DeviceManager,
-            JournalEnabled,
+            ServerConfig.JournalEnabled,
             config);
 
         if (HasError(error)) {
@@ -196,18 +195,14 @@ IStartablePtr TServerBuilder::Build()
         devices.emplace_back(std::move(device), config);
     }
 
-    if (devices.empty()) {
-        STORAGE_THROW_SERVICE_ERROR(MakeError(
-            E_NOT_FOUND,
-            TStringBuilder() << "none of the " << DeviceConfigs.size()
-                             << " journalled devices could be created"));
-    }
-
     return CreateServer(
-        ListenAddress,
+        ServerConfig.ListenAddress,
         std::move(Logging),
         std::move(Executor),
-        CreateService(std::move(DeviceManager), std::move(devices)));
+        CreateService(
+            std::move(DeviceManager),
+            std::move(devices),
+            ServerConfig.RestoreConcurrency));
 }
 
 }   // namespace NCloud::NJournalled
