@@ -473,7 +473,6 @@ void TDiskRegistryActor::HandleSecureErase(
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
 
-
     THashMap<TDeviceList::TDeviceId, TDeviceList::TEraseIdempotencyKey>
         eraseIdempotencyKeys;
 
