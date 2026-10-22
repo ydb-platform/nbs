@@ -1,0 +1,188 @@
+#pragma once
+
+#include "public.h"
+
+#include "node_ref.h"
+
+#include <contrib/ydb/library/actors/core/actorid.h>
+
+#include <util/datetime/base.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
+#include <util/generic/vector.h>
+
+#include <memory>
+
+namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * In-memory registry of the clients (identified by the tablet pipe servers
+ * they are connected through) that have read Nodes and NodeRefs and therefore
+ * need to receive FileSystemEvents when those Nodes and NodeRefs change.
+ *
+ * The registrations are kept in two generations: the active one and the
+ * sealed one. New registrations go to the active generation. Once per seal
+ * period the sealed generation is dropped, the active one is sealed and a new
+ * active one is created - this bounds the memory consumption. Lookups consult
+ * both generations.
+ *
+ * Within a generation each client gets an index in the vector of the unique
+ * clients of the generation, and the clients of a Node or a NodeRef are
+ * stored as a paged bitmap of these indices. Each page is a ui64 covering 64
+ * client indices. The first page is stored inline, the other pages are
+ * created on demand - only for the pages that have bits set.
+ *
+ * Extracting the subscribers of a Node or a NodeRef removes it from both
+ * generations: a client that receives an invalidation drops the cached data
+ * and registers again upon the next read.
+ */
+class TFileSystemEventSubscriptions
+{
+private:
+    class TClientMask
+    {
+    private:
+        static constexpr ui32 PageSize = 64;
+
+        struct TPage
+        {
+            ui32 PageNo = 0;
+            ui64 Bits = 0;
+        };
+
+        // Client indices 0..63.
+        ui64 FirstPage = 0;
+        // Client indices >= 64, created on demand.
+        std::unique_ptr<TVector<TPage>> OtherPages;
+
+    public:
+        void Set(ui32 clientIndex);
+
+        template <typename TFunc>
+        void ForEach(TFunc&& func) const;
+
+    private:
+        template <typename TFunc>
+        static void ForEachInPage(ui64 bits, ui32 base, TFunc& func);
+    };
+
+    class TGeneration
+    {
+    private:
+        TVector<NActors::TActorId> Clients;
+        THashMap<NActors::TActorId, ui32> ClientIndices;
+
+        THashMap<ui64, TClientMask> NodeMasks;
+        THashMap<TNodeRefKey, TClientMask, TNodeRefKeyHash> NodeRefMasks;
+
+    public:
+        void AddNode(ui64 nodeId, const NActors::TActorId& pipeServerId);
+        void AddNodeRef(
+            const TNodeRefKey& key,
+            const NActors::TActorId& pipeServerId);
+
+        void ExtractNode(ui64 nodeId, THashSet<NActors::TActorId>& out);
+        void ExtractNodeRef(
+            const TNodeRefKey& key,
+            THashSet<NActors::TActorId>& out);
+
+        ui64 GetClientCount() const;
+        ui64 GetNodeCount() const;
+        ui64 GetNodeRefCount() const;
+
+    private:
+        ui32 GetClientIndex(const NActors::TActorId& pipeServerId);
+        void CollectClients(
+            const TClientMask& mask,
+            THashSet<NActors::TActorId>& out) const;
+    };
+
+    const TDuration SealPeriod;
+
+    TGeneration Active;
+    TGeneration Sealed;
+    TInstant LastSealTs;
+
+public:
+    /**
+     * @param sealPeriod - How often the active generation is sealed and the
+     * sealed one is dropped. Should be greater than the client-side cache
+     * timeouts: a registration lives between one and two seal periods.
+     */
+    explicit TFileSystemEventSubscriptions(TDuration sealPeriod);
+
+    /**
+     * Registers a client as a reader of a Node.
+     *
+     * @param nodeId - Node identifier.
+     * @param pipeServerId - Pipe server the client is connected through.
+     * @param now - Current time, used for the generation rotation.
+     */
+    void AddNodeSubscriber(
+        ui64 nodeId,
+        const NActors::TActorId& pipeServerId,
+        TInstant now);
+
+    /**
+     * Registers a client as a reader of a NodeRef.
+     *
+     * @param parentNodeId - Parent directory identifier.
+     * @param name - Entry name.
+     * @param pipeServerId - Pipe server the client is connected through.
+     * @param now - Current time, used for the generation rotation.
+     */
+    void AddNodeRefSubscriber(
+        ui64 parentNodeId,
+        const TString& name,
+        const NActors::TActorId& pipeServerId,
+        TInstant now);
+
+    /**
+     * Extracts the clients to be notified about a Node change and removes the
+     * Node from both generations.
+     *
+     * @param nodeId - Node identifier.
+     * @param now - Current time, used for the generation rotation.
+     * @return - Pipe servers of the clients, without duplicates.
+     */
+    TVector<NActors::TActorId> ExtractNodeSubscribers(
+        ui64 nodeId,
+        TInstant now);
+
+    /**
+     * Extracts the clients to be notified about a NodeRef change and removes
+     * the NodeRef from both generations.
+     *
+     * @param parentNodeId - Parent directory identifier.
+     * @param name - Entry name.
+     * @param now - Current time, used for the generation rotation.
+     * @return - Pipe servers of the clients, without duplicates.
+     */
+    TVector<NActors::TActorId> ExtractNodeRefSubscribers(
+        ui64 parentNodeId,
+        const TString& name,
+        TInstant now);
+
+    /**
+     * @return - The number of the Nodes registered in both generations.
+     */
+    ui64 GetNodeCount() const;
+
+    /**
+     * @return - The number of the NodeRefs registered in both generations.
+     */
+    ui64 GetNodeRefCount() const;
+
+    /**
+     * @return - The number of the unique clients of both generations (a
+     * client present in both generations is counted twice).
+     */
+    ui64 GetClientCount() const;
+
+private:
+    void SealIfNeeded(TInstant now);
+};
+
+}   // namespace NCloud::NFileStore::NStorage
