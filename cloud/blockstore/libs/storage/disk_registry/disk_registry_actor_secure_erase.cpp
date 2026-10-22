@@ -1,544 +1,335 @@
-#include "disk_registry_actor.h"
+#include "service_actor.h"
 
-#include <cloud/blockstore/libs/kikimr/events.h>
-#include <cloud/blockstore/libs/storage/api/disk_agent.h>
-#include <cloud/blockstore/libs/storage/disk_registry/model/device_list.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/volume_model.h>
+#include <cloud/blockstore/libs/storage/core/probes.h>
 
-#include <cloud/storage/core/libs/common/format.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/core/log.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-using namespace NKikimr::NTabletFlatExecutor;
+LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER)
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxDeviceCountToPrintInLog = 100;
-
-TString MakeDevicesNamesString(const TVector<NProto::TDeviceConfig>& devices)
+NKikimrBlockStore::TVolumeConfig ConvertToVolumeConfig(
+    const NProto::TCreateVolumeFromDevicesRequest& inRequest)
 {
-    TStringBuilder sb;
-    sb << "[";
+    NKikimrBlockStore::TVolumeConfig volumeConfig;
+    volumeConfig.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    volumeConfig.SetDiskId(inRequest.GetDiskId());
+    volumeConfig.SetProjectId(inRequest.GetProjectId());
+    volumeConfig.SetFolderId(inRequest.GetFolderId());
+    volumeConfig.SetCloudId(inRequest.GetCloudId());
+    volumeConfig.SetBlockSize(inRequest.GetBlockSize());
+    return volumeConfig;
+}
 
-    size_t count = 0;
-    for (const auto& device: devices) {
-        if (count++ >= MaxDeviceCountToPrintInLog) {
-            sb << "...";
-            break;
-        }
-        if (count > 1) {
-            sb << ", ";
-        }
-        sb << device.GetDeviceUUID();
+std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
+    const NProto::TCreateVolumeFromDevicesRequest& inRequest)
+{
+    auto outRequest = std::make_unique<
+        TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
+
+    for (const auto& deviceUUID: inRequest.GetDeviceUUIDs()) {
+        outRequest->Record.MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
     }
 
-    sb << "](" << devices.size() << ")";
-    return sb;
+    *outRequest->Record.MutableVolumeConfig() =
+        ConvertToVolumeConfig(inRequest);
+
+    return outRequest;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSecureEraseActor final
-    : public TActorBootstrapped<TSecureEraseActor>
+class TCreateDiskFromDevicesActor final
+    : public TActorBootstrapped<TCreateDiskFromDevicesActor>
 {
 private:
-    using TDeviceId = TDeviceList::TDeviceId;
-    using TEraseIdempotencyKey = TDeviceList::TEraseIdempotencyKey;
+    const TRequestInfoPtr RequestInfo;
+    const TStorageConfigConstPtr Config;
+    const TString Input;
 
-    const TChildLogTitle LogTitle;
-    const TActorId Owner;
-    const ui32 Generation;
-    const TRequestInfoPtr Request;
-    const TDuration RequestTimeout;
-
-    const TString PoolName;
-    TVector<NProto::TDeviceConfig> Devices;
-    const THashMap<TDeviceId, TEraseIdempotencyKey> EraseIdempotencyKeys;
-    TVector<TString> CleanDevices;
-
-    int PendingRequests = 0;
+    NProto::TCreateVolumeFromDevicesRequest Request;
+    ui64 BlockCount = 0;
 
 public:
-    TSecureEraseActor(
-        const TLogTitle& logTitle,
-        const TActorId& owner,
-        ui32 generation,
-        TRequestInfoPtr request,
-        TDuration requestTimeout,
-        TString poolName,
-        TVector<NProto::TDeviceConfig> devicesToClean,
-        THashMap<TDeviceId, TEraseIdempotencyKey> eraseIdempotencyKeys);
+    TCreateDiskFromDevicesActor(
+        TRequestInfoPtr requestInfo,
+        TStorageConfigConstPtr config,
+        TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReplyAndDie(const TActorContext& ctx, NProto::TError error = {});
-    void CleanupDevices(const TActorContext& ctx);
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error);
 
 private:
-    STFUNC(StateErase);
-    STFUNC(StateCleanup);
+    STFUNC(StateWork);
 
-    void HandleSecureEraseDeviceResponse(
-        const TEvDiskAgent::TEvSecureEraseDeviceResponse::TPtr& ev,
+    void HandleCreateDiskFromDevicesResponse(
+        const TEvDiskRegistry::TEvCreateDiskFromDevicesResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleCleanupDevicesResponse(
-        const TEvDiskRegistryPrivate::TEvCleanupDevicesResponse::TPtr& ev,
+    void HandleDescribeVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleSecureEraseDeviceUndelivery(
-        const TEvDiskAgent::TEvSecureEraseDeviceRequest::TPtr& ev,
+    void HandleCreateVolumeResponse(
+        const TEvSSProxy::TEvCreateVolumeResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleTimeout(
-        const TEvents::TEvWakeup::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
+    void HandleReallocateDiskResponse(
+        const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TSecureEraseActor::TSecureEraseActor(
-        const TLogTitle& logTitle,
-        const TActorId& owner,
-        ui32 generation,
-        TRequestInfoPtr request,
-        TDuration requestTimeout,
-        TString poolName,
-        TVector<NProto::TDeviceConfig> devicesToClean,
-        THashMap<TDeviceId, TEraseIdempotencyKey> eraseIdempotencyKeys)
-    : LogTitle(logTitle.GetChildWithTags(
-          GetCycleCount(),
-          {{"pool", TStringBuf(poolName)}}))
-    , Owner(owner)
-    , Generation(generation)
-    , Request(std::move(request))
-    , RequestTimeout(requestTimeout)
-    , PoolName(std::move(poolName))
-    , Devices(std::move(devicesToClean))
-    , EraseIdempotencyKeys(std::move(eraseIdempotencyKeys))
+TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
+        TRequestInfoPtr requestInfo,
+        TStorageConfigConstPtr config,
+        TString input)
+    : RequestInfo(std::move(requestInfo))
+    , Config(std::move(config))
+    , Input(std::move(input))
 {}
 
-void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
+void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::StateErase);
-
-    Y_DEBUG_ABORT_UNLESS(EraseIdempotencyKeys.size() == Devices.size());
-
-    for (ui64 i = 0; i != Devices.size(); ++i) {
-        auto& device = Devices[i];
-
-        auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
-        request->Record.SetDeviceUUID(device.GetDeviceUUID());
-        request->Record.SetGeneration(Generation);
-        if (const auto* key =
-                EraseIdempotencyKeys.FindPtr(device.GetDeviceUUID()))
-        {
-            request->Record.SetIdempotencyKey(*key);
-        }
-
-        auto event = std::make_unique<IEventHandle>(
-            MakeDiskAgentServiceId(device.GetNodeId()),
-            ctx.SelfID,
-            request.release(),
-            IEventHandle::FlagForwardOnNondelivery,   // flags
-            i,                                        // cookie
-            &ctx.SelfID                               // forwardOnNondelivery
-        );
-
-        ctx.Send(event.release());
-
-        ++PendingRequests;
+    if (auto status =
+        google::protobuf::util::JsonStringToMessage(Input, &Request);
+            !status.ok())
+    {
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, TStringBuilder()
+            << "Failed to parse input: " << status.ToString()));
+        return;
     }
 
-    if (RequestTimeout && RequestTimeout != TDuration::Max()) {
-        ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
+    if (!Request.GetDiskId()) {
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId cannot be empty"));
+        return;
     }
+
+    if (!Request.GetBlockSize()) {
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "BlockSize cannot be zero"));
+        return;
+    }
+
+    if (Request.GetDeviceUUIDs().size() == 0) {
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DeviceUUIDs cannot be empty"));
+        return;
+    }
+
+    Become(&TThis::StateWork);
+
+    ctx.Send(
+        MakeDiskRegistryProxyServiceId(),
+        CreateRequest(Request).release());
 }
 
-void TSecureEraseActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TCreateDiskFromDevicesActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
-        std::move(error),
-        PoolName,
-        std::move(CleanDevices));
-    NCloud::Reply(ctx, *Request, std::move(response));
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
-    NCloud::Send(
-        ctx,
-        Owner,
-        std::make_unique<TEvDiskRegistryPrivate::TEvOperationCompleted>());
+    LWTRACK(
+        ResponseSent_Service,
+        RequestInfo->CallContext->LWOrbit,
+        "ExecuteAction_creatediskfromdevices",
+        RequestInfo->CallContext->RequestId);
 
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
 
-void TSecureEraseActor::CleanupDevices(const TActorContext& ctx)
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TCreateDiskFromDevicesActor::StateWork)
 {
-    Become(&TThis::StateCleanup);
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvDiskRegistry::TEvCreateDiskFromDevicesResponse,
+            HandleCreateDiskFromDevicesResponse);
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>(
-        CleanDevices);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
-    NCloud::Send(ctx, Owner, std::move(request));
-}
+        HFunc(
+            TEvSSProxy::TEvCreateVolumeResponse,
+            HandleCreateVolumeResponse);
 
-void TSecureEraseActor::HandleTimeout(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
+        HFunc(
+            TEvVolume::TEvReallocateDiskResponse,
+            HandleReallocateDiskResponse);
 
-    LOG_WARN(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "%s Secure erase request timed out",
-        LogTitle.GetWithTime().c_str());
-
-    if (CleanDevices) {
-        CleanupDevices(ctx);
-    } else {
-        ReplyAndDie(ctx);
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 
-void TSecureEraseActor::HandleSecureEraseDeviceUndelivery(
-    const TEvDiskAgent::TEvSecureEraseDeviceRequest::TPtr& ev,
+void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
+    const TEvDiskRegistry::TEvCreateDiskFromDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(PendingRequests > 0);
-
-    const auto index = ev->Cookie;
-    auto& device = Devices[index];
-
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "%s Undelivered secure erase request for %s",
-        LogTitle.GetWithTime().c_str(),
-        device.GetDeviceUUID().Quote().c_str());
-
-    if (--PendingRequests != 0) {
-        return;
-    }
-
-    if (CleanDevices) {
-        CleanupDevices(ctx);
-    } else {
-        ReplyAndDie(ctx);
-    }
-}
-
-void TSecureEraseActor::HandleSecureEraseDeviceResponse(
-    const TEvDiskAgent::TEvSecureEraseDeviceResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_ABORT_UNLESS(PendingRequests > 0);
-
     const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+    auto volumeConfig = ConvertToVolumeConfig(Request);
 
-    const auto index = ev->Cookie;
-    auto& device = Devices[index];
+    if (HasError(error)) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Creation of disk "
+            << volumeConfig.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
 
-    if (!HasError(msg->GetError())) {
-        CleanDevices.push_back(device.GetDeviceUUID());
-    } else {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Secure erase device %s failed: %s ",
-            LogTitle.GetWithTime().c_str(),
-            device.GetDeviceUUID().Quote().c_str(),
-            FormatError(msg->GetError()).c_str());
-    }
-
-    if (--PendingRequests != 0) {
+        ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    if (CleanDevices) {
-        CleanupDevices(ctx);
-    } else {
-        ReplyAndDie(ctx);
-    }
+    BlockCount = msg->Record.GetBlockCount();
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Sending describe request for volume " << Request.GetDiskId().Quote());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId(),
+            true));
 }
 
-void TSecureEraseActor::HandleCleanupDevicesResponse(
-    const TEvDiskRegistryPrivate::TEvCleanupDevicesResponse::TPtr& ev,
+void TCreateDiskFromDevicesActor::HandleDescribeVolumeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
 
-    ReplyAndDie(ctx);
+    if (!HasError(error)) {
+        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+            "Sending reallocate request for volume "
+            << Request.GetDiskId().Quote());
+
+        auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId(Request.GetDiskId());
+
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+        return;
+    }
+
+    const bool volumeExists =
+        error.GetCode() != E_NOT_FOUND &&
+        error.GetCode() != MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
+
+    if (volumeExists) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Describe of volume "
+            << Request.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
+
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    auto volumeConfig = ConvertToVolumeConfig(Request);
+
+    TVolumeParams volumeParams {
+        .BlockSize = volumeConfig.GetBlockSize(),
+        .BlocksCountPerPartition = BlockCount,
+        .PartitionsCount = 1,
+        .MediaKind = static_cast<NProto::EStorageMediaKind>(
+            volumeConfig.GetStorageMediaKind()),
+        .IsSystem = volumeConfig.GetIsSystem()
+    };
+
+    ResizeVolume(*Config, volumeParams, {}, {}, volumeConfig);
+
+    volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
+
+    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+        "Sending createvolume request for volume "
+        << volumeConfig.GetDiskId().Quote());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(volumeConfig),
+        RequestInfo->Cookie);
 }
 
-void TSecureEraseActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
+void TCreateDiskFromDevicesActor::HandleReallocateDiskResponse(
+    const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Reallocation of volume "
+            << Request.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
+    }
+
+    ReplyAndDie(ctx, error);
 }
 
-STFUNC(TSecureEraseActor::StateErase)
+void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(
+    const TEvSSProxy::TEvCreateVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
 {
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvWakeup, HandleTimeout);
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
 
-        HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDeviceUndelivery);
-        HFunc(TEvDiskAgent::TEvSecureEraseDeviceResponse, HandleSecureEraseDeviceResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::DISK_REGISTRY_WORKER,
-                __PRETTY_FUNCTION__);
-            break;
+    if (HasError(error)) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Creation of disk "
+            << Request.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
     }
-}
 
-STFUNC(TSecureEraseActor::StateCleanup)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        IgnoreFunc(TEvents::TEvWakeup);
-
-        IgnoreFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest);
-        IgnoreFunc(TEvDiskAgent::TEvSecureEraseDeviceResponse);
-
-        HFunc(TEvDiskRegistryPrivate::TEvCleanupDevicesResponse, HandleCleanupDevicesResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::DISK_REGISTRY_WORKER,
-                __PRETTY_FUNCTION__);
-            break;
-    }
+    ReplyAndDie(ctx, error);
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TDiskRegistryActor::PrepareCleanupDevices(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TCleanupDevices& args)
+TResultOrError<IActorPtr> TServiceActor::CreateCreateDiskFromDevicesActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
-
-    return true;
-}
-
-void TDiskRegistryActor::ExecuteCleanupDevices(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TCleanupDevices& args)
-{
-    TDiskRegistryDatabase db(tx.DB);
-    args.SyncDeallocatedDisks =
-        State->MarkDevicesAsClean(ctx.Now(), db, args.Devices);
-}
-
-void TDiskRegistryActor::CompleteCleanupDevices(
-    const TActorContext& ctx,
-    TTxDiskRegistry::TCleanupDevices& args)
-{
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesResponse>();
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    for (const auto& diskId: args.SyncDeallocatedDisks) {
-        ReplyToPendingDeallocations(ctx, diskId);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
-{
-    auto dirtyDevices = State->GetDirtyDevices();
-    EraseIf(
-        dirtyDevices,
-        [this](const NProto::TDeviceConfig& device)
-        { return !State->CanSecureErase(device); });
-
-    if (!dirtyDevices) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "%s Nothing to erase",
-            LogTitle.GetWithTime().c_str());
-
-        return;
-    }
-
-    const auto countBeforeFiltration = dirtyDevices.size();
-
-    dirtyDevices = FilterDevices(
-        dirtyDevices,
-        Config->GetMaxDevicesToErasePerDeviceNameForDefaultPoolKind(),
-        Config->GetMaxDevicesToErasePerDeviceNameForLocalPoolKind(),
-        Config->GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind());
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Filtered dirty devices: %lu -> %lu",
-        LogTitle.GetWithTime().c_str(),
-        countBeforeFiltration,
-        dirtyDevices.size());
-
-    auto it = dirtyDevices.begin();
-    while (it != dirtyDevices.end()) {
-        auto first = it;
-        const auto poolName = first->GetPoolName();
-        it = std::partition(
-            first,
-            dirtyDevices.end(),
-            [&poolName](const auto& device)
-            { return poolName == device.GetPoolName(); });
-
-        auto [_, alreadyInProgress] =
-            SecureEraseInProgressPerPool.insert(poolName);
-        if (!alreadyInProgress) {
-            continue;
-        }
-
-        auto request =
-            std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
-                poolName,
-                TVector<NProto::TDeviceConfig>(
-                    std::make_move_iterator(first),
-                    std::make_move_iterator(it)),
-                Config->GetNonReplicatedSecureEraseTimeout());
-
-        auto deadline =
-            Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
-
-        if (deadline > ctx.Now() || Config->GetCoolDownTimeoutBeforeSecureErase()) {
-            deadline =
-                Max(deadline,
-                    ctx.Now() + Config->GetCoolDownTimeoutBeforeSecureErase());
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::DISK_REGISTRY,
-                "%s Scheduled secure erase for pool: %s, devices: %s, after: %s",
-                LogTitle.GetWithTime().c_str(),
-                poolName.Quote().c_str(),
-                MakeDevicesNamesString(request->DirtyDevices).c_str(),
-                FormatDuration(deadline - ctx.Now()).c_str());
-
-            ctx.Schedule(
-                deadline,
-                std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
-        } else {
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::DISK_REGISTRY,
-                "%s Sending secure erase request for pool: %s, devices: %s",
-                LogTitle.GetWithTime().c_str(),
-                poolName.Quote().c_str(),
-                MakeDevicesNamesString(request->DirtyDevices).c_str());
-
-            NCloud::Send(ctx, ctx.SelfID, std::move(request));
-        }
-    }
-}
-
-void TDiskRegistryActor::HandleSecureErase(
-    const TEvDiskRegistryPrivate::TEvSecureEraseRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    BLOCKSTORE_DISK_REGISTRY_COUNTER(SecureErase);
-
-    SecureEraseStartTs = ctx.Now();
-
-    auto* msg = ev->Get();
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received SecureErase request. DirtyDevices: %s",
-        LogTitle.GetWithTime().c_str(),
-        MakeDevicesNamesString(msg->DirtyDevices).c_str());
-
-    THashMap<TDeviceList::TDeviceId, TDeviceList::TEraseIdempotencyKey>
-        eraseIdempotencyKeys;
-
-    for (const auto& device: msg->DirtyDevices) {
-        const auto& deviceId = device.GetDeviceUUID();
-        DeviceEraseStartTs[deviceId] = ctx.Now();
-        eraseIdempotencyKeys.emplace(
-            deviceId,
-            State->GetEraseIdempotencyKey(deviceId));
-    }
-
-    auto actor = NCloud::Register<TSecureEraseActor>(
-        ctx,
-        LogTitle,
-        ctx.SelfID,
-        Executor()->Generation(),
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        msg->RequestTimeout,
-        msg->PoolName,
-        std::move(msg->DirtyDevices),
-        std::move(eraseIdempotencyKeys));
-    Actors.insert(actor);
-}
-
-void TDiskRegistryActor::HandleSecureEraseResponse(
-    const TEvDiskRegistryPrivate::TEvSecureEraseResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received SecureErase response: CleanDevices=%lu",
-        LogTitle.GetWithTime().c_str(),
-        msg->CleanDevices.size());
-
-    SecureEraseInProgressPerPool.erase(msg->PoolName);
-    for (const auto& uuid: msg->CleanDevices) {
-        DeviceEraseStartTs.erase(uuid);
-    }
-    SecureErase(ctx);
-}
-
-void TDiskRegistryActor::HandleCleanupDevices(
-    const TEvDiskRegistryPrivate::TEvCleanupDevicesRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_REGISTRY,
-        "%s Received CleanupDevices request: Devices=[%s] %s",
-        LogTitle.GetWithTime().c_str(),
-        JoinStrings(msg->Devices, ", ").c_str(),
-        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
-
-    ExecuteTx<TCleanupDevices>(
-        ctx,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext
-        ),
-        msg->Devices);
+    return {std::make_unique<TCreateDiskFromDevicesActor>(
+        std::move(requestInfo),
+        Config,
+        std::move(input))};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
