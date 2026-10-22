@@ -30,3 +30,9 @@ message DeleteDiskFromCellRequest {
     bool Sync = 2;
     string CleanupId = 3;
 }
+
+message FinishLegacyDiskCleanupRequest {
+    string DiskId = 1;
+    string LegacyTaskId = 2;
+    string CleanupId = 3;
+}

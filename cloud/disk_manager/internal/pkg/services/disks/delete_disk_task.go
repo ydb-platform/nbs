@@ -2,6 +2,7 @@ package disks
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -20,9 +21,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const legacyDiskCleanupPrefix = "legacy_disk_cleanup_"
 
 type deleteDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
@@ -120,14 +124,14 @@ func (t *deleteDiskTask) deleteDisk(
 		return t.scheduleDiskCleanup(ctx, execCtx)
 	}
 
-	if diskMeta == nil && !t.request.BackgroundCleanup {
-		// Disabling the feature preserves legacy single-cell deletion, but a
-		// repeated request must not interfere with an existing background cleanup.
-		pending, err := t.storage.IsDiskCleanupInProgress(ctx, diskID)
+	legacyCleanupID := ""
+	if diskMeta == nil {
+		legacyCleanupID = legacyDiskCleanupPrefix + selfTaskID
+		prepared, err := t.storage.PrepareLegacyDiskCleanup(ctx, diskID, legacyCleanupID)
 		if err != nil {
 			return err
 		}
-		if pending {
+		if !prepared {
 			return nil
 		}
 	}
@@ -141,6 +145,12 @@ func (t *deleteDiskTask) deleteDisk(
 	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
 	if err != nil {
 		return err
+	}
+
+	if legacyCleanupID != "" {
+		return execCtx.FinishWithPreparation(ctx, func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, legacyCleanupID)
+		})
 	}
 
 	// Only overlay disks (created from image) should be released.
@@ -185,6 +195,26 @@ func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.
 		}
 		t.state.CleanupPrepared = true
 		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	reservedIDs, err := t.storage.GetDiskCleanupIDs(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+	for _, id := range reservedIDs {
+		if !strings.HasPrefix(id, legacyDiskCleanupPrefix) {
+			continue
+		}
+		legacyTaskID := strings.TrimPrefix(id, legacyDiskCleanupPrefix)
+		if legacyTaskID == "" {
+			return errors.NewNonRetriableErrorf("empty legacy task ID in disk cleanup reservation")
+		}
+		_, err = t.scheduler.ScheduleNonCancellableTask(
+			headers.SetIncomingIdempotencyKey(ctx, id+"_finish"), "disks.FinishLegacyDiskCleanup", "", "",
+			&protos.FinishLegacyDiskCleanupRequest{DiskId: t.request.Disk.DiskId, LegacyTaskId: legacyTaskID, CleanupId: id},
+		)
 		if err != nil {
 			return err
 		}

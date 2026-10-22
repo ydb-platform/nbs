@@ -634,3 +634,13 @@ func (s *StorageMock) DeleteDiskIfExists(
 	args := s.Called(ctx, diskID, taskID, deletingAt)
 	return args.Get(0).(*resources.DiskMeta), args.Error(1)
 }
+
+func (s *StorageMock) PrepareLegacyDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error) {
+	args := s.Called(ctx, diskID, cleanupID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) GetDiskCleanupIDs(ctx context.Context, diskID string) ([]string, error) {
+	args := s.Called(ctx, diskID)
+	return args.Get(0).([]string), args.Error(1)
+}
