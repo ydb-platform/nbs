@@ -56,6 +56,7 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
     const TFlushBatchLimits FlushBatchLimits;
+    const bool HandlelessIoEnabled;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -101,7 +102,8 @@ public:
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
         INodeStateHolderStatsPtr nodeStateHolderStats,
         const TFlushBatchLimits& flushBatchLimits,
-        TString logTag);
+        TString logTag,
+        bool handlelessIoEnabled);
 
     // Reads state from the persistent storage and schedules node flush
     NProto::TError Init();

@@ -161,6 +161,7 @@ struct TBootstrapArgs
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = true;
+    bool HandlelessIoEnabled = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     bool LogDataOperations = true;
 
@@ -205,6 +206,7 @@ struct TBootstrap
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = false;
+    bool HandlelessIoEnabled = false;
     bool DisableExpectedDataValidation = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     size_t ThreadCount = 0;
@@ -224,6 +226,7 @@ struct TBootstrap
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
         , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
+        , HandlelessIoEnabled(args.HandlelessIoEnabled)
         , CacheCapacityBytes(args.CacheCapacityBytes)
         , ThreadCount(args.ThreadCount)
     {
@@ -329,7 +332,8 @@ struct TBootstrap
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
-             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled},
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled,
+             .HandlelessIoEnabled = HandlelessIoEnabled},
             ThreadCount);
 
         ModuleStats = Cache.CreateModuleStats();
@@ -2301,6 +2305,97 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldUseHandlelessIoForCacheFlushes)
+    {
+        for (bool handlelessIoEnabled: {false, true}) {
+            TBootstrap b({.HandlelessIoEnabled = handlelessIoEnabled});
+            TVector<ui64> handles;
+            auto handler = std::move(b.Session->WriteDataHandler);
+            b.Session->WriteDataHandler = [&](auto context, auto request)
+            {
+                UNIT_ASSERT(request->GetHeaders().GetFromWriteBackCache());
+                UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+                handles.push_back(request->GetHandle());
+                return handler(std::move(context), std::move(request));
+            };
+
+            b.WriteToCacheSync(1, 101, 0, "abc");
+            b.FlushCache(1);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, handles.size());
+            UNIT_ASSERT_VALUES_EQUAL(handlelessIoEnabled ? 0 : 101, handles[0]);
+            UNIT_ASSERT_VALUES_EQUAL("abc", b.FlushedData.ReadAll(1));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRetryHandlelessCacheFlushAfterHandleReleaseAndRestart)
+    {
+        TBootstrap b({.HandlelessIoEnabled = true});
+        ui32 attempts = 0;
+        bool failWrites = true;
+        auto handler = std::move(b.Session->WriteDataHandler);
+        b.Session->WriteDataHandler = [&](auto context, auto request)
+        {
+            UNIT_ASSERT(request->GetHeaders().GetFromWriteBackCache());
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetHandle());
+            ++attempts;
+            if (failWrites) {
+                NProto::TWriteDataResponse response;
+                response.MutableError()->SetCode(E_REJECTED);
+                return MakeFuture(std::move(response));
+            }
+            return handler(std::move(context), std::move(request));
+        };
+
+        b.WriteToCacheSync(1, 101, 0, "abc");
+        auto release = b.Cache.ReleaseHandle(1, 101);
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT(HasError(release.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(1, attempts);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+
+        // The restored data has no live handles and must still be retried.
+        b.RecreateCache();
+        auto flush = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(flush.HasValue());
+        UNIT_ASSERT(HasError(flush.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(2, attempts);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        failWrites = false;
+        b.Timer->Sleep(FlushRetryPeriod);
+        b.RunAllScheduledTasks();
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, attempts);
+        UNIT_ASSERT_VALUES_EQUAL("abc", b.FlushedData.ReadAll(1));
+    }
+
+    Y_UNIT_TEST(ShouldDropHandlelessCacheWritesForDeletedNode)
+    {
+        TBootstrap b({.HandlelessIoEnabled = true});
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetHandle());
+            NProto::TWriteDataResponse response;
+            response.MutableError()->SetCode(E_FS_NOENT);
+            return MakeFuture(std::move(response));
+        };
+
+        b.WriteToCacheSync(1, 101, 0, "abc");
+        auto release = b.Cache.ReleaseHandle(1, 101);
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, release.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        auto drain = b.Cache.Drain();
+        UNIT_ASSERT(drain.HasValue());
+        UNIT_ASSERT(!HasError(drain.GetValue()));
     }
 
     Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)

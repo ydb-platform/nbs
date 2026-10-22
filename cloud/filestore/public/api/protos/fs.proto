@@ -73,6 +73,7 @@ message TFileStoreFeatures
     uint32 AsyncHandleOperationBatchSize = 55;
     uint32 XAttrCacheLimit = 56;
     bool EnableRdmaForWrites = 57;
+    bool ServerWriteBackCacheHandlelessIoEnabled = 58;
 }
 
 message TFileStore

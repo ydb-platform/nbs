@@ -8316,6 +8316,47 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 
+    Y_UNIT_TEST(ShouldHandleServerWriteBackCacheHandlelessIoEnabledFeature)
+    {
+        for (bool enabled: {false, true}) {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheHandlelessIoEnabled(enabled);
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features,
+                /* handleOpsQueueSize = */ 0,
+                /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
+
+            const ui64 nodeId = 123;
+            const ui64 handleId = 456;
+            std::atomic<ui64> writes = 0;
+            bootstrap.Service->WriteDataHandler = [&](auto, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, request->GetNodeId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 0 : handleId, request->GetHandle());
+                UNIT_ASSERT(request->GetHeaders().GetFromWriteBackCache());
+                ++writes;
+                return MakeFuture<NProto::TWriteDataResponse>({});
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+                nodeId, handleId, 0, "abc");
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+            auto flush =
+                bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+            UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(1, writes.load());
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleServerWriteBackCacheFlushWritesInParallelEnabledFeature)
     {
         // Sends 3 WriteData requests to WriteBackCache: [0, 3), [6, 9), [3, 6)

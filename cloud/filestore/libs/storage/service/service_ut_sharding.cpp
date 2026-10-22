@@ -1777,6 +1777,68 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
     }
 
+    SERVICE_TEST(ShouldRouteHandlelessWritesFromWriteBackCache)
+    {
+        config.SetAllowHandlelessIO(false);
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(128_KB);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file",
+            TCreateHandleArgs::CREATE)->Record;
+
+        const auto nodeId = createHandleResponse.GetNodeAttr().GetId();
+        const auto handle = createHandleResponse.GetHandle();
+        UNIT_ASSERT(ExtractShardNo(nodeId) != 0);
+
+        for (const ui32 size: TVector<ui32>{16, 256_KB, 256_KB + 1}) {
+            const auto data = GenerateValidateData(size);
+            auto request = service.CreateWriteDataRequest(
+                headers,
+                fsConfig.FsId,
+                nodeId,
+                0,
+                0,
+                data);
+            request->Record.MutableHeaders()->SetFromWriteBackCache(true);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvWriteDataResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                data,
+                service
+                    .ReadData(headers, fsConfig.FsId, nodeId, handle, 0, size)
+                    ->Record.GetBuffer());
+        }
+
+        UNIT_ASSERT(env.GetRuntime().GetCounter(
+            TEvIndexTablet::EvGenerateBlobIdsRequest));
+
+        UNIT_ASSERT(env.GetRuntime().GetCounter(
+            config.GetAddingUnconfirmedDataEnabled()
+                ? TEvIndexTablet::EvConfirmAddDataRequest
+                : TEvIndexTablet::EvAddDataRequest));
+    }
+
+    SERVICE_TEST(ShouldRouteHandlelessWritesFromWriteBackCacheWithUnconfirmedData)
+    {
+        config.SetAddingUnconfirmedDataEnabled(true);
+        TestImplShouldRouteHandlelessWritesFromWriteBackCache(std::move(config));
+    }
+
     SERVICE_TEST(ShouldReturnRetriableErrorForUnknownShardNo)
     {
         TShardedFileSystemConfig fsConfig;

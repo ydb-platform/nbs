@@ -76,6 +76,7 @@ private:
     const IWriteDataRequestBuilderPtr RequestBuilder;
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const TFlushConfig FlushConfig;
+    const bool HandlelessIoEnabled;
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
@@ -102,6 +103,7 @@ public:
         , FlushConfig(
               {.AutomaticFlushPeriod = args.AutomaticFlushPeriod,
                .FlushRetryPeriod = args.FlushRetryPeriod})
+        , HandlelessIoEnabled(args.HandlelessIoEnabled)
         , Log(std::move(args.Log))
         , LogTag(Sprintf(
               "[f:%s][c:%s]",
@@ -122,7 +124,8 @@ public:
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
-              LogTag)
+              LogTag,
+              HandlelessIoEnabled)
     {}
 
     // This method should be called outside TImpl constructor because
@@ -542,11 +545,11 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
-        // TODO(#6201): until handleless IO is implemented, flush needs a live
-        // handle to execute WriteData requests
-        auto handle = State.GetLiveHandle(flushState->GetNodeId());
+        auto handle = HandlelessIoEnabled
+                          ? NProto::E_INVALID_HANDLE
+                          : State.GetLiveHandle(flushState->GetNodeId());
 
-        if (handle == NProto::E_INVALID_HANDLE) {
+        if (!HandlelessIoEnabled && handle == NProto::E_INVALID_HANDLE) {
             // This may happen in the following cases:
             // - Flush has been requested while there are no live handles
             //   remaining;
@@ -586,6 +589,7 @@ private:
                 request->GetBufferOffset();
 
             request->SetHandle(handle);
+            request->MutableHeaders()->SetFromWriteBackCache(true);
 
             auto callback = [ptr = weak_from_this(), flushState, i](
                                 const auto& future) mutable

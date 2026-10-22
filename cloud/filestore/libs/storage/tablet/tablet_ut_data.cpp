@@ -9491,6 +9491,66 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldPerformHandlelessIoFromWriteBackCache)
+    {
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // Unmarked writes still require a valid handle
+        tablet.SendRequest(tablet.CreateWriteDataRequest(0, 0, 16, 'a', id));
+        UNIT_ASSERT(HasError(tablet.RecvWriteDataResponse()->GetError()));
+
+        // Both fresh data and blob writes accept requests from TWriteBackCache
+        // without handles
+        for (const ui32 size: TVector<ui32>{16, 256_KB, 256_KB + 1}) {
+            auto request = tablet.CreateWriteDataRequest(0, 0, size, 'b', id);
+            request->Record.MutableHeaders()->SetFromWriteBackCache(true);
+            tablet.SendRequest(std::move(request));
+
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString(size, 'b'),
+                tablet.ReadData(handle, 0, size)->Record.GetBuffer());
+        }
+
+        // The marker does not bypass validation of a supplied handle
+        {
+            auto request =
+                tablet.CreateWriteDataRequest(handle + 1000, 0, 16, 'c', id);
+            request->Record.MutableHeaders()->SetFromWriteBackCache(true);
+            tablet.SendRequest(std::move(request));
+
+            UNIT_ASSERT(HasError(tablet.RecvWriteDataResponse()->GetError()));
+        }
+
+        // Missing or nonexistent nodes fail cleanly in handleless mode.
+        for (const ui64 nodeId: {InvalidNodeId, id + 1000}) {
+            auto request = tablet.CreateWriteDataRequest(0, 0, 16, 'c', nodeId);
+            request->Record.MutableHeaders()->SetFromWriteBackCache(true);
+            tablet.SendRequest(std::move(request));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOENT,
+                tablet.RecvWriteDataResponse()->GetError().GetCode());
+        }
+    }
+
     TABLET_TEST(ShouldReadCorrectUnalignedTail)
     {
         // Test scenario:

@@ -83,6 +83,9 @@ message THeaders
     // Behave as directory tablet (main tablet) - allows work delegation to
     // shards if directory handling is allowed for shards.
     bool BehaveAsDirectoryTablet = 13;
+
+    // The write originated from the write-back cache. Allows a zero handle.
+    bool FromWriteBackCache = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1034,7 +1034,8 @@ void TStorageServiceActor::HandleWriteData(
     // infer the shard number
     const ui32 shardNo = ExtractShardNoSafe(
         filestore,
-        filestore.GetFeatures().GetAllowHandlelessIO() &&
+        (filestore.GetFeatures().GetAllowHandlelessIO() ||
+         msg->Record.GetHeaders().GetFromWriteBackCache()) &&
                 msg->Record.GetHandle() == InvalidHandle
             ? msg->Record.GetNodeId()
             : msg->Record.GetHandle());

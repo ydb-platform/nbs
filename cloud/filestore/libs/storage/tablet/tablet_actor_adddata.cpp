@@ -121,7 +121,7 @@ bool TIndexTabletActor::ValidateAddDataRequest(
         return true;
     }
 
-    if (Config->GetAllowHandlelessIO()) {
+    if (Config->GetAllowHandlelessIO() || args.WriteBackCacheHandlelessIo) {
         if (args.ExplicitNodeId == InvalidNodeId) {
             args.Error = ErrorInvalidTarget(args.ExplicitNodeId);
             return true;
@@ -151,7 +151,9 @@ bool TIndexTabletActor::ValidateAddDataRequest(
     }
 
     // TODO: replace VERIFY with a check + critical event
-    TABLET_VERIFY(args.Node || Config->GetAllowHandlelessIO());
+    TABLET_VERIFY(
+        args.Node || Config->GetAllowHandlelessIO() ||
+        args.WriteBackCacheHandlelessIo);
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
         return true;

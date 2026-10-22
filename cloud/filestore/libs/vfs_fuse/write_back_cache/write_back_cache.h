@@ -81,6 +81,9 @@ struct TWriteBackCacheArgs
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     bool FlushWritesInParallelEnabled = false;
+
+    // Flush cached writes by node id without requiring a live handle.
+    bool HandlelessIoEnabled = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

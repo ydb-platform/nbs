@@ -119,7 +119,8 @@ struct TBootstrap
             Stats->GetWriteDataRequestManagerStats(),
             Stats->GetNodeStateHolderStats(),
             FlushBatchLimits,
-            "[test]");
+            "[test]",
+            /* handlelessIoEnabled = */ false);
 
         return !HasError(State->Init());
     }

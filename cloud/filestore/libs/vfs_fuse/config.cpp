@@ -46,6 +46,7 @@ namespace {
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheHandlelessIoEnabled,          bool,     false     )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\
