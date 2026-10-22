@@ -952,6 +952,7 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
 
     TString schemeUpdate;
     TString dataUpdate;
+    bool compressedRedo = true; // Embedded redo is always compressed.
     TStackVec<TString> partSwitches;
     TStackVec<TLogoBlob> loanPartInfos;
     TVector<NPageCollection::TMemGlob> annex;
@@ -976,7 +977,10 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
             }
 
             switch (cookie.Index()) {
+            case NBoot::TCookie::EIdx::Redo:
             case NBoot::TCookie::EIdx::RedoLz4:
+                Y_ABORT_UNLESS(!dataUpdate || compressedRedo == (cookie.Index() == NBoot::TCookie::EIdx::RedoLz4));
+                compressedRedo = cookie.Index() == NBoot::TCookie::EIdx::RedoLz4;
                 if (dataUpdate)
                     dataUpdate.append(body);
                 else
@@ -1004,7 +1008,7 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
     }
 
     if (schemeUpdate || dataUpdate || annex) {
-        if (dataUpdate)
+        if (dataUpdate && compressedRedo)
             dataUpdate = NPageCollection::TSlicer::Lz4()->Decode(dataUpdate);
 
         for (auto &subset : Database->RollUp(Stamp(), schemeUpdate, dataUpdate, annex))
