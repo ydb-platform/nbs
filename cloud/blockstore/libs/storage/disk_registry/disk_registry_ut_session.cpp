@@ -997,6 +997,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             E_REJECTED,
             diskRegistry.RecvSecureEraseResponse()->GetStatus());
 
+        UNIT_ASSERT_VALUES_EQUAL(agent1.DevicesSize(), dirtyDevices());
+
         {
             auto request =
                 std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
