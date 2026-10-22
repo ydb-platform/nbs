@@ -66,6 +66,9 @@ enum class EFileRingBufferVersion : ui32
 
 struct TFileRingBufferHeader
 {
+    // Reserve space for new header fields without requiring data migration
+    static constexpr ui64 ReserveSize = 256;
+
     EFileRingBufferVersion Version = EFileRingBufferVersion::NotInitialized;
     ui32 HeaderSize = 0;
     ui64 DataCapacity = 0;
@@ -79,6 +82,9 @@ struct TFileRingBufferHeader
     ui32 MetadataSize = 0;
     ui32 MetadataChecksum = 0;
 };
+
+static_assert(
+    sizeof(TFileRingBufferHeader) <= TFileRingBufferHeader::ReserveSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,6 +104,20 @@ struct TFileRingBufferCapabilities
     ui64 MaxTag = 0;
     ui64 Alignment = 0;
     bool EntryHeaderIsProcessedAtomically = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFileRingBufferLayout
+{
+    ui64 DataOffset = 0;
+    ui64 MetadataOffset = 0;
+    ui64 StateFileSize = 0;
+
+    // Returns the default layout if calculating offsets or file size overflows
+    static TFileRingBufferLayout FromCapacity(
+        ui64 dataCapacity,
+        ui64 metadataCapacity);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
