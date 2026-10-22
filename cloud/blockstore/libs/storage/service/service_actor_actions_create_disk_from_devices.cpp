@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
@@ -63,6 +65,7 @@ private:
     const TString Input;
 
     NProto::TCreateVolumeFromDevicesRequest Request;
+    ui64 BlockCount = 0;
 
 public:
     TCreateDiskFromDevicesActor(
@@ -84,8 +87,16 @@ private:
         const TEvDiskRegistry::TEvCreateDiskFromDevicesResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleDescribeVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleCreateVolumeResponse(
         const TEvSSProxy::TEvCreateVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleReallocateDiskResponse(
+        const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
@@ -158,8 +169,16 @@ STFUNC(TCreateDiskFromDevicesActor::StateWork)
             HandleCreateDiskFromDevicesResponse);
 
         HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
+
+        HFunc(
             TEvSSProxy::TEvCreateVolumeResponse,
             HandleCreateVolumeResponse);
+
+        HFunc(
+            TEvVolume::TEvReallocateDiskResponse,
+            HandleReallocateDiskResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -189,9 +208,59 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
         return;
     }
 
+    BlockCount = msg->Record.GetBlockCount();
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Sending describe request for volume " << Request.GetDiskId().Quote());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId(),
+            true));
+}
+
+void TCreateDiskFromDevicesActor::HandleDescribeVolumeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (!HasError(error)) {
+        LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
+            "Sending reallocate request for volume "
+            << Request.GetDiskId().Quote());
+
+        auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId(Request.GetDiskId());
+
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+        return;
+    }
+
+    const bool volumeExists =
+        error.GetCode() != E_NOT_FOUND &&
+        error.GetCode() != MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
+
+    if (volumeExists) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Describe of volume "
+            << Request.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
+
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    auto volumeConfig = ConvertToVolumeConfig(Request);
+
     TVolumeParams volumeParams {
         .BlockSize = volumeConfig.GetBlockSize(),
-        .BlocksCountPerPartition = msg->Record.GetBlockCount(),
+        .BlocksCountPerPartition = BlockCount,
         .PartitionsCount = 1,
         .MediaKind = static_cast<NProto::EStorageMediaKind>(
             volumeConfig.GetStorageMediaKind()),
@@ -211,6 +280,24 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(volumeConfig),
         RequestInfo->Cookie);
+}
+
+void TCreateDiskFromDevicesActor::HandleReallocateDiskResponse(
+    const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    if (HasError(error)) {
+        LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
+            "Reallocation of volume "
+            << Request.GetDiskId().Quote()
+            << " failed: "
+            << error.GetMessage());
+    }
+
+    ReplyAndDie(ctx, error);
 }
 
 void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(
