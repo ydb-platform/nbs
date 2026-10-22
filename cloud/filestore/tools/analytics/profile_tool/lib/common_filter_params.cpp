@@ -175,7 +175,7 @@ bool TryApplyGrafanaOffset(
 
 bool TryParseGrafanaTimestamp(
     TStringBuf input,
-    TInstant now,
+    TInstant referenceTime,
     bool roundUp,
     TInstant& result)
 {
@@ -183,7 +183,7 @@ bool TryParseGrafanaTimestamp(
         return TInstant::TryParseIso8601(input, result);
     }
 
-    auto current = now;
+    auto current = referenceTime;
     const auto utc = NDatetime::GetUtcTimeZone();
     while (!input.empty()) {
         const char sign = input.front();
@@ -260,7 +260,7 @@ bool TryParseGrafanaTimestamp(
 
 TTimeRange ParseGrafanaRange(
     const NLastGetopt::TOptsParseResultException& parseResult,
-    TInstant now)
+    TInstant referenceTime)
 {
     if (parseResult.Has(SinceLabel.data()) ||
         parseResult.Has(UntilLabel.data()))
@@ -280,12 +280,15 @@ TTimeRange ParseGrafanaRange(
     }
     TInstant since;
     TInstant until;
-    if (!TryParseGrafanaTimestamp(json["from"].GetString(), now, false, since))
+    if (!TryParseGrafanaTimestamp(
+            json["from"].GetString(), referenceTime, false, since))
     {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"from\": " << json["from"].GetString();
     }
-    if (!TryParseGrafanaTimestamp(json["to"].GetString(), now, true, until)) {
+    if (!TryParseGrafanaTimestamp(
+            json["to"].GetString(), referenceTime, true, until))
+    {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
