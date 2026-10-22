@@ -78,6 +78,26 @@ func (s *storageYDB) IsDiskDeletionCompleted(
 	return completed, err
 }
 
+func (s *storageYDB) IsDiskCleanupInProgress(
+	ctx context.Context,
+	diskID string,
+) (pending bool, err error) {
+	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		tx, err := session.BeginRWTransaction(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		state, err := s.loadDiskCleanupState(ctx, tx, diskID)
+		if err != nil {
+			return err
+		}
+		pending = diskCleanupInProgress(state)
+		return tx.Commit(ctx)
+	})
+	return pending, err
+}
+
 // PrepareDiskCleanup reserves the ID before background tasks can be scheduled.
 // A concurrently recreated disk must never be included in the old cleanup.
 func (s *storageYDB) PrepareDiskCleanup(

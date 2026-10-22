@@ -237,13 +237,14 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	}
 
 	task := &deleteDiskTask{
-		storage:      storage,
-		scheduler:    scheduler,
-		poolService:  poolService,
-		nbsFactory:   nbsFactory,
-		cellSelector: cells.NewCellSelector(nil, nil, nil, nil),
-		request:      request,
-		state:        &protos.DeleteDiskTaskState{},
+		storage:                     storage,
+		scheduler:                   scheduler,
+		poolService:                 poolService,
+		nbsFactory:                  nbsFactory,
+		cellSelector:                cells.NewCellSelector(nil, nil, nil, nil),
+		enableBackgroundDiskCleanup: true,
+		request:                     request,
+		state:                       &protos.DeleteDiskTaskState{},
 	}
 
 	// There is no such disk in the database, return nil.

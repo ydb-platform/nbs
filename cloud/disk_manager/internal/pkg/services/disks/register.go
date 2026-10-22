@@ -94,12 +94,13 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.DeleteDisk", func() tasks.Task {
 		return &deleteDiskTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			poolService:       poolService,
-			nbsFactory:        nbsFactory,
-			cellSelector:      cellSelector,
+			enableBackgroundDiskCleanup: config.GetEnableBackgroundDiskCleanup(),
+			performanceConfig:           performanceConfig,
+			storage:                     resourceStorage,
+			scheduler:                   taskScheduler,
+			poolService:                 poolService,
+			nbsFactory:                  nbsFactory,
+			cellSelector:                cellSelector,
 		}
 	})
 	if err != nil {

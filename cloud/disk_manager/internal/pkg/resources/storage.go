@@ -136,6 +136,7 @@ type Storage interface {
 	) (*DiskMeta, error)
 
 	IsDiskDeletionCompleted(ctx context.Context, diskID string) (bool, error)
+	IsDiskCleanupInProgress(ctx context.Context, diskID string) (bool, error)
 
 	// Reserve a deleted disk ID until every background cleanup completes.
 	// Returns false if deletion completed, the reservation expired, or a new disk exists.

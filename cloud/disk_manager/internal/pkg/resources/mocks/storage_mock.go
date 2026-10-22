@@ -618,3 +618,8 @@ func (s *StorageMock) IsDiskCleanupPending(ctx context.Context, diskID string, c
 func (s *StorageMock) CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error {
 	return s.Called(ctx, tx, diskID, cleanupID).Error(0)
 }
+
+func (s *StorageMock) IsDiskCleanupInProgress(ctx context.Context, diskID string) (bool, error) {
+	args := s.Called(ctx, diskID)
+	return args.Bool(0), args.Error(1)
+}

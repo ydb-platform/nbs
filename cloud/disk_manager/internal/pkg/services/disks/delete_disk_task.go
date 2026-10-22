@@ -25,14 +25,15 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskTask struct {
-	performanceConfig *performance_config.PerformanceConfig
-	storage           resources.Storage
-	scheduler         tasks.Scheduler
-	poolService       pools.Service
-	nbsFactory        nbs.Factory
-	cellSelector      cells.CellSelector
-	request           *protos.DeleteDiskRequest
-	state             *protos.DeleteDiskTaskState
+	enableBackgroundDiskCleanup bool
+	performanceConfig           *performance_config.PerformanceConfig
+	storage                     resources.Storage
+	scheduler                   tasks.Scheduler
+	poolService                 pools.Service
+	nbsFactory                  nbs.Factory
+	cellSelector                cells.CellSelector
+	request                     *protos.DeleteDiskRequest
+	state                       *protos.DeleteDiskTaskState
 }
 
 func (t *deleteDiskTask) Save() ([]byte, error) {
@@ -95,7 +96,7 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = diskMeta.ZoneID
 	}
 
-	if diskMeta == nil {
+	if diskMeta == nil && t.enableBackgroundDiskCleanup {
 		cellIDs, err := t.cellSelector.ResolveCells(zoneID)
 		if err != nil {
 			return err
@@ -110,6 +111,18 @@ func (t *deleteDiskTask) deleteDisk(
 			return err
 		}
 		return t.scheduleDiskCleanup(ctx, execCtx)
+	}
+
+	if diskMeta == nil && !t.enableBackgroundDiskCleanup {
+		// Disabling the feature preserves legacy single-cell deletion, but a
+		// repeated request must not interfere with an existing background cleanup.
+		pending, err := t.storage.IsDiskCleanupInProgress(ctx, diskID)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return nil
+		}
 	}
 
 	if diskMeta != nil {
