@@ -187,6 +187,7 @@ TResultOrError<TReadContentResult> TDirectoryHandle::ReadContent(
         }
 
         const auto& content = it->second.Buffer;
+        Y_DEBUG_ABORT_UNLESS(it->first >= content->size());
         const size_t start = it->first - content->size();
         if (offset < start) {
             return MakeError(
@@ -195,6 +196,9 @@ TResultOrError<TReadContentResult> TDirectoryHandle::ReadContent(
                                  << " is before cached chunk " << start);
         }
 
+        // A chunk switch is a read from a different chunk than the last one
+        // served. Reads of the newest chunk don't count, nor does the first
+        // read after restore, when there is no last chunk.
         const bool chunkSwitched = LastReadKey && *LastReadKey != it->first &&
                                    std::next(it) != Content.end();
         LastReadKey = it->first;

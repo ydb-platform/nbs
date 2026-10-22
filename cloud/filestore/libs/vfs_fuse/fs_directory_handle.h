@@ -73,12 +73,19 @@ struct TReadContentResult
 {
     enum class EStatus
     {
+        // Offset is inside cached content; reply with DirectoryContent.
         Hit,
+        // Offset is at the end of cached content and the listing has a
+        // cookie; fetch the next page with ListNodes.
         Miss,
+        // Offset is at or past the end of cached content and the listing has
+        // no cookie, so there is nothing left; reply with an empty buffer to
+        // end the directory stream.
         Eof
     };
     EStatus Status = EStatus::Miss;
     TDirectoryContent DirectoryContent;
+    // Set only for Hit.
     bool ChunkSwitched = false;
     ui64 HandleSize = 0;
 };

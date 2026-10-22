@@ -26,6 +26,9 @@ private:
     TMaxCounter<DirectoryHandleMaxBucketCount> OpenHandleCount;
     TMaxCounter<DirectoryHandleMaxBucketCount> EntryVersionCacheEntryCount;
     TRelaxedCounter RewindCount;
+    // Cached reads served from a different chunk than the previous read or
+    // fetch of the same handle, excluding reads of the newest chunk. Counted
+    // only for handles larger than ChunkSwitchStatsMinHandleSize.
     TRelaxedCounter ChunkSwitchCount;
     // Optional; when null no storage sensors are registered or updated.
     IDirectoryHandleStorageStatsPtr StorageStats;
