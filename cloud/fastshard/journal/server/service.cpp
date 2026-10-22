@@ -9,8 +9,10 @@
 #include <library/cpp/threading/future/async_semaphore.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
+#include <atomic>
 #include <functional>
 
 namespace NCloud::NJournalled {
@@ -25,25 +27,28 @@ struct TJournalledDeviceSpec
 {
     TJournalledDeviceConfig Config;
 
-    // Empty until the device is created and started.
+    // Set while the device is being recreated.
+    std::atomic_bool Recreating = false;
     IJournalledDevicePtr Device;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TDeviceOperation =
-    std::function<TFuture<void>(TJournalledDeviceSpec* spec)>;
+    std::function<TFuture<void>(TJournalledDeviceSpec& spec)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 THashMap<TString, TJournalledDeviceSpec> MakeDeviceSpecs(
-    TVector<TJournalledDeviceConfig> configs)
+    TVector<TJournalledDeviceConfig> configs,
+    const IJournalledDevicePtr& failedDevice)
 {
     THashMap<TString, TJournalledDeviceSpec> specs;
 
     for (auto& config: configs) {
         auto& spec = specs[config.DeviceUUID];
         spec.Config = std::move(config);
+        spec.Device = failedDevice;
     }
 
     return specs;
@@ -68,6 +73,64 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stands in for a journalled device that is not started (yet) or failed to
+// start. Every request is rejected so the device can be safely stopped and
+// replaced.
+class TFailedDevice final: public IJournalledDevice
+{
+public:
+    TFuture<NProto::TError> Start() noexcept override
+    {
+        return MakeFuture(MakeInvalidStateError());
+    }
+
+    TFuture<NProto::TError> Stop() noexcept override
+    {
+        return MakeFuture<NProto::TError>();
+    }
+
+    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
+        -> TFuture<NProto::TReadPagesResponse> override
+    {
+        Y_UNUSED(request);
+        return MakeFuture<NProto::TReadPagesResponse>(
+            TErrorResponse(MakeInvalidStateError()));
+    }
+
+    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
+        -> TFuture<NProto::TWriteLogRecordResponse> override
+    {
+        Y_UNUSED(request);
+        return MakeFuture<NProto::TWriteLogRecordResponse>(
+            TErrorResponse(MakeInvalidStateError()));
+    }
+
+    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
+        -> TFuture<NProto::TReadJournalTailResponse> override
+    {
+        Y_UNUSED(request);
+        return MakeFuture<NProto::TReadJournalTailResponse>(
+            TErrorResponse(MakeInvalidStateError()));
+    }
+
+    [[nodiscard]] auto AdvanceLsnLowWatermark(
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> override
+    {
+        Y_UNUSED(request);
+        return MakeFuture<NProto::TAdvanceLsnLowWatermarkResponse>(
+            TErrorResponse(MakeInvalidStateError()));
+    }
+
+private:
+    static NProto::TError MakeInvalidStateError()
+    {
+        return MakeError(E_INVALID_STATE, "Journalled device is not started");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final
     : public IServerBackend
     , public std::enable_shared_from_this<TJournalledDeviceHandler>
@@ -76,6 +139,7 @@ private:
     const TExecutorPtr Executor;
     const IDeviceManagerPtr DeviceManager;
     const IJournalledDeviceFactoryPtr JournalledDeviceFactory;
+    const IJournalledDevicePtr FailedDevice;
     const ui32 RestoreConcurrency;
 
     // Filled once in the constructor, only the specs themselves change later.
@@ -92,8 +156,10 @@ public:
         : Executor(std::move(executor))
         , DeviceManager(std::move(deviceManager))
         , JournalledDeviceFactory(std::move(journalledDeviceFactory))
+        , FailedDevice(std::make_shared<TFailedDevice>())
         , RestoreConcurrency(restoreConcurrency)
-        , DeviceSpecs(MakeDeviceSpecs(std::move(journalledDeviceConfigs)))
+        , DeviceSpecs(
+              MakeDeviceSpecs(std::move(journalledDeviceConfigs), FailedDevice))
         , SortedDevices(SortDevices(DeviceSpecs))
     {}
 
@@ -103,7 +169,7 @@ public:
     {
         auto future = RunOnDevices(
             RestoreConcurrency,
-            [weakSelf = weak_from_this()](TJournalledDeviceSpec* spec)
+            [weakSelf = weak_from_this()](TJournalledDeviceSpec& spec)
                 -> TFuture<void>
             {
                 auto self = weakSelf.lock();
@@ -112,7 +178,7 @@ public:
                 }
 
                 return self->StartJournalledDevice(spec).Apply(
-                    [uuid = spec->Config.DeviceUUID](const auto& future)
+                    [uuid = spec.Config.DeviceUUID](const auto& future)
                     {
                         auto error = ExtractResponse(future);
                         if (HasError(error)) {
@@ -131,14 +197,8 @@ public:
     {
         auto future = RunOnDevices(
             static_cast<ui32>(DeviceSpecs.size()),
-            [](TJournalledDeviceSpec* spec) -> TFuture<void>
-            {
-                if (!spec->Device) {
-                    return MakeFuture();
-                }
-
-                return spec->Device->Stop().IgnoreResult();
-            });
+            [](TJournalledDeviceSpec& spec)
+            { return spec.Device->Stop().IgnoreResult(); });
 
         future.Wait();
     }
@@ -158,44 +218,9 @@ public:
     [[nodiscard]] auto FormatDevice(NProto::TFormatDeviceRequest request)
         -> TFuture<NProto::TFormatDeviceResponse> final
     {
-        auto [spec, error] = GetDeviceSpec(
-            request.GetDeviceUUID(),
-            request.GetHeaders().GetClientId(),
-            NProto::ACCESS_READ_WRITE);
-
-        if (HasError(error)) {
-            return MakeFuture<NProto::TFormatDeviceResponse>(
-                TErrorResponse(error));
-        }
-
-        const auto& config = spec->Config;
-
-        // Only the journal metadata is wiped by default.
-        const ui64 blocksCount =
-            request.GetWholeDevice()
-                ? config.BlocksCount
-                : config.LogMetaSize / config.BlockSize;
-
-        if (!blocksCount) {
-            return MakeFuture(NProto::TFormatDeviceResponse());
-        }
-
-        TPageRangeRef region{.FirstPageNo = 0, .PageCount = blocksCount};
-
-        auto device = DeviceManager->CreateDevice(
-            request.GetDeviceUUID(),
-            region,
-            config.BlockSize);
-
-        return device->ZeroPages({region}).Apply(
-            [](const auto& future)
-            {
-                NProto::TFormatDeviceResponse response;
-                *response.MutableError() = SafeExecute<NProto::TError>(
-                    [&] { return future.GetValue(); });
-
-                return response;
-            });
+        return Execute<NProto::TFormatDeviceResponse>(
+            [req = std::move(request)](auto& self) mutable
+            { return self.DoFormatDevice(std::move(req)); });
     }
 
     [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
@@ -302,7 +327,7 @@ private:
 
         for (auto& [uuid, spec]: DeviceSpecs) {
             auto future = semaphore->AcquireAsync().Apply(
-                [spec = &spec, operation](const auto& acquired)
+                [&spec, operation](const auto& acquired)
                 {
                     //
                     // Hold the slot until the operation completes; an
@@ -322,16 +347,16 @@ private:
         return WaitAll(futures);
     }
 
-    TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec* spec)
+    TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec& spec)
     {
         return Execute<NProto::TError>(
-            [spec](auto& self) { return self.DoStartJournalledDevice(spec); });
+            [&spec](auto& self) { return self.DoStartJournalledDevice(spec); });
     }
 
     // Runs in the executor: waits for the device to start.
-    NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec* spec)
+    NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        auto [device, error] = JournalledDeviceFactory->Create(spec->Config);
+        auto [device, error] = JournalledDeviceFactory->Create(spec.Config);
         if (HasError(error)) {
             return error;
         }
@@ -341,34 +366,42 @@ private:
             return error;
         }
 
-        spec->Device = std::move(device);
+        spec.Device = std::move(device);
         return {};
     }
+
+    // Runs in the executor: waits for the device to stop.
+    NProto::TError DoStopJournalledDevice(TJournalledDeviceSpec& spec)
+    {
+        auto error = Executor->ExtractResponse(spec.Device->Stop());
+        if (HasError(error)) {
+            return error;
+        }
+
+        spec.Device = FailedDevice;
+        return {};
+    }
+
+    NProto::TFormatDeviceResponse DoFormatDevice(
+        NProto::TFormatDeviceRequest request);
 
     TResultOrError<IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EAccessMode accessMode) const
+        NProto::EAccessMode accessMode)
     {
         auto [spec, error] = GetDeviceSpec(deviceUUID, clientId, accessMode);
         if (HasError(error)) {
             return error;
         }
 
-        if (!spec->Device) {
-            return MakeError(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "Device " << deviceUUID.Quote() << " is not started");
-        }
-
         return spec->Device;
     }
 
-    TResultOrError<const TJournalledDeviceSpec*> GetDeviceSpec(
+    TResultOrError<TJournalledDeviceSpec*> GetDeviceSpec(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EAccessMode accessMode) const
+        NProto::EAccessMode accessMode)
     {
         if (deviceUUID.empty()) {
             return MakeError(E_ARGUMENT, "empty device UUID");
@@ -378,7 +411,7 @@ private:
             return MakeError(E_ARGUMENT, "empty client id");
         }
 
-        const auto* spec = DeviceSpecs.FindPtr(deviceUUID);
+        auto* spec = DeviceSpecs.FindPtr(deviceUUID);
         if (!spec) {
             return MakeError(
                 E_NOT_FOUND,
@@ -414,6 +447,88 @@ private:
             });
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
+    NProto::TFormatDeviceRequest request)
+{
+    //
+    // Find the device to format and check the access
+    //
+
+    auto [spec, error] = GetDeviceSpec(
+        request.GetDeviceUUID(),
+        request.GetHeaders().GetClientId(),
+        NProto::ACCESS_READ_WRITE);
+
+    if (HasError(error)) {
+        return TErrorResponse(error);
+    }
+
+    //
+    // Figure out the region to wipe
+    //
+
+    const auto& config = spec->Config;
+
+    // Only the journal metadata is wiped by default.
+    const ui64 blocksCount = request.GetWholeDevice()
+                                 ? config.BlocksCount
+                                 : config.LogMetaSize / config.BlockSize;
+    if (!blocksCount) {
+        return TErrorResponse(S_FALSE, "nothing to format");
+    }
+
+    //
+    // Mark the device as busy to reject parallel recreates
+    //
+
+    if (spec->Recreating.exchange(true)) {
+        return TErrorResponse(
+            E_REJECTED,
+            TStringBuilder() << "Device " << config.DeviceUUID.Quote()
+                             << " is being formatted");
+    }
+    Y_DEFER
+    {
+        spec->Recreating.store(false);
+    };
+
+    //
+    // Stop the current journalled device
+    //
+
+    if (auto stopError = DoStopJournalledDevice(*spec); HasError(stopError)) {
+        return TErrorResponse(stopError);
+    }
+
+    //
+    // Wipe the region
+    //
+
+    TPageRangeRef region{.FirstPageNo = 0, .PageCount = blocksCount};
+
+    auto device = DeviceManager->CreateDevice(
+        config.DeviceUUID,
+        region,
+        config.BlockSize);
+
+    auto zeroError = Executor->ExtractResponse(device->ZeroPages({region}));
+    if (HasError(zeroError)) {
+        return TErrorResponse(zeroError);
+    }
+
+    device.reset();
+
+    //
+    // Start a new journalled device over the wiped region
+    //
+
+    NProto::TFormatDeviceResponse response;
+    *response.MutableError() = DoStartJournalledDevice(*spec);
+    return response;
+}
 
 }   // namespace
 

@@ -20,8 +20,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The device is split into three parts that follow each other: the journal
-// metadata, the journal data and the data itself.
+// The device is partitioned into three parts that follow each other:
+// the journal metadata, the journal data and the data itself.
 struct TDeviceLayout
 {
     ui32 BlockSize = 0;
@@ -32,7 +32,8 @@ struct TDeviceLayout
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<TDeviceLayout> SplitDevice(const TJournalledDeviceConfig& config)
+TResultOrError<TDeviceLayout> PartitionDevice(
+    const TJournalledDeviceConfig& config)
 {
     const ui32 blockSize = config.BlockSize;
     const ui64 blockCount = config.BlocksCount;
@@ -100,7 +101,7 @@ public:
 TResultOrError<IJournalledDevicePtr> TJournalledDeviceV1Factory::Create(
     const TJournalledDeviceConfig& config)
 {
-    auto [layout, error] = SplitDevice(config);
+    auto [layout, error] = PartitionDevice(config);
     if (HasError(error)) {
         return error;
     }
@@ -162,7 +163,7 @@ TResultOrError<IJournalledDevicePtr> TJournalledDeviceV2Factory::Create(
 {
     const auto& uuid = config.DeviceUUID;
 
-    auto [layout, error] = SplitDevice(config);
+    auto [layout, error] = PartitionDevice(config);
     if (HasError(error)) {
         return error;
     }
