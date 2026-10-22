@@ -14,8 +14,15 @@ func TestDiskCleanupReservation(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create", CreatedBy: "user"}
-	_, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	meta, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
+	require.Nil(t, meta)
+	// Ordinary finalization and collection cannot consume the reservation
+	// even before the per-cell cleanup IDs have been prepared.
+	require.NoError(t, storage.DiskDeleted(ctx, disk.ID, time.Now()))
+	require.NoError(t, storage.ClearDeletedDisks(ctx, time.Now().Add(time.Hour), 100))
+	_, err = storage.CreateDisk(ctx, disk)
+	require.Error(t, err)
 	prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cell-a", "cell-b"})
 	require.NoError(t, err)
 	require.True(t, prepared)
@@ -23,8 +30,9 @@ func TestDiskCleanupReservation(t *testing.T) {
 	prepared, err = storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cell-a", "cell-b"})
 	require.NoError(t, err)
 	require.True(t, prepared)
-	_, err = storage.DeleteDisk(ctx, disk.ID, "repeat", time.Now())
+	meta, err = storage.DeleteDisk(ctx, disk.ID, "repeat", time.Now())
 	require.NoError(t, err)
+	require.Nil(t, meta)
 	require.NoError(t, storage.DiskDeleted(ctx, disk.ID, time.Now()))
 	require.NoError(t, storage.ClearDeletedDisks(ctx, time.Now().Add(time.Hour), 100))
 	_, err = storage.CreateDisk(ctx, disk)
@@ -164,6 +172,8 @@ func TestDiskCleanupSetsDeletedAtOnlyAfterCompletion(t *testing.T) {
 	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
 	require.Equal(t, unset, readState().deletedAt)
+	require.Equal(t, diskStatusDeleted, readState().status)
+	require.Empty(t, readState().cleanupTaskIDs)
 
 	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", []string{"cell-a", "cell-b"})
 	require.NoError(t, err)
@@ -172,7 +182,7 @@ func TestDiskCleanupSetsDeletedAtOnlyAfterCompletion(t *testing.T) {
 
 	require.NoError(t, finishDiskCleanup(ctx, db, storage, "disk", "cell-a"))
 	state := readState()
-	require.Equal(t, diskStatusDeletingFromCells, state.status)
+	require.Equal(t, diskStatusDeleting, state.status)
 	require.Equal(t, unset, state.deletedAt)
 
 	err = db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
@@ -186,7 +196,7 @@ func TestDiskCleanupSetsDeletedAtOnlyAfterCompletion(t *testing.T) {
 	})
 	require.NoError(t, err)
 	state = readState()
-	require.Equal(t, diskStatusDeletingFromCells, state.status)
+	require.Equal(t, diskStatusDeleting, state.status)
 	require.Equal(t, unset, state.deletedAt)
 
 	beforeCompletion := time.Now().Truncate(time.Microsecond)
@@ -212,13 +222,65 @@ func TestDiskDeletionCompleted(t *testing.T) {
 		completed bool
 	}{
 		{name: "missing"},
-		{name: "legacy null", status: diskStatusDeleted},
-		{name: "unset timestamp", status: diskStatusDeleted, deletedAt: time.Unix(0, 0)},
-		{name: "pending", status: diskStatusDeletingFromCells},
+		{name: "reservation without timestamp", status: diskStatusDeleted},
+		{name: "reservation with epoch timestamp", status: diskStatusDeleted, deletedAt: time.Unix(0, 0)},
+		{name: "pending", status: diskStatusDeleting},
 		{name: "completed", status: diskStatusDeleted, deletedAt: time.Now(), completed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.completed, diskDeletionCompleted(diskState{status: tc.status, deletedAt: tc.deletedAt}))
+		})
+	}
+}
+
+func TestDiskCleanupDoesNotTakeOverOrdinaryDeletion(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create"}
+	_, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	meta, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cleanup"})
+	require.NoError(t, err)
+	require.False(t, prepared)
+	pending, err := storage.IsDiskCleanupPending(ctx, disk.ID, "cleanup")
+	require.NoError(t, err)
+	require.False(t, pending)
+	require.NoError(t, finishDiskCleanup(ctx, db, storage, disk.ID, "cleanup"))
+	completed, err := storage.IsDiskDeletionCompleted(ctx, disk.ID)
+	require.NoError(t, err)
+	require.False(t, completed)
+	meta, err = storage.DeleteDisk(ctx, disk.ID, "repeat", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	// Ordinary deletion still finalizes through DiskDeleted.
+	require.NoError(t, storage.DiskDeleted(ctx, disk.ID, time.Now().Add(-time.Hour)))
+	completed, err = storage.IsDiskDeletionCompleted(ctx, disk.ID)
+	require.NoError(t, err)
+	require.True(t, completed)
+	require.NoError(t, storage.ClearDeletedDisks(ctx, time.Now(), 100))
+	meta, err = storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+}
+
+func TestDiskCleanupInProgress(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		state   diskState
+		pending bool
+	}{
+		{name: "ordinary deleting", state: diskState{status: diskStatusDeleting}},
+		{name: "initialized empty list stays protected", state: diskState{status: diskStatusDeleting, cleanupTaskIDs: "[]"}, pending: true},
+		{name: "pending workers", state: diskState{status: diskStatusDeleting, cleanupTaskIDs: `["worker"]`}, pending: true},
+		{name: "invalid list stays protected", state: diskState{status: diskStatusDeleting, cleanupTaskIDs: "invalid"}, pending: true},
+		{name: "completed", state: diskState{status: diskStatusDeleted, cleanupTaskIDs: "[]"}},
+		{name: "ready", state: diskState{status: diskStatusReady}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.pending, diskCleanupInProgress(tc.state))
 		})
 	}
 }

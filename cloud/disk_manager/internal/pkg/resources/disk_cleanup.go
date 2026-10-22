@@ -10,8 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
-// Cleanup uses a separate persisted status so the existing tombstone collector
-// cannot remove the disk ID reservation while any cell is still being cleaned.
+// cleanup_task_ids distinguishes background cleanup from ordinary deletion.
+// Both use deleting, which prevents collection until all cleanup tasks finish.
 func (s *storageYDB) loadDiskCleanupState(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -44,6 +44,13 @@ func diskCleanupIDs(state diskState) ([]string, error) {
 	}
 	err := json.Unmarshal([]byte(state.cleanupTaskIDs), &ids)
 	return ids, err
+}
+
+func diskCleanupInProgress(state diskState) bool {
+	// Preparation initializes the list together with the deleting status.
+	// Treat any initialized value as background cleanup, including an invalid
+	// value, so ordinary deletion cannot finalize the reservation prematurely.
+	return state.status == diskStatusDeleting && state.cleanupTaskIDs != ""
 }
 
 // A zero timestamp is persisted as the Unix epoch; legacy NULLs scan as Go zero.
@@ -89,8 +96,9 @@ func (s *storageYDB) PrepareDiskCleanup(
 			return err
 		}
 		if diskDeletionCompleted(state) ||
-			(state.status != diskStatusDeleted && state.status != diskStatusDeletingFromCells) {
-			// Completed deletion must never be restarted. DeleteDisk must also establish a reservation first.
+			(state.status != diskStatusDeleted && !diskCleanupInProgress(state)) {
+			// Accept a fresh reservation or an existing background cleanup.
+			// Completed and ordinary disk deletions must never be restarted here.
 			prepared = false
 			return tx.Commit(ctx)
 		}
@@ -108,7 +116,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 			return err
 		}
 		state.cleanupTaskIDs = string(data)
-		state.status = diskStatusDeletingFromCells
+		state.status = diskStatusDeleting
 		err = s.updateDiskState(ctx, tx, state)
 		if err != nil {
 			return err
@@ -139,7 +147,7 @@ func (s *storageYDB) IsDiskCleanupPending(
 		if err != nil {
 			return err
 		}
-		pending = state.status == diskStatusDeletingFromCells && slices.Contains(ids, cleanupID)
+		pending = diskCleanupInProgress(state) && slices.Contains(ids, cleanupID)
 		return tx.Commit(ctx)
 	})
 	return pending, err
@@ -159,7 +167,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 	if err != nil {
 		return err
 	}
-	if state.status != diskStatusDeletingFromCells || !slices.Contains(ids, cleanupID) {
+	if !diskCleanupInProgress(state) || !slices.Contains(ids, cleanupID) {
 		return nil
 	}
 	remaining := make([]string, 0, len(ids)-1)

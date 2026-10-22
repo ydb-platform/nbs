@@ -23,11 +23,10 @@ func (s *diskStatus) UnmarshalYDB(res persistence.RawValue) error {
 
 // NOTE: These values are stored in DB, do not shuffle them around.
 const (
-	diskStatusCreating          diskStatus = iota
-	diskStatusReady             diskStatus = iota
-	diskStatusDeleting          diskStatus = iota
-	diskStatusDeleted           diskStatus = iota
-	diskStatusDeletingFromCells diskStatus = iota
+	diskStatusCreating diskStatus = iota
+	diskStatusReady    diskStatus = iota
+	diskStatusDeleting diskStatus = iota
+	diskStatusDeleted  diskStatus = iota
 )
 
 func diskStatusToString(status diskStatus) string {
@@ -40,8 +39,6 @@ func diskStatusToString(status diskStatus) string {
 		return "deleting"
 	case diskStatusDeleted:
 		return "deleted"
-	case diskStatusDeletingFromCells:
-		return "deleting_from_cells"
 	}
 
 	return fmt.Sprintf("unknown_%v", status)
@@ -532,7 +529,7 @@ func (s *storageYDB) deleteDisk(
 			}
 
 			// Should be idempotent.
-			if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
+			if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 				return nil, nil
 			}
 
@@ -545,6 +542,7 @@ func (s *storageYDB) deleteDisk(
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
 		// Leave deletedAt unset until background cleanup finishes in every cell.
+		// Preparation will atomically set deleting and all per-cell cleanup IDs.
 		state.status = diskStatusDeleted
 	}
 
@@ -563,7 +561,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		return nil, nil
 	}
 
@@ -611,7 +609,7 @@ func (s *storageYDB) diskDeleted(
 
 	state := states[0]
 
-	if state.status == diskStatusDeleted || state.status == diskStatusDeletingFromCells {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
