@@ -83,6 +83,7 @@ private:
     const NActors::TActorId Owner;
     const NActors::TActorId ActorToAddFreshBlocks;
     const ui64 CommitId;
+    const TInstant Timestamp;
     const ui32 Channel;
     const ui32 BlockCount;
     const TVector<TRequest> Requests;
@@ -111,6 +112,7 @@ public:
         const NActors::TActorId& owner,
         const NActors::TActorId& actorToAddFreshBlocks,
         ui64 commitId,
+        TInstant timestamp,
         ui32 channel,
         ui32 blockCount,
         TVector<TRequest> requests,
@@ -125,7 +127,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    NProto::TError BuildBlobContentAndComputeDigest();
+    NProto::TError BuildBlobContentAndComputeDigest(TInstant timestamp);
 
     void WriteBlob(const NActors::TActorContext& ctx);
     void AddBlocks(const NActors::TActorContext& ctx);

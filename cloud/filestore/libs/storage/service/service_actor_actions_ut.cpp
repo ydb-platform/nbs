@@ -1446,7 +1446,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 response.GetLastProcessedRangeId());
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(TStatus::E_RUNNING),
-                static_cast<int>(response.GetStatus()));
+                static_cast<int>(response.GetOperationStatus()));
         }
 
         UNIT_ASSERT(completion);
@@ -1481,7 +1481,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(TStatus::E_COMPLETED),
-                static_cast<int>(response.GetStatus()));
+                static_cast<int>(response.GetOperationStatus()));
         }
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
@@ -1580,7 +1580,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                         .ok());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(TStatus::E_COMPLETED),
-            static_cast<int>(statusResponse.GetStatus()));
+            static_cast<int>(statusResponse.GetOperationStatus()));
     }
 
     Y_UNIT_TEST(ShouldRunForcedFlushAction)

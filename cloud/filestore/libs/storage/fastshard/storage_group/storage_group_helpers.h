@@ -2,6 +2,8 @@
 
 #include "storage_group.h"
 
+#include <cloud/fastshard/common/error.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <silk/fibers/fiber.h>
@@ -177,14 +179,19 @@ NProto::TError MirrorRequest(
                 .RetryPolicy = &config.RetryPolicy,
                 .Timer = &timer},
             &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+        Y_ABORT_UNLESS(
+            r == 0,
+            "failed to spawn fiber: %s",
+            NCloud::NFastShard::SystemErrorText(r).c_str());
     }
 
     NProto::TError error;
     for (ui32 i = 0; i < count; ++i) {
         const int r = futures[i].wait();
         if (r) {
-            SILK_ERROR("future error: %s", ::strerror(r));
+            SILK_ERROR(
+                "future error: %s",
+                NCloud::NFastShard::SystemErrorText(r).c_str());
             if (!HasError(error)) {
                 error = MakeError(MAKE_SYSTEM_ERROR(r));
             }

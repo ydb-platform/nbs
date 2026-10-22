@@ -156,6 +156,7 @@ END()
 RECURSE(
     model
     protos
+    query
 )
 
 RECURSE_FOR_TESTS(

@@ -728,7 +728,7 @@ void TLogReader::ProcessLogPageNonceJump2(ui8 *data, const ui64 previousNonce, c
                     (currentSectorIdx, SectorIdx),
                     (previousNonce, previousNonce),
                     (previousDataNonce, previousDataNonce),
-                    (nonceJumpLogPageHeader2->PreviousNonce, nonceJumpLogPageHeader2->PreviousNonce),
+                    (nonceJumpLogPageHeader2->PreviousNonce, headerPrevNonce),
                     (LastGoodToWriteLogPosition, LastGoodToWriteLogPosition));
             ReplyOk();
             return;

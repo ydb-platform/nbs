@@ -1,5 +1,9 @@
+#include "builder.h"
 #include "server.h"
+#include "service.h"
 
+#include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/journal/impl/memory_device.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -9,10 +13,13 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/threading/future/async.h>
 
+#include <util/generic/hash.h>
+#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
 #include <functional>
 #include <mutex>
+#include <optional>
 
 namespace NCloud::NJournalled {
 
@@ -36,6 +43,10 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TFormatDeviceResponse>(
             NProto::TFormatDeviceRequest)>;
 
+    using TListDevicesFunc =
+        std::function<TFuture<NProto::TListDevicesResponse>(
+            NProto::TListDevicesRequest)>;
+
     using TReadPagesFunc = std::function<TFuture<NProto::TReadPagesResponse>(
         NProto::TReadPagesRequest)>;
 
@@ -54,20 +65,17 @@ struct TTestBackend: public IServerBackend
     TAcquireDevicesFunc AcquireDevicesImpl;
     TReleaseDevicesFunc ReleaseDevicesImpl;
     TFormatDeviceFunc FormatDeviceImpl;
+    TListDevicesFunc ListDevicesImpl;
     TReadPagesFunc ReadPagesImpl;
     TWriteLogRecordFunc WriteLogRecordImpl;
     TReadJournalTailFunc ReadJournalTailImpl;
     TAdvanceLsnLowWatermarkFunc AdvanceLsnLowWatermarkImpl;
 
-    TFuture<NProto::TError> Start() override
-    {
-        return MakeFuture<NProto::TError>();
-    }
+    void Start() override
+    {}
 
-    TFuture<NProto::TError> Stop() override
-    {
-        return MakeFuture<NProto::TError>();
-    }
+    void Stop() override
+    {}
 
     [[nodiscard]] auto AcquireDevices(
         NProto::TAcquireDevicesRequest request)
@@ -88,6 +96,12 @@ struct TTestBackend: public IServerBackend
         -> TFuture<NProto::TFormatDeviceResponse> final
     {
         return FormatDeviceImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
+        -> TFuture<NProto::TListDevicesResponse> final
+    {
+        return ListDevicesImpl(std::move(request));
     }
 
     [[nodiscard]] auto ReadPages(
@@ -626,6 +640,67 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
             formatDeviceRequest->DebugString());
     }
 
+    Y_UNIT_TEST_F(ShouldDispatchListDevices, TFixture)
+    {
+        const ui64 requestId = 51;
+
+        const auto expectedRequest = []
+        {
+            NProto::TListDevicesRequest proto;
+            proto.MutableHeaders()->SetClientId("list");
+            return proto;
+        }();
+
+        std::optional<NProto::TListDevicesRequest> listDevicesRequest;
+
+        Backend->ListDevicesImpl = [&](auto request)
+        {
+            listDevicesRequest = std::move(request);
+
+            NProto::TListDevicesResponse response;
+            auto& info = *response.AddDevices();
+            info.SetDeviceUUID("uuid-1");
+            info.SetBlockSize(4096);
+            info.SetLogMetaSize(1_MB);
+            info.SetLogDataSize(2_MB);
+            info.SetDataSize(4_MB);
+            return MakeFuture(std::move(response));
+        };
+
+        TTestClient client{Port};
+
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableListDevices()->CopyFrom(expectedRequest);
+            client.Send(request);
+        }
+
+        auto response = client.Receive();
+
+        UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+        UNIT_ASSERT(response.HasListDevices());
+
+        const auto& listDevices = response.GetListDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            listDevices.GetError().GetCode(),
+            FormatError(listDevices.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, listDevices.DevicesSize());
+
+        const auto& info = listDevices.GetDevices(0);
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", info.GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(4096, info.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, info.GetLogMetaSize());
+        UNIT_ASSERT_VALUES_EQUAL(2_MB, info.GetLogDataSize());
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, info.GetDataSize());
+
+        UNIT_ASSERT(listDevicesRequest);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedRequest.DebugString(),
+            listDevicesRequest->DebugString());
+    }
+
     Y_UNIT_TEST_F(ShouldHandleBackendExecptions, TFixture)
     {
         const ui64 requestId = 42;
@@ -793,6 +868,342 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
                 "writeLogRecord-async-error",
                 error.GetMessage());
         }
+    }
+}
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 DefaultBlockSize = 4_KB;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Serves a region of a device, so the devices created for the regions of the
+// same device share its pages.
+class TRegionDevice final: public IDevice
+{
+private:
+    const IDevicePtr Device;
+    const TPageRangeRef Region;
+
+public:
+    TRegionDevice(IDevicePtr device, TPageRangeRef region)
+        : Device(std::move(device))
+        , Region(region)
+    {}
+
+    [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
+        -> TFuture<TResultOrError<TVector<TBuffer>>> final
+    {
+        for (auto& ref: rangeRefs) {
+            ref.FirstPageNo += Region.FirstPageNo;
+        }
+        return Device->ReadPages(std::move(rangeRefs));
+    }
+
+    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
+        -> TFuture<NProto::TError> final
+    {
+        for (auto& range: ranges) {
+            range.FirstPageNo += Region.FirstPageNo;
+        }
+        return Device->WritePages(std::move(ranges));
+    }
+
+    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> rangeRefs)
+        -> TFuture<NProto::TError> final
+    {
+        for (auto& ref: rangeRefs) {
+            ref.FirstPageNo += Region.FirstPageNo;
+        }
+        return Device->ZeroPages(std::move(rangeRefs));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Keeps the devices in memory and serves only the clients that have acquired
+// them.
+struct TInMemoryDeviceManager final: public IDeviceManager
+{
+    std::mutex Lock;
+    THashMap<TString, IDevicePtr> Devices;
+    THashMap<TString, TString> Owners;   // device UUID -> client id
+
+    [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)
+        -> TFuture<NProto::TAcquireDevicesResponse> final
+    {
+        std::lock_guard lock(Lock);
+
+        for (const auto& uuid: request.GetDeviceUUIDs()) {
+            Owners[uuid] = request.GetHeaders().GetClientId();
+        }
+
+        return MakeFuture<NProto::TAcquireDevicesResponse>();
+    }
+
+    [[nodiscard]] auto ReleaseDevices(NProto::TReleaseDevicesRequest request)
+        -> TFuture<NProto::TReleaseDevicesResponse> final
+    {
+        std::lock_guard lock(Lock);
+
+        for (const auto& uuid: request.GetDeviceUUIDs()) {
+            Owners.erase(uuid);
+        }
+
+        return MakeFuture<NProto::TReleaseDevicesResponse>();
+    }
+
+    [[nodiscard]] NProto::TError AccessDevice(
+        const TString& deviceUUID,
+        const TString& clientId,
+        NProto::EAccessMode /*accessMode*/) final
+    {
+        std::lock_guard lock(Lock);
+
+        const auto* owner = Owners.FindPtr(deviceUUID);
+        if (!owner || *owner != clientId) {
+            return MakeError(E_BS_INVALID_SESSION, "not acquired");
+        }
+
+        return {};
+    }
+
+    [[nodiscard]] IDevicePtr CreateDevice(
+        const TString& deviceUUID,
+        TPageRangeRef region,
+        ui32 blockSize) final
+    {
+        std::lock_guard lock(Lock);
+
+        auto& device = Devices[deviceUUID];
+        if (!device) {
+            device = CreateInMemoryDevice(blockSize);
+        }
+
+        return std::make_shared<TRegionDevice>(device, region);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The server with the real service on top of the in-memory devices.
+struct TServiceFixture: public NUnitTest::TBaseFixture
+{
+    const TString ClientId = "client-id";
+    const TString DeviceUUID = "uuid-1";
+
+    TPortManager PortManager;
+    ui16 Port = 0;
+    ILoggingServicePtr Logging;
+    TExecutorPtr Executor;
+    IStartablePtr Server;
+
+    std::optional<TTestClient> Client;
+    ui64 RequestId = 0;
+
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        Port = PortManager.GetTcpPort();
+        Logging = CreateLoggingService(
+            "console",
+            {.FiltrationLevel = TLOG_RESOURCES});
+        Executor = TExecutor::Create("TestExecutor");
+
+        // No journal: the whole device holds the data.
+        Server = TServerBuilder(
+                     Logging,
+                     Executor,
+                     std::make_shared<TInMemoryDeviceManager>(),
+                     TServerConfig{
+                         .ListenAddress = TNetworkAddress{Port},
+                         .JournalEnabled = false,
+                         .RestoreConcurrency = 1,
+                     },
+                     {{.DeviceUUID = DeviceUUID,
+                       .BlocksCount = 1024,
+                       .BlockSize = DefaultBlockSize}})
+                     .Build();
+
+        Logging->Start();
+        Executor->Start();
+        Server->Start();
+
+        Client.emplace(Port);
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        Client.reset();
+
+        Server->Stop();
+        Executor->Stop();
+        Logging->Stop();
+    }
+
+    NProto::TDeviceProtocolResponse Execute(
+        NProto::TDeviceProtocolRequest request)
+    {
+        request.SetRequestId(++RequestId);
+        Client->Send(request);
+
+        auto response = Client->Receive();
+        UNIT_ASSERT_VALUES_EQUAL(RequestId, response.GetRequestId());
+        return response;
+    }
+
+    NProto::TError AcquireDevice(const TString& clientId)
+    {
+        NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableAcquireDevices();
+        proto.MutableHeaders()->SetClientId(clientId);
+        *proto.MutableDeviceUUIDs()->Add() = DeviceUUID;
+
+        auto response = Execute(std::move(request));
+        UNIT_ASSERT(response.HasAcquireDevices());
+        return response.GetAcquireDevices().GetError();
+    }
+
+    NProto::TError WritePage(
+        const TString& clientId,
+        ui64 pageNo,
+        const TString& content)
+    {
+        NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableWriteLogRecord();
+        proto.MutableHeaders()->SetClientId(clientId);
+        proto.SetDeviceUUID(DeviceUUID);
+        proto.SetLogSequenceNumber(1);
+
+        auto& group = *proto.MutablePageGroups()->Add();
+        group.SetFirstPageNo(pageNo);
+        *group.MutableContent()->Add() = content;
+
+        auto response = Execute(std::move(request));
+        UNIT_ASSERT(response.HasWriteLogRecord());
+        return response.GetWriteLogRecord().GetError();
+    }
+
+    NProto::TReadPagesResponse ReadPage(const TString& clientId, ui64 pageNo)
+    {
+        NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableReadPages();
+        proto.MutableHeaders()->SetClientId(clientId);
+        proto.SetDeviceUUID(DeviceUUID);
+
+        auto& group = *proto.MutablePageGroupRefs()->Add();
+        group.SetFirstPageNo(pageNo);
+        group.SetPageSize(DefaultBlockSize);
+        group.SetPageCount(1);
+
+        auto response = Execute(std::move(request));
+        UNIT_ASSERT(response.HasReadPages());
+        return response.GetReadPages();
+    }
+
+    TString ReadPageContent(ui64 pageNo)
+    {
+        const auto response = ReadPage(ClientId, pageNo);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetPageGroups(0).ContentSize());
+        return response.GetPageGroups(0).GetContent(0);
+    }
+
+    NProto::TError FormatDevice(bool wholeDevice)
+    {
+        NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableFormatDevice();
+        proto.MutableHeaders()->SetClientId(ClientId);
+        proto.SetDeviceUUID(DeviceUUID);
+        proto.SetWholeDevice(wholeDevice);
+
+        auto response = Execute(std::move(request));
+        UNIT_ASSERT(response.HasFormatDevice());
+        return response.GetFormatDevice().GetError();
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TDeviceTCPServerServiceTest)
+{
+    Y_UNIT_TEST_F(ShouldServeAcquiredDevice, TServiceFixture)
+    {
+        const ui64 pageNo = 0x10;
+        const TString content(DefaultBlockSize, 'A');
+
+        {
+            const auto error = AcquireDevice(ClientId);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        // the requests reach the device and the data written comes back
+
+        {
+            const auto error = WritePage(ClientId, pageNo, content);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(content, ReadPageContent(pageNo));
+
+        // a client that has not acquired the device is rejected
+
+        const TString otherClientId = "other-client-id";
+
+        for (const auto& error:
+             {WritePage(otherClientId, pageNo, content),
+              ReadPage(otherClientId, pageNo).GetError()})
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldFormatWholeDevice, TServiceFixture)
+    {
+        const ui64 pageNo = 0x10;
+        const TString content(DefaultBlockSize, 'A');
+
+        {
+            const auto error = AcquireDevice(ClientId);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        {
+            const auto error = WritePage(ClientId, pageNo, content);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(content, ReadPageContent(pageNo));
+
+        // The device has no journal, so the default format leaves the data
+        // untouched
+
+        {
+            const auto error = FormatDevice(false);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(content, ReadPageContent(pageNo));
+
+        // Formatting the whole device wipes the data
+
+        {
+            const auto error = FormatDevice(true);
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(DefaultBlockSize, '\0'),
+            ReadPageContent(pageNo));
     }
 }
 

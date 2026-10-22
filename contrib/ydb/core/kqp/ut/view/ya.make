@@ -7,12 +7,14 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
     contrib/ydb/core/kqp/ut/common
     yql/essentials/sql
+    yql/essentials/sql/pg_dummy
     yql/essentials/sql/v1
     yql/essentials/utils/log
 
-    contrib/ydb/core/testlib/basics/default
+    contrib/ydb/core/testlib/basics
 )
 
 DATA(arcadia/contrib/ydb/core/kqp/ut/view/input)

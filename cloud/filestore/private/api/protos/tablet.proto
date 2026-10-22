@@ -767,7 +767,10 @@ message TForcedOperationStatusResponse
         E_COMPLETED = 3;
         E_FAILED = 4;
     }
-    EStatus Status = 5;
+    EStatus OperationStatus = 5;
+
+    // Operation error. Unlike Error contains issue that happened in the op
+    NCloud.NProto.TError OperationError = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

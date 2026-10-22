@@ -7247,16 +7247,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             Service->GetNodeAttrHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
+                GetNodeAttrResponse = promise;
                 GetNodeAttrRequestEvent.Signal();
-                GetNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
-                return GetNodeAttrResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->ListNodesHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TListNodesResponse>();
+                ListNodesResponse = promise;
                 ListNodesRequestEvent.Signal();
-                ListNodesResponse = NewPromise<NProto::TListNodesResponse>();
-                return ListNodesResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->WriteDataHandler = [&](auto, const auto& rq)
@@ -7372,6 +7374,71 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             RenamePromise.GetFuture().GetValue(WaitTimeout);
         };
     };
+
+    void ReplyGetNodeAttr(TAttrRaceBootstrap& bootstrap)
+    {
+        NProto::TGetNodeAttrResponse response;
+        auto* node = response.MutableNode();
+        node->SetId(bootstrap.NodeId);
+        node->SetType(NProto::E_REGULAR_NODE);
+        bootstrap.GetNodeAttrResponse.SetValue(std::move(response));
+    }
+
+    void TestForgetNodeAfterAttrReply(
+        const std::function<void(TAttrRaceBootstrap&)>& attrRequest)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>(
+            "node",
+            bootstrap.ParentNodeId);
+        UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+        ReplyGetNodeAttr(bootstrap);
+        lookup.GetValue(WaitTimeout);
+
+        attrRequest(bootstrap);
+
+        auto request = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+        auto pending = bootstrap.Fuse->SendRequest(request);
+        UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+
+        // Record a version newer than the probe's, then drop the guest's only
+        // lookup reference. If an attr reply had leaked a reference, the entry
+        // would survive FORGET with that newer version, and the probe would
+        // get attr_valid == 0 as if its reply raced with a modification.
+        bootstrap.Write(/* offset */ 0, 4_KB);
+        bootstrap.Fuse->SendRequest<TForgetRequest>(bootstrap.NodeId, 1)
+            .GetValue(WaitTimeout);
+
+        ReplyGetNodeAttr(bootstrap);
+        pending.GetValue(WaitTimeout);
+        UNIT_ASSERT_GT(request->Out->Body.attr_valid, 0);
+    }
+
+    Y_UNIT_TEST(ShouldForgetNodeAfterGetAttrReply)
+    {
+        TestForgetNodeAfterAttrReply(
+            [] (TAttrRaceBootstrap& bootstrap) {
+                auto getAttr = bootstrap.Fuse->SendRequest<TGetAttrRequest>(
+                    bootstrap.NodeId);
+                UNIT_ASSERT(
+                    bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+                ReplyGetNodeAttr(bootstrap);
+                getAttr.GetValue(WaitTimeout);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldForgetNodeAfterSetAttrReply)
+    {
+        TestForgetNodeAfterAttrReply(
+            [] (TAttrRaceBootstrap& bootstrap) {
+                bootstrap.SetSize(0);
+            });
+    }
 
     Y_UNIT_TEST(
         ShouldNotAllowGuestAttrCachingUponGetAttrAndAttrModificationRace)

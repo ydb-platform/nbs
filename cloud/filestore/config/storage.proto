@@ -962,4 +962,16 @@ message TStorageConfig
     // XAttr cache size limit (number of entries). Passed to filestore-vhost
     // the same way as XAttrCacheTimeout.
     optional uint32 XAttrCacheLimit = 556;
+
+    // Enable RDMA transport between filestore-vhost and YDB storage for write
+    // operations independently of read operations.
+    // Requires RDMA to be enabled in the IC config.
+    optional bool EnableRdmaForWrites = 557;
+
+    // How often (in milliseconds) the tablet seals the active generation of
+    // the FileSystemEvent subscriptions (the clients that have read Nodes and
+    // NodeRefs) and drops the sealed one. A subscription lives between one
+    // and two periods, so the period should exceed the client-side cache
+    // timeouts.
+    optional uint32 FileSystemEventSubscriptionsSealPeriod = 558;
 }

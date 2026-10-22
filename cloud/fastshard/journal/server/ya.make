@@ -1,13 +1,17 @@
 LIBRARY()
 
 SRCS(
+    builder.cpp
+    config.cpp
     device_manager.cpp
     request.cpp
     server.cpp
+    service.cpp
 )
 
 PEERDIR(
     cloud/fastshard/journal/iface
+    cloud/fastshard/journal/impl
     cloud/fastshard/protos
     cloud/fastshard/sn/iface
 
@@ -17,6 +21,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/coroutine/listener
+    library/cpp/threading/future
 )
 
 END()

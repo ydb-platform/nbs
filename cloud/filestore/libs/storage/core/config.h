@@ -376,6 +376,7 @@ public:
     bool GetAllowHandlelessIO() const;
     bool GetFileSystemEventsEnabled() const;
     bool GetFileSystemEventsDryRunModeEnabled() const;
+    TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
 
     bool GetLazyXAttrsEnabled() const;
 
@@ -476,6 +477,8 @@ public:
     ui32 GetMaxSlowestRequestsEntries() const;
 
     TDuration GetNodeLatencyHalfLife() const;
+
+    [[nodiscard]] bool GetEnableRdmaForWrites() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
