@@ -54,12 +54,24 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp() const
+{
+    if (UntrimmedFreshBlobsByCommitId.empty()) {
+        return TInstant::Max();
+    }
+    return UntrimmedFreshBlobsByCommitId.begin()->second.Timestamp;
+}
+
+void TPartitionFreshBlobState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant timestamp)
 {
     {
+        const TUntrimmedFreshBlob blob{.ByteCount = blobSize,
+                                       .Timestamp = timestamp};
         const bool inserted =
-            UntrimmedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
-                .second;
+            UntrimmedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
             inserted,
             TWellKnownEntityTypes::TABLET,
@@ -70,7 +82,7 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 
     {
         const bool inserted =
-            UnflushedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
+            UnflushedFreshBlobByteCountByCommitId.emplace(commitId, blobSize)
                 .second;
         STORAGE_VERIFY_C(
             inserted,
@@ -85,10 +97,10 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
-    auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
+    auto& blobs = UntrimmedFreshBlobsByCommitId;
 
     while (blobs && blobs.begin()->first <= commitId) {
-        ui64 blobSize = blobs.begin()->second;
+        ui64 blobSize = blobs.begin()->second.ByteCount;
         STORAGE_VERIFY_C(
             UntrimmedFreshBlobByteCount >= blobSize,
             TWellKnownEntityTypes::TABLET,
