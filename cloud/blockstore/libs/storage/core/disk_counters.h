@@ -927,12 +927,21 @@ static_assert(
 
 struct TBlobCompressionCounters
 {
-    TCumulativeCounter UncompressedBytesWritten{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TMeta = TMemberMeta<TCounter TBlobCompressionCounters::*>;
+
+    TCounter UncompressedBytesWritten{
+        EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCumulativeCounter CompressedBytesWritten{
+    TCounter CompressedBytesWritten{
+        EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TBlobCompressionCounters::UncompressedBytesWritten>(),
+        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>()};
 };
 
 struct TPartitionDiskCounters

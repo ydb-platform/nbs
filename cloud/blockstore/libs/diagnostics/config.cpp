@@ -162,17 +162,6 @@ void DumpImpl(const TVector<T>& value, IOutputStream& os)
         if (i) {
             os << ",";
         }
-        os << value[i];
-    }
-}
-
-template <>
-void DumpImpl(const TVector<TSizeInterval>& value, IOutputStream& os)
-{
-    for (size_t i = 0; i < value.size(); ++i) {
-        if (i) {
-            os << ",";
-        }
         os << ToString(value[i]);
     }
 }
