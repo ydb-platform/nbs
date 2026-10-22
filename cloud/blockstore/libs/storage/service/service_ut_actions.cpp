@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
@@ -15,10 +16,14 @@
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/json_util.h>
 
 using TVolumeParamMap = ::google::protobuf::Map<
     TString,
@@ -2525,6 +2530,268 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             static_cast<int>(
                 NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART),
             static_cast<int>(observedDownPolicy));
+    }
+
+    Y_UNIT_TEST(ShouldForwardUpdateLinkOnFollowerActionsToTargetVolume)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnvWithCellId(env, "cell-b");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("follower");
+
+        TActorId volumeActor;
+        TCallContextPtr callContext;
+        NProto::TUpdateLinkOnFollowerRequest request;
+        NProto::TUpdateLinkOnFollowerResponse volumeResponse;
+        ui32 volumeRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvVolume::EvWaitReadyResponse) {
+                    volumeActor = event->Sender;
+                }
+                if (event->GetTypeRewrite() !=
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    return false;
+                }
+
+                const auto* msg =
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                if (event->Recipient == MakeVolumeProxyServiceId()) {
+                    UNIT_ASSERT(msg->CallContext == callContext);
+                    NProto::THeaders expected;
+                    expected.SetExactDiskIdMatch(true);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expected.SerializeAsString(),
+                        msg->Record.GetHeaders().SerializeAsString());
+                    return false;
+                }
+
+                // Reply at the target volume, without invoking its handler.
+                UNIT_ASSERT(event->GetRecipientRewrite() == volumeActor);
+                ++volumeRequests;
+                auto delivered = msg->Record;
+                UNIT_ASSERT(delivered.GetHeaders().GetExactDiskIdMatch());
+                // The proxy adds its own generation and tracing headers in
+                // transit.
+                delivered.ClearHeaders();
+                auto expected = request;
+                expected.ClearHeaders();
+                UNIT_ASSERT_VALUES_EQUAL(expected.SerializeAsString(),
+                                         delivered.SerializeAsString());
+
+                auto response = std::make_unique<
+                    TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+                response->Record = volumeResponse;
+                runtime.Send(new IEventHandle(event->Sender, volumeActor,
+                                              response.release(), 0,
+                                              event->Cookie));
+                return true;
+            });
+        service.WaitForVolume("follower");
+        UNIT_ASSERT(volumeActor);
+
+        const struct
+        {
+            NProto::ELinkAction Action;
+            ui32 Status;
+            bool Legacy;
+        } cases[] = {
+            {NProto::LINK_ACTION_CREATE, S_OK, false},
+            {NProto::LINK_ACTION_DESTROY, S_ALREADY, false},
+            {NProto::LINK_ACTION_COMPLETED, S_FALSE, false},
+            {NProto::LINK_ACTION_DESTROY, E_REJECTED, true},
+            {NProto::LINK_ACTION_CREATE, E_ARGUMENT, false},
+        };
+
+        for (const auto& test: cases) {
+            request.Clear();
+            request.SetDiskId("follower");
+            request.SetLeaderDiskId("leader");
+            request.SetAction(test.Action);
+            if (!test.Legacy) {
+                request.SetLeaderCellId("cell-a");
+                request.SetFollowerCellId("cell-b");
+                request.SetLinkUUID("link-uuid");
+            }
+            request.MutableHeaders()->SetClientId("payload-client");
+            request.MutableHeaders()->SetCellId("payload-cell");
+            request.MutableHeaders()->SetRequestId(456);
+            request.MutableHeaders()->MutableInternal()->SetAuthToken(
+                "payload-token");
+
+            auto* error = volumeResponse.MutableError();
+            *error = MakeError(test.Status, "volume response");
+            ui32 flags = 0;
+            SetProtoFlag(flags, NProto::EF_SILENT);
+            error->SetFlags(flags);
+            volumeResponse.MutableHeaders()->MutableThrottler()->SetDelay(17);
+
+            TString input;
+            google::protobuf::util::MessageToJsonString(request, &input);
+            auto event = service.CreateExecuteActionRequest(
+                "UpdateLinkOnFollower", input);
+            event->Record.MutableHeaders()->SetClientId("outer-client");
+            event->Record.MutableHeaders()->SetCellId("outer-cell");
+            callContext = event->CallContext;
+            service.SendRequest(MakeStorageServiceId(), std::move(event));
+            const auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(error->SerializeAsString(),
+                                     response->GetError().SerializeAsString());
+
+            NProto::TUpdateLinkOnFollowerResponse result;
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(), &result)
+                    .ok());
+            UNIT_ASSERT_VALUES_EQUAL(volumeResponse.SerializeAsString(),
+                                     result.SerializeAsString());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(std::size(cases), volumeRequests);
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidUpdateLinkOnFollowerInputWithoutForwarding)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnvWithCellId(env, "cell-b");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        runtime.SetEventFilter(
+            [](auto&, auto& event)
+            {
+                UNIT_ASSERT(
+                    event->GetTypeRewrite() !=
+                    TEvVolume::EvUpdateLinkOnFollowerRequest);
+                return false;
+            });
+
+        for (
+            const auto* input:
+            {"not json", "", "{}", "[]", R"({"UnknownField":1})",
+             R"({"DiskId":"follower","LeaderDiskId":"leader","Action":123})",
+             R"({"LeaderDiskId":"leader","LinkUUID":"uuid"})",
+             R"({"DiskId":"follower","LinkUUID":"uuid"})",
+             R"({"DiskId":"follower","LeaderDiskId":"leader","LinkUUID":"uuid","FollowerCellId":"other-cell"})",
+             R"({"DiskId":"follower","LeaderDiskId":"leader","Action":"LINK_ACTION_CREATE"})",
+             R"({"DiskId":"follower","LeaderDiskId":"leader","Action":"LINK_ACTION_COMPLETED"})"})
+        {
+            service.SendExecuteActionRequest("updatelinkonfollower", input);
+            const auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, response->GetStatus(),
+                                       input);
+            UNIT_ASSERT(response->Record.GetOutput().empty());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReturnUpdateLinkOnFollowerErrorWhenVolumeDoesNotExist)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnv(env);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.SendExecuteActionRequest(
+            "updatelinkonfollower",
+            R"({"DiskId":"missing-volume","LeaderDiskId":"leader","LinkUUID":"uuid"})");
+        const auto response = service.RecvExecuteActionResponse();
+        UNIT_ASSERT(IsNotFoundSchemeShardError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldHandleUpdateLinkOnFollowerVolumeProxyUndelivery)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        ui32 requests = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() !=
+                        TEvVolume::EvUpdateLinkOnFollowerRequest ||
+                    event->Recipient != MakeVolumeProxyServiceId())
+                {
+                    return false;
+                }
+                ++requests;
+                runtime.Send(new IEventHandle(event->Sender, event->Sender,
+                                              event->ReleaseBase().Release()));
+                return true;
+            });
+        service.SendExecuteActionRequest(
+            "updatelinkonfollower",
+            R"({"DiskId":"follower","LeaderDiskId":"leader","LinkUUID":"uuid"})");
+        const auto response = service.RecvExecuteActionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, requests);
+    }
+
+    Y_UNIT_TEST(ShouldHandleUpdateLinkOnFollowerCancellation)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        ui32 requests = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() !=
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    return false;
+                }
+                ++requests;
+                runtime.Send(new IEventHandle(event->Sender,
+                                              service.GetSender(),
+                                              new TEvents::TEvPoisonPill()));
+                return true;
+            });
+        service.SendExecuteActionRequest(
+            "updatelinkonfollower",
+            R"({"DiskId":"follower","LeaderDiskId":"leader","LinkUUID":"uuid"})");
+        const auto response = service.RecvExecuteActionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, requests);
+    }
+
+    Y_UNIT_TEST(ShouldTimeOutUpdateLinkOnFollowerWhenVolumeDoesNotRespond)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("follower");
+        ui32 requests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() !=
+                        TEvVolume::EvUpdateLinkOnFollowerRequest ||
+                    event->Recipient == MakeVolumeProxyServiceId())
+                {
+                    return false;
+                }
+                ++requests;
+                return true;
+            });
+        const auto deadline = runtime.GetCurrentTime() + TDuration::Seconds(31);
+        service.SendExecuteActionRequest(
+            "updatelinkonfollower",
+            R"({"DiskId":"follower","LeaderDiskId":"leader","LinkUUID":"uuid"})");
+
+        // Advance virtual time; the action must complete via its own timer.
+        const auto timer = runtime.AllocateEdgeActor(nodeIdx);
+        runtime.Schedule(
+            new IEventHandle(timer, timer, new TEvents::TEvWakeup()),
+            deadline - runtime.GetCurrentTime(), nodeIdx);
+        UNIT_ASSERT(runtime.GrabEdgeEventRethrow<TEvents::TEvWakeup>(timer));
+        const auto response =
+            runtime.GrabEdgeEventRethrow<TEvService::TEvExecuteActionResponse>(
+                service.GetSender(), TDuration::Seconds(1));
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, response->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, requests);
     }
 }
 

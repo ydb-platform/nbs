@@ -99,6 +99,7 @@ void TServiceActor::HandleExecuteAction(
         {"getclustercapacity",                &TServiceActor::CreateGetClusterCapacityActor                },
         {"setvhostdiscardenabledflag",        &TServiceActor::CreateSetVhostDiscardFlagActionActor         },
         {"getlinkstatus",                     &TServiceActor::CreateGetLinkStatusActionActor               },
+        {"updatelinkonfollower",              &TServiceActor::CreateUpdateLinkOnFollowerActionActor        },
         // Local NVMe disks
         {"listnvmedevices",                   &TServiceActor::CreateListNVMeDevicesActor                   },
         {"acquirenvmedevice",                 &TServiceActor::CreateAcquireNVMeDeviceActor                 },

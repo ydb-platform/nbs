@@ -474,6 +474,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateUpdateLinkOnFollowerActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     // Local NVMe disks
 
     TResultOrError<NActors::IActorPtr> CreateListNVMeDevicesActor(
