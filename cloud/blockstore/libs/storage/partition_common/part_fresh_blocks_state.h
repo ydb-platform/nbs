@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/set.h>
 #include <util/system/types.h>
 
@@ -127,10 +128,16 @@ public:
 class TPartitionFreshBlobState
 {
 private:
+    struct TUntrimmedFreshBlob
+    {
+        ui64 ByteCount = 0;
+        TInstant Timestamp;
+    };
+
     ui64 TabletID = 0;
 
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+    TMap<ui64, TUntrimmedFreshBlob> UntrimmedFreshBlobsByCommitId;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
@@ -159,7 +166,11 @@ public:
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    // Usually the oldest timestamp, but ordering is not guaranteed across
+    // tablet restarts.
+    [[nodiscard]] TInstant GetFirstUntrimmedFreshBlobTimestamp() const;
+
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
     void TrimFreshBlobs(ui64 commitId);
     ui64 FlushFreshBlob(ui64 commitId);
 };
