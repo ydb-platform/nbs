@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
@@ -2503,10 +2504,135 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART),
             static_cast<int>(observedDownPolicy));
     }
+
+    Y_UNIT_TEST(ShouldCreateVolumeAndReallocateWhenVolumeAlreadyExists)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        const TString diskId = "Disk-1";
+        const ui64 expectedBlockCount = 2 * DefaultDeviceBlockCount;
+
+        auto executeCreateDiskFromDevices = [&service](const TString& diskId)
+        {
+            NProto::TCreateVolumeFromDevicesRequest request;
+            request.SetDiskId(diskId);
+            request.SetBlockSize(DefaultDeviceBlockSize);
+            request.MutableDeviceUUIDs()->Add("uuid1");
+            request.MutableDeviceUUIDs()->Add("uuid42");
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+
+            return service.ExecuteAction("creatediskfromdevices", buf);
+        };
+
+        {
+            const auto response = executeCreateDiskFromDevices(diskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT(drState->Disks.contains(diskId));
+
+        {
+            const auto describeResponse = service.DescribeVolume(diskId);
+            const auto& volume = describeResponse->Record.GetVolume();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultDeviceBlockSize,
+                volume.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount,
+                volume.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, volume.GetDevices().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid1",
+                volume.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid42",
+                volume.GetDevices(1).GetDeviceUUID());
+        }
+
+        runtime.EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
+
+        const auto drSender = runtime.AllocateEdgeActor(nodeIdx);
+        {
+            auto request =
+                std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+            request->Record.SetDiskId(diskId);
+
+            runtime.Send(
+                new IEventHandle(
+                    MakeDiskRegistryProxyServiceId(),
+                    drSender,
+                    request.release()),
+                nodeIdx);
+        }
+
+        TAutoPtr<IEventHandle> deallocateHandle;
+        runtime.GrabEdgeEventRethrow<
+            TEvDiskRegistry::TEvDeallocateDiskResponse>(deallocateHandle);
+        const auto* deallocateResponse =
+            deallocateHandle->Get<TEvDiskRegistry::TEvDeallocateDiskResponse>();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            deallocateResponse->GetStatus(),
+            deallocateResponse->GetErrorReason());
+
+        UNIT_ASSERT(!drState->Disks.contains(diskId));
+
+        ui32 reallocateRequests = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvReallocateDiskRequest &&
+                    event->Recipient == MakeVolumeProxyServiceId())
+                {
+                    const auto* msg =
+                        event->Get<TEvVolume::TEvReallocateDiskRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(diskId, msg->Record.GetDiskId());
+                    ++reallocateRequests;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            const auto response = executeCreateDiskFromDevices(diskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, reallocateRequests);
+
+        {
+            const auto describeResponse = service.DescribeVolume(diskId);
+            const auto& volume = describeResponse->Record.GetVolume();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount,
+                volume.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, volume.GetDevices().size());
+        }
+
+        UNIT_ASSERT(drState->Disks.contains(diskId));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-
 
 template <>
 void Out<TVolumeParamMap>(
