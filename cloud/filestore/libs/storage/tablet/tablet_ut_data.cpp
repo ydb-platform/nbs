@@ -9026,6 +9026,59 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST_16K(ShouldNotSkipAlmostCompactRangesUponForcedCompaction)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetGarbageCompactionThresholdAverage(999'999);
+        storageConfig.SetGarbageCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetNewCompactionEnabled(true);
+        storageConfig.SetWriteBlobThreshold(block);
+        storageConfig.SetCompactRangeGarbagePercentageThreshold(99);
+        storageConfig.SetCompactRangeAverageBlobSizeThreshold(256_KB);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.WriteData(handle, 0, 256_KB, 'a');
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(256_KB, stats.GetGarbageQueueSize());
+        }
+
+        tablet.ForcedRangeOperation(
+            TVector<ui32>{rangeId},
+            TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction);
+
+        // forced compaction should ignore the thresholds
+        {
+            auto response = tablet.GetStorageStats(1);
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            // 2 x new blobs + 1 x garbage blob
+            UNIT_ASSERT_VALUES_EQUAL(3 * 256_KB, stats.GetGarbageQueueSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.CompactionRangeStatsSize());
+        }
+    }
+
     TABLET_TEST_4K_ONLY(ShouldIncrementGarbageBlockCountOnBlockDeletion)
     {
         const auto block = tabletConfig.BlockSize;

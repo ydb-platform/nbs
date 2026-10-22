@@ -593,7 +593,10 @@ public:
 
     auto CreateCompactionRequest(ui32 rangeId, bool filter = false)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
+            rangeId,
+            filter,
+            false);
     }
 
     auto CreateForcedRangeOperationRequest(
