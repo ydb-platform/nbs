@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
+#include <cloud/storage/core/libs/tablet/model/commit.h>
+
 #include <contrib/ydb/library/actors/core/monotonic.h>
 
 #include <util/system/spinlock.h>
@@ -77,7 +79,7 @@ class TPartitionThreadSafeState
 public:
     struct TFreshWriteInfo
     {
-        ui64 CommitId;
+        ui64 CommitId = InvalidCommitId;
         TInstant Timestamp;
     };
 

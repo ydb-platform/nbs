@@ -102,12 +102,11 @@ void TWriteFreshBlocksActor::Bootstrap(const NActors::TActorContext& ctx)
     WriteBlob(ctx);
 }
 
-NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest(
-    TInstant timestamp)
+NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
 {
     if (IsZeroRequest) {
         BlobContent =
-            BuildZeroFreshBlocksBlobContent(BlockRanges.front(), timestamp);
+            BuildZeroFreshBlocksBlobContent(BlockRanges.front(), Timestamp);
         BlobSize = BlobContent.size();
 
         return {};
@@ -147,7 +146,7 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest(
     }
 
     BlobContent =
-        BuildWriteFreshBlocksBlobContent(BlockRanges, holders, timestamp);
+        BuildWriteFreshBlocksBlobContent(BlockRanges, holders, Timestamp);
     BlobSize = BlobContent.size();
 
     return {};
@@ -155,7 +154,7 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest(
 
 void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 {
-    auto error = BuildBlobContentAndComputeDigest(Timestamp);
+    auto error = BuildBlobContentAndComputeDigest();
     if (HandleError(ctx, error)) {
         return;
     }

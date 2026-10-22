@@ -4,6 +4,7 @@
 
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 #include <util/ysaveload.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -104,6 +105,16 @@ NProto::TError ParseFreshBlobContent(
     Load(&si, protoSize);
 
     size_t offset = sizeof(version) + sizeof(protoSize);
+    if (buffer.size() < offset || buffer.size() - offset < protoSize) {
+        return MakeError(
+            E_FAIL,
+            Sprintf(
+                "fresh blob meta exceeds buffer; offset=%zu, protoSize=%u, "
+                "buffer.size()=%zu",
+                offset,
+                protoSize,
+                buffer.size()));
+    }
 
     NProto::TFreshBlobMeta meta;
     if (!meta.ParseFromArray(buffer.data() + offset, protoSize)) {
