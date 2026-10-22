@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -92,9 +93,10 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             missing << (missing.empty() ? "" : ", ") << id.Quote();
         }
 
-        ReportDiskAgentJournalledDeviceCreationError(
-            "Journalled devices not found among the disk agent devices",
-            {{"devices", missing}});
+        ReportJournalledDeviceCreationError(
+            TStringBuilder()
+            << "Journalled devices not found among the disk agent devices: "
+            << missing);
     }
 
     if (configs.empty()) {
@@ -111,21 +113,26 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
         TActivationContext::ActorSystem(),
         ctx.SelfID);
 
+    const ui32 restoreConcurrency =
+        Max<ui32>(AgentConfig->GetJournalRestoreConcurrency(), 1);
+
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Starting journalled device TCP server on " << address.Quote()
-                                                    << "...");
+        "Starting journalled device TCP server on "
+            << address.Quote() << ", restoring up to " << restoreConcurrency
+            << " journals at once...");
 
     try {
-        const auto listenAddress = CreateNetworkAddress(address);
-
         JournalledDeviceTcpServer = NJournalled::TServerBuilder(
             Logging,
             Executor,
             deviceManager,
-            listenAddress,
-            AgentConfig->GetJournalEnabled(),
+            NJournalled::TServerConfig{
+                .ListenAddress = CreateNetworkAddress(address),
+                .JournalEnabled = AgentConfig->GetJournalEnabled(),
+                .RestoreConcurrency = restoreConcurrency,
+            },
             std::move(configs)).Build();
 
         Executor->Start();
