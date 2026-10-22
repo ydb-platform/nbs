@@ -30,10 +30,16 @@ NBoot::TLoadBlobs::TLoadBlobs(IStep *owner, NPageCollection::TLargeGlobId largeG
     Logic->LoadEntry(this);
 }
 
-TExecutorBootLogic::TExecutorBootLogic(IOps *ops, const TActorId &self, TTabletStorageInfo *info, ui64 maxBytesInFly)
+TExecutorBootLogic::TExecutorBootLogic(
+    IOps* ops,
+    const TActorId& self,
+    TTabletStorageInfo* info,
+    ui64 maxBytesInFly,
+    bool redoLogCompressionEnabled)
     : Ops(ops)
     , SelfId(self)
     , Info(info)
+    , RedoLogCompressionEnabled(redoLogCompressionEnabled)
     , GroupResolveCachedChannel(Max<ui32>())
     , GroupResolveCachedGeneration(Max<ui32>())
     , GroupResolveCachedGroup(Max<ui32>())
@@ -330,4 +336,3 @@ TExecutorCaches TExecutorBootLogic::DetachCaches() {
 }
 
 }}
-

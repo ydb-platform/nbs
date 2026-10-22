@@ -967,4 +967,7 @@ message TStorageConfig
     // operations independently of read operations.
     // Requires RDMA to be enabled in the IC config.
     optional bool EnableRdmaForWrites = 557;
+
+    // Enables LZ4 compression of redo logs for filestore tablets
+    optional bool RedoLogCompressionEnabled = 558;
 }

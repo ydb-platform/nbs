@@ -183,6 +183,11 @@ void TIndexTabletActor::OnActivateExecutor(const TActorContext& ctx)
     }
 }
 
+bool TIndexTabletActor::RedoLogCompressionEnabled() const
+{
+    return Config->GetRedoLogCompressionEnabled();
+}
+
 bool TIndexTabletActor::ReassignChannelsEnabled() const
 {
     return true;
