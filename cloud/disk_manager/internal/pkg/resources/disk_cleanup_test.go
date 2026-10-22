@@ -14,15 +14,12 @@ func TestDiskCleanupReservation(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create", CreatedBy: "user"}
-	meta, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	meta, err := storage.DeleteDiskIfExists(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, meta)
-	// Ordinary finalization and collection cannot consume the reservation
-	// even before the per-cell cleanup IDs have been prepared.
-	require.NoError(t, storage.DiskDeleted(ctx, disk.ID, time.Now()))
-	require.NoError(t, storage.ClearDeletedDisks(ctx, time.Now().Add(time.Hour), 100))
-	_, err = storage.CreateDisk(ctx, disk)
-	require.Error(t, err)
+	completed, err := storage.IsDiskDeletionCompleted(ctx, disk.ID)
+	require.NoError(t, err)
+	require.False(t, completed)
 	prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cell-a", "cell-b"})
 	require.NoError(t, err)
 	require.True(t, prepared)
@@ -62,7 +59,7 @@ func TestDiskCleanupReservation(t *testing.T) {
 	active, err = storage.IsDiskCleanupInProgress(ctx, disk.ID)
 	require.NoError(t, err)
 	require.False(t, active)
-	completed, err := storage.IsDiskDeletionCompleted(ctx, disk.ID)
+	completed, err = storage.IsDiskDeletionCompleted(ctx, disk.ID)
 	require.NoError(t, err)
 	require.True(t, completed)
 	prepared, err = storage.PrepareDiskCleanup(ctx, disk.ID, []string{"late-parent"})
@@ -101,8 +98,6 @@ func finishDiskCleanup(ctx context.Context, db *persistence.YDBClient, storage S
 func TestDiskCleanupCompletionRollback(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
-	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
-	require.NoError(t, err)
 	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", []string{"cleanup"})
 	require.NoError(t, err)
 	require.True(t, prepared)
@@ -175,15 +170,15 @@ func TestDiskCleanupSetsDeletedAtOnlyAfterCompletion(t *testing.T) {
 	}
 	// The persistence layer represents an unset timestamp as the Unix epoch.
 	unset := time.Unix(0, 0).UTC()
-	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now().Add(-time.Hour))
+	_, err := storage.DeleteDiskIfExists(ctx, "disk", "delete", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
-	require.Equal(t, unset, readState().deletedAt)
-	require.Equal(t, diskStatusDeleted, readState().status)
-	require.Empty(t, readState().cleanupTaskIDs)
+	require.Empty(t, readState().id)
 
 	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", []string{"cell-a", "cell-b"})
 	require.NoError(t, err)
 	require.True(t, prepared)
+	require.Equal(t, diskStatusDeleting, readState().status)
+	require.Equal(t, `["cell-a","cell-b"]`, readState().cleanupTaskIDs)
 	require.Equal(t, unset, readState().deletedAt)
 
 	require.NoError(t, finishDiskCleanup(ctx, db, storage, "disk", "cell-a"))
@@ -228,8 +223,8 @@ func TestDiskDeletionCompleted(t *testing.T) {
 		completed bool
 	}{
 		{name: "missing"},
-		{name: "reservation without timestamp", status: diskStatusDeleted},
-		{name: "reservation with epoch timestamp", status: diskStatusDeleted, deletedAt: time.Unix(0, 0)},
+		{name: "deleted without timestamp", status: diskStatusDeleted, completed: true},
+		{name: "deleted with epoch timestamp", status: diskStatusDeleted, deletedAt: time.Unix(0, 0), completed: true},
 		{name: "pending", status: diskStatusDeleting},
 		{name: "completed", status: diskStatusDeleted, deletedAt: time.Now(), completed: true},
 	} {
@@ -245,7 +240,7 @@ func TestDiskCleanupDoesNotTakeOverOrdinaryDeletion(t *testing.T) {
 	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create"}
 	_, err := storage.CreateDisk(ctx, disk)
 	require.NoError(t, err)
-	meta, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	meta, err := storage.DeleteDiskIfExists(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
 	require.NotNil(t, meta)
 	prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cleanup"})
@@ -289,4 +284,57 @@ func TestDiskCleanupInProgress(t *testing.T) {
 			require.Equal(t, tc.pending, diskCleanupInProgress(tc.state))
 		})
 	}
+}
+
+func TestDiskCleanupPreparationDoesNotTakeOverNewDisk(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	meta, err := storage.DeleteDiskIfExists(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, meta)
+	// Creation wins the race between the missing-record check and reservation.
+	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "new-create"}
+	created, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	require.NotNil(t, created)
+	prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cleanup"})
+	require.NoError(t, err)
+	require.False(t, prepared)
+	pending, err := storage.IsDiskCleanupPending(ctx, disk.ID, "cleanup")
+	require.NoError(t, err)
+	require.False(t, pending)
+	actual, err := storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Equal(t, "new-create", actual.CreateTaskID)
+}
+
+func TestDiskCleanupPreparationRejectsEmptyIDs(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", nil)
+	require.Error(t, err)
+	require.False(t, prepared)
+	// Failed preparation must not leave an unfinishable deleting reservation.
+	disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create"}
+	meta, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+}
+
+func TestLegacyDeletionDoesNotCreateBackgroundReservation(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	meta, err := storage.DeleteDisk(ctx, "disk", "legacy-delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, meta)
+	active, err := storage.IsDiskCleanupInProgress(ctx, "disk")
+	require.NoError(t, err)
+	require.False(t, active)
+	// An existing legacy tombstone is not reinterpreted using deleted_at.
+	completed, err := storage.IsDiskDeletionCompleted(ctx, "disk")
+	require.NoError(t, err)
+	require.True(t, completed)
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", []string{"cleanup"})
+	require.NoError(t, err)
+	require.False(t, prepared)
 }

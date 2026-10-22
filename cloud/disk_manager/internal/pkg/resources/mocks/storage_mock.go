@@ -623,3 +623,14 @@ func (s *StorageMock) IsDiskCleanupInProgress(ctx context.Context, diskID string
 	args := s.Called(ctx, diskID)
 	return args.Bool(0), args.Error(1)
 }
+
+func (s *StorageMock) DeleteDiskIfExists(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	deletingAt time.Time,
+) (*resources.DiskMeta, error) {
+
+	args := s.Called(ctx, diskID, taskID, deletingAt)
+	return args.Get(0).(*resources.DiskMeta), args.Error(1)
+}

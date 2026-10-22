@@ -32,7 +32,7 @@ func (s *storageYDB) loadDiskCleanupState(
 		return diskState{}, err
 	}
 	if len(states) == 0 {
-		return diskState{id: diskID}, nil
+		return diskState{}, nil
 	}
 	return states[0], nil
 }
@@ -53,9 +53,8 @@ func diskCleanupInProgress(state diskState) bool {
 	return state.status == diskStatusDeleting && state.cleanupTaskIDs != ""
 }
 
-// A zero timestamp is persisted as the Unix epoch; legacy NULLs scan as Go zero.
 func diskDeletionCompleted(state diskState) bool {
-	return state.status == diskStatusDeleted && state.deletedAt.After(time.Unix(0, 0))
+	return state.status == diskStatusDeleted
 }
 
 func (s *storageYDB) IsDiskDeletionCompleted(
@@ -115,12 +114,18 @@ func (s *storageYDB) PrepareDiskCleanup(
 		if err != nil {
 			return err
 		}
-		if diskDeletionCompleted(state) ||
-			(state.status != diskStatusDeleted && !diskCleanupInProgress(state)) {
-			// Accept a fresh reservation or an existing background cleanup.
-			// Completed and ordinary disk deletions must never be restarted here.
+		if state.id != "" && !diskCleanupInProgress(state) {
+			// Only a missing record or an existing background cleanup can be
+			// reserved. Never take over a live disk or restart completed deletion.
 			prepared = false
 			return tx.Commit(ctx)
+		}
+		if len(cleanupIDs) == 0 {
+			return fmt.Errorf("cannot reserve disk %q without cleanup IDs", diskID)
+		}
+		if state.id == "" {
+			state.id = diskID
+			state.deletingAt = time.Now()
 		}
 		ids, err := diskCleanupIDs(state)
 		if err != nil {

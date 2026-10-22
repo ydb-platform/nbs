@@ -16,6 +16,8 @@ message DeleteDiskRequest {
     // Delete the disk from Blockstore even if it is missing from the Disk
     // Manager database (needed for legacy-created local disks).
     bool DeleteIfNonExistent = 4;
+    // Persist the selected mode so retries do not switch paths after config changes.
+    bool BackgroundCleanup = 5;
 }
 
 message DeleteDiskTaskState {

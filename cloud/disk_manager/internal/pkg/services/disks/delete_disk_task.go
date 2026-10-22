@@ -25,15 +25,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskTask struct {
-	enableBackgroundDiskCleanup bool
-	performanceConfig           *performance_config.PerformanceConfig
-	storage                     resources.Storage
-	scheduler                   tasks.Scheduler
-	poolService                 pools.Service
-	nbsFactory                  nbs.Factory
-	cellSelector                cells.CellSelector
-	request                     *protos.DeleteDiskRequest
-	state                       *protos.DeleteDiskTaskState
+	performanceConfig *performance_config.PerformanceConfig
+	storage           resources.Storage
+	scheduler         tasks.Scheduler
+	poolService       pools.Service
+	nbsFactory        nbs.Factory
+	cellSelector      cells.CellSelector
+	request           *protos.DeleteDiskRequest
+	state             *protos.DeleteDiskTaskState
 }
 
 func (t *deleteDiskTask) Save() ([]byte, error) {
@@ -63,7 +62,13 @@ func (t *deleteDiskTask) deleteDisk(
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 
-	diskMeta, err := t.storage.DeleteDisk(
+	backgroundCleanup := t.request.BackgroundCleanup &&
+		t.request.DeleteIfNonExistent && t.request.Disk.ZoneId != ""
+	deleteDisk := t.storage.DeleteDisk
+	if backgroundCleanup {
+		deleteDisk = t.storage.DeleteDiskIfExists
+	}
+	diskMeta, err := deleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
@@ -79,12 +84,14 @@ func (t *deleteDiskTask) deleteDisk(
 		if !t.request.DeleteIfNonExistent {
 			return nil
 		}
-		completed, err := t.storage.IsDiskDeletionCompleted(ctx, diskID)
-		if err != nil {
-			return err
-		}
-		if completed {
-			return nil
+		if backgroundCleanup {
+			completed, err := t.storage.IsDiskDeletionCompleted(ctx, diskID)
+			if err != nil {
+				return err
+			}
+			if completed {
+				return nil
+			}
 		}
 
 		zoneID = t.request.Disk.ZoneId
@@ -96,7 +103,7 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = diskMeta.ZoneID
 	}
 
-	if diskMeta == nil && t.enableBackgroundDiskCleanup {
+	if diskMeta == nil && backgroundCleanup {
 		cellIDs, err := t.cellSelector.ResolveCells(zoneID)
 		if err != nil {
 			return err
@@ -113,7 +120,7 @@ func (t *deleteDiskTask) deleteDisk(
 		return t.scheduleDiskCleanup(ctx, execCtx)
 	}
 
-	if diskMeta == nil && !t.enableBackgroundDiskCleanup {
+	if diskMeta == nil && !t.request.BackgroundCleanup {
 		// Disabling the feature preserves legacy single-cell deletion, but a
 		// repeated request must not interfere with an existing background cleanup.
 		pending, err := t.storage.IsDiskCleanupInProgress(ctx, diskID)
