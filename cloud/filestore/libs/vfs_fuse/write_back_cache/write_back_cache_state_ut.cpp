@@ -1608,6 +1608,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
     Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFlush)
     {
         DoShouldNotReleaseHandleBeingUsedForFlush(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFailedFlush)
+    {
         DoShouldNotReleaseHandleBeingUsedForFlush(true);
     }
 }

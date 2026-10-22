@@ -1002,10 +1002,12 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     TPendingWriteDataRequest* request)
 {
     auto handle = request->GetRequest().GetHandle();
-    auto& handleState = nodeState.Handles[handle];
+    auto* handleState = nodeState.Handles.FindPtr(handle);
 
-    handleState.PendingRequests.Remove(request);
-    TryRemoveUnusedHandle(nodeState, handle);
+    if (handleState) {
+        handleState->PendingRequests.Remove(request);
+        TryRemoveUnusedHandle(nodeState, handle);
+    }
 }
 
 void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
@@ -1013,7 +1015,7 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     TCachedWriteDataRequest* request)
 {
     auto handle = request->GetHandle();
-    auto* handleState = nodeState.Handles.FindPtr(request->GetHandle());
+    auto* handleState = nodeState.Handles.FindPtr(handle);
 
     if (handleState) {
         handleState->UnflushedRequests.Remove(request);
@@ -1025,9 +1027,8 @@ void TWriteBackCacheState::TryRemoveUnusedHandle(
     TNodeState& nodeState,
     ui64 handle)
 {
-    if (nodeState.FlushHandle != NProto::E_INVALID_HANDLE &&
-        nodeState.FlushHandle == handle)
-    {
+    if (handle == nodeState.FlushHandle) {
+        // The handle is retained by the in-flight flush.
         return;
     }
 

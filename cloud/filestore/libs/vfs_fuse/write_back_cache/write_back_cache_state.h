@@ -250,6 +250,10 @@ private:
         ui64 handle,
         THandleState& handleState);
 
+    // Removes the handle from nodeState.Handles when it has no pending or
+    // unflushed requests and is not retained by an in-flight flush attempt.
+    // Completes any pending ReleaseHandle request before removing the handle.
+    // Does nothing if the handle is absent or still in use.
     void TryRemoveUnusedHandle(TNodeState& nodeState, ui64 handle);
 
     void DropCachedData(

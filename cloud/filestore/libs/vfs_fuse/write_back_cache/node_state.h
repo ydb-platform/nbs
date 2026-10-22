@@ -120,9 +120,8 @@ struct TNodeState
 
     ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
 
-    // Handle retained until the current flush attempt completes.
-    // Used to prevent a race when a handle is released while a flush is in
-    // progress.
+    // Handle that is currently used by a flush operation and is prevented from
+    // being released until the flush is completed
     ui64 FlushHandle = NProto::E_INVALID_HANDLE;
 
     // Flush requests are fulfilled when there are no pending or unflushed
