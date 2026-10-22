@@ -21,6 +21,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         const NActors::TActorId& owner,
         const NActors::TActorId& actorToAddFreshBlocks,
         ui64 commitId,
+        TInstant timestamp,
         ui32 channel,
         ui32 blockCount,
         TVector<TRequest> requests,
@@ -34,6 +35,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
     , CommitId(commitId)
+    , Timestamp(timestamp)
     , Channel(channel)
     , BlockCount(blockCount)
     , Requests(std::move(requests))
@@ -100,10 +102,12 @@ void TWriteFreshBlocksActor::Bootstrap(const NActors::TActorContext& ctx)
     WriteBlob(ctx);
 }
 
-NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
+NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest(
+    TInstant timestamp)
 {
     if (IsZeroRequest) {
-        BlobContent = BuildZeroFreshBlocksBlobContent(BlockRanges.front());
+        BlobContent =
+            BuildZeroFreshBlocksBlobContent(BlockRanges.front(), timestamp);
         BlobSize = BlobContent.size();
 
         return {};
@@ -142,7 +146,8 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
         ++writeHandler;
     }
 
-    BlobContent = BuildWriteFreshBlocksBlobContent(BlockRanges, holders);
+    BlobContent =
+        BuildWriteFreshBlocksBlobContent(BlockRanges, holders, timestamp);
     BlobSize = BlobContent.size();
 
     return {};
@@ -150,7 +155,7 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
 
 void TWriteFreshBlocksActor::WriteBlob(const NActors::TActorContext& ctx)
 {
-    auto error = BuildBlobContentAndComputeDigest();
+    auto error = BuildBlobContentAndComputeDigest(Timestamp);
     if (HandleError(ctx, error)) {
         return;
     }
@@ -196,6 +201,7 @@ void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
             CommitId,
             BlobSize,
             BlobId,
+            Timestamp,
             std::move(BlockRanges),
             std::move(WriteHandlers));
 
