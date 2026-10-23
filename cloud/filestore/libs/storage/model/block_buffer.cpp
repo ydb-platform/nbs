@@ -110,6 +110,8 @@ public:
     {
     }
 
+    // This method is not thread-safe because it allocates data on its first
+    // invocation.
     TStringBuf GetUnalignedHead() const override
     {
         if (!UnalignedHead) {
@@ -119,6 +121,8 @@ public:
         return UnalignedHead;
     }
 
+    // This method is not thread-safe because it allocates data on its first
+    // invocation.
     TStringBuf GetUnalignedTail() const override
     {
         if (!UnalignedTail) {
@@ -128,6 +132,8 @@ public:
         return UnalignedTail;
     }
 
+    // This method is not thread-safe because it allocates data on its first
+    // invocation.
     TStringBuf GetBlock(size_t index) const override
     {
         auto& block = Blocks[index];
