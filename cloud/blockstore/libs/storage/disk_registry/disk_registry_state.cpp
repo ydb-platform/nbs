@@ -3250,6 +3250,16 @@ bool TDiskRegistryState::CanSecureErase(const NProto::TDeviceConfig& device) con
            ESecureEraseReadiness::ReadyToErase;
 }
 
+void TDiskRegistryState::SetSuspendSecureErase(bool suspend)
+{
+    SuspendSecureErase = suspend;
+}
+
+bool TDiskRegistryState::GetSuspendSecureErase() const
+{
+    return SuspendSecureErase;
+}
+
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {

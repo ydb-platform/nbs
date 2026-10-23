@@ -34,6 +34,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(FinishMigration,                    __VA_ARGS__)                       \
     xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
     xxx(SetWritableState,                   __VA_ARGS__)                       \
+    xxx(SetSuspendSecureErase,              __VA_ARGS__)                       \
     xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
     xxx(SetUserId,                          __VA_ARGS__)                       \
     xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
@@ -227,6 +228,9 @@ struct TEvDiskRegistry
 
         EvUpdateVolumeHealthRequest = EvBegin + 83,
         EvUpdateVolumeHealthResponse = EvBegin + 84,
+
+        EvSetSuspendSecureEraseRequest = EvBegin + 85,
+        EvSetSuspendSecureEraseResponse = EvBegin + 86,
 
         EvEnd
     };
