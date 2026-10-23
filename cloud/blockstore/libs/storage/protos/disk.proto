@@ -1497,7 +1497,7 @@ message TSetSuspendSecureEraseRequest
     THeaders Headers = 1;
 
     // If true, secure erase does not run.
-    bool State = 2;
+    bool Suspend = 2;
 }
 
 message TSetSuspendSecureEraseResponse

@@ -577,7 +577,7 @@ private:
         const TEvDiskRegistry::TEvSetSuspendSecureEraseRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        State->SuspendSecureErase = ev->Get()->Record.GetState();
+        State->SuspendSecureErase = ev->Get()->Record.GetSuspend();
 
         auto response = std::make_unique<
             TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>();
