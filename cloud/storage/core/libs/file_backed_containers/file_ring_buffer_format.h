@@ -108,6 +108,16 @@ struct TFileRingBufferCapabilities
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Canonical state file layout:
+// [reserved header area][metadata][alignment padding][data]
+//
+// Metadata starts right after the reserved header area;
+// Data starts right after the metadata area and is aligned to sizeof(ui64) -
+//   this is needed to read and write entry headers atomically.
+//
+// During metadata resizing, data and/or metadata may temporarily be stored
+// farther into the file. This is valid but not canonical; use the offsets from
+// TFileRingBufferHeader to access it.
 struct TFileRingBufferLayout
 {
     ui64 DataOffset = 0;

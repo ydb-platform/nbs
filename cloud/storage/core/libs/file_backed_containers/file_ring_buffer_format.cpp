@@ -327,15 +327,22 @@ TFileRingBufferLayout TFileRingBufferLayout::FromCapacity(
 {
     const ui64 metadataOffset = TFileRingBufferHeader::ReserveSize;
     const ui64 maxDataOffset = AlignDown(Max<ui64>(), sizeof(ui64));
+
+    if (metadataOffset > maxDataOffset) {
+        // Integer overflow prevention
+        return {};
+    }
+
     if (metadataCapacity > maxDataOffset - metadataOffset) {
         return {};
     }
 
-    // Align the data area so entry headers can be read and written atomically.
+    // Align the data area so entry headers can be read and written atomically
     const ui64 dataOffset =
         AlignUp(metadataOffset + metadataCapacity, sizeof(ui64));
 
     if (dataCapacity > Max<ui64>() - dataOffset) {
+        // Integer overflow prevention
         return {};
     }
 
