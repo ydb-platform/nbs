@@ -459,7 +459,8 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
         return false;
     }
 
-    const auto timestamp = State->GetOldestUnflushedFreshBlobTimestamp();
+    const auto timestamp = State->GetFirstUntrimmedFreshBlobTimestamp(
+        State->GetTrimFreshLogToCommitId());
     if (timestamp == TInstant::Max()) {
         return false;
     }

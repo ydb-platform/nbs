@@ -984,6 +984,15 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
             0,
             partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(

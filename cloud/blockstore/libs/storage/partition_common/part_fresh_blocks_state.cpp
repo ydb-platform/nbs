@@ -54,27 +54,15 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp() const
+TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp(
+    ui64 trimFreshLogToCommitId) const
 {
-    if (UntrimmedFreshBlobsByCommitId.empty()) {
+    const auto it =
+        UntrimmedFreshBlobsByCommitId.upper_bound(trimFreshLogToCommitId);
+    if (it == UntrimmedFreshBlobsByCommitId.end()) {
         return TInstant::Max();
     }
-    return UntrimmedFreshBlobsByCommitId.begin()->second.Timestamp;
-}
-
-TInstant TPartitionFreshBlobState::GetOldestUnflushedFreshBlobTimestamp() const
-{
-    if (!OldestUnflushedFreshBlobTimestamp) {
-        auto timestamp = TInstant::Max();
-        for (const auto& blob: UnflushedFreshBlobByteCountByCommitId) {
-            const auto it = UntrimmedFreshBlobsByCommitId.find(blob.first);
-            if (it != UntrimmedFreshBlobsByCommitId.end()) {
-                timestamp = Min(timestamp, it->second.Timestamp);
-            }
-        }
-        OldestUnflushedFreshBlobTimestamp = timestamp;
-    }
-    return *OldestUnflushedFreshBlobTimestamp;
+    return it->second.Timestamp;
 }
 
 void TPartitionFreshBlobState::AddFreshBlob(
@@ -108,16 +96,10 @@ void TPartitionFreshBlobState::AddFreshBlob(
         UnflushedFreshBlobByteCount =
             SafeIncrement(UnflushedFreshBlobByteCount, blobSize);
     }
-
-    if (OldestUnflushedFreshBlobTimestamp) {
-        OldestUnflushedFreshBlobTimestamp =
-            Min(*OldestUnflushedFreshBlobTimestamp, timestamp);
-    }
 }
 
 void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
-    OldestUnflushedFreshBlobTimestamp.reset();
     auto& blobs = UntrimmedFreshBlobsByCommitId;
 
     while (blobs && blobs.begin()->first <= commitId) {
@@ -151,7 +133,6 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
     blobs.erase(it);
-    OldestUnflushedFreshBlobTimestamp.reset();
 
     return blobSize;
 }
