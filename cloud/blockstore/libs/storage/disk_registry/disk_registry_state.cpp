@@ -8339,6 +8339,7 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
 }
 
 NProto::TError TDiskRegistryState::CanCreateSimpleDiskFromDevices(
+    const TDiskId& diskId,
     const TCreateDiskFromDevicesParams& params,
     const TVector<TDeviceId>& devices,
     bool allowFreshDevices) const
@@ -8347,9 +8348,7 @@ NProto::TError TDiskRegistryState::CanCreateSimpleDiskFromDevices(
         return MakeError(E_ARGUMENT, "empty device list");
     }
 
-    const TDiskId& diskId = params.DiskId;
     ui32 blockSize = params.BlockSize;
-
     std::optional<NProto::EDevicePoolKind> poolKind;
 
     for (const auto& uuid : devices) {
@@ -8427,19 +8426,18 @@ NProto::TError TDiskRegistryState::CanCreateSimpleDiskFromDevices(
 NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
     const TCreateDiskFromDevicesParams& params,
     const TVector<NProto::TDeviceConfig>& devices,
     TAllocateDiskResult* result)
 {
-    Y_DEBUG_ABORT_UNLESS(result);
-
     const TVector<TString> deviceIds = ToDeviceIds(devices);
     Y_DEBUG_ABORT_UNLESS(!HasError(CanCreateSimpleDiskFromDevices(
+        diskId,
         params,
         deviceIds,
         /*allowFreshDevices=*/false)));
 
-    const TDiskId& diskId = params.DiskId;
     auto& disk = Disks[diskId];
 
     disk.Devices = deviceIds;
@@ -8480,34 +8478,15 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     return {};
 }
 
-NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
+NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
+    const TDiskId& masterId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<NProto::TDeviceConfig>& devices,
     const TVector<TVector<TDeviceId>>& replicas) const
 {
-    const NProto::EStorageMediaKind mediaKind = params.MediaKind;
-
-    if (mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
-        mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR3)
-    {
-        if (!replicas.empty()) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "non-replicated disk " << params.DiskId.Quote()
-                    << " unexpected replicas count");
-        }
-        return CanCreateSimpleDiskFromDevices(
-            params,
-            ToDeviceIds(devices),
-            /*allowFresh=*/false);
-    }
-
-    const ui32 replicaCount = mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
-                                  ? StorageConfig->GetMirror2DiskReplicaCount()
-                                  : StorageConfig->GetMirror3DiskReplicaCount();
-
-    const TDiskId& masterId = params.DiskId;
+    const ui32 replicaCount =
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
+            ? StorageConfig->GetMirror2DiskReplicaCount()
+            : StorageConfig->GetMirror3DiskReplicaCount();
 
     if (replicas.size() != replicaCount + 1) {
         return MakeError(
@@ -8550,12 +8529,8 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
         auto error = CanCreateSimpleDiskFromDevices(
-            TCreateDiskFromDevicesParams(
-                replicaId,
-                params.BlockSize,
-                mediaKind,
-                params.Force,
-                params.KeepBlockCount),
+            replicaId,
+            params,
             replicas[i],
             /*allowFreshDevices=*/true);
 
@@ -8688,31 +8663,19 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
     return {};
 }
 
-NProto::TError TDiskRegistryState::CreateDiskFromDevices(
+NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
+    const TDiskId& masterId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<NProto::TDeviceConfig>& devices,
     const TVector<TVector<TDeviceId>>& replicas,
     TAllocateDiskResult* result)
 {
-    Y_DEBUG_ABORT_UNLESS(result);
-
-    if (auto error = CanCreateDiskFromDevices(params, devices, replicas);
+    if (auto error = CanCreateMirroredDiskFromDevices(masterId, params, replicas);
         HasError(error))
     {
         return error;
     }
-
-    const NProto::EStorageMediaKind mediaKind = params.MediaKind;
-
-    if (mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
-        mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR3)
-    {
-        return CreateSimpleDiskFromDevices(now, db, params, devices, result);
-    }
-
-    const TDiskId& masterId = params.DiskId;
 
     if (auto error = CreateMirroredDiskPlacementGroup(db, masterId);
         HasError(error))
@@ -8764,12 +8727,8 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
         auto error = CreateSimpleDiskFromDevices(
             now,
             db,
-            TCreateDiskFromDevicesParams(
-                replicaId,
-                params.BlockSize,
-                mediaKind,
-                params.Force,
-                params.KeepBlockCount),
+            replicaId,
+            params,
             resolvedReplicas[i],
             &replicaResult);
 
@@ -8807,13 +8766,32 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     auto& master = Disks[masterId];
     master.LogicalBlockSize = params.BlockSize;
     master.ReplicaCount = replicas.size() - 1;
-    master.MediaKind = mediaKind;
+    master.MediaKind = params.MediaKind;
     master.StateTs = now;
     master.State = CalculateDiskState(masterId, master);
 
     db.UpdateDisk(BuildDiskConfig(masterId, master));
 
     return {};
+}
+
+NProto::TError TDiskRegistryState::CreateDiskFromDevices(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    const TCreateDiskFromDevicesParams& params,
+    const TVector<NProto::TDeviceConfig>& devices,
+    const TVector<TVector<TDeviceId>>& replicas,
+    TAllocateDiskResult* result)
+{
+    Y_DEBUG_ABORT_UNLESS(result);
+
+    if (params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3)
+    {
+        return CreateMirroredDiskFromDevices(now, db, diskId, params, replicas, result);
+    }
+    return CreateSimpleDiskFromDevices(now, db, diskId, params, devices, result);
 }
 
 NProto::TError TDiskRegistryState::ChangeDiskDevice(

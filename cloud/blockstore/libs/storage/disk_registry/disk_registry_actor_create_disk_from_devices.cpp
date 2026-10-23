@@ -66,7 +66,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
             record.GetDevices().end()),
         std::move(replicas),
         record.GetKeepBlockCount()
-    );
+        );
 }
 
 bool TDiskRegistryActor::PrepareCreateDiskFromDevices(
@@ -92,8 +92,8 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
     args.Error = State->CreateDiskFromDevices(
         ctx.Now(),
         db,
+        args.DiskId,
         TDiskRegistryState::TCreateDiskFromDevicesParams(
-            args.DiskId,
             args.BlockSize,
             args.MediaKind,
             args.Force,
