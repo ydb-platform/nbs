@@ -25,6 +25,12 @@ void SaveCompressedBitmap(
     ui64 bitCount,
     NProto::TCompressedBitmapData& proto);
 
+// Merge serialized chunks into bitmap without clearing its existing bits.
+// The caller must ensure the chunks are valid and fit within bitmap capacity.
+void MergeCompressedBitmap(
+    TCompressedBitmap& bitmap,
+    const NProto::TCompressedBitmapData& proto);
+
 NProto::TError ValidateCompressedBitmapData(
     const NProto::TCompressedBitmapData& bitmap,
     ui64 maxBitCount);

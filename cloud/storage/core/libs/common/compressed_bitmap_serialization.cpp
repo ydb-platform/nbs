@@ -86,6 +86,16 @@ void SaveCompressedBitmap(
     }
 }
 
+void MergeCompressedBitmap(
+    TCompressedBitmap& bitmap,
+    const NProto::TCompressedBitmapData& proto)
+{
+    for (const auto& chunk: proto.GetChunks()) {
+        bitmap.Merge(
+            {.ChunkIdx = chunk.GetChunkIdx(), .Data = chunk.GetData()});
+    }
+}
+
 NProto::TError ValidateCompressedBitmapData(
     const NProto::TCompressedBitmapData& bitmap,
     const ui64 maxBitCount)
