@@ -98,6 +98,9 @@ private:
     void HandleReallocateDiskResponse(
         const TEvVolume::TEvReallocateDiskResponse::TPtr& ev,
         const TActorContext& ctx);
+
+    void SendCreateVolumeRequest(
+        const TActorContext& ctx);
 };
 
 TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
@@ -214,6 +217,11 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
         TBlockStoreComponents::SERVICE,
         "Sending describe request for volume " << Request.GetDiskId().Quote());
 
+    if (!Request.GetReallocateIfExists()) {
+        SendCreateVolumeRequest(ctx);
+        return;
+    }
+
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -241,11 +249,12 @@ void TCreateDiskFromDevicesActor::HandleDescribeVolumeResponse(
         return;
     }
 
-    const bool volumeExists =
+    // Not found error is expected if the volume does not exist.
+    const bool hasError =
         error.GetCode() != E_NOT_FOUND &&
         error.GetCode() != MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist);
 
-    if (volumeExists) {
+    if (hasError) {
         LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE,
             "Describe of volume "
             << Request.GetDiskId().Quote()
@@ -256,30 +265,7 @@ void TCreateDiskFromDevicesActor::HandleDescribeVolumeResponse(
         return;
     }
 
-    auto volumeConfig = ConvertToVolumeConfig(Request);
-
-    TVolumeParams volumeParams {
-        .BlockSize = volumeConfig.GetBlockSize(),
-        .BlocksCountPerPartition = BlockCount,
-        .PartitionsCount = 1,
-        .MediaKind = static_cast<NProto::EStorageMediaKind>(
-            volumeConfig.GetStorageMediaKind()),
-        .IsSystem = volumeConfig.GetIsSystem()
-    };
-
-    ResizeVolume(*Config, volumeParams, {}, {}, volumeConfig);
-
-    volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
-
-    LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Sending createvolume request for volume "
-        << volumeConfig.GetDiskId().Quote());
-
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(volumeConfig),
-        RequestInfo->Cookie);
+    SendCreateVolumeRequest(ctx);
 }
 
 void TCreateDiskFromDevicesActor::HandleReallocateDiskResponse(
@@ -316,6 +302,36 @@ void TCreateDiskFromDevicesActor::HandleCreateVolumeResponse(
     }
 
     ReplyAndDie(ctx, error);
+}
+
+void TCreateDiskFromDevicesActor::SendCreateVolumeRequest(
+    const TActorContext& ctx)
+{
+    auto volumeConfig = ConvertToVolumeConfig(Request);
+
+    TVolumeParams volumeParams{
+        .BlockSize = volumeConfig.GetBlockSize(),
+        .BlocksCountPerPartition = BlockCount,
+        .PartitionsCount = 1,
+        .MediaKind = static_cast<NProto::EStorageMediaKind>(
+            volumeConfig.GetStorageMediaKind()),
+        .IsSystem = volumeConfig.GetIsSystem()};
+
+    ResizeVolume(*Config, volumeParams, {}, {}, volumeConfig);
+
+    volumeConfig.SetCreationTs(ctx.Now().MicroSeconds());
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Sending createvolume request for volume "
+            << volumeConfig.GetDiskId().Quote());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(volumeConfig),
+        RequestInfo->Cookie);
 }
 
 }   // namespace

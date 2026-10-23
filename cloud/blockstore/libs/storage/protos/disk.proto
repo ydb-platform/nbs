@@ -1644,6 +1644,9 @@ message TCreateVolumeFromDevicesRequest
 
     // Devices from which the disk is assembled
     repeated string DeviceUUIDs = 6;
+
+    // Reallocate the volume if it already exists.
+    bool ReallocateIfExists = 7;
 }
 
 message TCreateVolumeFromDevicesResponse
