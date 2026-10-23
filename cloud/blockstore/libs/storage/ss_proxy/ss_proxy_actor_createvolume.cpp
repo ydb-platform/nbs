@@ -152,7 +152,7 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
         volumePath,
-        true);
+        true /* addPathToError */);
 
     NCloud::Send(
         ctx,
@@ -239,7 +239,7 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
         volumePath,
-        true);
+        true /* addPathToError */);
 
     NCloud::Send(
         ctx,

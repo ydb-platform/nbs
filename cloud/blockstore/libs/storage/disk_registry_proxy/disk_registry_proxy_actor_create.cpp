@@ -103,7 +103,7 @@ void TCreateDiskRegistryActor::Bootstrap(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
         StorageConfig->GetSchemeShardDir(),
-        true);
+        true /* addPathToError */);
 
     NCloud::Send(
         ctx,

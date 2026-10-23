@@ -150,8 +150,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
         GetFullPath(),
-        false   // addPathToError
-    );
+        false /* addPathToError */);
 
     if (CheckedPaths.empty() || CheckedPaths.back() != GetFullPath()) {
         CheckedPaths.push_back(GetFullPath());

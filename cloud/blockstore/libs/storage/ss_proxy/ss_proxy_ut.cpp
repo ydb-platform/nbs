@@ -101,7 +101,9 @@ void SendDescribeDir(TTestActorRuntime& runtime, const TString& path)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path, true));
+        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+            path,
+            true /* addPathToError */));
 
     TAutoPtr<IEventHandle> handle;
     auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(handle);
@@ -174,7 +176,7 @@ TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
         sender,
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
             std::move(path),
-            true));
+            true /* addPathToError */));
 
     TAutoPtr<IEventHandle> handle;
     auto* response =
@@ -1398,7 +1400,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 sender,
                 std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
                     missingPath,
-                    true));
+                    true /* addPathToError */));
 
             TAutoPtr<IEventHandle> handle;
             auto* response = runtime.GrabEdgeEventRethrow<
@@ -1803,7 +1805,7 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 sender,
                 std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
                     "volume",
-                    true));
+                    true /* addPathToError */));
 
             TAutoPtr<IEventHandle> describeHandle;
             auto describeResponse =
