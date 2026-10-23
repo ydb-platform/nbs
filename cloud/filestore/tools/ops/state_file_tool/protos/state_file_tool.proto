@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package NCloud.NFileStore.NWriteBackCacheStateTool.NProto;
+package NCloud.NFileStore.NStateFileTool.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
 

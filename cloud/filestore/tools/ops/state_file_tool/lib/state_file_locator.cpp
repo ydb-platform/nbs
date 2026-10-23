@@ -13,7 +13,7 @@
 
 #include <cerrno>
 
-namespace NCloud::NFileStore::NWriteBackCacheStateTool {
+namespace NCloud::NFileStore::NStateFileTool {
 
 namespace {
 
@@ -321,4 +321,4 @@ std::shared_ptr<IStateFileLocator> CreateStateFileLocator(
     return std::make_shared<TStateFileLocator>(stateDir);
 }
 
-}   // namespace NCloud::NFileStore::NWriteBackCacheStateTool
+}   // namespace NCloud::NFileStore::NStateFileTool

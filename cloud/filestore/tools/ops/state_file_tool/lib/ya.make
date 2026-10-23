@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/filestore/tools/ops/write_back_cache_state_tool/protos
+    cloud/filestore/tools/ops/state_file_tool/protos
     cloud/storage/core/libs/common
 )
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/tools/ops/write_back_cache_state_tool/protos/write_back_cache_state_tool.pb.h>
+#include <cloud/filestore/tools/ops/state_file_tool/protos/state_file_tool.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -10,7 +10,7 @@
 
 #include <memory>
 
-namespace NCloud::NFileStore::NWriteBackCacheStateTool {
+namespace NCloud::NFileStore::NStateFileTool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,4 +34,4 @@ struct IStateFileLocator
 std::shared_ptr<IStateFileLocator> CreateStateFileLocator(
     const TString& stateDir);
 
-}   // namespace NCloud::NFileStore::NWriteBackCacheStateTool
+}   // namespace NCloud::NFileStore::NStateFileTool

@@ -9,7 +9,7 @@
 
 #include <cerrno>
 
-namespace NCloud::NFileStore::NWriteBackCacheStateTool {
+namespace NCloud::NFileStore::NStateFileTool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,4 +37,4 @@ inline TResultOrError<bool> TryLock(TFile& file)
             LastSystemErrorText(error)));
 }
 
-}   // namespace NCloud::NFileStore::NWriteBackCacheStateTool
+}   // namespace NCloud::NFileStore::NStateFileTool

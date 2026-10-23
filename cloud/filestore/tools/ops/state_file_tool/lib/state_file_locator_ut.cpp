@@ -12,7 +12,7 @@
 #include <util/stream/file.h>
 #include <util/system/sysstat.h>
 
-namespace NCloud::NFileStore::NWriteBackCacheStateTool {
+namespace NCloud::NFileStore::NStateFileTool {
 
 namespace {
 
@@ -384,4 +384,4 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NWriteBackCacheStateTool
+}   // namespace NCloud::NFileStore::NStateFileTool
