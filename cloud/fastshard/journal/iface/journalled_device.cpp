@@ -13,12 +13,12 @@ class TJournalledDeviceStub final: public IJournalledDevice
 public:
     // IJournalledDevice
 
-    TFuture<NProto::TError> Start() override
+    TFuture<NProto::TError> Start() noexcept override
     {
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Stop() override
+    TFuture<NProto::TError> Stop() noexcept override
     {
         return MakeFuture<NProto::TError>();
     }

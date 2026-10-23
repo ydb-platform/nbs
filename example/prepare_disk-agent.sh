@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 
-IC_PORT=${IC_PORT:-29012}
+IC_PORT=${IC_PORT:-29512}
 GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8769}
 
 find_bin_dir() {
-    readlink -e `dirname $0`
+    readlink -e -- "$(dirname -- "$0")"
 }
 
-BIN_DIR=`find_bin_dir`
+BIN_DIR=$(find_bin_dir)
 source ./prepare_binaries.sh || exit 1
 
 start_disk-agent() {
-    diskagentd \
+    require_bins "$DISK_AGENT_BIN" || return 1
+    export LD_LIBRARY_PATH=$(dirname -- "$DISK_AGENT_BIN")
+    exec "$DISK_AGENT_BIN" \
         --domain Root \
         --node-broker localhost:$GRPC_PORT \
         --ic-port $IC_PORT \
@@ -28,5 +30,5 @@ start_disk-agent() {
         --auth-file $BIN_DIR/nbs/nbs-auth.txt \
         --dr-proxy-file $BIN_DIR/nbs/nbs-dr-proxy.txt \
         --load-configs-from-cms \
-        $@
+        "$@"
 }

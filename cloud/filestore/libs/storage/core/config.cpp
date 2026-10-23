@@ -317,6 +317,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
     xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
+    xxx(FileSystemEventSubscriptionsSealPeriod,                               \
+        TDuration,                                                            \
+        TDuration::Minutes(30))                                               \
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\
@@ -394,7 +397,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureEnabled,                bool,   false                 )\
     xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
     xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
-    xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\
+    xxx(CompactionThresholdForBackpressureSoft,        ui32,    140           )\
     xxx(FlushBytesThresholdForBackpressureSoft,        ui64,    32_MB         )\
     xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
                                                        ui64,    125'000       )\

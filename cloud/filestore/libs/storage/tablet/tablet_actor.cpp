@@ -93,6 +93,8 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
+    , FileSystemEventSubscriptions(
+          Config->GetFileSystemEventSubscriptionsSealPeriod())
     , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , FastShardServer(std::move(fastShardServer))
@@ -1147,7 +1149,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
-    FileSystemEventClients.erase(ev->Sender);
+    RemoveFileSystemEventClient(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
 
@@ -1170,7 +1172,7 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
-    FileSystemEventClients.erase(msg.ServerId);
+    RemoveFileSystemEventClient(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1549,19 +1551,21 @@ void TIndexTabletActor::HandleForcedOperationStatus(
                     response->Record.SetProcessedRangeCount(state.Current);
                     response->Record.SetLastProcessedRangeId(
                         state.GetCurrentRange());
-                    response->Record.SetStatus(state.Status);
-                    response->Record.MutableError()->CopyFrom(state.Error);
+                    response->Record.SetOperationStatus(state.Status);
+                    response->Record.MutableOperationError()->CopyFrom(
+                        state.Error);
                 },
                 [&](const TForcedTabletOperationState& state)
                 {
-                    response->Record.SetStatus(state.Status);
-                    response->Record.MutableError()->CopyFrom(state.Error);
+                    response->Record.SetOperationStatus(state.Status);
+                    response->Record.MutableOperationError()->CopyFrom(
+                        state.Error);
                 }},
             *state);
     } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
-        response->Record.SetStatus(TStatus::E_PENDING);
+        response->Record.SetOperationStatus(TStatus::E_PENDING);
     } else {
-        response->Record.SetStatus(TStatus::E_UNKNOWN);
+        response->Record.SetOperationStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "forced operation with id "

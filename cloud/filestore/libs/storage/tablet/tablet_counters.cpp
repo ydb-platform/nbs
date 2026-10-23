@@ -495,9 +495,11 @@ void TTabletMetrics::UpdatePerformanceMetrics(
     const ui32 expectedParallelism = 32;
     double load = 0;
     bool suffer = false;
-    auto calcSufferAndLoad = [&] (
+    auto calcSufferAndLoadCustom = [&] (
         const TRequestPerformanceProfile& rpp,
-        const TTabletRequestMetrics& rm)
+        const TTabletRequestMetrics& rm,
+        ui64 averageRequestWeight,
+        double weightRate)
     {
         if (!rpp.RPS) {
             return;
@@ -507,13 +509,23 @@ void TTabletMetrics::UpdatePerformanceMetrics(
         ui64 expectedLatencyUs = 1'000'000 / rpp.RPS;
         if (rpp.Throughput) {
             expectedLatencyUs +=
-                1'000'000 * rm.AverageRequestSize() / rpp.Throughput;
-            load += rm.Throughput(now) / rpp.Throughput;
+                1'000'000 * averageRequestWeight / rpp.Throughput;
+            load += weightRate / rpp.Throughput;
         }
 
         const auto averageLatency = rm.AverageLatency();
         suffer |= TDuration::MicroSeconds(expectedLatencyUs)
             < averageLatency / expectedParallelism;
+    };
+    auto calcSufferAndLoad = [&] (
+        const TRequestPerformanceProfile& rpp,
+        const TTabletRequestMetrics& rm)
+    {
+        calcSufferAndLoadCustom(
+            rpp,
+            rm,
+            rm.AverageRequestSize(),
+            rm.Throughput(now));
     };
 
     const auto& pp =
@@ -526,7 +538,16 @@ void TTabletMetrics::UpdatePerformanceMetrics(
     calcSufferAndLoad(pp.Write, WriteData);
     calcSufferAndLoad(pp.Write, AddData);
     calcSufferAndLoad(pp.Write, AddDataUnconfirmed);
-    calcSufferAndLoad(pp.ListNodes, ListNodes);
+    calcSufferAndLoadCustom(
+        pp.ListNodes,
+        ListNodes,
+        ListNodes.AveragePerRequest(
+            ListNodesExtra.ResponseNodeRefs,
+            ListNodesExtra.PrevResponseNodeRefs),
+        ListNodes.Rate(
+            now,
+            ListNodesExtra.ResponseNodeRefs,
+            ListNodesExtra.PrevResponseNodeRefs));
     calcSufferAndLoad(pp.GetNodeAttr, GetNodeAttr);
     calcSufferAndLoad(pp.CreateHandle, CreateHandle);
     calcSufferAndLoad(pp.DestroyHandle, DestroyHandle);

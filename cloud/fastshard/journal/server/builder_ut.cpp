@@ -101,14 +101,19 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     IStartablePtr Build(
         bool journalEnabled,
-        TVector<TJournalledDeviceConfig> configs)
+        TVector<TJournalledDeviceConfig> configs,
+        ui32 restoreConcurrency = 1)
     {
         return TServerBuilder(
                    Logging,
                    Executor,
                    DeviceManager,
-                   TNetworkAddress{0},   // the server is never started
-                   journalEnabled,
+                   TServerConfig{
+                       // the server is never started
+                       .ListenAddress = TNetworkAddress{0},
+                       .JournalEnabled = journalEnabled,
+                       .RestoreConcurrency = restoreConcurrency,
+                   },
                    std::move(configs))
             .Build();
     }
@@ -242,24 +247,26 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
         UNIT_ASSERT_VALUES_EQUAL(3, DeviceManager->CreateDeviceCalls.size());
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfNoDeviceCanBeCreated, TFixture)
+    Y_UNIT_TEST_F(ShouldBuildWithoutDevices, TFixture)
     {
+        // a server without devices still answers ListDevices, so it is built
+        // even when every configured device is skipped
         auto config = MakeConfig("uuid-1", 1024, 4, 64);
         config.BlockSize = 0;
 
-        try {
-            Build(true, {config, config});
-            UNIT_FAIL("no exception");
-        } catch (const TServiceError& e) {
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, e.GetCode());
-            UNIT_ASSERT_STRING_CONTAINS(
-                e.GetMessage(),
-                "none of the 2 journalled devices could be created");
-        }
+        UNIT_ASSERT(Build(true, {config, config}));
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             CriticalEventCount("JournalledDeviceCreationError"));
+        UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->CreateDeviceCalls.size());
+
+        UNIT_ASSERT(Build(true, {}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CriticalEventCount("JournalledDeviceCreationError"));
+        UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->CreateDeviceCalls.size());
     }
 }
 

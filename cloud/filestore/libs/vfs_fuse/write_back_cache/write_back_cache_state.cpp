@@ -5,6 +5,8 @@
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
+#include <utility>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 using namespace NCloud::NFileStore::NProto;
@@ -346,7 +348,7 @@ bool TWriteBackCacheState::VisitUnflushedRequestsFromFrontFlushBatch(
     return true;
 }
 
-ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const
+ui64 TWriteBackCacheState::AcquireFlushHandle(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
@@ -354,18 +356,18 @@ ui64 TWriteBackCacheState::GetLiveHandle(ui64 nodeId) const
         return NProto::E_INVALID_HANDLE;
     }
 
-    const auto* nodeState = Nodes.GetNodeState(nodeId);
-    if (nodeState == nullptr) {
+    auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
+    if (nodeState == nullptr || nodeState->Handles.empty()) {
         return NProto::E_INVALID_HANDLE;
     }
 
-    if (nodeState->Handles.empty()) {
-        // There are no unflushed requests with live handles
-        return NProto::E_INVALID_HANDLE;
-    }
+    Y_ABORT_UNLESS(
+        nodeState->FlushHandle == NProto::E_INVALID_HANDLE,
+        "A flush already holds a handle for node %lu",
+        nodeId);
 
-    // Choose any live handle for flush
-    return nodeState->Handles.cbegin()->first;
+    nodeState->FlushHandle = nodeState->Handles.cbegin()->first;
+    return nodeState->FlushHandle;
 }
 
 void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
@@ -382,6 +384,9 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         nodeState.FlushStatus == ENodeFlushStatus::FlushRequested,
         "Flush wasn't requested for a node %lu",
         nodeId);
+
+    const auto flushHandle =
+        std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
 
     // We will recalculate the flush status later
     nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
@@ -400,6 +405,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         RemoveActiveRequestFromHandleState(nodeState, cachedRequest);
     }
 
+    TryRemoveUnusedHandle(nodeState, flushHandle);
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
@@ -426,6 +432,9 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.Cache.HasUnflushedRequests(),
         "Node %lu has no unflushed requests",
         nodeId);
+
+    const auto flushHandle =
+        std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
 
     Stats->FlushFailed();
 
@@ -532,6 +541,8 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.Handles.erase(handle);
         nodeState.HandlesWithReleaseRequests.erase(handle);
     }
+
+    TryRemoveUnusedHandle(nodeState, flushHandle);
 
     if (nodeState.Handles.empty()) {
         // No live handles remaining - drop all unflushed requests
@@ -991,12 +1002,11 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     TPendingWriteDataRequest* request)
 {
     auto handle = request->GetRequest().GetHandle();
-    auto& handleState = nodeState.Handles[handle];
+    auto* handleState = nodeState.Handles.FindPtr(handle);
 
-    handleState.PendingRequests.Remove(request);
-    if (!handleState.HasRequests()) {
-        TriggerReleaseHandleCompletion(nodeState, handle, handleState);
-        nodeState.Handles.erase(handle);
+    if (handleState) {
+        handleState->PendingRequests.Remove(request);
+        TryRemoveUnusedHandle(nodeState, handle);
     }
 }
 
@@ -1005,14 +1015,27 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     TCachedWriteDataRequest* request)
 {
     auto handle = request->GetHandle();
-    auto* handleState = nodeState.Handles.FindPtr(request->GetHandle());
+    auto* handleState = nodeState.Handles.FindPtr(handle);
 
     if (handleState) {
         handleState->UnflushedRequests.Remove(request);
-        if (!handleState->HasRequests()) {
-            TriggerReleaseHandleCompletion(nodeState, handle, *handleState);
-            nodeState.Handles.erase(handle);
-        }
+        TryRemoveUnusedHandle(nodeState, handle);
+    }
+}
+
+void TWriteBackCacheState::TryRemoveUnusedHandle(
+    TNodeState& nodeState,
+    ui64 handle)
+{
+    if (handle == nodeState.FlushHandle) {
+        // The handle is retained by the in-flight flush.
+        return;
+    }
+
+    auto* handleState = nodeState.Handles.FindPtr(handle);
+    if (handleState && !handleState->HasRequests()) {
+        TriggerReleaseHandleCompletion(nodeState, handle, *handleState);
+        nodeState.Handles.erase(handle);
     }
 }
 

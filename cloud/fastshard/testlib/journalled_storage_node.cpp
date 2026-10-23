@@ -108,6 +108,21 @@ NProto::TFormatDeviceResponse TJournalledStorageNode::FormatDevice(
     return {};
 }
 
+NProto::TListDevicesResponse TJournalledStorageNode::ListDevices(
+    NProto::TListDevicesRequest)
+{
+    ++Counters.ListDevices;
+
+    NProto::TListDevicesResponse response;
+    auto& info = *response.AddDevices();
+    info.SetDeviceUUID(DeviceUUID);
+    info.SetBlockSize(Layout.PageSize);
+    info.SetLogMetaSize(Layout.LogMetaPageCount * Layout.PageSize);
+    info.SetLogDataSize(Layout.LogDataPageCount * Layout.PageSize);
+    info.SetDataSize(Layout.DataPageCount * Layout.PageSize);
+    return response;
+}
+
 #define SN_FORWARD(name)                                                       \
     NProto::T##name##Response TJournalledStorageNode::name(                    \
         NProto::T##name##Request request)                                      \
