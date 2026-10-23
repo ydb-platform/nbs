@@ -18,7 +18,9 @@ void TIndexTabletActor::RegisterFileSystemEventClient(
     // Called by the requests whose responses the client may cache: GetNodeAttr,
     // GetNodeAttrBatch (attrs of shard-resident nodes upon ListNodes),
     // ListNodes, ListNodesInternal, CreateNode, CreateHandle. ReadNodeRefs
-    // doesn't register its sender - it's used by the private API only.
+    // doesn't register its sender - it's used by the private API only. Upon
+    // completion these requests subscribe the client to the returned Nodes
+    // and NodeRefs (see FileSystemEventSubscriptions).
     //
     // Requests received via a pipe have the pipe server as their recipient.
     // Requests sent directly to the tablet have no pipe and therefore no
@@ -32,42 +34,109 @@ void TIndexTabletActor::RegisterFileSystemEventClient(
     FileSystemEventClients[recipient] = clientId;
 }
 
+void TIndexTabletActor::AddFileSystemEventNodeSubscriber(
+    const TActorContext& ctx,
+    const TActorId& pipeServerId,
+    ui64 nodeId)
+{
+    //
+    // The pipe may have been disconnected while the request was being
+    // processed - its subscriptions would never be removed then.
+    //
+
+    if (!IsFileSystemEventsEnabled() ||
+        !FileSystemEventClients.contains(pipeServerId))
+    {
+        return;
+    }
+
+    FileSystemEventSubscriptions.AddNodeSubscriber(
+        nodeId,
+        pipeServerId,
+        ctx.Now());
+}
+
+void TIndexTabletActor::AddFileSystemEventNodeRefSubscriber(
+    const TActorContext& ctx,
+    const TActorId& pipeServerId,
+    ui64 parentNodeId,
+    const TString& name)
+{
+    if (!IsFileSystemEventsEnabled() ||
+        IsShardInternalNodeRef(parentNodeId) ||
+        !FileSystemEventClients.contains(pipeServerId))
+    {
+        return;
+    }
+
+    FileSystemEventSubscriptions.AddNodeRefSubscriber(
+        parentNodeId,
+        name,
+        pipeServerId,
+        ctx.Now());
+}
+
+void TIndexTabletActor::RemoveFileSystemEventClient(
+    const TActorId& pipeServerId)
+{
+    FileSystemEventClients.erase(pipeServerId);
+}
+
 ui32 TIndexTabletActor::SendFileSystemEvents(
     const TActorContext& ctx,
     const TVector<NProto::TFileSystemEvent>& events)
 {
-    THashSet<TActorId> clients;
-    for (const auto& [_, clientId]: FileSystemEventClients) {
-        clients.insert(clientId);
-    }
-
-    //
-    // The counters reflect the number of sends - in dry run mode as well.
-    //
-
-    for (const auto& event: events) {
-        if (event.HasInvalidateNode()) {
-            Metrics->InvalidateNodeEventSendCount.fetch_add(
-                clients.size(),
-                std::memory_order_relaxed);
-        }
-        if (event.HasInvalidateNodeRef()) {
-            Metrics->InvalidateNodeRefEventSendCount.fetch_add(
-                clients.size(),
-                std::memory_order_relaxed);
-        }
-    }
-
-    if (IsFileSystemEventsDryRunModeEnabled()) {
-        //
-        // Dry run mode: the events are generated and counted but not sent.
-        //
-
-        return clients.size();
-    }
-
+    const bool dryRun = IsFileSystemEventsDryRunModeEnabled();
     const auto& fileSystemId = GetMainFileSystemId();
+
+    ui32 sendCount = 0;
     for (const auto& event: events) {
+        //
+        // Only the clients that have read the Node or the NodeRef get the
+        // event (or all the clients of a generation if the Node or the
+        // NodeRef is marked for broadcast there). The registrations are
+        // removed - the clients register again upon the next read. This
+        // applies to the dry run mode as well, so that the counters reflect
+        // the real number of sends.
+        //
+
+        TVector<TActorId> pipeServerIds;
+        if (event.HasInvalidateNode()) {
+            pipeServerIds = FileSystemEventSubscriptions.ExtractNodeSubscribers(
+                event.GetInvalidateNode().GetNodeId(),
+                ctx.Now());
+        } else if (event.HasInvalidateNodeRef()) {
+            const auto& invalidate = event.GetInvalidateNodeRef();
+            pipeServerIds =
+                FileSystemEventSubscriptions.ExtractNodeRefSubscribers(
+                    invalidate.GetNodeId(),
+                    invalidate.GetName(),
+                    ctx.Now());
+        }
+
+        THashSet<TActorId> clients;
+        for (const auto& pipeServerId: pipeServerIds) {
+            if (const auto* clientId = FileSystemEventClients.FindPtr(
+                    pipeServerId))
+            {
+                clients.insert(*clientId);
+            }
+        }
+
+        if (clients.empty()) {
+            continue;
+        }
+
+        sendCount += clients.size();
+        auto& counter = event.HasInvalidateNode()
+            ? Metrics->InvalidateNodeEventSendCount
+            : Metrics->InvalidateNodeRefEventSendCount;
+        counter.fetch_add(clients.size(), std::memory_order_relaxed);
+
+        if (dryRun) {
+            continue;
+        }
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,
@@ -85,7 +154,7 @@ ui32 TIndexTabletActor::SendFileSystemEvents(
         }
     }
 
-    return clients.size();
+    return sendCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

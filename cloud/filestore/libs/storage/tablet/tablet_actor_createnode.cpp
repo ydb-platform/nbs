@@ -525,6 +525,7 @@ void TIndexTabletActor::HandleCreateNode(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TMethod>(*requestInfo);
 
@@ -927,6 +928,28 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     InvalidateReadAheadCache(args.ChildNodeId);
     if (args.ParentNode) {
         InvalidateReadAheadCache(args.ParentNode->NodeId);
+    }
+
+    if (!HasError(args.Error)) {
+        //
+        // The client may cache the new entry and the attrs of the new local
+        // node.
+        //
+
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        if (args.Name) {
+            AddFileSystemEventNodeRefSubscriber(
+                ctx,
+                pipeServerId,
+                args.ParentNodeId,
+                args.Name);
+        }
+        if (args.ChildNode) {
+            AddFileSystemEventNodeSubscriber(
+                ctx,
+                pipeServerId,
+                args.ChildNodeId);
+        }
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {

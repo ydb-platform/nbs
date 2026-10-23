@@ -544,7 +544,7 @@ private:
     {
         // TODO(#6201): until handleless IO is implemented, flush needs a live
         // handle to execute WriteData requests
-        auto handle = State.GetLiveHandle(flushState->GetNodeId());
+        auto handle = State.AcquireFlushHandle(flushState->GetNodeId());
 
         if (handle == NProto::E_INVALID_HANDLE) {
             // This may happen in the following cases:
@@ -561,13 +561,13 @@ private:
                     "%lu",
                     flushState->GetNodeId()));
 
-            // A live handle could appear concurrently between GetLiveHandle and
-            // FlushFailed
+            // A live handle could appear concurrently between
+            // AcquireFlushHandle and FlushFailed
             if (retryStatus == EFlushRetryStatus::ShouldNotRetry) {
                 return;
             }
 
-            handle = State.GetLiveHandle(flushState->GetNodeId());
+            handle = State.AcquireFlushHandle(flushState->GetNodeId());
             if (handle == NProto::E_INVALID_HANDLE) {
                 ScheduleRetryFlush(flushState);
                 return;

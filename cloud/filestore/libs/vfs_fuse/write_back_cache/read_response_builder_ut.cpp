@@ -117,6 +117,7 @@ private:
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(1);
+        request->SetHandle(1);
         request->SetOffset(offset);
         request->SetBuffer(std::move(data));
 
