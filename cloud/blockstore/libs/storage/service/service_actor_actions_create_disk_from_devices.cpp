@@ -217,7 +217,7 @@ void TCreateDiskFromDevicesActor::HandleCreateDiskFromDevicesResponse(
         TBlockStoreComponents::SERVICE,
         "Sending describe request for volume " << Request.GetDiskId().Quote());
 
-    if (!Request.GetReallocateIfExists()) {
+    if (!Request.GetDoNotCreateTabletIfExists()) {
         SendCreateVolumeRequest(ctx);
         return;
     }

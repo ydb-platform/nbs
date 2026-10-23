@@ -1645,8 +1645,8 @@ message TCreateVolumeFromDevicesRequest
     // Devices from which the disk is assembled
     repeated string DeviceUUIDs = 6;
 
-    // Reallocate the volume if it already exists.
-    bool ReallocateIfExists = 7;
+    // Do not create the volume tablet if it already exists.
+    bool DoNotCreateTabletIfExists = 7;
 }
 
 message TCreateVolumeFromDevicesResponse

@@ -1001,6 +1001,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         auto* devices = request.MutableDeviceUUIDs();
         devices->Add("uuid1");
         devices->Add("uuid42");
+        request.SetDoNotCreateTabletIfExists(true);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2527,7 +2528,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             request.SetBlockSize(DefaultDeviceBlockSize);
             request.MutableDeviceUUIDs()->Add("uuid1");
             request.MutableDeviceUUIDs()->Add("uuid42");
-            request.SetReallocateIfExists(true);
+            request.SetDoNotCreateTabletIfExists(false);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
