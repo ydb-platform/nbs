@@ -193,7 +193,7 @@ struct TTestJournalledDevice final: public IJournalledDevice
         : Name(std::move(name))
     {}
 
-    TFuture<NProto::TError> Start() final
+    TFuture<NProto::TError> Start() noexcept final
     {
         auto guard = Guard(Lock);
 
@@ -251,7 +251,7 @@ private:
 
 public:
 
-    TFuture<NProto::TError> Stop() final
+    TFuture<NProto::TError> Stop() noexcept final
     {
         ++StopCount;
         return MakeFuture<NProto::TError>();

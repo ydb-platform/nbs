@@ -93,6 +93,8 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::make_shared<TStorageConfig>(*config))
     , DiagConfig(std::move(diagConfig))
+    , FileSystemEventSubscriptions(
+          Config->GetFileSystemEventSubscriptionsSealPeriod())
     , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , FastShardServer(std::move(fastShardServer))
@@ -1147,7 +1149,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
-    FileSystemEventClients.erase(ev->Sender);
+    RemoveFileSystemEventClient(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
 
@@ -1170,7 +1172,7 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
-    FileSystemEventClients.erase(msg.ServerId);
+    RemoveFileSystemEventClient(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

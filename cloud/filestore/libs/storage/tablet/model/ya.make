@@ -20,6 +20,7 @@ SRCS(
     compaction_map.cpp
     deletion_markers.cpp
     fresh_blocks.cpp
+    filesystem_event_subscriptions.cpp
     fresh_bytes.cpp
     garbage_queue.cpp
     group_by.cpp
