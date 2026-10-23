@@ -1663,11 +1663,11 @@ message TCreateVolumeFromDevicesRequest
     // Block size in bytes
     uint32 BlockSize = 5;
 
-    // Kind of described space.
-    NCloud.NProto.EStorageMediaKind StorageMediaKind = 6;
+    // Devices from which the disk is assembled
+    repeated string DeviceUUIDs = 6;
 
-    // Devices from which the disk is assembled.
-    repeated string DeviceUUIDs = 7;
+    // Kind of described space.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
 
     message TDeviceList
     {

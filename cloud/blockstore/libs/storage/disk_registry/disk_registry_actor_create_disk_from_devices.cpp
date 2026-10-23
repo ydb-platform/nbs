@@ -40,13 +40,14 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         return;
     }
 
-    TVector<NProto::TDeviceConfig> devices;
-
     TVector<TVector<TString>> replicas;
     replicas.reserve(record.ReplicasSize());
 
     for (const auto& replica: record.GetReplicas()) {
-        replicas.push_back(TVector<TString>(replica.GetDeviceUUIDs().begin(), replica.GetDeviceUUIDs().end()));
+        replicas.push_back(
+            TVector<TString>(
+                replica.GetDeviceUUIDs().begin(),
+                replica.GetDeviceUUIDs().end()));
     }
 
     ExecuteTx<TCreateDiskFromDevices>(
@@ -54,17 +55,18 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         CreateRequestInfo<TEvDiskRegistry::TCreateDiskFromDevicesMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext),
+            ev->Get()->CallContext
+        ),
         record.GetForce(),
         volume.GetDiskId(),
         volume.GetBlockSize(),
         static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
-        TVector<NProto::TDeviceConfig>(
+        TVector<NProto::TDeviceConfig> (
             record.GetDevices().begin(),
-            record.GetDevices().end()
-        ),
+            record.GetDevices().end()),
         std::move(replicas),
-        record.GetKeepBlockCount());
+        record.GetKeepBlockCount()
+    );
 }
 
 bool TDiskRegistryActor::PrepareCreateDiskFromDevices(
