@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -53,6 +55,15 @@ void ResetCounters(
     }
 }
 
+bool ShouldPublishOrRegisterCounter(
+    EPublishingPolicy policy,
+    EPublishingPolicy publishingPolicy,
+    EPublishingPolicy neededPolicy = EPublishingPolicy::All)
+{
+    return policy == neededPolicy || publishingPolicy == neededPolicy ||
+           policy == publishingPolicy;
+}
+
 template <
     typename TCounters,
     typename TMetas = decltype(TCounters::AllCounters)>
@@ -65,9 +76,10 @@ void PublishCounters(
 {
     for (auto meta: metas) {
         auto& counter = meta.GetValue(counters);
-        if (policy == neededPolicy ||
-            counter.PublishingPolicy == neededPolicy ||
-            policy == counter.PublishingPolicy)
+        if (ShouldPublishOrRegisterCounter(
+                policy,
+                counter.PublishingPolicy,
+                neededPolicy))
         {
             counter.Publish(now);
         }
@@ -83,12 +95,11 @@ TPartitionDiskCounters::TPartitionDiskCounters(
     , Histogram(diagnosticsConfig.GetHistogramCounterOptions())
     , Policy(policy)
 {
-    if (Policy != EPublishingPolicy::DiskRegistryBased) {
-        for (const ui32 chunkSize:
-             diagnosticsConfig.GetBlobCompressionChunkSizes())
-        {
-            BlobCompression.try_emplace(chunkSize);
-        }
+    // We will add counters for all type of disks. they will be published and
+    // reported only for YDB blobstorage based disks.
+    for (const ui64 chunkSize: diagnosticsConfig.GetBlobCompressionChunkSizes())
+    {
+        BlobCompression.try_emplace(chunkSize);
     }
 }
 
@@ -172,16 +183,18 @@ void TPartitionDiskCounters::Register(
     bool aggregate)
 {
     for (auto& [chunkSize, compression]: BlobCompression) {
-        auto subgroup = counters->GetSubgroup(
-            "compression_chunk_size",
-            ToString(chunkSize));
-
+        TIntrusivePtr<NMonitoring::TDynamicCounters> subgroup = nullptr;
         for (auto meta: TBlobCompressionCounters::AllCounters) {
             auto& counter = meta.GetValue(compression);
-            if (Policy == EPublishingPolicy::All ||
-                counter.PublishingPolicy == EPublishingPolicy::All ||
-                Policy == counter.PublishingPolicy)
+            if (ShouldPublishOrRegisterCounter(
+                    Policy,
+                    counter.PublishingPolicy))
             {
+                if (!subgroup) {
+                    subgroup = counters->GetSubgroup(
+                        "compression_chunk_size",
+                        FormatByteSize(chunkSize));
+                }
                 counter.Register(subgroup, TString(meta.Name));
             }
         }
@@ -195,30 +208,21 @@ void TPartitionDiskCounters::Register(
 
     for (auto meta: TSimpleDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(counters, TString(meta.Name));
         }
     }
 
     for (auto meta: TCumulativeDiskCounters::AllCounters) {
         auto& counter = meta.GetValue(Cumulative);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(counters, TString(meta.Name));
         }
     }
 
     for (auto meta: THistogramRequestCounters::AllLowResCounters) {
         auto& counter = meta.GetValue(RequestCounters);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(
                 counters->GetSubgroup("request", TString(meta.Name)),
                 requestCounterOptions | counter.CounterOption);
@@ -227,10 +231,7 @@ void TPartitionDiskCounters::Register(
 
     for (auto meta: THistogramRequestCounters::AllHighResCounters) {
         auto& counter = meta.GetValue(RequestCounters);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(
                 counters->GetSubgroup("request", TString(meta.Name)),
                 requestCounterOptions | counter.CounterOption);
@@ -239,10 +240,7 @@ void TPartitionDiskCounters::Register(
 
     for (auto meta: THistogramCounters::AllCounters) {
         auto& counter = meta.GetValue(Histogram);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(
                 counters->GetSubgroup("queue", TString(meta.Name)),
                 aggregate);
@@ -251,9 +249,10 @@ void TPartitionDiskCounters::Register(
 
     for (auto meta: TTransportCounters::AllCounters) {
         auto& counter = meta.GetValue(Interconnect);
-        if (Policy == EPublishingPolicy::DiskRegistryBased ||
-            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
-            Policy == counter.PublishingPolicy)
+        if (ShouldPublishOrRegisterCounter(
+                Policy,
+                counter.PublishingPolicy,
+                EPublishingPolicy::DiskRegistryBased))
         {
             counter.Register(
                 counters->GetSubgroup("request", TString(meta.Tag))
@@ -264,9 +263,10 @@ void TPartitionDiskCounters::Register(
 
     for (auto meta: TTransportCounters::AllCounters) {
         auto& counter = meta.GetValue(Rdma);
-        if (Policy == EPublishingPolicy::DiskRegistryBased ||
-            counter.PublishingPolicy == EPublishingPolicy::DiskRegistryBased ||
-            Policy == counter.PublishingPolicy)
+        if (ShouldPublishOrRegisterCounter(
+                Policy,
+                counter.PublishingPolicy,
+                EPublishingPolicy::DiskRegistryBased))
         {
             counter.Register(
                 counters->GetSubgroup("request", TString(meta.Tag))
@@ -279,8 +279,7 @@ void TPartitionDiskCounters::Register(
 void TPartitionDiskCounters::Reset()
 {
     for (auto& [chunkSize, counters]: BlobCompression) {
-        counters.UncompressedBytesWritten.Reset();
-        counters.CompressedBytesWritten.Reset();
+        ResetCounters(counters);
     }
 
     ResetCounters(Simple);
@@ -324,12 +323,8 @@ void TVolumeSelfCounters::Reset()
 {
     ResetCounters(Simple);
     ResetCounters(Cumulative);
-    ResetCounters(
-        ThrottlerDelayRequestCounters,
-        TVolumeThrottlerDelayCounters::AllCounters);
-    ResetCounters(
-        IngestTimeRequestCounters,
-        TVolumeIngestTimeCounters::AllCounters);
+    ResetCounters(ThrottlerDelayRequestCounters);
+    ResetCounters(IngestTimeRequestCounters);
 }
 
 void TVolumeSelfCounters::Register(
@@ -338,30 +333,21 @@ void TVolumeSelfCounters::Register(
 {
     for (auto meta: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = meta.GetValue(Simple);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(counters, TString(meta.Name));
         }
     }
 
     for (auto meta: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = meta.GetValue(Cumulative);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.Register(counters, TString(meta.Name));
         }
     }
 
     for (auto meta: TVolumeThrottlerDelayCounters::AllCounters) {
         auto& counter = meta.GetValue(ThrottlerDelayRequestCounters);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.ForceRegister(
                 counters->GetSubgroup("request", TString(meta.Name)),
                 "ThrottlerDelay",
@@ -371,10 +357,7 @@ void TVolumeSelfCounters::Register(
 
     for (auto meta: TVolumeIngestTimeCounters::AllCounters) {
         auto& counter = meta.GetValue(IngestTimeRequestCounters);
-        if (Policy == EPublishingPolicy::All ||
-            counter.PublishingPolicy == EPublishingPolicy::All ||
-            Policy == counter.PublishingPolicy)
-        {
+        if (ShouldPublishOrRegisterCounter(Policy, counter.PublishingPolicy)) {
             counter.ForceRegister(
                 counters->GetSubgroup("request", TString(meta.Name)),
                 "IngestTime",
@@ -387,12 +370,7 @@ void TVolumeSelfCounters::Publish(TInstant now)
 {
     PublishCounters(now, Simple, Policy);
     PublishCounters(now, Cumulative, Policy);
-    PublishCounters(
-        now,
-        ThrottlerDelayRequestCounters,
-        Policy,
-        EPublishingPolicy::All,
-        TVolumeThrottlerDelayCounters::AllCounters);
+    PublishCounters(now, ThrottlerDelayRequestCounters, Policy);
     PublishCounters(now, IngestTimeRequestCounters, Policy);
 
     Reset();

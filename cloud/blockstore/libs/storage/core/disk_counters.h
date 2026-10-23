@@ -938,10 +938,15 @@ struct TBlobCompressionCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter ZeroBytesCompressed{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TBlobCompressionCounters::UncompressedBytesWritten>(),
-        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>()};
+        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>(),
+        MakeMeta<&TBlobCompressionCounters::ZeroBytesCompressed>()};
 };
 
 struct TPartitionDiskCounters
@@ -952,7 +957,7 @@ struct TPartitionDiskCounters
     THistogramCounters Histogram;
     TTransportCounters Rdma;
     TTransportCounters Interconnect;
-    THashMap<ui32, TBlobCompressionCounters> BlobCompression;
+    THashMap<ui64, TBlobCompressionCounters> BlobCompression;
 
     EPublishingPolicy Policy;
 

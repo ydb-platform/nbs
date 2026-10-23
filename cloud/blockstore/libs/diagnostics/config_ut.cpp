@@ -28,14 +28,13 @@ Y_UNIT_TEST_SUITE(TDiagnosticsConfigTest)
         TDiagnosticsConfig defaults;
         UNIT_ASSERT(defaults.GetBlobCompressionChunkSizes().empty());
 
-        auto proto = CreateConfig(R"(
-BlobCompressionChunkSizes: [0, 1, 16, 128]
-)");
+        auto proto =
+            CreateConfig("BlobCompressionChunkSizes: [0, 1, 16, 128]");
         const TDiagnosticsConfig config(proto);
         proto.AddBlobCompressionChunkSizes(256);
         // The diagnostics config owns an immutable snapshot of the settings.
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui32>{0, 1, 16, 128}),
+            (TVector<ui64>{0, 1, 16, 128}),
             config.GetBlobCompressionChunkSizes());
     }
 

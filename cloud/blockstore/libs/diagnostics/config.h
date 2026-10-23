@@ -191,7 +191,7 @@ public:
 
     [[nodiscard]] TVector<TSizeInterval> GetExecutionTimeSizeClasses() const;
 
-    [[nodiscard]] TVector<ui32> GetBlobCompressionChunkSizes() const;
+    [[nodiscard]] TVector<ui64> GetBlobCompressionChunkSizes() const;
 
     [[nodiscard]] bool GetPassTraceIdToBlobstorage() const;
 

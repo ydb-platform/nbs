@@ -64,7 +64,7 @@ namespace {
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
-    xxx(BlobCompressionChunkSizes,      TVector<ui32>,           {}                                     )\
+    xxx(BlobCompressionChunkSizes,      TVector<ui64>,           {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
     xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
     xxx(VolumeCriticalEventsReportingMode,                                                               \
@@ -132,7 +132,7 @@ TVector<TString> ConvertValue(
 }
 
 template <>
-TVector<ui32> ConvertValue(const google::protobuf::RepeatedField<ui32>& value)
+TVector<ui64> ConvertValue(const google::protobuf::RepeatedField<ui64>& value)
 {
     return {value.begin(), value.end()};
 }
