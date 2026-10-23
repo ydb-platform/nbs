@@ -68,6 +68,49 @@ class TStorageConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ECrossQuotaRenameVerdict
+{
+    // Both parents belong to the same quota domain - the move changes
+    // nothing about quota attribution.
+    SameDomain,
+    // The moved node is a quota root that stays recognisable as one after
+    // the move (its QuotaId matches neither parent), so it carries its own
+    // domain with it and no usage has to be transferred.
+    AllowedQuotaRoot,
+    // The move would carry a node whose usage is attributed to the old
+    // domain across a quota boundary - rejected outright, no transfer and
+    // no recolouring.
+    Rejected,
+};
+
+// Decides what a RenameNode moving a node between two parents must do with
+// respect to directory quotas. childQuotaId is the moved node's own QuotaId.
+// Shared so the same-tablet and cross-shard rename paths cannot drift apart.
+[[nodiscard]] inline ECrossQuotaRenameVerdict ClassifyCrossQuotaRename(
+    ui32 oldParentQuotaId,
+    ui32 newParentQuotaId,
+    ui32 childQuotaId)
+{
+    if (oldParentQuotaId == newParentQuotaId) {
+        return ECrossQuotaRenameVerdict::SameDomain;
+    }
+
+    // childQuotaId != newParentQuotaId keeps the "differs from parent =>
+    // explicitly attached" signal usable after the move: landing a root
+    // under a parent that shares its QuotaId would make it indistinguishable
+    // from an inherited node afterwards.
+    const bool distinguishableQuotaRoot =
+        childQuotaId != 0
+        && childQuotaId != oldParentQuotaId
+        && childQuotaId != newParentQuotaId;
+
+    return distinguishableQuotaRoot
+        ? ECrossQuotaRenameVerdict::AllowedQuotaRoot
+        : ECrossQuotaRenameVerdict::Rejected;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum ECopyAttrsMode
 {
     E_CM_CTIME = 1,     // CTime
