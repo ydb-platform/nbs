@@ -40,6 +40,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 GetStateFileSize(ui64 dataCapacity)
+{
+    const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
+    return layout.StateFileSize;
+}
+
 TString Dump(const TVector<TString>& entries)
 {
     TStringBuilder sb;
@@ -107,6 +113,32 @@ TString PopAll(TFileRingBuffer& rb)
 
     return sb;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestFileRingBufferAccessor
+{
+private:
+    TFileMapFileRingBufferAccessor Accessor;
+
+public:
+    explicit TTestFileRingBufferAccessor(const TString& fileName)
+        : Accessor(
+              fileName,
+              EFileRingBufferAccessorValidationMode::Normal,
+              TMemoryMapCommon::EOpenModeFlag::oRdWr)
+    {
+        UNIT_ASSERT(!HasError(Accessor.Map()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            EFileRingBufferAccessorValidationStatus::Success,
+            Accessor.ValidateAndInitialize());
+    }
+
+    TFileMapFileRingBufferAccessor* operator->()
+    {
+        return &Accessor;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -307,6 +339,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.Empty());
     }
 
+    FILE_RING_BUFFER_TEST(ShouldRejectOverflowingMetadataCapacity)
+    {
+        const auto f = TTempFileHandle();
+        TFileRingBuffer rb(f.GetName(), 0, Max<ui64>(), ver);
+
+        UNIT_ASSERT(rb.IsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.GetLength());
+    }
+
     FILE_RING_BUFFER_TEST(ShouldPushPop)
     {
         const auto f = TTempFileHandle();
@@ -359,10 +401,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("petya2").Pushed);
 
         UNIT_ASSERT(rb.Validate());
-        TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-        m.Map(0, len);
-        char* data = static_cast<char*>(m.Ptr());
-        data[260] = 'A';
+
+        TTestFileRingBufferAccessor accessor(f.GetName());
+        auto* dataProcessor = accessor->GetDataProcessor();
+        const auto entryPos = accessor->GetHeader()->ReadPos;
+        auto header = dataProcessor->ReadEntryHeader(entryPos);
+        header.DataChecksum ^= 1;
+        UNIT_ASSERT(dataProcessor->WriteEntryHeader(entryPos, header));
 
         UNIT_ASSERT(!rb.Validate());
     }
@@ -567,11 +612,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT(RingBuffer.PushBack("aaa").Pushed);
             UNIT_ASSERT(RingBuffer.PushBack("bb").Pushed);
 
-            TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
-            m.Map(0, 256 + Len);
-            char* data = static_cast<char*>(m.Ptr());
-            UNIT_ASSERT_VALUES_EQUAL(2, data[267]);
-            data[267] = newLength;
+            TTestFileRingBufferAccessor accessor(FileHandle.GetName());
+            auto* dataProcessor = accessor->GetDataProcessor();
+            const auto secondEntryPos = dataProcessor->GetEntrySize(3);
+            auto header = dataProcessor->ReadEntryHeader(secondEntryPos);
+            UNIT_ASSERT_VALUES_EQUAL(2, header.DataSize);
+            header.DataSize = newLength;
+            UNIT_ASSERT(
+                dataProcessor->WriteEntryHeader(secondEntryPos, header));
         }
     };
 
@@ -627,26 +675,36 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         // For an empty buffer, resize is performed immediately
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             maxDataSize = rb.GetMaxSupportedAllocationByteCount();
         }
         {
             TFileRingBuffer rb(f.GetName(), len + 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(len + 257, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 1), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len + 1, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len + 1, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
             UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
         {
             TFileRingBuffer rb(f.GetName(), len - 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(len + 255, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 1), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len - 1, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len - 1, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
             UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
 
@@ -660,12 +718,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize + 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetTargetDataCapacity());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 8), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
@@ -673,10 +735,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 8), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
@@ -685,12 +751,16 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize - 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetTargetDataCapacity());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(len + 248, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 8), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
@@ -698,10 +768,14 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(len + 248, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 8), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
@@ -710,11 +784,15 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
             UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(0)));
+            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 rb.GetMaxSupportedAllocationByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(0), f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(!rb.PushBack("12345678").Pushed);
         }
@@ -728,12 +806,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
             TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.ResizeAndRemap(0, len + 264);
-            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
+            m.ResizeAndRemap(0, GetStateFileSize(len + 8));
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 8), f.GetLength());
         }
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
         }
     }
 
@@ -878,12 +956,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
-    FILE_RING_BUFFER_TEST(ShouldGetRawCapacity)
+    FILE_RING_BUFFER_TEST(ShouldGetDataCapacity)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 42;
         TFileRingBuffer rb(f.GetName(), len, 0, ver);
-        UNIT_ASSERT_EQUAL(len, rb.GetRawCapacity());
+        UNIT_ASSERT_EQUAL(len, rb.GetDataCapacity());
     }
 
     FILE_RING_BUFFER_TEST(ShouldGetRawUsedBytesCount)
@@ -1012,10 +1090,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         {
             // Corrupt metadata contents
-            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.Map(0, 256);
-            char* data = static_cast<char*>(m.Ptr());
-            data[68] ^= 1;
+            TTestFileRingBufferAccessor accessor(f.GetName());
+            accessor->GetRawMetadata()[0] ^= 1;
         }
 
         UNIT_ASSERT(!rb->Validate());
@@ -1038,10 +1114,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             // Corrupt metadata length (set length > capacity)
             // Header validation will fail - setting metadata will not be
             // possible
-            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-            m.Map(0, 256);
-            char* data = static_cast<char*>(m.Ptr());
-            data[64] = 100;
+            TTestFileRingBufferAccessor accessor(f.GetName());
+            auto* header = accessor->GetHeader();
+            header->MetadataSize = header->MetadataCapacity + 1;
         }
 
         UNIT_ASSERT(!rb->Validate());
@@ -1158,7 +1233,8 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             const auto* entryData = initial.data() + initial.length() - len;
             MemCopy(data + dataOffset, entryData, len);
             MemCopy(data + dataOffset - len, entryData, 3);
-            *reinterpret_cast<ui64*>(data + 40) = dataOffset;
+            TTestFileRingBufferAccessor accessor(f2.GetName());
+            accessor->GetHeader()->DataOffset = dataOffset;
         }
         {
             TFileRingBuffer rb(f2.GetName(), len, 100, ver);
