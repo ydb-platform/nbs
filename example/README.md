@@ -22,6 +22,8 @@ Setup prepares both cells. For each cell, it creates sparse YDB disks
 development certificates. The first cell's runtime files are stored in
 `$HOME/tmp/nbs` and linked as `data`, `certs`, and `logs`; the second
 cell's files are stored in `$HOME/tmp/nbs-cell2` and linked under `cell2/`.
+To prepare only cell-1 disks and certificates, run `python3 ./prepare_cells.py`
+and `./setup_cell.sh` instead of `./0-setup.sh`.
 Override `PERSISTENT_TMP_DIR` and `CELL2_PERSISTENT_TMP_DIR`, respectively,
 when running setup to use other locations.
 Setup recreates both cells' YDB disks; run it only when initializing a fresh stand.
@@ -66,7 +68,9 @@ Run the following command in a new tab to start two NBS nodes and five disk agen
 ```
 
 All processes run under this script and stop together on Ctrl+C or if any
-process exits. Monitoring ports are 8766 and 8786; API ports are 9766 and 9786.
+process exits; failures report the process name and its log path.
+Pass extra `nbsd` options after `--`. Monitoring ports are 8766 and 8786;
+API ports are 9766 and 9786.
 Logs and profiles are separate for each node.
 To start only the first node, pass `--one-nbs`:
 
@@ -144,10 +148,11 @@ ssh -L 8766:localhost:8766 <vm_ip>
 - `disk-agent.sh` starts one agent using `LOCATION_FILE` and `DISK_AGENT_FILE`.
 - `7-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
   it requires KVM and the QEMU binary and guest image from `buildall`.
-  Add `--cell2` to use the second cell, its socket directory, and its QMP/SSH ports.
+  Add `--cell2` to use the second cell, its socket suffix, and its QMP/SSH ports.
 - `8-make-disks.sh` creates a selection of disks and placement groups in cell-1.
   Add `--cell2` to create the same set in cell-2, with `-cell2` appended to
-  disk and placement-group names.
+  disk and placement-group names. It attempts all creations even if an earlier
+  command fails (for example, because a placement group already exists).
 - `copy_volume.py` exercises volume links to copy a volume.
 - `cleanup.sh` removes generated configs, backups, and runtime symlinks. Stop all
   processes first. The persistent files in `$PERSISTENT_TMP_DIR` remain on disk.
@@ -163,8 +168,9 @@ cell and reach the peer NBS over gRPC. The first cell is `cell-1`; the second
 is `cell-2`.
 
 Start the first cell with the commands above. If it is already running,
-restart NBS with the updated `3-start_nbs.sh` to load the cells configuration;
-do not rerun setup on an existing stand.
+first run `python3 ./prepare_cells.py`, then restart NBS with the updated
+`3-start_nbs.sh` to load the cells configuration. Do not rerun setup on an
+existing stand.
 
 Both cells are prepared by the single `./0-setup.sh` command above.
 The generated configurations and shared-script links for the second cell are
@@ -233,3 +239,10 @@ Start QEMU against the second cell directly:
 QEMU uses separate QMP and SSH ports, 18678 and 18679. Select a different NBD
 device when attaching disks from both cells. Logs and generated device
 configurations for the second cell are under `cell2/`.
+
+The standalone `disk-agent.sh` defaults to interconnect/monitoring ports
+29512/8769 in cell-1 and 39512/18769 in cell-2. These ports do not overlap
+with the five agents started by `3-start_nbs.sh`. Use a separate agent identity
+and devices when running an additional agent alongside the full stand.
+QEMU's default socket is `/tmp/<diskid>.sock` in cell-1 and
+`/tmp/<diskid>-cell2.sock` in cell-2; override it with `--socket` if needed.

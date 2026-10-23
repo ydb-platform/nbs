@@ -32,7 +32,8 @@ EOF
             break
             ;;
         *)
-            nbsd_args+=("$1")
+            echo "Unknown argument: $1; pass NBS arguments after --" >&2
+            exit 1
             ;;
     esac
     shift
@@ -52,6 +53,17 @@ DATA_SERVER_PORT=${DATA_SERVER_PORT:-9767}
 SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9768}
 MON_PORT=${MON_PORT:-8766}
 source ./prepare_binaries.sh || exit 1
+
+if [[ "$start_nbs_enabled" == true ]]; then
+    if [[ ! -f nbs/nbs-cells.txt ]]; then
+        echo "Missing nbs/nbs-cells.txt; run python3 ./prepare_cells.py before starting NBS" >&2
+        exit 1
+    fi
+    require_bins "$NBSD_BIN" || exit 1
+fi
+if [[ "$start_da_enabled" == true ]]; then
+    require_bins "$DISK_AGENT_BIN" "$BLOCKSTORE_CLIENT_BIN" || exit 1
+fi
 
 export ASAN_SYMBOLIZER_PATH=${ASAN_SYMBOLIZER_PATH:-$("$REPO_ROOT/ya" tool llvm-symbolizer --print-path)}
 
@@ -95,26 +107,21 @@ start_nbs() {
 
 configure_disk_registry() {
     local NBS_CLIENT_PORT=$SERVER_PORT
-    local ready=false
     local attempt
-    echo "Waiting for NBS on port $SERVER_PORT"
+    echo "Waiting for NBS and Disk Registry on port $SERVER_PORT"
     for ((attempt = 0; attempt < 30; ++attempt)); do
         check_services
-        if blockstore-client ping --timeout 1 --verbose error >/dev/null 2>&1; then
-            ready=true
-            break
+        if blockstore-client ping --timeout 1 --verbose error >/dev/null 2>&1 &&
+            blockstore-client ExecuteAction --action DiskRegistrySetWritableState \
+                --verbose error --timeout 5 --input-bytes '{"State":true}' &&
+            blockstore-client UpdateDiskRegistryConfig --verbose error --timeout 5 \
+                --input "$PWD/nbs/nbs-disk-registry.txt" --proto; then
+            return 0
         fi
         sleep 1
     done
-    if [[ "$ready" == false ]]; then
-        echo "NBS on port $SERVER_PORT did not become ready" >&2
-        return 1
-    fi
-
-    blockstore-client ExecuteAction --action DiskRegistrySetWritableState \
-        --verbose error --timeout 5 --input-bytes '{"State":true}' || return 1
-    blockstore-client UpdateDiskRegistryConfig --verbose error --timeout 5 \
-        --input "$PWD/nbs/nbs-disk-registry.txt" --proto
+    echo "NBS or Disk Registry on port $SERVER_PORT did not become ready after 30 attempts" >&2
+    return 1
 }
 
 start_agent() {
@@ -128,12 +135,16 @@ start_agent() {
 }
 
 pids=()
+service_names=()
+service_logs=()
 check_services() {
-    local pid
-    for pid in "${pids[@]}"; do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            wait "$pid"
-            exit "$?"
+    local index status
+    for index in "${!pids[@]}"; do
+        if ! kill -0 "${pids[index]}" 2>/dev/null; then
+            status=0
+            wait "${pids[index]}" || status=$?
+            echo "${service_names[index]} exited with status $status; log: $PWD/${service_logs[index]}" >&2
+            exit "$status"
         fi
     done
 }
@@ -151,6 +162,8 @@ if [[ "$start_nbs_enabled" == true ]]; then
     for ((index = 1; index <= nbs_count; ++index)); do
         start_nbs "$index" "${nbsd_args[@]}" &
         pids+=("$!")
+        service_names+=("NBS $index")
+        service_logs+=("logs/nbs.$index.log")
     done
 fi
 
@@ -159,6 +172,8 @@ if [[ "$start_da_enabled" == true ]]; then
     for index in 0 1 2 3 4; do
         start_agent "$index" > "logs/remote-da$index.log" 2>&1 &
         pids+=("$!")
+        service_names+=("Agent $index")
+        service_logs+=("logs/remote-da$index.log")
         echo "Agent $index http://localhost:$(( DA_MON_PORT + index ))/blockstore/disk_agent"
     done
 fi
@@ -167,4 +182,5 @@ fi
 check_services
 status=0
 wait -n "${pids[@]}" || status=$?
+check_services
 exit "$status"

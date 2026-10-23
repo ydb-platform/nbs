@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 
-find_bin_dir() {
-    readlink -e `dirname $0`
-}
-
-BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
+original_args=("$@")
 
 show_help() {
     cat << EOF
@@ -48,7 +44,7 @@ do
         exit 0
         ;;
     --cell2 )
-        NBS_CLIENT_PORT=19766
+        run_in_cell2 "${original_args[@]}"
         shift
         ;;
     -k | --kind )

@@ -6,21 +6,18 @@ DATA_DIRS=" \
     logs \
     "
 find_bin_dir() {
-    readlink -e `dirname $0`
+    readlink -e -- "$(dirname -- "$0")"
 }
 
 LOCALHOST=$(hostname --fqdn)
 JOURNAL_PORT=${JOURNAL_PORT:-29900}
-BIN_DIR=`find_bin_dir`
+BIN_DIR=$(find_bin_dir)
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
 source ./prepare_binaries.sh || exit 1
 
 set -e
 
-test -x "$BLOCKSTORE_VHOST_SERVER_BIN" || {
-    echo "$BLOCKSTORE_VHOST_SERVER_BIN not found; build cloud/blockstore/buildall first"
-    exit 1
-}
+require_bins "$BLOCKSTORE_VHOST_SERVER_BIN"
 
 for dir in $DATA_DIRS; do
     mkdir -p "$PERSISTENT_TMP_DIR/$dir"

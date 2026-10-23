@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 
-find_bin_dir() {
-    readlink -e `dirname $0`
-}
-
-BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
+original_args=("$@")
 
 show_help() {
     cat << EOF
@@ -40,10 +36,7 @@ do
         exit 0
         ;;
     --cell2 )
-        NBS_CLIENT_PORT=19766
-        QEMU_QMP_PORT=${QEMU_QMP_PORT:-18678}
-        QEMU_SSH_PORT=${QEMU_SSH_PORT:-18679}
-        BIN_DIR="$EXAMPLE_DIR/cell2"
+        run_in_cell2 "${original_args[@]}"
         shift
         ;;
     -k | --encryption-key-path )
@@ -74,8 +67,10 @@ if [ -z "$diskid" ] ; then
 fi
 
 if [ -z "$socket" ] ; then
-    socket="$BIN_DIR/data/$diskid.sock"
+    socket="/tmp/${diskid}${NBS_CELL_SUFFIX:-}.sock"
 fi
+
+require_bins "$BLOCKSTORE_CLIENT_BIN" || exit 1
 
 # prepare qemu image
 
@@ -87,6 +82,10 @@ DISK_IMAGE=$QEMU_BIN_DIR/../image-noble/rootfs.img
 
 if [[ ! -x "$QEMU" ]]; then
     echo "expand qemu tar from [$QEMU_BIN_TAR]"
+    if [[ ! -f "$QEMU_BIN_TAR" ]]; then
+        echo "$QEMU_BIN_TAR not found; build cloud/blockstore/buildall first" >&2
+        exit 1
+    fi
     tar -xzf "$QEMU_BIN_TAR" -C "$QEMU_BIN_DIR"
 fi
 

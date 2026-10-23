@@ -8,7 +8,7 @@ import re
 
 # Only configured network ports change; tablet IDs and storage geometry stay intact.
 PORTS = (29501, 9766, 9767, 9768, 9786, 9787, 9788, 10020)
-PORT_PATTERN = re.compile(r"\b(" + "|".join(map(str, PORTS)) + r")\b")
+PORT_PATTERN = re.compile(r'(?im)(\b\w*port\w*["\']?\s*:\s*)(\d+)\b')
 
 
 def write_cells_config(directory, cell_id, peer_id, peer_port):
@@ -29,10 +29,9 @@ Cells {{
 def prepare_cells(example_dir):
     cell_dir = example_dir / "cell2"
     cell_dir.mkdir(exist_ok=True)
-    for name in ("0-setup.sh", "2-init_nbs_storage_tenant.sh", "3-start_nbs2.sh", "4-start_disk_agent.sh"):
-        obsolete_script = cell_dir / name
-        if obsolete_script.is_symlink():
-            obsolete_script.unlink()
+    for target in cell_dir.iterdir():
+        if target.is_symlink() and not target.exists():
+            target.unlink()
 
     for source in example_dir.iterdir():
         if source.is_symlink() or not source.is_file():
@@ -42,6 +41,8 @@ def prepare_cells(example_dir):
         if source.suffix not in (".sh", ".py") and source.name != "encryption-key.txt":
             continue
         target = cell_dir / source.name
+        if target.is_symlink():
+            target.unlink()
         if not target.exists():
             target.symlink_to(Path("..") / source.name)
 
@@ -56,7 +57,8 @@ def prepare_cells(example_dir):
             if source.name == "nbs-cells.txt":
                 continue
             text = PORT_PATTERN.sub(
-                lambda match: str(int(match[0]) + 10000), source.read_text())
+                lambda match: match[1] + str(int(match[2]) + 10000)
+                if int(match[2]) in PORTS else match[0], source.read_text())
             (target_dir / source.name).write_text(text)
 
     # Local service is implicit; each cell lists only the other cell as a peer.

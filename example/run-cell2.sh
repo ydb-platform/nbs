@@ -10,6 +10,8 @@ if [[ ! -f "$EXAMPLE_DIR/cell2/$script" ]]; then
     exit 1
 fi
 
+export NBS_CELL=cell-2
+export NBS_CELL_SUFFIX=-cell2
 export PERSISTENT_TMP_DIR=${CELL2_PERSISTENT_TMP_DIR:-$HOME/tmp/nbs-cell2}
 export GRPC_PORT=${GRPC_PORT:-19001}
 export NBS_CLIENT_PORT=${NBS_CLIENT_PORT:-19766}
@@ -31,8 +33,8 @@ case "$script" in
         export SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-19768}
         ;;
     disk-agent.sh)
-        export IC_PORT=${IC_PORT:-39012}
-        export MON_PORT=${MON_PORT:-19100}
+        export IC_PORT=${IC_PORT:-39512}
+        export MON_PORT=${MON_PORT:-18769}
         ;;
 esac
 
