@@ -1786,8 +1786,4 @@ message TStorageServiceConfig
     // Enable before compression: missing counters are initialized from block counts.
     optional bool ExtendedBlobCountersEnabled = 554;
 
-    // If true, the volume throttler reports in responses how much of its delay
-    // the original performance profile alone would have caused. Diagnostics
-    // only: throttling decisions are not affected.
-    optional bool QuotaDelayAccountingEnabled = 555;
 }

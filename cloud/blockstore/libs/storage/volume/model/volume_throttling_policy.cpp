@@ -9,17 +9,11 @@
 #include <util/generic/vector.h>
 #include <util/generic/ymath.h>
 
-#include <optional>
-
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
 using EOpType = EVolumeThrottlingOpType;
-
-// Each attempt moves the virtual admission time forward by at least
-// MinPostponeQueueFlushInterval, so this bounds the work per request.
-constexpr ui32 MaxQuotaReferenceAttempts = 16;
 
 ////////////////////////////////////////////////////////////////////////////////
 // IOPS throttle
@@ -99,15 +93,7 @@ struct TVolumeThrottlingPolicy::TImpl
     const ui64 DefaultPostponedRequestWeight;
     const bool UseDiskSpaceScore;
     const TMaxQuotas MaxQuotas;
-    const TMaxQuotas OriginalMaxQuotas;
     TBoostedTimeBucket Bucket;
-
-    // Follows the same token bucket arithmetic as Bucket, but for
-    // OriginalConfig and without the write cost multiplier. Requests are
-    // admitted into it in FIFO order at virtual times and never wait for it.
-    std::optional<TBoostedTimeBucket> QuotaReferenceBucket;
-    TInstant QuotaReferenceAdmitTs;
-
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
     double WriteCostMultiplier = 1;
@@ -125,8 +111,7 @@ struct TVolumeThrottlingPolicy::TImpl
             const ui32 maxWriteCostMultiplier,
             const ui64 defaultPostponedRequestWeight,
             const TDuration initialBoostBudget,
-            const bool useDiskSpaceScore,
-            const bool quotaDelayAccountingEnabled)
+            const bool useDiskSpaceScore)
         : ThrottlingRule(std::move(throttlingRule))
         , OriginalConfig(std::move(config))
         , Config(CalculateProfile(ThrottlingRule))
@@ -136,24 +121,14 @@ struct TVolumeThrottlingPolicy::TImpl
         , MaxWriteCostMultiplier(maxWriteCostMultiplier)
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
         , UseDiskSpaceScore(useDiskSpaceScore)
-        , MaxQuotas(CalculateMaxQuotas(Config))
-        , OriginalMaxQuotas(CalculateMaxQuotas(OriginalConfig))
+        , MaxQuotas(CalculateMaxQuotas())
         , Bucket(
-              CalcBurstTime(Config),
+              CalcBurstTime(),
               CalculateBoostRate(Config),
               CalculateBoostTime(Config),
               CalculateBoostRefillTime(Config),
               initialBoostBudget)
-    {
-        if (quotaDelayAccountingEnabled) {
-            QuotaReferenceBucket.emplace(
-                CalcBurstTime(OriginalConfig),
-                CalculateBoostRate(OriginalConfig),
-                CalculateBoostTime(OriginalConfig),
-                CalculateBoostRefillTime(OriginalConfig),
-                initialBoostBudget);
-        }
-    }
+    {}
 
     NProto::TVolumePerformanceProfile CalculateProfile(
         const NProto::TVolumeThrottlingRule& throttlingRule) const
@@ -214,15 +189,13 @@ struct TVolumeThrottlingPolicy::TImpl
         return result;
     }
 
-    static TMaxQuotas CalculateMaxQuotas(
-        const NProto::TVolumePerformanceProfile& profile)
+    TMaxQuotas CalculateMaxQuotas() const
     {
         TMaxQuotas result;
         for (size_t i = 0; i <= static_cast<size_t>(EOpType::Last); ++i) {
             const ui64 bandwidth =
-                CalculateMaxBandwidth(profile, static_cast<EOpType>(i));
-            const ui64 iops =
-                CalculateMaxIops(profile, static_cast<EOpType>(i));
+                CalculateMaxBandwidth(static_cast<EOpType>(i));
+            const ui64 iops = CalculateMaxIops(static_cast<EOpType>(i));
             result[i] = TMaxQuota{
                 .Bandwidth = bandwidth,
                 .Iops = iops,
@@ -232,12 +205,10 @@ struct TVolumeThrottlingPolicy::TImpl
         return result;
     }
 
-    static ui64 CalculateMaxBandwidth(
-        const NProto::TVolumePerformanceProfile& profile,
-        EOpType opType)
+    ui64 CalculateMaxBandwidth(EOpType opType) const
     {
-        if (opType == EOpType::Write && profile.GetMaxWriteBandwidth()) {
-            return profile.GetMaxWriteBandwidth();
+        if (opType == EOpType::Write && Config.GetMaxWriteBandwidth()) {
+            return Config.GetMaxWriteBandwidth();
         }
 
         if (opType == EOpType::Describe) {
@@ -246,18 +217,16 @@ struct TVolumeThrottlingPolicy::TImpl
             // See NBS-2733
             return 0;
         }
-        return profile.GetMaxReadBandwidth();
+        return Config.GetMaxReadBandwidth();
     }
 
-    static ui32 CalculateMaxIops(
-        const NProto::TVolumePerformanceProfile& profile,
-        EOpType opType)
+    ui32 CalculateMaxIops(EOpType opType) const
     {
-        if (opType == EOpType::Write && profile.GetMaxWriteIops()) {
-            return profile.GetMaxWriteIops();
+        if (opType == EOpType::Write && Config.GetMaxWriteIops()) {
+            return Config.GetMaxWriteIops();
         }
 
-        return profile.GetMaxReadIops();
+        return Config.GetMaxReadIops();
     }
 
     const NProto::TVolumePerformanceProfile& CurrentProfile() const
@@ -265,11 +234,10 @@ struct TVolumeThrottlingPolicy::TImpl
         return Config;
     }
 
-    static TDuration CalcBurstTime(
-        const NProto::TVolumePerformanceProfile& profile)
+    TDuration CalcBurstTime() const
     {
         return SecondsToDuration(
-            (profile.GetBurstPercentage() ? profile.GetBurstPercentage() : 10)
+            (Config.GetBurstPercentage() ? Config.GetBurstPercentage() : 10)
             / 100.);
     }
 
@@ -447,63 +415,6 @@ struct TVolumeThrottlingPolicy::TImpl
         return postponed ? d : TMaybe<TDuration>();
     }
 
-    TMaybe<TQuotaReference> RegisterQuotaReference(
-        TInstant ts,
-        const TThrottlingRequestInfo& requestInfo)
-    {
-        if (!QuotaReferenceBucket || requestInfo.PolicyVersion < PolicyVersion)
-        {
-            return Nothing();
-        }
-
-        if (!requestInfo.ByteCount) {
-            return TQuotaReference{};
-        }
-
-        const auto opType = static_cast<EOpType>(requestInfo.OpType);
-        Y_ABORT_UNLESS(opType <= EOpType::Last);
-        const auto& quota = OriginalMaxQuotas[static_cast<size_t>(opType)];
-        if (!quota.RecalculatedIops) {
-            return Nothing();
-        }
-
-        const auto cost = CostPerIO(
-            quota.RecalculatedIops,
-            quota.RecalculatedBandwidth,
-            requestInfo.ByteCount);
-
-        // Works on a copy: a request rejected by the reference must not
-        // consume its budget.
-        TBoostedTimeBucket bucket = *QuotaReferenceBucket;
-        TInstant admitTs = Max(ts, QuotaReferenceAdmitTs);
-        for (ui32 attempt = 0; attempt < MaxQuotaReferenceAttempts; ++attempt) {
-            const auto d = bucket.Register(admitTs, cost);
-            if (!d.GetValue()) {
-                QuotaReferenceBucket.emplace(bucket);
-                QuotaReferenceAdmitTs = admitTs;
-                return TQuotaReference{.Delay = admitTs - ts};
-            }
-
-            if (admitTs - ts + d > MaxDelay) {
-                return TQuotaReference{
-                    .Delay = admitTs - ts,
-                    .Rejected = true};
-            }
-
-            admitTs += Max(d, MinPostponeQueueFlushInterval);
-        }
-
-        return Nothing();
-    }
-
-    void InheritQuotaReference(const TImpl& other)
-    {
-        if (QuotaReferenceBucket && other.QuotaReferenceBucket) {
-            QuotaReferenceBucket.emplace(*other.QuotaReferenceBucket);
-            QuotaReferenceAdmitTs = other.QuotaReferenceAdmitTs;
-        }
-    }
-
     ui64 PostponedRequestWeight(EOpType opType, ui64 byteCount) const
     {
         return opType == EOpType::Write
@@ -545,8 +456,7 @@ void TVolumeThrottlingPolicy::Reset(
     ui32 maxWriteCostMultiplier,
     ui32 defaultPostponedRequestWeight,
     TDuration initialBoostBudget,
-    bool useDiskSpaceScore,
-    bool quotaDelayAccountingEnabled)
+    bool useDiskSpaceScore)
 {
     Impl = std::make_unique<TImpl>(
         config,
@@ -557,8 +467,7 @@ void TVolumeThrottlingPolicy::Reset(
         maxWriteCostMultiplier,
         defaultPostponedRequestWeight,
         initialBoostBudget,
-        useDiskSpaceScore,
-        quotaDelayAccountingEnabled);
+        useDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::Reset(
@@ -576,8 +485,7 @@ void TVolumeThrottlingPolicy::Reset(
         throttlerConfig.MaxWriteCostMultiplier,
         throttlerConfig.DefaultPostponedRequestWeight,
         throttlerConfig.InitialBoostBudget,
-        throttlerConfig.UseDiskSpaceScore,
-        throttlerConfig.QuotaDelayAccountingEnabled);
+        throttlerConfig.UseDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::Reset(
@@ -591,28 +499,22 @@ void TVolumeThrottlingPolicy::Reset(
         policy.Impl->MaxWriteCostMultiplier,
         policy.Impl->DefaultPostponedRequestWeight,
         policy.Impl->Bucket.GetCurrentBoostBudget(),
-        policy.Impl->UseDiskSpaceScore,
-        policy.Impl->QuotaReferenceBucket.has_value());
-    Impl->InheritQuotaReference(*policy.Impl);
+        policy.Impl->UseDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::Reset(
     const NProto::TVolumeThrottlingRule& throttlingRule,
     ui32 volatileVersion)
 {
-    // The original profile is unchanged, so the reference keeps its state.
-    const auto prev = std::move(Impl);
     Reset(
-        prev->OriginalConfig,
+        Impl->OriginalConfig,
         throttlingRule,
         volatileVersion,
-        prev->MaxDelay,
-        prev->MaxWriteCostMultiplier,
-        prev->DefaultPostponedRequestWeight,
-        prev->Bucket.GetCurrentBoostBudget(),
-        prev->UseDiskSpaceScore,
-        prev->QuotaReferenceBucket.has_value());
-    Impl->InheritQuotaReference(*prev);
+        Impl->MaxDelay,
+        Impl->MaxWriteCostMultiplier,
+        Impl->DefaultPostponedRequestWeight,
+        Impl->Bucket.GetCurrentBoostBudget(),
+        Impl->UseDiskSpaceScore);
 }
 
 void TVolumeThrottlingPolicy::OnBackpressureReport(
@@ -643,13 +545,6 @@ TMaybe<TDuration> TVolumeThrottlingPolicy::SuggestDelay(
     const TThrottlingRequestInfo& requestInfo)
 {
     return Impl->SuggestDelay(ts, queueTime, requestInfo);
-}
-
-TMaybe<TQuotaReference> TVolumeThrottlingPolicy::RegisterQuotaReference(
-    TInstant ts,
-    const TThrottlingRequestInfo& requestInfo)
-{
-    return Impl->RegisterQuotaReference(ts, requestInfo);
 }
 
 double TVolumeThrottlingPolicy::GetWriteCostMultiplier() const

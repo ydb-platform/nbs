@@ -133,7 +133,7 @@ struct TStats
         // device waits are included in the original request's elapsed time.
         const auto result = LatencySli->Classify(
             write, bytes, CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
-            0, failed);
+            failed);
         auto& stats = Requests[write];
         auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
                       : result == ELatencySliResult::Bad ? stats.LatencyBad

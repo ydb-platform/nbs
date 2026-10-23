@@ -358,8 +358,7 @@ void TVolumeActor::CompleteUpdateConfig(
             Config->GetMaxWriteCostMultiplier(),
             Config->GetDefaultPostponedRequestWeight(),
             CalculateBoostTime(args.Meta.GetConfig().GetPerformanceProfile()),
-            Config->GetDiskSpaceScoreThrottlingEnabled(),
-            Config->GetQuotaDelayAccountingEnabled());
+            Config->GetDiskSpaceScoreThrottlingEnabled());
 
         State.reset(new TVolumeState(
             Config,

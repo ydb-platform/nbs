@@ -17,6 +17,10 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration MinPostponeQueueFlushInterval = TDuration::MilliSeconds(1);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTabletThrottler final
     : public ITabletThrottler
 {
@@ -30,7 +34,6 @@ private:
         TThrottlingRequestInfo Info;
         TCallContextBasePtr CallContext;
         NActors::IEventHandlePtr Event;
-        TMaybe<TQuotaReference> QuotaReference;
     };
     // TODO: replace with a ring buffer
     TList<TPostponedRequest> PostponedRequests;
@@ -110,18 +113,7 @@ public:
         const std::function<NActors::IEventHandlePtr(void)>& eventReleaser,
         const char* methodName) override
     {
-        // While flushing, the only request that can get here is the front
-        // one being redelivered; it was registered when it first arrived.
-        TMaybe<TQuotaReference> quotaReference;
-        if (PostponedQueueFlushInProgress) {
-            quotaReference = PostponedRequests.front().QuotaReference;
-        } else {
-            quotaReference =
-                Policy.RegisterQuotaReference(ctx.Now(), requestInfo);
-        }
-
         bool rejected = false;
-        TDuration queueTime = TDuration::Zero();
         if (PostponedRequests && !PostponedQueueFlushInProgress) {
             Y_DEBUG_ABORT_UNLESS(PostponedQueueFlushScheduled);
 
@@ -136,8 +128,7 @@ public:
                     ctx,
                     requestInfo,
                     std::move(callContext),
-                    eventReleaser(),
-                    quotaReference);
+                    eventReleaser());
 
                 return ETabletThrottlerStatus::POSTPONED;
             }
@@ -146,6 +137,7 @@ public:
         } else {
             const auto nowTs = ctx.Now();
             const auto postponeTs = callContext->GetPostponeTs();
+            TDuration queueTime = TDuration::Zero();
             if (postponeTs) {
                 queueTime = nowTs - postponeTs;
             }
@@ -163,8 +155,7 @@ public:
                         ctx,
                         requestInfo,
                         std::move(callContext),
-                        eventReleaser(),
-                        quotaReference);
+                        eventReleaser());
 
                     Y_DEBUG_ABORT_UNLESS(!PostponedQueueFlushScheduled);
                     PostponedQueueFlushScheduled = true;
@@ -181,9 +172,6 @@ public:
         }
 
         if (rejected) {
-            const TDuration waited =
-                PostponedQueueFlushInProgress ? queueTime : TDuration::Zero();
-            SetQuotaDelay(*callContext, quotaReference, waited);
             return ETabletThrottlerStatus::REJECTED;
         }
 
@@ -191,7 +179,6 @@ public:
         if (PostponedQueueFlushInProgress) {
             delay = callContext->Advance(GetCycleCount());
         }
-        SetQuotaDelay(*callContext, quotaReference, delay);
         Logger.LogRequestAdvanced(
             ctx,
             *callContext,
@@ -203,28 +190,11 @@ public:
     }
 
 private:
-    static void SetQuotaDelay(
-        TCallContextBase& callContext,
-        const TMaybe<TQuotaReference>& quotaReference,
-        TDuration throttlerDelay)
-    {
-        // The real wait also contains delays the original profile would not
-        // have caused, so only the smaller of the two is attributed to it.
-        if (!quotaReference && !callContext.GetThrottlerQuotaDelay()) {
-            return;
-        }
-        callContext.SetThrottlerQuotaDelay(
-            quotaReference
-                ? TMaybe<TDuration>(Min(throttlerDelay, quotaReference->Delay))
-                : Nothing());
-    }
-
     void Postpone(
         const NActors::TActorContext& ctx,
         TThrottlingRequestInfo requestInfo,
         TCallContextBasePtr callContext,
-        NActors::IEventHandlePtr ev,
-        const TMaybe<TQuotaReference>& quotaReference)
+        NActors::IEventHandlePtr ev)
     {
         if (PostponedQueueFlushInProgress) {
             Y_DEBUG_ABORT_UNLESS(!PostponedRequests.front().Event);
@@ -237,8 +207,7 @@ private:
             PostponedRequests.push_back({
                 requestInfo,
                 std::move(callContext),
-                std::move(ev),
-                quotaReference});
+                std::move(ev)});
        }
     }
 };

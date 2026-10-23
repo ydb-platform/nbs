@@ -306,6 +306,7 @@ message TDiagnosticsConfig
     repeated uint64 BlobCompressionChunkSizes = 61;
 
     // Shadow metrics only: no effect on request execution or throttling.
+    // Latency includes all waits in the original request, including throttling.
     optional bool EnableLatencySli = 63 [default = false];
 
     message TLatencySliThreshold

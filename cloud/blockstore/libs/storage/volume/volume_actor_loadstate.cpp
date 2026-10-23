@@ -130,8 +130,7 @@ void TVolumeActor::CompleteLoadState(
             Config->GetMaxWriteCostMultiplier(),
             Config->GetDefaultPostponedRequestWeight(),
             TDuration::MilliSeconds(throttlerInfo.BoostBudget),
-            Config->GetDiskSpaceScoreThrottlingEnabled(),
-            Config->GetQuotaDelayAccountingEnabled());
+            Config->GetDiskSpaceScoreThrottlingEnabled());
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
 
