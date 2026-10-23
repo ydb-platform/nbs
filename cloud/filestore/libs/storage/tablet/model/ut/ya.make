@@ -26,6 +26,7 @@ SRCS(
     sparse_segment_ut.cpp
     split_range_ut.cpp
     throttling_policy_ut.cpp
+    xattr_acl_helpers_ut.cpp
 )
 
 END()
