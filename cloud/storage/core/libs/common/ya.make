@@ -14,6 +14,7 @@ SRCS(
     byte_range.cpp
     byte_vector.cpp
     compressed_bitmap.cpp
+    compressed_bitmap_serialization.cpp
     concurrent_queue.cpp
     context.cpp
     disjoint_interval_map.cpp

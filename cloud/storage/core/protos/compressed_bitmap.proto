@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Compressed bitmap serialization.
+
+message TCompressedBitmapChunk
+{
+    uint32 ChunkIdx = 1;
+    bytes Data = 2;
+}
+
+message TCompressedBitmapData
+{
+    uint64 BitCount = 1;
+    repeated TCompressedBitmapChunk Chunks = 2;
+}
