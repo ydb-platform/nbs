@@ -42,11 +42,11 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
 
     TVector<NProto::TDeviceConfig> devices;
 
-    TVector<TVector<TDiskRegistryState::TDeviceId>> replicas;
+    TVector<TVector<TString>> replicas;
     replicas.reserve(record.ReplicasSize());
 
     for (const auto& replica: record.GetReplicas()) {
-        replicas.push_back(TVector<TDiskRegistryState::TDeviceId>(
+        replicas.push_back(TVector<TString>(
             replica.DeviceUUIDs.begin(),
             replica.DeviceUUIDs.end()));
     }
