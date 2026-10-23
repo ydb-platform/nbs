@@ -179,7 +179,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    if (HandleError(ctx, MakeDescribeSchemeError(record))) {
+    if (HandleError(ctx, MakeDescribeSchemeError(record, true))) {
         return;
     }
 
