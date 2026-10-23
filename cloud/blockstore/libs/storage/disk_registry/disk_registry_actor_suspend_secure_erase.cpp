@@ -17,7 +17,7 @@ void TDiskRegistryActor::HandleSetSuspendSecureErase(
     BLOCKSTORE_DISK_REGISTRY_COUNTER(SetSuspendSecureErase);
 
     const auto* msg = ev->Get();
-    const bool suspendSecureErase = msg->Record.GetState();
+    const bool suspendSecureErase = msg->Record.GetSuspend();
 
     LOG_INFO(
         ctx,
@@ -56,14 +56,14 @@ void TDiskRegistryActor::ExecuteSuspendSecureErase(
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    db.WriteSuspendSecureErase(args.State);
+    db.WriteSuspendSecureErase(args.Suspend);
 }
 
 void TDiskRegistryActor::CompleteSuspendSecureErase(
     const TActorContext& ctx,
     TTxDiskRegistry::TSuspendSecureErase& args)
 {
-    State->SetSuspendSecureErase(args.State);
+    State->SetSuspendSecureErase(args.Suspend);
 
     NCloud::Reply(
         ctx,

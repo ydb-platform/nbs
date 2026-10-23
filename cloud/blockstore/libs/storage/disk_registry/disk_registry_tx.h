@@ -803,13 +803,13 @@ struct TTxDiskRegistry
     struct TSuspendSecureErase
     {
         const TRequestInfoPtr RequestInfo;
-        const bool State;
+        const bool Suspend;
 
         TSuspendSecureErase(
                 TRequestInfoPtr requestInfo,
-                bool state)
+                bool suspend)
             : RequestInfo(std::move(requestInfo))
-            , State(state)
+            , Suspend(suspend)
         {}
 
         void Clear()

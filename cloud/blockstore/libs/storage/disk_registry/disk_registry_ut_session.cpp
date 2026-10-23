@@ -968,7 +968,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto request =
                 std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
-            request->Record.SetState(true);
+            request->Record.SetSuspend(true);
             diskRegistry.SendRequest(std::move(request));
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
@@ -1002,7 +1002,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto request =
                 std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
-            request->Record.SetState(false);
+            request->Record.SetSuspend(false);
             diskRegistry.SendRequest(std::move(request));
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,

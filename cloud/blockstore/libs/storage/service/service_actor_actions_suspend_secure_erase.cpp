@@ -60,7 +60,7 @@ void TSuspendSecureEraseActor::Bootstrap(const TActorContext& ctx)
 
     auto request =
         std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
-    request->Record.SetState(proto.GetState());
+    request->Record.SetSuspend(proto.GetSuspend());
 
     Become(&TThis::StateWork);
 

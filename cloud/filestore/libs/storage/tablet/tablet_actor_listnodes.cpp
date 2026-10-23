@@ -80,6 +80,7 @@ void TIndexTabletActor::HandleListNodes(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TEvService::TListNodesMethod>(*requestInfo);
 
@@ -126,6 +127,7 @@ void TIndexTabletActor::HandleListNodesInternal(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TEvIndexTablet::TListNodesInternalMethod>(*requestInfo);
 
@@ -433,6 +435,26 @@ void TIndexTabletActor::CompleteTx_ListNodes(
     TTxIndexTablet::TListNodes& args)
 {
     RemoveInFlightRequest(*args.RequestInfo);
+
+    if (!HasError(args.Error)) {
+        //
+        // The client may cache the listed entries and the attrs of the local
+        // child nodes. The attrs of the external nodes are fetched from the
+        // shards via GetNodeAttrBatch, which subscribes the client there.
+        //
+
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        for (const auto& ref: args.ChildRefs) {
+            AddFileSystemEventNodeRefSubscriber(
+                ctx,
+                pipeServerId,
+                args.NodeId,
+                ref.Name);
+        }
+        for (const auto& node: args.ChildNodes) {
+            AddFileSystemEventNodeSubscriber(ctx, pipeServerId, node.NodeId);
+        }
+    }
 
     if (args.ReplyInternal) {
         ReplyListNodesInternal(ctx, args);

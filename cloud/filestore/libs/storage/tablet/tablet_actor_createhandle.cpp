@@ -199,6 +199,7 @@ void TIndexTabletActor::HandleCreateHandle(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TEvService::TCreateHandleMethod>(*requestInfo);
 
@@ -599,6 +600,28 @@ void TIndexTabletActor::CompleteCreateHandle(
 
     for (auto nodeId: args.UpdatedNodes) {
         InvalidateReadAheadCache(nodeId);
+    }
+
+    if (!HasError(args.Error)) {
+        //
+        // The client may cache the entry (open by name) and the attrs of the
+        // local node.
+        //
+
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        if (args.Name) {
+            AddFileSystemEventNodeRefSubscriber(
+                ctx,
+                pipeServerId,
+                args.NodeId,
+                args.Name);
+        }
+        if (!args.ShardId && args.TargetNodeId != InvalidNodeId) {
+            AddFileSystemEventNodeSubscriber(
+                ctx,
+                pipeServerId,
+                args.TargetNodeId);
+        }
     }
 
     if (args.Error.GetCode() == E_ARGUMENT) {
