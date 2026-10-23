@@ -4,4 +4,5 @@ repos:
     hooks:
     -   id: check-yaml
     -   id: end-of-file-fixer
+        exclude: ^cloud/blockstore/tools/testing/eternal_tests/test_runner/tests/canondata/
     -   id: trailing-whitespace
