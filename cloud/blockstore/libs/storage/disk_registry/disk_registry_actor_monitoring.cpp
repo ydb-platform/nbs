@@ -1224,6 +1224,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         GenerateVolumeActionsJS(out);
+        GenerateDiskRegistryActionsJS(out);
 
         TAG(TH3) {
             out << "History";
@@ -2794,8 +2795,6 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 
         TAG(TH3) { out << "Storage Config"; }
         Config->DumpHtml(out);
-
-        GenerateDiskRegistryActionsJS(out);
     }
 }
 
