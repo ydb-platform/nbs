@@ -16,9 +16,10 @@ namespace NCloud::NFileStore::NWriteBackCacheStateTool {
 // The lock is associated with the open file and is released when its last
 // TFile owner is destroyed. Keeping the file alive provides the RAII guard for
 // the required lock lifetime.
-inline TResultOrError<bool> TryLock(TFile& file, bool exclusive)
+inline TResultOrError<bool> TryLock(TFile& file)
 {
-    const auto mode = (exclusive ? LOCK_EX : LOCK_SH) | LOCK_NB;
+    // Exclusive, non-blocking
+    const auto mode = LOCK_EX | LOCK_NB;
     if (::Flock(file.GetHandle(), mode) == 0) {
         return true;
     }

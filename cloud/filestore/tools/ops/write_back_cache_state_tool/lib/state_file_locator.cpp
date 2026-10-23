@@ -22,7 +22,8 @@ namespace {
 struct TStorageFileNames
 {
     static constexpr TStringBuf WriteBackCache = "write_back_cache";
-    static constexpr TStringBuf DirectoryHandles = "directory_handles_storage";
+    static constexpr TStringBuf DirectoryHandles1 = "directory_handle_storage";
+    static constexpr TStringBuf DirectoryHandles2 = "directory_handles_storage";
     static constexpr TStringBuf HandleOpsQueue = "handle_ops_queue";
 };
 
@@ -31,7 +32,9 @@ NProto::EStateFileType GetFileType(const TString& fileName)
     if (fileName == TStorageFileNames::WriteBackCache) {
         return NProto::EStateFileType::WriteBackCache;
     }
-    if (fileName == TStorageFileNames::DirectoryHandles) {
+    if (fileName == TStorageFileNames::DirectoryHandles1 ||
+        fileName == TStorageFileNames::DirectoryHandles2)
+    {
         return NProto::EStateFileType::DirectoryHandles;
     }
     if (fileName == TStorageFileNames::HandleOpsQueue) {
@@ -48,7 +51,7 @@ TResultOrError<NProto::TStateFileInfo> GetStateFileInfo(const TFsPath& path)
         path.GetPath(),
         EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
 
-    const auto lockOrError = TryLock(file, /* exclusive = */ true);
+    const auto lockOrError = TryLock(file);
     if (HasError(lockOrError)) {
         return lockOrError.GetError();
     }
@@ -105,7 +108,7 @@ public:
             return stateFileListOrError.GetError();
         }
 
-        const auto& candidates = stateFileListOrError.GetResult().GetFiles();
+        const auto& candidates = stateFileListOrError.GetResult().GetFileInfos();
 
         if (candidates.empty()) {
             return MakeError(
@@ -301,7 +304,7 @@ private:
         res.SetStateDirectory(stateDir.GetPath());
 
         for (const auto& stateFile: stateFiles) {
-            *res.AddFiles() = stateFile;
+            *res.AddFileInfos() = stateFile;
         }
 
         return res;

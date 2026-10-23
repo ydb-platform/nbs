@@ -36,8 +36,8 @@ NProto::TStateFileInfo GetOnlyFile(
     const TResultOrError<NProto::TStateFileList>& result)
 {
     UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
-    UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().GetFiles().size());
-    return result.GetResult().GetFiles(0);
+    UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().GetFileInfos().size());
+    return result.GetResult().GetFileInfos(0);
 }
 
 void AssertInvalidStructure(
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
 
         const auto& list = result.GetResult();
         UNIT_ASSERT_VALUES_EQUAL(tempDir.Name(), list.GetStateDirectory());
-        UNIT_ASSERT_VALUES_EQUAL(4, list.GetFiles().size());
+        UNIT_ASSERT_VALUES_EQUAL(4, list.GetFileInfos().size());
 
         struct TExpectedFile
         {
@@ -167,7 +167,7 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
         };
 
         for (size_t i = 0; i < expected.size(); ++i) {
-            const auto& actual = list.GetFiles(i);
+            const auto& actual = list.GetFileInfos(i);
             UNIT_ASSERT_VALUES_EQUAL(
                 expected[i].Path.GetPath(),
                 actual.GetFilePath());
@@ -210,33 +210,27 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
         AssertInvalidStructure(stateFileLevel.Path(), stateFileEntry);
     }
 
-    Y_UNIT_TEST(ShouldReportSharedAndExclusiveLocks)
+    Y_UNIT_TEST(ShouldReportLockedFile)
     {
         TTempDir tempDir;
         const auto stateFile =
             CreateStateFile(tempDir.Path(), "fs-1", "session-1");
+
         auto locator = CreateStateFileLocator(tempDir.Name());
-
-        for (const bool exclusive: {false, true}) {
-            TFile owner(stateFile.GetPath(), OpenExisting | RdOnly);
-            const auto acquired = TryLock(owner, exclusive);
-            UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
-            UNIT_ASSERT(acquired.GetResult());
-
-            TFile contender(stateFile.GetPath(), OpenExisting | RdOnly);
-            const auto busy = TryLock(contender, true /* exclusive */);
-            UNIT_ASSERT_C(!HasError(busy), FormatError(busy.GetError()));
-            UNIT_ASSERT(!busy.GetResult());
-            UNIT_ASSERT(GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
-        }
-
         UNIT_ASSERT(!GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
+
+        TFile owner(stateFile.GetPath(), OpenExisting | RdOnly);
+        const auto acquired = TryLock(owner);
+        UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
+        UNIT_ASSERT(acquired.GetResult());
+
+        UNIT_ASSERT(GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
     }
 
     Y_UNIT_TEST(ShouldReturnErrorForInvalidLockHandle)
     {
         TFile file;
-        const auto result = TryLock(file, true /* exclusive */);
+        const auto result = TryLock(file);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, result.GetError().GetCode());
     }
@@ -298,7 +292,7 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
             "fs-1",
             "session-1",
             NProto::EStateFileType::WriteBackCache,
-            true);
+            /* readOnly = */ true);
 
         UNIT_ASSERT(!HasError(found));
         UNIT_ASSERT_VALUES_EQUAL(first.GetPath(), found.GetResult().GetName());
@@ -307,12 +301,6 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
         UNIT_ASSERT_EXCEPTION(
             found.GetResult().Pwrite(&replacement, 1, 0),
             TFileError);
-        {
-            TFile file = found.GetResult();
-            const auto acquired = TryLock(file, false /* exclusive */);
-            UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
-            UNIT_ASSERT(acquired.GetResult());
-        }
 
         auto foundUnknown = locator->LocateAndOpenStateFile(
             "fs-1",

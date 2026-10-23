@@ -25,5 +25,5 @@ message TStateFileInfo
 message TStateFileList
 {
     string StateDirectory = 1;
-    repeated TStateFileInfo Files = 2;
+    repeated TStateFileInfo FileInfos = 2;
 }
