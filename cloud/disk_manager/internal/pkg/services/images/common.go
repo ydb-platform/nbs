@@ -16,6 +16,18 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func getDiskPoolConfigs(
+	config *config.ImagesConfig,
+	folderID string,
+) []*config.DiskPoolConfig {
+
+	if configs, ok := config.GetDiskPoolConfigsByFolder()[folderID]; ok {
+		return configs.GetConfigs()
+	}
+
+	return config.GetDefaultDiskPoolConfigs()
+}
+
 func deleteImage(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -102,7 +114,7 @@ func scheduleRetireBaseDisks(
 	imageMeta resources.ImageMeta,
 ) error {
 
-	for _, c := range config.GetDefaultDiskPoolConfigs() {
+	for _, c := range getDiskPoolConfigs(config, imageMeta.FolderID) {
 		_, err := scheduler.ScheduleTask(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
