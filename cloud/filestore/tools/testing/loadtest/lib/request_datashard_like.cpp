@@ -25,6 +25,15 @@ using namespace NCloud::NFileStore::NClient;
 
 namespace {
 
+TString GenerateValidateData(ui32 size)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = rand();
+    }
+    return data;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TNodeInfo
@@ -45,6 +54,7 @@ class TDatashardLikeRequestGenerator final
     , public std::enable_shared_from_this<TDatashardLikeRequestGenerator>
 {
 private:
+    TString RandData;
     static constexpr ui32 DefaultBlockSize = 4_KB;
 
     const NProto::TDatashardLikeLoadSpec Spec;
@@ -97,6 +107,8 @@ public:
         if (auto bytes = Spec.GetWriteBytes()) {
             WriteBytes = bytes;
         }
+
+        RandData = GenerateValidateData(WriteBytes);
 
         InitialFileSize = Spec.GetInitialFileSize();
         Y_ENSURE(InitialFileSize > 0, "InitialFileSize must be set");
@@ -228,7 +240,7 @@ private:
                 auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
                 request->SetNodeId(info.NodeId);
                 request->SetFlags(resizeFlags);
-                request->MutableUpdate()->SetSize(InitialFileSize);
+                request->MutableUpdate()->SetSize(0);
 
                 setAttr = Session->SetNodeAttr(
                     CreateCallContext(),
@@ -261,7 +273,7 @@ private:
         try {
             const auto& response = future.GetValue();
             CheckResponse(response);
-            info.Size = InitialFileSize;
+            info.Size = 0;
 
             with_lock (StateLock) {
                 NodeInfos.emplace_back(std::move(info));
@@ -282,12 +294,15 @@ private:
     TFuture<TCompletedRequest> DoRead()
     {
         TGuard<TMutex> guard(StateLock);
-        auto it = FindIf(
-            NodeInfos,
-            [this](const TNodeInfo& n) { return n.Size >= ReadBytes; });
-        if (it == NodeInfos.end()) {
+        if (NodeInfos.empty()) {
             guard.Release();
             return DoCreateNode();
+        }
+        auto it = NodeInfos.begin();
+
+        if (it->Size < InitialFileSize) {
+            guard.Release();
+            return DoWrite();
         }
 
         auto nodeInfo = PopNodeInfo(it);
@@ -387,13 +402,11 @@ private:
         ui64 byteOffset = nodeInfo.Size;
         nodeInfo.Size += WriteBytes;
 
-        TString buffer(WriteBytes, '\0');
-
         auto request = CreateRequest<NProto::TWriteDataRequest>();
         request->SetHandle(InvalidHandle);
         request->SetNodeId(nodeInfo.NodeId);
         request->SetOffset(byteOffset);
-        *request->MutableBuffer() = std::move(buffer);
+        *request->MutableBuffer() = RandData;
 
         ui64 shmOffset =
             DataClient ? DataClient->PrepareWrite(*request) : Max<ui64>();
