@@ -53,10 +53,6 @@ class VirtioFsServer:
             "--state-dir", common.work_path(
                 "virtiofs-state-" + hashlib.sha256(
                     os.path.abspath(self.socket_path).encode()).hexdigest()[:16]),
-            "--vhost-binary", common.binary_path(
-                "cloud/filestore/apps/vhost/filestore-vhost"),
-            "--client-binary", common.binary_path(
-                "cloud/filestore/apps/client/filestore-client"),
         ]
 
         self.virtiofs_server = Daemon(

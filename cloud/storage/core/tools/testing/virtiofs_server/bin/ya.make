@@ -1,16 +1,21 @@
-PY3_PROGRAM(virtiofs-server)
+PROGRAM(virtiofs-server)
 
-PY_SRCS(
-    __main__.py
-)
+SRCS(main.cpp)
 
 PEERDIR(
-    cloud/storage/core/tools/testing/virtiofs_server/lib
-)
-
-DEPENDS(
-    cloud/filestore/apps/client
-    cloud/filestore/apps/vhost
+    cloud/filestore/libs/client
+    cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/service
+    cloud/filestore/libs/service_local
+    cloud/filestore/libs/vfs
+    cloud/filestore/libs/vfs_fuse/vhost
+    cloud/filestore/libs/vhost
+    cloud/storage/core/libs/aio
+    cloud/storage/core/libs/common
+    cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/file_backed_containers
+    library/cpp/getopt
+    library/cpp/monlib/dynamic_counters
 )
 
 END()
