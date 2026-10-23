@@ -304,8 +304,6 @@ class TDiskRegistryState
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
     using TBrokenDisks = TMap<TDiskId, TInstant>;
 
-    using DeviceSlot = std::optional<NProto::TDeviceConfig>;
-
 private:
     TLog Log;
 
@@ -921,7 +919,7 @@ public:
         TDiskRegistryDatabase& db,
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
-        const TVector<TVector<DeviceSlot>>& replicas,
+        const TVector<TVector<TDeviceId>>& replicas,
         TAllocateDiskResult* result);
 
     NProto::TError ChangeDiskDevice(
@@ -1598,7 +1596,7 @@ private:
 
     NProto::TError CanCreateSimpleDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
-        const TVector<DeviceSlot>& devices,
+        const TVector<TDeviceId>& devices,
         bool allowFreshDevices) const;
 
     NProto::TError CreateSimpleDiskFromDevices(
@@ -1611,15 +1609,15 @@ private:
     NProto::TError CanCreateDiskFromDevices(
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
-        const TVector<TVector<DeviceSlot>>& replicas) const;
+        const TVector<TVector<TDeviceId>>& replicas) const;
 
     NProto::TError AllocateFreshDevicesForReplica(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& replicaId,
         ui32 replicaIndex,
-        const TVector<DeviceSlot>& referenceReplica,
-        const TVector<TVector<DeviceSlot>>& replicas,
+        const TVector<TDeviceId>& referenceReplica,
+        const TVector<TVector<TDeviceId>>& replicas,
         ui32 blockSize,
         TVector<NProto::TDeviceConfig>& resolvedReplica);
 };

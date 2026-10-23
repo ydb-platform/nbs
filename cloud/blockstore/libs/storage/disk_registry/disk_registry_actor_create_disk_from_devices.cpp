@@ -46,9 +46,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
     replicas.reserve(record.ReplicasSize());
 
     for (const auto& replica: record.GetReplicas()) {
-        replicas.push_back(TVector<TString>(
-            replica.DeviceUUIDs.begin(),
-            replica.DeviceUUIDs.end()));
+        replicas.push_back(TVector<TString>(replica.GetDeviceUUIDs().begin(), replica.GetDeviceUUIDs().end()));
     }
 
     ExecuteTx<TCreateDiskFromDevices>(
@@ -61,7 +59,7 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
         volume.GetDiskId(),
         volume.GetBlockSize(),
         static_cast<NProto::EStorageMediaKind>(volume.GetStorageMediaKind()),
-        (
+        TVector<NProto::TDeviceConfig>(
             record.GetDevices().begin(),
             record.GetDevices().end()
         ),
