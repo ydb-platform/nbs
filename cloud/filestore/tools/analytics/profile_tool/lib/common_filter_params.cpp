@@ -55,6 +55,13 @@ TMaybe<TInstant> Parse(
 TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
 {
     opts.AddLongOption(
+            "prune-by-time",
+            "Skip files outside since/until using estimated time ranges (opt-in). "
+            "Dated filenames assume UTC end times, otherwise first/last records are read; "
+            "incorrect estimates can skip matching records")
+        .NoArgument();
+
+    opts.AddLongOption(
             FileSystemIdLabel.data(),
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");

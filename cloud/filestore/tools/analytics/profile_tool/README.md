@@ -13,12 +13,54 @@ Profile log fills in three places:
 
 | Command line parameter | Data type | Description |
 |:----------------------:|:---------:|-------------|
-| ```--profile-log```    | String    | Path to log file with NFS binary profile log |
+| ```--profile-log```    | String    | Path to NFS binary profile log; repeat for multiple files, or pass additional paths after it |
 | ```--fs-id```          | String    | Filesystem Id, used to output events only for specified filesystem. |
 | ```--node-id```        | ui64      | Node id (a.k.a. inode), output events which were applied to specified node id |
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
+| ```--prune-by-time```  | Flag      | Opt in to skipping files using estimated time ranges; disabled by default. Incorrect estimates can skip matching records |
+
+## Multiple files and estimated time ranges
+
+`dumpevents` and `findbytesaccess` read every supplied file by default, subject to
+normal read-error handling. The exact per-request `--since` and `--until` filters
+apply regardless of file pruning.
+
+Use `--prune-by-time` to opt in to skipping files using estimated time ranges
+before processing all their records. The filename heuristic comes from deployment
+rotation examples supplied when multi-file support was introduced, such as
+`nfs-vhost-profile.log.2026-09-26T10:25`. This is not a repository-defined log
+format or a guarantee about every deployment's rotation configuration.
+
+The tool interprets a `.YYYY-MM-DDTHH:MM` suffix as the file's **end time in UTC**,
+with zero seconds, without opening dated files. Only with `--prune-by-time`, when
+the suffix is absent or invalid, it opens the log and decodes the first and last
+non-empty profile records. Without the flag, undated files keep unknown bounds
+and retain their input order relative to other undated files.
+The earliest request timestamp in the first record supplies the start; the latest
+in the last record supplies the end. It locates boundary frames from either end
+and does not decode intervening frames. Filesystem modification time is not used.
+Empty or unreadable logs retain unknown bounds for normal read-error handling.
+
+Files are sorted by end time, with unknown end times last in input order.
+Pruning uses detected record bounds when available.
+For files with only a filename end time, the start is inferred from the previous
+file's end, with the first open below and the last open above. Selection allows
+300 seconds of drift on each side of the requested range.
+
+Local-time suffixes, suffixes denoting file start times, gaps in
+the supplied rotation chain, or out-of-order records can make these estimates
+incorrect and cause matching records to be skipped when pruning is enabled.
+Leave `--prune-by-time` unset when these assumptions do not hold or when checking
+completeness:
+
+```sh
+./filestore-profile-tool dumpevents --profile-log /var/log/nfs/nfs-vhost-profile.log* --since 2026-09-26T10:00:00Z --until 2026-09-26T11:00:00Z
+```
+
+Add `--prune-by-time` to enable the optimization when the metadata assumptions
+are appropriate for the supplied logs. The flag can also change the ordering of undated files by detecting their end times.
 
 ## Options for particular commands
 

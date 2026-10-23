@@ -76,7 +76,7 @@ public:
     int Execute() override
     {
         TMaskSensitiveData mask{Mode, Seed, MaxExtensionLength};
-        mask.MaskSensitiveData(PathToProfileLog, PathToOutProfileLog);
+        mask.MaskSensitiveData(ProfileLogFiles, PathToOutProfileLog, IgnoreErrors);
         return 0;
     }
 };
@@ -182,29 +182,54 @@ void TMaskSensitiveData::MaskRequest(
 }
 
 void TMaskSensitiveData::MaskSensitiveData(
-    const TString& in,
-    const TString& out)
+    const TVector<TProfileLogFile>& profileLogFiles,
+    const TString& out,
+    bool ignoreErrors)
 {
-    NEventLog::TOptions options;
-    options.FileName = in;
-
-    // Sort eventlog items by timestamp
-    options.SetForceStrongOrdering(true);
-    CurrentEvent = CreateIterator(options);
-
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
-    while (Advance()) {
-        NProto::TProfileLogRecord recordOut;
-        recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
-
-        while (EventMessageNumber > 0) {
-            auto request = MessagePtr->GetRequests()[--EventMessageNumber];
-            MaskRequest(request);
-            *recordOut.AddRequests() = std::move(request);
+    for (const auto& file: profileLogFiles) {
+        if (profileLogFiles.size() > 1) {
+            PrintProfileLogProgress(file);
         }
-        logFrame.LogEvent(recordOut);
-        logFrame.Flush();
+
+        NEventLog::TOptions options;
+        options.FileName = file.Path;
+
+        // Sort eventlog items within each input by timestamp.
+        options.SetForceStrongOrdering(true);
+        CurrentEvent.Reset();
+
+        for (;;) {
+            try {
+                if (!CurrentEvent) {
+                    CurrentEvent = CreateIterator(options);
+                }
+                if (!Advance()) {
+                    break;
+                }
+            } catch (const yexception& error) {
+                Cerr << "Error reading profile log " << file.Path << ": "
+                     << error.what() << Endl;
+                if (!ignoreErrors) {
+                    throw;
+                }
+                Cerr << "Skipping unreadable remainder of profile log: "
+                     << file.Path << Endl;
+                break;
+            }
+            // Masking and output failures must not be treated as read errors.
+            NProto::TProfileLogRecord recordOut;
+            recordOut.SetFileSystemId(MessagePtr->GetFileSystemId());
+
+            while (EventMessageNumber > 0) {
+                auto request = MessagePtr->GetRequests()[--EventMessageNumber];
+                MaskRequest(request);
+                *recordOut.AddRequests() = std::move(request);
+            }
+            logFrame.LogEvent(recordOut);
+            logFrame.Flush();
+        }
     }
     eventLog.CloseLog();
 }
