@@ -105,10 +105,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 Now(),
                 db,
-                false,  // force
-                "foo",
-                4_KB,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "foo",
+                    4_KB,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {
                     deviceByName("agent-2", "dev-3"),
                     deviceByName("agent-3", "foo-2"),
@@ -128,10 +130,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 Now(),
                 db,
-                true,  // force
-                "foo",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "foo",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/true,
+                    /*keepBlockCount=*/false),
                 {deviceByName("agent-1", "dev-1")},
                 &result);
 
@@ -145,10 +149,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 Now(),
                 db,
-                false,  // force
-                "foo",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "foo",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {deviceByName("agent-2", "dev-1")},
                 &result);
 
@@ -162,10 +168,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 Now(),
                 db,
-                true,  // force
-                "disk-1",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "disk-1",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/true,
+                    /*keepBlockCount=*/false),
                 {deviceByName("agent-2", "dev-2")},
                 &result);
 
@@ -179,10 +187,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 TInstant::FromValue(1000),
                 db,
-                true,  // force
-                "bar",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "bar",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    /*force=*/true,
+                    /*keepBlockCount=*/false),
                 {deviceByName("agent-2", "dev-1")},
                 &result);
 
@@ -212,10 +222,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 TInstant::FromValue(1000),
                 db,
-                false,  // force
-                "baz",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "baz",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {
                     deviceByName("agent-1", "dev-2"),
                     deviceByName("agent-2", "dev-2")
@@ -248,10 +260,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 TInstant::FromValue(1000),
                 db,
-                false,  // force
-                "nonrepl",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "nonrepl",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {
                     deviceByUUID("uuid-2.3"),
                     deviceByUUID("uuid-1.3")
@@ -284,10 +298,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 TInstant::FromValue(2000),
                 db,
-                false,  // force
-                "nonrepl-4K",
-                4_KB,
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "nonrepl-4K",
+                    4_KB,
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 { deviceByUUID("uuid-2.4") },
                 &result);
 
@@ -329,10 +345,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             auto error = state.CreateDiskFromDevices(
                 TInstant::FromValue(1000),
                 db,
-                false,  // force
-                "local",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "local",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {
                     deviceByUUID("uuid-1.4"),
                     deviceByUUID("uuid-1.5")
@@ -463,10 +481,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             const auto error = state.CreateDiskFromDevices(
                 {},
                 db,
-                false, // force
-                "vol0",
-                nativeBlockSize,
-                NProto::STORAGE_MEDIA_SSD_LOCAL,
+                TDiskRegistryState::TCreateDiskFromDevicesParams(
+                    "vol0",
+                    nativeBlockSize,
+                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    /*force=*/false,
+                    /*keepBlockCount=*/false),
                 {agent.GetDevices(0)},
                 &result);
 

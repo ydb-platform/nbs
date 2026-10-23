@@ -198,6 +198,85 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevices)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1"),
+                    Device("dev-2", "uuid-1.2"),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-2.1"),
+                    Device("dev-2", "uuid-2.2"),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        const TVector<TVector<TString>> replicas = {
+            {
+                "uuid-1.1",
+                "uuid-1.2",
+            },
+            {
+                "uuid-2.1",
+                "uuid-2.2",
+            },
+        };
+
+        {
+            diskRegistry.SendCreateDiskFromDevicesRequest(
+                "mirror-1",
+                DefaultLogicalBlockSize,
+                {},
+                NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                replicas);
+
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetBlockCount());
+        }
+
+        {
+            diskRegistry.SendCreateDiskFromDevicesRequest(
+                "mirror-2",
+                DefaultLogicalBlockSize,
+                {},
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                replicas);
+
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(
+                response->GetErrorReason().Contains("unexpected replicas count"));
+        }
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirror-1");
+            const auto& record = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, record.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, record.GetReplicas(0).DevicesSize());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateDiskFromSuspendedDevices)
     {
         constexpr ui64 localSSDSize = 100'000'000'000; // ~ 93.13 GiB

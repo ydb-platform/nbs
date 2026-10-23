@@ -1665,6 +1665,23 @@ message TCreateVolumeFromDevicesRequest
 
     // Devices from which the disk is assembled
     repeated string DeviceUUIDs = 6;
+
+    // Kind of described space.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
+
+    message TDeviceList
+    {
+        repeated string DeviceUUIDs = 1;
+    }
+
+    // Replicas of the disk (for mirrored disks).
+    repeated TDeviceList Replicas = 8;
+
+    // Force dangerous actions.
+    bool Force = 9;
+
+    // If true, the block count will not be adjusted.
+    bool KeepBlockCount = 10;
 }
 
 message TCreateVolumeFromDevicesResponse
