@@ -2527,6 +2527,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             request.SetBlockSize(DefaultDeviceBlockSize);
             request.MutableDeviceUUIDs()->Add("uuid1");
             request.MutableDeviceUUIDs()->Add("uuid42");
+            request.SetReallocateIfExists(true);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -2580,8 +2581,9 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
 
         TAutoPtr<IEventHandle> deallocateHandle;
-        runtime.GrabEdgeEventRethrow<
-            TEvDiskRegistry::TEvDeallocateDiskResponse>(deallocateHandle);
+        runtime
+            .GrabEdgeEventRethrow<TEvDiskRegistry::TEvDeallocateDiskResponse>(
+                deallocateHandle);
         const auto* deallocateResponse =
             deallocateHandle->Get<TEvDiskRegistry::TEvDeallocateDiskResponse>();
         UNIT_ASSERT_VALUES_EQUAL_C(
