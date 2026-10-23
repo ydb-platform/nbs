@@ -28,6 +28,7 @@ ADDINCL(
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/encryption/model
     cloud/contrib/vhost

@@ -84,6 +84,10 @@ void ProcessThrottleTime(
     callContext->AddTime(
         EProcessingStage::Postponed,
         TDuration::MicroSeconds(throttlerDelay));
+    AccountThrottlerQuota(
+        *callContext,
+        throttler,
+        TDuration::MicroSeconds(throttlerDelay));
     throttler.SetDelay(0);
     callContext->SetPossiblePostponeDuration(TDuration::Zero());
 

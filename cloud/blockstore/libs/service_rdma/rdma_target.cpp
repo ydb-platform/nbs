@@ -76,6 +76,10 @@ void FillResponse(const TCallContextPtr& callContext, TResponse& response)
     const ui64 shapingTime =
         callContext->Time(EProcessingStage::Shaping).MicroSeconds();
     response.MutableHeaders()->MutableThrottler()->SetShapingDelay(shapingTime);
+
+    FillThrottlerQuota(
+        *callContext,
+        *response.MutableHeaders()->MutableThrottler());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
