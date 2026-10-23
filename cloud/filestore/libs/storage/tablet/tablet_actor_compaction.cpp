@@ -338,8 +338,8 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                     SelfId(),
                     new TEvIndexTabletPrivate::TEvCompactionRequest(
                         compactionInfo.RangeId,
-                        false,
-                        false)
+                        false /* filterNodes */,
+                        false /* forced */)
                 );
                 return;
             }

@@ -596,7 +596,7 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
             rangeId,
             filter,
-            false);
+            false /* forced */);
     }
 
     auto CreateForcedRangeOperationRequest(
