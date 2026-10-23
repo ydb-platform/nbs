@@ -93,12 +93,11 @@ public:
         bool write,
         ui64 bytes,
         ui64 elapsedUs,
-        ui64 quotaDelayUs,
         bool failed,
         bool validTiming)
     {
         const auto result = Config.Classify(
-            write, bytes, elapsedUs, quotaDelayUs, failed, validTiming);
+            write, bytes, elapsedUs, failed, validTiming);
         Add(result == ELatencySliResult::Good,
             result == ELatencySliResult::Bad,
             result == ELatencySliResult::Unknown);

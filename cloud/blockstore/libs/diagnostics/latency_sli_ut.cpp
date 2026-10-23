@@ -66,8 +66,7 @@ struct TFixture
     void Complete(ui64 elapsedUs, ui64 postponedUs = 0, ui32 error = S_OK,
                   bool write = false, ui64 bytes = 4096, bool cell = false,
                   bool valid = true, ui64 backoff = 0, ui64 shaping = 0,
-                  ui64 originalBytes = 0, TMaybe<ui64> quotaUs = Nothing(),
-                  bool quotaKnown = true)
+                  ui64 originalBytes = 0)
     {
         TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
                                     : EBlockStoreRequest::ReadBlocksLocal};
@@ -84,10 +83,6 @@ struct TFixture
         ctx->SetResponseSentCycles(valid ? start + DurationToCyclesSafe(
             TDuration::MicroSeconds(elapsedUs)) : 0);
         ctx->AddTime(EProcessingStage::Postponed, TDuration::MicroSeconds(postponedUs));
-        ctx->AccountThrottlerQuota(
-            quotaKnown ? TMaybe<TDuration>(TDuration::MicroSeconds(
-                quotaUs.GetOrElse(postponedUs))) : Nothing(),
-            TDuration::MicroSeconds(postponedUs));
         ctx->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(backoff));
         ctx->AddTime(EProcessingStage::Shaping, TDuration::MicroSeconds(shaping));
         ctx->SetSilenceRetriableErrors(true);
@@ -102,11 +97,11 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
     Y_UNIT_TEST(ShouldUseManualSizeBoundariesAndInclusiveThreshold)
     {
         auto config = TLatencySliConfig::Parse("1;0:1:4097:100;0:4097:8193:200;1:1:8193:300");
-        UNIT_ASSERT(config.Classify(false, 4096, 100, 0, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(config.Classify(false, 4096, 101, 0, false) == ELatencySliResult::Bad);
-        UNIT_ASSERT(config.Classify(false, 4097, 200, 0, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(config.Classify(false, 8193, 1, 0, false) == ELatencySliResult::Unknown);
-        UNIT_ASSERT(config.Classify(true, 4096, 250, 0, false) == ELatencySliResult::Good);
+        UNIT_ASSERT(config.Classify(false, 4096, 100, false) == ELatencySliResult::Good);
+        UNIT_ASSERT(config.Classify(false, 4096, 101, false) == ELatencySliResult::Bad);
+        UNIT_ASSERT(config.Classify(false, 4097, 200, false) == ELatencySliResult::Good);
+        UNIT_ASSERT(config.Classify(false, 8193, 1, false) == ELatencySliResult::Unknown);
+        UNIT_ASSERT(config.Classify(true, 4096, 250, false) == ELatencySliResult::Good);
         UNIT_ASSERT_VALUES_EQUAL(config.Serialize(), TLatencySliConfig::Parse(config.Serialize()).Serialize());
     }
 
@@ -133,15 +128,14 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         for (bool failed: {false, true}) {
             const auto expected = failed ? ELatencySliResult::Bad
                                          : ELatencySliResult::Unknown;
-            UNIT_ASSERT(config.Classify(false, 4096, 100, 101, failed) == expected);
-            UNIT_ASSERT(config.Classify(false, 4096, 100, 0, failed, false) == expected);
-            UNIT_ASSERT(config.Classify(true, 4096, 100, 0, failed) == expected);
+            UNIT_ASSERT(config.Classify(false, 4096, 100, failed, false) == expected);
+            UNIT_ASSERT(config.Classify(true, 4096, 100, failed) == expected);
         }
-        UNIT_ASSERT(config.Classify(false, 4096, 1000, 900, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(config.Classify(false, 4096, 1, 0, true) == ELatencySliResult::Bad);
+        UNIT_ASSERT(config.Classify(false, 4096, 1000, false) == ELatencySliResult::Bad);
+        UNIT_ASSERT(config.Classify(false, 4096, 1, true) == ELatencySliResult::Bad);
     }
 
-    Y_UNIT_TEST(ShouldCountAtOriginalCompletionAndRetainOtherWaits)
+    Y_UNIT_TEST(ShouldCountAtOriginalCompletionAndRetainAllWaits)
     {
         TFixture f;
         f.Complete(500);
@@ -151,10 +145,10 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(1500, 0, S_OK, true);
         f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
         f.Server->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(5, f.Read->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, f.Write->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Write->GetCounter("LatencyGoodOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldUseOriginalUnalignedLengthWithoutChangingLegacyBytes)
@@ -177,27 +171,25 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(500, 0, E_REJECTED, false, 99999);
         f.Complete(500, 0, S_OK, false, 4096, false, false);
         f.Complete(500, 0, E_REJECTED, false, 4096, false, false);
-        f.Complete(2000, 1500, E_REJECTED, false, 4096, false, true, 0, 0, 0, Nothing(), false);
+        f.Complete(2000, 1500, E_REJECTED);
         f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(8, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldSubtractQuotaOnlyAndReportMissingAttribution)
+    Y_UNIT_TEST(ShouldIncludeAllThrottlerWaitsInLatency)
     {
         TFixture f;
-        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, 500);
-        f.Complete(2000, 1500, S_OK, true, 4096, false, true, 0, 0, 0, 1500);
-        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, Nothing(), false);
-        // Known zero quota wait must not be confused with missing attribution.
-        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, 0);
+        f.Complete(2000, 1500);
+        f.Complete(2000, 1500, S_OK, true);
+        f.Complete(2000);
         f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPublishAllOutcomesOnlyOnStatsUpdate)

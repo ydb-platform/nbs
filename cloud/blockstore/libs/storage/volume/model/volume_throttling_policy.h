@@ -25,21 +25,18 @@ struct TThrottlerConfig
     const ui32 DefaultPostponedRequestWeight;
     const TDuration InitialBoostBudget;
     const bool UseDiskSpaceScore;
-    const bool QuotaDelayAccountingEnabled;
 
     TThrottlerConfig(
             TDuration maxDelay,
             ui32 maxWriteCostMultiplier,
             ui32 defaultPostponedRequestWeight,
             TDuration initialBoostBudget,
-            bool useDiskSpaceScore,
-            bool quotaDelayAccountingEnabled = false)
+            bool useDiskSpaceScore)
         : MaxDelay(maxDelay)
         , MaxWriteCostMultiplier(maxWriteCostMultiplier)
         , DefaultPostponedRequestWeight(defaultPostponedRequestWeight)
         , InitialBoostBudget(initialBoostBudget)
         , UseDiskSpaceScore(useDiskSpaceScore)
-        , QuotaDelayAccountingEnabled(quotaDelayAccountingEnabled)
     {}
 };
 
@@ -73,8 +70,7 @@ public:
         ui32 maxWriteCostMultiplier,
         ui32 defaultPostponedRequestWeight,
         TDuration initialBoostBudget,
-        bool useDiskSpaceScore,
-        bool quotaDelayAccountingEnabled = false);
+        bool useDiskSpaceScore);
     void Reset(
         const NProto::TVolumePerformanceProfile& config,
         const TThrottlerConfig& throttlerConfig);
@@ -93,12 +89,6 @@ public:
         const TThrottlingRequestInfo& requestInfo) override;
 
     void OnPostponedEvent(
-        TInstant ts,
-        const TThrottlingRequestInfo& requestInfo) override;
-
-    // Simulates the original performance profile alone: no volatile
-    // throttling coefficients and no backpressure. Never delays anything.
-    TMaybe<TQuotaReference> RegisterQuotaReference(
         TInstant ts,
         const TThrottlingRequestInfo& requestInfo) override;
 

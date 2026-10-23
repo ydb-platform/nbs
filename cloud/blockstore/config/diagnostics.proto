@@ -300,6 +300,7 @@ message TDiagnosticsConfig
         VolumeCriticalEventsReportingMode = 60;
 
     // Shadow metrics only: no effect on request execution or throttling.
+    // Latency includes all waits in the original request, including throttling.
     optional bool EnableLatencySli = 61 [default = false];
 
     message TLatencySliThreshold
