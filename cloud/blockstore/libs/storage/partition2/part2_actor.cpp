@@ -152,7 +152,7 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
     if (!PartCounters) {
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
     }
 }
 
