@@ -24,18 +24,13 @@ message TCreateDiskFromDevicesRequest
     // List of devices (agentId & device name) that make up the disk.
     repeated TDeviceConfig Devices = 4;
 
-    message TDeviceSlot
+    message TDeviceList
     {
-        optional TDeviceConfig Slot = 1;
-    }
-
-    message TDeviceSlotList
-    {
-        repeated TDeviceSlot Slots = 1;
+        repeated string DeviceUUIDs = 1;
     }
 
     // Replicas for mirrored disks.
-    repeated TDeviceSlotList Replicas = 5;
+    repeated TDeviceList Replicas = 5;
 
     // If true, the block count will not be adjusted.
     bool KeepBlockCount = 6;

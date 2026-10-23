@@ -224,21 +224,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
         RegisterAndWaitForAgents(*runtime, agents);
 
-        auto deviceById = [](const TString& uuid)
-        {
-            NProto::TDeviceConfig config;
-            config.SetDeviceUUID(uuid);
-            return config;
-        };
-
-        const TVector<TVector<NProto::TDeviceConfig>> replicas = {
+        const TVector<TVector<TString>> replicas = {
             {
-                deviceById("uuid-1.1"),
-                deviceById("uuid-1.2"),
+                "uuid-1.1",
+                "uuid-1.2",
             },
             {
-                deviceById("uuid-2.1"),
-                deviceById("uuid-2.2"),
+                "uuid-2.1",
+                "uuid-2.2",
             },
         };
 

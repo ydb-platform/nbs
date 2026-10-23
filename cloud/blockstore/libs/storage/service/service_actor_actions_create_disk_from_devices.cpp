@@ -38,18 +38,6 @@ NKikimrBlockStore::TVolumeConfig ConvertToVolumeConfig(
     return volumeConfig;
 }
 
-void CopyDeviceSlotList(
-    const NProto::TCreateVolumeFromDevicesRequest::TDeviceSlotList& inSlots,
-    NProto::TCreateDiskFromDevicesRequest::TDeviceSlotList& outSlots)
-{
-    for (const auto& inSlot: inSlots.GetSlots()) {
-        auto* outSlot = outSlots.AddSlots();
-        if (inSlot.HasSlot()) {
-            outSlot->MutableSlot()->SetDeviceUUID(inSlot.GetSlot());
-        }
-    }
-}
-
 std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
     const NProto::TCreateVolumeFromDevicesRequest& inRequest)
 {
@@ -61,7 +49,10 @@ std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
     }
 
     for (const auto& replica: inRequest.GetReplicas()) {
-        CopyDeviceSlotList(replica, *outRequest->Record.AddReplicas());
+        auto* outReplica = outRequest->Record.AddReplicas();
+        outReplica->MutableDeviceUUIDs()->Assign(
+            replica.GetDeviceUUIDs().begin(),
+            replica.GetDeviceUUIDs().end());
     }
 
     *outRequest->Record.MutableVolumeConfig() =

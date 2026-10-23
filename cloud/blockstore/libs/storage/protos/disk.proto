@@ -1669,18 +1669,13 @@ message TCreateVolumeFromDevicesRequest
     // Devices from which the disk is assembled.
     repeated string DeviceUUIDs = 7;
 
-    message TDeviceSlot
+    message TDeviceList
     {
-        optional string Slot = 1;
-    }
-
-    message TDeviceSlotList
-    {
-        repeated TDeviceSlot Slots = 1;
+        repeated string DeviceUUIDs = 1;
     }
 
     // Replicas of the disk (for mirrored disks).
-    repeated TDeviceSlotList Replicas = 8;
+    repeated TDeviceList Replicas = 8;
 
     // Force dangerous actions.
     bool Force = 9;

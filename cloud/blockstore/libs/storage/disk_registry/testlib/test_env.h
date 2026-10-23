@@ -1132,7 +1132,7 @@ public:
         TVector<NProto::TDeviceConfig> devices,
         NProto::EStorageMediaKind mediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-        TVector<TVector<NProto::TDeviceConfig>> replicas = {},
+        TVector<TVector<TString>> replicas = {},
         bool force = false,
         bool keepBlockCount = false)
     {
@@ -1147,14 +1147,10 @@ public:
         request->Record.SetKeepBlockCount(keepBlockCount);
         request->Record.MutableDevices()->Assign(devices.begin(), devices.end());
 
-        if (!replicas.empty()) {
-
-            for (const auto& replicaDevices: replicas) {
-                auto* replica = request->Record.AddReplicas();
-
-                for (const auto& device: replicaDevices) {
-                    *replica->AddSlots()->MutableSlot() = device;
-                }
+        for (const auto& replicaDeviceUUIDs: replicas) {
+            auto* replica = request->Record.AddReplicas();
+            for (const auto& uuid: replicaDeviceUUIDs) {
+                replica->AddDeviceUUIDs(uuid);
             }
         }
         return request;
