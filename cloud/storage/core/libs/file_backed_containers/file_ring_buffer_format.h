@@ -128,6 +128,12 @@ struct TFileRingBufferLayout
     static TFileRingBufferLayout FromCapacity(
         ui64 dataCapacity,
         ui64 metadataCapacity);
+
+    // Returns zero if the header and metadata do not fit or the layout
+    // overflows
+    static ui64 CalculateDataCapacity(
+        ui64 stateFileSize,
+        ui64 metadataCapacity);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
