@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 
-find_bin_dir() {
-    readlink -e `dirname $0`
-}
-
-BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
+original_args=("$@")
 
 show_help() {
     cat << EOF
-Usage: ./7-run_qemu.sh [-hkds]
+Usage: ./7-run_qemu.sh [--cell2] [-hkds]
 Run qemu
 -h, --help                     Display help
 -d, --diskid                   NBS Disk ID
+--cell2                        Use NBS and QEMU ports of cell-2 (default: cell-1)
 -s, --socket                   Socket path
 -k, --encryption-key-path      Encryption key path
 -e, --encrypted                Use default encryption key
@@ -23,7 +20,7 @@ EOF
 encryption=""
 diskid=""
 socket=""
-options=$(getopt -l "help,key:,diskid:,socket:,encryption-key-path:,encrypted" -o "hk:d:s:e" -a -- "$@")
+options=$(getopt -l "help,cell2,key:,diskid:,socket:,encryption-key-path:,encrypted" -o "hk:d:s:e" -a -- "$@")
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -37,6 +34,10 @@ do
     -h | --help )
         show_help
         exit 0
+        ;;
+    --cell2 )
+        run_in_cell2 "${original_args[@]}"
+        shift
         ;;
     -k | --encryption-key-path )
         encryption="--encryption-mode=aes-xts --encryption-key-path=${2}"
@@ -66,20 +67,27 @@ if [ -z "$diskid" ] ; then
 fi
 
 if [ -z "$socket" ] ; then
-    socket="/tmp/$diskid.sock"
+    socket="/tmp/${diskid}${NBS_CELL_SUFFIX:-}.sock"
 fi
+
+require_bins "$BLOCKSTORE_CLIENT_BIN" || exit 1
 
 # prepare qemu image
 
-QEMU_BIN_DIR=$BIN_DIR/$(qemu_bin_dir)
+QEMU_BIN_DIR=$(qemu_bin_dir)
 QEMU_BIN_TAR=$QEMU_BIN_DIR/qemu-bin.tar.gz
 QEMU=$QEMU_BIN_DIR/usr/bin/qemu-system-x86_64
 QEMU_FIRMWARE=$QEMU_BIN_DIR/usr/share/qemu
 DISK_IMAGE=$QEMU_BIN_DIR/../image-noble/rootfs.img
 
-[[ ( ! -x $QEMU ) ]] &&
-      echo expand qemu tar from [$QEMU_BIN_TAR]
-      tar -xzf $QEMU_BIN_TAR -C $QEMU_BIN_DIR
+if [[ ! -x "$QEMU" ]]; then
+    echo "expand qemu tar from [$QEMU_BIN_TAR]"
+    if [[ ! -f "$QEMU_BIN_TAR" ]]; then
+        echo "$QEMU_BIN_TAR not found; build cloud/blockstore/buildall first" >&2
+        exit 1
+    fi
+    tar -xzf "$QEMU_BIN_TAR" -C "$QEMU_BIN_DIR"
+fi
 
 # start endpoint for disk
 echo "starting endpoint [${socket}] for disk [${diskid}]"
@@ -88,8 +96,8 @@ blockstore-client startendpoint --ipc-type vhost --socket $socket --client-id cl
 sleep 1
 
 # run qemu with secondary disk
-qmp_port=8678
-ssh_port=8679
+qmp_port=${QEMU_QMP_PORT:-8678}
+ssh_port=${QEMU_SSH_PORT:-8679}
 
 MACHINE_ARGS=" \
     -L $QEMU_FIRMWARE \
