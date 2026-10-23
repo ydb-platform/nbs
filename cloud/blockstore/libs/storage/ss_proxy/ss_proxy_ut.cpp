@@ -1794,7 +1794,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 describeResponse->GetStatus(),
                 E_REJECTED);
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                TStringBuilder() << "ss is gone, checked paths=[\""
+                                 << config->GetSchemeShardDir() << "/volume\"]",
                 describeResponse->GetError().GetMessage());
         }
 
@@ -1961,7 +1962,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                TStringBuilder() << "ss is gone, checked paths=[\""
+                                 << config->GetSchemeShardDir() << "/volume\"]",
                 response->GetError().GetMessage());
         }
     }
@@ -2120,7 +2122,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
-            "NavigateKeySet undelivered",
+            TStringBuilder() << "NavigateKeySet undelivered, checked paths=[\""
+                             << config->GetSchemeShardDir() << "/vol0\"]",
             response->GetErrorReason());
     }
 
