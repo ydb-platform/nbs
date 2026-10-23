@@ -469,7 +469,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT(!drState->SuspendSecureErase);
 
         NProto::TSetSuspendSecureEraseRequest request;
-        request.SetState(true);
+        request.SetSuspend(true);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);
