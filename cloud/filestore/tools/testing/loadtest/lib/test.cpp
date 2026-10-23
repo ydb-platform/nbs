@@ -36,6 +36,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <exception>
 #include <variant>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -890,6 +891,8 @@ private:
 
     TLoadTestControllerCommandChannel Events;
 
+    std::exception_ptr Exception;
+
     TTestStats TestStats;
     TPromise<NProto::TTestStats> Result = NewPromise<NProto::TTestStats>();
 
@@ -1167,9 +1170,6 @@ public:
         }
 
         Client->Stop();
-
-        auto result = Result;
-        result.SetValue(SourceFuture.GetValueSync());
     }
 
     void* ThreadProc() override
@@ -1196,8 +1196,7 @@ public:
             } catch(...) {
                 STORAGE_ERROR("%s test has failed: %s",
                     MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
-
-                Result.SetException(std::current_exception());
+                Exception = std::current_exception();
             }
         }
 
@@ -1205,6 +1204,16 @@ public:
 
         CleanupTest();
 
+        // This is a workaround for this object being destroyed by the main
+        // thread immediately after Set*() while the function is still running.
+        // Note that for the same reason we must only set Result after all other
+        // work in this method is complete (e.g. CleanupTest()).
+        auto result = Result;
+        if (Exception) {
+            result.SetException(Exception);
+        } else {
+            result.SetValue(SourceFuture.GetValueSync());
+        }
         return nullptr;
     }
 
@@ -1212,8 +1221,9 @@ private:
     bool ShouldStop() const
     {
         return AtomicGet(Ctx.ShouldStop) ||
-            (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
-            (TargetFuture.HasValue() || SourceFuture.HasValue());
+               (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
+               (TargetFuture.HasValue() || SourceFuture.HasValue()) ||
+               Exception;
     }
 
 
