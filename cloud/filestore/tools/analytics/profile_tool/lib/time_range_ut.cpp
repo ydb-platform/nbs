@@ -117,13 +117,16 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
 
     Y_UNIT_TEST(ShouldTreatUnknownBoundsAsUnbounded)
     {
+        AssertPaths(SelectProfileLogFiles(
+            {{"dated", Time(2000)}, {"unknown", {}}}, {}, Time(1)),
+            {"dated", "unknown"});
         const TVector<TProfileLogFile> files = {
-            {"first", {}}, {"second", {}},
-            {"third", Time(1000)}, {"last", Time(2000)}};
+            {"first", Time(1000)}, {"second", Time(2000)},
+            {"third", {}}, {"last", {}}};
         AssertPaths(SelectProfileLogFiles(files, {}, Time(1)),
-            {"first", "second", "third"});
+            {"first", "third", "last"});
         AssertPaths(SelectProfileLogFiles(files, Time(1700), {}),
-            {"first", "second", "last"});
+            {"second", "third", "last"});
         AssertPaths(SelectProfileLogFiles(files, {}, {}),
             {"first", "second", "third", "last"});
         AssertPaths(SelectProfileLogFiles(

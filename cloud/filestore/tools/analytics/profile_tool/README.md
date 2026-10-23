@@ -43,7 +43,8 @@ in the last record supplies the end. It locates boundary frames from either end
 and does not decode intervening frames. Filesystem modification time is not used.
 Empty or unreadable logs retain unknown bounds for normal read-error handling.
 
-Files are sorted by end time. Pruning uses detected record bounds when available.
+Files are sorted by end time, with unknown end times last in input order.
+Pruning uses detected record bounds when available.
 For files with only a filename end time, the start is inferred from the previous
 file's end, with the first open below and the last open above. Selection allows
 300 seconds of drift on each side of the requested range.

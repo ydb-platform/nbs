@@ -20,7 +20,8 @@ struct TProfileLogFile
 // Unreadable or empty logs have unknown bounds; filesystem mtime is not used.
 TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords = false);
 
-// Files must be sorted by EndTime. Use detected record bounds when available;
+// Files must be sorted by EndTime, with unknown times last.
+// Use detected record bounds when available;
 // dated files use the preceding end as their start, with open first/last bounds.
 // Selection uses previously computed time bounds and does not open files.
 // It allows 300 seconds of drift on each side.

@@ -409,6 +409,26 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(newer.Name()));
     }
 
+    Y_UNIT_TEST(ShouldReadCurrentLogAfterRotationsByDefault)
+    {
+        TTempDir directory;
+        const TString base = directory.Name() + "/nfs-vhost-profile.log";
+        TTempFileHandle current(base);
+        TTempFileHandle newer(base + ".2026-09-22T15:22");
+        TTempFileHandle older(base + ".2026-09-22T15:12");
+        TTempFileHandle undated(base + ".other");
+        TTestCommand command;
+        const char* args[] = {
+            "test", "--profile-log", current.Name().c_str(),
+            newer.Name().c_str(), undated.Name().c_str(), older.Name().c_str()};
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(current.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(undated.Name()));
+    }
+
     Y_UNIT_TEST(ShouldSortByFilenameTimeWithRecordFallback)
     {
         TTempDir directory;

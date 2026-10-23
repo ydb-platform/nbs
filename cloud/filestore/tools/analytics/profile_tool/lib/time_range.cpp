@@ -109,7 +109,10 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     TMaybe<TInstant> fileStart;   // Fallback for files without a detected start.
     for (size_t i = 0; i < files.size(); ++i) {
         const bool isLast = i + 1 == files.size();
-        const auto start = files[i].StartTime ? files[i].StartTime : fileStart;
+        auto start = files[i].StartTime;
+        if (!start && files[i].EndTime) {
+            start = fileStart;
+        }
         const auto fileEnd = isLast && !files[i].StartTime
                                  ? Nothing()
                                  : files[i].EndTime;

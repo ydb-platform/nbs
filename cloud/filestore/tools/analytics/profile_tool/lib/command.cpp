@@ -151,7 +151,12 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
         StableSort(
             ProfileLogFiles,
             [](const auto& lhs, const auto& rhs)
-            { return lhs.EndTime < rhs.EndTime; });
+            {
+                if (lhs.EndTime.Defined() != rhs.EndTime.Defined()) {
+                    return lhs.EndTime.Defined();
+                }
+                return lhs.EndTime < rhs.EndTime;
+            });
     } catch (const TFileError& error) {
         Cerr << error.what() << Endl;
         return false;
