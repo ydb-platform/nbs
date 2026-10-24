@@ -16,6 +16,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDiskNotificationWithOwner
+{
+    TDiskNotification Notification;
+    ui64 ExternalVolumeTabletId = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TNotifyActor final
     : public TActorBootstrapped<TNotifyActor>
 {
@@ -24,7 +32,7 @@ private:
     const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigConstPtr Config;
-    const TVector<TDiskNotification> DiskNotifications;
+    const TVector<TDiskNotificationWithOwner> DiskNotifications;
 
     TVector<TDiskNotificationResult> NotifiedDisks;
     int PendingOperations = 0;
@@ -35,7 +43,7 @@ public:
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
-        TVector<TDiskNotification> diskIds);
+        TVector<TDiskNotificationWithOwner> diskNotifications);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -66,14 +74,14 @@ TNotifyActor::TNotifyActor(
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
-        TVector<TDiskNotification> diskIds)
+        TVector<TDiskNotificationWithOwner> diskNotifications)
     : Owner(owner)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
           {{"TNotifyActor", std::monostate{}}}))
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
-    , DiskNotifications(std::move(diskIds))
+    , DiskNotifications(std::move(diskNotifications))
 {}
 
 void TNotifyActor::Bootstrap(const TActorContext& ctx)
@@ -119,7 +127,10 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
     PendingOperations = DiskNotifications.size();
 
     ui64 cookie = 0;
-    for (const auto& [diskId, seqNo]: DiskNotifications) {
+    for (const auto& [notification, externalVolumeTabletId]:
+         DiskNotifications)
+    {
+        const auto& diskId = notification.DiskId;
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
@@ -129,6 +140,7 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 
         auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
         request->Record.SetDiskId(diskId);
+        request->Record.SetExternalVolumeTabletId(externalVolumeTabletId);
         NCloud::Send(
             ctx,
             MakeVolumeProxyServiceId(),
@@ -174,7 +186,7 @@ void TNotifyActor::HandleReallocateDiskResponse(
 
     Y_ABORT_UNLESS(PendingOperations >= 0);
 
-    const auto& diskId = DiskNotifications[cookie].DiskId;
+    const auto& diskId = DiskNotifications[cookie].Notification.DiskId;
 
     if (HasError(msg->Record)) {
         LOG_ERROR(
@@ -194,7 +206,7 @@ void TNotifyActor::HandleReallocateDiskResponse(
 
         auto* laggingDevices = msg->Record.MutableOutdatedLaggingDevices();
         NotifiedDisks.emplace_back(
-            DiskNotifications[cookie],
+            DiskNotifications[cookie].Notification,
             TVector<NProto::TLaggingDevice>(
                 std::make_move_iterator(laggingDevices->begin()),
                 std::make_move_iterator(laggingDevices->end())));
@@ -292,8 +304,13 @@ void TDiskRegistryActor::HandleNotifyDisks(
     DisksNotificationStartTs = ctx.Now();
 
     DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
+    TVector<TDiskNotificationWithOwner> diskNotifications;
+    diskNotifications.reserve(State->GetDisksToReallocate().size());
     for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
         DisksBeingNotified.emplace_back(diskId, seqNo);
+        diskNotifications.push_back({
+            DisksBeingNotified.back(),
+            State->GetExternalVolumeTabletId(diskId)});
     }
 
     auto actor = NCloud::Register<TNotifyActor>(
@@ -306,7 +323,7 @@ void TDiskRegistryActor::HandleNotifyDisks(
             MakeIntrusive<TCallContext>()
         ),
         Config,
-        DisksBeingNotified
+        std::move(diskNotifications)
     );
     Actors.insert(actor);
 }
