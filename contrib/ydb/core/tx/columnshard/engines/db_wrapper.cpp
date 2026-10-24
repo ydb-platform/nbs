@@ -2,6 +2,7 @@
 #include "defs.h"
 
 #include "portions/constructor_portion.h"
+#include "portions/data_accessor.h"
 
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/tx/columnshard/columnshard_schema.h>

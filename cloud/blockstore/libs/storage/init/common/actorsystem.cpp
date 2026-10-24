@@ -53,7 +53,7 @@ void TActorSystem::Init()
     servicesMask.EnableStatsCollector = 1;
 #endif
 
-    auto services = CreateServiceInitializersList(runConfig, servicesMask);
+    auto services = CreateServiceInitializersList(runConfig, servicesMask, {});
 
     Args.OnInitialize(runConfig, *services);
 

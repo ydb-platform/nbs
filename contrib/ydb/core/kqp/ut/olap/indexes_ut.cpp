@@ -11,6 +11,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <atomic>
+
 namespace NKikimr::NKqp {
 
 Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
@@ -356,6 +358,21 @@ Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
                                        "count", csController->GetActualizationRefreshSchemeCount().Val());
     }
 
+    class TIndexesCompactionController: public NOlap::TWaitCompactionController {
+    private:
+        std::atomic<bool> CompactionEnabled{false};
+
+    public:
+        void EnableCompaction() {
+            CompactionEnabled.store(true);
+        }
+
+        NYDBTest::EOptimizerCompactionWeightControl GetCompactionControl() const override {
+            return CompactionEnabled.load() ? NYDBTest::EOptimizerCompactionWeightControl::Force
+                                            : NYDBTest::EOptimizerCompactionWeightControl::Disable;
+        }
+    };
+
     class TTestIndexesScenario {
     private:
         TKikimrSettings Settings;
@@ -394,8 +411,9 @@ Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
             return *this;
         }
 
-        void Execute() {
-            auto csController = NYDBTest::TControllers::RegisterCSControllerGuard<NOlap::TWaitCompactionController>();
+        void Execute(const TDuration writeDelay = TDuration::Zero()) {
+            // Build the complete fixture before the planner can compact its portions.
+            auto csController = NYDBTest::TControllers::RegisterCSControllerGuard<TIndexesCompactionController>();
             csController->SetOverrideMemoryLimitForPortionReading(1e+10);
             csController->SetOverrideBlobSplitSettings(NOlap::NSplitter::TSplitSettings());
             TLocalHelper(*Kikimr).CreateTestOlapTable();
@@ -456,6 +474,12 @@ Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
 
             {
                 WriteTestData(*Kikimr, "/Root/olapStore/olapTable", 1000000, 300000000, 10000);
+                // Exercise writes slower than the planner's ten-second batching window.
+                if (writeDelay) {
+                    Sleep(writeDelay);
+                    UNIT_ASSERT_VALUES_EQUAL_C(csController->GetCompactionStartedCounter().Val(), 0,
+                        "Compaction must not start before the index test fixture is complete");
+                }
                 WriteTestData(*Kikimr, "/Root/olapStore/olapTable", 1100000, 300100000, 10000);
                 WriteTestData(*Kikimr, "/Root/olapStore/olapTable", 1200000, 300200000, 10000);
                 WriteTestData(*Kikimr, "/Root/olapStore/olapTable", 1300000, 300300000, 10000);
@@ -485,9 +509,21 @@ Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
             AFL_VERIFY(csController->GetIndexesSkippedNoData().Val() == 0)("val", csController->GetIndexesSkippedNoData().Val());
             AFL_VERIFY(csController->GetIndexesSkippingOnSelect().Val() == 0);
             AFL_VERIFY(csController->GetIndexesApprovedOnSelect().Val() == 0);
+            UNIT_ASSERT_VALUES_EQUAL(csController->GetCompactionStartedCounter().Val(), 0);
+            csController->EnableCompaction();
+            csController->WaitCondition(TDuration::Seconds(120), [&]() {
+                return csController->GetCompactionStartedCounter().Val() >= 3 &&
+                    csController->GetCompactionStartedCounter().Val() == csController->GetCompactionFinishedCounter().Val();
+            });
             csController->WaitCompactions(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(
+                csController->GetCompactionStartedCounter().Val(), csController->GetCompactionFinishedCounter().Val());
             // important checker for control compactions (<=21) and control indexes constructed (>=21)
             AFL_VERIFY(csController->GetCompactionStartedCounter().Val() == 3)("count", csController->GetCompactionStartedCounter().Val());
+            // Delayed-write cases check fixture synchronization; the original cases check all queries below.
+            if (writeDelay) {
+                return;
+            }
 
             {
                 ExecuteSQL(R"(SELECT COUNT(*)
@@ -595,6 +631,14 @@ Y_UNIT_TEST_SUITE(KqpOlapIndexes) {
             }
         }
     };
+
+    Y_UNIT_TEST(IndexesInBSWithDelayedWrites) {
+        TTestIndexesScenario().SetStorageId("__DEFAULT").Initialize().Execute(TDuration::Seconds(12));
+    }
+
+    Y_UNIT_TEST(IndexesInLocalMetadataWithDelayedWrites) {
+        TTestIndexesScenario().SetStorageId("__LOCAL_METADATA").Initialize().Execute(TDuration::Seconds(12));
+    }
 
     Y_UNIT_TEST(IndexesInBS) {
         TTestIndexesScenario().SetStorageId("__DEFAULT").Initialize().Execute();

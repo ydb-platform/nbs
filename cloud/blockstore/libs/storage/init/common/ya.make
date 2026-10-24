@@ -16,7 +16,7 @@ PEERDIR(
     library/cpp/logger
     library/cpp/monlib/service/pages
 
-    contrib/ydb/core/driver_lib/run
+    contrib/ydb/core/driver_lib/run/common
 )
 
 YQL_LAST_ABI_VERSION()
