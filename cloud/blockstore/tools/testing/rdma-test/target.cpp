@@ -76,7 +76,7 @@ public:
     }
 
     void HandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
@@ -108,7 +108,7 @@ public:
 
 private:
     NProto::TError DoHandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TStringBuf in,
         TStringBuf out)
@@ -143,7 +143,7 @@ private:
     }
 
     NProto::TError HandleReadBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TReadBlocksRequestPtr request,
         TStringBuf requestData,
@@ -191,7 +191,7 @@ private:
     }
 
     NProto::TError HandleWriteBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TWriteBlocksRequestPtr request,
         TStringBuf requestData,

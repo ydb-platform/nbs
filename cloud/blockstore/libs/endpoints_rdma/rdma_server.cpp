@@ -81,34 +81,34 @@ public:
     }
 
     void HandleRequest(
-        void* context,
+        NRdma::IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override;
 
 private:
     NProto::TError DoHandleRequest(
-        void* context,
+        NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TStringBuf in,
         TStringBuf out);
 
     NProto::TError HandleReadBlocksRequest(
-        void* context,
+        NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TReadBlocksRequest& request,
         TStringBuf requestData,
         TStringBuf out);
 
     NProto::TError HandleWriteBlocksRequest(
-        void* context,
+        NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TWriteBlocksRequest& request,
         TStringBuf requestData,
         TStringBuf out);
 
     NProto::TError HandleZeroBlocksRequest(
-        void* context,
+        NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TZeroBlocksRequest* request,
         TStringBuf requestData,
@@ -120,7 +120,7 @@ using TRdmaEndpointPtr = std::shared_ptr<TRdmaEndpoint>;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TRdmaEndpoint::HandleRequest(
-    void* context,
+    NRdma::IServerRequest* context,
     TCallContextBasePtr callContext,
     TStringBuf in,
     TStringBuf out)
@@ -161,7 +161,7 @@ void TRdmaEndpoint::HandleRequest(
 }
 
 NProto::TError TRdmaEndpoint::DoHandleRequest(
-    void* context,
+    NRdma::IServerRequest* context,
     TCallContextPtr callContext,
     TStringBuf in,
     TStringBuf out)
@@ -204,7 +204,7 @@ NProto::TError TRdmaEndpoint::DoHandleRequest(
 }
 
 NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
-    void* context,
+    NRdma::IServerRequest* context,
     TCallContextPtr callContext,
     NProto::TReadBlocksRequest& request,
     TStringBuf requestData,
@@ -261,7 +261,7 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
 }
 
 NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
-    void* context,
+    NRdma::IServerRequest* context,
     TCallContextPtr callContext,
     NProto::TWriteBlocksRequest& request,
     TStringBuf requestData,
@@ -315,7 +315,7 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
 }
 
 NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
-    void* context,
+    NRdma::IServerRequest* context,
     TCallContextPtr callContext,
     NProto::TZeroBlocksRequest* request,
     TStringBuf requestData,
