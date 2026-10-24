@@ -23,6 +23,7 @@
 #include <util/system/mutex.h>
 #include <util/thread/pool.h>
 
+#include <atomic>
 #include <optional>
 #include <utility>
 
@@ -174,8 +175,8 @@ struct TTestDeviceManager final: public IDeviceManager
 ////////////////////////////////////////////////////////////////////////////////
 
 // Answers every request with the name of the device in the error message, so
-// the tests can tell which device has served a request. The service starts
-// the device in the executor, so the start state is shared between threads.
+// the tests can tell which device has served a request. The service starts and
+// stops the device in the executor, so the state is shared between threads.
 struct TTestJournalledDevice final: public IJournalledDevice
 {
     const TString Name;
@@ -192,7 +193,7 @@ struct TTestJournalledDevice final: public IJournalledDevice
     std::optional<TPromise<NProto::TError>> StartPromise;
     ui32 StartCount = 0;
 
-    ui32 StopCount = 0;
+    std::atomic<ui32> StopCount = 0;
 
     explicit TTestJournalledDevice(TString name)
         : Name(std::move(name))
@@ -302,7 +303,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 // Hands out the test devices by their UUIDs: the service asks for a device
-// when it starts.
+// when it starts and again every time it formats the device.
 struct TTestJournalledDeviceFactory final: public IJournalledDeviceFactory
 {
     THashMap<TString, std::shared_ptr<TTestJournalledDevice>> Devices;
@@ -643,11 +644,10 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
             const auto responses = SendDeviceRequests(uuid, ClientId);
 
+            // FormatDevice has nothing to wipe on a device without a journal,
+            // so it may answer S_FALSE
             for (const auto& [error, _]: responses) {
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    S_OK,
-                    error.GetCode(),
-                    FormatError(error));
+                UNIT_ASSERT_C(!HasError(error), FormatError(error));
             }
 
             // the requests but FormatDevice (the last one) reach the
@@ -767,6 +767,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         // nothing is formatted
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldForwardAcquireAndReleaseDevices, TFixture)
@@ -817,6 +818,7 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         StartService();
 
         const auto& config = Configs[0];
+        const auto& device = Devices[0];
         const ui64 logMetaBlockCount = config.LogMetaSize / config.BlockSize;
 
         {
@@ -836,6 +838,28 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, call.Ranges.size());
         UNIT_ASSERT_VALUES_EQUAL(0, call.Ranges[0].FirstPageNo);
         UNIT_ASSERT_VALUES_EQUAL(logMetaBlockCount, call.Ranges[0].PageCount);
+
+        // the journalled device is stopped before the wipe and recreated
+        // after it
+        UNIT_ASSERT_VALUES_EQUAL(1, device->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, device->GetStartCount());
+
+        const auto created = Factory->GetCreatedUUIDs();
+        UNIT_ASSERT_VALUES_EQUAL(2, Count(created, config.DeviceUUID));
+
+        // the other device is left alone
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->GetStartCount());
+
+        // the recreated device serves the requests again
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(config.DeviceUUID, error.GetMessage());
+        }
     }
 
     Y_UNIT_TEST_F(ShouldFormatWholeDevice, TFixture)
@@ -868,6 +892,17 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 config.BlocksCount,
                 call.Ranges[0].PageCount);
         }
+
+        for (const auto& device: Devices) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                device->StopCount.load(),
+                device->Name);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                2,
+                device->GetStartCount(),
+                device->Name);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldNotFormatDeviceWithoutJournal, TFixture)
@@ -877,9 +912,16 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         // The device has no journal, so the default format has nothing to wipe
 
         const auto error = FormatDevice(Configs[1].DeviceUUID, false);
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            error.GetCode(),
+            FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+
+        // the journalled device is not touched
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->GetStartCount());
     }
 
     Y_UNIT_TEST_F(ShouldReportFormatErrors, TFixture)
@@ -888,9 +930,107 @@ Y_UNIT_TEST_SUITE(TServiceTest)
 
         DeviceManager->ZeroPagesError = MakeError(E_IO, "zero failed");
 
-        const auto error = FormatDevice(Configs[0].DeviceUUID, true);
+        const auto& config = Configs[0];
+
+        const auto error = FormatDevice(config.DeviceUUID, true);
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL("zero failed", error.GetMessage());
+
+        // the journalled device is stopped and not recreated, so the device
+        // serves nothing until the next format succeeds
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->GetStartCount());
+
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // the other device keeps working
+        for (const auto& error:
+             SendJournalledDeviceRequests(Configs[1].DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        DeviceManager->ZeroPagesError = {};
+
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        // a failed device is stopped for free
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, Devices[0]->GetStartCount());
+
+        for (const auto& error: SendJournalledDeviceRequests(config.DeviceUUID))
+        {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectParallelFormats, TFixture)
+    {
+        StartService();
+
+        const auto& config = Configs[0];
+        const auto& device = Devices[0];
+
+        // the recreated device does not start until told to, so the format
+        // hangs in the middle
+        device->DeferStart = true;
+
+        auto request = MakeRequest<NProto::TFormatDeviceRequest>(
+            config.DeviceUUID,
+            ClientId);
+        request.SetWholeDevice(true);
+
+        auto first = Service->FormatDevice(request);
+        WaitUntil("the device to start", [&] { return device->IsStarting(); });
+        UNIT_ASSERT(!first.HasValue());
+
+        {
+            const auto error =
+                Service->FormatDevice(request).GetValueSync().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "Device " + config.DeviceUUID.Quote() + " is being formatted");
+        }
+
+        // only the first format wipes the device
+        UNIT_ASSERT_VALUES_EQUAL(1, DeviceManager->ZeroPagesCalls.size());
+
+        device->CompleteStart();
+
+        const auto error = first.GetValueSync().GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        // the device is free to be formatted again
+        device->DeferStart = false;
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldListDevices, TFixture)
@@ -1022,8 +1162,8 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         Service->Stop();
 
         // the device that failed to start is not there to be stopped
-        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StopCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StopCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[1]->StopCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldReportDevicesThatFailToCreate, TFixture)
@@ -1051,6 +1191,19 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                 error.GetCode(),
                 FormatError(error));
         }
+
+        // the format fails the same way and leaves the device failed
+        {
+            const auto error = FormatDevice(config.DeviceUUID, true);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL("bad config", error.GetMessage());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->GetStartCount());
     }
 
     Y_UNIT_TEST_F(ShouldRestoreJournalsWithLimitedConcurrency, TFixture)
