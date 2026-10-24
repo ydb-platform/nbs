@@ -29,6 +29,12 @@ const (
 	diskStatusDeleted  diskStatus = iota
 )
 
+// Persisted independently of status: legacy missing-disk tombstones also use deleted.
+const (
+	diskDeletionTombstone       = "tombstone"
+	diskDeletionCompletedMarker = "completed"
+)
+
 func diskStatusToString(status diskStatus) string {
 	switch status {
 	case diskStatusCreating:
@@ -72,7 +78,9 @@ type diskState struct {
 	deletingAt    time.Time
 	deletedAt     time.Time
 
-	status diskStatus
+	status         diskStatus
+	cleanupTaskIDs string
+	deletionMarker string
 
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
@@ -134,6 +142,8 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
+		persistence.StructFieldValue("cleanup_task_ids", persistence.UTF8Value(s.cleanupTaskIDs)),
+		persistence.StructFieldValue("deletion_marker", persistence.UTF8Value(s.deletionMarker)),
 
 		persistence.StructFieldValue("scanned_at", persistence.TimestampValue(s.scannedAt)),
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
@@ -165,6 +175,8 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("cleanup_task_ids", &state.cleanupTaskIDs),
+		persistence.OptionalWithDefault("deletion_marker", &state.deletionMarker),
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
@@ -217,6 +229,8 @@ func diskStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		status: Int64,
+		cleanup_task_ids: Utf8,
+		deletion_marker: Utf8,
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
@@ -250,6 +264,8 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("cleanup_task_ids", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("deletion_marker", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithColumn("scanned_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
@@ -481,6 +497,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	createTombstone bool,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -524,7 +541,7 @@ func (s *storageYDB) deleteDisk(
 			}
 
 			// Should be idempotent.
-			if state.status == diskStatusDeleted {
+			if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 				return nil, nil
 			}
 
@@ -533,11 +550,17 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
+		if !createTombstone {
+			// Background cleanup creates its reservation atomically with the
+			// full cleanup ID set after the parent has saved its target cells.
+			return nil, tx.Commit(ctx)
+		}
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
+		// Preserve the legacy behavior for callers that do not use background cleanup.
 		state.status = diskStatusDeleted
-		state.deletedAt = deletingAt
+		state.deletionMarker = diskDeletionTombstone
 	}
 
 	state.id = diskID
@@ -555,7 +578,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		return nil, nil
 	}
 
@@ -603,7 +626,7 @@ func (s *storageYDB) diskDeleted(
 
 	state := states[0]
 
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -622,6 +645,7 @@ func (s *storageYDB) diskDeleted(
 	}
 
 	state.status = diskStatusDeleted
+	state.deletionMarker = diskDeletionCompletedMarker
 	state.deletedAt = deletedAt
 
 	err = s.updateDiskState(ctx, tx, state)
@@ -694,9 +718,11 @@ func (s *storageYDB) clearDeletedDisks(
 				declare $deleted_at as Timestamp;
 				declare $disk_id as Utf8;
 				declare $status as Int64;
+				declare $tombstone_marker as Utf8;
 
 				delete from disks
-				where id = $disk_id and status = $status;
+				where id = $disk_id and status = $status
+				and (deletion_marker is null or deletion_marker != $tombstone_marker);
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id
@@ -704,6 +730,7 @@ func (s *storageYDB) clearDeletedDisks(
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
 				persistence.ValueParam("$status", persistence.Int64Value(int64(diskStatusDeleted))),
+				persistence.ValueParam("$tombstone_marker", persistence.UTF8Value(diskDeletionTombstone)),
 			)
 			if err != nil {
 				return err
@@ -987,7 +1014,27 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, true)
+			return err
+		},
+	)
+	return disk, err
+}
+
+func (s *storageYDB) DeleteDiskIfExists(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	deletingAt time.Time,
+) (*DiskMeta, error) {
+
+	var disk *DiskMeta
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, false)
 			return err
 		},
 	)

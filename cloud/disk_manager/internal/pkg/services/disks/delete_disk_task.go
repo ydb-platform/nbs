@@ -2,11 +2,13 @@ package disks
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
@@ -19,9 +21,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const legacyDiskCleanupPrefix = "legacy_disk_cleanup_"
 
 type deleteDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
@@ -29,6 +34,7 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
+	cellSelector      cells.CellSelector
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
 }
@@ -53,16 +59,20 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
+	if len(t.state.CleanupCellIds) != 0 {
+		return t.scheduleDiskCleanup(ctx, execCtx)
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
-	sync := t.request.Sync
 
-	diskMeta, err := t.storage.DeleteDisk(
+	backgroundCleanup := t.request.BackgroundCleanup &&
+		t.request.DeleteIfNonExistent && t.request.Disk.ZoneId != ""
+	deleteDisk := t.storage.DeleteDisk
+	if backgroundCleanup {
+		deleteDisk = t.storage.DeleteDiskIfExists
+	}
+	diskMeta, err := deleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
@@ -74,9 +84,18 @@ func (t *deleteDiskTask) deleteDisk(
 
 	zoneID := ""
 	if diskMeta == nil {
-		// Disk does not exist in the database.
+		// The record may be missing, already deleted, or reserved for cell cleanup.
 		if !t.request.DeleteIfNonExistent {
 			return nil
+		}
+		if backgroundCleanup {
+			completed, err := t.storage.IsDiskDeletionCompleted(ctx, diskID)
+			if err != nil {
+				return err
+			}
+			if completed {
+				return nil
+			}
 		}
 
 		zoneID = t.request.Disk.ZoneId
@@ -88,10 +107,147 @@ func (t *deleteDiskTask) deleteDisk(
 		zoneID = diskMeta.ZoneID
 	}
 
+	if diskMeta == nil && backgroundCleanup {
+		cellIDs, err := t.cellSelector.ResolveCells(zoneID)
+		if err != nil {
+			return err
+		}
+		if len(cellIDs) == 0 {
+			return errors.NewNonRetriableErrorf("no cells for zone %q", zoneID)
+		}
+		t.state.CleanupCellIds = cellIDs
+		// Persist the target set before reserving the ID or scheduling any worker.
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+		return t.scheduleDiskCleanup(ctx, execCtx)
+	}
+
+	legacyCleanupID := ""
+	if diskMeta == nil {
+		legacyCleanupID = legacyDiskCleanupPrefix + selfTaskID
+		prepared, err := t.storage.PrepareLegacyDiskCleanup(ctx, diskID, legacyCleanupID)
+		if err != nil {
+			return err
+		}
+		if !prepared {
+			return nil
+		}
+	}
+
+	if diskMeta != nil {
+		err = t.setEstimate(ctx, execCtx)
+		if err != nil {
+			return err
+		}
+	}
+	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
+	if err != nil {
+		return err
+	}
+
+	if legacyCleanupID != "" {
+		return execCtx.FinishWithPreparation(ctx, func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, legacyCleanupID)
+		})
+	}
+
+	// Only overlay disks (created from image) should be released.
+	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+		taskID, err := t.poolService.ReleaseBaseDisk(
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				selfTaskID+"_release_base_disk",
+			),
+			&pools_protos.ReleaseBaseDiskRequest{
+				OverlayDisk: &types.Disk{
+					ZoneId: zoneID,
+					DiskId: diskID,
+				},
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+}
+
+func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	cleanupIDs := make([]string, 0, len(t.state.CleanupCellIds))
+	for _, cellID := range t.state.CleanupCellIds {
+		cleanupIDs = append(cleanupIDs, execCtx.GetTaskID()+"_delete_disk_from_cell_"+cellID)
+	}
+	if !t.state.CleanupPrepared {
+		prepared, err := t.storage.PrepareDiskCleanup(ctx, t.request.Disk.DiskId, cleanupIDs)
+		if err != nil {
+			return err
+		}
+		if !prepared {
+			return nil
+		}
+		t.state.CleanupPrepared = true
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	reservedIDs, err := t.storage.GetDiskCleanupIDs(ctx, t.request.Disk.DiskId)
+	if err != nil {
+		return err
+	}
+	for _, id := range reservedIDs {
+		if !strings.HasPrefix(id, legacyDiskCleanupPrefix) {
+			continue
+		}
+		legacyTaskID := strings.TrimPrefix(id, legacyDiskCleanupPrefix)
+		if legacyTaskID == "" {
+			return errors.NewNonRetriableErrorf("empty legacy task ID in disk cleanup reservation")
+		}
+		_, err = t.scheduler.ScheduleNonCancellableTask(
+			headers.SetIncomingIdempotencyKey(ctx, id+"_finish"), "disks.FinishLegacyDiskCleanup", "", "",
+			&protos.FinishLegacyDiskCleanupRequest{DiskId: t.request.Disk.DiskId, LegacyTaskId: legacyTaskID, CleanupId: id},
+		)
+		if err != nil {
+			return err
+		}
+	}
+	for i, cellID := range t.state.CleanupCellIds {
+		_, err := t.scheduler.ScheduleNonCancellableTask(
+			headers.SetIncomingIdempotencyKey(ctx, cleanupIDs[i]),
+			"disks.DeleteDiskFromCell", "", "",
+			&protos.DeleteDiskFromCellRequest{
+				Disk: &types.Disk{ZoneId: cellID, DiskId: t.request.Disk.DiskId},
+				Sync: t.request.Sync, CleanupId: cleanupIDs[i],
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *deleteDiskTask) deleteDiskInCell(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	zoneID string,
+	idempotencyKey string,
+) error {
+
+	diskID := t.request.Disk.DiskId
+
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			selfTaskID+"_delete_disk_from_incremental",
+			idempotencyKey,
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
@@ -116,40 +272,16 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	if sync {
+	if t.request.Sync {
 		err = client.DeleteSync(ctx, diskID)
 	} else {
 		err = client.Delete(ctx, diskID)
 	}
-	if err != nil {
+	if err != nil && !nbs.IsDiskNotFoundError(err) {
 		return err
 	}
 
-	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
-		taskID, err = t.poolService.ReleaseBaseDisk(
-			headers.SetIncomingIdempotencyKey(
-				ctx,
-				selfTaskID+"_release_base_disk",
-			),
-			&pools_protos.ReleaseBaseDiskRequest{
-				OverlayDisk: &types.Disk{
-					ZoneId: zoneID,
-					DiskId: diskID,
-				},
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-		if err != nil {
-			return err
-		}
-	}
-
-	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	return nil
 }
 
 func (t *deleteDiskTask) Run(

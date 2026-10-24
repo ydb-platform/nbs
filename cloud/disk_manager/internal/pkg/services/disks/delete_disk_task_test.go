@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -227,27 +228,33 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	scheduler := tasks_mocks.NewSchedulerMock()
 	poolService := pools_mocks.NewServiceMock()
 	nbsFactory := nbs_mocks.NewFactoryMock()
-	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
 	disk := &types.Disk{DiskId: "disk", ZoneId: "zone"}
 	request := &protos.DeleteDiskRequest{
 		Disk:                disk,
 		DeleteIfNonExistent: deleteIfNonExistent,
+		BackgroundCleanup:   true,
 	}
 
 	task := &deleteDiskTask{
-		storage:     storage,
-		scheduler:   scheduler,
-		poolService: poolService,
-		nbsFactory:  nbsFactory,
-		request:     request,
-		state:       &protos.DeleteDiskTaskState{},
+		storage:      storage,
+		scheduler:    scheduler,
+		poolService:  poolService,
+		nbsFactory:   nbsFactory,
+		cellSelector: cells.NewCellSelector(nil, nil, nil, nil),
+		request:      request,
+		state:        &protos.DeleteDiskTaskState{},
+	}
+
+	deleteMethod := "DeleteDisk"
+	if deleteIfNonExistent {
+		deleteMethod = "DeleteDiskIfExists"
 	}
 
 	// There is no such disk in the database, return nil.
 	storage.On(
-		"DeleteDisk",
+		deleteMethod,
 		ctx,
 		"disk",
 		"toplevel_task_id",
@@ -255,23 +262,11 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
-		// DeleteIfNonExistent option is on. Therefore, should proceed deleting
-		// even though the disk is missing from the database.
-
-		storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
-
-		nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
-		nbsClient.On("Delete", ctx, "disk").Return(nil)
-
-		scheduler.On(
-			"ScheduleTask",
-			headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
-			"dataplane.DeleteDiskFromIncremental",
-			"",
-			mock.Anything,
-		).Return("deleteTask", nil)
-
-		scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil)
+		storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
+		storage.On("PrepareDiskCleanup", ctx, "disk", []string{"toplevel_task_id_delete_disk_from_cell_zone"}).Return(true, nil).Once()
+		storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+		execCtx.On("SaveState", ctx).Return(nil).Twice()
+		scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_cell_zone"), "disks.DeleteDiskFromCell", "", "", mock.Anything).Return("cleanup", nil).Once()
 	}
 
 	err := task.Run(ctx, execCtx)

@@ -99,7 +99,24 @@ func RegisterForExecution(
 			scheduler:         taskScheduler,
 			poolService:       poolService,
 			nbsFactory:        nbsFactory,
+			cellSelector:      cellSelector,
 		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution("disks.DeleteDiskFromCell", func() tasks.Task {
+		return &deleteDiskFromCellTask{deleteDiskTask: deleteDiskTask{
+			storage: resourceStorage, scheduler: taskScheduler, nbsFactory: nbsFactory,
+		}}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution("disks.FinishLegacyDiskCleanup", func() tasks.Task {
+		return &finishLegacyDiskCleanupTask{deleteDiskTask: deleteDiskTask{storage: resourceStorage, scheduler: taskScheduler}}
 	})
 	if err != nil {
 		return err

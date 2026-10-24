@@ -135,6 +135,25 @@ type Storage interface {
 		deletingAt time.Time,
 	) (*DiskMeta, error)
 
+	// Mark an existing disk for deletion without creating a tombstone for a missing disk.
+	DeleteDiskIfExists(
+		ctx context.Context,
+		diskID string,
+		taskID string,
+		deletingAt time.Time,
+	) (*DiskMeta, error)
+
+	IsDiskDeletionCompleted(ctx context.Context, diskID string) (bool, error)
+	IsDiskCleanupInProgress(ctx context.Context, diskID string) (bool, error)
+
+	// Atomically reserve a missing disk or a tombstone with the full background cleanup set.
+	// Returns false if a disk exists outside background cleanup, including completed deletion.
+	PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string) (bool, error)
+	PrepareLegacyDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error)
+	GetDiskCleanupIDs(ctx context.Context, diskID string) ([]string, error)
+	IsDiskCleanupPending(ctx context.Context, diskID string, cleanupID string) (bool, error)
+	CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error
+
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 
 	ClearDeletedDisks(ctx context.Context, deletedBefore time.Time, limit int) error
