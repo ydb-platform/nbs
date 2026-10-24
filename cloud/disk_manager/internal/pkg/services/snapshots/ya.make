@@ -12,6 +12,8 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_control_test.go
+    backup_registration_test.go
     schedule_backup_snapshot_tasks_test.go
 )
 
@@ -23,6 +25,7 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    tests
     mocks
     tasks_tests
 )

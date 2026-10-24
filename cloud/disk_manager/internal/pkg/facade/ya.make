@@ -15,6 +15,8 @@ SRCS(
 END()
 
 RECURSE_FOR_TESTS(
+    backup_service_test
+    backup_disabled_test
     disk_service_nemesis_test
     disk_service_test
     disk_service_max_free_bytes_policy_nemesis_test
