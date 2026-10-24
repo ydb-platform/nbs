@@ -35,7 +35,9 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 #define BLOCKSTORE_PARTITION_CUMULATIVE_COUNTERS(xxx)                          \
     BLOCKSTORE_PARTITION_IO_COUNTERS(xxx)                                      \
-// BLOCKSTORE_PARTITION_CUMULATIVE_COUNTERS
+    xxx(ChecksumBlocksVerified, UserRead)                                      \
+    xxx(ChecksumBlocksUnverified, UserRead)                                    \
+    // BLOCKSTORE_PARTITION_CUMULATIVE_COUNTERS
 
 #define BLOCKSTORE_PARTITION_PERCENTILE_COUNTERS(xxx)                          \
 // BLOCKSTORE_PARTITION_PERCENTILE_COUNTERS

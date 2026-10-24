@@ -195,6 +195,19 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
         UNIT_ASSERT_VALUES_EQUAL(0, blobs[0].CompactionRangeCount);
     }
 
+    Y_UNIT_TEST(ShouldNotTruncateWholeDiskChecksumBoundary)
+    {
+        // A whole 32-bit block address space, not a zero-length prefix.
+        const auto blobs =
+            BuildBlobs({1, 2, 10}, false, 0, (ui64{1} << 32) * BlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs[0].Checksums.size());
+        for (size_t i = 0; i < 3; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(ExpectedChecksum(i),
+                                     blobs[0].Checksums[i]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldSplitChecksumsByCompactionRangeBorders)
     {
         // All 5 blocks are below the checksum boundary => Checksums.size() ==

@@ -119,6 +119,7 @@ public:
         TRangeCompactionInfo* RangeCompactionInfo = nullptr;
         ui32 GroupId = 0;
         TVector<ui32> BlockChecksums;
+        TVector<ui32> RepairedBlockIndices;
 
         TBatchRequest() = default;
 
@@ -365,8 +366,15 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
         auto& rc = *batch.RangeCompactionInfo;
 
         const size_t n = Min(batch.Requests.size(), batch.BlockChecksums.size());
+        auto repaired = batch.RepairedBlockIndices.begin();
         for (ui32 i = 0; i < n; ++i) {
             const auto* r = batch.Requests[i];
+            if (repaired != batch.RepairedBlockIndices.end() && *repaired == i) {
+                ++repaired;
+                // A Repair marker has no source data to verify or baseline.
+                rc.BlockChecksums[r->IndexInBlobContent] = 0;
+                continue;
+            }
             if (!rc.BlockChecksums[r->IndexInBlobContent]) {
                 ReportBlockChecksumAbsent(
                     "block checksum is absent",
@@ -388,6 +396,13 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
 
             if (HasError(error)) {
                 return error;
+            }
+
+            if (!expectedChecksum) {
+                // Establish a baseline for previously unprotected data.
+                // This does not verify its integrity before this compaction.
+                rc.BlockChecksums[r->IndexInBlobContent] =
+                    batch.BlockChecksums[i];
             }
         }
     }
@@ -1064,6 +1079,7 @@ void TCompactionActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
     batch.BlockChecksums = std::move(msg->BlockChecksums);
+    batch.RepairedBlockIndices = std::move(msg->RepairedBlockIndices);
 
     RealReadRequestsCompleted += batch.Requests.size();
     ReadRequestsCompleted += batch.Requests.size();

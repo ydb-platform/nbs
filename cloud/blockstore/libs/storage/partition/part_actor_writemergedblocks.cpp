@@ -537,9 +537,9 @@ void TPartitionActor::WriteMergedBlocks(
 
     Y_ABORT_UNLESS(requests);
 
-    const ui32 checksumBoundary =
-        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-        / State->GetBlockSize();
+    const ui64 checksumBoundary =
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+        State->GetBlockSize();
     const bool checksumsEnabled = writeRange.Start < checksumBoundary;
 
     const bool addingUnconfirmedBlobsEnabledForCloud = Config->IsAddingUnconfirmedBlobsFeatureEnabled(
