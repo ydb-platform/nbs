@@ -60,6 +60,14 @@ func (client *Client) UnmountVolume(
 	return err
 }
 
+type snapshotCreationReadContextKey struct{}
+
+// WithSnapshotCreationRead marks reads issued with this context as part of
+// snapshot creation for the server to read data using GetAsync instead of GetFast
+func WithSnapshotCreationRead(ctx context.Context) context.Context {
+	return context.WithValue(ctx, snapshotCreationReadContextKey{}, true)
+}
+
 func (client *Client) ReadBlocks(
 	ctx context.Context,
 	diskId string,
@@ -69,12 +77,15 @@ func (client *Client) ReadBlocks(
 	sessionId string,
 ) ([][]byte, error) {
 
+	snapshotCreationRead, _ := ctx.Value(snapshotCreationReadContextKey{}).(bool)
+
 	req := &protos.TReadBlocksRequest{
-		DiskId:       diskId,
-		StartIndex:   startIndex,
-		BlocksCount:  blocksCount,
-		CheckpointId: checkpointId,
-		SessionId:    sessionId,
+		DiskId:               diskId,
+		StartIndex:           startIndex,
+		BlocksCount:          blocksCount,
+		CheckpointId:         checkpointId,
+		SessionId:            sessionId,
+		SnapshotCreationRead: snapshotCreationRead,
 	}
 
 	resp, err := client.Impl.ReadBlocks(ctx, req)
