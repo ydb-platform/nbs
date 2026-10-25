@@ -88,7 +88,7 @@ bool TFlushBlocksVisitor::Visit(const TFreshBlock& block)
             block.Meta.CommitId,
             block.Meta.IsStoredInDb);
 
-        const ui32 checksumBoundary =
+        const ui64 checksumBoundary =
             DiskPrefixLengthWithBlockChecksumsInBlobs / BlockSize;
         const bool checksumsEnabled =
             block.Meta.BlockIndex < checksumBoundary;
