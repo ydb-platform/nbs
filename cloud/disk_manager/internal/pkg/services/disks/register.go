@@ -20,6 +20,7 @@ func RegisterForExecution(
 	ctx context.Context,
 	config *disks_config.DisksConfig,
 	performanceConfig *performance_config.PerformanceConfig,
+	proxyOverlayDiskIDPrefix string,
 	resourceStorage resources.Storage,
 	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,
@@ -86,7 +87,7 @@ func RegisterForExecution(
 			scheduler:                taskScheduler,
 			poolService:              poolService,
 			nbsFactory:               nbsFactory,
-			proxyOverlayDiskIDPrefix: config.GetProxyOverlayDiskIdPrefix(),
+			proxyOverlayDiskIDPrefix: proxyOverlayDiskIDPrefix,
 			cellSelector:             cellSelector,
 		}
 	})

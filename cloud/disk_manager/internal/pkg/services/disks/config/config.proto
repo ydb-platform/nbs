@@ -28,6 +28,4 @@ message DisksConfig {
     // Has lower priority than overlay Disk Registry based disks.
     optional bool EnableDiskRegistryBasedDisksCreationFromBaseDisks = 16;
     repeated string DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList = 17;
-    // Prefix for ids of proxy overlay disks created by disks.CreateDiskFromBaseDisk.
-    optional string ProxyOverlayDiskIdPrefix = 18 [default = "proxy-"];
 }

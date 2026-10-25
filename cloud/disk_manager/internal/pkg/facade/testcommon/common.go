@@ -967,9 +967,8 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 
 	config := GetServerConfig(t)
 
-	// Note: the recipe uses the same prefix for proxy overlay disks created by
-	// the dataplane (DataplaneConfig.ProxyOverlayDiskIdPrefix).
-	proxyOverlayDiskIDPrefix := config.GetDisksConfig().GetProxyOverlayDiskIdPrefix()
+	// Note: the recipe uses the same prefix for the dataplane.
+	proxyOverlayDiskIDPrefix := config.GetProxyOverlayDiskIdPrefix()
 	baseDiskIDPrefix := config.GetPoolsConfig().GetBaseDiskIdPrefix()
 	// Otherwise any disk would match.
 	require.NotEmpty(t, proxyOverlayDiskIDPrefix)

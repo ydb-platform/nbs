@@ -28,6 +28,7 @@ LoggingConfig: <
 """
 
 CONTROLPLANE_CONFIG_TEMPLATE = """
+ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 GrpcConfig: <
     Port: {port}
     Certs: <
@@ -201,8 +202,6 @@ DisksConfig: <
     # Disk Registry based disks created from pooled images are filled from base
     # disks instead of snapshot storage.
     EnableDiskRegistryBasedDisksCreationFromBaseDisks: true
-    # Should match the prefix in NBS destruction allow list (see recipe).
-    ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
     CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
@@ -308,6 +307,7 @@ S3Config: <
 """
 
 DATAPLANE_CONFIG_TEMPLATE = """
+ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 TasksConfig: <
     ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-shard1"]
     TaskPingPeriod: "1s"
@@ -423,7 +423,6 @@ DataplaneConfig: <
     SnapshotCollectionTimeout: "1s"
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
-    ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 {migration_config}
 {filesystem_dataplane_config}
 >
@@ -718,6 +717,7 @@ class DiskManagerLauncher:
                     access_service_port=access_service_port,
                     ydb_port=ydb_port,
                     base_disk_id_prefix=base_disk_id_prefix,
+                    proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",
