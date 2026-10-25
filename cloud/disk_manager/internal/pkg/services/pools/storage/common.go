@@ -159,6 +159,16 @@ func (d *baseDisk) isDoomed() bool {
 	return d.status >= baseDiskStatusDeleting
 }
 
+// Base disks created without UseImageSize have zero |size| and are created
+// with DefaultBaseDiskSize.
+func (d *baseDisk) sizeOrDefault() uint64 {
+	if d.size != 0 {
+		return d.size
+	}
+
+	return DefaultBaseDiskSize
+}
+
 // Returns true if this base disk is being created from another base disk
 // (srcDiskID) and, therefore, holds that base disk from deletion.
 func (d *baseDisk) holdsSrcDisk() bool {
@@ -713,6 +723,8 @@ func scanPool(res persistence.Result) (pool pool, err error) {
 
 // TODO: move some constants to configs.
 const (
+	// 4 TB. Size of base disks created without UseImageSize.
+	DefaultBaseDiskSize = uint64(4 << 40)
 	// 32 GB.
 	baseDiskUnitSize            = uint64(32 << 30)
 	minBaseDiskUnits            = 30

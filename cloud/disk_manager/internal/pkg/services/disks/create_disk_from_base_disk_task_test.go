@@ -34,23 +34,6 @@ func newContext() context.Context {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestBaseDiskSlotKind(t *testing.T) {
-	for _, tc := range []struct {
-		kind     types.DiskKind
-		expected types.DiskKind
-	}{
-		{types.DiskKind_DISK_KIND_SSD_NONREPLICATED, types.DiskKind_DISK_KIND_SSD},
-		{types.DiskKind_DISK_KIND_SSD_MIRROR2, types.DiskKind_DISK_KIND_SSD},
-		{types.DiskKind_DISK_KIND_SSD_MIRROR3, types.DiskKind_DISK_KIND_SSD},
-		{types.DiskKind_DISK_KIND_HDD_NONREPLICATED, types.DiskKind_DISK_KIND_HDD},
-		// Already media kinds: unchanged.
-		{types.DiskKind_DISK_KIND_SSD, types.DiskKind_DISK_KIND_SSD},
-		{types.DiskKind_DISK_KIND_HDD, types.DiskKind_DISK_KIND_HDD},
-	} {
-		require.Equal(t, tc.expected, baseDiskSlotKind(tc.kind), "%v", tc.kind)
-	}
-}
-
 func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 	ctx := newContext()
 	storage := storage_mocks.NewStorageMock()
@@ -118,8 +101,8 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 		&pools_protos.AcquireBaseDiskRequest{
 			SrcImageId:      "image",
 			OverlayDisk:     proxyOverlayDisk,
-			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD, // media kind of nrd
-			OverlayDiskSize: (1 << 20) * 4096,
+			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
+			UseBaseDiskSize: true,
 		}).Return("acquire", nil)
 	scheduler.On("WaitTask", ctx, execCtx, "acquire").Return(
 		&pools_protos.AcquireBaseDiskResponse{
@@ -269,8 +252,8 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 		&pools_protos.AcquireBaseDiskRequest{
 			SrcImageId:      "image",
 			OverlayDisk:     proxyOverlayDisk,
-			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD, // media kind of mirror3
-			OverlayDiskSize: (1 << 20) * 4096,
+			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
+			UseBaseDiskSize: true,
 		}).Return("acquire", nil)
 	scheduler.On("WaitTask", ctx, execCtx, "acquire").Return(
 		&pools_protos.AcquireBaseDiskResponse{

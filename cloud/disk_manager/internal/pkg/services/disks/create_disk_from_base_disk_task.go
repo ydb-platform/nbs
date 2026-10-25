@@ -234,23 +234,6 @@ func (t *createDiskFromBaseDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Pools storage computes the units allotted on a base disk for ssd and hdd
-// overlay disks only (any other kind is charged the minimum of 1 unit), so map
-// Disk Registry based kinds to their media kind to account the slot according
-// to the disk size.
-func baseDiskSlotKind(kind types.DiskKind) types.DiskKind {
-	switch kind {
-	case types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
-		types.DiskKind_DISK_KIND_SSD_MIRROR2,
-		types.DiskKind_DISK_KIND_SSD_MIRROR3:
-		return types.DiskKind_DISK_KIND_SSD
-	case types.DiskKind_DISK_KIND_HDD_NONREPLICATED:
-		return types.DiskKind_DISK_KIND_HDD
-	default:
-		return kind
-	}
-}
-
 // Acquires a base disk, creates a proxy overlay disk on top of it, creates
 // the disk and transfers the data from the proxy overlay disk into the disk.
 func (t *createDiskFromBaseDiskTask) createAndFillDisk(
@@ -270,14 +253,18 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 	}
 
 	// Acquire base disk slot for the proxy overlay disk (which is the actual
-	// overlay disk of the base disk).
+	// overlay disk of the base disk). The transfer reads the base disk with
+	// fixed parallelism regardless of the size of the disk being created, so
+	// the slot is charged as an ssd overlay disk of the base disk size (the
+	// load lands on the ssd base disk whatever the kind of the disk being
+	// created is).
 	taskID, err := t.poolService.AcquireBaseDisk(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
 		&pools_protos.AcquireBaseDiskRequest{
 			SrcImageId:      t.request.SrcImageId,
 			OverlayDisk:     proxyOverlayDisk,
-			OverlayDiskKind: baseDiskSlotKind(params.Kind),
-			OverlayDiskSize: uint64(params.BlockSize) * params.BlocksCount,
+			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
+			UseBaseDiskSize: true,
 		},
 	)
 	if err != nil {
