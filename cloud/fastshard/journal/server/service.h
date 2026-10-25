@@ -10,6 +10,7 @@
 #include <cloud/fastshard/sn/iface/storage_node.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
 
 namespace NCloud::NJournalled {
 
@@ -31,17 +32,21 @@ struct IServerBackend : public IStartable
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TJournalledDeviceSpec
+struct IJournalledDeviceFactory
 {
-    IJournalledDevicePtr Device;
-    TJournalledDeviceConfig Config;
+    virtual ~IJournalledDeviceFactory() = default;
+
+    virtual TResultOrError<IJournalledDevicePtr> Create(
+        const TJournalledDeviceConfig& config) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerBackendPtr CreateService(
+    TExecutorPtr executor,
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices,
+    IJournalledDeviceFactoryPtr journalledDeviceFactory,
+    TVector<TJournalledDeviceConfig> journalledDeviceConfigs,
     ui32 restoreConcurrency);
 
 }   // namespace NCloud::NJournalled
