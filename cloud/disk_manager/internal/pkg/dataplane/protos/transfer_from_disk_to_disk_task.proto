@@ -15,6 +15,11 @@ message TransferFromDiskToDiskRequest {
     string SrcDiskBaseCheckpointId = 4;
     uint64 FillGeneration = 5;
     uint64 FillSeqNumber = 6;
+    // Optional. Id of an overlay disk based on SrcDisk@SrcDiskCheckpointId
+    // (located in the same zone as SrcDisk). If set, the data is read from
+    // this proxy disk, mounted locally, instead of directly from SrcDisk.
+    // SrcDisk is still used for GetChangedBlocks/GetChangedBytes.
+    string SrcDiskProxyOverlayDiskId = 7;
 }
 
 message TransferFromDiskToDiskTaskState {

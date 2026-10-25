@@ -80,6 +80,20 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromBaseDisk", func() tasks.Task {
+		return &createDiskFromBaseDiskTask{
+			storage:                  resourceStorage,
+			scheduler:                taskScheduler,
+			poolService:              poolService,
+			nbsFactory:               nbsFactory,
+			proxyOverlayDiskIDPrefix: config.GetProxyOverlayDiskIdPrefix(),
+			cellSelector:             cellSelector,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
 			storage:      resourceStorage,

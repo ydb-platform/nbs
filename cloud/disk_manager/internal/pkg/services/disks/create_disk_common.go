@@ -135,6 +135,8 @@ func SelectCellForDisk(
 			s.SelectedCellId = client.ZoneID()
 		case *protos.CreateOverlayDiskTaskState:
 			s.SelectedCellId = client.ZoneID()
+		case *protos.CreateDiskFromBaseDiskTaskState:
+			s.SelectedCellId = client.ZoneID()
 		default:
 			return nil, errors.NewNonRetriableErrorf(
 				"unsupported proto type: %T",

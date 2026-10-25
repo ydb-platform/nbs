@@ -168,6 +168,7 @@ func TestDiskServiceCellsCreateDiskFromImage(t *testing.T) {
 				disk_manager.DiskKind_DISK_KIND_SSD,
 				32*1024*4096, // imageSize
 				false,        // pooled
+				false,        // expectOverlayDisk
 				32*1024*4096, // diskSize
 				"folder",
 				nil, // encryptionDesc

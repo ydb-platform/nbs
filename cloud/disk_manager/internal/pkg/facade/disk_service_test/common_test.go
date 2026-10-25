@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 )
@@ -18,6 +19,14 @@ const (
 	shardedZoneID = "zone-d"
 	cellID1       = "zone-d"
 	cellID2       = "zone-d-shard1"
+
+	// Overlay Disk Registry based disks are disabled in the recipe (as in
+	// production) except for this folder, see
+	// OverlayDiskRegistryBasedDisksFolderIdAllowList in DisksConfig.
+	overlayDiskRegistryBasedDisksFolderID = "overlay-dr-folder"
+
+	// Default value of DisksConfig.ProxyOverlayDiskIdPrefix.
+	proxyOverlayDiskIDPrefix = "proxy-"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,6 +76,7 @@ func testCreateDiskFromImageWithZoneID(
 	diskKind disk_manager.DiskKind,
 	imageSize uint64,
 	pooled bool,
+	expectOverlayDisk bool,
 	diskSize uint64,
 	diskFolderID string,
 	encryptionDesc *disk_manager.EncryptionDesc,
@@ -139,13 +149,15 @@ func testCreateDiskFromImageWithZoneID(
 
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)
-	if pooled {
+	if expectOverlayDisk {
 		// Check that disk is overlay.
 		require.NotEmpty(t, diskParams.BaseDiskID)
 	} else {
 		// Check that disk is not overlay.
 		require.Empty(t, diskParams.BaseDiskID)
 	}
+
+	createOperationID := operation.Id
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
@@ -157,6 +169,22 @@ func testCreateDiskFromImageWithZoneID(
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+
+	if pooled && !expectOverlayDisk {
+		// Disk Registry based disk has been filled from the base disk via
+		// proxy overlay disk (disks.CreateDiskFromBaseDisk). The slot was
+		// acquired for the proxy overlay disk, check that it has been
+		// released. Proxy overlay disk itself is checked by CheckConsistency.
+		testcommon.CheckBaseDiskSlotReleased(
+			t,
+			ctx,
+			dataplane_common.GetProxyOverlayDiskID(
+				proxyOverlayDiskIDPrefix,
+				diskID,
+				createOperationID, // task id
+			),
+		)
+	}
 
 	testcommon.CheckConsistency(t, ctx)
 }

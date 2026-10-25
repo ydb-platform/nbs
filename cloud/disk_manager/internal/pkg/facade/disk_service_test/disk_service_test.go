@@ -13,6 +13,7 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -365,6 +366,141 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+// Creation of a Disk Registry based disk from a pooled image goes through
+// disks.CreateDiskFromBaseDisk, which has more stages than creation of an
+// overlay disk (base disk acquiring, data transfer via proxy overlay disk), so
+// cancellation is checked separately.
+func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := t.Name()
+	imageSize := uint64(64 * 1024 * 1024)
+
+	_ = testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		true, // pooled
+	)
+
+	diskID := t.Name()
+	diskSize := uint64(262144 * 4096)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		FolderId: "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(time.Millisecond, 10*time.Second)
+
+	testcommon.CancelOperation(t, ctx, client, operation.Id)
+
+	// Proxy overlay disk is a one-shot entity: its slot should be released
+	// whether the creation has been cancelled or has managed to complete.
+	testcommon.CheckBaseDiskSlotReleased(
+		t,
+		ctx,
+		dataplane_common.GetProxyOverlayDiskID(
+			proxyOverlayDiskIDPrefix,
+			diskID,
+			operation.Id, // task id
+		),
+	)
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := t.Name()
+	imageSize := uint64(64 * 1024 * 1024)
+
+	_ = testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		true, // pooled
+	)
+
+	diskID := t.Name()
+	diskSize := uint64(262144 * 4096)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	createOp, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		FolderId: "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, createOp)
+
+	// Need to add some variance for better testing.
+	common.WaitForRandomDuration(time.Millisecond, 10*time.Second)
+
+	testcommon.DeleteDisk(t, ctx, client, diskID)
+
+	tasksStorage := testcommon.NewTaskStorage(t, ctx)
+
+	require.Eventually(t, func() bool {
+		ended, err := tasksStorage.IsTaskEnded(ctx, createOp.Id)
+		return err == nil && ended
+	}, 200*time.Second, 100*time.Millisecond)
+
+	// Disk may have been created in NBS by the creation task after the
+	// deletion task has finished, so it should have been deleted by the
+	// creation task itself.
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	require.Eventually(t, func() bool {
+		_, err := nbsClient.Describe(ctx, diskID)
+		return nbs.IsDiskNotFoundError(err)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	// Deletion task releases the slot by the disk id (tombstone), the
+	// creation task releases the slot acquired for the proxy overlay disk.
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
+	testcommon.CheckBaseDiskSlotReleased(
+		t,
+		ctx,
+		dataplane_common.GetProxyOverlayDiskID(
+			proxyOverlayDiskIDPrefix,
+			diskID,
+			createOp.Id, // task id
+		),
+	)
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -607,6 +743,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		32*1024*4096, // imageSize
 		false,        // pooled
+		false,        // expectOverlayDisk
 		32*1024*4096, // diskSize
 		"folder",
 		nil, // encryptionDesc
@@ -614,14 +751,33 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	)
 }
 
+// Disk Registry based disk created from a pooled image is filled from a base
+// disk (disks.CreateDiskFromBaseDisk) and is not layered.
 func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		true,         // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"folder",
+		nil, // encryptionDesc
+		defaultZoneID,
+	)
+}
+
+// Overlay Disk Registry based disks are enabled only for
+// overlayDiskRegistryBasedDisksFolderID.
+func TestDiskServiceCreateOverlaySsdNonreplDiskFromPooledImage(t *testing.T) {
+	testCreateDiskFromImageWithZoneID(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		true,         // expectOverlayDisk
+		262144*4096,  // diskSize
+		overlayDiskRegistryBasedDisksFolderID,
 		nil, // encryptionDesc
 		defaultZoneID,
 	)
@@ -637,6 +793,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		true,         // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"encrypted-folder",
 		nil, // encryptionDesc
@@ -650,6 +807,7 @@ func TestDiskServiceCreateClientEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		false,        // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"folder",
 		&disk_manager.EncryptionDesc{
@@ -672,6 +830,7 @@ func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromImage(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		false,        // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"folder",
 		&disk_manager.EncryptionDesc{
@@ -687,6 +846,7 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		false,        // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"folder",
 		&disk_manager.EncryptionDesc{
@@ -712,6 +872,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromImage(
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
 		32*1024*4096, // imageSize
 		false,        // pooled
+		false,        // expectOverlayDisk
 		262144*4096,  // diskSize
 		"encrypted-folder",
 		nil, // encryptionDesc
