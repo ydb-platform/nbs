@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
-	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 )
@@ -24,9 +23,6 @@ const (
 	// production) except for this folder, see
 	// OverlayDiskRegistryBasedDisksFolderIdAllowList in DisksConfig.
 	overlayDiskRegistryBasedDisksFolderID = "overlay-dr-folder"
-
-	// Default value of DisksConfig.ProxyOverlayDiskIdPrefix.
-	proxyOverlayDiskIDPrefix = "proxy-"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -157,8 +153,6 @@ func testCreateDiskFromImageWithZoneID(
 		require.Empty(t, diskParams.BaseDiskID)
 	}
 
-	createOperationID := operation.Id
-
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
@@ -175,15 +169,7 @@ func testCreateDiskFromImageWithZoneID(
 		// proxy overlay disk (disks.CreateDiskFromBaseDisk). The slot was
 		// acquired for the proxy overlay disk, check that it has been
 		// released. Proxy overlay disk itself is checked by CheckConsistency.
-		testcommon.CheckBaseDiskSlotReleased(
-			t,
-			ctx,
-			dataplane_common.GetProxyOverlayDiskID(
-				proxyOverlayDiskIDPrefix,
-				diskID,
-				createOperationID, // task id
-			),
-		)
+		testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, diskMeta.ZoneID)
 	}
 
 	testcommon.CheckConsistency(t, ctx)

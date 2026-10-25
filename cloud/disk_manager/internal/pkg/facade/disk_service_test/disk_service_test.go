@@ -13,7 +13,6 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -415,15 +414,8 @@ func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 
 	// Proxy overlay disk is a one-shot entity: its slot should be released
 	// whether the creation has been cancelled or has managed to complete.
-	testcommon.CheckBaseDiskSlotReleased(
-		t,
-		ctx,
-		dataplane_common.GetProxyOverlayDiskID(
-			proxyOverlayDiskIDPrefix,
-			diskID,
-			operation.Id, // task id
-		),
-	)
+	// Proxy overlay disk itself is checked by CheckConsistency.
+	testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, "zone-a")
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -488,16 +480,9 @@ func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
 
 	// Deletion task releases the slot by the disk id (tombstone), the
 	// creation task releases the slot acquired for the proxy overlay disk.
+	// Proxy overlay disk itself is checked by CheckConsistency.
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
-	testcommon.CheckBaseDiskSlotReleased(
-		t,
-		ctx,
-		dataplane_common.GetProxyOverlayDiskID(
-			proxyOverlayDiskIDPrefix,
-			diskID,
-			createOp.Id, // task id
-		),
-	)
+	testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, "zone-a")
 	testcommon.CheckConsistency(t, ctx)
 }
 
