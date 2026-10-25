@@ -411,6 +411,9 @@ func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	common.WaitForRandomDuration(time.Millisecond, 10*time.Second)
 
 	testcommon.CancelOperation(t, ctx, client, operation.Id)
+	// CancelOperation returns as soon as cancellation is requested, Cancel()
+	// of the task may still be running.
+	testcommon.WaitOperationEnded(t, ctx, operation.Id, 200*time.Second)
 
 	// Proxy overlay disk is a one-shot entity: its slot should be released
 	// whether the creation has been cancelled or has managed to complete.

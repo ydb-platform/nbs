@@ -154,12 +154,9 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 		"Fill ssd-nonreplicated disk disk from image image using base disk base",
 		"zone",
 		&dataplane_protos.TransferFromDiskToDiskRequest{
-			SrcDisk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "base",
-			},
-			SrcDiskCheckpointId:       "checkpoint",
-			SrcDiskProxyOverlayDiskId: proxyOverlayDisk.DiskId,
+			SrcDisk:             proxyOverlayDisk,
+			SrcDiskCheckpointId: "checkpoint",
+			MountSrcDiskLocally: true,
 			DstDisk: &types.Disk{
 				ZoneId: "zone",
 				DiskId: "disk",

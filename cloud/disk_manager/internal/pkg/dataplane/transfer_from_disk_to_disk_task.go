@@ -56,11 +56,18 @@ func (t *transferFromDiskToDiskTask) Run(
 		return err
 	}
 
+	// NewDiskSource mounts |proxyDiskID| locally if it is set, otherwise
+	// mounts |diskID| remotely.
+	proxyDiskID := ""
+	if t.request.MountSrcDiskLocally {
+		proxyDiskID = t.request.SrcDisk.DiskId
+	}
+
 	source, err := nbs.NewDiskSource(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		t.request.SrcDiskProxyOverlayDiskId, // proxyDiskID
+		proxyDiskID,
 		t.request.SrcDiskBaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,

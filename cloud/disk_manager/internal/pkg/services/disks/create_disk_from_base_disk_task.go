@@ -37,9 +37,12 @@ import (
 // the dataplane, so the data is read directly from the storage nodes.
 //
 // The proxy overlay disk is the actual overlay disk of the base disk, so the
-// base disk slot is acquired for it (and not for the resulting disk). This
-// keeps the pool bookkeeping consistent (e.g. pools.RebaseOverlayDisk works
-// for it if the base disk is retired during the transfer).
+// base disk slot is acquired for it (and not for the resulting disk), and the
+// transfer refers to the proxy overlay disk only (GetChangedBlocks on an
+// overlay disk includes the blocks of its current base disk). So if the base
+// disk is retired during the transfer, pools.RebaseOverlayDisk rebases the
+// proxy overlay disk onto another base disk transparently for the transfer,
+// as it does for regular overlay disks.
 type createDiskFromBaseDiskTask struct {
 	storage                  resources.Storage
 	scheduler                tasks.Scheduler
@@ -336,15 +339,14 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 		),
 		disk.ZoneId,
 		&dataplane_protos.TransferFromDiskToDiskRequest{
-			// Base disk is used for GetChangedBlocks/GetChangedBytes only,
-			// the data itself is read via proxy overlay disk mounted locally.
-			SrcDisk: &types.Disk{
-				ZoneId: disk.ZoneId,
-				DiskId: baseDiskID,
-			},
-			SrcDiskCheckpointId:       baseDiskCheckpointID,
-			SrcDiskProxyOverlayDiskId: proxyOverlayDisk.DiskId,
-			DstDisk:                   disk,
+			// Don't refer to the base disk here: it may be retired (and the
+			// proxy overlay disk rebased onto another one) during the
+			// transfer. Proxy overlay disk has a checkpoint with the same id
+			// as the base disk one.
+			SrcDisk:             proxyOverlayDisk,
+			SrcDiskCheckpointId: baseDiskCheckpointID,
+			MountSrcDiskLocally: true,
+			DstDisk:             disk,
 		},
 	)
 	if err != nil {
