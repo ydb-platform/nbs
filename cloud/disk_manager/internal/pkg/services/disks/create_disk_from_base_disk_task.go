@@ -76,12 +76,6 @@ func (t *createDiskFromBaseDiskTask) Run(
 
 	params := t.request.Params
 
-	if common.IsLocalDiskKind(params.Kind) {
-		return errors.NewNonCancellableErrorf(
-			"local disk creation from image is forbidden",
-		)
-	}
-
 	client, err := SelectCellForDisk(
 		ctx,
 		execCtx,
@@ -143,8 +137,9 @@ func (t *createDiskFromBaseDiskTask) Run(
 	}
 
 	// Proxy overlay disk is a one-shot entity: it is not needed anymore once
-	// the data has been transferred. Done outside of createAndFillDisk because
-	// the base disk may be deleted as soon as its last slot is released.
+	// the data has been transferred. Performed outside of createAndFillDisk,
+	// after DataTransferred has been persisted, so that a retry performs it
+	// even though createAndFillDisk is skipped.
 	err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
 	if err != nil {
 		return err
@@ -188,9 +183,11 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 		// Delete the disk from NBS even if it has already been deleted by a
 		// concurrent disks.DeleteDisk task (diskMeta == nil): creation from
 		// base disk takes a while and this task may have created the disk in
-		// NBS after that task has finished. A foreign disk with the same id
-		// can't be deleted here: creation with an already used id fails with
-		// non-cancellable error, so Cancel is not even invoked.
+		// NBS after that task has finished. A disk of another owner with the
+		// same id can't be deleted here: if the id is in use, CreateDisk
+		// does not accept it and the task fails with a non-cancellable error
+		// (Cancel is not invoked); if the id belongs to a deleting/deleted
+		// disk, Cancel is invoked but that disk is being deleted anyway.
 		err = client.Delete(ctx, params.Disk.DiskId)
 		if err != nil {
 			return err
@@ -247,7 +244,7 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 	selfTaskID := execCtx.GetTaskID()
 	proxyOverlayDisk := t.getProxyOverlayDisk(selfTaskID)
 
-	err := t.checkEncryption(ctx)
+	err := t.checkEncryption()
 	if err != nil {
 		return err
 	}
@@ -316,7 +313,7 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 	taskID, err = t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
 		"dataplane.TransferFromDiskToDisk",
-		// Image id and disk kind are not present in the request params.
+		// Image id and disk kind are not present in the transfer request.
 		fmt.Sprintf(
 			"Fill %v disk %v from image %v using base disk %v",
 			common.DiskKindToString(params.Kind),
@@ -399,32 +396,18 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 	return execCtx.SaveState(ctx)
 }
 
-func (t *createDiskFromBaseDiskTask) checkEncryption(ctx context.Context) error {
+// Proxy overlay disks (and base disks) don't support encryption. The service
+// routes here only unencrypted disks created from unencrypted images (image
+// encryption is immutable), so this is just a sanity check of the params.
+func (t *createDiskFromBaseDiskTask) checkEncryption() error {
 	params := t.request.Params
 
-	// Proxy overlay disks (and base disks) don't support encryption.
 	if params.EncryptionDesc != nil &&
 		params.EncryptionDesc.Mode != types.EncryptionMode_NO_ENCRYPTION {
 
 		return errors.NewNonRetriableErrorf(
 			"encrypted disk %v can't be created from base disk",
 			params.Disk.DiskId,
-		)
-	}
-
-	imageMeta, err := t.storage.GetImageMeta(ctx, t.request.SrcImageId)
-	if err != nil {
-		return err
-	}
-
-	if imageMeta != nil &&
-		imageMeta.Encryption != nil &&
-		imageMeta.Encryption.Mode != types.EncryptionMode_NO_ENCRYPTION {
-
-		return errors.NewNonRetriableErrorf(
-			"disk %v can't be created from encrypted image %v using base disk",
-			params.Disk.DiskId,
-			t.request.SrcImageId,
 		)
 	}
 

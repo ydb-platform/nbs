@@ -79,9 +79,6 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
 		ID: "disk",
 	}, nil)
-	storage.On("GetImageMeta", ctx, "image").Return(&resources.ImageMeta{
-		ID: "image",
-	}, nil)
 	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
 
 	cellSelector.On(
@@ -231,9 +228,6 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 	// TODO: Improve this expectations.
 	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
 		ID: "disk",
-	}, nil)
-	storage.On("GetImageMeta", ctx, "image").Return(&resources.ImageMeta{
-		ID: "image",
 	}, nil)
 
 	cellSelector.On(
