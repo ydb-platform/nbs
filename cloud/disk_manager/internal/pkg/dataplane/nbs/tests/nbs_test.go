@@ -175,8 +175,9 @@ func TestChunkIndices(t *testing.T) {
 			ctx,
 			client,
 			diskID,
-			"",
-			"",
+			"",    // proxyDiskID
+			false, // mountLocally
+			"",    // baseCheckpointID
 			"checkpoint",
 			nil, // encryption
 			chunkSize,
@@ -280,8 +281,9 @@ func TestReadWrite(t *testing.T) {
 		ctx,
 		client,
 		diskID,
-		"",
-		"",
+		"",    // proxyDiskID
+		false, // mountLocally
+		"",    // baseCheckpointID
 		"checkpoint",
 		nil, // encryption
 		chunkSize,
@@ -368,8 +370,9 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 				ctx,
 				client,
 				diskID,
-				"",
-				"",
+				"",    // proxyDiskID
+				false, // mountLocally
+				"",    // baseCheckpointID
 				"checkpoint",
 				nil, // encryption
 				chunkSize,

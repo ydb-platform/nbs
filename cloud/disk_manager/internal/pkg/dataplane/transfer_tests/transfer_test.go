@@ -114,7 +114,8 @@ func newDiskSourceFull(
 		ctx,
 		client,
 		disk.DiskId,
-		"",
+		"",    // proxyDiskID
+		false, // mountLocally
 		baseCheckpointID,
 		checkpointID,
 		nil, // encryption

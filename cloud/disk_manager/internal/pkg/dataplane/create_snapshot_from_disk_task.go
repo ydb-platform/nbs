@@ -279,6 +279,7 @@ func (t *createSnapshotFromDiskTask) run(
 		nbsClient,
 		t.request.SrcDisk.DiskId,
 		proxyOverlayDiskID,
+		len(proxyOverlayDiskID) != 0, // mountLocally
 		t.state.BaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,

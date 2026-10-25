@@ -281,7 +281,8 @@ func (t *replicateDiskTask) replicate(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		"", // proxyDiskID
+		"",    // proxyDiskID
+		false, // mountLocally
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,

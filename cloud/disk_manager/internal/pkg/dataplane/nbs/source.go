@@ -257,12 +257,18 @@ func (s *diskSource) Close(ctx context.Context) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Data will be read from proxy disk.
+// |diskID| is used to compute changed blocks. The data is read from
+// |proxyDiskID| if it is set (an overlay disk on top of |diskID|), otherwise
+// from |diskID| itself. The disk the data is read from is mounted locally if
+// |mountLocally| is set: local mount moves the disk tablet to the NBS node
+// serving the session, so it should be used for one-shot disks (e.g. proxy
+// overlay disks) only, not for user disks.
 func NewDiskSource(
 	ctx context.Context,
 	client nbs.Client,
 	diskID string,
 	proxyDiskID string,
+	mountLocally bool,
 	baseCheckpointID string,
 	checkpointID string,
 	encryption *types.EncryptionDesc,
@@ -272,12 +278,17 @@ func NewDiskSource(
 	dontReadFromCheckpoint bool,
 ) (dataplane_common.Source, error) {
 
+	dataDiskID := diskID
+	if len(proxyDiskID) != 0 {
+		dataDiskID = proxyDiskID
+	}
+
 	var session *nbs.Session
 	var err error
-	if len(proxyDiskID) != 0 {
-		session, err = client.MountLocalRO(ctx, proxyDiskID, encryption)
+	if mountLocally {
+		session, err = client.MountLocalRO(ctx, dataDiskID, encryption)
 	} else {
-		session, err = client.MountRO(ctx, diskID, encryption)
+		session, err = client.MountRO(ctx, dataDiskID, encryption)
 	}
 
 	if err != nil {
