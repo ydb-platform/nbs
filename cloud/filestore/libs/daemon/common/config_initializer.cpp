@@ -51,10 +51,15 @@ void TConfigInitializerCommon::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
+    LocalSystemTabletBackupConfigPath =
+        storageConfig.GetSystemTabletBackupConfigPath();
+
     ApplyOptionsToStorageConfig(storageConfig);
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig);
+
+    UpdateSystemTabletBackupConfig();
 }
 
 void TConfigInitializerCommon::InitFeaturesConfig()
@@ -92,8 +97,13 @@ TNodeRegistrationSettings
 void TConfigInitializerCommon::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
+    if (config.HasSystemTabletBackupConfig()) {
+        CmsSystemTabletBackupConfig = config.GetSystemTabletBackupConfig();
+    }
+
     ApplyNamedConfigs(config);
     ApplyAllowedKikimrFeatureFlags(config);
+    UpdateSystemTabletBackupConfig();
 }
 
 void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
@@ -131,6 +141,11 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
 void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     NProto::TStorageConfig& storageConfig)
 {
+    if (LocalSystemTabletBackupConfigPath) {
+        storageConfig.SetSystemTabletBackupConfigPath(
+            LocalSystemTabletBackupConfigPath);
+    }
+
     if (Options->SchemeShardDir) {
         storageConfig.SetSchemeShardDir(Options->SchemeShardDir);
     }
@@ -152,6 +167,30 @@ void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     if (Options->NodeRegistrationTimeout) {
         storageConfig.SetNodeRegistrationTimeout(
             Options->NodeRegistrationTimeout.MilliSeconds());
+    }
+}
+
+void TConfigInitializerCommon::UpdateSystemTabletBackupConfig()
+{
+    if (!KikimrConfig) {
+        return;
+    }
+
+    if (CmsSystemTabletBackupConfig) {
+        KikimrConfig->MutableSystemTabletBackupConfig()->CopyFrom(
+            *CmsSystemTabletBackupConfig);
+    } else {
+        KikimrConfig->ClearSystemTabletBackupConfig();
+    }
+
+    if (StorageConfig) {
+        const auto backupPath =
+            StorageConfig->GetSystemTabletBackupConfigPath();
+        if (backupPath) {
+            KikimrConfig->MutableSystemTabletBackupConfig()
+                ->MutableFilesystem()
+                ->SetPath(backupPath);
+        }
     }
 }
 

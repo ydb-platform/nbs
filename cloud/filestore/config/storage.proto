@@ -974,4 +974,8 @@ message TStorageConfig
     // and two periods, so the period should exceed the client-side cache
     // timeouts.
     optional uint32 FileSystemEventSubscriptionsSealPeriod = 558;
+
+    // Filesystem directory for system tablet backups. Overrides the CMS path.
+    // If empty, the system tablet backup configuration from CMS is used.
+    optional string SystemTabletBackupConfigPath = 559;
 }
