@@ -452,7 +452,7 @@ func TestDiskCleanupReserved(t *testing.T) {
 		{name: "legacy parent", state: diskState{status: diskStatusDeleted, tombstone: true, cleanupTaskIDs: `["legacy"]`}, reserved: true},
 		{name: "background workers", state: diskState{status: diskStatusDeleting, cleanupTaskIDs: `["worker"]`}, reserved: true},
 		{name: "completed", state: diskState{status: diskStatusDeleted, deletedAt: time.Now(), cleanupTaskIDs: "[]"}},
-		{name: "legacy tombstone", state: diskState{status: diskStatusDeleted}, reserved: true},
+		{name: "legacy tombstone after migration", state: diskState{status: diskStatusDeleted, tombstone: true}, reserved: true},
 		{name: "new live disk", state: diskState{status: diskStatusReady}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { require.Equal(t, tc.reserved, diskCleanupReserved(tc.state)) })

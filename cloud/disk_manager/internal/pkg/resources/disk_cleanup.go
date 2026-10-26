@@ -35,8 +35,8 @@ func (s *storageYDB) loadDiskCleanupState(
 		return diskState{}, nil
 	}
 	state := states[0]
-	if !state.tombstone && diskIsTombstone(state) {
-		// Older binaries left deleted_at unset for missing-disk tombstones.
+	if state.status == diskStatusDeleted && !state.tombstone && !diskDeletionCompleted(state) {
+		// Older binaries left deleted_at unset (NULL or Unix epoch) for missing-disk tombstones.
 		// Persist the explicit flag before reserving any legacy cleanup.
 		state.tombstone = true
 		if err := s.updateDiskState(ctx, tx, state); err != nil {
@@ -47,7 +47,7 @@ func (s *storageYDB) loadDiskCleanupState(
 }
 
 func diskIsTombstone(state diskState) bool {
-	return state.status == diskStatusDeleted && !diskDeletionCompleted(state)
+	return state.status == diskStatusDeleted && state.tombstone
 }
 
 // Legacy parents keep their own ID reserved through their atomic task finish.
@@ -72,10 +72,11 @@ func diskCleanupInProgress(state diskState) bool {
 	return state.status == diskStatusDeleting && state.cleanupTaskIDs != ""
 }
 
-// Unset timestamps are either Go zero (legacy NULL) or the persisted Unix epoch.
 func diskDeletionCompleted(state diskState) bool {
-	return state.status == diskStatusDeleted && !state.tombstone &&
-		state.deletedAt.After(time.Unix(0, 0))
+	if state.tombstone {
+		return false
+	}
+	return state.status == diskStatusDeleted && state.deletedAt.After(time.Unix(0, 0))
 }
 
 func (s *storageYDB) IsDiskDeletionCompleted(
