@@ -8592,6 +8592,20 @@ void TDiskRegistryState::CollectRacksByReplicas(
     }
 }
 
+void TDiskRegistryState::ReserveMirroredDiskReplicaDevices(
+    const TDiskId& masterId,
+    const TVector<TVector<TDeviceId>>& replicas)
+{
+    for (ui32 i = 0; i < replicas.size(); ++i) {
+        const auto replicaId = GetReplicaDiskId(masterId, i);
+        for (const auto& uuid: replicas[i]) {
+            if (!uuid.empty()) {
+                DeviceList.MarkDeviceAllocated(replicaId, uuid);
+            }
+        }
+    }
+}
+
 NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
     TDiskRegistryDatabase& db,
     const TDiskId& replicaId,
@@ -8663,17 +8677,20 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
     return {};
 }
 
-void TDiskRegistryState::ReleaseFreshDevices(
+void TDiskRegistryState::ReleaseAllocatedDevices(
     TDiskRegistryDatabase& db,
     ui32 fromReplicaIdx,
-    ui32 toReplicaIdx,
     const TDiskId& masterId,
     const TVector<TVector<TDeviceId>>& replicas,
     const TVector<TVector<TDeviceId>>& resolvedReplicas)
 {
-    for (ui32 r = fromReplicaIdx; r <= toReplicaIdx; ++r) {
+    for (ui32 r = fromReplicaIdx; r < replicas.size(); ++r) {
         for (ui32 d = 0; d < replicas[r].size(); ++d) {
-            if (!replicas[r][d].empty() || d >= resolvedReplicas[r].size()) {
+            if (!replicas[r][d].empty()) {
+                DeviceList.ReleaseDevice(replicas[r][d]);
+                continue;
+            }
+            if (d >= resolvedReplicas[r].size()) {
                 continue;
             }
             const auto& uuid = resolvedReplicas[r][d];
@@ -8721,6 +8738,8 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     TVector<TVector<TDeviceId>> resolvedReplicas;
     resolvedReplicas.resize(replicas.size());
 
+    ReserveMirroredDiskReplicaDevices(masterId, replicas);
+
     for (ui32 i = 0; i < replicas.size(); ++i) {
         if (auto error = AllocateFreshDevicesForReplica(
                 db,
@@ -8731,7 +8750,12 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 resolvedReplicas[i]);
             HasError(error))
         {
-            ReleaseFreshDevices(db, 0, i, masterId, replicas, resolvedReplicas);
+            ReleaseAllocatedDevices(
+                db,
+                0,
+                masterId,
+                replicas,
+                resolvedReplicas);
 
             TVector<TString> affectedDisks;
             DestroyPlacementGroup(
@@ -8756,10 +8780,9 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             HasError(error))
         {
             DestroyPartiallyCreatedMirroredDisk(db, i, masterId);
-            ReleaseFreshDevices(
+            ReleaseAllocatedDevices(
                 db,
                 i,
-                replicas.size() - 1,
                 masterId,
                 replicas,
                 resolvedReplicas);

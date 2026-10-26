@@ -950,6 +950,172 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-1/0", group->GetDisks(0).GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("disk-1/1", group->GetDisks(1).GetDiskId());
     }
+
+    Y_UNIT_TEST(ShouldRejectMirroredDiskFromDevicesWithIncompleteData)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = MakeDefaultState();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const TVector<TVector<TString>> replicasWithGap = {
+                    {"uuid-1", ""},
+                    {"uuid-3", ""},
+                };
+
+                const auto error = CreateMirroredDiskFromDevices(
+                    state,
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(),
+                    replicasWithGap);
+
+                UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+                UNIT_ASSERT(error.GetMessage().Contains("no data for device"));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevicesWithFreshDeviceFirst)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = MakeDefaultState();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const TVector<TVector<TString>> replicasWithFresh = {
+                    {"", "uuid-2"},
+                    {"uuid-3", "uuid-4"},
+                };
+
+                TDiskRegistryState::TAllocateDiskResult result;
+                const auto error = state.CreateDiskFromDevices(
+                    TInstant::FromValue(1000),
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(),
+                    {},
+                    replicasWithFresh,
+                    &result);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    error.GetCode(),
+                    error.GetMessage());
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-1",
+                    result.Devices[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2",
+                    result.Devices[1].GetDeviceUUID());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "|uuid-1*|uuid-3|"
+            "|uuid-2|uuid-4|",
+            GetReplicaTableRepr(state, "disk-1"));
+    }
+
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevicesWithFreshDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = MakeDefaultState();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const TVector<TVector<TString>> replicasWithFresh = {
+                    {"uuid-1", ""},
+                    {"uuid-3", "uuid-4"},
+                };
+
+                TDiskRegistryState::TAllocateDiskResult result;
+                const auto error = state.CreateDiskFromDevices(
+                    TInstant::FromValue(1000),
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(),
+                    {},
+                    replicasWithFresh,
+                    &result);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    error.GetCode(),
+                    error.GetMessage());
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-1",
+                    result.Devices[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2",
+                    result.Devices[1].GetDeviceUUID());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "|uuid-1|uuid-3|"
+            "|uuid-2*|uuid-4|",
+            GetReplicaTableRepr(state, "disk-1"));
+    }
+
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevicesWithFreshDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = MakeDefaultState();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const TVector<TVector<TString>> replicas = {
+                    {"uuid-1", ""},
+                    {"", "uuid-4"},
+                };
+
+                TDiskRegistryState::TAllocateDiskResult result;
+                const auto error = state.CreateDiskFromDevices(
+                    TInstant::FromValue(1000),
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(),
+                    {},
+                    replicas,
+                    &result);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    error.GetCode(),
+                    error.GetMessage());
+
+                UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-1",
+                    result.Devices[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "uuid-2",
+                    result.Devices[1].GetDeviceUUID());
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "|uuid-1|uuid-3*|"
+            "|uuid-2*|uuid-4|",
+            GetReplicaTableRepr(state, "disk-1"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
