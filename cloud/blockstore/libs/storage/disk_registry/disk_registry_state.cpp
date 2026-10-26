@@ -8831,7 +8831,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
         params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
         params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3;
 
-    if (isMirrored != replicas.empty()) {
+    if (isMirrored == replicas.empty()) {
         return MakeError(
             E_ARGUMENT,
             "Replicas count is inconsistent with media kind");

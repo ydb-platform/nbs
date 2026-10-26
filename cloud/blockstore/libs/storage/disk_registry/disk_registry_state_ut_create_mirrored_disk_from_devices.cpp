@@ -18,60 +18,22 @@ using namespace NDiskRegistryStateTest;
 
 namespace {
 
-using DeviceSlot = TDiskRegistryState::DeviceSlot;
-
 TDiskRegistryState::TCreateDiskFromDevicesParams MakeMirror2Params(
-    const TString& diskId,
     bool force = true,
     bool keepBlockCount = true)
 {
     return TDiskRegistryState::TCreateDiskFromDevicesParams(
-        diskId,
         DefaultLogicalBlockSize,
         NProto::STORAGE_MEDIA_SSD_MIRROR2,
         force,
         keepBlockCount);
 }
 
-NProto::TDeviceConfig DeviceById(const TString& uuid)
-{
-    NProto::TDeviceConfig config;
-    config.SetDeviceUUID(uuid);
-    return config;
-}
-
-TVector<DeviceSlot> ToDeviceSlots(const TVector<NProto::TDeviceConfig>& devices)
-{
-    TVector<DeviceSlot> slots;
-    slots.reserve(devices.size());
-    for (const auto& device: devices) {
-        slots.push_back(device);
-    }
-    return slots;
-}
-
-TVector<TVector<DeviceSlot>> ToReplicaSlots(
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas)
-{
-    TVector<TVector<DeviceSlot>> replicaSlots;
-    replicaSlots.reserve(replicas.size());
-    for (const auto& replica: replicas) {
-        replicaSlots.push_back(ToDeviceSlots(replica));
-    }
-    return replicaSlots;
-}
-
-TVector<TVector<NProto::TDeviceConfig>> MakeMirror2Replicas()
+TVector<TVector<TString>> MakeMirror2ReplicaUuids()
 {
     return {
-        {
-            DeviceById("uuid-1"),
-            DeviceById("uuid-2"),
-        },
-        {
-            DeviceById("uuid-3"),
-            DeviceById("uuid-4"),
-        },
+        {"uuid-1", "uuid-2"},
+        {"uuid-3", "uuid-4"},
     };
 }
 
@@ -95,32 +57,18 @@ std::unique_ptr<TDiskRegistryState> MakeDefaultState()
         .Build();
 }
 
-NProto::TError CreateDiskFromDevices(
+NProto::TError CreateMirroredDiskFromDevices(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
+    const TString& diskId,
     const TDiskRegistryState::TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas)
+    const TVector<TVector<TString>>& replicas)
 {
     TDiskRegistryState::TAllocateDiskResult result;
     return state.CreateDiskFromDevices(
         Now(),
         db,
-        params,
-        {},
-        ToReplicaSlots(replicas),
-        &result);
-}
-
-NProto::TError CreateDiskFromDevices(
-    TDiskRegistryState& state,
-    TDiskRegistryDatabase& db,
-    const TDiskRegistryState::TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<DeviceSlot>>& replicas)
-{
-    TDiskRegistryState::TAllocateDiskResult result;
-    return state.CreateDiskFromDevices(
-        Now(),
-        db,
+        diskId,
         params,
         {},
         replicas,
@@ -139,35 +87,37 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
         auto statePtr = MakeDefaultState();
         TDiskRegistryState& state = *statePtr;
 
-        const auto replicas = MakeMirror2Replicas();
-
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
                 const auto params =
                     TDiskRegistryState::TCreateDiskFromDevicesParams(
-                        "disk-1",
                         DefaultLogicalBlockSize,
                         NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                         /*force=*/false,
                         /*keepBlockCount=*/false);
 
-                const auto error =
-                    CreateDiskFromDevices(state, db, params, replicas);
+                const auto error = CreateMirroredDiskFromDevices(
+                    state,
+                    db,
+                    "disk-1",
+                    params,
+                    MakeMirror2ReplicaUuids());
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-                UNIT_ASSERT(
-                    error.GetMessage().Contains("unexpected replicas count"));
+                UNIT_ASSERT(error.GetMessage().Contains(
+                    "Replicas count is inconsistent with media kind"));
             });
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     state,
                     db,
-                    MakeMirror2Params("disk-1"),
-                    {replicas[0]});
+                    "disk-1",
+                    MakeMirror2Params(),
+                    {MakeMirror2ReplicaUuids()[0]});
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("expects 2 replicas"));
@@ -176,41 +126,35 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const TVector<TVector<DeviceSlot>> replicasWithGap = {
-                    {
-                        DeviceById("uuid-1"),
-                        std::nullopt,
-                    },
-                    {
-                        DeviceById("uuid-3"),
-                        DeviceById("uuid-4"),
-                    },
+                const TVector<TVector<TString>> replicasWithGap = {
+                    {"uuid-1", ""},
+                    {"uuid-3", ""},
                 };
 
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     state,
                     db,
-                    MakeMirror2Params("disk-1"),
+                    "disk-1",
+                    MakeMirror2Params(),
                     replicasWithGap);
 
                 UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
-                UNIT_ASSERT(error.GetMessage().Contains(
-                    "no replica with all data replicated"));
+                UNIT_ASSERT(error.GetMessage().Contains("no data for device"));
             });
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const TVector<TVector<NProto::TDeviceConfig>>
-                    duplicateReplicas = {
-                        {DeviceById("uuid-1")},
-                        {DeviceById("uuid-1")},
+                const TVector<TVector<TString>> duplicateReplicas = {
+                    {"uuid-1"},
+                    {"uuid-1"},
                 };
 
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     state,
                     db,
-                    MakeMirror2Params("disk-1"),
+                    "disk-1",
+                    MakeMirror2Params(),
                     duplicateReplicas);
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
@@ -239,11 +183,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
                         .WithDisks({Disk("disk-1", {"uuid-1"})})
                         .Build();
 
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     *masterStatePtr,
                     db,
-                    MakeMirror2Params("disk-1"),
-                    replicas);
+                    "disk-1",
+                    MakeMirror2Params(),
+                    MakeMirror2ReplicaUuids());
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("invalid master disk"));
@@ -275,30 +220,29 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
                         .WithDisks({std::move(replicaState)})
                         .Build();
 
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     *boundStatePtr,
                     db,
-                    MakeMirror2Params("disk-1"),
-                    replicas);
+                    "disk-1",
+                    MakeMirror2Params(),
+                    MakeMirror2ReplicaUuids());
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(
-                    error.GetMessage().Contains("already exists"));
+                    error.GetMessage().Contains("already attached to disk"));
             });
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const auto error = CreateDiskFromDevices(
+                const auto error = CreateMirroredDiskFromDevices(
                     state,
                     db,
-                    MakeMirror2Params("disk-1"),
+                    "disk-1",
+                    MakeMirror2Params(),
                     {
-                        {
-                            DeviceById("uuid-1"),
-                            DeviceById("missing"),
-                        },
-                        {DeviceById("uuid-3")},
+                        {"uuid-1", "missing"},
+                        {"uuid-3"},
                     });
 
                 UNIT_ASSERT(error.GetCode() != S_OK);
@@ -313,7 +257,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
         auto statePtr = MakeDefaultState();
         TDiskRegistryState& state = *statePtr;
 
-        const auto replicas = MakeMirror2Replicas();
+        const auto replicaUuids = MakeMirror2ReplicaUuids();
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
@@ -322,9 +266,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateMirroredDiskFromDevicesTest)
                 const auto error = state.CreateDiskFromDevices(
                     TInstant::FromValue(1000),
                     db,
-                    MakeMirror2Params("disk-1"),
+                    "disk-1",
+                    MakeMirror2Params(),
                     {},
-                    ToReplicaSlots(replicas),
+                    replicaUuids,
                     &result);
 
                 UNIT_ASSERT_VALUES_EQUAL_C(
