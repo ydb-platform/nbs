@@ -76,9 +76,9 @@ using namespace NCloud::NFileStore::NStorage::NQuery;
 
 namespace NCloud::NFileStore::NStorage::NQuery {
 
-class TQueryLexer;
-
 ////////////////////////////////////////////////////////////////////////////////
+
+class TQueryLexer;
 
 struct TParseContext
 {
