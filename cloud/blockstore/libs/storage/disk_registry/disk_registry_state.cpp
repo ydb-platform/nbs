@@ -8533,17 +8533,6 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
-
-        if (auto error = CanCreateSimpleDiskFromDevices(
-                replicaId,
-                params,
-                replicas[i],
-                /*allowFreshDevices=*/true);
-            HasError(error))
-        {
-            return error;
-        }
-
         auto* replica = Disks.FindPtr(replicaId);
 
         if (replica && replica->MasterDiskId &&
@@ -8702,7 +8691,26 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     }
 
     TVector<TVector<TDeviceId>> resolvedReplicas;
-    resolvedReplicas.reserve(replicas.size());
+    resolvedReplicas.resize(replicas.size());
+
+    auto rollback = [&](ui32 lastReplicaIdx)
+    {
+        for (ui32 r = 0; r <= lastReplicaIdx; ++r) {
+            for (ui32 d = 0; d < replicas[r].size(); ++d) {
+                if (!replicas[r][d].empty()) {
+                    continue;
+                }
+                const auto& uuid = resolvedReplicas[r][d];
+                DeviceList.ReleaseDevice(uuid);
+                db.UpdateDirtyDevice(uuid, GetReplicaDiskId(masterId, r));
+            }
+        }
+        TVector<TString> affectedDisks;
+        DestroyPlacementGroup(
+            db,
+            GetMirroredDiskGroupId(masterId),
+            affectedDisks);
+    };
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
         if (auto error = AllocateFreshDevicesForReplica(
@@ -8712,19 +8720,12 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 replicas,
                 params.BlockSize,
                 resolvedReplicas[i]);
-            !HasError(error))
+            HasError(error))
         {
-            TVector<TString> affectedDisks;
-            DestroyPlacementGroup(
-                db,
-                GetMirroredDiskGroupId(masterId),
-                affectedDisks);
-
-            // TODO: cleanup aready allocated?
+            rollback(i);
             return error;
         }
 
-        // TODO: simplify check?
         if (auto error = CanCreateSimpleDiskFromDevices(
                 GetReplicaDiskId(masterId, i),
                 params,
@@ -8732,13 +8733,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 /*allowFreshDevices=*/false);
             HasError(error))
         {
-            TVector<TString> affectedDisks;
-            DestroyPlacementGroup(
-                db,
-                GetMirroredDiskGroupId(masterId),
-                affectedDisks);
-
-            // TODO: cleanup aready allocated?
+            rollback(i);
             return error;
         }
     }
