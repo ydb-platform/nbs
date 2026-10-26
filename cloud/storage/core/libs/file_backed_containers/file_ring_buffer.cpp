@@ -487,7 +487,9 @@ public:
                     args.MetadataCapacity);
 
                 if (!layout.StateFileSize) {
-                    SetCorrupted("File ring buffer layout overflows");
+                    SetInitializationError(
+                        "Invalid capacities: file ring buffer layout "
+                        "overflows");
                     return;
                 }
 
@@ -521,7 +523,8 @@ public:
                 Args.MetadataCapacity);
 
             if (!layout.StateFileSize) {
-                SetCorrupted("File ring buffer layout overflows");
+                SetInitializationError(
+                    "Invalid capacities: file ring buffer layout overflows");
                 return;
             }
 
@@ -980,6 +983,15 @@ public:
     bool IsCorrupted() const
     {
         return Corrupted.load(std::memory_order_relaxed);
+    }
+
+    void SetInitializationError(const TString& message)
+    {
+        // Keep the buffer unusable without reporting file corruption.
+        Corrupted.store(true, std::memory_order_relaxed);
+        ReportFileRingBufferInitializationError(
+            "Cannot initialize FileRingBuffer, path: " + Args.FilePath +
+            ", message: " + message);
     }
 
     void SetCorrupted(const TString& message)

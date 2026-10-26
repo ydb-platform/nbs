@@ -2,8 +2,10 @@
 #include "file_ring_buffer_accessor.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -341,12 +343,29 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     FILE_RING_BUFFER_TEST(ShouldRejectOverflowingMetadataCapacity)
     {
+        const auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
         const auto f = TTempFileHandle();
         TFileRingBuffer rb(f.GetName(), 0, Max<ui64>(), ver);
 
         UNIT_ASSERT(rb.IsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
         UNIT_ASSERT_VALUES_EQUAL(0, f.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForFileRingBufferCorruptionDetectedError(),
+                    true)
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForFileRingBufferInitializationError(),
+                    true)
+                ->Val());
     }
 
     FILE_RING_BUFFER_TEST(ShouldPushPop)
@@ -1173,6 +1192,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
     FILE_RING_BUFFER_TEST(ShouldRejectOverflowingMetadataCapacityOnReopen)
     {
+        const auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
         const auto f = TTempFileHandle();
         const ui64 dataCapacity = 64;
         const ui64 metadataCapacity = 8;
@@ -1215,6 +1237,22 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL("1234", rb.GetMetadata().Metadata);
             UNIT_ASSERT_VALUES_EQUAL("ABCD", Dump(rb));
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForFileRingBufferCorruptionDetectedError(),
+                    true)
+                ->Val());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForFileRingBufferInitializationError(),
+                    true)
+                ->Val());
     }
 
     FILE_RING_BUFFER_TEST(ShouldResumeAbortedMetadataResize)
