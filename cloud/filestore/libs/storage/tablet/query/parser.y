@@ -1,5 +1,9 @@
 %{
 #include "parser.h"
+#include <cloud/filestore/libs/storage/tablet/query/lexer.h>
+
+// Route Bison's scanner call to the lexer object passed to yyparse.
+#define yylex lexer.yylex
 
 #include <memory>
 
@@ -65,12 +69,17 @@ using namespace NCloud::NFileStore::NStorage::NQuery;
 %define parse.error verbose
 
 %parse-param { NCloud::NFileStore::NStorage::NQuery::TParseContext& context }
+%parse-param { NCloud::NFileStore::NStorage::NQuery::TQueryLexer& lexer }
 %lex-param { NCloud::NFileStore::NStorage::NQuery::TParseContext& context }
 
 %code requires {
 #include <cloud/filestore/libs/storage/tablet/query/query.h>
 
 namespace NCloud::NFileStore::NStorage::NQuery {
+
+class TQueryLexer;
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TParseContext
 {
@@ -84,11 +93,9 @@ struct TParseContext
 }
 
 %code provides {
-int yylex(
-    YYSTYPE* value,
-    NCloud::NFileStore::NStorage::NQuery::TParseContext& context);
 void yyerror(
     NCloud::NFileStore::NStorage::NQuery::TParseContext& context,
+    NCloud::NFileStore::NStorage::NQuery::TQueryLexer& lexer,
     const char* message);
 }
 
@@ -313,6 +320,7 @@ value:
 
 void yyerror(
     NCloud::NFileStore::NStorage::NQuery::TParseContext& context,
+    NCloud::NFileStore::NStorage::NQuery::TQueryLexer&,
     const char* message)
 {
     NCloud::NFileStore::NStorage::NQuery::SetError(context, message);
