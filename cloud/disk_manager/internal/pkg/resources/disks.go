@@ -29,12 +29,6 @@ const (
 	diskStatusDeleted  diskStatus = iota
 )
 
-// Persisted independently of status: legacy missing-disk tombstones also use deleted.
-const (
-	diskDeletionTombstone       = "tombstone"
-	diskDeletionCompletedMarker = "completed"
-)
-
 func diskStatusToString(status diskStatus) string {
 	switch status {
 	case diskStatusCreating:
@@ -80,7 +74,7 @@ type diskState struct {
 
 	status         diskStatus
 	cleanupTaskIDs string
-	deletionMarker string
+	tombstone      bool
 
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
@@ -143,7 +137,7 @@ func (s *diskState) structValue() persistence.Value {
 
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 		persistence.StructFieldValue("cleanup_task_ids", persistence.UTF8Value(s.cleanupTaskIDs)),
-		persistence.StructFieldValue("deletion_marker", persistence.UTF8Value(s.deletionMarker)),
+		persistence.StructFieldValue("tombstone", persistence.BoolValue(s.tombstone)),
 
 		persistence.StructFieldValue("scanned_at", persistence.TimestampValue(s.scannedAt)),
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
@@ -176,7 +170,7 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
 		persistence.OptionalWithDefault("cleanup_task_ids", &state.cleanupTaskIDs),
-		persistence.OptionalWithDefault("deletion_marker", &state.deletionMarker),
+		persistence.OptionalWithDefault("tombstone", &state.tombstone),
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
@@ -230,7 +224,7 @@ func diskStateStructTypeString() string {
 		deleted_at: Timestamp,
 		status: Int64,
 		cleanup_task_ids: Utf8,
-		deletion_marker: Utf8,
+		tombstone: Bool,
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
@@ -265,7 +259,7 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithColumn("cleanup_task_ids", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("deletion_marker", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("tombstone", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("scanned_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
@@ -560,7 +554,7 @@ func (s *storageYDB) deleteDisk(
 		// prevents new disk creation with the same ID.
 		// Preserve the legacy behavior for callers that do not use background cleanup.
 		state.status = diskStatusDeleted
-		state.deletionMarker = diskDeletionTombstone
+		state.tombstone = true
 	}
 
 	state.id = diskID
@@ -645,7 +639,7 @@ func (s *storageYDB) diskDeleted(
 	}
 
 	state.status = diskStatusDeleted
-	state.deletionMarker = diskDeletionCompletedMarker
+	state.tombstone = false
 	state.deletedAt = deletedAt
 
 	err = s.updateDiskState(ctx, tx, state)
@@ -718,11 +712,10 @@ func (s *storageYDB) clearDeletedDisks(
 				declare $deleted_at as Timestamp;
 				declare $disk_id as Utf8;
 				declare $status as Int64;
-				declare $tombstone_marker as Utf8;
 
 				delete from disks
 				where id = $disk_id and status = $status
-				and (deletion_marker is null or deletion_marker != $tombstone_marker);
+				and (tombstone is null or not tombstone);
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id
@@ -730,7 +723,6 @@ func (s *storageYDB) clearDeletedDisks(
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 				persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
 				persistence.ValueParam("$status", persistence.Int64Value(int64(diskStatusDeleted))),
-				persistence.ValueParam("$tombstone_marker", persistence.UTF8Value(diskDeletionTombstone)),
 			)
 			if err != nil {
 				return err

@@ -35,57 +35,19 @@ func (s *storageYDB) loadDiskCleanupState(
 		return diskState{}, nil
 	}
 	state := states[0]
-	if state.status == diskStatusDeleted {
-		switch state.deletionMarker {
-		case "":
-			// Old completed deletions were enqueued for collection; legacy
-			// tombstones were not. Resolve this once without inspecting deleted_at.
-			queued, err := s.diskHasDeletionQueueEntry(ctx, tx, diskID)
-			if err != nil {
-				return diskState{}, err
-			}
-			state.deletionMarker = diskDeletionTombstone
-			if queued {
-				state.deletionMarker = diskDeletionCompletedMarker
-			}
-			if err := s.updateDiskState(ctx, tx, state); err != nil {
-				return diskState{}, err
-			}
-		case diskDeletionTombstone, diskDeletionCompletedMarker:
-		default:
-			return diskState{}, fmt.Errorf("unknown deletion marker %q for disk %q", state.deletionMarker, diskID)
+	if !state.tombstone && diskIsTombstone(state) {
+		// Older binaries left deleted_at unset for missing-disk tombstones.
+		// Persist the explicit flag before reserving any legacy cleanup.
+		state.tombstone = true
+		if err := s.updateDiskState(ctx, tx, state); err != nil {
+			return diskState{}, err
 		}
 	}
 	return state, nil
 }
 
-func (s *storageYDB) diskHasDeletionQueueEntry(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	diskID string,
-) (bool, error) {
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-		select disk_id from deleted where disk_id = $id limit 1
-	`, s.disksPath), persistence.ValueParam("$id", persistence.UTF8Value(diskID)))
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-	found := false
-	for res.NextResultSet(ctx) {
-		if res.NextRow() {
-			found = true
-			break
-		}
-	}
-	return found, res.Err()
-}
-
 func diskIsTombstone(state diskState) bool {
-	return state.status == diskStatusDeleted && state.deletionMarker == diskDeletionTombstone
+	return state.status == diskStatusDeleted && !diskDeletionCompleted(state)
 }
 
 // Legacy parents keep their own ID reserved through their atomic task finish.
@@ -110,8 +72,10 @@ func diskCleanupInProgress(state diskState) bool {
 	return state.status == diskStatusDeleting && state.cleanupTaskIDs != ""
 }
 
+// Unset timestamps are either Go zero (legacy NULL) or the persisted Unix epoch.
 func diskDeletionCompleted(state diskState) bool {
-	return state.status == diskStatusDeleted && state.deletionMarker == diskDeletionCompletedMarker
+	return state.status == diskStatusDeleted && !state.tombstone &&
+		state.deletedAt.After(time.Unix(0, 0))
 }
 
 func (s *storageYDB) IsDiskDeletionCompleted(
@@ -182,7 +146,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 		}
 		if state.id == "" {
 			state.id = diskID
-			state.deletionMarker = diskDeletionTombstone
+			state.tombstone = true
 			state.deletingAt = time.Now()
 		}
 		ids, err := diskCleanupIDs(state)
@@ -337,7 +301,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 	// Only the last reservation of background cleanup marks deletion completed.
 	if len(remaining) == 0 && diskCleanupInProgress(state) {
 		state.status = diskStatusDeleted
-		state.deletionMarker = diskDeletionCompletedMarker
+		state.tombstone = false
 		state.deletedAt = time.Now()
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
