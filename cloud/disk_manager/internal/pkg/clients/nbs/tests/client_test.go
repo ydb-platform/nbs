@@ -1535,7 +1535,7 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 		proxyOverlayDiskID,
 		diskID,
 		"cp",
-		0, // blocksCount, same as the base disk
+		0, // maxBlocksCount, same as the base disk
 	)
 	require.True(t, created)
 	require.NoError(t, err)
@@ -1544,26 +1544,27 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestReadFromProxyOverlayDiskLargerThanBaseDisk(t *testing.T) {
+func TestCreateProxyOverlayDiskWithMaxBlocksCount(t *testing.T) {
 	ctx := newContext()
 	client := newTestingClient(t, ctx)
 
 	diskID := t.Name()
-	diskSize := int64(1024 * 4096)
+	baseDiskBlocksCount := uint64(2 * 1024)
 
 	err := client.Create(ctx, nbs.CreateDiskParams{
 		ID:              diskID,
-		BlocksCount:     1024,
+		BlocksCount:     baseDiskBlocksCount,
 		BlockSize:       4096,
 		Kind:            types.DiskKind_DISK_KIND_SSD,
 		PartitionsCount: 1,
 	})
 	require.NoError(t, err)
 
+	// Fill the first half only: it is what the smaller proxy covers.
 	diskContentInfo, err := client.FillDisk(
 		ctx,
 		diskID,
-		uint64(diskSize),
+		baseDiskBlocksCount/2*4096,
 	)
 	require.NoError(t, err)
 
@@ -1574,25 +1575,46 @@ func TestReadFromProxyOverlayDiskLargerThanBaseDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	proxyOverlayDiskID := "proxy_" + diskID
-	created, err := client.CreateProxyOverlayDisk(
-		ctx,
-		proxyOverlayDiskID,
-		diskID,
-		"cp",
-		2*1024, // blocksCount, twice the base disk
-	)
-	require.True(t, created)
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name                string
+		maxBlocksCount      uint64
+		expectedBlocksCount uint64
+	}{
+		{
+			name:                "smaller than base disk",
+			maxBlocksCount:      baseDiskBlocksCount / 2,
+			expectedBlocksCount: baseDiskBlocksCount / 2,
+		},
+		{
+			name:                "larger than base disk is clamped",
+			maxBlocksCount:      2 * baseDiskBlocksCount,
+			expectedBlocksCount: baseDiskBlocksCount,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			proxyOverlayDiskID := fmt.Sprintf(
+				"proxy_%v_%v",
+				diskID,
+				tc.maxBlocksCount,
+			)
+			created, err := client.CreateProxyOverlayDisk(
+				ctx,
+				proxyOverlayDiskID,
+				diskID,
+				"cp",
+				tc.maxBlocksCount,
+			)
+			require.True(t, created)
+			require.NoError(t, err)
 
-	// The part covered by the base disk has its content, the rest is zeroed.
-	// ValidateCrc32 checks the first ContentSize bytes only.
-	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
-	require.NoError(t, err)
+			proxyOverlayDiskParams, err := client.Describe(ctx, proxyOverlayDiskID)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedBlocksCount, proxyOverlayDiskParams.BlocksCount)
 
-	proxyOverlayDiskParams, err := client.Describe(ctx, proxyOverlayDiskID)
-	require.NoError(t, err)
-	require.EqualValues(t, 2*1024, proxyOverlayDiskParams.BlocksCount)
+			err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
@@ -1627,7 +1649,7 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 		proxyOverlayDiskID,
 		diskID,
 		"cp",
-		0, // blocksCount, same as the base disk
+		0, // maxBlocksCount, same as the base disk
 	)
 	require.True(t, created)
 	require.NoError(t, err)

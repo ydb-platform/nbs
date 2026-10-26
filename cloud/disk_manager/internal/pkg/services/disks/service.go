@@ -472,15 +472,19 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, err
 	}
 
-	if imageMeta != nil &&
-		imageMeta.Encryption != nil &&
+	if imageMeta == nil {
+		// Can't check the image, let the regular path report the error.
+		return false, nil
+	}
+
+	if imageMeta.Encryption != nil &&
 		imageMeta.Encryption.Mode != types.EncryptionMode_NO_ENCRYPTION {
 		// Base disks are not created from encrypted images.
 		return false, nil
 	}
 
-	if imageMeta != nil && imageMeta.Size > uint64(req.Size) {
-		// Proxy overlay disk is sized to the disk being created (see
+	if imageMeta.Size > uint64(req.Size) {
+		// Proxy overlay disk is not larger than the disk being created (see
 		// disks.CreateDiskFromBaseDisk), so the image must fit into it.
 		return false, nil
 	}

@@ -115,7 +115,7 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 		proxyOverlayDisk.DiskId,
 		"base",
 		"checkpoint",
-		uint64(1<<20), // blocksCount of the disk being created
+		uint64(1<<20), // maxBlocksCount: blocks count of the disk being created
 	).Return(true, nil)
 
 	// Disk itself is not layered.
@@ -266,7 +266,7 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 		proxyOverlayDisk.DiskId,
 		"base",
 		"checkpoint",
-		uint64(1<<20), // blocksCount of the disk being created
+		uint64(1<<20), // maxBlocksCount: blocks count of the disk being created
 	).Return(false, nil)
 
 	execCtx.On("SaveState", ctx).Return(nil)
