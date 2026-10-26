@@ -437,3 +437,62 @@ func TestCreateDiskFromBaseDiskTaskCancelBeforeCellIsSelected(t *testing.T) {
 	)
 	require.NoError(t, err)
 }
+
+func TestCreateDiskFromBaseDiskTaskCheckEncryption(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		encryptionDesc *types.EncryptionDesc
+		allowed        bool
+	}{
+		{
+			name:           "no encryption desc",
+			encryptionDesc: nil,
+			allowed:        true,
+		},
+		{
+			name: "no encryption",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_NO_ENCRYPTION,
+			},
+			allowed: true,
+		},
+		{
+			// NBS encrypts the data on its side.
+			name: "encryption at rest",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+			},
+			allowed: true,
+		},
+		{
+			// The data read from the proxy overlay disk would need to be
+			// encrypted by the transfer.
+			name: "client-side encryption",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+				Key: &types.EncryptionDesc_KeyHash{
+					KeyHash: []byte("hash"),
+				},
+			},
+			allowed: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			task := &createDiskFromBaseDiskTask{
+				request: &protos.CreateDiskFromBaseDiskRequest{
+					Params: &protos.CreateDiskParams{
+						Disk:           &types.Disk{DiskId: "disk"},
+						EncryptionDesc: tc.encryptionDesc,
+					},
+				},
+			}
+
+			err := task.checkEncryption()
+			if tc.allowed {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}

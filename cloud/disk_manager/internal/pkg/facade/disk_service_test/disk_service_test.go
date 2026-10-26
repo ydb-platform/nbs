@@ -769,8 +769,30 @@ func TestDiskServiceCreateOverlaySsdNonreplDiskFromPooledImage(t *testing.T) {
 	)
 }
 
-/*
-// TODO: enable after issue #3071 has been completed
+// Disks with encryption at rest are encrypted by NBS on its side, so they are
+// filled from the base disk like unencrypted ones.
+func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromPooledImage(
+	t *testing.T,
+) {
+	testCreateDiskFromImageWithZoneID(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		false,        // expectOverlayDisk
+		262144*4096,  // diskSize
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+		},
+		defaultZoneID,
+	)
+}
+
+// Note: overlay Disk Registry based disks are enabled only for
+// overlayDiskRegistryBasedDisksFolderID, so the disk is not an overlay disk
+// (encrypted overlay Disk Registry based disks are not supported, see issue
+// #3071) and is filled from the base disk.
 func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 	t *testing.T,
 ) {
@@ -783,9 +805,9 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 		262144*4096,  // diskSize
 		"encrypted-folder",
 		nil, // encryptionDesc
+		defaultZoneID,
 	)
 }
-*/
 
 func TestDiskServiceCreateClientEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(

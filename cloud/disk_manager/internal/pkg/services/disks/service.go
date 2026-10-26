@@ -462,8 +462,13 @@ func (s *service) isCreationFromBaseDiskAllowed(
 	}
 
 	if req.EncryptionDesc != nil &&
-		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION {
-		// Proxy overlay disks (and base disks) don't support encryption.
+		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION &&
+		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
+		// The data is read from the (unencrypted) proxy overlay disk and
+		// written to the disk as is, so the disk is either not encrypted or
+		// encrypted at rest by NBS on its side
+		// (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY). Client-side encryption is
+		// not supported here.
 		return false, nil
 	}
 

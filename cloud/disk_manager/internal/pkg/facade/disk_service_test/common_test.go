@@ -153,6 +153,19 @@ func testCreateDiskFromImageWithZoneID(
 		require.Empty(t, diskParams.BaseDiskID)
 	}
 
+	if pooled && !expectOverlayDisk {
+		// Disk Registry based disk created from a pooled image should have
+		// been filled from the base disk via proxy overlay disk rather than
+		// from the snapshot storage. The proxy overlay disk and its base disk
+		// slot are checked by CheckConsistency.
+		taskState, err := testcommon.NewTaskStorage(t, ctx).GetTask(
+			ctx,
+			operation.Id,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "disks.CreateDiskFromBaseDisk", taskState.TaskType)
+	}
+
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
@@ -164,9 +177,6 @@ func testCreateDiskFromImageWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	// Note: if the Disk Registry based disk has been filled from the base
-	// disk via proxy overlay disk (disks.CreateDiskFromBaseDisk), the proxy
-	// overlay disk and its base disk slot are checked by CheckConsistency.
 	testcommon.CheckConsistency(t, ctx)
 }
 
