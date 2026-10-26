@@ -164,14 +164,9 @@ func testCreateDiskFromImageWithZoneID(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	if pooled && !expectOverlayDisk {
-		// Disk Registry based disk has been filled from the base disk via
-		// proxy overlay disk (disks.CreateDiskFromBaseDisk). The slot was
-		// acquired for the proxy overlay disk, check that it has been
-		// released. Proxy overlay disk itself is checked by CheckConsistency.
-		testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, diskMeta.ZoneID)
-	}
-
+	// Note: if the Disk Registry based disk has been filled from the base
+	// disk via proxy overlay disk (disks.CreateDiskFromBaseDisk), the proxy
+	// overlay disk and its base disk slot are checked by CheckConsistency.
 	testcommon.CheckConsistency(t, ctx)
 }
 

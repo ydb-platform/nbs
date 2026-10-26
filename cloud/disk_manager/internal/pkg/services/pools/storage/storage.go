@@ -205,6 +205,14 @@ type Storage interface {
 	CheckBaseDiskSlotReleased(ctx context.Context, overlayDiskID string) error
 
 	// Used in tests and SRE tools.
+	// Checks that slots of all overlay disks with ids prefixed by
+	// |overlayDiskIDPrefix| are released.
+	CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+		ctx context.Context,
+		overlayDiskIDPrefix string,
+	) error
+
+	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.
 	CheckConsistency(ctx context.Context) error
 

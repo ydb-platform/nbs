@@ -1441,6 +1441,79 @@ func TestStorageYDBAcquireUsingBaseDiskSizeShouldChargeAsOverlayDiskOfBaseDiskSi
 	require.NoError(t, err)
 }
 
+func TestStorageYDBCheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	// No slots at all.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.NoError(t, err)
+
+	overlayDisk := &types.Disk{ZoneId: "zone", DiskId: "overlay"}
+	proxyOverlayDisk := &types.Disk{ZoneId: "zone", DiskId: "proxy-overlay"}
+
+	for _, disk := range []*types.Disk{overlayDisk, proxyOverlayDisk} {
+		_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{
+			OverlayDisk:     disk,
+			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
+			OverlayDiskSize: 1 << 30,
+		})
+		require.NoError(t, err)
+	}
+
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "proxy-overlay")
+
+	// Slots of other overlay disks are not checked.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "other-")
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, proxyOverlayDisk)
+	require.NoError(t, err)
+
+	// Released slot is kept as a tombstone, but it is released.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.NoError(t, err)
+
+	// Slot of the regular overlay disk is still acquired.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "overlay")
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
 func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

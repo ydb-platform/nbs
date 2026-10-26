@@ -405,7 +405,6 @@ func TestPrivateServiceRetireBaseDisksInParallelWithSsdNonreplDiskCreation(
 
 	testcommon.DeleteDisk(t, ctx, client, diskID)
 
-	testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, "zone-a")
 	testcommon.CheckConsistency(t, ctx)
 }
 

@@ -415,10 +415,9 @@ func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	// of the task may still be running.
 	testcommon.WaitOperationEnded(t, ctx, operation.Id, 200*time.Second)
 
-	// Proxy overlay disk is a one-shot entity: its slot should be released
-	// whether the creation has been cancelled or has managed to complete.
-	// Proxy overlay disk itself is checked by CheckConsistency.
-	testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, "zone-a")
+	// Proxy overlay disk is a one-shot entity: it should be deleted and its
+	// slot should be released whether the creation has been cancelled or has
+	// managed to complete, both are checked by CheckConsistency.
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -482,10 +481,9 @@ func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Deletion task releases the slot by the disk id (tombstone), the
-	// creation task releases the slot acquired for the proxy overlay disk.
-	// Proxy overlay disk itself is checked by CheckConsistency.
+	// creation task releases the slot acquired for the proxy overlay disk
+	// (checked by CheckConsistency).
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
-	testcommon.CheckBaseDisksAreIdle(t, ctx, imageID, "zone-a")
 	testcommon.CheckConsistency(t, ctx)
 }
 

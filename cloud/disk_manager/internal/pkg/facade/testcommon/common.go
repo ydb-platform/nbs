@@ -918,55 +918,6 @@ func CheckBaseDiskSlotReleased(
 	require.NoError(t, err)
 }
 
-// Checks that no overlay disk (proxy overlay disks included) holds a slot on
-// a base disk of the image in the zone: every ready base disk should be idle.
-// Base disks that are still being created are not checked, so the check is
-// meaningful only when the base disk is known to be ready (e.g. after a disk
-// has been successfully created from it).
-func CheckBaseDisksAreIdle(
-	t *testing.T,
-	ctx context.Context,
-	imageID string,
-	zoneID string,
-) {
-
-	poolStorage, closeFunc := newPoolStorage(t, ctx)
-	defer closeFunc()
-
-	// List first: a base disk that becomes ready between the two reads is
-	// idle but not listed, so the idle set may be a superset of the listed
-	// one. The opposite can't happen: a listed base disk doesn't become
-	// non-idle on its own.
-	baseDisks, err := poolStorage.ListBaseDisks(ctx, imageID, zoneID)
-	require.NoError(t, err)
-
-	idleBaseDisks, err := poolStorage.GetIdleBaseDisks(
-		ctx,
-		imageID,
-		zoneID,
-		0,    // idleDuration
-		1000, // limit
-	)
-	require.NoError(t, err)
-
-	idleBaseDiskIDs := make(map[string]struct{})
-	for _, baseDisk := range idleBaseDisks {
-		idleBaseDiskIDs[baseDisk.ID] = struct{}{}
-	}
-
-	for _, baseDisk := range baseDisks {
-		require.Contains(
-			t,
-			idleBaseDiskIDs,
-			baseDisk.ID,
-			"base disk %+v of image %v in zone %v has active slots",
-			baseDisk,
-			imageID,
-			zoneID,
-		)
-	}
-}
-
 // Proxy overlay disks are one-shot entities deleted by the tasks that created
 // them before the corresponding operations complete, but NBS destroys volumes
 // asynchronously, so give them some time to disappear.
@@ -1032,7 +983,18 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 	poolStorage, closeFunc := newPoolStorage(t, ctx)
 	defer closeFunc()
 
-	err := poolStorage.CheckConsistency(ctx)
+	// Likewise, the base disk slots acquired for proxy overlay disks
+	// (disks.CreateDiskFromBaseDisk) should have been released by the tasks
+	// that acquired them, whether these tasks have succeeded, failed or have
+	// been cancelled. Slots are released synchronously, before the tasks end,
+	// so there is no need to wait.
+	err := poolStorage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+		ctx,
+		proxyOverlayDiskIDPrefix,
+	)
+	require.NoError(t, err)
+
+	err = poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
