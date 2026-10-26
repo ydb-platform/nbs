@@ -295,13 +295,16 @@ type Client interface {
 		milestoneCheckpointSize uint64,
 	) error
 
-	// Returns changed bytes count between two checkpoints of a disk.
+	// Returns changed bytes count between two checkpoints of a disk, within
+	// the first min(|maxBlocksCount|, disk blocks count) blocks of the disk,
+	// zero |maxBlocksCount| means the whole disk.
 	GetChangedBytes(
 		ctx context.Context,
 		diskID string,
 		baseCheckpointID string,
 		checkpointID string,
 		ignoreBaseDisk bool,
+		maxBlocksCount uint64,
 	) (uint64, error)
 
 	Stat(ctx context.Context, diskID string) (DiskStats, error)

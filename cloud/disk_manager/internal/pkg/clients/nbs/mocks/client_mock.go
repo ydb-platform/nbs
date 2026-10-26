@@ -334,6 +334,7 @@ func (c *ClientMock) GetChangedBytes(
 	baseCheckpointID string,
 	checkpointID string,
 	ignoreBaseDisk bool,
+	maxBlocksCount uint64,
 ) (uint64, error) {
 
 	args := c.Called(
@@ -342,6 +343,7 @@ func (c *ClientMock) GetChangedBytes(
 		baseCheckpointID,
 		checkpointID,
 		ignoreBaseDisk,
+		maxBlocksCount,
 	)
 	return args.Get(0).(uint64), args.Error(1)
 }

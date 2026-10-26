@@ -184,6 +184,7 @@ func TestChunkIndices(t *testing.T) {
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
 			false, // dontReadFromCheckpoint
+			0,     // maxBlocksCount, whole disk
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -216,6 +217,114 @@ func TestChunkIndices(t *testing.T) {
 
 		milestoneChunkIndex++
 	}
+}
+
+// The source covers the first maxBlocksCount blocks of the disk only: chunk
+// count, chunk indices and the estimate are computed for them.
+func TestMaxBlocksCount(t *testing.T) {
+	ctx := newContext()
+
+	factory := newFactory(t, ctx)
+	client, err := factory.GetClient(ctx, "zone")
+	require.NoError(t, err)
+
+	diskID := t.Name()
+	disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
+
+	err = client.Create(ctx, nbs_client.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: uint64(blocksInChunk * chunkCount),
+		BlockSize:   blockSize,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	target, err := nbs.NewDiskTarget(
+		ctx,
+		factory,
+		disk,
+		nil,
+		chunkSize,
+		false,
+		0, // fillGeneration
+		0, // fillSeqNumber
+	)
+	require.NoError(t, err)
+	defer target.Close(ctx)
+
+	// Every chunk is changed.
+	chunks := make([]dataplane_common.Chunk, 0)
+	for i := uint32(0); i < chunkCount; i++ {
+		data := make([]byte, chunkSize)
+		rand.Read(data)
+		chunk := dataplane_common.Chunk{Index: i, Data: data}
+
+		err = target.Write(ctx, chunk)
+		require.NoError(t, err)
+
+		chunks = append(chunks, chunk)
+	}
+
+	err = client.CreateCheckpoint(
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpoint",
+		},
+	)
+	require.NoError(t, err)
+
+	maxChunkCount := chunkCount / 2
+	source, err := nbs.NewDiskSource(
+		ctx,
+		client,
+		diskID,
+		"",    // proxyDiskID
+		false, // mountLocally
+		"",    // baseCheckpointID
+		"checkpoint",
+		nil, // encryption
+		chunkSize,
+		false, // duplicateChunkIndices
+		false, // ignoreBaseDisk
+		false, // dontReadFromCheckpoint
+		uint64(blocksInChunk*maxChunkCount),
+	)
+	require.NoError(t, err)
+	defer source.Close(ctx)
+
+	sourceChunkCount, err := source.ChunkCount(ctx)
+	require.NoError(t, err)
+	require.Equal(t, maxChunkCount, sourceChunkCount)
+
+	estimatedBytesToRead, err := source.EstimatedBytesToRead(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(maxChunkCount*chunkSize), estimatedBytesToRead)
+
+	processedChunkIndices := make(chan uint32, 1)
+	chunkIndices, _, errors := source.ChunkIndices(
+		ctx,
+		dataplane_common.Milestone{},
+		processedChunkIndices,
+		common.ChannelWithCancellation{}, // holeChunkIndices
+	)
+
+	var actualChunkIndices []uint32
+	for chunkIndex := range chunkIndices {
+		processedChunkIndices <- chunkIndex
+		actualChunkIndices = append(actualChunkIndices, chunkIndex)
+	}
+	for err := range errors {
+		require.NoError(t, err)
+	}
+
+	expectedChunkIndices := make([]uint32, 0)
+	for i := uint32(0); i < maxChunkCount; i++ {
+		expectedChunkIndices = append(expectedChunkIndices, i)
+	}
+	require.Equal(t, expectedChunkIndices, actualChunkIndices)
+
+	checkChunks(t, ctx, source, chunks[:maxChunkCount])
 }
 
 func TestReadWrite(t *testing.T) {
@@ -290,6 +399,7 @@ func TestReadWrite(t *testing.T) {
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
+		0,     // maxBlocksCount, whole disk
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -379,6 +489,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 				false, // duplicateChunkIndices
 				false, // ignoreBaseDisk
 				dontReadFromCheckpoint,
+				0, // maxBlocksCount, whole disk
 			)
 			require.NoError(t, err)
 			defer source.Close(ctx)

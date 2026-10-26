@@ -287,6 +287,7 @@ func (t *createSnapshotFromDiskTask) run(
 		incremental, // duplicateChunkIndices
 		false,       // ignoreBaseDisk
 		false,       // dontReadFromCheckpoint
+		0,           // maxBlocksCount, whole disk
 	)
 	if err != nil {
 		return err

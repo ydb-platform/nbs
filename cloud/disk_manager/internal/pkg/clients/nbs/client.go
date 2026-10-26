@@ -1609,6 +1609,7 @@ func (c *client) GetChangedBytes(
 	baseCheckpointID string,
 	checkpointID string,
 	ignoreBaseDisk bool,
+	maxBlocksCount uint64,
 ) (diff uint64, err error) {
 
 	defer c.metrics.StatRequest("GetChangedBytes")(&err)
@@ -1621,6 +1622,7 @@ func (c *client) GetChangedBytes(
 			tracing.AttributeString("base_checkpoint_id", baseCheckpointID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
 			tracing.AttributeBool("ignore_base_disk", ignoreBaseDisk),
+			tracing.AttributeInt64("max_blocks_count", int64(maxBlocksCount)),
 		),
 	)
 	defer span.End()
@@ -1634,10 +1636,15 @@ func (c *client) GetChangedBytes(
 		return 0, err
 	}
 
-	for blockIndex := uint64(0); blockIndex < volume.BlocksCount; blockIndex += maxChangedBlockCountPerIteration {
+	totalBlockCount := volume.BlocksCount
+	if maxBlocksCount != 0 && maxBlocksCount < totalBlockCount {
+		totalBlockCount = maxBlocksCount
+	}
+
+	for blockIndex := uint64(0); blockIndex < totalBlockCount; blockIndex += maxChangedBlockCountPerIteration {
 		blockCount := uint32(maxChangedBlockCountPerIteration)
-		if uint64(blockCount) > volume.BlocksCount-blockIndex {
-			blockCount = uint32(volume.BlocksCount - blockIndex)
+		if uint64(blockCount) > totalBlockCount-blockIndex {
+			blockCount = uint32(totalBlockCount - blockIndex)
 		}
 
 		blockMask, err := c.GetChangedBlocks(

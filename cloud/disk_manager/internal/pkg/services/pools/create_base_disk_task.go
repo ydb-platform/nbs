@@ -57,21 +57,9 @@ func (t *createBaseDiskTask) Run(
 				return err
 			}
 
-			baseDiskSize := t.request.BaseDiskSize
-
-			var baseDiskBlockCount uint64
-			if baseDiskSize == 0 {
-				baseDiskBlockCount = defaultBaseDiskBlockCount
-			} else {
-				if baseDiskSize%baseDiskBlockSize != 0 {
-					return common.NewInvalidArgumentError(
-						"baseDiskSize should be divisible by baseDiskBlockSize, baseDiskSize %v, baseDiskBlockSize %v",
-						baseDiskSize,
-						baseDiskBlockSize,
-					)
-				}
-
-				baseDiskBlockCount = baseDiskSize / baseDiskBlockSize
+			baseDiskBlockCount, err := t.baseDiskBlockCount()
+			if err != nil {
+				return err
 			}
 
 			return client.Create(ctx, nbs.CreateDiskParams{
@@ -91,6 +79,12 @@ func (t *createBaseDiskTask) Run(
 			zoneID := t.request.BaseDisk.ZoneId
 
 			if t.request.SrcDisk != nil {
+				var baseDiskBlockCount uint64
+				baseDiskBlockCount, err = t.baseDiskBlockCount()
+				if err != nil {
+					return err
+				}
+
 				taskID, err = t.scheduler.ScheduleZonalTask(
 					headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
 					"dataplane.TransferFromDiskToDisk",
@@ -101,6 +95,11 @@ func (t *createBaseDiskTask) Run(
 						SrcDiskBaseCheckpointId: "",
 						SrcDiskCheckpointId:     t.request.SrcDiskCheckpointId,
 						DstDisk:                 t.request.BaseDisk,
+						// The source base disk may be larger than the base
+						// disk being created (an image sized base disk
+						// created from a default sized one), the image fits
+						// into both.
+						MaxBlocksCount: baseDiskBlockCount,
 					},
 				)
 				if err != nil {
@@ -156,6 +155,24 @@ func (t *createBaseDiskTask) Run(
 			t.state.Step = step
 			return execCtx.SaveState(ctx)
 		})
+}
+
+func (t *createBaseDiskTask) baseDiskBlockCount() (uint64, error) {
+	baseDiskSize := t.request.BaseDiskSize
+
+	if baseDiskSize == 0 {
+		return defaultBaseDiskBlockCount, nil
+	}
+
+	if baseDiskSize%baseDiskBlockSize != 0 {
+		return 0, common.NewInvalidArgumentError(
+			"baseDiskSize should be divisible by baseDiskBlockSize, baseDiskSize %v, baseDiskBlockSize %v",
+			baseDiskSize,
+			baseDiskBlockSize,
+		)
+	}
+
+	return baseDiskSize / baseDiskBlockSize, nil
 }
 
 func (t *createBaseDiskTask) Cancel(

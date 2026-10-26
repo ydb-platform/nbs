@@ -1046,6 +1046,7 @@ func TestGetChangedBytes(t *testing.T) {
 			"",
 			checkpointID,
 			false, // ignoreBaseDisk
+			0,     // maxBlocksCount, whole disk
 		)
 		require.NoError(t, err)
 		require.Equal(t, uint64(blockSize*1), changedBytes)
@@ -1056,6 +1057,7 @@ func TestGetChangedBytes(t *testing.T) {
 			checkpointID,
 			checkpointID,
 			false, // ignoreBaseDisk
+			0,     // maxBlocksCount, whole disk
 		)
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), changedBytes)
@@ -1066,6 +1068,7 @@ func TestGetChangedBytes(t *testing.T) {
 			checkpointID,
 			"",
 			false, // ignoreBaseDisk
+			0,     // maxBlocksCount, whole disk
 		)
 		require.NoError(t, err)
 		require.Equal(t, uint64(blockSize*2), changedBytes)
@@ -1076,6 +1079,31 @@ func TestGetChangedBytes(t *testing.T) {
 			"",
 			"",
 			false, // ignoreBaseDisk
+			0,     // maxBlocksCount, whole disk
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(blockSize*3), changedBytes)
+
+		// Only the first two blocks are counted.
+		changedBytes, err = client.GetChangedBytes(
+			ctx,
+			diskID,
+			"",
+			"",
+			false, // ignoreBaseDisk
+			2,     // maxBlocksCount
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(blockSize*2), changedBytes)
+
+		// Larger than the disk is clamped.
+		changedBytes, err = client.GetChangedBytes(
+			ctx,
+			diskID,
+			"",
+			"",
+			false, // ignoreBaseDisk
+			1<<20, // maxBlocksCount
 		)
 		require.NoError(t, err)
 		require.Equal(t, uint64(blockSize*3), changedBytes)
