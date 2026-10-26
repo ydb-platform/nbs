@@ -102,8 +102,8 @@ func TestDiskTombstoneClassification(t *testing.T) {
 		{"explicit tombstone", diskState{status: diskStatusDeleted, tombstone: true}, true},
 		{"explicit tombstone with timestamp", diskState{status: diskStatusDeleted, tombstone: true, deletedAt: time.Now()}, true},
 		{"completed", diskState{status: diskStatusDeleted, deletedAt: time.Now()}, false},
-		{"legacy NULL", diskState{status: diskStatusDeleted}, true},
-		{"legacy epoch", diskState{status: diskStatusDeleted, deletedAt: time.Unix(0, 0)}, true},
+		{"legacy NULL before migration", diskState{status: diskStatusDeleted}, false},
+		{"legacy epoch before migration", diskState{status: diskStatusDeleted, deletedAt: time.Unix(0, 0)}, false},
 		{"deleting", diskState{status: diskStatusDeleting, tombstone: true}, false},
 		{"live", diskState{status: diskStatusReady}, false},
 	} {
