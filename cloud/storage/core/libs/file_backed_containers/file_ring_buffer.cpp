@@ -104,16 +104,10 @@ struct TEntryInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THeader InitHeader(const TFileRingBufferArgs& args)
+THeader InitHeader(
+    const TFileRingBufferArgs& args,
+    const TFileRingBufferLayout& layout)
 {
-    const auto layout = TFileRingBufferLayout::FromCapacity(
-        args.DataCapacity,
-        args.MetadataCapacity);
-
-    if (!layout.StateFileSize) {
-        return {};
-    }
-
     THeader res;
     res.Version = args.Version;
     res.HeaderSize = sizeof(THeader);
@@ -488,13 +482,16 @@ public:
 
         switch (status) {
             case EFileRingBufferAccessorValidationStatus::NotInitialized: {
-                auto header = InitHeader(args);
-                if (!header.HeaderSize) {
+                const auto layout = TFileRingBufferLayout::FromCapacity(
+                    args.DataCapacity,
+                    args.MetadataCapacity);
+
+                if (!layout.StateFileSize) {
                     SetCorrupted("File ring buffer layout overflows");
                     return;
                 }
 
-                if (!ResizeAndRemap(header.DataOffset + header.DataCapacity)) {
+                if (!ResizeAndRemap(layout.StateFileSize)) {
                     return;
                 }
 
@@ -503,7 +500,7 @@ public:
                     Accessor.GetRawData().size());
 
                 *reinterpret_cast<TFileRingBufferHeader*>(
-                    Accessor.GetRawData().data()) = header;
+                    Accessor.GetRawData().data()) = InitHeader(args, layout);
 
                 if (!Validate()) {
                     return;
