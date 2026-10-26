@@ -497,7 +497,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	onlyIfExists bool,
+	ignoreMissing bool,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -550,7 +550,7 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
-		if onlyIfExists {
+		if ignoreMissing {
 			// Background cleanup creates its reservation atomically with the
 			// full cleanup ID set after the parent has saved its target cells.
 			return nil, tx.Commit(ctx)
@@ -1006,7 +1006,7 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	onlyIfExists bool,
+	ignoreMissing bool,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -1015,7 +1015,7 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, onlyIfExists)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, ignoreMissing)
 			return err
 		},
 	)

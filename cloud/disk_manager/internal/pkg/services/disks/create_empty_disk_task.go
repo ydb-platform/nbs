@@ -121,7 +121,7 @@ func (t *createEmptyDiskTask) Cancel(
 		t.params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
-		false, /* onlyIfExists */
+		false, /* ignoreMissing */
 	)
 	if err != nil {
 		return err
