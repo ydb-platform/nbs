@@ -291,6 +291,10 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
         || Configs->StorageConfig->GetNodeRegistrationUseSsl();
     registerOpts.Settings = Configs->GetNodeRegistrationSettings();
+    registerOpts.InitializationCounters =
+        BootstrapMonitoring->GetCounters()
+            ->GetSubgroup("counters", "filestore")
+            ->GetSubgroup("component", "bootstrap");
 
     auto registrant =
         CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);

@@ -168,24 +168,35 @@ class TBootstrapMonitoring final: public IMonitoringService
 {
 private:
     const NKikimrConfig::TMonitoringConfig Config;
+    const ITimerPtr Timer;
+    const TInstant InitializationStarted;
     const NMonitoring::TDynamicCountersPtr Counters =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
+    const NMonitoring::TDynamicCountersPtr BootstrapCounters;
     const NMonitoring::TDynamicCounters::TCounterPtr Initializing;
+    const NMonitoring::TDynamicCounters::TCounterPtr InitializationTimeSeconds;
     NMonitoring::TMonService2 Pages{0, "Service initialization"};
     std::unique_ptr<NActors::TActorSystem> ActorSystem;
 
 public:
     TBootstrapMonitoring(
         const NKikimrConfig::TMonitoringConfig& config,
-        const TString& serviceName)
+        const TString& serviceName, ITimerPtr timer)
         : Config(config)
-        , Initializing(Counters->GetSubgroup("counters", serviceName)
-                           ->GetSubgroup("component", "bootstrap")
-                           ->GetCounter("Initializing", false))
+        , Timer(std::move(timer))
+        , InitializationStarted(Timer->Now())
+        , BootstrapCounters(Counters->GetSubgroup("counters", serviceName)
+                                ->GetSubgroup("component", "bootstrap"))
+        , Initializing(BootstrapCounters->GetCounter("Initializing", false))
+        , InitializationTimeSeconds(
+              BootstrapCounters->GetCounter("InitializationTimeSeconds", false))
     {
         *Initializing = 1;
+        BootstrapCounters->GetCounter("NodeRegistrationFailures", true);
+        BootstrapCounters->GetCounter("ConfigFetchFailures", true);
         Pages.Register(new NMonitoring::TDynamicCountersPage(
-            "counters", "Counters", Counters));
+            "counters",
+            "Counters", Counters, [this] { UpdateInitializationTime(); }));
     }
 
     ~TBootstrapMonitoring() override
@@ -237,10 +248,12 @@ public:
             ActorSystem.reset();
         }
         *Initializing = 0;
+        *InitializationTimeSeconds = 0;
     }
 
     NMonitoring::TDynamicCountersPtr GetCounters() override
     {
+        UpdateInitializationTime();
         return Counters;
     }
 
@@ -259,6 +272,15 @@ public:
     {
         return Pages.FindPage(path);
     }
+
+private:
+    void UpdateInitializationTime()
+    {
+        *InitializationTimeSeconds =
+            Initializing->GetAtomic()
+                ? (Timer->Now() - InitializationStarted).Seconds()
+                : 0;
+    }
 };
 
 }   // namespace
@@ -266,9 +288,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IMonitoringServicePtr CreateBootstrapMonitoring(
-    const NKikimrConfig::TMonitoringConfig& config, const TString& serviceName)
+    const NKikimrConfig::TMonitoringConfig& config,
+    const TString& serviceName, ITimerPtr timer)
 {
-    return std::make_shared<TBootstrapMonitoring>(config, serviceName);
+    return std::make_shared<TBootstrapMonitoring>(
+        config, serviceName, std::move(timer));
 }
 
 }   // namespace NCloud::NStorage

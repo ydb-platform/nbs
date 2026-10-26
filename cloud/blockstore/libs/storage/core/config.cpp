@@ -156,7 +156,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
                                                                                \
     xxx(NodeRegistrationToken,                TString,     "root@builtin"     )\
-    xxx(NodeRegistrationMaxAttempts,          ui32,        10                 )\
+    xxx(NodeRegistrationMaxAttempts,          ui32,        0                  )\
     xxx(NodeRegistrationTimeout,              TDuration,   Seconds(5)         )\
     xxx(NodeRegistrationErrorTimeout,         TDuration,   Seconds(1)         )\
     xxx(NodeType,                             TString,               {}       )\

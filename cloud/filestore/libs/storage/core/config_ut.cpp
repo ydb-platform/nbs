@@ -32,6 +32,12 @@ NCloud::NProto::TFeatureConfig& AddWhitelistedFeature(
 
 Y_UNIT_TEST_SUITE(TStorageConfigTest)
 {
+    Y_UNIT_TEST(ShouldDefaultToUnlimitedNodeRegistrationAttempts)
+    {
+        TStorageConfig config;
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetNodeRegistrationMaxAttempts());
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyGetFieldsByNamedGetters)
     {
         NProto::TStorageConfig storageConfig;

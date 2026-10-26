@@ -145,7 +145,7 @@ message TServerConfig
 
     // Dynamic node registration params.
     // The following 3 are deprecated in favor of params in storage config
-    optional uint32 NodeRegistrationMaxAttempts = 39;
+    optional uint32 NodeRegistrationMaxAttempts = 39; // 0 means unlimited (default)
     optional uint32 NodeRegistrationTimeout = 40;   // in ms
     optional uint32 NodeRegistrationErrorTimeout = 41;  // in ms
 

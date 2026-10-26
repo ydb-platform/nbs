@@ -593,6 +593,11 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("Configs initialized");
 
+    registerOpts.InitializationCounters =
+        BootstrapMonitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "bootstrap");
+
     auto registrant =
         CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
 

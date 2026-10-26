@@ -484,6 +484,10 @@ bool TBootstrap::InitKikimrService()
         Configs->KikimrConfig->GetMonitoringConfig(),
         "blockstore");
     BootstrapMonitoring->Start();
+    registerOpts.InitializationCounters =
+        BootstrapMonitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "bootstrap");
 
     auto registrant =
         CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);

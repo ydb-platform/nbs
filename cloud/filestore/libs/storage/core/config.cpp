@@ -278,7 +278,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(MaxDeferredNodeDestructionCount,                ui64,       100'000   )\
     xxx(MaxDeferredNodeDestructionsPerTx,               ui32,       1'000     )\
                                                                                \
-    xxx(NodeRegistrationMaxAttempts,         ui32,      10                    )\
+    xxx(NodeRegistrationMaxAttempts,         ui32,      0                     )\
     xxx(NodeRegistrationTimeout,             TDuration, TDuration::Seconds(5) )\
     xxx(NodeRegistrationErrorTimeout,        TDuration, TDuration::Seconds(1) )\
                                                                                \

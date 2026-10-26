@@ -62,7 +62,7 @@ constexpr TDuration Seconds(int s)
     xxx(MaxInFlightBytesPerThread,   ui64,                  128_MB            )\
     xxx(VhostAffinity,               TAffinity,             {}                )\
     xxx(NbdAffinity,                 TAffinity,             {}                )\
-    xxx(NodeRegistrationMaxAttempts,    ui32,               10                )\
+    xxx(NodeRegistrationMaxAttempts,    ui32,               0                 )\
     xxx(NodeRegistrationTimeout,        TDuration,          Seconds(5)        )\
     xxx(NodeRegistrationErrorTimeout,   TDuration,          Seconds(1)        )\
     xxx(NbdSocketSuffix,             TString,               {}                )\

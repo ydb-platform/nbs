@@ -15,6 +15,14 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldDefaultToUnlimitedNodeRegistrationAttempts)
+    {
+        TStorageConfig config(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetNodeRegistrationMaxAttempts());
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(
