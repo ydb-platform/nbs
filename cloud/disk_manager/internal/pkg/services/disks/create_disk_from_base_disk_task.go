@@ -249,12 +249,11 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 		return err
 	}
 
-	// Acquire base disk slot for the proxy overlay disk (which is the actual
-	// overlay disk of the base disk). The transfer reads the base disk with
-	// fixed parallelism regardless of the size of the disk being created, so
-	// the slot is charged as an ssd overlay disk of the base disk size (the
-	// load lands on the ssd base disk whatever the kind of the disk being
-	// created is).
+	// Acquire base disk slot for the proxy overlay disk. The transfer reads
+	// the base disk with fixed parallelism regardless of the size of the disk
+	// being created, so the slot is charged as an ssd overlay disk of the base
+	// disk size (the load lands on the ssd base disk whatever the kind of the
+	// disk being created is).
 	taskID, err := t.poolService.AcquireBaseDisk(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
 		&pools_protos.AcquireBaseDiskRequest{
@@ -361,14 +360,8 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 		return nil
 	}
 
-	// Proxy overlay disk has min(disk size, base disk size) blocks. It is not
-	// larger than the base disk (a single partition overlay disk, NBS limits
-	// its size), and it is not larger than the disk being created: the
-	// transfer enumerates changed blocks of the whole source on every run,
-	// including the runs after a restart, before making any persistent
-	// progress, and a base disk of default size is 4 TB. The image always
-	// fits: the service guarantees that it fits into the disk, and a base
-	// disk is at least as large as the image.
+	// `maxBlocksCount` is used here to reduce the number of `GetChangedBlocks`
+	// requests when using a base disk with the default size of 4 TiB.
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDisk.DiskId,
@@ -408,9 +401,7 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 // Proxy overlay disks (and base disks) are not encrypted, and the data is
 // written to the disk as is. So the disk is either not encrypted or encrypted
 // at rest by NBS on its side (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, such disks
-// are mounted without encryption, see nbs.Client). Client-side encryption
-// (ENCRYPTION_AES_XTS) is not supported here: the service routes such disks to
-// the regular path, so this is just a sanity check of the params.
+// are mounted without encryption, see nbs.Client).
 func (t *createDiskFromBaseDiskTask) checkEncryption() error {
 	params := t.request.Params
 
