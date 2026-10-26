@@ -36,9 +36,9 @@ Other options:
 - `--unsafe-ignore-corruption`: allow `patch` to attempt recovery of a corrupt
   state file.
 
-`check` and `dump` take a shared advisory lock. `list` briefly probes each file
-with an exclusive lock, and `patch` takes an exclusive lock. Commands that open
-a state file map the exact locked file descriptor, preventing pathname
+`check`, `dump`, and `patch` take an exclusive advisory lock. `list` briefly
+probes each file with an exclusive lock. Commands that open a state file map
+the exact locked file descriptor, preventing pathname
 replacement between discovery, locking, and mapping. `--unsafe-ignore-lock`
 bypasses that coordination and can race with Filestore or another tool
 invocation.

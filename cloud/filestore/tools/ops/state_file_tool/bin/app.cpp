@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/tools/ops/state_file_tool/lib/file_lock.h>
 #include <cloud/filestore/tools/ops/state_file_tool/lib/state_file_locator.h>
-#include <cloud/filestore/tools/ops/state_file_tool/lib/state_file_processor.h>
+#include <cloud/filestore/tools/ops/state_file_tool/lib/state_file_editor.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_accessor.h>
@@ -137,8 +137,7 @@ private:
         Cerr << "Using state file: " << stateFile.GetName() << '\n';
 
         // The lock belongs to stateFile and is released by its destructor.
-        const auto lockOrError =
-            TryLock(stateFile, /* exclusive = */ !readOnly);
+        const auto lockOrError = TryLock(stateFile);
         if (HasError(lockOrError)) {
             Cerr << "Failed to lock state file: "
                  << FormatError(lockOrError.GetError()) << '\n';
@@ -205,7 +204,9 @@ private:
 
     int ActionDump(TFileRingBufferAccessor& accessor)
     {
-        PrintJson(TStateFileProcessor::DumpStateFile(accessor));
+        PrintJson(TStateFileEditor::DumpStateFile(
+            accessor,
+            NProto::EStateFileType::WriteBackCache));
         return 0;
     }
 
@@ -230,7 +231,7 @@ private:
         }
 
         const auto patchError =
-            TStateFileProcessor::PatchStateFile(accessor, PatchState);
+            TStateFileEditor::PatchStateFile(accessor, PatchState);
 
         if (HasError(patchError)) {
             Cerr << "Failed to patch state file: " << FormatError(patchError)
