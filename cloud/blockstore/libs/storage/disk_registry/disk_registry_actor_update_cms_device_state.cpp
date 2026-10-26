@@ -107,10 +107,17 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
 {
     auto* agentRegInfo = AgentRegInfo.FindPtr(args.Host);
     const bool agentAvailable = agentRegInfo && agentRegInfo->Connected;
-    const bool needToDetachPath = !args.DryRun &&
-                                  Config->GetAttachDetachPathsEnabled() &&
-                                  args.State == NProto::DEVICE_STATE_WARNING &&
-                                  !HasError(args.Error) && agentAvailable;
+    bool pathDetached = false;
+    if (const auto* agent = State->FindAgent(args.Host)) {
+        const auto& pathStates = agent->GetPathAttachStates();
+        const auto it = pathStates.find(args.Path);
+        pathDetached = it != pathStates.end() &&
+                       it->second == NProto::PATH_ATTACH_STATE_DETACHED;
+    }
+    const bool needToDetachPath =
+        !args.DryRun && Config->GetAttachDetachPathsEnabled() &&
+        args.State == NProto::DEVICE_STATE_WARNING && !HasError(args.Error) &&
+        agentAvailable && pathDetached;
 
     LOG_INFO(
         ctx,
