@@ -342,6 +342,35 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     }
 
     Y_UNIT_TEST_F(
+        ShouldRejectCompressedBlobResponseWithWrongBlobId,
+        TCompressedReadEnvironment)
+    {
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            for (const ui32 responseIndex: {0, 1}) {
+                StartCompressedRead(codec, true);
+                auto result = MakeReadResult();
+                UNIT_ASSERT(responseIndex < result->ResponseSz);
+                // Keep valid compressed data and change only the blob ID.
+                result->Responses[responseIndex].Id = NKikimr::TLogoBlobID(
+                    TabletId, 1, 2, 3, BlobId.BlobSize(), 5);
+
+                const auto response = FinishRead(std::move(result));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED, response->GetError().GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "invalid response received",
+                    response->GetError().GetMessage());
+                UNIT_ASSERT(response->BlockChecksums.empty());
+                for (const auto& block: Blocks) {
+                    UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST_F(
         ShouldRejectTruncatedCompressedBlob, TCompressedReadEnvironment)
     {
         StartCompressedRead(NProto::TBlobCompression::LZ4, true);

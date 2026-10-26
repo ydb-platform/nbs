@@ -361,9 +361,7 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
             TWellKnownEntityTypes::TABLET,
             PartitionTabletId);
 
-        if (response.Id != Request->BlobId || response.Buffer.empty() ||
-            response.Buffer.size() % BlockSize != 0)
-        {
+        if (response.Buffer.empty() || response.Buffer.size() % BlockSize != 0) {
             return MakeError(E_REJECTED, "invalid response received");
         }
 
@@ -477,6 +475,10 @@ void TReadBlobActor::HandleGetResult(
         for (auto& response: newResponses) {
             if (response.Status != NKikimrProto::OK) {
                 ReplyError(ctx, *msg, "read error");
+                return;
+            }
+            if (response.Id != Request->BlobId) {
+                ReplyError(ctx, *msg, "invalid response received");
                 return;
             }
         }
