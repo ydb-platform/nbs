@@ -33,7 +33,7 @@ func (s *storageYDB) loadDiskCleanupState(
 		return diskState{}, nil
 	}
 	state := states[0]
-	if !state.tombstone && diskIsNonExistent(state) {
+	if !state.tombstone && diskIsTombstone(state) {
 		// Older binaries left deleted_at unset for missing-disk tombstones.
 		// Persist the explicit flag before reserving any legacy cleanup.
 		state.tombstone = true
@@ -44,7 +44,7 @@ func (s *storageYDB) loadDiskCleanupState(
 	return state, nil
 }
 
-func diskIsNonExistent(state diskState) bool {
+func diskIsTombstone(state diskState) bool {
 	return state.status == diskStatusDeleted && !diskDeletionCompleted(state)
 }
 
@@ -82,7 +82,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 		if err != nil {
 			return err
 		}
-		if !diskIsNonExistent(state) {
+		if !diskIsTombstone(state) {
 			prepared = false
 			return tx.Commit(ctx)
 		}
@@ -121,7 +121,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 	if err != nil {
 		return err
 	}
-	if !diskIsNonExistent(state) || !slices.Contains(ids, cleanupID) {
+	if !diskIsTombstone(state) || !slices.Contains(ids, cleanupID) {
 		return nil
 	}
 	remaining := make([]string, 0, len(ids)-1)

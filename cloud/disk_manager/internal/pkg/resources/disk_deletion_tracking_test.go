@@ -107,7 +107,7 @@ func TestDiskTombstoneClassification(t *testing.T) {
 		{"deleting", diskState{status: diskStatusDeleting, tombstone: true}, false},
 		{"live", diskState{status: diskStatusReady}, false},
 	} {
-		t.Run(tc.name, func(t *testing.T) { require.Equal(t, tc.expected, diskIsNonExistent(tc.state)) })
+		t.Run(tc.name, func(t *testing.T) { require.Equal(t, tc.expected, diskIsTombstone(tc.state)) })
 	}
 }
 
