@@ -291,6 +291,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             ++ReadRequestsScheduled;
             readBlobSent = true;
 
+            // Compression is not implemented for part2 
             auto request =
                 std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                     MakeBlobId(TabletId, req.BlobId),
@@ -300,7 +301,8 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                     req.GroupId,
                     true,               // async
                     readBlobDeadline,   // deadline
-                    false               // shouldCalculateChecksums
+                    false,              // shouldCalculateChecksums
+                    std::nullopt        // compressionInfo
                 );
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

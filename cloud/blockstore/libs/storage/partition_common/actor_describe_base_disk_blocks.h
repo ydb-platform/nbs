@@ -1,16 +1,15 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
-
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -38,6 +37,8 @@ private:
     const NActors::TActorId NotifyActorId;
 
     NBlobMarkers::TBlockMarks BlockMarks;
+    TEvPartitionCommonPrivate::TBlobId2CompressionInfoList
+        BlobId2CompressionInfo;
 
 public:
     TDescribeBaseDiskBlocksActor(

@@ -108,7 +108,8 @@ struct TEvPartitionCommonPrivate
                 ui32 groupId,
                 bool async,
                 TInstant deadline,
-                bool shouldCalculateChecksums)
+                bool shouldCalculateChecksums,
+                std::optional<NProto::TBlobCompression> compressionInfo)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -117,6 +118,7 @@ struct TEvPartitionCommonPrivate
             , Async(async)
             , Deadline(deadline)
             , ShouldCalculateChecksums(shouldCalculateChecksums)
+            , CompressionInfo(std::move(compressionInfo))
         {}
     };
 
@@ -155,13 +157,23 @@ struct TEvPartitionCommonPrivate
     // DescribeBlocksCompleted
     //
 
+    struct TBlobId2CompressionInfo {
+        NKikimr::TLogoBlobID BlobId;
+        std::optional<NProto::TBlobCompression> CompressionInfo;
+    };
+
+    using TBlobId2CompressionInfoList = TVector<TBlobId2CompressionInfo>;
+
     struct TDescribeBlocksCompleted
     {
         NBlobMarkers::TBlockMarks BlockMarks;
+        TBlobId2CompressionInfoList BlobId2CompressionInfo;
 
         TDescribeBlocksCompleted(
-                NBlobMarkers::TBlockMarks blockMarks)
+                NBlobMarkers::TBlockMarks blockMarks,
+                TBlobId2CompressionInfoList blobId2CompressionInfo)
             : BlockMarks(std::move(blockMarks))
+            , BlobId2CompressionInfo(std::move(blobId2CompressionInfo))
         {}
     };
 

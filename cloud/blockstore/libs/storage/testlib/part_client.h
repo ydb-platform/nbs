@@ -216,7 +216,8 @@ public:
         const NKikimr::TLogoBlobID& blobId,
         const ui32 bSGroupId,
         const TVector<ui16>& blobOffsets,
-        TSgList sglist);
+        TSgList sglist,
+        std::optional<NProto::TBlobCompression> compressionInfo = std::nullopt);
 
     std::unique_ptr<TEvVolume::TEvCompactRangeRequest>
     CreateCompactRangeRequest(ui32 blockIndex, ui32 blockCount);

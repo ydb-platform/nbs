@@ -57,7 +57,6 @@ public:
         const NProto::TBlobMeta& blobMeta,
         const TStringBuf blockMask) override
     {
-        Y_UNUSED(blobMeta);
         Y_UNUSED(blockMask);
 
         ++Args.VisitCount;
@@ -70,6 +69,17 @@ public:
             Args.BlobsToReadInCurrentBatch.emplace_back(
                 MakeBlobId(TabletInfo.TabletID, Args.LastVisitedBlobId),
                 group);
+
+            std::optional<NProto::TBlobCompression> compressionInfo;
+            if (blobMeta.HasMergedBlocks() &&
+                blobMeta.GetMergedBlocks().HasCompressionInfo())
+            {
+                compressionInfo =
+                    blobMeta.GetMergedBlocks().GetCompressionInfo();
+            }
+
+            Args.BlobId2CompressionInfo[Args.LastVisitedBlobId] =
+                std::move(compressionInfo);
         }
 
         return Args.VisitCount < Args.BlobCountToVisit;
@@ -82,6 +92,7 @@ class TScanDiskActor final
     : public TActorBootstrapped<TScanDiskActor>
 {
 private:
+    const ui64 TabletId;
     const TActorId Tablet;
     const ui32 BlobsPerBatch = 0;
     const TPartialBlobId FinalBlobId;
@@ -90,6 +101,7 @@ private:
     TPartialBlobId BlobIdToRead;
 
     TVector<TBlobMark> RequestsInCurrentBatch;
+    TPartialBlobId2CompressionInfoMap BlobId2CompressionInfoForCurrentBatch;
     ui32 ReadBlobResponsesCounter = 0;
 
     TGuardedBuffer<TBlockBuffer> GuardedBuffer;
@@ -98,6 +110,7 @@ private:
 
 public:
     TScanDiskActor(
+        const ui64 tabletId,
         const TActorId& tablet,
         ui32 blobsPerBatch,
         ui64 finalCommitId,
@@ -138,12 +151,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskActor::TScanDiskActor(
+        const ui64 tabletId,
         const TActorId& tablet,
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
         TBlockBuffer blockBuffer)
-    : Tablet(tablet)
+    : TabletId(tabletId)
+    , Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
@@ -191,16 +206,27 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-        blobMark.BlobId,
-        MakeBlobStorageProxyID(blobMark.BSGroupId),
-        std::move(blobOffsets),
-        std::move(subSgList),
-        blobMark.BSGroupId,
-        false,           // async
-        TInstant::Max(), // deadline
-        false            // shouldCalculateChecksums
-    );
+    const auto* compressionInfo = BlobId2CompressionInfoForCurrentBatch.FindPtr(
+        MakePartialBlobId(blobMark.BlobId));
+    STORAGE_VERIFY_C(
+        compressionInfo,
+        TWellKnownEntityTypes::TABLET,
+        TabletId,
+        TStringBuilder() << "Compression info not found for blob "
+                         << blobMark.BlobId);
+
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            blobMark.BlobId,
+            MakeBlobStorageProxyID(blobMark.BSGroupId),
+            std::move(blobOffsets),
+            std::move(subSgList),
+            blobMark.BSGroupId,
+            false,             // async
+            TInstant::Max(),   // deadline
+            false,             // shouldCalculateChecksums
+            *compressionInfo   // compressionInfo
+        );
 
     NCloud::Send(
         ctx,
@@ -281,6 +307,8 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     ReadBlobResponsesCounter = 0;
 
     RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
+    BlobId2CompressionInfoForCurrentBatch =
+        std::move(msg->BlobId2CompressionInfo);
     for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
         SendReadBlobRequest(ctx, requestIndex);
     }
@@ -572,7 +600,8 @@ void TPartitionActor::CompleteScanDiskBatch(
         std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchResponse>(
             std::move(args.BlobsToReadInCurrentBatch),
             args.LastVisitedBlobId,
-            isScanCompleted));
+            isScanCompleted,
+            std::move(args.BlobId2CompressionInfo)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -596,6 +625,7 @@ IActorPtr TPartitionActor::CreateScanDiskActor(
     TBlockBuffer blockBuffer)
 {
     return std::make_unique<TScanDiskActor>(
+        TabletID(),
         std::move(tablet),
         blobsPerBatch,
         finalCommitId,

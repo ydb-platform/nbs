@@ -260,6 +260,7 @@ class TChangedBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     TTxPartition::TGetChangedBlocks& Args;
@@ -268,6 +269,19 @@ public:
     TChangedBlocksVisitor(TTxPartition::TGetChangedBlocks& args)
         : Args(args)
     {}
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo) override
+    {
+        Y_UNUSED(blockRange);
+        Y_UNUSED(blobId);
+        Y_UNUSED(skipMask);
+        Y_UNUSED(compressionInfo);
+        return true;
+    }
 
     bool Visit(const TFreshBlock& block) override
     {
@@ -501,6 +515,7 @@ bool TPartitionActor::PrepareGetChangedBlocks(
         args.HighCommitId
     );
     ready &= db.FindMergedBlocks(
+        visitor,
         visitor,
         args.ReadRange,
         true,   // precharge

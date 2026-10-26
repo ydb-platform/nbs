@@ -353,7 +353,8 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         LogTitle,
         SharedState->GetResourceMetricsQueue(),
         SharedState->GetGroupDowntimes(),
-        SharedState->GetPartCounters());
+        SharedState->GetPartCounters(),
+        nullptr);   // blobCompressor
     Become(&TThis::StateWork);
 
     StateLoaded = true;

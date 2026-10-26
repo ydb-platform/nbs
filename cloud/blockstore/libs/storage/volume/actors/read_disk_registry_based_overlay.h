@@ -60,6 +60,10 @@ private:
 
     size_t RequestsInFlight = 0;
 
+    // Blob compressor for decompressing blobs on the overlay disk.
+    std::shared_ptr<TBlobCompressor> BlobCompressor =
+        std::make_shared<TBlobCompressor>(VolumeTabletId, BlockSize);
+
 public:
     TReadDiskRegistryBasedOverlayActor(
         TRequestInfoPtr requestInfo,

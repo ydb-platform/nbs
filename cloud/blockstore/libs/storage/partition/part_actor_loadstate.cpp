@@ -309,7 +309,8 @@ void TPartitionActor::CompleteLoadState(
         LogTitle,
         SharedState->GetResourceMetricsQueue(),
         SharedState->GetGroupDowntimes(),
-        SharedState->GetPartCounters());
+        SharedState->GetPartCounters(),
+        BlobCompressor);
 
     MapBaseDiskIdToTabletId(ctx);
 

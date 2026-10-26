@@ -301,6 +301,10 @@ void TPartitionActor::FillDescribeBlocksResponse(
         blobPiece->SetBSGroupId(
             Info()->GroupFor(blobId.Channel(), blobId.Generation()));
 
+        // Partition2 blobs are uncompressed.
+        auto* compressionInfo = response->Record.AddBlobId2CompressionInfo();
+        *compressionInfo->MutableBlobId() = blobPiece->GetBlobId();
+
         do {
             auto blobOffset = iter->BlobOffset;
             auto blockIndex = iter->BlockIndex;

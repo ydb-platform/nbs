@@ -83,8 +83,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     GroupId,
                     false,             // async
                     TInstant::Max(),   // deadline
-                    shouldCalculateChecksums);
-            request->CompressionInfo = Blob.Compression;
+                    shouldCalculateChecksums,
+                    Blob.Compression);
 
             // Reads must use the blob's metadata, including its chunk size
             // and codec, rather than the reader's write settings.
@@ -376,7 +376,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 groupId,
                 false,           // async
                 TInstant::Max(), // deadline
-                false            // shouldCalculateChecksums
+                false,           // shouldCalculateChecksums
+                std::nullopt     // compressionInfo
             );
 
         auto readActor = ActorSystem.Register(
@@ -394,7 +395,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 std::move(request),
                 TDuration(),
                 0ull,
-                false));
+                false,   // passTraceIdToBlobstorage
+                nullptr));   // blobCompressor
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -469,7 +471,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 groupId,
                 false,           // async
                 TInstant::Max(), // deadline
-                false            // shouldCalculateChecksums
+                false,           // shouldCalculateChecksums
+                std::nullopt     // compressionInfo
             );
 
         auto readActor = ActorSystem.Register(
@@ -487,7 +490,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 std::move(request),
                 TDuration(),
                 0ull,
-                false));
+                false,   // passTraceIdToBlobstorage
+                nullptr));   // blobCompressor
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();
@@ -546,7 +550,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 groupId,
                 false,           // async
                 TInstant::Max(), // deadline
-                false            // shouldCalculateChecksums
+                false,           // shouldCalculateChecksums
+                std::nullopt     // compressionInfo
             );
 
         auto readActor = ActorSystem.Register(
@@ -564,7 +569,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 std::move(request),
                 TDuration(),
                 0ull,
-                false));
+                false,   // passTraceIdToBlobstorage
+                nullptr));   // blobCompressor
 
         auto readBlob = ActorSystem.GrabEdgeEvent<
             NKikimr::TEvBlobStorage::TEvGet>();

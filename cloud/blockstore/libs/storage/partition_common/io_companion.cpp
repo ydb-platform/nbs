@@ -26,7 +26,8 @@ TIOCompanion::TIOCompanion(
         TLogTitle& logTitle,
         std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
         std::shared_ptr<TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<TThreadSafePartCounters> partCounters)
+        std::shared_ptr<TThreadSafePartCounters> partCounters,
+        std::shared_ptr<TBlobCompressor> blobCompressor)
     : Config(std::move(config))
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))
@@ -43,6 +44,7 @@ TIOCompanion::TIOCompanion(
     , ResourceMetricsQueue(std::move(resourceMetricsQueue))
     , GroupDowntimes(std::move(groupDowntimes))
     , PartCounters(std::move(partCounters))
+    , BlobCompressor(std::move(blobCompressor))
 {}
 
 void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)

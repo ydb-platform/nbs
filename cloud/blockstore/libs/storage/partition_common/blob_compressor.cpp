@@ -43,7 +43,7 @@ ui32 GetChunkSize(
 {
     const ui32 chunkSize = compression.GetChunkSize();
     STORAGE_VERIFY(
-        chunkSize > blockSize && chunkSize % blockSize == 0,
+        chunkSize >= blockSize && chunkSize % blockSize == 0,
         TWellKnownEntityTypes::TABLET,
         tabletId);
     return chunkSize;
@@ -100,33 +100,45 @@ TBlobCompressor::TBlobCompressor(
     , Codec(GetCodec(tabletId, codec))
 {
     STORAGE_VERIFY(BlockSize, TWellKnownEntityTypes::TABLET, TabletId);
-    STORAGE_VERIFY(ChunkSize, TWellKnownEntityTypes::TABLET, TabletId);
+    STORAGE_VERIFY(*ChunkSize, TWellKnownEntityTypes::TABLET, TabletId);
     STORAGE_VERIFY(
-        ChunkSize % BlockSize == 0,
+        *ChunkSize % BlockSize == 0,
         TWellKnownEntityTypes::TABLET,
         TabletId);
     STORAGE_VERIFY(
-        BlockSize < ChunkSize,
+        BlockSize <= *ChunkSize,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 }
 
+TBlobCompressor::TBlobCompressor(ui64 tabletId, ui32 blockSize)
+    : TabletId(tabletId)
+    , BlockSize(blockSize)
+    , ChunkSize(std::nullopt)
+    , CodecId(std::nullopt)
+    , Codec(nullptr)
+{}
+
 TBlobCompressor::TCompressedBlob TBlobCompressor::CompressBlob(
     TStringBuf blobPayload) const
 {
+    STORAGE_VERIFY(ChunkSize, TWellKnownEntityTypes::TABLET, TabletId);
+    STORAGE_VERIFY(CodecId, TWellKnownEntityTypes::TABLET, TabletId);
+    STORAGE_VERIFY(Codec, TWellKnownEntityTypes::TABLET, TabletId);
+
     STORAGE_VERIFY(
         blobPayload.size() % BlockSize == 0,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
     TCompressedBlob result;
-    result.Compression.SetCodec(CodecId);
-    result.Compression.SetChunkSize(ChunkSize);
+    result.Compression.SetCodec(*CodecId);
+    result.Compression.SetChunkSize(*ChunkSize);
 
     TString compressedChunk;
     while (blobPayload) {
         const auto chunk =
-            blobPayload.Head(Min<size_t>(ChunkSize, blobPayload.size()));
+            blobPayload.Head(Min<size_t>(*ChunkSize, blobPayload.size()));
         try {
             Codec->Encode(chunk, compressedChunk);
         } catch (...) {

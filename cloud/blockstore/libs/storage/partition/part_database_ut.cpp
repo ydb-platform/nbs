@@ -31,16 +31,25 @@ struct TTestBlockVisitor final
 {
     TStringBuilder Result;
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
+    THashMap<
+        TPartialBlobId,
+        std::optional<NProto::TBlobCompression>,
+        TPartialBlobIdHash> BlobToCompressionInfo;
+    bool InterruptOnBlob = false;
 
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) override
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo) override
     {
         Y_UNUSED(skipMask);
         BlobToRange[blobId] = blockRange;
+        BlobToCompressionInfo[blobId] = compressionInfo
+                                          ? std::make_optional(*compressionInfo)
+                                          : std::nullopt;
 
-        return true;
+        return !InterruptOnBlob;
     }
 
     bool Visit(
@@ -407,6 +416,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TBlockRange32::WithLength(0, 2),
                     true,   // precharge
                     MaxBlocksCount,
@@ -417,6 +427,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
                     visitor,
                     TBlockRange32::MakeClosedInterval(5, 6),
                     true,   // precharge
@@ -429,6 +440,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TBlockRange32::MakeClosedInterval(2, 3),
                     true,   // precharge
                     MaxBlocksCount,
@@ -439,6 +451,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
                     visitor,
                     TBlockRange32::MakeClosedInterval(3, 4),
                     true,   // precharge
@@ -451,6 +464,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TBlockRange32::MakeClosedInterval(1, 5),
                     true,   // precharge
                     MaxBlocksCount,
@@ -461,6 +475,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
                     visitor,
                     TBlockRange32::MakeClosedInterval(1, 5),
                     true,   // precharge
@@ -515,6 +530,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TVector<ui32>{0, 1},
                     MaxBlocksCount,
                     maxCommitId
@@ -524,6 +540,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
                     visitor,
                     TVector<ui32>{5, 6},
                     MaxBlocksCount,
@@ -535,6 +552,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TVector<ui32>{2, 3},
                     MaxBlocksCount,
                     maxCommitId
@@ -544,6 +562,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             {
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
                     visitor,
                     TVector<ui32>{3, 4},
                     MaxBlocksCount,
@@ -555,6 +574,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TVector<ui32>{1, 3, 5},
                     MaxBlocksCount,
                     maxCommitId
@@ -565,12 +585,105 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 TTestBlockVisitor visitor;
                 UNIT_ASSERT(db.FindMergedBlocks(
                     visitor,
+                    visitor,
                     TVector<ui32>{1, 3, 5},
                     MaxBlocksCount
                 ));
                 UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #3:4 #1:5 #3:5 #5:5 #5:3");
             }
         });
+    }
+
+    Y_UNIT_TEST(ShouldReadMergedBlobCompressionInfo)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        TVector<std::optional<NProto::TBlobCompression>> compressionInfos = {
+            std::nullopt,
+            NProto::TBlobCompression(),
+        };
+        for (auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            NProto::TBlobCompression info;
+            info.SetCodec(codec);
+            info.SetChunkSize(2 * DefaultBlockSize);
+            info.AddChunkSizes(123);
+            info.AddChunkSizes(45);
+            compressionInfos.push_back(std::move(info));
+        }
+
+        TVector<TPartialBlobId> blobIds;
+        TVector<ui32> blocks;
+        for (ui32 i = 0; i < compressionInfos.size(); ++i) {
+            const auto range = TBlockRange32::WithLength(i * 128, 3);
+            blocks.push_back(range.Start);
+            blocks.push_back(range.End);
+            executor.WriteTx([&](TPartitionDatabase db) {
+                blobIds.push_back(executor.MakeBlobId());
+                const auto& info = compressionInfos[i];
+                db.WriteMergedBlocks(
+                    blobIds.back(),
+                    range,
+                    TBlockMask(),
+                    info ? &*info : nullptr);
+            });
+        }
+
+        for (bool readRange: {false, true}) {
+            for (ui64 maxCommitId: {blobIds[1].CommitId(), Max<ui64>()}) {
+                for (bool interrupt: {false, true}) {
+                    executor.ReadTx([&](TPartitionDatabase db) {
+                        TTestBlockVisitor visitor;
+                        visitor.InterruptOnBlob = interrupt;
+                        const bool ready = readRange
+                            ? db.FindMergedBlocks(
+                                  visitor,
+                                  visitor,
+                                  TBlockRange32::MakeClosedInterval(
+                                      blocks.front(),
+                                      blocks.back()),
+                                  true,   // precharge
+                                  MaxBlocksCount,
+                                  maxCommitId)
+                            : db.FindMergedBlocks(
+                                  visitor,
+                                  visitor,
+                                  blocks,
+                                  MaxBlocksCount,
+                                  maxCommitId);
+                        UNIT_ASSERT(ready);
+
+                        const size_t expectedCount = interrupt
+                            ? 1
+                            : maxCommitId == Max<ui64>() ? blobIds.size() : 2;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            visitor.BlobToCompressionInfo.size(),
+                            expectedCount);
+                        if (interrupt) {
+                            UNIT_ASSERT(visitor.Result.empty());
+                        }
+                        for (size_t i = 0; i < expectedCount; ++i) {
+                            const auto it =
+                                visitor.BlobToCompressionInfo.find(blobIds[i]);
+                            UNIT_ASSERT(
+                                it != visitor.BlobToCompressionInfo.end());
+                            const auto& actual = it->second;
+                            const auto& expected = compressionInfos[i];
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                actual.has_value(),
+                                expected.has_value());
+                            if (expected) {
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    actual->SerializeAsString(),
+                                    expected->SerializeAsString());
+                            }
+                        }
+                    });
+                }
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldFindBlobsInBlobsIndex)

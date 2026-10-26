@@ -70,12 +70,16 @@ void TDescribeBaseDiskBlocksActor::ReplyAndDie(
         NCloud::Send(
             ctx,
             NotifyActorId,
-            std::make_unique<TEvent>(error, NBlobMarkers::TBlockMarks{}));
+            std::make_unique<TEvent>(
+                error,
+                NBlobMarkers::TBlockMarks{},
+                TEvPartitionCommonPrivate::TBlobId2CompressionInfoList{}));
     }
 
     auto response = std::make_unique<TEvent>(
         std::move(error),
-        std::move(BlockMarks));
+        std::move(BlockMarks),
+        std::move(BlobId2CompressionInfo));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -132,6 +136,13 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
         }
     }
 
+    THashSet<TLogoBlobID> blobIdsWithKnownCompressionInfo;
+    for (const auto& blobId2CompressionInfo: record.GetBlobId2CompressionInfo())
+    {
+        blobIdsWithKnownCompressionInfo.insert(
+            LogoBlobIDFromLogoBlobID(blobId2CompressionInfo.GetBlobId()));
+    }
+
     for (const auto& piece: record.GetBlobPieces()) {
         for (const auto& range: piece.GetRanges()) {
             const auto blockRange = TBlockRange64::WithLength(
@@ -146,6 +157,17 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
                     " blockRange:" << DescribeRange(blockRange)
                 );
             }
+        }
+
+        const auto blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
+
+        if (!blobIdsWithKnownCompressionInfo.contains(blobId)) {
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "DescribeBlocks error. Blob compression "
+                                    "info is not known."
+                                    " blobId: "
+                                 << blobId);
         }
     }
 
@@ -195,6 +217,17 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
                 }
             }
         }
+    }
+
+    for (const auto& blobId2CompressionInfo: record.GetBlobId2CompressionInfo())
+    {
+        std::optional<NProto::TBlobCompression> compressionInfo;
+        if (blobId2CompressionInfo.HasCompressionInfo()) {
+            compressionInfo = blobId2CompressionInfo.GetCompressionInfo();
+        }
+        BlobId2CompressionInfo.emplace_back(
+            LogoBlobIDFromLogoBlobID(blobId2CompressionInfo.GetBlobId()),
+            std::move(compressionInfo));
     }
 }
 

@@ -59,7 +59,7 @@ public:
         TDuration longRunningThreshold,
         ui64 bsGroupOperationId,
         bool passTraceIdToBlobstorage,
-        std::shared_ptr<TBlobCompressor> blobCompressor = nullptr);
+        std::shared_ptr<TBlobCompressor> blobCompressor);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

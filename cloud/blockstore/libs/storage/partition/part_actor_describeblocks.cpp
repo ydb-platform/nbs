@@ -28,6 +28,7 @@ class TDescribeBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     TTxPartition::TDescribeBlocks& Args;
@@ -36,6 +37,21 @@ public:
     TDescribeBlocksVisitor(TTxPartition::TDescribeBlocks& args)
         : Args(args)
     {}
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo) override
+    {
+        Y_UNUSED(blockRange, skipMask);
+
+        Args.BlobId2CompressionInfo[blobId] =
+            compressionInfo ? std::make_optional(*compressionInfo)
+                            : std::nullopt;
+
+        return true;
+    }
 
     bool Visit(const TFreshBlock& block) override
     {
@@ -65,6 +81,10 @@ public:
         ui8 compactionRangeCount) override
     {
         Y_UNUSED(compactionRangeCount);
+
+        // We not compress mixed blobs.
+        Args.BlobId2CompressionInfo[blobId] = std::nullopt;
+
         Args.MarkWithBlob(blockIndex, commitId, blobId, blobOffset);
         return true;
     }
@@ -250,6 +270,7 @@ bool TPartitionActor::PrepareDescribeBlocks(
         commitId);
     ready &= db.FindMergedBlocks(
         visitor,
+        visitor,
         args.DescribeRange,
         false,   // precharge
         State->GetMaxBlocksInBlob(),
@@ -393,9 +414,29 @@ void TPartitionActor::FillDescribeBlocksResponse(
 
     TVector<TBlobMark> blobMarks;
     blobMarks.reserve(args.Marks.size());
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobIds;
     for (const auto& mark: args.Marks) {
         Y_ABORT_UNLESS(std::holds_alternative<TBlobMark>(mark));
         blobMarks.push_back(std::get<TBlobMark>(mark));
+        blobIds.insert(blobMarks.back().BlobId);
+    }
+
+    for (const auto& [partialBlobId, compressionInfo]:
+         args.BlobId2CompressionInfo)
+    {
+        // We need only export compression info for visible blobs
+        if (!blobIds.contains(partialBlobId)) {
+            continue;
+        }
+        auto* blobIdToCompressionInfo =
+            response->Record.AddBlobId2CompressionInfo();
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(TabletID(), partialBlobId),
+            blobIdToCompressionInfo->MutableBlobId());
+        if (compressionInfo) {
+            *blobIdToCompressionInfo->MutableCompressionInfo() =
+                *compressionInfo;
+        }
     }
 
     auto iter = blobMarks.begin();

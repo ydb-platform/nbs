@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/model/background_ops_throttling.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -119,6 +120,7 @@ public:
         TRangeCompactionInfo* RangeCompactionInfo = nullptr;
         ui32 GroupId = 0;
         TVector<ui32> BlockChecksums;
+        std::optional<NProto::TBlobCompression> CompressionInfo;
 
         TBatchRequest() = default;
 
@@ -128,7 +130,8 @@ public:
                       TVector<ui16> unchangedBlobOffsets,
                       TVector<TRequest*> requests,
                       TRangeCompactionInfo* rangeCompactionInfo,
-                      ui32 groupId)
+                      ui32 groupId,
+                      std::optional<NProto::TBlobCompression> compressionInfo)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -136,6 +139,7 @@ public:
             , Requests(std::move(requests))
             , RangeCompactionInfo(rangeCompactionInfo)
             , GroupId(groupId)
+            , CompressionInfo(std::move(compressionInfo))
         {}
     };
 
@@ -195,6 +199,11 @@ private:
     TVector<TCallContextPtr> ForkedWriteAndPatchCallContexts;
     bool SafeToUseOrbit = true;
 
+    // std::nullopt means that blob is not compressed. If there is no element in
+    // the map, it means that we don't know about compression and should crash
+    // instead of try to read blob.
+    TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
+
 public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
@@ -214,7 +223,8 @@ public:
         TChildLogTitle logTitle,
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
-        TVector<TPartialBlobId> blobsToReadBlobMetas);
+        TVector<TPartialBlobId> blobsToReadBlobMetas,
+        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -290,7 +300,8 @@ TCompactionActor::TCompactionActor(
         TChildLogTitle logTitle,
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
-        TVector<TPartialBlobId> blobsToReadBlobMetas)
+        TVector<TPartialBlobId> blobsToReadBlobMetas,
+        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
@@ -309,6 +320,7 @@ TCompactionActor::TCompactionActor(
     , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
     , CompactionTxTime(compactionTxTime)
+    , BlobId2CompressionInfo(std::move(blobId2CompressionInfo))
 {}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
@@ -536,7 +548,8 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                     std::move(current.UnchangedBlobOffsets),
                     std::move(current.Requests),
                     current.RangeCompactionInfo,
-                    current.GroupId);
+                    current.GroupId,
+                    std::move(current.CompressionInfo));
             }
             current.GroupId = r->GroupId;
             current.BlobId = r->BlobId;
@@ -544,6 +557,16 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             currentRangeCompactionIndex = r->RangeCompactionIndex;
             current.RangeCompactionInfo =
                 &RangeCompactionInfos[r->RangeCompactionIndex];
+
+            const auto* compressionInfo =
+                BlobId2CompressionInfo.FindPtr(r->BlobId);
+            STORAGE_VERIFY_C(
+                compressionInfo,
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                TStringBuilder()
+                    << "Compession info not found for blob " << r->BlobId);
+            current.CompressionInfo = *compressionInfo;
         }
 
         if (current.BlobId == current.RangeCompactionInfo->OriginalBlobId) {
@@ -567,7 +590,8 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             std::move(current.UnchangedBlobOffsets),
             std::move(current.Requests),
             current.RangeCompactionInfo,
-            current.GroupId);
+            current.GroupId,
+            std::move(current.CompressionInfo));
     }
 
     const auto readBlobDeadline =
@@ -604,17 +628,18 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            MakeBlobId(TabletId, batch.BlobId),
-            batch.Proxy,
-            std::move(batch.BlobOffsets),
-            std::move(subSgList),
-            batch.GroupId,
-            true,            // async
-            readBlobDeadline, // deadline
-            shouldCalculateChecksums
-        );
-
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                MakeBlobId(TabletId, batch.BlobId),
+                batch.Proxy,
+                std::move(batch.BlobOffsets),
+                std::move(subSgList),
+                batch.GroupId,
+                true,               // async
+                readBlobDeadline,   // deadline
+                shouldCalculateChecksums,
+                std::move(batch.CompressionInfo)   // compressionInfo
+            );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -679,6 +704,14 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
         }
 
         if (rc.OriginalBlobId) {
+            STORAGE_VERIFY_C(
+                *BlobId2CompressionInfo.FindPtr(rc.OriginalBlobId) ==
+                    std::nullopt,
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                TStringBuilder() << "Original blob " << rc.OriginalBlobId
+                                 << " is compressed, but we don't support "
+                                    "patching for compressed blobs");
             MakeDiffs(rc);
 
             auto request =
@@ -2349,7 +2382,8 @@ bool TPartitionActor::PrepareCompaction(
             *State,
             rangeCompaction,
             args.BlobsToReadBlockMasks,
-            args.BlobsToReadBlobMetas);
+            args.BlobsToReadBlobMetas,
+            args.BlobId2CompressionInfo);
 
         LOG_DEBUG(
             ctx,
@@ -2476,7 +2510,8 @@ void TPartitionActor::CompleteCompaction(
             args.BlobsToReadBlockMasks.end()),
         TVector<TPartialBlobId>(
             args.BlobsToReadBlobMetas.begin(),
-            args.BlobsToReadBlobMetas.end()));
+            args.BlobsToReadBlobMetas.end()),
+        std::move(args.BlobId2CompressionInfo));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

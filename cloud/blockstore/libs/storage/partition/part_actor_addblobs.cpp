@@ -370,6 +370,10 @@ private:
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
+        if (blob.CompressionInfo) {
+            mergedBlocks.MutableCompressionInfo()->CopyFrom(
+                *blob.CompressionInfo);
+        }
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
@@ -396,7 +400,11 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
+        db.WriteMergedBlocks(
+            blob.BlobId,
+            blob.BlockRange,
+            blob.SkipMask,
+            blob.CompressionInfo ? &*blob.CompressionInfo : nullptr);
 
         // update counters
         IncrementBlobCounters(

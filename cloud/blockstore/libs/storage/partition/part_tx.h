@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -254,6 +255,7 @@ struct TTxPartition
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
         THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
+        TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
@@ -282,6 +284,7 @@ struct TTxPartition
             std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
             std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
             BlobId2Meta.clear();
+            BlobId2CompressionInfo.clear();
             BlockInfos.clear();
         }
 
@@ -464,6 +467,8 @@ struct TTxPartition
         THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
 
+        TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
+
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
@@ -490,6 +495,7 @@ struct TTxPartition
             }
             BlobsToReadBlockMasks.clear();
             BlobsToReadBlobMetas.clear();
+            BlobId2CompressionInfo.clear();
         }
     };
 
@@ -630,6 +636,8 @@ struct TTxPartition
         ui32 VisitCount = 0;
         TPartialBlobId LastVisitedBlobId;
 
+        TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
+
         TScanDiskBatch(
                 TRequestInfoPtr requestInfo,
                 TPartialBlobId startBlobId,
@@ -646,6 +654,7 @@ struct TTxPartition
             BlobsToReadInCurrentBatch.clear();
             VisitCount = 0;
             LastVisitedBlobId = TPartialBlobId();
+            BlobId2CompressionInfo.clear();
         }
     };
 
@@ -1111,6 +1120,7 @@ struct TTxPartition
         using TBlockMark = std::variant<TEmptyMark, TBlobMark, TFreshMark>;
 
         TVector<TBlockMark> Marks;
+        TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
         bool Interrupted = false;
 
         TDescribeBlocks(
@@ -1128,6 +1138,7 @@ struct TTxPartition
         void Clear()
         {
             std::fill(Marks.begin(), Marks.end(), TEmptyMark());
+            BlobId2CompressionInfo.clear();
         }
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)

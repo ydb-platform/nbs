@@ -19,6 +19,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+class TBlobCompressor;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class IIOCompanionClient: public IMortalActor
@@ -65,6 +67,7 @@ private:
     std::shared_ptr<TResourceMetricsQueue> ResourceMetricsQueue;
     std::shared_ptr<TGroupDowntimes> GroupDowntimes;
     std::shared_ptr<TThreadSafePartCounters> PartCounters;
+    const std::shared_ptr<TBlobCompressor> BlobCompressor;
 
 public:
     TIOCompanion(
@@ -83,7 +86,8 @@ public:
         TLogTitle& logTitle,
         std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
         std::shared_ptr<TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<TThreadSafePartCounters> partCounters);
+        std::shared_ptr<TThreadSafePartCounters> partCounters,
+        std::shared_ptr<TBlobCompressor> blobCompressor);
 
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,

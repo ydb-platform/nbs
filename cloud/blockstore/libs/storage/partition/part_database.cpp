@@ -4,6 +4,8 @@
 
 #include <util/generic/algorithm.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NKikimr;
@@ -467,7 +469,8 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const TBlockMask& skipMask)
+    const TBlockMask& skipMask,
+    const NProto::TBlobCompression* compressionInfo)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -481,6 +484,11 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     if (!skipMask.Empty()) {
         value.Update(
             NIceDb::TUpdate<TTable::SkipMask>(BlockMaskAsString(skipMask)));
+    }
+
+    if (compressionInfo) {
+        value.Update(
+            NIceDb::TUpdate<TTable::CompressionInfo>(*compressionInfo));
     }
 }
 
@@ -553,7 +561,18 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                if (!blobsVisitor.Visit(range, blobId, skipMask)) {
+                std::optional<NProto::TBlobCompression> compressionInfo;
+                if (it.template HaveValue<TTable::CompressionInfo>()) {
+                    compressionInfo =
+                        it.template GetValue<TTable::CompressionInfo>();
+                }
+
+                if (!blobsVisitor.Visit(
+                        range,
+                        blobId,
+                        skipMask,
+                        compressionInfo ? &*compressionInfo : nullptr))
+                {
                     return true;   // interrupted
                 }
 
@@ -601,39 +620,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     IBlocksIndexVisitor& visitor,
-    const TBlockRange32& readRange,
-    bool precharge,
-    ui32 maxBlocksInBlob,
-    ui64 maxCommitId)
-{
-    struct TNoOpBlobsVisitor final: public IBlobsVisitor
-    {
-        bool Visit(
-            TBlockRange32 blockRange,
-            const TPartialBlobId& blobId,
-            const TBlockMask& skipMask) override
-        {
-            Y_UNUSED(blockRange);
-            Y_UNUSED(blobId);
-            Y_UNUSED(skipMask);
-            return true;
-        }
-    };
-
-    TNoOpBlobsVisitor noOpBlobsVisitor;
-
-    return FindMergedBlocks(
-        visitor,
-        noOpBlobsVisitor,
-        readRange,
-        precharge,
-        maxBlocksInBlob,
-        maxCommitId);
-}
-
-template <typename TCounters>
-bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
-    IBlocksIndexVisitor& visitor,
+    IBlobsVisitor& blobsVisitor,
     const TVector<ui32>& blocks,
     ui32 maxBlocksInBlob,
     ui64 maxCommitId)
@@ -680,6 +667,21 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
                     const auto skipMask = BlockMaskFromString(
                         it.template GetValueOrDefault<TTable::SkipMask>());
+
+                    std::optional<NProto::TBlobCompression> compressionInfo;
+                    if (it.template HaveValue<TTable::CompressionInfo>()) {
+                        compressionInfo =
+                            it.template GetValue<TTable::CompressionInfo>();
+                    }
+
+                    if (!blobsVisitor.Visit(
+                            range,
+                            blobId,
+                            skipMask,
+                            compressionInfo ? &*compressionInfo : nullptr))
+                    {
+                        return true;   // interrupted
+                    }
 
                     ui32 skipped = 0;
                     for (ui32 blockIndex = range.Start; blockIndex < *start;
@@ -967,7 +969,9 @@ static EIndexProcResult FindBlocksInBlobIndex(
             ui16 BlobOffset = InvalidBlobOffset;
         };
 
-        struct TVisitor final: public IBlocksIndexVisitor
+        struct TVisitor final
+            : public IBlocksIndexVisitor
+            , public IBlobsVisitor
         {
             TBlockRange32 Intersection;
             TPartialBlobId BlobId;
@@ -979,6 +983,19 @@ static EIndexProcResult FindBlocksInBlobIndex(
                 , BlobId(blobId)
                 , Marks(intersection.Size())
             {}
+
+            bool Visit(
+                TBlockRange32 blockRange,
+                const TPartialBlobId& blobId,
+                const TBlockMask& skipMask,
+                const NProto::TBlobCompression* compressionInfo) override
+            {
+                Y_UNUSED(blockRange);
+                Y_UNUSED(blobId);
+                Y_UNUSED(skipMask);
+                Y_UNUSED(compressionInfo);
+                return true;
+            }
 
             bool Visit(
                 ui32 blockIndex,
@@ -1000,6 +1017,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
         // just using BlobMeta isn't enough - we need SkipMask to properly
         // iterate blocks belonging to this merged blob
         const bool ready = db.FindMergedBlocks(
+            helper,
             helper,
             blockRange,
             true,   // precharge

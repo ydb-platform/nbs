@@ -187,6 +187,8 @@ private:
 
     TVector<TRequestInfoPtr> PendingPoisonPills;
 
+    std::shared_ptr<TBlobCompressor> BlobCompressor;
+
 public:
     TPartitionActor(
         const NActors::TActorId& owner,

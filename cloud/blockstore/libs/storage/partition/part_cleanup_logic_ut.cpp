@@ -194,8 +194,10 @@ struct TMergedBlobVisitor final
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) override
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo) override
     {
+        Y_UNUSED(compressionInfo);
         Y_UNUSED(blockRange);
         Y_UNUSED(skipMask);
 

@@ -225,6 +225,7 @@ message TBlobMeta
         uint32 Start = 1;
         uint32 End = 2;
         uint32 Skipped = 3;
+        optional TBlobCompression CompressionInfo = 4;
     }
 
     oneof Blocks

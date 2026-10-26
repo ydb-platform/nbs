@@ -1,6 +1,7 @@
 #include "read_disk_registry_based_overlay.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -368,6 +369,12 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
     currentRequest->Deadline = TInstant::Max();
     TSgList currentSgList;
 
+    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TBlobCompression>>
+        blobId2CompressionInfo;
+    for (const auto& [blobId, compressionInfo]: msg->BlobId2CompressionInfo) {
+        blobId2CompressionInfo[blobId] = compressionInfo;
+    }
+
     for (const auto& request: requests) {
         const auto& requestRef = request.BlobMark;
         const auto& dataRef = request.DataRef;
@@ -388,7 +395,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     std::move(currentRequest),
                     LongRunningThreshold,
                     0ull,
-                    false);   // passTraceIdToBlobstorage
+                    false,             // passTraceIdToBlobstorage
+                    BlobCompressor);   // blobCompressor
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
@@ -396,6 +404,16 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             currentRequest->BlobId = requestRef.BlobId;
             currentRequest->Proxy = NKikimr::MakeBlobStorageProxyID(requestRef.BSGroupId);
             currentRequest->GroupId = requestRef.BSGroupId;
+
+            auto* compressionInfo =
+                blobId2CompressionInfo.FindPtr(requestRef.BlobId);
+            STORAGE_VERIFY_C(
+                compressionInfo,
+                TWellKnownEntityTypes::TABLET,
+                VolumeTabletId,
+                TStringBuilder() << "compression info not found for blob "
+                                 << requestRef.BlobId);
+            currentRequest->CompressionInfo = *compressionInfo;
         }
 
         currentRequest->BlobOffsets.push_back(requestRef.BlobOffset);
@@ -417,7 +435,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             std::move(currentRequest),
             LongRunningThreshold,
             0ull,
-            false);   // passTraceIdToBlobstorage
+            false,             // passTraceIdToBlobstorage
+            BlobCompressor);   // blobCompressor
     }
 }
 

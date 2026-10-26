@@ -100,6 +100,11 @@ TPartitionActor::TPartitionActor(
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
         TabletID());
+    BlobCompressor = std::make_shared<TBlobCompressor>(
+        TabletID(),
+        PartitionConfig.GetBlockSize(),
+        Max<ui64>(32_KB, PartitionConfig.GetBlockSize()),
+        NProto::TBlobCompression::LZ4);
 }
 
 TPartitionActor::~TPartitionActor()

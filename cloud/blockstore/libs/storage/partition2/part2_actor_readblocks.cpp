@@ -534,6 +534,7 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
+        // Compression is not implemented for part2 
         auto request =
             std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                 batch.BlobId,
@@ -543,7 +544,8 @@ void TReadBlocksActor::ReadBlocks(
                 batch.GroupId,
                 false,             // async
                 TInstant::Max(),   // deadline
-                false              // shouldCalculateChecksums
+                false,             // shouldCalculateChecksums
+                std::nullopt       // compressionInfo
             );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

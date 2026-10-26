@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/util/rope.h>
@@ -67,13 +68,13 @@ private:
     const ui64 TabletId;
 
     // Size of one uncompressed block in bytes, used for both reads and writes.
-    const ui32 BlockSize;
+    ui32 BlockSize;
 
     // Uncompressed chunk size in bytes, used for writes.
-    const ui32 ChunkSize;
+    const std::optional<ui32> ChunkSize;
 
     // Codec recorded in the metadata of newly compressed blobs.
-    const NProto::TBlobCompression::ECodec CodecId;
+    const std::optional<NProto::TBlobCompression::ECodec> CodecId;
 
     // Codec implementation used to compress new blobs.
     const NBlockCodecs::ICodec* const Codec;
@@ -89,11 +90,20 @@ public:
      *  of and greater than blockSize.
      * @param codec - Compression codec: LZ4 or ZSTD.
      */
-    explicit TBlobCompressor(
+    TBlobCompressor(
         ui64 tabletId,
         ui32 blockSize,
         ui32 chunkSize,
         NProto::TBlobCompression::ECodec codec);
+
+    /**
+     * Constructs blobs compressor without block size and chunk size. So it can
+     * be used only to decompress blobs with known compression settings.
+     *
+     * @param tabletId - Tablet ID used in invariant violations.
+     * @param blockSize - Nonzero size of one uncompressed block in bytes.
+     */
+    explicit TBlobCompressor(ui64 tabletId, ui32 blockSize);
 
     /**
      * Compresses a blob using the configured chunk size and codec. The final
@@ -167,5 +177,13 @@ public:
         const NProto::TBlobCompression& compression,
         const TVector<ui16>& blockOffsets) const;
 };
+
+using TPartialBlobId2CompressionInfoMap = THashMap<
+    TPartialBlobId,
+    std::optional<NProto::TBlobCompression>,
+    TPartialBlobIdHash>;
+
+using TBlobId2CompressionInfoMap =
+    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TBlobCompression>>;
 
 }   // namespace NCloud::NBlockStore::NStorage

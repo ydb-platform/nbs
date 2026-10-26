@@ -424,7 +424,8 @@ TPartitionClient::CreateReadBlobRequest(
     const NKikimr::TLogoBlobID& blobId,
     const ui32 bSGroupId,
     const TVector<ui16>& blobOffsets,
-    TSgList sglist)
+    TSgList sglist,
+    std::optional<NProto::TBlobCompression> compressionInfo)
 {
     auto request =
         std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
@@ -435,8 +436,8 @@ TPartitionClient::CreateReadBlobRequest(
             bSGroupId,
             false,             // async
             TInstant::Max(),   // deadline
-            false              // shouldCalculateChecksums
-        );
+            false,             // shouldCalculateChecksums
+            std::move(compressionInfo));
     return request;
 }
 

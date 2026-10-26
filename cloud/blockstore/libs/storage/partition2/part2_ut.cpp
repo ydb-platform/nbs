@@ -792,7 +792,8 @@ public:
                 bSGroupId,
                 false,             // async
                 TInstant::Max(),   // deadline
-                false              // shouldCalculateChecksums
+                false,             // shouldCalculateChecksums
+                std::nullopt       // compressionInfo
             );
         return request;
     }
@@ -3888,6 +3889,19 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 partition.DescribeBlocks(TBlockRange32::WithLength(1, 4));
             const auto& message = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(2, message.BlobPiecesSize());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, message.BlobId2CompressionInfoSize());
+            THashSet<TLogoBlobID> uncompressedBlobIds;
+            for (const auto& info: message.GetBlobId2CompressionInfo()) {
+                UNIT_ASSERT(!info.HasCompressionInfo());
+                uncompressedBlobIds.insert(
+                    LogoBlobIDFromLogoBlobID(info.GetBlobId()));
+            }
+            for (const auto& piece: message.GetBlobPieces()) {
+                UNIT_ASSERT(uncompressedBlobIds.erase(
+                    LogoBlobIDFromLogoBlobID(piece.GetBlobId())));
+            }
+            UNIT_ASSERT(uncompressedBlobIds.empty());
 
             const auto& blobPiece1 = message.GetBlobPieces(0);
             UNIT_ASSERT_VALUES_EQUAL(1, blobPiece1.RangesSize());

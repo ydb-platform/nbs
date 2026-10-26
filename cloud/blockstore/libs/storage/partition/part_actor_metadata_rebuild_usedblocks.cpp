@@ -22,6 +22,7 @@ class TMetadataRebuildBlockVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     TTxPartition::TMetadataRebuildUsedBlocks& Args;
@@ -32,6 +33,19 @@ public:
     {}
 
 public:
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo) override
+    {
+        Y_UNUSED(blockRange);
+        Y_UNUSED(blobId);
+        Y_UNUSED(skipMask);
+        Y_UNUSED(compressionInfo);
+        return true;
+    }
+
     bool Visit(const TFreshBlock& block) override
     {
         OnBlock(block.Meta.BlockIndex, block.Meta.CommitId, !!block.Content);
@@ -322,6 +336,7 @@ bool TPartitionActor::PrepareMetadataRebuildUsedBlocks(
         true    // precharge
     );
     ready &= db.FindMergedBlocks(
+        visitor,
         visitor,
         args.BlockRange,
         true,   // precharge

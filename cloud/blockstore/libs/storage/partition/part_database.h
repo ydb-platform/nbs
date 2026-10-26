@@ -129,7 +129,8 @@ public:
     void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const TBlockMask& skipMask);
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compressionInfo = nullptr);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
@@ -145,13 +146,7 @@ public:
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
-        const TBlockRange32& readRange,
-        bool precharge,
-        ui32 maxBlocksInBlob,
-        ui64 maxCommitId = Max());
-
-    bool FindMergedBlocks(
-        IBlocksIndexVisitor& visitor,
+        IBlobsVisitor& blobsVisitor,
         const TVector<ui32>& blocks,
         ui32 maxBlocksInBlob,
         ui64 maxCommitId = Max());
