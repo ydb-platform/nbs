@@ -1,10 +1,9 @@
-#include "parser.h"
-#include "lexer.h"
 #include "query.h"
 
-#include <sstream>
-#include <util/string/builder.h>
+#include "lexer.h"
+#include "parser.h"
 
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage::NQuery {
 
@@ -15,7 +14,7 @@ TResultOrError<TSelect> Parse(TStringBuf input)
     const std::string inputText(input.data(), input.size());
     std::istringstream inputStream(inputText);
     TParseContext context;
-    TQueryLexer lexer(inputStream);
+    TQueryLexer lexer(&inputStream);
     const int result = yyparse(context, lexer);
 
     if (result != 0) {
@@ -24,8 +23,8 @@ TResultOrError<TSelect> Parse(TStringBuf input)
         }
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder() << context.Error.Message
-                             << " at byte " << context.Error.Offset);
+            TStringBuilder() << context.Error.Message << " at byte "
+                             << context.Error.Offset);
     }
 
     return std::move(context.Query);

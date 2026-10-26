@@ -2,7 +2,6 @@
 #include "parser.h"
 #include <cloud/filestore/libs/storage/tablet/query/lexer.h>
 
-// Route Bison's scanner call to the lexer object passed to yyparse.
 #define yylex lexer.yylex
 
 #include <memory>
