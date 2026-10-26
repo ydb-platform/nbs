@@ -268,6 +268,9 @@ void TIndexTabletActor::ReplyListNodes(
         std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
+        record.SetCacheTTL(
+            GetFileSystemListingEventsCacheTTL(args.RequestInfo->PipeServerId)
+                .MilliSeconds());
         record.MutableNames()->Reserve(args.ChildRefs.size());
         record.MutableNodes()->Reserve(args.ChildRefs.size());
 
@@ -358,6 +361,9 @@ void TIndexTabletActor::ReplyListNodesInternal(
         }
 
         auto& record = response->Record;
+        record.SetCacheTTL(
+            GetFileSystemListingEventsCacheTTL(args.RequestInfo->PipeServerId)
+                .MilliSeconds());
         TListNodesInternalResponseBuilder builder(
             record,
             nameBufferSize,
@@ -436,7 +442,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    if (!HasError(args.Error)) {
+    if (!HasError(args.Error) && IsFileSystemListingEventsEnabled()) {
         //
         // The client may cache the listed entries and the attrs of the local
         // child nodes. The attrs of the external nodes are fetched from the

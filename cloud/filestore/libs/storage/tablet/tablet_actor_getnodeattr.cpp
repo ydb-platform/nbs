@@ -205,6 +205,8 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 pipeServerId,
                 args.TargetNodeId);
         }
+        response->Record.SetCacheTTL(
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds());
 
         auto* node = response->Record.MutableNode();
         if (args.ShardId) {
@@ -418,24 +420,28 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
     if (!HasError(args.Error)) {
         const auto& pipeServerId = args.RequestInfo->PipeServerId;
-        for (ui32 i = 0; i < args.Response.ResponsesSize(); ++i) {
-            const auto& nodeResponse = args.Response.GetResponses(i);
-            if (HasError(nodeResponse.GetError())) {
-                continue;
-            }
+        if (IsFileSystemListingEventsEnabled()) {
+            for (ui32 i = 0; i < args.Response.ResponsesSize(); ++i) {
+                const auto& nodeResponse = args.Response.GetResponses(i);
+                if (HasError(nodeResponse.GetError())) {
+                    continue;
+                }
 
-            AddFileSystemEventNodeRefSubscriber(
-                ctx,
-                pipeServerId,
-                args.Request.GetNodeId(),
-                args.Request.GetNames(i));
-            AddFileSystemEventNodeSubscriber(
-                ctx,
-                pipeServerId,
-                nodeResponse.GetNode().GetId());
+                AddFileSystemEventNodeRefSubscriber(
+                    ctx,
+                    pipeServerId,
+                    args.Request.GetNodeId(),
+                    args.Request.GetNames(i));
+                AddFileSystemEventNodeSubscriber(
+                    ctx,
+                    pipeServerId,
+                    nodeResponse.GetNode().GetId());
+            }
         }
 
         response->Record = std::move(args.Response);
+        response->Record.SetCacheTTL(
+            GetFileSystemListingEventsCacheTTL(pipeServerId).MilliSeconds());
 
         Metrics->GetNodeAttrInShard.Update(
             args.Request.NamesSize(),

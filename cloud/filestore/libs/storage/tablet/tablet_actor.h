@@ -501,6 +501,12 @@ private:
 
     void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
 
+    TDuration GetFileSystemEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
+    TDuration GetFileSystemListingEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
     ui32 SendFileSystemEvents(
         const NActors::TActorContext& ctx,
         const TVector<NProto::TFileSystemEvent>& events);

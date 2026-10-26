@@ -252,6 +252,7 @@ private:
 
     /*const*/ bool FileSystemEventsEnabled = false;
     /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
+    /*const*/ bool FileSystemListingEventsEnabled = false;
 
     bool StateLoaded = false;
 
@@ -474,6 +475,19 @@ public:
     bool IsFileSystemEventsEnabled() const
     {
         return FileSystemEventsEnabled;
+    }
+
+    /**
+     * Checks whether GetNodeAttrBatch, ListNodes and ListNodesInternal
+     * subscribe the client to the returned Nodes and NodeRefs and allow it to
+     * cache them.
+     *
+     * @return - True if both FileSystemEventsEnabled and
+     *  FileSystemListingEventsEnabled are set.
+     */
+    bool IsFileSystemListingEventsEnabled() const
+    {
+        return FileSystemEventsEnabled && FileSystemListingEventsEnabled;
     }
 
     ui64 GetCurrentCommitId() const

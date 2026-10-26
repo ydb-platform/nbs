@@ -982,4 +982,18 @@ message TStorageConfig
     // changed and the service is restarted. YDB cleans up old backups per
     // directory, so the directory must not be shared with other processes.
     optional string SystemTabletBackupDirPath = 559;
+
+    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes and
+    // ListNodesInternal (see FileSystemListingEventsEnabled) allow the client
+    // to cache the returned Nodes and NodeRefs for
+    // FileSystemEventSubscriptionsSealPeriod minus this margin (in
+    // milliseconds): a subscription lives at least one seal period, the margin
+    // covers the delivery and processing delays.
+    optional uint32 FileSystemEventSubscriptionsCacheTTLMargin = 560;
+
+    // If set to true together with FileSystemEventsEnabled, GetNodeAttrBatch,
+    // ListNodes and ListNodesInternal subscribe the client to the returned
+    // Nodes and NodeRefs and return a nonzero CacheTTL. FileSystemEventsEnabled
+    // alone enables this for GetNodeAttr only.
+    optional bool FileSystemListingEventsEnabled = 561;
 }
