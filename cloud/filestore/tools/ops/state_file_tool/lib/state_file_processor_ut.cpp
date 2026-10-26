@@ -349,9 +349,22 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT(skipped.GetFreeFlag());
         UNIT_ASSERT(!last.GetFreeFlag());
         UNIT_ASSERT_VALUES_EQUAL(4, skipped.GetDataSize());
-        UNIT_ASSERT(skipped.HasActualDataChecksum());
-        UNIT_ASSERT_VALUES_EQUAL(0, skipped.GetActualDataChecksum());
+        UNIT_ASSERT(!skipped.HasActualDataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(0, skipped.GetDataChecksum());
+
+        if (version == EVersion::V5) {
+            // A non-atomic free may leave the stored checksum stale.
+            auto* processor = bootstrap.Accessor.GetDataProcessor();
+            auto header = processor->ReadEntryHeader(skipped.GetEntryPos());
+            header.DataChecksum = 1;
+            UNIT_ASSERT(
+                processor->WriteEntryHeader(skipped.GetEntryPos(), header));
+
+            const auto stale = bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT(!stale.GetIsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(1, stale.GetEntries(1).GetDataChecksum());
+            UNIT_ASSERT(!stale.GetEntries(1).HasActualDataChecksum());
+        }
     }
 
     FILE_RING_BUFFER_TEST(ShouldDumpFileWithTaggedEntries)
@@ -527,9 +540,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 malformedHeader.FreeFlag,
                 entry.GetFreeFlag());
-            UNIT_ASSERT_VALUES_EQUAL(
-                malformedHeader.FreeFlag,
-                entry.HasActualDataChecksum());
+            UNIT_ASSERT(!entry.HasActualDataChecksum());
         }
     }
 

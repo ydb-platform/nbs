@@ -69,9 +69,7 @@ void FillEntryInfo(
     entry.SetTag(entryHeader.Tag);
     entry.SetFreeFlag(entryHeader.FreeFlag);
 
-    if (entryHeader.FreeFlag) {
-        entry.SetActualDataChecksum(0);
-    } else if (dataPtr != nullptr) {
+    if (dataPtr != nullptr && !entryHeader.FreeFlag) {
         entry.SetActualDataChecksum(Crc32c(dataPtr, entryHeader.DataSize));
     }
     entry.SetEntryPos(pos);
