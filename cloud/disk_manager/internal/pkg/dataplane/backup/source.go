@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
@@ -151,7 +150,7 @@ func (s *backupSource) readChunk(
 
 	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
 
-	object, err := s.reader.GetObject(ctx, bucket.ChunkKey(chunk.ID))
+	object, err := s.reader.GetObject(ctx, ChunkKey(chunk.ID))
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -162,7 +161,6 @@ func registerControlplaneTasks(
 	cellSelector cells.CellSelector,
 	filestoreCellsSelector cells.CellSelector,
 	backupS3 *backup.S3,
-	snapshotS3 *bucket.S3,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -237,7 +235,6 @@ func registerControlplaneTasks(
 		cellSelector,
 		backupS3,
 		backupQueueMetricsRegistry,
-		snapshotS3,
 		config.GetExportConfig(),
 	)
 	if err != nil {
@@ -331,7 +328,6 @@ func initControlplane(
 	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
 	backupS3 *backup.S3,
-	snapshotS3 *bucket.S3,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -441,7 +437,6 @@ func initControlplane(
 		cellSelector,
 		filestoreCellsSelector,
 		backupS3,
-		snapshotS3,
 	)
 	if err != nil {
 		return nil, err

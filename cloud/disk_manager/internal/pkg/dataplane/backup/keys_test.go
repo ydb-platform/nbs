@@ -1,4 +1,4 @@
-package bucket
+package backup
 
 import (
 	"testing"
@@ -20,14 +20,21 @@ func TestKeys(t *testing.T) {
 }
 
 func TestS3Key(t *testing.T) {
+	kek := make([]byte, keySize)
+
+	backupS3, err := newTestS3("p", "kek1", kek)
+	require.NoError(t, err)
 	require.Equal(
 		t,
 		"p/images/image1/meta.json",
-		NewS3(nil, "bucket", "p").Key(ImageMetaKey("image1")),
+		backupS3.Key(ImageMetaKey("image1")),
 	)
+
+	backupS3, err = newTestS3("", "kek1", kek)
+	require.NoError(t, err)
 	require.Equal(
 		t,
 		"images/image1/meta.json",
-		NewS3(nil, "bucket", "").Key(ImageMetaKey("image1")),
+		backupS3.Key(ImageMetaKey("image1")),
 	)
 }

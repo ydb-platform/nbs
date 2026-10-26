@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -25,7 +24,7 @@ func putLoadTestJSON(t *testing.T, r *fakeObjectReader, key string, meta any) {
 func putLoadTestMap(t *testing.T, r *fakeObjectReader, ids []string) {
 	data, err := proto.Marshal(&protos.BackupChunkMap{ChunkIds: ids})
 	require.NoError(t, err)
-	r.objects[bucket.ChunkMapKey("snapshot")] = persistence.S3Object{Data: data}
+	r.objects[ChunkMapKey("snapshot")] = persistence.S3Object{Data: data}
 }
 
 func TestLoadBackupPreservesMetadataAndOriginalBytes(t *testing.T) {
@@ -37,8 +36,8 @@ func TestLoadBackupPreservesMetadataAndOriginalBytes(t *testing.T) {
 			kind.String(),
 			func(t *testing.T) {
 				r := newFakeObjectReader()
-				key := bucket.SnapshotMetaKey("disk", "snapshot")
-				meta := bucket.SnapshotMeta{
+				key := SnapshotMetaKey("disk", "snapshot")
+				meta := SnapshotMeta{
 					ID:          "snapshot",
 					DiskID:      "disk",
 					FolderID:    "folder",
@@ -51,7 +50,7 @@ func TestLoadBackupPreservesMetadataAndOriginalBytes(t *testing.T) {
 				}
 
 				if kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE {
-					key = bucket.ImageMetaKey("snapshot")
+					key = ImageMetaKey("snapshot")
 				}
 
 				// The common JSON fields have the same encoding for images.
@@ -86,12 +85,12 @@ func TestLoadBackupPreservesMetadataAndOriginalBytes(t *testing.T) {
 				require.Equal(t, r.objects[key].Data, loaded.MetaData)
 				require.Equal(
 					t,
-					r.objects[bucket.ChunkMapKey("snapshot")].Data,
+					r.objects[ChunkMapKey("snapshot")].Data,
 					loaded.ChunkMapData,
 				)
 				require.Equal(
 					t,
-					[]string{key, bucket.ChunkMapKey("snapshot")},
+					[]string{key, ChunkMapKey("snapshot")},
 					r.requestedKeys,
 				)
 			},
@@ -103,66 +102,66 @@ func TestLoadBackupValidation(t *testing.T) {
 	kind := protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT
 	for _, tc := range []struct {
 		name   string
-		change func(*bucket.SnapshotMeta, *LoadOptions)
+		change func(*SnapshotMeta, *LoadOptions)
 	}{
 		{
 			"empty id",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				o.ID = ""
 			},
 		},
 
 		{
 			"empty disk",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				o.DiskID = ""
 			},
 		},
 
 		{
 			"unknown kind",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				o.Kind = 0
 			},
 		},
 
 		{
 			"wrong id",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				m.ID = "other"
 			},
 		},
 
-		{"wrong disk", func(m *bucket.SnapshotMeta, o *LoadOptions) {
+		{"wrong disk", func(m *SnapshotMeta, o *LoadOptions) {
 			m.DiskID = "other"
 		}},
 
-		{"wrong folder", func(m *bucket.SnapshotMeta, o *LoadOptions) {
+		{"wrong folder", func(m *SnapshotMeta, o *LoadOptions) {
 			m.FolderID = "other"
 		}},
 
 		{
 			"zero size",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				m.Size = 0
 			},
 		},
 
 		{
 			"unaligned size",
-			func(m *bucket.SnapshotMeta, o *LoadOptions) {
+			func(m *SnapshotMeta, o *LoadOptions) {
 				m.Size++
 			},
 		},
 
-		{"too many chunks", func(m *bucket.SnapshotMeta, o *LoadOptions) {
+		{"too many chunks", func(m *SnapshotMeta, o *LoadOptions) {
 			m.Size = (math.MaxUint32 + 1) * ChunkSize
 		}},
 	} {
 		t.Run(
 			tc.name,
 			func(t *testing.T) {
-				meta := bucket.SnapshotMeta{
+				meta := SnapshotMeta{
 					ID: "snapshot", DiskID: "disk",
 					FolderID: "folder", Size: ChunkSize,
 				}
@@ -176,14 +175,14 @@ func TestLoadBackupValidation(t *testing.T) {
 
 				tc.change(&meta, &options)
 				r := newFakeObjectReader()
-				putLoadTestJSON(t, r, bucket.SnapshotMetaKey("disk", "snapshot"), meta)
+				putLoadTestJSON(t, r, SnapshotMetaKey("disk", "snapshot"), meta)
 				_, err := Load(newTestContext(), r, options)
 				require.Error(t, err)
 				require.True(
 					t,
 					errors.Is(err, errors.NewEmptyNonRetriableError()),
 				)
-				require.NotContains(t, r.requestedKeys, bucket.ChunkMapKey("snapshot"))
+				require.NotContains(t, r.requestedKeys, ChunkMapKey("snapshot"))
 			},
 		)
 	}
@@ -191,8 +190,8 @@ func TestLoadBackupValidation(t *testing.T) {
 
 func TestLoadBackupMissingAndInvalidObjects(t *testing.T) {
 	kind := protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT
-	metaKey := bucket.SnapshotMetaKey("disk", "snapshot")
-	mapKey := bucket.ChunkMapKey("snapshot")
+	metaKey := SnapshotMetaKey("disk", "snapshot")
+	mapKey := ChunkMapKey("snapshot")
 	for _, tc := range []struct {
 		name   string
 		change func(*testing.T, *fakeObjectReader)
@@ -229,7 +228,7 @@ func TestLoadBackupMissingAndInvalidObjects(t *testing.T) {
 					t,
 					r,
 					metaKey,
-					bucket.SnapshotMeta{
+					SnapshotMeta{
 						ID: "snapshot", DiskID: "disk", Size: ChunkSize,
 					},
 				)
@@ -257,7 +256,7 @@ func TestLoadBackupMissingAndInvalidObjects(t *testing.T) {
 func TestCheckSnapshotMeta(t *testing.T) {
 	ctx := context.Background()
 	r := newFakeObjectReader()
-	key := bucket.SnapshotMetaKey("disk", "snapshot")
+	key := SnapshotMetaKey("disk", "snapshot")
 
 	// No meta: the backup is not complete.
 	err := CheckSnapshotMeta(ctx, r, "disk", "snapshot")
@@ -284,7 +283,7 @@ func TestCheckImageMeta(t *testing.T) {
 	err := CheckImageMeta(ctx, r, "image")
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	r.objects[bucket.ImageMetaKey("image")] = persistence.S3Object{
+	r.objects[ImageMetaKey("image")] = persistence.S3Object{
 		Data: []byte(`{"id": "image"}`),
 	}
 	require.NoError(t, CheckImageMeta(ctx, r, "image"))

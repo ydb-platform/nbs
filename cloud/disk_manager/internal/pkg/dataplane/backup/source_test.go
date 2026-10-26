@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/compressor"
@@ -113,7 +112,7 @@ func (r *fakeObjectReader) putChunk(
 	)
 	require.NoError(t, err)
 
-	r.objects[bucket.ChunkKey(chunkID)] = chunks.NewS3Object(chunks.ChunkBlob{
+	r.objects[ChunkKey(chunkID)] = chunks.NewS3Object(chunks.ChunkBlob{
 		Data:        compressedData,
 		Checksum:    dataplane_common.Chunk{Data: data}.Checksum(),
 		Compression: compression,
@@ -292,7 +291,7 @@ func TestBackupSourceRead(t *testing.T) {
 	// Zero chunk needs no object.
 	require.Equal(
 		t,
-		[]string{bucket.ChunkKey("chunk0"), bucket.ChunkKey("chunk2")},
+		[]string{ChunkKey("chunk0"), ChunkKey("chunk2")},
 		reader.requestedKeys,
 	)
 }
@@ -307,7 +306,7 @@ func TestBackupSourceReadChunkWithEmptyCompression(t *testing.T) {
 	compression := ""
 
 	reader := newFakeObjectReader()
-	reader.objects[bucket.ChunkKey("chunk0")] = persistence.S3Object{
+	reader.objects[ChunkKey("chunk0")] = persistence.S3Object{
 		Data: data,
 		Metadata: map[string]*string{
 			"Checksum":    &checksum,
@@ -337,7 +336,7 @@ func TestBackupSourceReadFailsOnMissingChunk(t *testing.T) {
 	defer source.Close(ctx)
 
 	// Reader reports it as a silent error.
-	_, err := reader.GetObject(ctx, bucket.ChunkKey("chunk1"))
+	_, err := reader.GetObject(ctx, ChunkKey("chunk1"))
 	require.True(t, errors.IsSilent(err))
 
 	err = source.Read(ctx, newTestChunk(1))
@@ -391,7 +390,7 @@ func TestBackupSourceReadFailsOnBadChunk(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			reader := newFakeObjectReader()
-			reader.objects[bucket.ChunkKey("chunk0")] = persistence.S3Object{
+			reader.objects[ChunkKey("chunk0")] = persistence.S3Object{
 				Data:     data,
 				Metadata: testCase.metadata,
 			}
@@ -416,7 +415,7 @@ func TestBackupSourceReadPassesRetriableErrorThrough(t *testing.T) {
 	retriableErr := errors.NewRetriableErrorf("s3 is not available")
 
 	reader := newFakeObjectReader()
-	reader.errors[bucket.ChunkKey("chunk0")] = retriableErr
+	reader.errors[ChunkKey("chunk0")] = retriableErr
 
 	source := NewBackupSource(reader, []string{"chunk0"}, 0, newTestMetrics())
 	defer source.Close(ctx)

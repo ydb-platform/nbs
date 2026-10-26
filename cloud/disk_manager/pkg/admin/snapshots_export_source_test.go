@@ -29,7 +29,6 @@ import (
 	config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	backup_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
@@ -472,12 +471,12 @@ func testExportBackupNeedsOnlyS3(
 				require.NoError(t, err)
 				dek, err := writer.EnsureEncryptedDEK(nil)
 				require.NoError(t, err)
-				metaKey := bucket.SnapshotMetaKey("disk", "resource")
+				metaKey := backup.SnapshotMetaKey("disk", "resource")
 				encryptionMode := uint32(types.EncryptionMode_NO_ENCRYPTION)
 				if tc.diskMetadataUnavailable {
 					encryptionMode = uint32(types.EncryptionMode_ENCRYPTION_AES_XTS)
 				}
-				var metaValue interface{} = bucket.SnapshotMeta{
+				var metaValue interface{} = backup.SnapshotMeta{
 					ID:             "resource",
 					DiskID:         "disk",
 					Size:           backup.ChunkSize,
@@ -485,9 +484,9 @@ func testExportBackupNeedsOnlyS3(
 				}
 
 				if kind == exportImageKind {
-					metaKey = bucket.ImageMetaKey("resource")
+					metaKey = backup.ImageMetaKey("resource")
 					// URL-derived images can have no creation-source IDs.
-					metaValue = bucket.ImageMeta{
+					metaValue = backup.ImageMeta{
 						ID:             "resource",
 						Size:           backup.ChunkSize,
 						EncryptionMode: encryptionMode,
@@ -522,7 +521,7 @@ func testExportBackupNeedsOnlyS3(
 					t,
 					writer.PutObject(
 						ctx,
-						bucket.ChunkMapKey("resource"),
+						backup.ChunkMapKey("resource"),
 						dek,
 						persistence.S3Object{Data: chunkMap},
 					),
@@ -531,7 +530,7 @@ func testExportBackupNeedsOnlyS3(
 					t,
 					writer.PutObject(
 						ctx,
-						bucket.ChunkKey("chunk"),
+						backup.ChunkKey("chunk"),
 						dek,
 						chunks.NewS3Object(
 							chunks.ChunkBlob{

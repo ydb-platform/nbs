@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
@@ -66,7 +65,7 @@ func (t *backupSnapshotTask) Run(
 		)
 	}
 
-	snapshotMeta, err := bucket.NewSnapshotMeta(*meta)
+	snapshotMeta, err := backup.NewSnapshotMeta(*meta)
 	if err != nil {
 		return err
 	}
@@ -105,7 +104,7 @@ func (t *backupSnapshotTask) Run(
 			SnapshotId:   snapshotID,
 			EncryptedDek: t.state.EncryptedDek,
 			// The copy writes the meta while it holds the snapshot.
-			MetaKey: bucket.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
+			MetaKey: backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
 			Meta:    data,
 		},
 	)

@@ -6,9 +6,9 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -25,22 +25,23 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The follower bucket: the objects of a snapshot bucket, encrypted with a
-// DEK per snapshot. One instance per process: every write goes through it
-// and waits in its limiter.
+// One instance per process: every write to the follower bucket goes through
+// it and waits in its limiter.
 type S3 struct {
-	*bucket.S3
-	kekID    string
-	kek      cipher.AEAD
-	limiter  *BandwidthLimiter
-	registry metrics.Registry
+	s3        *persistence.S3Client
+	bucket    string
+	keyPrefix string
+	kekID     string
+	kek       cipher.AEAD
+	limiter   *BandwidthLimiter
+	registry  metrics.Registry
 }
 
 // uploadBytesPerSecond caps what this host writes to the bucket; 0 disables
 // the cap.
 func NewS3(
 	s3 *persistence.S3Client,
-	bucketName string,
+	bucket string,
 	keyPrefix string,
 	kekID string,
 	kek []byte,
@@ -49,9 +50,11 @@ func NewS3(
 ) (*S3, error) {
 
 	backupS3 := &S3{
-		S3:       bucket.NewS3(s3, bucketName, keyPrefix),
-		limiter:  NewBandwidthLimiter(uploadBytesPerSecond),
-		registry: registry,
+		s3:        s3,
+		bucket:    bucket,
+		keyPrefix: keyPrefix,
+		limiter:   NewBandwidthLimiter(uploadBytesPerSecond),
+		registry:  registry,
 	}
 
 	if len(kekID) == 0 && len(kek) == 0 {
@@ -188,7 +191,7 @@ func (s *S3) put(
 	defer inflight.Add(-1)
 
 	putStart := time.Now()
-	err = s.S3.PutObject(ctx, key, object)
+	err = s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
 	s.registry.Timer("backup/putTime").RecordDuration(time.Since(putStart))
 	return err
 }
@@ -198,7 +201,7 @@ func (s *S3) GetObject(
 	key string,
 ) (persistence.S3Object, error) {
 
-	object, err := s.S3.GetObject(ctx, key)
+	object, err := s.s3.GetObject(ctx, s.bucket, s.Key(key))
 	if err != nil {
 		return persistence.S3Object{}, err
 	}
@@ -252,4 +255,37 @@ func (s *S3) GetObject(
 	delete(object.Metadata, kekIDMetadataKey)
 	delete(object.Metadata, encryptedDEKMetadataKey)
 	return object, nil
+}
+
+func (s *S3) DeleteObject(ctx context.Context, key string) error {
+	return s.s3.DeleteObject(ctx, s.bucket, s.Key(key))
+}
+
+func (s *S3) DeleteSnapshotMeta(
+	ctx context.Context,
+	diskID string,
+	snapshotID string,
+) error {
+
+	return s.DeleteObject(ctx, SnapshotMetaKey(diskID, snapshotID))
+}
+
+func (s *S3) DeleteImageMeta(ctx context.Context, imageID string) error {
+	return s.DeleteObject(ctx, ImageMetaKey(imageID))
+}
+
+func (s *S3) DeleteChunk(ctx context.Context, chunkID string) error {
+	return s.DeleteObject(ctx, ChunkKey(chunkID))
+}
+
+func (s *S3) DeleteChunkMap(ctx context.Context, snapshotID string) error {
+	return s.DeleteObject(ctx, ChunkMapKey(snapshotID))
+}
+
+func (s *S3) Key(key string) string {
+	if len(s.keyPrefix) == 0 {
+		return key
+	}
+
+	return fmt.Sprintf("%v/%v", s.keyPrefix, key)
 }

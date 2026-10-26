@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
@@ -22,7 +21,6 @@ type deleteSnapshotTask struct {
 	scheduler  tasks.Scheduler
 	storage    resources.Storage
 	nbsFactory nbs.Factory
-	snapshotS3 *bucket.S3
 	request    *protos.DeleteSnapshotRequest
 	state      *protos.DeleteSnapshotTaskState
 }
@@ -84,19 +82,6 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 	if err != nil {
 		return err
-	}
-
-	// The meta leaves the snapshot bucket before the snapshot is marked
-	// deleted. Its chunk map goes with the snapshot data.
-	if t.snapshotS3 != nil {
-		err = t.snapshotS3.DeleteSnapshotMeta(
-			ctx,
-			snapshotMeta.Disk.GetDiskId(),
-			t.request.SnapshotId,
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return t.storage.SnapshotDeleted(ctx, t.request.SnapshotId, time.Now())
