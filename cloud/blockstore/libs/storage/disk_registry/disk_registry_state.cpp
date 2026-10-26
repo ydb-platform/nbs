@@ -362,33 +362,6 @@ TResultOrError<TString> GetDeviceWithData(
         "no data for device " + ToString(deviceIdx));
 }
 
-NProto::TError CheckDataCompleteness(const TVector<TVector<TString>>& replicas)
-{
-    if (replicas.empty()) {
-        return MakeError(E_INVALID_STATE, "empty replicas");
-    }
-
-    const size_t devicesCount = replicas.front().size();
-    for (size_t r = 0; r < replicas.size(); ++r) {
-        if (replicas[r].size() != devicesCount) {
-            return MakeError(
-                E_INVALID_STATE,
-                "inconsistent devices count in replicas");
-        }
-    }
-
-    for (size_t d = 0; d < devicesCount; ++d) {
-        if (HasError(GetDeviceWithData(replicas, d))) {
-            return MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "incomplete data for " << d
-                                 << "-th devices in replicas");
-        }
-    }
-
-    return {};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8554,36 +8527,21 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                 << "disk " << masterId.Quote() << " invalid master disk");
     }
 
-    // TODO: correct data completeness check
-    const bool hasReplicaWithAllData = FindIfPtr(
-        replicas,
-        [](const auto& replica)
-        {
-            return AllOf(
-                replica,
-                [&](const auto& device) { return !device.empty(); });
-        });
-
-    if (!hasReplicaWithAllData) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "mirrored disk " << masterId.Quote()
-                             << " has no replica with all data replicated");
-    }
+    const size_t devicesCount = replicas.front().size();
 
     THashSet<TDeviceId> reservedDevices;
-    reservedDevices.reserve(replicas.size() * replicas.front().size());
+    reservedDevices.reserve(replicas.size() * devicesCount);
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
-        auto error = CanCreateSimpleDiskFromDevices(
-            replicaId,
-            params,
-            replicas[i],
-            /*allowFreshDevices=*/true);
-
-        if (HasError(error)) {
+        if (auto error = CanCreateSimpleDiskFromDevices(
+                replicaId,
+                params,
+                replicas[i],
+                /*allowFreshDevices=*/true);
+            HasError(error))
+        {
             return error;
         }
 
@@ -8597,6 +8555,12 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                 TStringBuilder() << "replica " << replicaId.Quote()
                                  << " is already attached to disk "
                                  << replica->MasterDiskId.Quote());
+        }
+
+        if (replicas[i].size() != devicesCount) {
+            return MakeError(
+                E_INVALID_STATE,
+                "inconsistent devices count in replicas");
         }
 
         for (const auto& uuid: replicas[i]) {
@@ -8741,10 +8705,6 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         return error;
     }
 
-    if (auto error = CheckDataCompleteness(replicas); HasError(error)) {
-        return error;
-    }
-
     TVector<TVector<NProto::TDeviceConfig>> resolvedReplicas;
     resolvedReplicas.reserve(replicas.size());
 
@@ -8766,13 +8726,24 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 affectedDisks);
             return error;
         }
+
+        // TODO: simplify check?
+        if (auto error = CanCreateSimpleDiskFromDevices(
+                GetReplicaDiskId(masterId, i),
+                params,
+                ToDeviceIds(resolvedReplicas[i]),
+                /*allowFreshDevices=*/false);
+            HasError(error))
+        {
+            return error;
+        }
     }
 
     for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
         TAllocateDiskResult replicaResult;
-        auto error = CreateSimpleDiskFromDevices(
+        CreateSimpleDiskFromDevices(
             now,
             db,
             replicaId,
@@ -8780,8 +8751,6 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             resolvedReplicas[i],
             /*disableValidation=*/true,
             &replicaResult);
-
-        Y_DEBUG_ABORT_UNLESS(!HasError(error));
 
         auto& replica = Disks[replicaId];
         replica.MasterDiskId = masterId;
