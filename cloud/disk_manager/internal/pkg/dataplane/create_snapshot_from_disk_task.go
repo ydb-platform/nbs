@@ -498,6 +498,7 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 		proxyOverlayDiskID,
 		diskID, // baseDiskID
 		t.request.SrcDiskCheckpointId,
+		0, // blocksCount, same as the source disk
 	)
 	if err != nil {
 		return "", err

@@ -322,7 +322,9 @@ func TestPrivateServiceRetireBaseDisksInParallelWithSsdNonreplDiskCreation(
 	defer client.Close()
 
 	imageID := t.Name()
-	imageSize := uint64(64 * 1024 * 1024)
+	// Large enough for the transfer to last several seconds, so that the
+	// retirement below lands while the transfer is running.
+	imageSize := uint64(1024 * 1024 * 1024)
 
 	diskContentInfo := testcommon.CreateImage(
 		t,
@@ -352,10 +354,32 @@ func TestPrivateServiceRetireBaseDisksInParallelWithSsdNonreplDiskCreation(
 	require.NoError(t, err)
 	require.NotEmpty(t, createOp)
 
-	// Need to add some variance for better testing: retirement may land while
-	// the base disk is being created, while the data is being transferred or
-	// after the creation has completed.
-	common.WaitForRandomDuration(time.Millisecond, 10*time.Second)
+	// Don't leave the creation running if the test fails: the proxy overlay
+	// disk would make the next test wait in CheckConsistency.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+
+		cleanupClient, err := testcommon.NewClient(ctx)
+		if err != nil {
+			return
+		}
+		defer cleanupClient.Close()
+
+		_, _ = cleanupClient.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
+			OperationId: createOp.Id,
+		})
+	})
+
+	// Wait until the data transfer from the base disk is running (creation
+	// progress is reported by the transfer), so that the retirement lands
+	// during the transfer.
+	require.Eventually(t, func() bool {
+		meta := disk_manager.CreateDiskMetadata{}
+		err := internal_client.GetOperationMetadata(ctx, client, createOp.Id, &meta)
+		return err == nil && meta.Progress > 0
+	}, 200*time.Second, 100*time.Millisecond)
 
 	privateClient, err := testcommon.NewPrivateClient(ctx)
 	require.NoError(t, err)

@@ -933,6 +933,10 @@ func CheckBaseDisksAreIdle(
 	poolStorage, closeFunc := newPoolStorage(t, ctx)
 	defer closeFunc()
 
+	// List first: a base disk that becomes ready between the two reads is
+	// idle but not listed, so the idle set may be a superset of the listed
+	// one. The opposite can't happen: a listed base disk doesn't become
+	// non-idle on its own.
 	baseDisks, err := poolStorage.ListBaseDisks(ctx, imageID, zoneID)
 	require.NoError(t, err)
 
@@ -940,21 +944,27 @@ func CheckBaseDisksAreIdle(
 		ctx,
 		imageID,
 		zoneID,
-		0, // idleDuration
-		uint64(len(baseDisks))+1,
+		0,    // idleDuration
+		1000, // limit
 	)
 	require.NoError(t, err)
 
-	require.Len(
-		t,
-		idleBaseDisks,
-		len(baseDisks),
-		"some base disks of image %v in zone %v have active slots, base disks: %+v, idle base disks: %+v",
-		imageID,
-		zoneID,
-		baseDisks,
-		idleBaseDisks,
-	)
+	idleBaseDiskIDs := make(map[string]struct{})
+	for _, baseDisk := range idleBaseDisks {
+		idleBaseDiskIDs[baseDisk.ID] = struct{}{}
+	}
+
+	for _, baseDisk := range baseDisks {
+		require.Contains(
+			t,
+			idleBaseDiskIDs,
+			baseDisk.ID,
+			"base disk %+v of image %v in zone %v has active slots",
+			baseDisk,
+			imageID,
+			zoneID,
+		)
+	}
 }
 
 // Proxy overlay disks are one-shot entities deleted by the tasks that created

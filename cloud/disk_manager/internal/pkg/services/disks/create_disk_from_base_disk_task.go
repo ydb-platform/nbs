@@ -361,11 +361,20 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 		return nil
 	}
 
+	// Proxy overlay disk is sized to the disk being created, not to the base
+	// disk: only this range is transferred, and the transfer enumerates
+	// changed blocks of the whole source (a base disk of default size is
+	// 4 TB) on every run, including the runs after a restart, before making
+	// any persistent progress. The service guarantees that the image fits
+	// into the disk. NBS returns no changed blocks for the part of an overlay
+	// disk beyond its base disk, so an image-sized base disk smaller than the
+	// disk is fine too.
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDisk.DiskId,
 		baseDiskID,
 		baseDiskCheckpointID,
+		t.request.Params.BlocksCount,
 	)
 	if err != nil {
 		return err

@@ -838,6 +838,7 @@ func (c *client) CreateProxyOverlayDisk(
 	diskID string,
 	baseDiskID string,
 	baseDiskCheckpointID string,
+	blocksCount uint64,
 ) (created bool, err error) {
 
 	defer c.metrics.StatRequest("CreateProxyOverlayDisk")(&err)
@@ -852,6 +853,7 @@ func (c *client) CreateProxyOverlayDisk(
 				"base_disk_checkpoint_id",
 				baseDiskCheckpointID,
 			),
+			tracing.AttributeInt64("blocks_count", int64(blocksCount)),
 		),
 	)
 	defer span.End()
@@ -868,10 +870,14 @@ func (c *client) CreateProxyOverlayDisk(
 		return false, nil
 	}
 
+	if blocksCount == 0 {
+		blocksCount = volume.BlocksCount
+	}
+
 	err = c.createVolume(
 		ctx,
 		diskID,
-		volume.BlocksCount,
+		blocksCount,
 		&nbs_client.CreateVolumeOpts{
 			BaseDiskId:           baseDiskID,
 			BaseDiskCheckpointId: baseDiskCheckpointID,

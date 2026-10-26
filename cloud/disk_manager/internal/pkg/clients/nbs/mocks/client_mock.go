@@ -33,9 +33,16 @@ func (c *ClientMock) CreateProxyOverlayDisk(
 	diskID string,
 	baseDiskID string,
 	baseDiskCheckpointID string,
+	blocksCount uint64,
 ) (bool, error) {
 
-	args := c.Called(ctx, diskID, baseDiskID, baseDiskCheckpointID)
+	args := c.Called(
+		ctx,
+		diskID,
+		baseDiskID,
+		baseDiskCheckpointID,
+		blocksCount,
+	)
 	return args.Bool(0), args.Error(1)
 }
 

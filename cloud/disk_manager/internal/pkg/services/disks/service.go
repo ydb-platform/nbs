@@ -456,6 +456,11 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, nil
 	}
 
+	if params.BlockSize != 4096 {
+		// Block size of base disks.
+		return false, nil
+	}
+
 	if req.EncryptionDesc != nil &&
 		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION {
 		// Proxy overlay disks (and base disks) don't support encryption.
@@ -471,6 +476,12 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		imageMeta.Encryption != nil &&
 		imageMeta.Encryption.Mode != types.EncryptionMode_NO_ENCRYPTION {
 		// Base disks are not created from encrypted images.
+		return false, nil
+	}
+
+	if imageMeta != nil && imageMeta.Size > uint64(req.Size) {
+		// Proxy overlay disk is sized to the disk being created (see
+		// disks.CreateDiskFromBaseDisk), so the image must fit into it.
 		return false, nil
 	}
 
