@@ -8838,7 +8838,6 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     }
 
     if (isMirrored) {
-    {
         return CreateMirroredDiskFromDevices(
             now,
             db,

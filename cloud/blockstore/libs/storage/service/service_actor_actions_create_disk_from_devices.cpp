@@ -140,8 +140,8 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
     }
 
     const bool isMirrored =
-        Request.GetMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
-        Request.GetMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3;
+        Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+        Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3;
 
     if (!isMirrored && Request.GetDeviceUUIDs().size() == 0) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Devices cannot be empty for simple disk"));
