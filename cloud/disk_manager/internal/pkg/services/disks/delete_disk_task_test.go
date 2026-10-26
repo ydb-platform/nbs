@@ -244,7 +244,7 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		nbsFactory:   nbsFactory,
 		cellSelector: cells.NewCellSelector(nil, nil, nil, nil),
 		request:      request,
-		state:        &protos.DeleteDiskTaskState{},
+		state:        &protos.DeleteDiskTaskState{LegacyCleanupRegistered: true},
 	}
 
 	deleteMethod := "DeleteDisk"

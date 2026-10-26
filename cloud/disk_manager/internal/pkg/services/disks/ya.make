@@ -13,6 +13,7 @@ SRCS(
     delete_disk_task.go
     finish_legacy_disk_cleanup_task.go
     migrate_disk_task.go
+    register_legacy_disk_cleanup_task.go
     resize_disk_task.go
     unassign_disk_task.go
 
@@ -27,6 +28,7 @@ GO_TEST_SRCS(
     delete_disk_cells_test.go
     delete_disk_task_test.go
     migrate_disk_task_test.go
+    register_legacy_disk_cleanup_task_test.go
     service_test.go
 )
 

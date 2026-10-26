@@ -181,6 +181,9 @@ func (t *deleteDiskTask) deleteDisk(
 }
 
 func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	if err := t.registerLegacyCleanup(ctx, execCtx); err != nil {
+		return err
+	}
 	cleanupIDs := make([]string, 0, len(t.state.CleanupCellIds))
 	for _, cellID := range t.state.CleanupCellIds {
 		cleanupIDs = append(cleanupIDs, execCtx.GetTaskID()+"_delete_disk_from_cell_"+cellID)
@@ -211,17 +214,14 @@ func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.
 		if legacyTaskID == "" {
 			return errors.NewNonRetriableErrorf("empty legacy task ID in disk cleanup reservation")
 		}
-		_, err = t.scheduler.ScheduleNonCancellableTask(
-			headers.SetIncomingIdempotencyKey(ctx, id+"_finish"), "disks.FinishLegacyDiskCleanup", "", "",
-			&protos.FinishLegacyDiskCleanupRequest{DiskId: t.request.Disk.DiskId, LegacyTaskId: legacyTaskID, CleanupId: id},
-		)
+		err = scheduleLegacyDiskCleanupObserver(ctx, t.scheduler, t.request.Disk.DiskId, legacyTaskID, id)
 		if err != nil {
 			return err
 		}
 	}
 	for i, cellID := range t.state.CleanupCellIds {
 		_, err := t.scheduler.ScheduleNonCancellableTask(
-			headers.SetIncomingIdempotencyKey(ctx, cleanupIDs[i]),
+			diskCleanupTaskContext(ctx, cleanupIDs[i]),
 			"disks.DeleteDiskFromCell", "", "",
 			&protos.DeleteDiskFromCellRequest{
 				Disk: &types.Disk{ZoneId: cellID, DiskId: t.request.Disk.DiskId},

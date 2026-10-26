@@ -115,6 +115,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(registerLegacyDiskCleanupTaskType, func() tasks.Task {
+		return &registerLegacyDiskCleanupTask{storage: resourceStorage, scheduler: taskScheduler}
+	})
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("disks.FinishLegacyDiskCleanup", func() tasks.Task {
 		return &finishLegacyDiskCleanupTask{deleteDiskTask: deleteDiskTask{storage: resourceStorage, scheduler: taskScheduler}}
 	})

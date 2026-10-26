@@ -23,6 +23,8 @@ message DeleteDiskRequest {
 message DeleteDiskTaskState {
     repeated string CleanupCellIds = 1;
     bool CleanupPrepared = 2;
+    string LegacyCleanupRegistrationTaskId = 3;
+    bool LegacyCleanupRegistered = 4;
 }
 
 message DeleteDiskFromCellRequest {
@@ -35,4 +37,8 @@ message FinishLegacyDiskCleanupRequest {
     string DiskId = 1;
     string LegacyTaskId = 2;
     string CleanupId = 3;
+}
+
+message RegisterLegacyDiskCleanupTaskState {
+    string AfterTaskId = 1;
 }
