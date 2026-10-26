@@ -7,8 +7,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/utility.h>
-
-#include <cstring>
+#include <util/system/unaligned_mem.h>
 
 namespace NCloud::NFileStore::NStateFileTool {
 
@@ -37,18 +36,16 @@ void FillWriteDataRequestInfo(
     const char* dataPtr,
     ui32 dataSize)
 {
+    using NFuse::NWriteBackCache::HasWriteDataRequestPayload;
     using NFuse::NWriteBackCache::TSerializedWriteDataRequestHeader;
 
-    if (dataPtr == nullptr ||
-        dataSize <= sizeof(TSerializedWriteDataRequestHeader))
-    {
+    if (dataPtr == nullptr || !HasWriteDataRequestPayload(dataSize)) {
         return;
     }
 
     // Preserve request information for free entries as well: their stale
     // payload can still be useful while diagnosing or repairing a file.
-    TSerializedWriteDataRequestHeader header;
-    std::memcpy(&header, dataPtr, sizeof(header));
+    auto header = ReadUnaligned<TSerializedWriteDataRequestHeader>(dataPtr);
 
     auto& requestInfo = *entry.MutableWriteDataRequestInfo();
     requestInfo.SetNodeId(header.NodeId);
