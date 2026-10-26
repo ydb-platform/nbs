@@ -46,14 +46,12 @@ struct TStorageGroupFactory: IStorageGroupFactory
         if (sg.GetType() == NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(
                 std::move(groupConfig),
-                std::move(devices),
-                CreateFiberTimer());
+                std::move(devices));
         }
 
         return CreateNaiveMirroredStorageGroup(
             std::move(groupConfig),
-            std::move(devices),
-            CreateFiberTimer());
+            std::move(devices));
     }
 };
 
