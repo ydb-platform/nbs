@@ -104,7 +104,6 @@ EDumpEntryResult DumpEntry(
     NProto::TStateFileDump& state,
     IFileRingBufferDataProcessor& dataProcessor,
     const TFileRingBufferCapabilities& capabilities,
-    ui64 dataCapacity,
     ui64& pos,
     NProto::EStateFileType fileType)
 {
@@ -122,14 +121,11 @@ EDumpEntryResult DumpEntry(
         dataProcessor.GetEntryDataPtr(pos, entryHeader.DataSize);
     FillEntryInfo(*state.AddEntries(), entryHeader, pos, dataPtr, fileType);
 
-    const ui64 entrySize = dataProcessor.GetEntrySize(entryHeader.DataSize);
-    if (dataPtr == nullptr || pos > dataCapacity ||
-        entrySize > dataCapacity - pos)
-    {
+    if (dataPtr == nullptr) {
         return EDumpEntryResult::Invalid;
     }
 
-    pos += entrySize;
+    pos += dataProcessor.GetEntrySize(entryHeader.DataSize);
     return EDumpEntryResult::Dumped;
 }
 
@@ -206,7 +202,6 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
             result,
             *dataProcessor,
             capabilities,
-            header->DataCapacity,
             pos,
             fileType);
 
@@ -226,7 +221,6 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
                 result,
                 *dataProcessor,
                 capabilities,
-                header->DataCapacity,
                 pos,
                 fileType) != EDumpEntryResult::Dumped)
         {
