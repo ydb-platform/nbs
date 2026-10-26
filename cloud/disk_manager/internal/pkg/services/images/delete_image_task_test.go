@@ -28,16 +28,22 @@ func TestDeleteImageSchedulesRetireBaseDisksIdempotently(t *testing.T) {
 		{
 			name:            "default fallback",
 			folderID:        "other-folder",
-			expectedZoneIDs: []string{"zone-a"},
+			expectedZoneIDs: []string{"zone-a", "zone-b"},
 		},
 		{
-			name:            "folder override",
+			name:            "folder override merges zones without duplicates",
 			folderID:        "folder",
-			expectedZoneIDs: []string{"zone-b", "zone-c"},
+			expectedZoneIDs: []string{"zone-a", "zone-b", "zone-c"},
 		},
 		{
-			name:     "empty override",
-			folderID: "empty-folder",
+			name:            "empty override retains defaults",
+			folderID:        "empty-folder",
+			expectedZoneIDs: []string{"zone-a", "zone-b"},
+		},
+		{
+			name:            "nil override retains defaults",
+			folderID:        "nil-folder",
+			expectedZoneIDs: []string{"zone-a", "zone-b"},
 		},
 	}
 
@@ -54,8 +60,9 @@ func TestDeleteImageSchedulesRetireBaseDisksIdempotently(t *testing.T) {
 			imageConfig := &config.ImagesConfig{
 				DefaultDiskPoolConfigs: []*config.DiskPoolConfig{
 					{ZoneId: proto.String("zone-a")},
+					{ZoneId: proto.String("zone-b")},
 				},
-				DiskPoolConfigsByFolder: map[string]*config.DiskPoolConfigs{
+				OverriddenDiskPoolConfigsByFolder: map[string]*config.DiskPoolConfigs{
 					"folder": {
 						Configs: []*config.DiskPoolConfig{
 							{ZoneId: proto.String("zone-b")},
@@ -63,6 +70,7 @@ func TestDeleteImageSchedulesRetireBaseDisksIdempotently(t *testing.T) {
 						},
 					},
 					"empty-folder": {},
+					"nil-folder":   nil,
 				},
 			}
 

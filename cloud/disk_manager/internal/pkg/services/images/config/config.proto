@@ -33,6 +33,7 @@ message ImagesConfig {
     optional string S3DefaultStorageClass = 10;
     optional string ScheduleBackupImageTasksScheduleInterval = 11 [default = "1m"];
     optional uint32 ScheduleBackupImageTasksLimit = 12 [default = 1000];
-    // Replaces DefaultDiskPoolConfigs for the specified folder, including when empty.
-    map<string, DiskPoolConfigs> DiskPoolConfigsByFolder = 13;
+    // Merges with DefaultDiskPoolConfigs for the specified folder: overrides
+    // matching zones, adds new zones, and preserves unmatched default zones.
+    map<string, DiskPoolConfigs> OverriddenDiskPoolConfigsByFolder = 13;
 }

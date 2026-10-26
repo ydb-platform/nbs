@@ -17,15 +17,33 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func getDiskPoolConfigs(
-	config *config.ImagesConfig,
+	imageConfig *config.ImagesConfig,
 	folderID string,
 ) []*config.DiskPoolConfig {
 
-	if configs, ok := config.GetDiskPoolConfigsByFolder()[folderID]; ok {
-		return configs.GetConfigs()
+	defaults := imageConfig.GetDefaultDiskPoolConfigs()
+	overrides := imageConfig.GetOverriddenDiskPoolConfigsByFolder()[folderID].GetConfigs()
+	if len(overrides) == 0 {
+		return defaults
 	}
 
-	return config.GetDefaultDiskPoolConfigs()
+	configs := make([]*config.DiskPoolConfig, len(defaults), len(defaults)+len(overrides))
+	copy(configs, defaults)
+	zoneIndexes := make(map[string]int, len(configs))
+	for i, c := range configs {
+		zoneIndexes[c.GetZoneId()] = i
+	}
+
+	for _, c := range overrides {
+		if i, ok := zoneIndexes[c.GetZoneId()]; ok {
+			configs[i] = c
+		} else {
+			zoneIndexes[c.GetZoneId()] = len(configs)
+			configs = append(configs, c)
+		}
+	}
+
+	return configs
 }
 
 func deleteImage(

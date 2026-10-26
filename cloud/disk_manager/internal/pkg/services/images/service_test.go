@@ -15,7 +15,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
+func TestCreateImageOverriddenDiskPoolConfigsByFolder(t *testing.T) {
 	sources := []struct {
 		name     string
 		request  *disk_manager.CreateImageRequest
@@ -59,7 +59,12 @@ func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
 		},
 	}
 
-	overridePools := []*types.DiskPool{
+	defaultPools := []*types.DiskPool{
+		{ZoneId: "zone-a", Capacity: 10},
+		{ZoneId: "zone-b", Capacity: 15},
+	}
+	mergedPools := []*types.DiskPool{
+		{ZoneId: "zone-a", Capacity: 10},
 		{ZoneId: "zone-b", Capacity: 20},
 		{ZoneId: "zone-c", Capacity: 30},
 	}
@@ -71,24 +76,28 @@ func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
 		expectedPools           []*types.DiskPool
 	}{
 		{
-			name:          "folder override",
+			name:          "folder overrides matching zones and adds new zones",
 			folderID:      "folder",
 			pooled:        true,
-			expectedPools: overridePools,
+			expectedPools: mergedPools,
 		},
 		{
-			name:     "default fallback",
-			folderID: "other-folder",
-			pooled:   true,
-			expectedPools: []*types.DiskPool{
-				{ZoneId: "zone-a", Capacity: 10},
-			},
+			name:          "default fallback",
+			folderID:      "other-folder",
+			pooled:        true,
+			expectedPools: defaultPools,
 		},
 		{
-			name:          "empty override",
+			name:          "empty override retains defaults",
 			folderID:      "empty-folder",
 			pooled:        true,
-			expectedPools: []*types.DiskPool{},
+			expectedPools: defaultPools,
+		},
+		{
+			name:          "nil override retains defaults",
+			folderID:      "nil-folder",
+			pooled:        true,
+			expectedPools: defaultPools,
 		},
 		{
 			name:          "pooling disabled",
@@ -99,7 +108,7 @@ func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
 			name:                    "configure pools by default",
 			folderID:                "folder",
 			configurePoolsByDefault: true,
-			expectedPools:           overridePools,
+			expectedPools:           mergedPools,
 		},
 	}
 
@@ -111,8 +120,9 @@ func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
 				imageService := NewService(scheduler, &config.ImagesConfig{
 					DefaultDiskPoolConfigs: []*config.DiskPoolConfig{
 						{ZoneId: proto.String("zone-a"), Capacity: proto.Uint32(10)},
+						{ZoneId: proto.String("zone-b"), Capacity: proto.Uint32(15)},
 					},
-					DiskPoolConfigsByFolder: map[string]*config.DiskPoolConfigs{
+					OverriddenDiskPoolConfigsByFolder: map[string]*config.DiskPoolConfigs{
 						"folder": {
 							Configs: []*config.DiskPoolConfig{
 								{ZoneId: proto.String("zone-b"), Capacity: proto.Uint32(20)},
@@ -120,6 +130,7 @@ func TestCreateImageDiskPoolConfigsByFolder(t *testing.T) {
 							},
 						},
 						"empty-folder": {},
+						"nil-folder":   nil,
 					},
 					ConfigurePoolsByDefault: proto.Bool(testCase.configurePoolsByDefault),
 				})
