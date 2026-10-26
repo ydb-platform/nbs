@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
+#include <library/cpp/coroutine/engine/events.h>
 #include <library/cpp/threading/future/async_semaphore.h>
 
 #include <util/generic/algorithm.h>
@@ -13,7 +14,6 @@
 #include <util/string/builder.h>
 
 #include <functional>
-#include <type_traits>
 
 namespace NCloud::NJournalled {
 
@@ -29,9 +29,9 @@ struct TJournalledDeviceSpec
 {
     TJournalledDeviceConfig Config;
 
-    // Completes when the format in flight is done; empty or completed while
-    // the device is not being recreated.
-    TFuture<void> Recreating;
+    // Set while a format of the device is in flight: a parallel format of
+    // the same device is rejected.
+    bool Formatting = false;
 
     // Null while the device is not started: it failed to start or to be
     // recreated, and stays so until the next format succeeds.
@@ -75,6 +75,16 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
     return sorted;
 }
 
+template <typename T>
+T MakeErrorResponse(ui32 code, TString message)
+{
+    return TErrorResponse(code, std::move(message));
+}
+
+template <>
+void MakeErrorResponse(ui32, TString)
+{}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TJournalledDeviceHandler final
@@ -93,6 +103,12 @@ private:
 
     // Set in the executor once Stop is called: no device is recreated after.
     bool Stopped = false;
+
+    // The formats in flight, counted in the executor. Stop waits on
+    // |FormatsDone| until the count drops to zero; every completed format
+    // wakes the waiter up.
+    ui32 FormatsInFlight = 0;
+    TContWaitQueue FormatsDone;
 
 public:
     TJournalledDeviceHandler(
@@ -296,9 +312,10 @@ private:
     {
         Stopped = true;
 
-        for (auto& [uuid, spec]: DeviceSpecs) {
-            if (spec.Recreating.Initialized()) {
-                Executor->WaitFor(spec.Recreating);
+        while (FormatsInFlight) {
+            auto* cont = Executor->GetContExecutor()->Running();
+            if (FormatsDone.WaitI(cont) == ECANCELED) {
+                break;
             }
         }
 
@@ -412,13 +429,9 @@ private:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    if constexpr (std::is_void_v<T>) {
-                        return;
-                    } else {
-                        return TErrorResponse(
-                            E_FAIL,
-                            "TJournalledDeviceHandler is destroyed");
-                    }
+                    return MakeErrorResponse<T>(
+                        E_FAIL,
+                        "TJournalledDeviceHandler is destroyed");
                 }
 
                 return func(*self);
@@ -476,18 +489,27 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // completes
     //
 
-    if (spec->Recreating.Initialized() && !spec->Recreating.HasValue()) {
+    if (spec->Formatting) {
         return TErrorResponse(
             E_INVALID_STATE,
             TStringBuilder() << "Device " << config.DeviceUUID.Quote()
                              << " is being formatted");
     }
 
-    auto recreating = NewPromise();
-    spec->Recreating = recreating.GetFuture();
+    //
+    // Count the format so a stop waits for it, and wake the stop up once
+    // the format completes
+    //
+
+    auto& formatting = spec->Formatting;
+    formatting = true;
+    ++FormatsInFlight;
+
     Y_DEFER
     {
-        recreating.SetValue();
+        formatting = false;
+        --FormatsInFlight;
+        FormatsDone.BroadCast();
     };
 
     //
