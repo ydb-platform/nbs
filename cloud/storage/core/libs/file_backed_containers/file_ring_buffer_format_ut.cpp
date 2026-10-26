@@ -25,33 +25,35 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
 {
     Y_UNIT_TEST(ShouldCreateLayoutFromCapacities)
     {
+        using TLayout = TFileRingBufferLayout;
+
         struct TTestCase
         {
             ui64 DataCapacity;
             ui64 MetadataCapacity;
-            TFileRingBufferLayout Expected;
+            std::optional<TLayout> Expected;
         };
 
         const ui64 reserveSize = TFileRingBufferHeader::ReserveSize;
         const ui64 maxSize = Max<i64>();
         const TVector<TTestCase> testCases = {
-            {0, 0, {reserveSize, reserveSize, reserveSize}},
-            {17, 1, {reserveSize + 8, reserveSize, reserveSize + 25}},
-            {17, 8, {reserveSize + 8, reserveSize, reserveSize + 25}},
-            {17, 9, {reserveSize + 16, reserveSize, reserveSize + 33}},
-            {maxSize - reserveSize, 0, {reserveSize, reserveSize, maxSize}},
-            {7, maxSize - reserveSize - 7, {maxSize - 7, reserveSize, maxSize}},
-            {0, maxSize - reserveSize - 7, {maxSize - 7, reserveSize, maxSize - 7}},
-            {maxSize - reserveSize + 1, 0, {}},
-            {8, maxSize - reserveSize - 7, {}},
-            {0, maxSize - reserveSize - 6, {}},
-            {maxSize, 0, {}},
-            {0, maxSize, {}},
-            {0, maxSize - reserveSize, {}},
-            {Max<ui64>() - reserveSize, 0, {}},
-            {7, Max<ui64>() - reserveSize - 7, {}},
-            {Max<ui64>(), 0, {}},
-            {0, Max<ui64>(), {}},
+            {0, 0, TLayout{reserveSize, reserveSize, reserveSize}},
+            {17, 1, TLayout{reserveSize + 8, reserveSize, reserveSize + 25}},
+            {17, 8, TLayout{reserveSize + 8, reserveSize, reserveSize + 25}},
+            {17, 9, TLayout{reserveSize + 16, reserveSize, reserveSize + 33}},
+            {maxSize - reserveSize, 0, TLayout{reserveSize, reserveSize, maxSize}},
+            {7, maxSize - reserveSize - 7, TLayout{maxSize - 7, reserveSize, maxSize}},
+            {0, maxSize - reserveSize - 7, TLayout{maxSize - 7, reserveSize, maxSize - 7}},
+            {maxSize - reserveSize + 1, 0, std::nullopt},
+            {8, maxSize - reserveSize - 7, std::nullopt},
+            {0, maxSize - reserveSize - 6, std::nullopt},
+            {maxSize, 0, std::nullopt},
+            {0, maxSize, std::nullopt},
+            {0, maxSize - reserveSize, std::nullopt},
+            {Max<ui64>() - reserveSize, 0, std::nullopt},
+            {7, Max<ui64>() - reserveSize - 7, std::nullopt},
+            {Max<ui64>(), 0, std::nullopt},
+            {0, Max<ui64>(), std::nullopt},
         };
 
         for (const auto& testCase: testCases) {
@@ -59,14 +61,21 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
                 testCase.DataCapacity,
                 testCase.MetadataCapacity);
             UNIT_ASSERT_VALUES_EQUAL(
-                testCase.Expected.DataOffset,
-                layout.DataOffset);
+                testCase.Expected.has_value(),
+                layout.has_value());
+            if (!layout) {
+                continue;
+            }
+
             UNIT_ASSERT_VALUES_EQUAL(
-                testCase.Expected.MetadataOffset,
-                layout.MetadataOffset);
+                testCase.Expected->DataOffset,
+                layout->DataOffset);
             UNIT_ASSERT_VALUES_EQUAL(
-                testCase.Expected.StateFileSize,
-                layout.StateFileSize);
+                testCase.Expected->MetadataOffset,
+                layout->MetadataOffset);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected->StateFileSize,
+                layout->StateFileSize);
         }
     }
 

@@ -486,14 +486,14 @@ public:
                     args.DataCapacity,
                     args.MetadataCapacity);
 
-                if (!layout.StateFileSize) {
+                if (!layout) {
                     SetInitializationError(
                         "Invalid capacities: file ring buffer layout "
                         "overflows");
                     return;
                 }
 
-                if (!ResizeAndRemap(layout.StateFileSize)) {
+                if (!ResizeAndRemap(layout->StateFileSize)) {
                     return;
                 }
 
@@ -502,7 +502,7 @@ public:
                     Accessor.GetRawData().size());
 
                 *reinterpret_cast<TFileRingBufferHeader*>(
-                    Accessor.GetRawData().data()) = InitHeader(args, layout);
+                    Accessor.GetRawData().data()) = InitHeader(args, *layout);
 
                 if (!Validate()) {
                     return;
@@ -522,7 +522,7 @@ public:
                 Header()->DataCapacity,
                 Args.MetadataCapacity);
 
-            if (!layout.StateFileSize) {
+            if (!layout) {
                 SetInitializationError(
                     "Invalid capacities: file ring buffer layout overflows");
                 return;

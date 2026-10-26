@@ -45,7 +45,8 @@ namespace {
 ui64 GetStateFileSize(ui64 dataCapacity)
 {
     const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
-    return layout.StateFileSize;
+    UNIT_ASSERT(layout);
+    return layout->StateFileSize;
 }
 
 TString Dump(const TVector<TString>& entries)

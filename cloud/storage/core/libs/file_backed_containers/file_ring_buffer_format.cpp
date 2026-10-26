@@ -321,7 +321,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFileRingBufferLayout TFileRingBufferLayout::FromCapacity(
+std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
     ui64 dataCapacity,
     ui64 metadataCapacity)
 {
@@ -330,11 +330,11 @@ TFileRingBufferLayout TFileRingBufferLayout::FromCapacity(
 
     if (metadataOffset > maxFileSize) {
         // Integer overflow prevention
-        return {};
+        return std::nullopt;
     }
 
     if (metadataCapacity > maxFileSize - metadataOffset) {
-        return {};
+        return std::nullopt;
     }
 
     // Align the data area so entry headers can be read and written atomically
@@ -343,10 +343,10 @@ TFileRingBufferLayout TFileRingBufferLayout::FromCapacity(
 
     if (dataOffset > maxFileSize || dataCapacity > maxFileSize - dataOffset) {
         // Integer overflow prevention
-        return {};
+        return std::nullopt;
     }
 
-    return {
+    return TFileRingBufferLayout{
         .DataOffset = dataOffset,
         .MetadataOffset = metadataOffset,
         .StateFileSize = dataOffset + dataCapacity,
