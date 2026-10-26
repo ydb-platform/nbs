@@ -95,17 +95,15 @@ EDumpEntryResult DumpEntry(
     NProto::EStateFileType fileType)
 {
     const auto entryHeader = dataProcessor.ReadEntryHeader(pos);
-    if (entryHeader.DataSize == 0) {
-        if (IsSlackSpaceMarker(entryHeader, capabilities)) {
-            return EDumpEntryResult::Slack;
-        }
-
-        FillEntryInfo(*state.AddEntries(), entryHeader, pos, nullptr, fileType);
-        return EDumpEntryResult::Invalid;
+    if (IsSlackSpaceMarker(entryHeader, capabilities)) {
+        return EDumpEntryResult::Slack;
     }
 
     const auto* dataPtr =
-        dataProcessor.GetEntryDataPtr(pos, entryHeader.DataSize);
+        entryHeader.DataSize
+            ? dataProcessor.GetEntryDataPtr(pos, entryHeader.DataSize)
+            : nullptr;
+
     FillEntryInfo(*state.AddEntries(), entryHeader, pos, dataPtr, fileType);
 
     if (dataPtr == nullptr) {
