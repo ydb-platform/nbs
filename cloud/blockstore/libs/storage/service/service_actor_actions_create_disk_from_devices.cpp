@@ -139,8 +139,21 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (Request.GetDeviceUUIDs().size() == 0) {
-        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DeviceUUIDs cannot be empty"));
+    const bool isMirrored =
+        Request.GetMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+        Request.GetMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3;
+
+    if (!isMirrored && Request.GetDeviceUUIDs().size() == 0) {
+        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Devices cannot be empty for simple disk"));
+        return;
+    }
+
+    if (isMirrored && Request.GetReplicas().empty()) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_ARGUMENT,
+                "Replicas cannot be empty for mirrored disk"));
         return;
     }
 

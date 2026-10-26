@@ -1621,7 +1621,8 @@ private:
 
     void ReleaseFreshDevices(
         TDiskRegistryDatabase& db,
-        ui32 lastReplicaIdx,
+        ui32 fromReplicaIdx,
+        ui32 toReplicaIdx,
         const TDiskId& masterId,
         const TVector<TVector<TDeviceId>>& replicas,
         const TVector<TVector<TDeviceId>>& resolvedReplicas);

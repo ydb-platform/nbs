@@ -8665,12 +8665,13 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
 
 void TDiskRegistryState::ReleaseFreshDevices(
     TDiskRegistryDatabase& db,
-    ui32 lastReplicaIdx,
+    ui32 fromReplicaIdx,
+    ui32 toReplicaIdx,
     const TDiskId& masterId,
     const TVector<TVector<TDeviceId>>& replicas,
     const TVector<TVector<TDeviceId>>& resolvedReplicas)
 {
-    for (ui32 r = 0; r <= lastReplicaIdx; ++r) {
+    for (ui32 r = fromReplicaIdx; r <= toReplicaIdx; ++r) {
         for (ui32 d = 0; d < replicas[r].size(); ++d) {
             if (!replicas[r][d].empty() || d >= resolvedReplicas[r].size()) {
                 continue;
@@ -8730,7 +8731,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 resolvedReplicas[i]);
             HasError(error))
         {
-            ReleaseFreshDevices(db, i, masterId, replicas, resolvedReplicas);
+            ReleaseFreshDevices(db, 0, i, masterId, replicas, resolvedReplicas);
 
             TVector<TString> affectedDisks;
             DestroyPlacementGroup(
@@ -8757,6 +8758,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             DestroyPartiallyCreatedMirroredDisk(db, i, masterId);
             ReleaseFreshDevices(
                 db,
+                i,
                 replicas.size() - 1,
                 masterId,
                 replicas,
@@ -8825,8 +8827,17 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
 {
     Y_DEBUG_ABORT_UNLESS(result);
 
-    if (params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
-        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3)
+    const bool isMirrored =
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3;
+
+    if (isMirrored != replicas.empty()) {
+        return MakeError(
+            E_ARGUMENT,
+            "Replicas count is inconsistent with media kind");
+    }
+
+    if (isMirrored) {
     {
         return CreateMirroredDiskFromDevices(
             now,
