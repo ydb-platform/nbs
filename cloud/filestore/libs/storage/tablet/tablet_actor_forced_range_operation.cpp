@@ -224,8 +224,8 @@ struct TCompactionRequestConstructor
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
             rangeId,
-            true,
-            true);
+            true /* filterNodes */,
+            true /* forced */);
     }
 };
 
