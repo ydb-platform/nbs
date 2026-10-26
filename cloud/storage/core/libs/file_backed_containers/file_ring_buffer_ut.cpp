@@ -1171,6 +1171,52 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->SetMetadata("abcdefghi").Updated);
     }
 
+    FILE_RING_BUFFER_TEST(ShouldRejectOverflowingMetadataCapacityOnReopen)
+    {
+        const auto f = TTempFileHandle();
+        const ui64 dataCapacity = 64;
+        const ui64 metadataCapacity = 8;
+
+        {
+            TFileRingBuffer rb(
+                f.GetName(),
+                dataCapacity,
+                metadataCapacity,
+                ver);
+            UNIT_ASSERT(rb.PushBack("ABCD").Pushed);
+            UNIT_ASSERT(rb.SetMetadata("1234").Updated);
+        }
+
+        const auto initial = Dump(f);
+        const ui64 metadataOffset = TFileRingBufferHeader::ReserveSize;
+        for (const ui64 capacity:
+             {
+                 Max<ui64>() - 99,                  // Metadata end overflows
+                 Max<ui64>() - metadataOffset,      // Alignment overflows
+                 Max<ui64>() - metadataOffset - 7   // Data end overflows
+             })
+        {
+            {
+                // Resizing metadata must account for the existing data
+                // capacity, even when a smaller target capacity is requested.
+                TFileRingBuffer rb(f.GetName(), 0, capacity, ver);
+                UNIT_ASSERT(rb.IsCorrupted());
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(initial, Dump(f));
+
+            TFileRingBuffer rb(
+                f.GetName(),
+                dataCapacity,
+                metadataCapacity,
+                ver);
+            UNIT_ASSERT(!rb.IsCorrupted());
+            UNIT_ASSERT(rb.Validate());
+            UNIT_ASSERT_VALUES_EQUAL("1234", rb.GetMetadata().Metadata);
+            UNIT_ASSERT_VALUES_EQUAL("ABCD", Dump(rb));
+        }
+    }
+
     FILE_RING_BUFFER_TEST(ShouldResumeAbortedMetadataResize)
     {
         const auto f = TTempFileHandle();

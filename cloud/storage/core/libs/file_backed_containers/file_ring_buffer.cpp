@@ -519,6 +519,15 @@ public:
         }
 
         if (Header()->MetadataCapacity != Args.MetadataCapacity) {
+            const auto layout = TFileRingBufferLayout::FromCapacity(
+                Header()->DataCapacity,
+                Args.MetadataCapacity);
+
+            if (!layout.StateFileSize) {
+                SetCorrupted("File ring buffer layout overflows");
+                return;
+            }
+
             if (!ResizeMetadata(Args.MetadataCapacity)) {
                 // Corruption happened
                 return;
