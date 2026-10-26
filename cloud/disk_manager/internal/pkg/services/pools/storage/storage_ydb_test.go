@@ -1472,10 +1472,12 @@ func TestStorageYDBCheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
 	require.NoError(t, err)
 
-	overlayDisk := &types.Disk{ZoneId: "zone", DiskId: "overlay"}
-	proxyOverlayDisk := &types.Disk{ZoneId: "zone", DiskId: "proxy-overlay"}
+	// Note: the error message prints the whole slot, field names included,
+	// so the ids should not be substrings of the field names.
+	regularDisk := &types.Disk{ZoneId: "zone", DiskId: "regular-disk"}
+	proxyDisk := &types.Disk{ZoneId: "zone", DiskId: "proxy-disk"}
 
-	for _, disk := range []*types.Disk{overlayDisk, proxyOverlayDisk} {
+	for _, disk := range []*types.Disk{regularDisk, proxyDisk} {
 		_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{
 			OverlayDisk:     disk,
 			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
@@ -1485,26 +1487,24 @@ func TestStorageYDBCheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	}
 
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "proxy-overlay")
+	require.ErrorContains(t, err, "proxy-disk")
 
 	// Slots of other overlay disks are not checked.
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "other-")
 	require.NoError(t, err)
 
-	_, err = storage.ReleaseBaseDiskSlot(ctx, proxyOverlayDisk)
+	_, err = storage.ReleaseBaseDiskSlot(ctx, proxyDisk)
 	require.NoError(t, err)
 
 	// Released slot is kept as a tombstone, but it is released.
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
 	require.NoError(t, err)
 
-	// Slot of the regular overlay disk is still acquired.
+	// Slot of the regular disk is still acquired.
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "overlay")
+	require.ErrorContains(t, err, "regular-disk")
 
-	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	_, err = storage.ReleaseBaseDiskSlot(ctx, regularDisk)
 	require.NoError(t, err)
 
 	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
