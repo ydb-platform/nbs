@@ -358,6 +358,9 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(
         InvalidateNodeRefEventSendCount,
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        InvalidateNodeXAttrEventSendCount,
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM(
         FileSystemEventsSubscriberRegistryNodeCount,

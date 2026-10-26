@@ -376,6 +376,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
             E_ARGUMENT,
             response->GetError().GetCode(),
             FormatError(response->GetError()));
+
+        event = MakeEvent(42);
+        auto* invalidate = event.MutableInvalidateNodeXAttr();
+        invalidate->SetNodeId(42);
+        invalidate->SetName("user.a");
+        response = service.AssertExecuteActionFailed(
+            "generatefilesystemevent",
+            MakeGenerateFileSystemEventInput("test", event));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldGenerateFileSystemEventsUponNodeChanges)
