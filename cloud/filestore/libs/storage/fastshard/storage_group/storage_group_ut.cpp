@@ -1340,28 +1340,27 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
     auto error = fx.Group->Init().GetError();
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-    auto roundParked = [&](ui32 round)
+    // Init's acquire is the one before step 1.
+    auto reacquireStep = [&](ui32 round)
     {
         for (ui32 i = 0; i < DeviceCount; ++i) {
             if (!WaitFor([&] { return fx[i].Acquires.Parked == round + 1; })) {
                 return false;
             }
-        }
-        return true;
-    };
-    auto step = [&]
-    {
-        for (ui32 i = 0; i < DeviceCount; ++i) {
             fx[i].Acquires.Step();
         }
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            if (!WaitFor([&] { return fx[i].Acquires.Count() == round + 1; })) {
+                return false;
+            }
+        }
+        return true;
     };
 
     // A storage node lets go of a session that stops being renewed, so Init's
     // acquire is repeated on every device for as long as the group lives.
-    ASSERT_TRUE(roundParked(1));
-    step();
+    ASSERT_TRUE(reacquireStep(1));
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_TRUE(WaitFor([&] { return fx[i].Acquires.Count() == 2; }));
         const auto renewal = fx[i].Acquires.Last();
         ASSERT_EQ(1U, renewal.DeviceUUIDsSize());
         ASSERT_EQ(fx.DeviceUUIDs[i], renewal.GetDeviceUUIDs(0));
@@ -1372,22 +1371,19 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
     // A retriable or aborted refusal is no verdict on the session: the group
     // carries on, and the next round is the retry.
     fx[2].Acquires.Reply(MakeError(E_REJECTED, "busy"));
-    ASSERT_TRUE(roundParked(2));
-    step();
+    ASSERT_TRUE(reacquireStep(2));
     error = Write(*fx.Group);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     fx[2].Acquires.Reply(MakeError(E_ABORTED, "shutting down"));
-    ASSERT_TRUE(roundParked(3));
-    step();
+    ASSERT_TRUE(reacquireStep(3));
     error = Write(*fx.Group, Lsn + 1);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     // The device belongs to someone else now, which is not a device this
     // group can go on writing to.
     fx[2].Acquires.Reply(MakeError(E_BS_MOUNT_CONFLICT, "another writer"));
-    ASSERT_TRUE(roundParked(4));
-    step();
+    ASSERT_TRUE(reacquireStep(4));
     TVector<TPageGroup> pageGroups;
     ASSERT_TRUE(
         WaitFor([&] { return HasError(Read(*fx.Group, &pageGroups)); }));
