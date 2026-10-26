@@ -63,7 +63,7 @@ func diskCleanupIDs(state diskState) ([]string, error) {
 	return ids, err
 }
 
-func (s *storageYDB) PrepareLegacyDiskCleanup(
+func (s *storageYDB) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
 	cleanupID string,

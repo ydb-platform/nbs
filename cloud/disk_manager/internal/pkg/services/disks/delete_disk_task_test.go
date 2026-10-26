@@ -260,7 +260,7 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		// even though the disk is missing from the database.
 
 		cleanupID := legacyDiskCleanupPrefix + "toplevel_task_id"
-		storage.On("PrepareLegacyDiskCleanup", ctx, "disk", cleanupID).Return(true, nil).Once()
+		storage.On("PrepareDiskCleanup", ctx, "disk", cleanupID).Return(true, nil).Once()
 		tx := &persistence.Transaction{}
 		storage.On("CompleteDiskCleanup", ctx, tx, "disk", cleanupID).Return(nil).Once()
 		execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {

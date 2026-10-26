@@ -60,6 +60,7 @@ func (t *deleteDiskTask) deleteDisk(
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
+	sync := t.request.Sync
 
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
@@ -71,57 +72,17 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
+	zoneID := ""
 	if diskMeta == nil {
 		return t.deleteDiskWithoutMetadata(ctx, execCtx)
+	} else {
+		zoneID = diskMeta.ZoneID
 	}
-
-	zoneID := diskMeta.ZoneID
-
-	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
-	if err != nil {
-		return err
-	}
-
-	// Only overlay disks (created from image) should be released.
-	if len(diskMeta.SrcImageID) != 0 {
-		taskID, err := t.poolService.ReleaseBaseDisk(
-			headers.SetIncomingIdempotencyKey(
-				ctx,
-				selfTaskID+"_release_base_disk",
-			),
-			&pools_protos.ReleaseBaseDiskRequest{
-				OverlayDisk: &types.Disk{
-					ZoneId: zoneID,
-					DiskId: diskID,
-				},
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-		if err != nil {
-			return err
-		}
-	}
-
-	return t.storage.DiskDeleted(ctx, diskID, time.Now())
-}
-
-func (t *deleteDiskTask) deleteDiskInCell(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	zoneID string,
-	idempotencyKey string,
-) error {
-
-	diskID := t.request.Disk.DiskId
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			idempotencyKey,
+			selfTaskID+"_delete_disk_from_incremental",
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
@@ -146,16 +107,40 @@ func (t *deleteDiskTask) deleteDiskInCell(
 		return err
 	}
 
-	if t.request.Sync {
+	if sync {
 		err = client.DeleteSync(ctx, diskID)
 	} else {
 		err = client.Delete(ctx, diskID)
 	}
-	if err != nil && !nbs.IsDiskNotFoundError(err) {
+	if err != nil {
 		return err
 	}
 
-	return nil
+	// Only overlay disks (created from image) should be released.
+	if len(diskMeta.SrcImageID) != 0 {
+		taskID, err = t.poolService.ReleaseBaseDisk(
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				selfTaskID+"_release_base_disk",
+			),
+			&pools_protos.ReleaseBaseDiskRequest{
+				OverlayDisk: &types.Disk{
+					ZoneId: zoneID,
+					DiskId: diskID,
+				},
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.storage.DiskDeleted(ctx, diskID, time.Now())
 }
 
 func (t *deleteDiskTask) Run(

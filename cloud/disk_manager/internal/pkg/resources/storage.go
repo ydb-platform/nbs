@@ -135,7 +135,7 @@ type Storage interface {
 		deletingAt time.Time,
 	) (*DiskMeta, error)
 
-	PrepareLegacyDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error)
+	PrepareDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error)
 	CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error

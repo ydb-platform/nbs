@@ -36,7 +36,7 @@ func TestTrackedDiskDeletionKeepsTombstone(t *testing.T) {
 	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
 	require.NoError(t, err)
 	for _, id := range []string{"first", "second"} {
-		prepared, err := storage.PrepareLegacyDiskCleanup(ctx, "disk", id)
+		prepared, err := storage.PrepareDiskCleanup(ctx, "disk", id)
 		require.NoError(t, err)
 		require.True(t, prepared)
 	}
@@ -87,7 +87,7 @@ func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
 	_, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
 	require.NoError(t, err)
 	require.NoError(t, storage.DiskDeleted(ctx, "disk", time.Now()))
-	prepared, err := storage.PrepareLegacyDiskCleanup(ctx, "disk", "late")
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late")
 	require.NoError(t, err)
 	require.False(t, prepared)
 	require.False(t, readTrackedDisk(t, ctx, db, storage, "disk").tombstone)
@@ -157,7 +157,7 @@ func TestLegacyDiskTombstoneUsesDeletionTime(t *testing.T) {
 			actual := diskDeletionCompleted(readTrackedDisk(t, ctx, db, storage, disk.ID))
 			require.Equal(t, tc.completed, actual)
 			require.Equal(t, !tc.completed, readTrackedDisk(t, ctx, db, storage, disk.ID).tombstone)
-			prepared, err := storage.PrepareLegacyDiskCleanup(ctx, disk.ID, "legacy")
+			prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, "legacy")
 			require.NoError(t, err)
 			require.Equal(t, !tc.completed, prepared)
 		})
