@@ -33,7 +33,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
         };
 
         const ui64 reserveSize = TFileRingBufferHeader::ReserveSize;
-        const ui64 maxSize = Max<ui64>();
+        const ui64 maxSize = Max<i64>();
         const TVector<TTestCase> testCases = {
             {0, 0, {reserveSize, reserveSize, reserveSize}},
             {17, 1, {reserveSize + 8, reserveSize, reserveSize + 25}},
@@ -41,9 +41,17 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
             {17, 9, {reserveSize + 16, reserveSize, reserveSize + 33}},
             {maxSize - reserveSize, 0, {reserveSize, reserveSize, maxSize}},
             {7, maxSize - reserveSize - 7, {maxSize - 7, reserveSize, maxSize}},
+            {0, maxSize - reserveSize - 7, {maxSize - 7, reserveSize, maxSize - 7}},
+            {maxSize - reserveSize + 1, 0, {}},
+            {8, maxSize - reserveSize - 7, {}},
+            {0, maxSize - reserveSize - 6, {}},
             {maxSize, 0, {}},
             {0, maxSize, {}},
             {0, maxSize - reserveSize, {}},
+            {Max<ui64>() - reserveSize, 0, {}},
+            {7, Max<ui64>() - reserveSize - 7, {}},
+            {Max<ui64>(), 0, {}},
+            {0, Max<ui64>(), {}},
         };
 
         for (const auto& testCase: testCases) {

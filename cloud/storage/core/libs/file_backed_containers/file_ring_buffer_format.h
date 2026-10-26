@@ -124,7 +124,7 @@ struct TFileRingBufferLayout
     ui64 MetadataOffset = 0;
     ui64 StateFileSize = 0;
 
-    // Returns the default layout if calculating offsets or file size overflows
+    // Returns the default layout if offsets or file size exceed Max<i64>()
     static TFileRingBufferLayout FromCapacity(
         ui64 dataCapacity,
         ui64 metadataCapacity);
