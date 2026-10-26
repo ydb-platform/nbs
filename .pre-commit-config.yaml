@@ -1,3 +1,7 @@
+# Canonical test data is compared byte for byte with the test output, so it
+# must stay exactly as the test produced it, trailing newline or not.
+exclude: '(^|/)canondata/'
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
