@@ -447,11 +447,11 @@ struct TBootstrap
         UnflushedData.Write(nodeId, offset, buffer);
         auto future = Cache.WriteData(CallContext, std::move(request));
 
-        future.Subscribe([&, nodeId, offset, buffer] (auto) {
+        return future.Apply([&, nodeId, offset, buffer](const auto& completed) {
+            auto response = completed.GetValue();
             ExpectedData.Write(nodeId, offset, buffer);
+            return response;
         });
-
-        return future;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteToCache(
