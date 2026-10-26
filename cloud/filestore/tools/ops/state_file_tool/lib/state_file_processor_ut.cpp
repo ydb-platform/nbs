@@ -183,7 +183,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT(dump.HasHeader());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
-            Crc32c(bootstrap.RawData.data(), bootstrap.RawData.size()),
+            Crc32c(bootstrap.RawData.data(), sizeof(TFileRingBufferHeader)),
             dump.GetChecksum());
 
         const auto& header = dump.GetHeader();

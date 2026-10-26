@@ -6,6 +6,8 @@
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
+#include <util/generic/utility.h>
+
 #include <cstring>
 
 namespace NCloud::NFileStore::NStateFileTool {
@@ -146,7 +148,13 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     const auto rawData = accessor.GetRawData();
     const auto validationResult = accessor.ValidateAndInitialize();
 
-    result.SetChecksum(Crc32c(rawData.data(), rawData.size()));
+    // Detect changes since the dump so patching can reject a stale snapshot.
+    // Cover the header, used metadata and data without reading unused sparse
+    // capacity, which would commit tmpfs pages to RAM.
+    const auto headerData =
+        rawData.first(Min(rawData.size(), sizeof(TFileRingBufferHeader)));
+    result.SetChecksum(Crc32c(headerData.data(), headerData.size()));
+
     result.SetIsCorrupted(
         validationResult == EFileRingBufferAccessorValidationStatus::Failed);
 
@@ -162,8 +170,13 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
         const auto rawMetadata = accessor.GetRawMetadata();
         if (header->MetadataSize <= rawMetadata.size()) {
             const auto metadata = rawMetadata.subspan(0, header->MetadataSize);
-            result.SetActualMetadataChecksum(
-                Crc32c(metadata.data(), metadata.size()));
+            const auto metadataChecksum =
+                Crc32c(metadata.data(), metadata.size());
+            result.SetActualMetadataChecksum(metadataChecksum);
+            result.SetChecksum(Crc32cCombine(
+                result.GetChecksum(),
+                metadataChecksum,
+                metadata.size()));
         }
     }
 
@@ -173,6 +186,21 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     }
 
     const auto readPos = header->ReadPos;
+    const auto writePos = header->WritePos;
+
+    if (readPos <= header->DataCapacity && writePos <= header->DataCapacity) {
+        // For a wrapped buffer, assume the entire data area has already been
+        // used and include it all in the snapshot checksum.
+        ui64 begin = readPos <= writePos ? readPos : 0;
+        ui64 end = readPos <= writePos ? writePos : header->DataCapacity;
+        auto data = rawData.subspan(header->DataOffset + begin, end - begin);
+
+        result.SetChecksum(Crc32cExtend(
+            result.GetChecksum(),
+            data.data(),
+            data.size()));
+    }
+
     const auto capabilities = dataProcessor->GetCapabilities(false);
     auto pos = readPos;
     while (pos > header->WritePos) {

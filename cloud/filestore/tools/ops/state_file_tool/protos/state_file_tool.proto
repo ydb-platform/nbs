@@ -65,6 +65,11 @@ message TStateFileEntry
 
 message TStateFileDump
 {
+    // Detects changes between dumping and patching to reject stale snapshots.
+    // CRC32C covers the fixed header (or its available prefix), used metadata,
+    // and raw data: [ReadPos, WritePos) when ReadPos <= WritePos, otherwise
+    // [0, DataCapacity). Raw data is omitted if the layout or cursor bounds
+    // are invalid.
     required uint32 Checksum = 1;
     required bool IsCorrupted = 2;
     optional uint32 ActualMetadataChecksum = 3;
