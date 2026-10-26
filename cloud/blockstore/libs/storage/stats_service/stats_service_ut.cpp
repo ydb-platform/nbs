@@ -512,8 +512,8 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     Y_UNIT_TEST(ShouldRegisterCompressionCountersForVolumesAndTotals)
     {
         NProto::TDiagnosticsConfig proto;
-        proto.AddBlobCompressionChunkSizes(1);
-        proto.AddBlobCompressionChunkSizes(2);
+        proto.AddBlobCompressionChunkSizes(4096);
+        proto.AddBlobCompressionChunkSizes(8192);
         const TDiagnosticsConfig diagnostics(proto);
         const TStorageConfig storage(
             NProto::TStorageServiceConfig{},
@@ -526,10 +526,10 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         auto source = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
             diagnostics);
-        source->BlobCompression.at(1).UncompressedBytesWritten.Increment(8192);
-        source->BlobCompression.at(1).CompressedBytesWritten.Increment(100);
-        source->BlobCompression.at(2).UncompressedBytesWritten.Increment(8192);
-        source->BlobCompression.at(2).CompressedBytesWritten.Increment(80);
+        source->BlobCompression.at(4096).UncompressedBytesWritten.Increment(8192);
+        source->BlobCompression.at(4096).CompressedBytesWritten.Increment(100);
+        source->BlobCompression.at(8192).UncompressedBytesWritten.Increment(8192);
+        source->BlobCompression.at(8192).CompressedBytesWritten.Increment(80);
 
         NMonitoring::TDynamicCountersPtr volumeCounters =
             new NMonitoring::TDynamicCounters();
@@ -538,7 +538,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         volume->PerfCounters.Publish(TInstant::Now());
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            volumeCounters->GetSubgroup("compression_chunk_size", "1")
+            volumeCounters->GetSubgroup("compression_chunk_size", "4.00 KiB")
                 ->GetCounter("CompressedBytesWritten", true)->Val());
 
         for (auto* total: {
@@ -554,7 +554,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             total->UpdatePartCounters(*source);
             total->Publish(TInstant::Now());
             const auto compression =
-                counters->GetSubgroup("compression_chunk_size", "2");
+                counters->GetSubgroup("compression_chunk_size", "8.00 KiB");
             UNIT_ASSERT_VALUES_EQUAL(
                 8192,
                 compression->GetCounter("UncompressedBytesWritten", true)->Val());
