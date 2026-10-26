@@ -118,13 +118,17 @@ func (s *storageYDB) IsDiskCleanupInProgress(
 	return pending, err
 }
 
-// PrepareDiskCleanup reserves the ID before background tasks can be scheduled.
-// A concurrently recreated disk must never be included in the old cleanup.
+// PrepareDiskCleanup reserves IDs before external deletion. Legacy parents may
+// resume their own background reservation but cannot add a new one to that cleanup.
 func (s *storageYDB) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
 	cleanupIDs []string,
+	legacy bool,
 ) (prepared bool, err error) {
+	if legacy && len(cleanupIDs) != 1 {
+		return false, fmt.Errorf("legacy cleanup for disk %q requires one parent ID", diskID)
+	}
 	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
 		tx, err := session.BeginRWTransaction(ctx)
 		if err != nil {
@@ -135,11 +139,23 @@ func (s *storageYDB) PrepareDiskCleanup(
 		if err != nil {
 			return err
 		}
-		if state.id != "" && !diskCleanupInProgress(state) && !diskIsTombstone(state) {
-			// Missing records, explicit tombstones, and active cleanup can be
-			// reserved. Never take over a live disk or restart completed deletion.
+		if !legacy && state.id != "" && !diskCleanupInProgress(state) && !diskIsTombstone(state) {
+			// Never take over a live disk or restart completed deletion.
 			prepared = false
 			return tx.Commit(ctx)
+		}
+		ids, err := diskCleanupIDs(state)
+		if err != nil {
+			return err
+		}
+		if legacy {
+			if !diskIsTombstone(state) {
+				prepared = diskCleanupInProgress(state) && slices.Contains(ids, cleanupIDs[0])
+				return tx.Commit(ctx)
+			}
+			if cleanupIDs[0] == "" {
+				return fmt.Errorf("empty legacy cleanup ID for disk %q", diskID)
+			}
 		}
 		if len(cleanupIDs) == 0 {
 			return fmt.Errorf("cannot reserve disk %q without cleanup IDs", diskID)
@@ -148,10 +164,6 @@ func (s *storageYDB) PrepareDiskCleanup(
 			state.id = diskID
 			state.tombstone = true
 			state.deletingAt = time.Now()
-		}
-		ids, err := diskCleanupIDs(state)
-		if err != nil {
-			return err
 		}
 		for _, id := range cleanupIDs {
 			if !slices.Contains(ids, id) {
@@ -163,55 +175,9 @@ func (s *storageYDB) PrepareDiskCleanup(
 			return err
 		}
 		state.cleanupTaskIDs = string(data)
-		state.status = diskStatusDeleting
-		err = s.updateDiskState(ctx, tx, state)
-		if err != nil {
-			return err
+		if !legacy {
+			state.status = diskStatusDeleting
 		}
-		err = tx.Commit(ctx)
-		prepared = err == nil
-		return err
-	})
-	return prepared, err
-}
-
-// PrepareLegacyDiskCleanup pins a legacy missing-disk request before any external
-// deletion. New legacy requests cannot join background cleanup, but an already
-// pinned parent must resume and release its own reservation when it finishes.
-func (s *storageYDB) PrepareLegacyDiskCleanup(
-	ctx context.Context,
-	diskID string,
-	cleanupID string,
-) (prepared bool, err error) {
-	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
-		tx, err := session.BeginRWTransaction(ctx)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback(ctx)
-		state, err := s.loadDiskCleanupState(ctx, tx, diskID)
-		if err != nil {
-			return err
-		}
-		ids, err := diskCleanupIDs(state)
-		if err != nil {
-			return err
-		}
-		if !diskIsTombstone(state) {
-			prepared = diskCleanupInProgress(state) && slices.Contains(ids, cleanupID)
-			return tx.Commit(ctx)
-		}
-		if cleanupID == "" {
-			return fmt.Errorf("empty legacy cleanup ID for disk %q", diskID)
-		}
-		if !slices.Contains(ids, cleanupID) {
-			ids = append(ids, cleanupID)
-		}
-		data, err := json.Marshal(ids)
-		if err != nil {
-			return err
-		}
-		state.cleanupTaskIDs = string(data)
 		if err := s.updateDiskState(ctx, tx, state); err != nil {
 			return err
 		}

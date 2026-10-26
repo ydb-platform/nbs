@@ -57,7 +57,7 @@ func (t *registerLegacyDiskCleanupTask) register(ctx context.Context, execCtx ta
 		if request.DeleteIfNonExistent && !request.BackgroundCleanup && len(state.CleanupCellIds) == 0 &&
 			request.Disk != nil && request.Disk.DiskId != "" && request.Disk.ZoneId != "" {
 			cleanupID := legacyDiskCleanupPrefix + parent.ID
-			prepared, err := t.storage.PrepareLegacyDiskCleanup(ctx, request.Disk.DiskId, cleanupID)
+			prepared, err := t.storage.PrepareDiskCleanup(ctx, request.Disk.DiskId, []string{cleanupID}, true /* legacy */)
 			if err != nil {
 				return err
 			}

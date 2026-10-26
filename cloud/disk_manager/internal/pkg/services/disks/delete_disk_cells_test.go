@@ -43,7 +43,7 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 				ids := []string{"toplevel_task_id_delete_disk_from_cell_cell-a", "toplevel_task_id_delete_disk_from_cell_cell-b"}
 				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 				storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
-				storage.On("PrepareDiskCleanup", ctx, "disk", ids).Return(true, nil).Once()
+				storage.On("PrepareDiskCleanup", ctx, "disk", ids, false).Return(true, nil).Once()
 				storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil)
 				execCtx.On("SaveState", ctx).Return(nil).Twice()
 				schedule := func(i int, err error) {
@@ -182,7 +182,7 @@ func TestDeleteDiskBackgroundReservationFailure(t *testing.T) {
 		if prepareError {
 			e = assert.AnError
 		}
-		storage.On("PrepareDiskCleanup", ctx, "disk", []string{"toplevel_task_id_delete_disk_from_cell_cell"}).Return(false, e).Once()
+		storage.On("PrepareDiskCleanup", ctx, "disk", []string{"toplevel_task_id_delete_disk_from_cell_cell"}, false).Return(false, e).Once()
 		err := task.Run(ctx, execCtx)
 		if prepareError {
 			require.True(t, errors.Is(err, e))
@@ -214,7 +214,7 @@ func TestDeleteDiskTaskAlreadyCompleted(t *testing.T) {
 		} else {
 			require.NoError(t, err)
 		}
-		storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
+		storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything, false)
 		storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
 		mock.AssertExpectationsForObjects(t, storage, execCtx)
 	}
@@ -228,7 +228,7 @@ func TestDeleteDiskTaskBackgroundCleanupDisabled(t *testing.T) {
 		errorAt  string
 	}{
 		{name: "legacy async", prepared: true}, {name: "legacy sync", prepared: true, sync: true},
-		{name: "existing background cleanup"}, {name: "reservation read error", errorAt: "PrepareLegacyDiskCleanup"},
+		{name: "existing background cleanup"}, {name: "reservation read error", errorAt: "PrepareDiskCleanup"},
 		{name: "incremental retry keeps reservation", prepared: true, errorAt: "WaitTask"},
 		{name: "NBS retry keeps reservation", prepared: true, errorAt: "Delete"},
 		{name: "completion callback failure", prepared: true, errorAt: "CompleteDiskCleanup"},
@@ -253,9 +253,9 @@ func TestDeleteDiskTaskBackgroundCleanupDisabled(t *testing.T) {
 				return nil
 			}
 			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, false).Return((*resources.DiskMeta)(nil), nil).Once()
-			storage.On("PrepareLegacyDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareLegacyDiskCleanup")).Once()
+			storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, true).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
 			setup := func() {
-				if !tc.prepared || tc.errorAt == "PrepareLegacyDiskCleanup" {
+				if !tc.prepared || tc.errorAt == "PrepareDiskCleanup" {
 					return
 				}
 				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
@@ -293,7 +293,7 @@ func TestDeleteDiskTaskBackgroundCleanupDisabled(t *testing.T) {
 			mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
 			storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
 			storage.AssertNotCalled(t, "DeleteDisk", mock.Anything, mock.Anything, mock.Anything, mock.Anything, true)
-			storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
+			storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything, false)
 			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
@@ -315,7 +315,7 @@ func TestDeleteDiskTaskSavedCleanupResumesWithFeatureDisabled(t *testing.T) {
 			id := "toplevel_task_id_delete_disk_from_cell_cell"
 			storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
 			if !prepared {
-				storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}).Return(true, nil).Once()
+				storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, false).Return(true, nil).Once()
 				execCtx.On("SaveState", ctx).Return(nil).Once()
 			}
 			scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, id), "disks.DeleteDiskFromCell", "", "",
@@ -344,7 +344,7 @@ func TestDeleteDiskTaskBackgroundStateSaveFailure(t *testing.T) {
 	storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 	execCtx.On("SaveState", ctx).Return(assert.AnError).Once()
 	require.True(t, errors.Is(task.Run(ctx, execCtx), assert.AnError))
-	storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
+	storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything, false)
 	scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	// Even without a saved cell set, reloading the persisted request retains
@@ -356,7 +356,7 @@ func TestDeleteDiskTaskBackgroundStateSaveFailure(t *testing.T) {
 	scheduler.On("ScheduleNonCancellableTask", mock.Anything, registerLegacyDiskCleanupTaskType, "", "", mock.Anything).Return("registration", nil).Once()
 	scheduler.On("WaitTask", ctx, execCtx, "registration").Return(nil, nil).Once()
 	id := "toplevel_task_id_delete_disk_from_cell_cell"
-	storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}).Return(true, nil).Once()
+	storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, false).Return(true, nil).Once()
 	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
 	scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, id), "disks.DeleteDiskFromCell", "", "",
 		&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, CleanupId: id}).Return("worker", nil).Once()

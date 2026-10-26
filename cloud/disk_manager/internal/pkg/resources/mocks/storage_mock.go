@@ -608,8 +608,8 @@ func (s *StorageMock) IsDiskDeletionCompleted(ctx context.Context, diskID string
 	return args.Bool(0), args.Error(1)
 }
 
-func (s *StorageMock) PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string) (bool, error) {
-	args := s.Called(ctx, diskID, cleanupIDs)
+func (s *StorageMock) PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string, legacy bool) (bool, error) {
+	args := s.Called(ctx, diskID, cleanupIDs, legacy)
 	return args.Bool(0), args.Error(1)
 }
 func (s *StorageMock) IsDiskCleanupPending(ctx context.Context, diskID string, cleanupID string) (bool, error) {
@@ -622,11 +622,6 @@ func (s *StorageMock) CompleteDiskCleanup(ctx context.Context, tx *persistence.T
 
 func (s *StorageMock) IsDiskCleanupInProgress(ctx context.Context, diskID string) (bool, error) {
 	args := s.Called(ctx, diskID)
-	return args.Bool(0), args.Error(1)
-}
-
-func (s *StorageMock) PrepareLegacyDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error) {
-	args := s.Called(ctx, diskID, cleanupID)
 	return args.Bool(0), args.Error(1)
 }
 

@@ -42,7 +42,7 @@ func TestRegisterLegacyDiskCleanupResumesPagesWithoutWaitingForCells(t *testing.
 	scheduler.On("ListUnfinishedTasks", ctx, "disks.DeleteDisk", "", legacyDiskCleanupPageSize).Return(first, nil).Once()
 	for _, id := range []string{"a", "b"} {
 		key := legacyDiskCleanupPrefix + id
-		storage.On("PrepareLegacyDiskCleanup", ctx, "disk", key).Return(true, nil).Once()
+		storage.On("PrepareDiskCleanup", ctx, "disk", []string{key}, true).Return(true, nil).Once()
 		scheduler.On("WaitTaskEndedWithTimeout", ctx, id, time.Duration(0)).Return(errors.NewInterruptExecutionError()).Once()
 		scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, key+"_finish"), "disks.FinishLegacyDiskCleanup", "", "",
 			&protos.FinishLegacyDiskCleanupRequest{DiskId: "disk", LegacyTaskId: id, CleanupId: key}).Return("observer-"+id, nil).Once()
@@ -51,7 +51,7 @@ func TestRegisterLegacyDiskCleanupResumesPagesWithoutWaitingForCells(t *testing.
 	require.NoError(t, task.Load(nil, saved))
 	second := []tasks_storage.TaskState{legacyDeleteForRegistration(t, "c", "known-disk")}
 	scheduler.On("ListUnfinishedTasks", ctx, "disks.DeleteDisk", "b", legacyDiskCleanupPageSize).Return(second, nil).Once()
-	storage.On("PrepareLegacyDiskCleanup", ctx, "known-disk", legacyDiskCleanupPrefix+"c").Return(false, nil).Once()
+	storage.On("PrepareDiskCleanup", ctx, "known-disk", []string{legacyDiskCleanupPrefix + "c"}, true).Return(false, nil).Once()
 	require.ErrorIs(t, task.Run(ctx, execCtx), errors.NewInterruptExecutionError())
 	require.NoError(t, task.Load(nil, saved))
 	scheduler.On("ListUnfinishedTasks", ctx, "disks.DeleteDisk", "c", legacyDiskCleanupPageSize).Return([]tasks_storage.TaskState(nil), nil).Once()
@@ -84,7 +84,7 @@ func TestRegisterLegacyDiskCleanupRetriesWithoutSkippingPage(t *testing.T) {
 				if fail == "list" {
 					return
 				}
-				storage.On("PrepareLegacyDiskCleanup", ctx, "disk", key).Return(true, errFor("reserve")).Once()
+				storage.On("PrepareDiskCleanup", ctx, "disk", []string{key}, true).Return(true, errFor("reserve")).Once()
 				if fail == "reserve" {
 					return
 				}
@@ -156,7 +156,7 @@ func TestBackgroundCleanupWaitsOnlyForAutomaticRegistration(t *testing.T) {
 	execCtx.On("SaveState", ctx).Return(nil).Times(3)
 	scheduler.On("WaitTask", ctx, execCtx, "registration").Return(nil, errors.NewInterruptExecutionError()).Once()
 	require.ErrorIs(t, task.Run(ctx, execCtx), errors.NewInterruptExecutionError())
-	storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
+	storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything, false)
 	require.Equal(t, "customer-key", headers.GetIdempotencyKey(ctx))
 	saved, err := task.Save()
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestBackgroundCleanupWaitsOnlyForAutomaticRegistration(t *testing.T) {
 	require.False(t, task.request.BackgroundCleanup)
 	scheduler.On("WaitTask", ctx, execCtx, "registration").Return(nil, nil).Once()
 	ids := []string{"toplevel_task_id_delete_disk_from_cell_unavailable-cell"}
-	storage.On("PrepareDiskCleanup", ctx, "disk", ids).Return(true, nil).Once()
+	storage.On("PrepareDiskCleanup", ctx, "disk", ids, false).Return(true, nil).Once()
 	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
 	scheduler.On("ScheduleNonCancellableTask", mock.MatchedBy(func(c context.Context) bool {
 		return headers.GetIdempotencyKey(c) == ids[0] && headers.GetAccountID(c) == "customer"
@@ -228,7 +228,7 @@ func TestRegistrationDoesNotRetainParentThatEndedAfterPageRead(t *testing.T) {
 			parent := legacyDeleteForRegistration(t, "parent", "disk")
 			key := legacyDiskCleanupPrefix + parent.ID
 			scheduler.On("ListUnfinishedTasks", ctx, "disks.DeleteDisk", "", legacyDiskCleanupPageSize).Return([]tasks_storage.TaskState{parent}, nil).Once()
-			storage.On("PrepareLegacyDiskCleanup", ctx, "disk", key).Return(true, nil).Once()
+			storage.On("PrepareDiskCleanup", ctx, "disk", []string{key}, true).Return(true, nil).Once()
 			var endedErr error
 			if collected {
 				endedErr = errors.NewEmptyNotFoundError()

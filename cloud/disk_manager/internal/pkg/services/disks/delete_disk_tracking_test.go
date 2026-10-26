@@ -28,7 +28,7 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 		errorAt  string
 	}{
 		{name: "legacy async", prepared: true}, {name: "legacy sync", prepared: true, sync: true},
-		{name: "completed deletion"}, {name: "reservation read error", errorAt: "PrepareLegacyDiskCleanup"},
+		{name: "completed deletion"}, {name: "reservation read error", errorAt: "PrepareDiskCleanup"},
 		{name: "incremental retry keeps reservation", prepared: true, errorAt: "WaitTask"},
 		{name: "NBS retry keeps reservation", prepared: true, errorAt: "Delete"},
 		{name: "completion callback failure", prepared: true, errorAt: "CompleteDiskCleanup"},
@@ -53,9 +53,9 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				return nil
 			}
 			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, false).Return((*resources.DiskMeta)(nil), nil).Once()
-			storage.On("PrepareLegacyDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareLegacyDiskCleanup")).Once()
+			storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, true).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
 			setup := func() {
-				if !tc.prepared || tc.errorAt == "PrepareLegacyDiskCleanup" {
+				if !tc.prepared || tc.errorAt == "PrepareDiskCleanup" {
 					return
 				}
 				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
