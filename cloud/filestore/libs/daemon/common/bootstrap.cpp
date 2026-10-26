@@ -24,6 +24,7 @@
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/bootstrap_monitoring/bootstrap_monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -112,6 +113,9 @@ void TBootstrapCommon::Start()
 
 void TBootstrapCommon::Stop()
 {
+    if (BootstrapMonitoring) {
+        BootstrapMonitoring->Stop();
+    }
     Drain();
 
     // stopping scheduler before all other components to avoid races between
@@ -153,6 +157,18 @@ void TBootstrapCommon::Init()
 {
     InitCommonConfigs();
     InitLogs();
+
+    if (Configs->Options->Service == EServiceKind::Kikimr) {
+        BootstrapMonitoring = CreateBootstrapMonitoring(
+            Configs->KikimrConfig->GetMonitoringConfig(),
+            "filestore");
+        if (Configs->Options->RestartsCountFile) {
+            PublishRestartsCount(
+                Configs->Options->RestartsCountFile,
+                BootstrapMonitoring->GetCounters());
+        }
+        BootstrapMonitoring->Start();
+    }
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
@@ -234,7 +250,7 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
-    if (Configs->Options->RestartsCountFile) {
+    if (Configs->Options->RestartsCountFile && !BootstrapMonitoring) {
         PublishRestartsCount(
             Configs->Options->RestartsCountFile,
             Monitoring->GetCounters());
@@ -315,6 +331,7 @@ void TBootstrapCommon::InitActorSystem()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.BootstrapMonitoring = BootstrapMonitoring;
     args.StorageConfig = Configs->StorageConfig;
     args.StorageConfig->SetFeaturesConfig(*Configs->FeaturesConfig);
     args.ProfileLog = ProfileLog;

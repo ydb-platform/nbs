@@ -8,6 +8,8 @@ SRCS(
 )
 
 PEERDIR(
+    library/cpp/http/simple
+    library/cpp/json
     cloud/filestore/libs/storage/testlib
 
     contrib/ydb/core/testlib

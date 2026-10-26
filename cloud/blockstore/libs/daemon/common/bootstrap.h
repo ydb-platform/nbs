@@ -51,6 +51,7 @@ protected:
     ITaskQueuePtr BackgroundThreadPool;
     ISchedulerPtr BackgroundScheduler;
     IMonitoringServicePtr Monitoring;
+    IMonitoringServicePtr BootstrapMonitoring;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
     IServerStatsPtr ServerStats;

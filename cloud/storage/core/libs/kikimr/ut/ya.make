@@ -8,6 +8,8 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/diagnostics/bootstrap_monitoring
+    library/cpp/http/simple
     library/cpp/testing/gmock_in_unittest
 )
 

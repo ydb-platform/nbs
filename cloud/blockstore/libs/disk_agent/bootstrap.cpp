@@ -3,6 +3,8 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/storage/core/libs/diagnostics/bootstrap_monitoring/bootstrap_monitoring.h>
+
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -478,6 +480,11 @@ bool TBootstrap::InitKikimrService()
         }
     }
 
+    BootstrapMonitoring = NCloud::NStorage::CreateBootstrapMonitoring(
+        Configs->KikimrConfig->GetMonitoringConfig(),
+        "blockstore");
+    BootstrapMonitoring->Start();
+
     auto registrant =
         CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
 
@@ -557,6 +564,7 @@ bool TBootstrap::InitKikimrService()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.BootstrapMonitoring = BootstrapMonitoring;
     args.StorageConfig = Configs->StorageConfig;
     args.DiskAgentConfig = Configs->DiskAgentConfig;
     args.RdmaConfig = Configs->RdmaConfig;
@@ -709,6 +717,9 @@ void TBootstrap::Start()
 
 void TBootstrap::Stop()
 {
+    if (BootstrapMonitoring) {
+        BootstrapMonitoring->Stop();
+    }
     if (!Initialized) {
         if (StubMonPageServer) {
             StubMonPageServer->Stop();

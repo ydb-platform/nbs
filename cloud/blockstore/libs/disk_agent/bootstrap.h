@@ -68,6 +68,7 @@ private:
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     IStatsUpdaterPtr CriticalEventsStatsUpdater;
     IMonitoringServicePtr Monitoring;
+    IMonitoringServicePtr BootstrapMonitoring;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;

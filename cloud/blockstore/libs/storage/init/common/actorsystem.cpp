@@ -18,7 +18,11 @@ TActorSystem::TActorSystem(const TActorSystemArgs& args)
     : TKikimrRunner(args.ModuleFactories)
     , Args(args)
     , Running(false)
-{}
+{
+    if (Args.BootstrapMonitoring) {
+        Counters = Args.BootstrapMonitoring->GetCounters();
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,6 +66,9 @@ void TActorSystem::Init()
 
 void TActorSystem::Start()
 {
+    if (Args.BootstrapMonitoring) {
+        Args.BootstrapMonitoring->Stop();
+    }
     KikimrStart();
     Running = true;
     Args.OnStart(*this);

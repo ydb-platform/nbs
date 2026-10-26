@@ -53,3 +53,4 @@ END()
 
 RECURSE_FOR_TESTS(qemu_ut)
 RECURSE_FOR_TESTS(ut)
+RECURSE_FOR_TESTS(bootstrap_monitoring/ut)

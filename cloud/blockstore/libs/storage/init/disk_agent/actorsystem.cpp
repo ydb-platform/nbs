@@ -213,6 +213,7 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         .NodeId = daArgs.NodeId,
         .ScopeId = daArgs.ScopeId,
         .AppConfig = daArgs.AppConfig,
+        .BootstrapMonitoring = daArgs.BootstrapMonitoring,
         .AsyncLogger = daArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
         .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
