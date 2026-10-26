@@ -3,6 +3,7 @@
 #include "device_manager.h"
 
 #include <cloud/fastshard/journal/iface/journalled_device.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/threading/future/async_semaphore.h>
@@ -20,11 +21,33 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TDeviceOperation = std::function<TFuture<void>(
-    const TString& uuid,
-    const IJournalledDevicePtr& device)>;
+struct TJournalledDeviceSpec
+{
+    TJournalledDeviceConfig Config;
+
+    // Empty until the device is created and started.
+    IJournalledDevicePtr Device;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TDeviceOperation =
+    std::function<TFuture<void>(TJournalledDeviceSpec* spec)>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+THashMap<TString, TJournalledDeviceSpec> MakeDeviceSpecs(
+    TVector<TJournalledDeviceConfig> configs)
+{
+    THashMap<TString, TJournalledDeviceSpec> specs;
+
+    for (auto& config: configs) {
+        auto& spec = specs[config.DeviceUUID];
+        spec.Config = std::move(config);
+    }
+
+    return specs;
+}
 
 TVector<const TJournalledDeviceSpec*> SortDevices(
     const THashMap<TString, TJournalledDeviceSpec>& devices)
@@ -45,23 +68,33 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJournalledDeviceHandler final: public IServerBackend
+class TJournalledDeviceHandler final
+    : public IServerBackend
+    , public std::enable_shared_from_this<TJournalledDeviceHandler>
 {
 private:
+    const TExecutorPtr Executor;
     const IDeviceManagerPtr DeviceManager;
-    const THashMap<TString, TJournalledDeviceSpec> Devices;
-    const TVector<const TJournalledDeviceSpec*> SortedDevices;
+    const IJournalledDeviceFactoryPtr JournalledDeviceFactory;
     const ui32 RestoreConcurrency;
+
+    // Filled once in the constructor, only the specs themselves change later.
+    THashMap<TString, TJournalledDeviceSpec> DeviceSpecs;
+    const TVector<const TJournalledDeviceSpec*> SortedDevices;
 
 public:
     TJournalledDeviceHandler(
+        TExecutorPtr executor,
         IDeviceManagerPtr deviceManager,
-        THashMap<TString, TJournalledDeviceSpec> devices,
+        IJournalledDeviceFactoryPtr journalledDeviceFactory,
+        TVector<TJournalledDeviceConfig> journalledDeviceConfigs,
         ui32 restoreConcurrency)
-        : DeviceManager(std::move(deviceManager))
-        , Devices(std::move(devices))
-        , SortedDevices(SortDevices(Devices))
+        : Executor(std::move(executor))
+        , DeviceManager(std::move(deviceManager))
+        , JournalledDeviceFactory(std::move(journalledDeviceFactory))
         , RestoreConcurrency(restoreConcurrency)
+        , DeviceSpecs(MakeDeviceSpecs(std::move(journalledDeviceConfigs)))
+        , SortedDevices(SortDevices(DeviceSpecs))
     {}
 
     // IServerBackend
@@ -70,17 +103,23 @@ public:
     {
         auto future = RunOnDevices(
             RestoreConcurrency,
-            [](const TString& uuid, const IJournalledDevicePtr& device)
+            [weakSelf = weak_from_this()](TJournalledDeviceSpec* spec)
+                -> TFuture<void>
             {
-                return device->Start().Apply(
-                    [uuid](const auto& future)
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return MakeFuture();
+                }
+
+                return self->StartJournalledDevice(spec).Apply(
+                    [uuid = spec->Config.DeviceUUID](const auto& future)
                     {
                         auto error = ExtractResponse(future);
                         if (HasError(error)) {
                             ReportJournalledDeviceCreationError(
                                 TStringBuilder()
-                                << "unable to start device " << uuid.Quote()
-                                << ": " << FormatError(error));
+                                << "unable to create journalled device "
+                                << uuid.Quote() << ": " << FormatError(error));
                         }
                     });
             });
@@ -91,9 +130,15 @@ public:
     void Stop() override
     {
         auto future = RunOnDevices(
-            static_cast<ui32>(Devices.size()),
-            [](const TString& /*uuid*/, const IJournalledDevicePtr& device)
-            { return device->Stop().IgnoreResult(); });
+            static_cast<ui32>(DeviceSpecs.size()),
+            [](TJournalledDeviceSpec* spec) -> TFuture<void>
+            {
+                if (!spec->Device) {
+                    return MakeFuture();
+                }
+
+                return spec->Device->Stop().IgnoreResult();
+            });
 
         future.Wait();
     }
@@ -244,20 +289,20 @@ public:
 private:
     // Runs an operation on every device with at most |limit| of them in
     // flight: each device that completes lets the next one in.
-    TFuture<void> RunOnDevices(ui32 limit, TDeviceOperation operation) const
+    TFuture<void> RunOnDevices(ui32 limit, TDeviceOperation operation)
     {
-        if (Devices.empty()) {
+        if (DeviceSpecs.empty()) {
             return MakeFuture();
         }
 
         auto semaphore = TAsyncSemaphore::Make(Max<size_t>(limit, 1));
 
         TVector<TFuture<void>> futures;
-        futures.reserve(Devices.size());
+        futures.reserve(DeviceSpecs.size());
 
-        for (const auto& [uuid, spec]: Devices) {
+        for (auto& [uuid, spec]: DeviceSpecs) {
             auto future = semaphore->AcquireAsync().Apply(
-                [uuid, device = spec.Device, operation](const auto& acquired)
+                [spec = &spec, operation](const auto& acquired)
                 {
                     //
                     // Hold the slot until the operation completes; an
@@ -265,7 +310,7 @@ private:
                     //
 
                     auto release = acquired.GetValue()->MakeAutoRelease();
-                    auto future = operation(uuid, device);
+                    auto future = operation(spec);
                     future.Subscribe(release.DeferRelease());
 
                     return future;
@@ -277,6 +322,29 @@ private:
         return WaitAll(futures);
     }
 
+    TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec* spec)
+    {
+        return Execute<NProto::TError>(
+            [spec](auto& self) { return self.DoStartJournalledDevice(spec); });
+    }
+
+    // Runs in the executor: waits for the device to start.
+    NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec* spec)
+    {
+        auto [device, error] = JournalledDeviceFactory->Create(spec->Config);
+        if (HasError(error)) {
+            return error;
+        }
+
+        error = Executor->ExtractResponse(device->Start());
+        if (HasError(error)) {
+            return error;
+        }
+
+        spec->Device = std::move(device);
+        return {};
+    }
+
     TResultOrError<IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
@@ -285,6 +353,13 @@ private:
         auto [spec, error] = GetDeviceSpec(deviceUUID, clientId, accessMode);
         if (HasError(error)) {
             return error;
+        }
+
+        if (!spec->Device) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Device " << deviceUUID.Quote() << " is not started");
         }
 
         return spec->Device;
@@ -303,7 +378,7 @@ private:
             return MakeError(E_ARGUMENT, "empty client id");
         }
 
-        const auto* spec = Devices.FindPtr(deviceUUID);
+        const auto* spec = DeviceSpecs.FindPtr(deviceUUID);
         if (!spec) {
             return MakeError(
                 E_NOT_FOUND,
@@ -320,6 +395,24 @@ private:
 
         return spec;
     }
+
+    // Runs |func| in the executor, so it can wait for futures inline.
+    template <typename T, typename F>
+    TFuture<T> Execute(F func)
+    {
+        return Executor->Execute(
+            [weakSelf = weak_from_this(), func = std::move(func)]() mutable -> T
+            {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return TErrorResponse(
+                        E_FAIL,
+                        "TJournalledDeviceHandler is destroyed");
+                }
+
+                return func(*self);
+            });
+    }
 };
 
 }   // namespace
@@ -327,19 +420,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerBackendPtr CreateService(
+    TExecutorPtr executor,
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices,
+    IJournalledDeviceFactoryPtr journalledDeviceFactory,
+    TVector<TJournalledDeviceConfig> journalledDeviceConfigs,
     ui32 restoreConcurrency)
 {
-    THashMap<TString, TJournalledDeviceSpec> deviceMap;
-    for (auto device: journalledDevices) {
-        auto uuid = device.Config.DeviceUUID;
-        deviceMap.emplace(std::move(uuid), std::move(device));
-    }
-
     return std::make_shared<TJournalledDeviceHandler>(
+        std::move(executor),
         std::move(deviceManager),
-        std::move(deviceMap),
+        std::move(journalledDeviceFactory),
+        std::move(journalledDeviceConfigs),
         restoreConcurrency);
 }
 
