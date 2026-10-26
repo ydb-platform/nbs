@@ -1603,7 +1603,7 @@ private:
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<NProto::TDeviceConfig>& devices,
+        const TVector<TDeviceId>& devices,
         bool disableValidation,
         TAllocateDiskResult* result);
 
@@ -1624,7 +1624,7 @@ private:
         ui32 replicaIndex,
         const TVector<TVector<TDeviceId>>& replicas,
         ui32 blockSize,
-        TVector<NProto::TDeviceConfig>& resolvedReplica);
+        TVector<TDeviceId>& resolvedReplica);
 
     NProto::TError CreateMirroredDiskFromDevices(
         TInstant now,

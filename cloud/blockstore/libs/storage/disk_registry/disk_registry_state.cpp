@@ -8443,16 +8443,15 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<NProto::TDeviceConfig>& devices,
+    const TVector<TDeviceId>& devices,
     bool disableValidation,
     TAllocateDiskResult* result)
 {
-    const TVector<TString> deviceIds = ToDeviceIds(devices);
     if (!disableValidation) {
         if (auto error = CanCreateSimpleDiskFromDevices(
                 diskId,
                 params,
-                deviceIds,
+                devices,
                 /*allowFreshDevices=*/false);
             HasError(error))
         {
@@ -8462,13 +8461,13 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
 
     auto& disk = Disks[diskId];
 
-    disk.Devices = deviceIds;
+    disk.Devices = devices;
     disk.LogicalBlockSize = params.BlockSize;
     disk.StateTs = now;
     disk.State = CalculateDiskState(diskId, disk);
     disk.MediaKind = params.MediaKind;
 
-    for (auto& uuid: deviceIds) {
+    for (auto& uuid: devices) {
         DeviceList.MarkDeviceAllocated(diskId, uuid);
         DeviceList.MarkDeviceAsClean(uuid);
         db.DeleteDirtyDevice(uuid);
@@ -8616,7 +8615,7 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
     ui32 replicaIndex,
     const TVector<TVector<TDeviceId>>& replicas,
     ui32 blockSize,
-    TVector<NProto::TDeviceConfig>& resolvedReplica)
+    TVector<TDeviceId>& resolvedReplica)
 {
     const TVector<TDeviceId>& replica = replicas[replicaIndex];
     resolvedReplica.reserve(replica.size());
@@ -8631,10 +8630,7 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
 
     for (ui32 idx = 0; idx < replica.size(); ++idx) {
         if (!replica[idx].empty()) {
-            NProto::TDeviceConfig config;
-            config.SetDeviceUUID(replica[idx]);
-
-            resolvedReplica.push_back(std::move(config));
+            resolvedReplica.push_back(replica[idx]);
             continue;
         }
 
@@ -8678,7 +8674,7 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
         if (HasError(error)) {
             return error;
         }
-        resolvedReplica.push_back(std::move(targetDevice));
+        resolvedReplica.push_back(targetDevice.GetDeviceUUID());
     }
 
     return {};
@@ -8705,11 +8701,10 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         return error;
     }
 
-    TVector<TVector<NProto::TDeviceConfig>> resolvedReplicas;
+    TVector<TVector<TDeviceId>> resolvedReplicas;
     resolvedReplicas.reserve(replicas.size());
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
-        // TODO: correct replicas allocation
         if (auto error = AllocateFreshDevicesForReplica(
                 db,
                 GetReplicaDiskId(masterId, i),
@@ -8724,6 +8719,8 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 db,
                 GetMirroredDiskGroupId(masterId),
                 affectedDisks);
+
+            // TODO: cleanup aready allocated?
             return error;
         }
 
@@ -8731,10 +8728,17 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         if (auto error = CanCreateSimpleDiskFromDevices(
                 GetReplicaDiskId(masterId, i),
                 params,
-                ToDeviceIds(resolvedReplicas[i]),
+                resolvedReplicas[i],
                 /*allowFreshDevices=*/false);
             HasError(error))
         {
+            TVector<TString> affectedDisks;
+            DestroyPlacementGroup(
+                db,
+                GetMirroredDiskGroupId(masterId),
+                affectedDisks);
+
+            // TODO: cleanup aready allocated?
             return error;
         }
     }
@@ -8823,7 +8827,7 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
         db,
         diskId,
         params,
-        devices,
+        ToDeviceIds(devices),
         /*disableValidation=*/false,
         result);
 }
