@@ -150,24 +150,20 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     const auto* header = accessor.GetHeader();
     if (header != nullptr) {
         FillHeader(*result.MutableHeader(), *header);
-
-        const auto rawMetadata = accessor.GetRawMetadata();
-        if (header->MetadataSize <= rawMetadata.size()) {
-            const auto metadata = rawMetadata.subspan(0, header->MetadataSize);
-            const auto metadataChecksum =
-                Crc32c(metadata.data(), metadata.size());
-            result.SetActualMetadataChecksum(metadataChecksum);
-            result.SetChecksum(Crc32cCombine(
-                result.GetChecksum(),
-                metadataChecksum,
-                metadata.size()));
-        }
     }
 
     auto* dataProcessor = accessor.GetDataProcessor();
     if (header == nullptr || dataProcessor == nullptr) {
         return result;
     }
+
+    const auto metadata = accessor.GetRawMetadata().first(header->MetadataSize);
+    const auto metadataChecksum = Crc32c(metadata.data(), metadata.size());
+    result.SetActualMetadataChecksum(metadataChecksum);
+    result.SetChecksum(Crc32cCombine(
+        result.GetChecksum(),
+        metadataChecksum,
+        metadata.size()));
 
     const auto readPos = header->ReadPos;
     const auto writePos = header->WritePos;

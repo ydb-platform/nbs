@@ -600,6 +600,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
         UNIT_ASSERT(dump.HasValidationError());
+        UNIT_ASSERT(!dump.HasActualMetadataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
     }
 
