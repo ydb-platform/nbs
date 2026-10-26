@@ -79,6 +79,12 @@ struct TFileStoreEvents
 
 #undef FILESTORE_DECLARE_COMPONENT
 
+        // SERVICE's own range is full. Declared here directly, not as a
+        // FILESTORE_ACTORS entry, so it doesn't also become a logging
+        // component or a range in TFileStoreEventsPrivate.
+        SERVICE_EXTRA_START,
+        SERVICE_EXTRA_END = SERVICE_EXTRA_START + 100,
+
         END
     };
 

@@ -32,6 +32,15 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
 // FILESTORE_SERVICE_REQUESTS_FWD
 
+// Admin-style requests forwarded to the tablet without a client session:
+// unlike FILESTORE_SERVICE_REQUESTS_FWD, these don't need a mounted client,
+// so they skip GetAndValidateSession (see ForwardRequestWithoutSession).
+#define FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(xxx, ...)                    \
+    xxx(SetQuota,                           __VA_ARGS__)                       \
+    xxx(DeleteQuota,                        __VA_ARGS__)                       \
+    xxx(ListQuotas,                         __VA_ARGS__)                       \
+// FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION
+
 #define FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx, ...)           \
     xxx(AccessNode,                         __VA_ARGS__)                       \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
@@ -67,6 +76,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \
     FILESTORE_SERVICE_REQUESTS_HANDLE(xxx,   __VA_ARGS__)                      \
     FILESTORE_SERVICE_REQUESTS_FWD(xxx,      __VA_ARGS__)                      \
+    FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(xxx, __VA_ARGS__)                \
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx,  __VA_ARGS__)      \
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx,   __VA_ARGS__)      \
 // FILESTORE_SERVICE_REQUESTS
@@ -293,11 +303,28 @@ struct TEvService
         EvToggleServiceStateRequest = EvBegin + 97,
         EvToggleServiceStateResponse,
 
-        EvEnd
+        EvEnd,
+
+        // SERVICE's own range (EvBegin..EvBegin+99) is full, so new events
+        // go in SERVICE_EXTRA instead.
+
+        EvSetQuotaRequest = TFileStoreEvents::SERVICE_EXTRA_START,
+        EvSetQuotaResponse,
+
+        EvDeleteQuotaRequest = TFileStoreEvents::SERVICE_EXTRA_START + 2,
+        EvDeleteQuotaResponse,
+
+        EvListQuotasRequest = TFileStoreEvents::SERVICE_EXTRA_START + 4,
+        EvListQuotasResponse,
+
+        EvExtraEnd,
     };
 
     static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
         "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
+
+    static_assert(EvExtraEnd < (int)TFileStoreEvents::SERVICE_EXTRA_END,
+        "EvExtraEnd expected to be < TFileStoreEvents::SERVICE_EXTRA_END");
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 

@@ -118,6 +118,13 @@ private:
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev);
 
+    // Like ForwardRequest, but for admin-style requests that don't require
+    // a mounted client session (see FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION).
+    template <typename TMethod>
+    void ForwardRequestWithoutSession(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
     template <typename TMethod>
     void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
