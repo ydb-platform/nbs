@@ -14,9 +14,11 @@ public:
     // The caller must keep the mapped file stable for the duration of the
     // dump, normally by holding a shared lock acquired with TryLock(file, false).
     // A Debug-mode accessor is required to expose recoverable structures from
-    // corrupt files.
+    // corrupt files. Payloads are decoded only for explicitly supported file
+    // types; otherwise, the dump contains ring-buffer metadata and checksums.
     static NProto::TStateFileDump DumpStateFile(
-        TFileRingBufferAccessor& accessor);
+        TFileRingBufferAccessor& accessor,
+        NProto::EStateFileType fileType);
 };
 
 }   // namespace NCloud::NFileStore::NStateFileTool

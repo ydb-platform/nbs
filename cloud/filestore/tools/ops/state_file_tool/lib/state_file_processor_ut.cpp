@@ -109,9 +109,9 @@ struct TBootstrap
         RawData = Accessor.GetRawData();
     }
 
-    NProto::TStateFileDump Dump()
+    NProto::TStateFileDump Dump(NProto::EStateFileType fileType)
     {
-        return TStateFileProcessor::DumpStateFile(Accessor);
+        return TStateFileProcessor::DumpStateFile(Accessor, fileType);
     }
 
 private:
@@ -123,13 +123,6 @@ private:
     }
 };
 
-TStringBuf AsBytes(const TVector<ui64>& words)
-{
-    return {
-        reinterpret_cast<const char*>(words.data()),
-        words.size() * sizeof(ui64)};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +133,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
     {
         {
             TBootstrap bootstrap;
-            const auto dump = bootstrap.Dump();
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
             UNIT_ASSERT(!dump.HasHeader());
@@ -153,7 +146,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             bootstrap.ResizeAndRemap(1);
             bootstrap.RawData[0] = 1;
 
-            const auto dump = bootstrap.Dump();
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(dump.GetIsCorrupted());
             UNIT_ASSERT(!dump.HasHeader());
@@ -168,7 +161,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             TBootstrap bootstrap;
             bootstrap.ResizeAndRemap(sizeof(TFileRingBufferHeader));
 
-            const auto dump = bootstrap.Dump();
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
             UNIT_ASSERT(dump.HasHeader());
@@ -184,7 +177,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         TBootstrap bootstrap;
         bootstrap.Execute([](TFileRingBuffer&) {}, version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
@@ -226,7 +219,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto initialDump = bootstrap.Dump();
+        const auto initialDump =
+            bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(!initialDump.GetIsCorrupted());
         UNIT_ASSERT(initialDump.HasActualMetadataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -235,7 +229,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
         bootstrap.Accessor.GetRawMetadata()[0] ^= 1;
 
-        const auto corruptDump = bootstrap.Dump();
+        const auto corruptDump =
+            bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(corruptDump.GetIsCorrupted());
         UNIT_ASSERT(corruptDump.HasActualMetadataChecksum());
         UNIT_ASSERT(corruptDump.HasValidationError());
@@ -262,7 +257,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         bootstrap.Accessor.GetHeader()->MetadataSize =
             TBootstrap::MetadataCapacity + 1;
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasValidationError());
         UNIT_ASSERT(!dump.HasActualMetadataChecksum());
@@ -276,7 +271,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
             version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
@@ -292,7 +287,6 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT_VALUES_EQUAL(checksum, entry.GetActualDataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(0, entry.GetTag());
         UNIT_ASSERT(!entry.GetFreeFlag());
-        UNIT_ASSERT(!entry.HasWriteDataRequestInfo());
     }
 
     FILE_RING_BUFFER_TEST(ShouldDumpFileWithTwoPushedAndOnePoppedEntry)
@@ -307,7 +301,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
@@ -341,7 +335,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
@@ -382,7 +376,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
@@ -414,7 +408,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT_LT(2, entryCount);
         --entryCount;
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(entryCount, dump.GetEntries().size());
@@ -442,7 +436,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
 
@@ -458,7 +452,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             entryPos,
             headerWithCorruptedChecksum);
 
-        const auto checksumDump = bootstrap.Dump();
+        const auto checksumDump =
+            bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(checksumDump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(2, checksumDump.GetEntries().size());
         UNIT_ASSERT_VALUES_UNEQUAL(
@@ -479,7 +474,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             entryPos,
             headerWithCorruptedSize);
 
-        const auto sizeDump = bootstrap.Dump();
+        const auto sizeDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(sizeDump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(2, sizeDump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -517,7 +512,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 0,
                 malformedHeader));
 
-            const auto dump = bootstrap.Dump();
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
             UNIT_ASSERT(dump.GetIsCorrupted());
             UNIT_ASSERT(dump.HasValidationError());
             UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
@@ -553,7 +548,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             },
             version);
 
-        const auto validDump = bootstrap.Dump();
+        const auto validDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(!validDump.GetIsCorrupted());
         UNIT_ASSERT_LT(2, validDump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -569,7 +564,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             malformedPos,
             {.Tag = 1}));
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasValidationError());
         UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
@@ -590,7 +585,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
         bootstrap.ResizeAndRemap(bootstrap.RawData.size() - 1);
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
         UNIT_ASSERT(dump.HasValidationError());
@@ -616,7 +611,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         auto error = readOnlyAccessor.Map();
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
 
-        const auto dump = TStateFileProcessor::DumpStateFile(readOnlyAccessor);
+        const auto dump = TStateFileProcessor::DumpStateFile(
+            readOnlyAccessor,
+            NProto::EStateFileType::Unknown);
         UNIT_ASSERT(!dump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -642,49 +639,106 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             {}));
         bootstrap.Accessor.GetHeader()->ReadPos = slackPos;
 
-        const auto dump = bootstrap.Dump();
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
     }
 
+    FILE_RING_BUFFER_TEST(ShouldDumpOpaqueEntryPayloads)
+    {
+        const NProto::EStateFileType fileTypes[] = {
+            NProto::EStateFileType::Unknown,
+            NProto::EStateFileType::DirectoryHandles,
+            NProto::EStateFileType::HandleOpsQueue,
+        };
+
+        // Entry size and contents do not identify the state-file payload format
+        for (const size_t payloadSize: {24U, 32U}) {
+            const TString payload(payloadSize, '\xff');
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [&](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, payload)); },
+                version);
+
+            for (const auto fileType: fileTypes) {
+                const auto dump = bootstrap.Dump(fileType);
+                UNIT_ASSERT(!dump.GetIsCorrupted());
+                UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+
+                const auto& entry = dump.GetEntries(0);
+                const ui32 checksum = Crc32c(payload.data(), payload.size());
+                UNIT_ASSERT_VALUES_EQUAL(payload.size(), entry.GetDataSize());
+                UNIT_ASSERT_VALUES_EQUAL(checksum, entry.GetDataChecksum());
+                UNIT_ASSERT(entry.HasActualDataChecksum());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    checksum,
+                    entry.GetActualDataChecksum());
+                UNIT_ASSERT(!entry.HasWriteDataRequestInfo());
+            }
+        }
+    }
+
     FILE_RING_BUFFER_TEST(ShouldDumpWriteDataRequestFields)
     {
-        {
+        const TVector<ui64> requestWithPayload{10, 20, 30, 40};
+        const TString payload(
+            reinterpret_cast<const char*>(requestWithPayload.data()),
+            requestWithPayload.size() * sizeof(ui64));
+
+        for (const bool freeEntry: {false, true}) {
             TBootstrap bootstrap;
             bootstrap.Execute(
-                [](TFileRingBuffer& ringBuffer)
+                [&](TFileRingBuffer& ringBuffer)
                 {
-                    const TVector<ui64> requestHeader{1, 2, 3};
-                    UNIT_ASSERT(PushBack(ringBuffer, AsBytes(requestHeader)));
+                    // Keep a live entry before the request so freeing the
+                    // request does not remove it from the front of the buffer.
+                    Alloc(ringBuffer, "Hello");
+                    const void* entry = Alloc(ringBuffer, payload);
+                    if (freeEntry) {
+                        UNIT_ASSERT(!HasError(ringBuffer.Free(entry)));
+                    }
                 },
                 version);
 
-            const auto dump = bootstrap.Dump();
+            const auto genericDump =
+                bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT_VALUES_EQUAL(2, genericDump.GetEntries().size());
+            UNIT_ASSERT(!genericDump.GetEntries(1).HasWriteDataRequestInfo());
+
+            const auto dump =
+                bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
             UNIT_ASSERT(!dump.GetIsCorrupted());
-            UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
-            UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestInfo());
-        }
+            UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
 
-        {
-            TBootstrap bootstrap;
-            bootstrap.Execute(
-                [](TFileRingBuffer& ringBuffer)
-                {
-                    const TVector<ui64> requestWithPayload{10, 20, 30, 40};
-                    UNIT_ASSERT(
-                        PushBack(ringBuffer, AsBytes(requestWithPayload)));
-                },
-                version);
-
-            const auto dump = bootstrap.Dump();
-            UNIT_ASSERT(!dump.GetIsCorrupted());
-            UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
-
-            const auto& info = dump.GetEntries(0).GetWriteDataRequestInfo();
+            const auto& entry = dump.GetEntries(1);
+            UNIT_ASSERT_VALUES_EQUAL(freeEntry, entry.GetFreeFlag());
+            UNIT_ASSERT(entry.HasWriteDataRequestInfo());
+            const auto& info = entry.GetWriteDataRequestInfo();
             UNIT_ASSERT_VALUES_EQUAL(10, info.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(20, info.GetHandle());
             UNIT_ASSERT_VALUES_EQUAL(30, info.GetOffset());
             UNIT_ASSERT_VALUES_EQUAL(sizeof(ui64), info.GetSize());
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldNotDecodeIncompleteWriteDataRequest)
+    {
+        for (const size_t payloadSize: {16U, 24U}) {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [&](TFileRingBuffer& ringBuffer)
+                {
+                    UNIT_ASSERT(
+                        PushBack(ringBuffer, TString(payloadSize, 'x')));
+                },
+                version);
+
+            const auto dump =
+                bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+            UNIT_ASSERT(!dump.GetIsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+            UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestInfo());
         }
     }
 }

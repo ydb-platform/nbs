@@ -10,8 +10,6 @@
 
 namespace NCloud::NFileStore::NStateFileTool {
 
-using namespace NFuse::NWriteBackCache;
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -32,11 +30,37 @@ void FillHeader(
     protoHeader.SetMetadataChecksum(header.MetadataChecksum);
 }
 
+void FillWriteDataRequestInfo(
+    NProto::TStateFileEntry& entry,
+    const char* dataPtr,
+    ui32 dataSize)
+{
+    using NFuse::NWriteBackCache::TSerializedWriteDataRequestHeader;
+
+    if (dataPtr == nullptr ||
+        dataSize <= sizeof(TSerializedWriteDataRequestHeader))
+    {
+        return;
+    }
+
+    // Preserve request information for free entries as well: their stale
+    // payload can still be useful while diagnosing or repairing a file.
+    TSerializedWriteDataRequestHeader header;
+    std::memcpy(&header, dataPtr, sizeof(header));
+
+    auto& requestInfo = *entry.MutableWriteDataRequestInfo();
+    requestInfo.SetNodeId(header.NodeId);
+    requestInfo.SetHandle(header.Handle);
+    requestInfo.SetOffset(header.Offset);
+    requestInfo.SetSize(dataSize - sizeof(TSerializedWriteDataRequestHeader));
+}
+
 void FillEntryInfo(
     NProto::TStateFileEntry& entry,
     const TFileRingBufferEntryHeader& entryHeader,
     ui64 pos,
-    const char* dataPtr)
+    const char* dataPtr,
+    NProto::EStateFileType fileType)
 {
     entry.SetDataSize(entryHeader.DataSize);
     entry.SetDataChecksum(entryHeader.DataChecksum);
@@ -50,20 +74,12 @@ void FillEntryInfo(
     }
     entry.SetEntryPos(pos);
 
-    if (dataPtr != nullptr &&
-        sizeof(TSerializedWriteDataRequestHeader) < entryHeader.DataSize)
-    {
-        // Preserve request information for free entries as well: their stale
-        // payload can still be useful while diagnosing or repairing a file.
-        TSerializedWriteDataRequestHeader header;
-        std::memcpy(&header, dataPtr, sizeof(header));
-
-        auto& requestInfo = *entry.MutableWriteDataRequestInfo();
-        requestInfo.SetNodeId(header.NodeId);
-        requestInfo.SetHandle(header.Handle);
-        requestInfo.SetOffset(header.Offset);
-        requestInfo.SetSize(
-            entryHeader.DataSize - sizeof(TSerializedWriteDataRequestHeader));
+    switch (fileType) {
+        case NProto::EStateFileType::WriteBackCache:
+            FillWriteDataRequestInfo(entry, dataPtr, entryHeader.DataSize);
+            break;
+        default:
+            break;
     }
 }
 
@@ -89,7 +105,8 @@ EDumpEntryResult DumpEntry(
     IFileRingBufferDataProcessor& dataProcessor,
     const TFileRingBufferCapabilities& capabilities,
     ui64 dataCapacity,
-    ui64& pos)
+    ui64& pos,
+    NProto::EStateFileType fileType)
 {
     const auto entryHeader = dataProcessor.ReadEntryHeader(pos);
     if (entryHeader.DataSize == 0) {
@@ -97,13 +114,13 @@ EDumpEntryResult DumpEntry(
             return EDumpEntryResult::Slack;
         }
 
-        FillEntryInfo(*state.AddEntries(), entryHeader, pos, nullptr);
+        FillEntryInfo(*state.AddEntries(), entryHeader, pos, nullptr, fileType);
         return EDumpEntryResult::Invalid;
     }
 
     const auto* dataPtr =
         dataProcessor.GetEntryDataPtr(pos, entryHeader.DataSize);
-    FillEntryInfo(*state.AddEntries(), entryHeader, pos, dataPtr);
+    FillEntryInfo(*state.AddEntries(), entryHeader, pos, dataPtr, fileType);
 
     const ui64 entrySize = dataProcessor.GetEntrySize(entryHeader.DataSize);
     if (dataPtr == nullptr || pos > dataCapacity ||
@@ -121,7 +138,8 @@ EDumpEntryResult DumpEntry(
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
-    TFileRingBufferAccessor& accessor)
+    TFileRingBufferAccessor& accessor,
+    NProto::EStateFileType fileType)
 {
     NProto::TStateFileDump result;
 
@@ -163,7 +181,8 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
             *dataProcessor,
             capabilities,
             header->DataCapacity,
-            pos);
+            pos,
+            fileType);
 
         if (entryResult != EDumpEntryResult::Dumped) {
             // A slack marker at ReadPos is invalid unless WritePos == 0. Do
@@ -182,7 +201,8 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
                 *dataProcessor,
                 capabilities,
                 header->DataCapacity,
-                pos) != EDumpEntryResult::Dumped)
+                pos,
+                fileType) != EDumpEntryResult::Dumped)
         {
             // A slack marker is not valid in the second, low-address segment.
             break;
