@@ -530,31 +530,3 @@ func TestCreateDiskSsdDirectMirror3Of5GroupRejectsEncryption(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "don't support encryption")
 }
-
-func TestDiskServiceDeleteDiskPersistsTrackingMode(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		t.Run(map[bool]string{false: "legacy", true: "tracked"}[enabled], func(t *testing.T) {
-			ctx := context.Background()
-			scheduler := tasks_mocks.NewSchedulerMock()
-			config := &disks_config.DisksConfig{DeleteNonExistentDisks: proto.Bool(true), EnableDiskDeletionTracking: proto.Bool(enabled)}
-			service := &service{config: config, taskScheduler: scheduler}
-			var savedRequest []byte
-			scheduler.On("ScheduleNonCancellableTask", ctx, "disks.DeleteDisk", "", "", mock.Anything).
-				Run(func(args mock.Arguments) {
-					request := args.Get(4).(*protos.DeleteDiskRequest)
-					var err error
-					savedRequest, err = proto.Marshal(request)
-					require.NoError(t, err)
-				}).Return("delete-task", nil).Once()
-			_, err := service.DeleteDisk(ctx, &disk_manager.DeleteDiskRequest{DiskId: &disk_manager.DiskId{DiskId: "disk", ZoneId: "zone"}})
-			require.NoError(t, err)
-			// Configuration changes must not switch the path of a queued task.
-			config.EnableDiskDeletionTracking = proto.Bool(!enabled)
-			task := &deleteDiskTask{}
-			require.NoError(t, task.Load(savedRequest, nil))
-			require.Equal(t, enabled, task.request.TrackDeletion)
-			require.True(t, task.request.DeleteIfNonExistent)
-			scheduler.AssertExpectations(t)
-		})
-	}
-}

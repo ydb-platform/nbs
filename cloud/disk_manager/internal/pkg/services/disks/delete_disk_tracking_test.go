@@ -42,7 +42,7 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			client := nbs_mocks.NewClientMock()
 			execCtx := newExecutionContextMock()
 			task := &deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory}
-			request, err := proto.Marshal(&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, DeleteIfNonExistent: true, TrackDeletion: true, Sync: tc.sync})
+			request, err := proto.Marshal(&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, DeleteIfNonExistent: true, Sync: tc.sync})
 			require.NoError(t, err)
 			require.NoError(t, task.Load(request, nil))
 			id := "legacy_disk_cleanup_toplevel_task_id"

@@ -554,7 +554,6 @@ func (s *service) DeleteDisk(
 			},
 			Sync:                req.Sync,
 			DeleteIfNonExistent: s.config.GetDeleteNonExistentDisks(),
-			TrackDeletion:       s.config.GetEnableDiskDeletionTracking(),
 		},
 	)
 }

@@ -25,22 +25,17 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 
 	selfTaskID := execCtx.GetTaskID()
 	cleanupID := legacyDiskCleanupPrefix + selfTaskID
-	if t.request.TrackDeletion {
-		prepared, err := t.storage.PrepareLegacyDiskCleanup(ctx, diskID, cleanupID)
-		if err != nil {
-			return err
-		}
-		if !prepared {
-			return nil
-		}
-	}
-
-	err := t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
+	prepared, err := t.storage.PrepareLegacyDiskCleanup(ctx, diskID, cleanupID)
 	if err != nil {
 		return err
 	}
-	if !t.request.TrackDeletion {
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	if !prepared {
+		return nil
+	}
+
+	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
+	if err != nil {
+		return err
 	}
 	return execCtx.FinishWithPreparation(ctx, func(ctx context.Context, tx *persistence.Transaction) error {
 		return t.storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
