@@ -116,7 +116,7 @@ struct TConfigInitializerYdb final
         const NKikimrConfig::TAppConfig& config);
 
 private:
-    TString LocalSystemTabletBackupConfigPath;
+    TString SystemTabletBackupConfigPath;
     TMaybe<NKikimrConfig::TSystemTabletBackupConfig> CmsSystemTabletBackupConfig;
 
     // Build TBlockstoreConfig with current configuration sections.

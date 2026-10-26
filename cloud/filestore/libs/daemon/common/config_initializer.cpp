@@ -51,7 +51,7 @@ void TConfigInitializerCommon::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    LocalSystemTabletBackupConfigPath =
+    SystemTabletBackupConfigPath =
         storageConfig.GetSystemTabletBackupConfigPath();
 
     ApplyOptionsToStorageConfig(storageConfig);
@@ -141,9 +141,9 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
 void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     NProto::TStorageConfig& storageConfig)
 {
-    if (LocalSystemTabletBackupConfigPath) {
+    if (SystemTabletBackupConfigPath) {
         storageConfig.SetSystemTabletBackupConfigPath(
-            LocalSystemTabletBackupConfigPath);
+            SystemTabletBackupConfigPath);
     }
 
     if (Options->SchemeShardDir) {

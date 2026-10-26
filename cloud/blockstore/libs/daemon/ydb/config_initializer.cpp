@@ -155,7 +155,7 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
-    LocalSystemTabletBackupConfigPath =
+    SystemTabletBackupConfigPath =
         storageConfig.GetSystemTabletBackupConfigPath();
 
     if (GetDynamicYamlConfigurationStaticallyEnabled()) {
@@ -304,8 +304,8 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
-    if (LocalSystemTabletBackupConfigPath) {
-        config.SetSystemTabletBackupConfigPath(LocalSystemTabletBackupConfigPath);
+    if (SystemTabletBackupConfigPath) {
+        config.SetSystemTabletBackupConfigPath(SystemTabletBackupConfigPath);
     }
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(

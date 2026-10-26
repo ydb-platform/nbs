@@ -31,7 +31,7 @@ protected:
 
 private:
     TConfigHandlers ConfigHandlers;
-    TString LocalSystemTabletBackupConfigPath;
+    TString SystemTabletBackupConfigPath;
     TMaybe<NKikimrConfig::TSystemTabletBackupConfig>
         CmsSystemTabletBackupConfig;
 
