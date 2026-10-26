@@ -92,7 +92,7 @@ enum class EDumpEntryResult
 
 EDumpEntryResult DumpEntry(
     NProto::TStateFileDump& state,
-    IFileRingBufferDataProcessor& dataProcessor,
+    const IFileRingBufferDataProcessor& dataProcessor,
     const TFileRingBufferCapabilities& capabilities,
     ui64& pos,
     NProto::EStateFileType fileType)
