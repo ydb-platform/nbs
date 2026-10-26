@@ -8670,7 +8670,7 @@ void TDiskRegistryState::ReleaseFreshDevices(
     const TVector<TVector<TDeviceId>>& replicas,
     const TVector<TVector<TDeviceId>>& resolvedReplicas)
 {
-    for (ui32 r = 0; r < lastReplicaIdx; ++r) {
+    for (ui32 r = 0; r <= lastReplicaIdx; ++r) {
         for (ui32 d = 0; d < replicas[r].size(); ++d) {
             if (!replicas[r][d].empty() || d >= resolvedReplicas[r].size()) {
                 continue;
@@ -8757,7 +8757,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             DestroyPartiallyCreatedMirroredDisk(db, i, masterId);
             ReleaseFreshDevices(
                 db,
-                replicas.size(),
+                replicas.size() - 1,
                 masterId,
                 replicas,
                 resolvedReplicas);
