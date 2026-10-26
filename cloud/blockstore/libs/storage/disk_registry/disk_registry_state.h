@@ -1592,19 +1592,12 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent);
 
-    NProto::TError CanCreateSimpleDiskFromDevices(
-        const TDiskId& diskId,
-        const TCreateDiskFromDevicesParams& params,
-        const TVector<TDeviceId>& devices,
-        bool allowFreshDevices) const;
-
     NProto::TError CreateSimpleDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TDeviceId>& devices,
-        bool disableValidation,
+        const TVector<NProto::TDeviceConfig>& devices,
         TAllocateDiskResult* result);
 
     NProto::TError CanCreateMirroredDiskFromDevices(
@@ -1625,6 +1618,18 @@ private:
         const TVector<TVector<TDeviceId>>& replicas,
         ui32 blockSize,
         TVector<TDeviceId>& resolvedReplica);
+
+    void ReleaseFreshDevices(
+        TDiskRegistryDatabase& db,
+        ui32 lastReplicaIdx,
+        const TDiskId& masterId,
+        const TVector<TVector<TDeviceId>>& replicas,
+        const TVector<TVector<TDeviceId>>& resolvedReplicas);
+
+    void DestroyPartiallyCreatedMirroredDisk(
+        TDiskRegistryDatabase& db,
+        ui32 lastReplicaIdx,
+        const TDiskId& masterId);
 
     NProto::TError CreateMirroredDiskFromDevices(
         TInstant now,
