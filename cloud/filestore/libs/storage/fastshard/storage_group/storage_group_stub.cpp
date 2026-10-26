@@ -47,27 +47,20 @@ public:
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices,
-    ITimerPtr timer)
+    TVector<TStorageDevice> devices)
 {
-    Y_UNUSED(config, devices, timer);
+    Y_UNUSED(config, devices);
 
     return std::make_shared<TStorageGroupStub>();
 }
 
 IStorageGroupPtr CreateQuorumMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices,
-    ITimerPtr timer)
+    TVector<TStorageDevice> devices)
 {
-    Y_UNUSED(config, devices, timer);
+    Y_UNUSED(config, devices);
 
     return std::make_shared<TStorageGroupStub>();
-}
-
-ITimerPtr CreateFiberTimer()
-{
-    return CreateWallClockTimer();
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

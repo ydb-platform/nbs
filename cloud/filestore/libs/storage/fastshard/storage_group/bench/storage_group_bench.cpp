@@ -288,8 +288,7 @@ void Bench(benchmark::State& state, const TOptions& options, bool write)
 
         auto group = CreateQuorumMirroredStorageGroup(
             config,
-            devices,
-            CreateFiberTimer());
+            devices);
 
         Y_ABORT_UNLESS(0 == FiberScheduler::run(
             BenchFiberMain,

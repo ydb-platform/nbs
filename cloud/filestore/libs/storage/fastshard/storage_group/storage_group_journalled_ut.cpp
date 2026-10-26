@@ -139,8 +139,7 @@ struct TJournalledDevices
 
         Groups.push_back(CreateQuorumMirroredStorageGroup(
             TStorageGroupConfig{},
-            std::move(devices),
-            CreateFiberTimer()));
+            std::move(devices)));
         return Groups.back();
     }
 
