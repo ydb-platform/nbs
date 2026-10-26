@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -27,17 +28,6 @@ func max(x, y uint64) uint64 {
 		return y
 	}
 	return x
-}
-
-func divideWithRoundingUp(x uint64, divisor uint64) uint64 {
-	res := x / divisor
-
-	if x%divisor != 0 {
-		// Round up.
-		return res + 1
-	}
-
-	return res
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -750,7 +740,7 @@ func (s *storageYDB) generateBaseDisk(
 	} else {
 		// Base disks use SSD. Compute the number of SSD allocation units
 		// needed to hold the image.
-		ssdUnits := divideWithRoundingUp(imageSize, baseDiskUnitSize)
+		ssdUnits := common.DivideWithRoundingUp(imageSize, baseDiskUnitSize)
 		size = ssdUnits * baseDiskUnitSize
 
 		// Regular (HDD-equivalent) units with oversubscription.
@@ -810,12 +800,12 @@ func computeAllottedUnits(s *slot) uint64 {
 
 	switch s.overlayDiskKind {
 	case types.DiskKind_DISK_KIND_SSD:
-		res = divideWithRoundingUp(
+		res = common.DivideWithRoundingUp(
 			regularUnitsPerSSDUnit*overlayDiskUnits,
 			overlayDiskOverSubscription,
 		)
 	case types.DiskKind_DISK_KIND_HDD:
-		res = divideWithRoundingUp(
+		res = common.DivideWithRoundingUp(
 			overlayDiskUnits,
 			overlayDiskOverSubscription,
 		)

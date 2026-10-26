@@ -290,7 +290,7 @@ func (t *replicateDiskTask) replicate(
 		false, // duplicateChunkIndices
 		t.request.IgnoreBaseDisk,
 		true, // dontReadFromCheckpoint
-		0,    // maxBlocksCount, whole disk
+		0,    // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return err
@@ -440,7 +440,7 @@ func (t *replicateDiskTask) getBytesToReplicate(
 		currentCheckpointID,
 		"",
 		false, // ignoreBaseDisk
-		0,     // maxBlocksCount, whole disk
+		0,     // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return 0, err

@@ -456,11 +456,6 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, nil
 	}
 
-	if params.BlockSize != 4096 {
-		// Block size of base disks.
-		return false, nil
-	}
-
 	if req.EncryptionDesc != nil &&
 		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION &&
 		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
@@ -494,10 +489,24 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, nil
 	}
 
+	// Pools are configured per cell, and the disk (together with its proxy
+	// overlay disk) is created in the cell selected by the task, which may
+	// differ from the requested zone. The task selects the cell the same way.
+	client, err := selectClientForDisk(
+		ctx,
+		params,
+		s.cellSelector,
+		s.nbsFactory,
+		s.resourceStorage,
+	)
+	if err != nil {
+		return false, err
+	}
+
 	return s.poolService.IsPoolConfigured(
 		ctx,
 		srcImageID,
-		params.Disk.ZoneId,
+		client.ZoneID(),
 	)
 }
 

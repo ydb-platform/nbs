@@ -178,6 +178,26 @@ func TestDiskServiceCellsCreateDiskFromImage(t *testing.T) {
 	}
 }
 
+// Pools are configured per cell: the disk is filled from a base disk of the
+// pool in the cell selected for the disk.
+func TestDiskServiceCellsCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
+	for _, testCase := range cellsTestCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCreateDiskFromImageWithZoneID(
+				t,
+				disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+				32*1024*4096, // imageSize
+				true,         // pooled
+				false,        // expectOverlayDisk
+				262144*4096,  // diskSize
+				"folder",
+				nil, // encryptionDesc
+				testCase.zoneID,
+			)
+		})
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceCellsCreateDiskFromSnapshot(t *testing.T) {

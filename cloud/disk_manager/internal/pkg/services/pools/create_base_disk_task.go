@@ -79,12 +79,6 @@ func (t *createBaseDiskTask) Run(
 			zoneID := t.request.BaseDisk.ZoneId
 
 			if t.request.SrcDisk != nil {
-				var baseDiskBlockCount uint64
-				baseDiskBlockCount, err = t.baseDiskBlockCount()
-				if err != nil {
-					return err
-				}
-
 				taskID, err = t.scheduler.ScheduleZonalTask(
 					headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
 					"dataplane.TransferFromDiskToDisk",
@@ -99,7 +93,7 @@ func (t *createBaseDiskTask) Run(
 						// disk being created (an image sized base disk
 						// created from a default sized one), the image fits
 						// into both.
-						MaxBlocksCount: baseDiskBlockCount,
+						MaxSizeBytes: t.baseDiskSize(),
 					},
 				)
 				if err != nil {
@@ -157,12 +151,17 @@ func (t *createBaseDiskTask) Run(
 		})
 }
 
-func (t *createBaseDiskTask) baseDiskBlockCount() (uint64, error) {
-	baseDiskSize := t.request.BaseDiskSize
-
-	if baseDiskSize == 0 {
-		return defaultBaseDiskBlockCount, nil
+// Zero BaseDiskSize means the default size.
+func (t *createBaseDiskTask) baseDiskSize() uint64 {
+	if t.request.BaseDiskSize == 0 {
+		return storage.DefaultBaseDiskSize
 	}
+
+	return t.request.BaseDiskSize
+}
+
+func (t *createBaseDiskTask) baseDiskBlockCount() (uint64, error) {
+	baseDiskSize := t.baseDiskSize()
 
 	if baseDiskSize%baseDiskBlockSize != 0 {
 		return 0, common.NewInvalidArgumentError(

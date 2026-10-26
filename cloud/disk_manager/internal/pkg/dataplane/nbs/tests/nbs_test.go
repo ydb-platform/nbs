@@ -184,7 +184,7 @@ func TestChunkIndices(t *testing.T) {
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
 			false, // dontReadFromCheckpoint
-			0,     // maxBlocksCount, whole disk
+			0,     // maxSizeBytes, whole disk
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -219,9 +219,9 @@ func TestChunkIndices(t *testing.T) {
 	}
 }
 
-// The source covers the first maxBlocksCount blocks of the disk only: chunk
-// count, chunk indices and the estimate are computed for them.
-func TestMaxBlocksCount(t *testing.T) {
+// The source covers the first maxSizeBytes of the disk only: chunk count,
+// chunk indices and the estimate are computed for them.
+func TestMaxSizeBytes(t *testing.T) {
 	ctx := newContext()
 
 	factory := newFactory(t, ctx)
@@ -285,10 +285,10 @@ func TestMaxBlocksCount(t *testing.T) {
 		"checkpoint",
 		nil, // encryption
 		chunkSize,
-		false, // duplicateChunkIndices
-		false, // ignoreBaseDisk
-		false, // dontReadFromCheckpoint
-		uint64(blocksInChunk*maxChunkCount),
+		false,                           // duplicateChunkIndices
+		false,                           // ignoreBaseDisk
+		false,                           // dontReadFromCheckpoint
+		uint64(maxChunkCount*chunkSize), // maxSizeBytes
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -399,7 +399,7 @@ func TestReadWrite(t *testing.T) {
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
-		0,     // maxBlocksCount, whole disk
+		0,     // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -489,7 +489,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 				false, // duplicateChunkIndices
 				false, // ignoreBaseDisk
 				dontReadFromCheckpoint,
-				0, // maxBlocksCount, whole disk
+				0, // maxSizeBytes, whole disk
 			)
 			require.NoError(t, err)
 			defer source.Close(ctx)

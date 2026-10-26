@@ -360,14 +360,25 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 		return nil
 	}
 
-	// `maxBlocksCount` is used here to reduce the number of `GetChangedBlocks`
-	// requests when using a base disk with the default size of 4 TiB.
+	// |baseDiskID| is the one returned by the (already finished) acquire task.
+	// If this task is retried after a crash that happened before
+	// ProxyOverlayDiskCreated has been persisted, the proxy overlay disk may
+	// have been rebased onto another base disk and |baseDiskID| deleted in the
+	// meantime (see pools.RetireBaseDisk), so CreateProxyOverlayDisk must not
+	// (and does not) require |baseDiskID| to exist when the proxy overlay disk
+	// already exists.
+	//
+	// `maxSizeBytes` is used here to reduce the number of `GetChangedBlocks`
+	// requests when using a base disk with the default size of 4 TiB. It is
+	// specified in bytes: the proxy overlay disk has the block size of the
+	// base disk, which may differ from the block size of the disk being
+	// created (the transfer operates on chunks that are multiples of both).
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDisk.DiskId,
 		baseDiskID,
 		baseDiskCheckpointID,
-		t.request.Params.BlocksCount, // maxBlocksCount
+		t.request.Params.BlocksCount*uint64(t.request.Params.BlockSize), // maxSizeBytes
 	)
 	if err != nil {
 		return err

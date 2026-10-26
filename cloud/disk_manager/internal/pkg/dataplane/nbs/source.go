@@ -242,7 +242,7 @@ func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 		s.baseCheckpointID,
 		s.checkpointID,
 		s.ignoreBaseDisk,
-		s.blockCount, // maxBlocksCount
+		s.blockCount*uint64(s.blockSize), // maxSizeBytes
 	)
 	if err != nil && nbs.IsNotImplementedError(err) {
 		// Worst case estimate
@@ -264,8 +264,8 @@ func (s *diskSource) Close(ctx context.Context) {
 // |mountLocally| is set: local mount moves the disk tablet to the NBS node
 // serving the session, so it should be used for one-shot disks (e.g. proxy
 // overlay disks) only, not for user disks.
-// The source covers the first min(|maxBlocksCount|, disk blocks count) blocks
-// of the disk, zero |maxBlocksCount| means the whole disk.
+// The source covers the first min(|maxSizeBytes|, disk size) bytes of the disk
+// (rounded up to the block size), zero |maxSizeBytes| means the whole disk.
 func NewDiskSource(
 	ctx context.Context,
 	client nbs.Client,
@@ -279,7 +279,7 @@ func NewDiskSource(
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
 	dontReadFromCheckpoint bool,
-	maxBlocksCount uint64,
+	maxSizeBytes uint64,
 ) (dataplane_common.Source, error) {
 
 	dataDiskID := diskID
@@ -301,8 +301,15 @@ func NewDiskSource(
 
 	blockSize := session.BlockSize()
 	blockCount := session.BlockCount()
-	if maxBlocksCount != 0 && maxBlocksCount < blockCount {
-		blockCount = maxBlocksCount
+	if maxSizeBytes != 0 {
+		// Rounded up: the source should cover at least |maxSizeBytes|.
+		maxBlockCount := common.DivideWithRoundingUp(
+			maxSizeBytes,
+			uint64(blockSize),
+		)
+		if maxBlockCount < blockCount {
+			blockCount = maxBlockCount
+		}
 	}
 
 	err = validate(blockCount, chunkSize, blockSize)

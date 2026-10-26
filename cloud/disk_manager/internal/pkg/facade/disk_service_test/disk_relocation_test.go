@@ -250,7 +250,7 @@ func setupMigrateEmptyOverlayDiskTest(
 		"",
 		"",
 		true, // ignoreBaseDisk
-		0,    // maxBlocksCount, whole disk
+		0,    // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), changedBytes)
@@ -280,7 +280,7 @@ func successfullyMigrateEmptyOverlayDisk(
 		"",
 		"",
 		true, // ignoreBaseDisk
-		0,    // maxBlocksCount, whole disk
+		0,    // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 

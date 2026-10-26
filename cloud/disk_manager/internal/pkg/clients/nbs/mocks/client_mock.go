@@ -33,7 +33,7 @@ func (c *ClientMock) CreateProxyOverlayDisk(
 	diskID string,
 	baseDiskID string,
 	baseDiskCheckpointID string,
-	maxBlocksCount uint64,
+	maxSizeBytes uint64,
 ) (bool, error) {
 
 	args := c.Called(
@@ -41,7 +41,7 @@ func (c *ClientMock) CreateProxyOverlayDisk(
 		diskID,
 		baseDiskID,
 		baseDiskCheckpointID,
-		maxBlocksCount,
+		maxSizeBytes,
 	)
 	return args.Bool(0), args.Error(1)
 }
@@ -334,7 +334,7 @@ func (c *ClientMock) GetChangedBytes(
 	baseCheckpointID string,
 	checkpointID string,
 	ignoreBaseDisk bool,
-	maxBlocksCount uint64,
+	maxSizeBytes uint64,
 ) (uint64, error) {
 
 	args := c.Called(
@@ -343,7 +343,7 @@ func (c *ClientMock) GetChangedBytes(
 		baseCheckpointID,
 		checkpointID,
 		ignoreBaseDisk,
-		maxBlocksCount,
+		maxSizeBytes,
 	)
 	return args.Get(0).(uint64), args.Error(1)
 }

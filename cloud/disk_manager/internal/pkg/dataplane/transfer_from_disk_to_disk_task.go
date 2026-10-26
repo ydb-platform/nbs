@@ -69,7 +69,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
-		t.request.MaxBlocksCount,
+		t.request.MaxSizeBytes,
 	)
 	if err != nil {
 		return err

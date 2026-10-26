@@ -123,7 +123,7 @@ func newDiskSourceFull(
 		duplicateChunkIndices,
 		ignoreBaseDisk,
 		dontReadFromCheckpoint,
-		0, // maxBlocksCount, whole disk
+		0, // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 

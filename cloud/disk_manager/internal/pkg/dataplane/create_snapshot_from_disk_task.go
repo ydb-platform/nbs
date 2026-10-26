@@ -287,7 +287,7 @@ func (t *createSnapshotFromDiskTask) run(
 		incremental, // duplicateChunkIndices
 		false,       // ignoreBaseDisk
 		false,       // dontReadFromCheckpoint
-		0,           // maxBlocksCount, whole disk
+		0,           // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return err
@@ -499,7 +499,7 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 		proxyOverlayDiskID,
 		diskID, // baseDiskID
 		t.request.SrcDiskCheckpointId,
-		0, // maxBlocksCount, same as the source disk
+		0, // maxSizeBytes, same as the source disk
 	)
 	if err != nil {
 		return "", err
