@@ -236,11 +236,6 @@ type Storage interface {
 
 	GetTask(ctx context.Context, taskID string) (TaskState, error)
 
-	// Lists unfinished tasks ordered by ID. afterID is an exclusive cursor.
-	// This is not a snapshot: tasks created concurrently can be missed if their
-	// IDs precede the cursor. Callers must handle them independently.
-	ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]TaskState, error)
-
 	GetTaskByIdempotencyKey(
 		ctx context.Context,
 		idempotencyKey string,

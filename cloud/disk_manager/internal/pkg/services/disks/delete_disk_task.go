@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
@@ -30,7 +29,6 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
-	cellSelector      cells.CellSelector
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
 }
@@ -55,35 +53,29 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	if len(t.state.CleanupCellIds) != 0 {
-		return t.scheduleDiskCleanup(ctx, execCtx)
+	err := t.setEstimate(ctx, execCtx)
+	if err != nil {
+		return err
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 
-	backgroundCleanup := t.request.BackgroundCleanup &&
-		t.request.DeleteIfNonExistent && t.request.Disk.ZoneId != ""
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
 		time.Now(),
-		backgroundCleanup, /* ignoreMissing */
 	)
 	if err != nil {
 		return err
 	}
 
 	if diskMeta == nil {
-		return t.deleteDiskWithoutMetadata(ctx, execCtx, backgroundCleanup)
+		return t.deleteDiskWithoutMetadata(ctx, execCtx)
 	}
 
 	zoneID := diskMeta.ZoneID
-	err = t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
 
 	err = t.deleteDiskInCell(ctx, execCtx, zoneID, selfTaskID+"_delete_disk_from_incremental")
 	if err != nil {

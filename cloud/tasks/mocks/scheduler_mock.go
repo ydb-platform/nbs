@@ -8,19 +8,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type SchedulerMock struct {
 	mock.Mock
-}
-
-func (s *SchedulerMock) ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]tasks_storage.TaskState, error) {
-	args := s.Called(ctx, taskType, afterID, limit)
-	states, _ := args.Get(0).([]tasks_storage.TaskState)
-	return states, args.Error(1)
 }
 
 func (s *SchedulerMock) ScheduleTask(

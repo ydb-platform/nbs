@@ -43,12 +43,6 @@ func (s *StorageMock) GetTask(
 	return args.Get(0).(tasks_storage.TaskState), args.Error(1)
 }
 
-func (s *StorageMock) ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]tasks_storage.TaskState, error) {
-	args := s.Called(ctx, taskType, afterID, limit)
-	states, _ := args.Get(0).([]tasks_storage.TaskState)
-	return states, args.Error(1)
-}
-
 func (s *StorageMock) GetTaskByIdempotencyKey(
 	ctx context.Context,
 	idempotencyKey string,

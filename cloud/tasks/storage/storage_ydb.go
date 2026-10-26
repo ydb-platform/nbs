@@ -78,18 +78,6 @@ func (s *storageYDB) GetTask(
 	return task, err
 }
 
-func (s *storageYDB) ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) (states []TaskState, err error) {
-	if limit == 0 {
-		return nil, errors.NewNonRetriableErrorf("task page size must be positive")
-	}
-	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
-		var err error
-		states, err = s.listUnfinishedTasks(ctx, session, taskType, afterID, limit)
-		return err
-	})
-	return states, err
-}
-
 func (s *storageYDB) GetTaskByIdempotencyKey(
 	ctx context.Context,
 	idempotencyKey string,

@@ -846,35 +846,6 @@ func (s *storageYDB) getTask(
 	return tasks[0], nil
 }
 
-func (s *storageYDB) listUnfinishedTasks(ctx context.Context, session *persistence.Session, taskType string, afterID string, limit uint64) ([]TaskState, error) {
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $task_type as Utf8;
-		declare $after_id as Utf8;
-		declare $finished as Int64;
-		declare $cancelled as Int64;
-		declare $limit as Uint64;
-
-		select * from tasks
-		where id > $after_id and task_type = $task_type
-			and status != $finished and status != $cancelled
-		order by id
-		limit $limit
-	`, s.tablesPath),
-		persistence.ValueParam("$task_type", persistence.UTF8Value(taskType)),
-		persistence.ValueParam("$after_id", persistence.UTF8Value(afterID)),
-		persistence.ValueParam("$finished", persistence.Int64Value(int64(TaskStatusFinished))),
-		persistence.ValueParam("$cancelled", persistence.Int64Value(int64(TaskStatusCancelled))),
-		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-	return s.scanTaskStates(ctx, res)
-}
-
 func (s *storageYDB) getTaskByIdempotencyKey(
 	ctx context.Context,
 	session *persistence.Session,

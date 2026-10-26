@@ -6,7 +6,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,9 +25,6 @@ type TaskSchedule struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Scheduler interface {
-	// Bounded discovery for task migrations. See Storage.ListUnfinishedTasks.
-	ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]tasks_storage.TaskState, error)
-
 	// Requires "idempotency-key" header in ctx metadata.
 	// Returns id of the task.
 	ScheduleTask(
