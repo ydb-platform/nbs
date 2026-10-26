@@ -1604,6 +1604,7 @@ private:
         const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
+        bool disableValidation,
         TAllocateDiskResult* result);
 
     NProto::TError CanCreateMirroredDiskFromDevices(
@@ -1611,12 +1612,16 @@ private:
         const TCreateDiskFromDevicesParams& params,
         const TVector<TVector<TDeviceId>>& replicas) const;
 
+    void CollectRacksByReplicas(
+        ui32 currentReplicaIdx,
+        const TVector<TVector<TDeviceId>>& replicas,
+        THashSet<TString>& preferredRacks,
+        THashSet<TString>& forbiddenRacks) const;
+
     NProto::TError AllocateFreshDevicesForReplica(
-        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& replicaId,
         ui32 replicaIndex,
-        const TVector<TDeviceId>& referenceReplica,
         const TVector<TVector<TDeviceId>>& replicas,
         ui32 blockSize,
         TVector<NProto::TDeviceConfig>& resolvedReplica);
