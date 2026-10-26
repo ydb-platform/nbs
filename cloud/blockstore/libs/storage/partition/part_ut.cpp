@@ -1,4 +1,5 @@
 #include "part.h"
+#include "part_ut.h"
 
 #include "part_events_private.h"
 
@@ -60,6 +61,8 @@ using namespace NLWTrace;
 using namespace std::chrono_literals;
 
 namespace {
+
+using namespace NTest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -612,54 +615,6 @@ TTestActorRuntime::TEventObserver PartitionBatchWriteCollector(TTestActorRuntime
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEmpty {};
-
-struct TBlob
-{
-    TBlob(
-        ui32 number,
-        ui8 offset,
-        ui8 blockCount = 1,
-        ui32 channel = 0,
-        ui32 generation = 0
-    )
-        : Number(number)
-        , Offset(offset)
-        , BlockCount(blockCount)
-        , Channel(channel)
-        , Generation(generation)
-    {}
-
-    ui32 Number;
-    ui8 Offset;
-    ui8 BlockCount;
-    ui32 Channel;
-    ui32 Generation;
-};
-
-struct TFresh
-{
-    TFresh(ui8 value)
-        : Value(value)
-    {}
-
-    ui8 Value;
-};
-
-using TBlockDescription = std::variant<TEmpty, TBlob, TFresh>;
-
-using TPartitionContent = TVector<TBlockDescription>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPartitionWithRuntime
-{
-    std::unique_ptr<TTestActorRuntime> Runtime;
-    std::unique_ptr<TPartitionClient> Partition;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TTestVolumeProxyActor final
     : public TActorBootstrapped<TTestVolumeProxyActor>
 {
@@ -968,6 +923,10 @@ bool EventHandler(
     return result;
 }
 
+}   // namespace
+
+namespace NTest {
+
 TPartitionWithRuntime SetupOverlayPartition(
     ui64 overlayTabletId,
     ui64 baseTabletId,
@@ -1038,6 +997,10 @@ TPartitionWithRuntime SetupOverlayPartition(
 
     return result;
 }
+
+}   // namespace NTest
+
+namespace {
 
 TString GetBlocksContent(
     const TPartitionContent& content,

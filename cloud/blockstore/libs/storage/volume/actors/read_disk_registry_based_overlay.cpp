@@ -40,7 +40,8 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         EStorageAccessMode mode,
         TDuration longRunningThreshold,
         TChildLogTitle logTitle,
-        bool enableDataIntegrityValidation)
+        bool enableDataIntegrityValidation,
+        bool verifyBlobCompressionInfo)
     : RequestInfo(std::move(requestInfo))
     , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
@@ -52,6 +53,7 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
     , LongRunningThreshold(longRunningThreshold)
     , LogTitle(std::move(logTitle))
     , EnableDataIntegrityValidation(enableDataIntegrityValidation)
+    , VerifyBlobCompressionInfo(verifyBlobCompressionInfo)
     , Mode(mode)
     , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
@@ -223,7 +225,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::SendBaseDiskRequest(
             BaseDiskRequest.GetStartIndex(),
             BaseDiskRequest.GetBlocksCount()),
         std::move(BlockMarks),
-        BlockSize);
+        BlockSize,
+        VerifyBlobCompressionInfo);
 }
 
 template <ReadRequest TMethod>
@@ -373,6 +376,12 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
         blobId2CompressionInfo;
     for (const auto& [blobId, compressionInfo]: msg->BlobId2CompressionInfo) {
         blobId2CompressionInfo[blobId] = compressionInfo;
+
+        STORAGE_VERIFY_C(
+            VerifyBlobCompressionInfo || !compressionInfo,
+            TWellKnownEntityTypes::TABLET,
+            VolumeTabletId,
+            "Enable VerifyBlobCompressionInfo if compressed blobs are enabled");
     }
 
     for (const auto& request: requests) {
@@ -407,13 +416,17 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
 
             auto* compressionInfo =
                 blobId2CompressionInfo.FindPtr(requestRef.BlobId);
-            STORAGE_VERIFY_C(
-                compressionInfo,
-                TWellKnownEntityTypes::TABLET,
-                VolumeTabletId,
-                TStringBuilder() << "compression info not found for blob "
-                                 << requestRef.BlobId);
-            currentRequest->CompressionInfo = *compressionInfo;
+            if (VerifyBlobCompressionInfo && !compressionInfo) {
+                ReplyAndDie(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        "compression info not found for blob " +
+                            requestRef.BlobId.ToString()));
+                return;
+            }
+            currentRequest->CompressionInfo =
+                compressionInfo ? *compressionInfo : std::nullopt;
         }
 
         currentRequest->BlobOffsets.push_back(requestRef.BlobOffset);

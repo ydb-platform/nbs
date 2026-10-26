@@ -285,12 +285,12 @@ private:
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
+    const bool VerifyBlobCompressionInfo;
 
     const ui64 CommitId;
 
-    // std::nullopt means that blob is not compressed. If there is no element in
-    // the map, it means that we don't know about compression and should crash
-    // instead of try to read blob.
+    // std::nullopt means the blob is uncompressed. Missing entries are rejected
+    // only when VerifyBlobCompressionInfo is enabled.
     TBlobId2CompressionInfoMap BlobId2CompressionInfo;
 
     TVector<TCallContextPtr> ForkedCallContexts;
@@ -323,9 +323,9 @@ public:
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        TBlobId2CompressionInfoMap
-            blobId2CompressionInfo,
-        bool waitBaseDiskRequests);
+        TBlobId2CompressionInfoMap blobId2CompressionInfo,
+        bool waitBaseDiskRequests,
+        bool verifyBlobCompressionInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -392,7 +392,8 @@ TReadBlocksActor::TReadBlocksActor(
         TVector<IProfileLog::TBlockInfo> blockInfos,
         TBlobId2CompressionInfoMap
             blobId2CompressionInfo,
-        bool waitBaseDiskRequests)
+        bool waitBaseDiskRequests,
+        bool verifyBlobCompressionInfo)
     : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
@@ -405,6 +406,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , VerifyBlobCompressionInfo(verifyBlobCompressionInfo)
     , CommitId(commitId)
     , BlobId2CompressionInfo(std::move(blobId2CompressionInfo))
     , OwnRequests(std::move(ownRequests))
@@ -441,6 +443,17 @@ void TReadBlocksActor::ReadBlocks(
         TCompareByBlobIdAndOffset()
     ));
 
+    if (!VerifyBlobCompressionInfo) {
+        for (auto& [_, compressionInfo]: BlobId2CompressionInfo) {
+            STORAGE_VERIFY_C(
+                !compressionInfo,
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "Enable VerifyBlobCompressionInfo if compressed blobs are "
+                "enabled");
+        }
+    }
+
     TBatchRequest current;
     for (auto& r: requests) {
         if (current.BlobId != r.BlobId) {
@@ -464,13 +477,17 @@ void TReadBlocksActor::ReadBlocks(
         current.Requests.push_back(r.BlockIndex);
 
         const auto* compressionInfo = BlobId2CompressionInfo.FindPtr(r.BlobId);
-        STORAGE_VERIFY_C(
-            compressionInfo,
-            TWellKnownEntityTypes::TABLET,
-            TabletId,
-            TStringBuilder() << "Compression info not found for blob "
-                             << r.BlobId.ToString());
-        current.CompressionInfo = *compressionInfo;
+        if (VerifyBlobCompressionInfo && !compressionInfo) {
+            HandleError(
+                ctx,
+                MakeError(
+                    E_REJECTED,
+                    "Compression info not found for blob " +
+                        r.BlobId.ToString()));
+            return;
+        }
+        current.CompressionInfo =
+            compressionInfo ? *compressionInfo : std::nullopt;
     }
 
     if (current.BlobOffsets) {
@@ -1344,7 +1361,8 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             std::move(fullBlobId2CompressionInfo),
-            describeBlocksRange.Defined());
+            describeBlocksRange.Defined(),
+            Config->GetVerifyBlobCompressionInfo());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {
@@ -1363,6 +1381,7 @@ void TPartitionActor::CompleteReadBlocks(
                     *describeBlocksRange,
                     std::move(args.BlockMarks),
                     State->GetBlockSize(),
+                    Config->GetVerifyBlobCompressionInfo(),
                     SelfId());
 
             Actors.Insert(describeBlocksActorId);

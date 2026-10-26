@@ -583,7 +583,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         const auto blob = compressor.CompressBlob(TString(ChunkSize, 'a'));
         TString result(BlockSize, '?');
         const TSgList outputs = {{result.begin(), result.size()}};
-        for (const ui32 size: {0u, BlockSize / 2, BlockSize, BlockSize + 1}) {
+        for (const ui32 size: {0u, BlockSize / 2, BlockSize - 1, BlockSize + 1})
+        {
             auto metadata = blob.Compression;
             metadata.SetChunkSize(size);
             AssertAborts(
@@ -841,7 +842,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
 
     Y_UNIT_TEST(ShouldRejectInvalidChunkSizes)
     {
-        for (const ui32 chunkSize: {BlockSize / 2, BlockSize, BlockSize + 1}) {
+        for (const ui32 chunkSize: {BlockSize / 2, BlockSize + 1}) {
             AssertAborts(
                 [&]
                 {

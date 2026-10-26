@@ -60,18 +60,18 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            false));   // verifyBlobCompressionInfo
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();
@@ -183,7 +183,8 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
                 TBlockRange64::WithLength(0, 5),
                 TBlockRange64::WithLength(0, 4),
                 std::move(blockMarks),
-                blockSize));
+                blockSize,
+                false));   // verifyBlobCompressionInfo
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();
@@ -220,16 +221,16 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize,
-                EdgeActor));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            false,   // verifyBlobCompressionInfo
+            EdgeActor));
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();

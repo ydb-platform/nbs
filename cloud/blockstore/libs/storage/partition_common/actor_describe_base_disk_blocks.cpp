@@ -21,6 +21,7 @@ TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
         TBlockRange64 baseDiskBlocksRange,
         TBlockMarks blockMarks,
         ui32 blockSize,
+        bool verifyBlobCompressionInfo,
         NActors::TActorId notifyActorId)
     : RequestInfo(std::move(requestInfo))
     , BaseDiskId(std::move(baseDiskId))
@@ -28,6 +29,7 @@ TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
     , BlocksRange(std::move(blocksRange))
     , BaseDiskBlocksRange(std::move(baseDiskBlocksRange))
     , BlockSize(blockSize)
+    , VerifyBlobCompressionInfo(verifyBlobCompressionInfo)
     , NotifyActorId(std::move(notifyActorId))
     , BlockMarks(std::move(blockMarks))
 {
@@ -161,9 +163,11 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
 
         const auto blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
 
-        if (!blobIdsWithKnownCompressionInfo.contains(blobId)) {
+        if (VerifyBlobCompressionInfo &&
+            !blobIdsWithKnownCompressionInfo.contains(blobId))
+        {
             return MakeError(
-                E_FAIL,
+                E_REJECTED,
                 TStringBuilder() << "DescribeBlocks error. Blob compression "
                                     "info is not known."
                                     " blobId: "

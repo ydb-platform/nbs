@@ -225,8 +225,7 @@ void TScanDiskActor::SendReadBlobRequest(
             false,             // async
             TInstant::Max(),   // deadline
             false,             // shouldCalculateChecksums
-            *compressionInfo   // compressionInfo
-        );
+            *compressionInfo);
 
     NCloud::Send(
         ctx,

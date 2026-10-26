@@ -78,7 +78,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionInfo=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -150,7 +151,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionInfo=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -208,7 +210,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionInfo=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -398,7 +401,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionInfo=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -457,7 +461,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionInfo=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -554,7 +559,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionInfo=*/false});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

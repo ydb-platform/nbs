@@ -927,6 +927,10 @@ message TStorageServiceConfig
     optional uint32 BlobCompressionRate = 298;
     optional string BlobCompressionCodec = 299;
 
+    // Fail if compression metadata is missing for a blob being read.
+    // If false (default), treat blobs with missing metadata as uncompressed.
+    optional bool VerifyBlobCompressionInfo = 542;
+
     // If set, writes will be additionally throttled by disk space score
     // backpressure feature.
     optional bool DiskSpaceScoreThrottlingEnabled = 300;

@@ -100,7 +100,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                         *DiagnosticsConfig,
                         NProto::STORAGE_MEDIA_SSD),
                     LogTitle.GetChild(GetCycleCount()),
-                    Config->GetEnableDataIntegrityValidationForYdbBasedDisks());
+                    Config->GetEnableDataIntegrityValidationForYdbBasedDisks(),
+                    Config->GetVerifyBlobCompressionInfo());
             } else {
                 NCloud::Register<TReadAndClearEmptyBlocksActor<TMethod>>(
                     ctx,
