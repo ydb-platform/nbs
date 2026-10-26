@@ -257,10 +257,10 @@ private:
 
 public:
 
-    TFuture<NProto::TError> Stop() noexcept final
+    TFuture<void> Stop() noexcept final
     {
         ++StopCount;
-        return MakeFuture<NProto::TError>();
+        return MakeFuture();
     }
 
     [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest /*request*/)

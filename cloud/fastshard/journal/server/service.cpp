@@ -13,6 +13,7 @@
 #include <util/string/builder.h>
 
 #include <functional>
+#include <type_traits>
 
 namespace NCloud::NJournalled {
 
@@ -140,9 +141,7 @@ public:
 
     void Stop() override
     {
-        auto future =
-            Execute<NProto::TError>([](auto& self) { return self.DoStop(); });
-
+        auto future = Execute<void>([](auto& self) { self.DoStop(); });
         future.Wait();
     }
 
@@ -293,7 +292,7 @@ private:
     // Runs in the executor, where the formats run too: a format that is in
     // flight finishes first, so the device it starts is stopped here and no
     // format starts a device afterwards.
-    NProto::TError DoStop()
+    void DoStop()
     {
         Stopped = true;
 
@@ -311,10 +310,8 @@ private:
                     return MakeFuture();
                 }
 
-                return spec.Device->Stop().IgnoreResult();
+                return spec.Device->Stop();
             }));
-
-        return {};
     }
 
     TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec& spec)
@@ -342,19 +339,14 @@ private:
 
     // Runs in the executor: waits for the device to stop. A device that is
     // not started has nothing to stop.
-    NProto::TError DoStopJournalledDevice(TJournalledDeviceSpec& spec)
+    void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
     {
         if (!spec.Device) {
-            return {};
+            return;
         }
 
-        auto error = Executor->ExtractResponse(spec.Device->Stop());
-        if (HasError(error)) {
-            return error;
-        }
-
+        Executor->WaitFor(spec.Device->Stop());
         spec.Device = nullptr;
-        return {};
     }
 
     NProto::TFormatDeviceResponse DoFormatDevice(
@@ -420,9 +412,13 @@ private:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    return TErrorResponse(
-                        E_FAIL,
-                        "TJournalledDeviceHandler is destroyed");
+                    if constexpr (std::is_void_v<T>) {
+                        return;
+                    } else {
+                        return TErrorResponse(
+                            E_FAIL,
+                            "TJournalledDeviceHandler is destroyed");
+                    }
                 }
 
                 return func(*self);
@@ -498,9 +494,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // Stop the current journalled device
     //
 
-    if (auto stopError = DoStopJournalledDevice(*spec); HasError(stopError)) {
-        return TErrorResponse(stopError);
-    }
+    DoStopJournalledDevice(*spec);
 
     //
     // Wipe the region

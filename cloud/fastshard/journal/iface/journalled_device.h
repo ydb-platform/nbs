@@ -18,7 +18,7 @@ struct IJournalledDevice
         -> NThreading::TFuture<NProto::TError> = 0;
 
     [[nodiscard]] virtual auto Stop() noexcept
-        -> NThreading::TFuture<NProto::TError> = 0;
+        -> NThreading::TFuture<void> = 0;
 
     [[nodiscard]] virtual auto ReadPages(NProto::TReadPagesRequest request)
         -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
