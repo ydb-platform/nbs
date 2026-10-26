@@ -51,7 +51,7 @@ TPartNonreplCountersData TMirrorPartitionActor::ExtractPartCounters(
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     for (const auto& counters: ReplicaCounters) {
         if (counters) {

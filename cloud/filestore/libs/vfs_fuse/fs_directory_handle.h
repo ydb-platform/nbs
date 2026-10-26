@@ -4,6 +4,7 @@
 
 #include "fs.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/buffer.h>
@@ -68,6 +69,29 @@ struct TDirectoryHandleStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReadContentResult
+{
+    enum class EStatus
+    {
+        // Offset is inside cached content; reply with DirectoryContent.
+        Hit,
+        // Offset is at the end of cached content and the listing has a
+        // cookie; fetch the next page with ListNodes.
+        Miss,
+        // Offset is at or past the end of cached content and the listing has
+        // no cookie, so there is nothing left; reply with an empty buffer to
+        // end the directory stream.
+        Eof
+    };
+    EStatus Status = EStatus::Miss;
+    TDirectoryContent DirectoryContent;
+    // Set only for Hit.
+    bool ChunkSwitched = false;
+    ui64 HandleSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDirectoryHandle
 {
 private:
@@ -81,6 +105,8 @@ private:
     TMap<ui64, TContent> Content;
     ui64 UpdateVersion = 0;
     ui64 SerializedSize = 0;
+    // Key of the chunk served by the last UpdateContent or ReadContent.
+    std::optional<ui64> LastReadKey;
 
     mutable TMutex Lock;
 
@@ -97,8 +123,7 @@ public:
         ui64 cacheVersion,
         TString cookie);
 
-    TMaybe<TDirectoryContent>
-    ReadContent(size_t size, size_t offset, TLog& Log);
+    TResultOrError<TReadContentResult> ReadContent(size_t size, size_t offset);
     void ResetContent();
     TString GetCookie();
 

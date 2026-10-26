@@ -32,12 +32,6 @@ using TEntryHeader = TFileRingBufferEntryHeader;
 
 constexpr ui64 INVALID_POS = Max<ui64>();
 
-// Reserve some space after header so adding new fields will not require data
-// migration
-constexpr ui64 HeaderReserveSize = 256;
-
-static_assert(sizeof(THeader) <= HeaderReserveSize);
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TFileRingBufferArgs
@@ -110,15 +104,16 @@ struct TEntryInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THeader InitHeader(const TFileRingBufferArgs& args)
+THeader InitHeader(
+    const TFileRingBufferArgs& args,
+    const TFileRingBufferLayout& layout)
 {
     THeader res;
     res.Version = args.Version;
     res.HeaderSize = sizeof(THeader);
-    res.MetadataOffset = HeaderReserveSize;
+    res.MetadataOffset = layout.MetadataOffset;
     res.MetadataCapacity = args.MetadataCapacity;
-    res.DataOffset =
-        AlignUp(res.MetadataOffset + res.MetadataCapacity, sizeof(ui64));
+    res.DataOffset = layout.DataOffset;
     res.DataCapacity = args.DataCapacity;
     return res;
 }
@@ -487,9 +482,18 @@ public:
 
         switch (status) {
             case EFileRingBufferAccessorValidationStatus::NotInitialized: {
-                auto header = InitHeader(args);
+                const auto layout = TFileRingBufferLayout::FromCapacity(
+                    args.DataCapacity,
+                    args.MetadataCapacity);
 
-                if (!ResizeAndRemap(header.DataOffset + header.DataCapacity)) {
+                if (!layout) {
+                    SetInitializationError(
+                        "Invalid capacities: file ring buffer layout "
+                        "overflows");
+                    return;
+                }
+
+                if (!ResizeAndRemap(layout->StateFileSize)) {
                     return;
                 }
 
@@ -498,7 +502,7 @@ public:
                     Accessor.GetRawData().size());
 
                 *reinterpret_cast<TFileRingBufferHeader*>(
-                    Accessor.GetRawData().data()) = header;
+                    Accessor.GetRawData().data()) = InitHeader(args, *layout);
 
                 if (!Validate()) {
                     return;
@@ -514,6 +518,16 @@ public:
         }
 
         if (Header()->MetadataCapacity != Args.MetadataCapacity) {
+            const auto layout = TFileRingBufferLayout::FromCapacity(
+                Header()->DataCapacity,
+                Args.MetadataCapacity);
+
+            if (!layout) {
+                SetInitializationError(
+                    "Invalid capacities: file ring buffer layout overflows");
+                return;
+            }
+
             if (!ResizeMetadata(Args.MetadataCapacity)) {
                 // Corruption happened
                 return;
@@ -971,6 +985,15 @@ public:
         return Corrupted.load(std::memory_order_relaxed);
     }
 
+    void SetInitializationError(const TString& message)
+    {
+        // Keep the buffer unusable without reporting file corruption.
+        Corrupted.store(true, std::memory_order_relaxed);
+        ReportFileRingBufferInitializationError(
+            "Cannot initialize FileRingBuffer, path: " + Args.FilePath +
+            ", message: " + message);
+    }
+
     void SetCorrupted(const TString& message)
     {
         auto prevValue = Corrupted.exchange(true);
@@ -987,9 +1010,14 @@ public:
         return MakeBufferIsCorruptError(message);
     }
 
-    ui64 GetRawCapacity() const
+    ui64 GetDataCapacity() const
     {
         return Header() != nullptr ? Header()->DataCapacity : 0;
+    }
+
+    ui64 GetTargetDataCapacity() const
+    {
+        return Args.DataCapacity;
     }
 
     ui64 GetRawUsedBytesCount() const
@@ -1199,9 +1227,14 @@ void TFileRingBuffer::SetCorrupted()
     Impl->SetCorrupted("");
 }
 
-ui64 TFileRingBuffer::GetRawCapacity() const
+ui64 TFileRingBuffer::GetDataCapacity() const
 {
-    return Impl->GetRawCapacity();
+    return Impl->GetDataCapacity();
+}
+
+ui64 TFileRingBuffer::GetTargetDataCapacity() const
+{
+    return Impl->GetTargetDataCapacity();
 }
 
 ui64 TFileRingBuffer::GetRawUsedBytesCount() const
