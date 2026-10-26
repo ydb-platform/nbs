@@ -121,24 +121,6 @@ auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
     return subgroup;
 }
 
-void SetQuota(
-    TServiceClient& service,
-    const TString& fsId,
-    ui32 quotaId,
-    ui64 maxBytes,
-    ui64 maxNodes)
-{
-    NProtoPrivate::TSetQuotaRequest request;
-    request.SetFileSystemId(fsId);
-    request.SetQuotaId(quotaId);
-    request.SetMaxBytes(maxBytes);
-    request.SetMaxNodes(maxNodes);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-    service.ExecuteAction("setquota", buf);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -526,32 +508,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
         auto listQuotas = [&](const TString& fileSystemId)
         {
-            NProtoPrivate::TListQuotasRequest request;
-            request.SetFileSystemId(fileSystemId);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            auto jsonResponse = service.ExecuteAction("listquotas", buf);
-            NProtoPrivate::TListQuotasResponse response;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
-
-            return response.GetQuotas();
+            return service.ListQuotas(headers, fileSystemId)
+                ->Record.GetQuotas();
         };
 
-        {
-            NProtoPrivate::TSetQuotaRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetQuotaId(42);
-            request.SetMaxBytes(1_GB);
-            request.SetMaxNodes(100);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("setquota", buf);
-        }
+        service.SetQuota(headers, fsConfig.FsId, 42, 1_GB, 100);
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             const auto quotas = listQuotas(id);
@@ -561,15 +526,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL_C(100u, quotas[0].GetMaxNodes(), id);
         }
 
-        {
-            NProtoPrivate::TDeleteQuotaRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetQuotaId(42);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("deletequota", buf);
-        }
+        service.DeleteQuota(headers, fsConfig.FsId, 42);
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL_C(0, listQuotas(id).size(), id);
@@ -581,19 +538,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        {
-            NProtoPrivate::TSetQuotaRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetQuotaId(42);
-            request.SetMaxBytes(1_GB);
-            request.SetMaxNodes(100);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("setquota", buf);
-        }
-
         auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        service.SetQuota(headers, fsConfig.FsId, 42, 1_GB, 100);
 
         // attach the quota to a directory on main - files are regular nodes,
         // so main auto-routes their creation into shards (round-robin) and
@@ -629,17 +576,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // a second, distinct quota that only ever lands on one shard (a
         // single file)
-        {
-            NProtoPrivate::TSetQuotaRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetQuotaId(43);
-            request.SetMaxBytes(1_GB);
-            request.SetMaxNodes(100);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("setquota", buf);
-        }
+        service.SetQuota(headers, fsConfig.FsId, 43, 1_GB, 100);
 
         constexpr ui64 otherQuotaFileSize = 50;
         auto otherQuotaDirId =
@@ -700,19 +637,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        {
-            NProtoPrivate::TSetQuotaRequest request;
-            request.SetFileSystemId(fsConfig.FsId);
-            request.SetQuotaId(42);
-            request.SetMaxBytes(1_GB);
-            request.SetMaxNodes(100);
-
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
-            service.ExecuteAction("setquota", buf);
-        }
-
         auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        service.SetQuota(headers, fsConfig.FsId, 42, 1_GB, 100);
 
         auto dirId = service
                          .CreateNode(
@@ -3277,8 +3204,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
-        SetQuota(service, fsConfig.FsId, 1, 1_GB, 100);
-        SetQuota(service, fsConfig.FsId, 2, 1_GB, 100);
+        service.SetQuota(headers, fsConfig.FsId, 1, 1_GB, 100);
+        service.SetQuota(headers, fsConfig.FsId, 2, 1_GB, 100);
 
         const auto dirAId =
             service

@@ -234,6 +234,44 @@ void TStorageServiceActor::ForwardRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
+void TStorageServiceActor::ForwardRequestWithoutSession(
+    const TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev)
+{
+    auto* msg = ev->Get();
+
+    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+        "[%s] forward %s #%lu",
+        msg->Record.GetFileSystemId().c_str(),
+        TMethod::Name,
+        msg->CallContext->RequestId);
+
+    auto [cookie, inflight] = CreateInFlightRequest(
+        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
+        StatsRegistry->GetRequestStats(),
+        ctx.Now());
+
+    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
+    TraceSerializer->BuildTraceRequest(
+        *msg->Record.MutableHeaders()->MutableInternal()->MutableTrace(),
+        msg->CallContext->LWOrbit);
+
+    auto event = std::make_unique<IEventHandle>(
+        MakeIndexTabletProxyServiceId(),
+        SelfId(),
+        ev->ReleaseBase().Release(),
+        0,          // flags
+        cookie,     // cookie
+        // forwardOnNondelivery
+        nullptr);
+
+    ctx.Send(event.release());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
 void TStorageServiceActor::ForwardRequestToShard(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
@@ -340,6 +378,20 @@ void TStorageServiceActor::ForwardRequestToShard(
     FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_FORWARD_REQUEST, TEvService)
 
 #undef FILESTORE_FORWARD_REQUEST
+
+#define FILESTORE_FORWARD_REQUEST_NO_SESSION(name, ns)                        \
+    void TStorageServiceActor::Handle##name(                                  \
+        const ns::TEv##name##Request::TPtr& ev,                               \
+        const TActorContext& ctx)                                             \
+    {                                                                         \
+        ForwardRequestWithoutSession<ns::T##name##Method>(ctx, ev);           \
+    }                                                                         \
+
+    FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(
+        FILESTORE_FORWARD_REQUEST_NO_SESSION,
+        TEvService)
+
+#undef FILESTORE_FORWARD_REQUEST_NO_SESSION
 
 #define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID(name, ns)                \
     void TStorageServiceActor::Handle##name(                                   \

@@ -84,6 +84,9 @@ public:
                 case static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage):
                 case static_cast<ui32>(EFileStoreRequest::CreateCheckpoint):
                 case static_cast<ui32>(EFileStoreRequest::DestroyCheckpoint):
+                case static_cast<ui32>(EFileStoreRequest::SetQuota):
+                case static_cast<ui32>(EFileStoreRequest::DeleteQuota):
+                case static_cast<ui32>(EFileStoreRequest::ListQuotas):
                     continue;
                 default:
                     break;

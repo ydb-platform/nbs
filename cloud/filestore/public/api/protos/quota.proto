@@ -1,5 +1,8 @@
 syntax = "proto3";
 
+import "cloud/filestore/public/api/protos/headers.proto";
+import "cloud/storage/core/protos/error.proto";
+
 package NCloud.NFileStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
@@ -20,4 +23,98 @@ message TQuota
 
     repeated uint64 NodeId = 4;
     uint64 CreationTimestampUs = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SetQuota request/response
+
+message TSetQuotaRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Quota identifier, chosen by the caller.
+    uint32 QuotaId = 3;
+
+    // Byte and node limits, 0 means unlimited.
+    uint64 MaxBytes = 4;
+    uint64 MaxNodes = 5;
+}
+
+message TSetQuotaResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+
+    // Resulting quota.
+    TQuota Quota = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DeleteQuota request/response
+
+message TDeleteQuotaRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Quota identifier.
+    uint32 QuotaId = 3;
+}
+
+message TDeleteQuotaResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ListQuotas request/response
+
+message TListQuotasRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TQuotaUsage
+{
+    // Quota identifier.
+    uint32 QuotaId = 1;
+
+    // Bytes currently used under this quota.
+    uint64 UsedBytes = 2;
+
+    // Nodes currently used under this quota.
+    uint64 UsedNodes = 3;
+}
+
+message TListQuotasResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+
+    // All quotas defined on this filesystem.
+    repeated TQuota Quotas = 2;
+
+    // Usage of each quota that has any recorded usage on this filesystem.
+    repeated TQuotaUsage Usages = 3;
 }

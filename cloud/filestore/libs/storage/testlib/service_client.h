@@ -691,6 +691,44 @@ public:
         return request;
     }
 
+    auto CreateSetQuotaRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui32 quotaId,
+        ui64 maxBytes,
+        ui64 maxNodes = 0)
+    {
+        auto request = std::make_unique<TEvService::TEvSetQuotaRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetQuotaId(quotaId);
+        request->Record.SetMaxBytes(maxBytes);
+        request->Record.SetMaxNodes(maxNodes);
+        return request;
+    }
+
+    auto CreateDeleteQuotaRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui32 quotaId)
+    {
+        auto request = std::make_unique<TEvService::TEvDeleteQuotaRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetQuotaId(quotaId);
+        return request;
+    }
+
+    auto CreateListQuotasRequest(
+        const THeaders& headers,
+        const TString& fileSystemId)
+    {
+        auto request = std::make_unique<TEvService::TEvListQuotasRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                     \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
