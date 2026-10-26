@@ -21,8 +21,8 @@ inputs:
     description: "run test type"
   test_threads:
     required: false
-    default: "28"
-    description: "Test threads count"
+    default: "8"
+    description: "Test threads count (capped at 8 to limit concurrent binary initialization)"
   link_threads:
     required: false
     default: "8"
@@ -178,6 +178,10 @@ runs:
         SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
         TMPFS_MOUNT_POINT: ${{ inputs.tmpfs_mount_point }}
       run: |
+        # Limit concurrent initialization of heavy test binaries.
+        if (( TEST_THREADS == 0 || TEST_THREADS > 8 )); then
+            TEST_THREADS=8
+        fi
         extra_params=(
             --run-all-tests
             --keep-going
