@@ -35,7 +35,7 @@ func (s *storageYDB) loadDiskCleanupState(
 		return diskState{}, nil
 	}
 	state := states[0]
-	if !state.tombstone && diskIsTombstone(state) {
+	if !state.tombstone && diskIsNonExistent(state) {
 		// Older binaries left deleted_at unset for missing-disk tombstones.
 		// Persist the explicit flag before reserving any legacy cleanup.
 		state.tombstone = true
@@ -46,14 +46,14 @@ func (s *storageYDB) loadDiskCleanupState(
 	return state, nil
 }
 
-func diskIsTombstone(state diskState) bool {
+func diskIsNonExistent(state diskState) bool {
 	return state.status == diskStatusDeleted && !diskDeletionCompleted(state)
 }
 
 // Legacy parents keep their own ID reserved through their atomic task finish.
 // Conversion to background cleanup retains those IDs alongside per-cell workers.
 func diskCleanupReserved(state diskState) bool {
-	return diskCleanupInProgress(state) || diskIsTombstone(state)
+	return diskCleanupInProgress(state) || diskIsNonExistent(state)
 }
 
 func diskCleanupIDs(state diskState) ([]string, error) {
@@ -139,7 +139,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 		if err != nil {
 			return err
 		}
-		if !legacy && state.id != "" && !diskCleanupInProgress(state) && !diskIsTombstone(state) {
+		if !legacy && state.id != "" && !diskCleanupInProgress(state) && !diskIsNonExistent(state) {
 			// Never take over a live disk or restart completed deletion.
 			prepared = false
 			return tx.Commit(ctx)
@@ -149,7 +149,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 			return err
 		}
 		if legacy {
-			if !diskIsTombstone(state) {
+			if !diskIsNonExistent(state) {
 				prepared = diskCleanupInProgress(state) && slices.Contains(ids, cleanupIDs[0])
 				return tx.Commit(ctx)
 			}
