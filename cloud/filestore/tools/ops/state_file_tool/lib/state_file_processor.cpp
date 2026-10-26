@@ -137,6 +137,12 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     result.SetIsCorrupted(
         validationResult == EFileRingBufferAccessorValidationStatus::Failed);
 
+    if (validationResult ==
+        EFileRingBufferAccessorValidationStatus::NotInitialized)
+    {
+        return result;
+    }
+
     if (result.GetIsCorrupted()) {
         result.SetValidationError(
             accessor.GetLastValidationError().GetMessage());

@@ -136,6 +136,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
+            UNIT_ASSERT(!dump.HasValidationError());
             UNIT_ASSERT(!dump.HasHeader());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetChecksum());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
@@ -164,10 +165,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
-            UNIT_ASSERT(dump.HasHeader());
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(EVersion::NotInitialized),
-                dump.GetHeader().GetVersion());
+            UNIT_ASSERT(!dump.HasValidationError());
+            UNIT_ASSERT(!dump.HasHeader());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
         }
     }
@@ -180,6 +179,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT(!dump.HasValidationError());
         UNIT_ASSERT(dump.HasHeader());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
