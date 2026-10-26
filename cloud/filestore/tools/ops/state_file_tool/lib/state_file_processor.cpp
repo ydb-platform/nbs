@@ -90,16 +90,6 @@ enum class EDumpEntryResult
     Invalid,
 };
 
-bool IsSlackMarker(
-    const TFileRingBufferEntryHeader& entryHeader,
-    const TFileRingBufferCapabilities& capabilities)
-{
-    return entryHeader.DataSize == 0 && !entryHeader.FreeFlag &&
-           entryHeader.Tag == 0 &&
-           (!capabilities.EntryHeaderIsProcessedAtomically ||
-            entryHeader.DataChecksum == 0);
-}
-
 EDumpEntryResult DumpEntry(
     NProto::TStateFileDump& state,
     IFileRingBufferDataProcessor& dataProcessor,
@@ -109,7 +99,7 @@ EDumpEntryResult DumpEntry(
 {
     const auto entryHeader = dataProcessor.ReadEntryHeader(pos);
     if (entryHeader.DataSize == 0) {
-        if (IsSlackMarker(entryHeader, capabilities)) {
+        if (IsSlackSpaceMarker(entryHeader, capabilities)) {
             return EDumpEntryResult::Slack;
         }
 

@@ -108,6 +108,17 @@ struct TFileRingBufferCapabilities
     bool EntryHeaderIsProcessedAtomically = false;
 };
 
+inline bool IsSlackSpaceMarker(
+    const TFileRingBufferEntryHeader& entryHeader,
+    const TFileRingBufferCapabilities& capabilities)
+{
+    return entryHeader.DataSize == 0 && !entryHeader.FreeFlag &&
+           entryHeader.Tag == 0 &&
+           // A non-atomically written slack marker may retain a stale checksum
+           (!capabilities.EntryHeaderIsProcessedAtomically ||
+            entryHeader.DataChecksum == 0);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Canonical state file layout:

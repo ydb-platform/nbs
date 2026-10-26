@@ -129,6 +129,10 @@ TFileRingBufferValidator::ReadAndValidateEntry(
     auto eh = dataProcessor.ReadEntryHeader(pos);
 
     if (eh.DataSize == 0) {
+        if (IsSlackSpaceMarker(eh, capabilities)) {
+            return eh;
+        }
+
         if (eh.FreeFlag) {
             return MakeError(Sprintf(
                 "Invalid file ring buffer entry header at position %lu "
@@ -143,12 +147,7 @@ TFileRingBufferValidator::ReadAndValidateEntry(
                 pos));
         }
 
-        // When entry header is not written atomically, we cannot be sure that
-        // the checksum is not stale so we skip this check
-        if (ValidateChecksums &&
-            capabilities.EntryHeaderIsProcessedAtomically &&
-            eh.DataChecksum != 0)
-        {
+        if (ValidateChecksums) {
             return MakeError(Sprintf(
                 "Invalid file ring buffer entry header at position %lu "
                 "(data size is zero and data checksum is non-zero)",
