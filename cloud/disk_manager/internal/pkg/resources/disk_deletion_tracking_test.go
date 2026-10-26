@@ -32,7 +32,7 @@ func readTrackedDisk(t *testing.T, ctx context.Context, db *persistence.YDBClien
 func TestTrackedDiskDeletionKeepsTombstone(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
-	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now(), false /* ignoreMissing */)
 	require.NoError(t, err)
 	for _, id := range []string{"first", "second"} {
 		prepared, err := storage.PrepareLegacyDiskCleanup(ctx, "disk", id)
@@ -83,7 +83,7 @@ func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
 	defer db.Close(ctx)
 	_, err := storage.CreateDisk(ctx, DiskMeta{ID: "disk", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create"})
 	require.NoError(t, err)
-	_, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	_, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now(), false /* ignoreMissing */)
 	require.NoError(t, err)
 	require.NoError(t, storage.DiskDeleted(ctx, "disk", time.Now()))
 	prepared, err := storage.PrepareLegacyDiskCleanup(ctx, "disk", "late")

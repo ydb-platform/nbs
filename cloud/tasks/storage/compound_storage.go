@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
@@ -124,6 +125,33 @@ func (s *compoundStorage) GetTask(
 		return err
 	})
 	return state, err
+}
+
+func (s *compoundStorage) ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]TaskState, error) {
+	var states []TaskState
+	err := s.visit(ctx, func(storage Storage) error {
+		page, err := storage.ListUnfinishedTasks(ctx, taskType, afterID, limit)
+		states = append(states, page...)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Merge both folders before truncating: concatenation would skip IDs from
+	// one folder when the caller advances its cursor. Prefer the legacy copy
+	// for duplicate IDs, matching GetTask's lookup order.
+	sort.SliceStable(states, func(i, j int) bool { return states[i].ID < states[j].ID })
+	page := make([]TaskState, 0)
+	for _, state := range states {
+		if len(page) != 0 && page[len(page)-1].ID == state.ID {
+			continue
+		}
+		if uint64(len(page)) == limit {
+			break
+		}
+		page = append(page, state)
+	}
+	return page, nil
 }
 
 func (s *compoundStorage) GetTaskByIdempotencyKey(

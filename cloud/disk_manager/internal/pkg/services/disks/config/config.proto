@@ -22,4 +22,6 @@ message DisksConfig {
     repeated string DiskRegistryBasedDisksFolderIdAllowList = 13;
     optional bool DeleteNonExistentDisks = 14;
     repeated string OverlayDiskRegistryBasedDisksFolderIdAllowList = 15;
+    // Controls starting new background cleanups. Saved cleanups always resume.
+    optional bool EnableBackgroundDiskCleanup = 16 [default = false];
 }

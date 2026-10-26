@@ -52,10 +52,7 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				}
 				return nil
 			}
-			if tc.sync {
-				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
-			}
-			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, false).Return((*resources.DiskMeta)(nil), nil).Once()
 			storage.On("PrepareLegacyDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareLegacyDiskCleanup")).Once()
 			setup := func() {
 				if !tc.prepared || tc.errorAt == "PrepareLegacyDiskCleanup" {
