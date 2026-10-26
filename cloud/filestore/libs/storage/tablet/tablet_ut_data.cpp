@@ -6048,6 +6048,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
 
         env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+
+        // Page faults can reschedule the load transaction. Wait for both the
+        // initial chunk and the queued out-of-order chunk before retrying the
+        // write, which is rejected while its compaction state is not loaded.
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvIndexTabletPrivate::EvLoadCompactionMapChunkResponse,
+            2);
+        env.GetRuntime().DispatchEvents(options);
+
         tablet.SendWriteDataRequest(handle, 0, block, 'a');
         {
             auto response = tablet.RecvWriteDataResponse();
