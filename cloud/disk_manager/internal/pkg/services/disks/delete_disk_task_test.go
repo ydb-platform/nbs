@@ -62,6 +62,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -123,6 +124,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		SrcImageID:   "image",
@@ -184,6 +186,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		Kind:         "ssd",
@@ -247,18 +250,14 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		state:        &protos.DeleteDiskTaskState{LegacyCleanupRegistered: true},
 	}
 
-	deleteMethod := "DeleteDisk"
-	if deleteIfNonExistent {
-		deleteMethod = "DeleteDiskIfExists"
-	}
-
 	// There is no such disk in the database, return nil.
 	storage.On(
-		deleteMethod,
+		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		deleteIfNonExistent,
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
@@ -340,6 +339,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 

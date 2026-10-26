@@ -497,7 +497,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	createTombstone bool,
+	onlyIfExists bool,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -550,7 +550,7 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
-		if !createTombstone {
+		if onlyIfExists {
 			// Background cleanup creates its reservation atomically with the
 			// full cleanup ID set after the parent has saved its target cells.
 			return nil, tx.Commit(ctx)
@@ -1006,6 +1006,7 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	onlyIfExists bool,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -1014,27 +1015,7 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, true)
-			return err
-		},
-	)
-	return disk, err
-}
-
-func (s *storageYDB) DeleteDiskIfExists(
-	ctx context.Context,
-	diskID string,
-	taskID string,
-	deletingAt time.Time,
-) (*DiskMeta, error) {
-
-	var disk *DiskMeta
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, false)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, onlyIfExists)
 			return err
 		},
 	)

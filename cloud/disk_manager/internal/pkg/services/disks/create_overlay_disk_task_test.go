@@ -326,6 +326,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
 		ZoneID:       "zone",
@@ -391,6 +392,7 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
+		false,
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	err := task.Cancel(ctx, execCtx)

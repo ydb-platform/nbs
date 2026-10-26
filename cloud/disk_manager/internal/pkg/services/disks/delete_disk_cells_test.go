@@ -41,7 +41,7 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 					cellSelector: cells.NewCellSelector(config, nil, nil, nil),
 					request:      &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "zone"}, DeleteIfNonExistent: true, BackgroundCleanup: true, Sync: sync}, state: &protos.DeleteDiskTaskState{LegacyCleanupRegistered: true}}
 				ids := []string{"toplevel_task_id_delete_disk_from_cell_cell-a", "toplevel_task_id_delete_disk_from_cell_cell-b"}
-				storage.On("DeleteDiskIfExists", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 				storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 				storage.On("PrepareDiskCleanup", ctx, "disk", ids).Return(true, nil).Once()
 				storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil)
@@ -202,7 +202,7 @@ func TestDeleteDiskTaskAlreadyCompleted(t *testing.T) {
 		task := &deleteDiskTask{storage: storage,
 			request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "unknown-zone"}, DeleteIfNonExistent: true, BackgroundCleanup: true, Sync: true},
 			state:   &protos.DeleteDiskTaskState{LegacyCleanupRegistered: true}}
-		storage.On("DeleteDiskIfExists", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+		storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 		var readErr error
 		if readError {
 			readErr = assert.AnError
@@ -252,7 +252,7 @@ func TestDeleteDiskTaskBackgroundCleanupDisabled(t *testing.T) {
 				}
 				return nil
 			}
-			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, false).Return((*resources.DiskMeta)(nil), nil).Once()
 			storage.On("PrepareLegacyDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareLegacyDiskCleanup")).Once()
 			setup := func() {
 				if !tc.prepared || tc.errorAt == "PrepareLegacyDiskCleanup" {
@@ -292,7 +292,7 @@ func TestDeleteDiskTaskBackgroundCleanupDisabled(t *testing.T) {
 			}
 			mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
 			storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
-			storage.AssertNotCalled(t, "DeleteDiskIfExists", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			storage.AssertNotCalled(t, "DeleteDisk", mock.Anything, mock.Anything, mock.Anything, mock.Anything, true)
 			storage.AssertNotCalled(t, "PrepareDiskCleanup", mock.Anything, mock.Anything, mock.Anything)
 			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
@@ -322,7 +322,7 @@ func TestDeleteDiskTaskSavedCleanupResumesWithFeatureDisabled(t *testing.T) {
 				&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, CleanupId: id}).Return("worker", nil).Once()
 			require.NoError(t, task.Run(ctx, execCtx))
 			mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
-			storage.AssertNotCalled(t, "DeleteDisk", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			storage.AssertNotCalled(t, "DeleteDisk", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
 }
@@ -340,7 +340,7 @@ func TestDeleteDiskTaskBackgroundStateSaveFailure(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, task.Load(request, nil))
-	storage.On("DeleteDiskIfExists", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+	storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 	storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 	execCtx.On("SaveState", ctx).Return(assert.AnError).Once()
 	require.True(t, errors.Is(task.Run(ctx, execCtx), assert.AnError))
@@ -350,7 +350,7 @@ func TestDeleteDiskTaskBackgroundStateSaveFailure(t *testing.T) {
 	// Even without a saved cell set, reloading the persisted request retains
 	// the background mode after the API configuration has been turned off.
 	require.NoError(t, task.Load(request, nil))
-	storage.On("DeleteDiskIfExists", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+	storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 	storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 	execCtx.On("SaveState", ctx).Return(nil).Times(4)
 	scheduler.On("ScheduleNonCancellableTask", mock.Anything, registerLegacyDiskCleanupTaskType, "", "", mock.Anything).Return("registration", nil).Once()

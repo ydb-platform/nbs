@@ -64,15 +64,12 @@ func (t *deleteDiskTask) deleteDisk(
 
 	backgroundCleanup := t.request.BackgroundCleanup &&
 		t.request.DeleteIfNonExistent && t.request.Disk.ZoneId != ""
-	deleteDisk := t.storage.DeleteDisk
-	if backgroundCleanup {
-		deleteDisk = t.storage.DeleteDiskIfExists
-	}
-	diskMeta, err := deleteDisk(
+	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
 		time.Now(),
+		backgroundCleanup, /* onlyIfExists */
 	)
 	if err != nil {
 		return err

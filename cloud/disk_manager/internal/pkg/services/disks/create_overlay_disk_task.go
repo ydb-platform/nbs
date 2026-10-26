@@ -165,6 +165,7 @@ func (t *createOverlayDiskTask) Cancel(
 		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
+		false, /* onlyIfExists */
 	)
 	if err != nil {
 		return err

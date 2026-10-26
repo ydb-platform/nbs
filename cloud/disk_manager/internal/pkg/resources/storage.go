@@ -128,19 +128,13 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
+	// If onlyIfExists is false, reserve a missing disk ID with a tombstone.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
-	) (*DiskMeta, error)
-
-	// Mark an existing disk for deletion without creating a tombstone for a missing disk.
-	DeleteDiskIfExists(
-		ctx context.Context,
-		diskID string,
-		taskID string,
-		deletingAt time.Time,
+		onlyIfExists bool,
 	) (*DiskMeta, error)
 
 	IsDiskDeletionCompleted(ctx context.Context, diskID string) (bool, error)
