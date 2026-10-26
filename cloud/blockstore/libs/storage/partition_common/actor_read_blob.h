@@ -64,7 +64,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    TBlobCompressor::TReadPlan GetQueries() const;
+    TResultOrError<TBlobCompressor::TReadPlan> GetQueries() const;
 
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(

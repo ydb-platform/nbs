@@ -14,10 +14,6 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-namespace NBlockCodecs {
-struct ICodec;
-}
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,8 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
  *
  * The constructor's chunk size and codec configure writes. Reads use the blob's
  * metadata and require the same block size that was used for compression.
- * Caller invariant violations abort with the tablet ID in the diagnostic.
- * Invalid compressed data and decoding failures are returned as errors.
+ * Invalid inputs, compressed data and codec failures are returned as errors.
  */
 class TBlobCompressor
 {
@@ -64,7 +59,7 @@ public:
     };
 
 private:
-    // Used to identify the affected tablet in invariant violations.
+    // Used to identify the affected tablet in validation errors.
     const ui64 TabletId;
 
     // Size of one uncompressed block in bytes, used for both reads and writes.
@@ -76,18 +71,15 @@ private:
     // Codec recorded in the metadata of newly compressed blobs.
     const std::optional<NProto::TBlobCompression::ECodec> CodecId;
 
-    // Codec implementation used to compress new blobs.
-    const NBlockCodecs::ICodec* const Codec;
-
 public:
     /**
-     * Configures the block size and compression settings. Aborts if the sizes
-     * are invalid, the codec is unsupported or codec lookup fails.
+     * Stores the block size and compression settings. CompressBlob validates
+     * the settings and returns an error if they are invalid.
      *
-     * @param tabletId - Tablet ID used in invariant violations.
+     * @param tabletId - Tablet ID used in validation errors.
      * @param blockSize - Nonzero size of one uncompressed block in bytes.
      * @param chunkSize - Uncompressed chunk size in bytes; must be a multiple
-     *  of and greater than blockSize.
+     *  of and at least blockSize.
      * @param codec - Compression codec: LZ4 or ZSTD.
      */
     TBlobCompressor(
@@ -97,32 +89,33 @@ public:
         NProto::TBlobCompression::ECodec codec);
 
     /**
-     * Constructs blobs compressor without block size and chunk size. So it can
-     * be used only to decompress blobs with known compression settings.
+     * Constructs a blob compressor without write settings. It can only plan
+     * reads and decompress blobs with known compression settings.
      *
-     * @param tabletId - Tablet ID used in invariant violations.
+     * @param tabletId - Tablet ID used in validation errors.
      * @param blockSize - Nonzero size of one uncompressed block in bytes.
      */
     explicit TBlobCompressor(ui64 tabletId, ui32 blockSize);
 
     /**
      * Compresses a blob using the configured chunk size and codec. The final
-     * chunk may be shorter than ChunkSize. Aborts if the payload does not
-     * contain whole blocks or compression fails.
+     * chunk may be shorter than ChunkSize. Returns an error if the settings
+     * or payload are invalid, or compression fails.
      *
      * @param blobPayload - Uncompressed blob data containing whole blocks.
      *
-     * @return - Concatenated compressed chunks and their metadata. An empty
-     *  payload produces empty data and no chunks, with codec and chunk size
-     *  still recorded in the metadata.
+     * @return - Concatenated compressed chunks and their metadata, or an error.
+     *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
+     *  An empty payload produces empty data and no chunks, with codec and chunk
+     *  size still recorded in the metadata.
      */
-    [[nodiscard]] TCompressedBlob CompressBlob(TStringBuf blobPayload) const;
+    [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
+        TStringBuf blobPayload) const;
 
     /**
      * Restores requested blocks using the blob's codec and chunk size. Each
      * requested chunk is decoded once, even if several blocks refer to it.
-     * Returns an error for invalid compressed buffers or decoding failures.
-     * Aborts on caller invariant violations.
+     * Returns an error for invalid inputs or decoding failures.
      * Output buffers may already have been written when a failure occurs.
      *
      * @param compressedBuffers - Data from the ranges returned by PlanReadBlob
@@ -139,8 +132,9 @@ public:
      *  corresponding output buffer. Every offset must refer to an existing
      *  block.
      *
-     * @return - Success, or E_REJECTED if the compressed data is invalid or
-     *  cannot be decoded.
+     * @return - Success, E_ARGUMENT for invalid settings, metadata, offsets or
+     *  output buffers, or E_REJECTED for invalid compressed data or decoding
+     *  failures. Codec lookup failures return E_FAIL.
      */
     [[nodiscard]] NProto::TError DecompressBlob(
         const TVector<TRope>& compressedBuffers,
@@ -153,8 +147,8 @@ public:
      * Plans reads of the complete compressed chunks needed for the requested
      * blocks, using the chunk size from the blob's metadata. Duplicate chunks
      * are read once and adjacent chunks are coalesced into a single range.
-     * Aborts on invalid chunk metadata, offsets outside the chunk list or
-     * read ranges extending beyond the compressed blob.
+     * Returns E_ARGUMENT for invalid chunk metadata, offsets outside the chunk
+     * list or read ranges extending beyond the compressed blob.
      *
      * The caller must supply valid block offsets: the metadata does not store
      * the original blob size, so this method cannot detect offsets beyond the
@@ -165,14 +159,14 @@ public:
      * @param blockOffsets - Block positions within the original blob, sorted
      *  in nondecreasing order; duplicates are allowed.
      *
-     * @return - An owning query array and the number of initialized entries.
-     *  Queries are for blobId, sorted by byte offset (Shift), and cover
-     *  disjoint ranges of complete compressed chunks. Storage is allocated for
-     *  at most blockOffsets.size() queries; only the first QueriesCount entries
-     *  are used. An empty block list returns a null array and zero count without
-     *  validating the blob ID or metadata.
+     * @return - A read plan or an error. The plan contains an owning query array
+     *  and the number of initialized entries. Queries are for blobId, sorted by
+     *  byte offset (Shift), and cover disjoint ranges of complete compressed
+     *  chunks. Storage is allocated for at most blockOffsets.size() queries;
+     *  only the first QueriesCount entries are used. An empty block list returns
+     *  a null array and zero count without validating the blob ID or metadata.
      */
-    [[nodiscard]] TReadPlan PlanReadBlob(
+    [[nodiscard]] TResultOrError<TReadPlan> PlanReadBlob(
         const NKikimr::TLogoBlobID& blobId,
         const NProto::TBlobCompression& compression,
         const TVector<ui16>& blockOffsets) const;

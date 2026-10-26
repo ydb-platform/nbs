@@ -49,6 +49,7 @@ using TCritEventParams =
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(DiskRegistryPurgeDeviceError)                                          \
+    xxx(CompressedBlobReadError)                                               \
     // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
