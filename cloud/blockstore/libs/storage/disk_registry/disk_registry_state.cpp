@@ -4800,7 +4800,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
-    SelfCounters.SuspendSecureErase->Set(GetSuspendSecureErase());
+    SelfCounters.SuspendSecureErase->Set(GetSuspendSecureErase() ? 1 : 0);
 
     ui32 migratingDeviceCount = 0;
     for (const auto& x: SourceDeviceMigrationsInProgress) {
