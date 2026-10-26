@@ -1734,4 +1734,9 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // If true, the volume throttler reports in responses how much of its delay
+    // the original performance profile alone would have caused. Diagnostics
+    // only: throttling decisions are not affected.
+    optional bool QuotaDelayAccountingEnabled = 542;
 }

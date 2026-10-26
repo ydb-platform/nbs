@@ -6,6 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 import "cloud/storage/core/config/opentelemetry_client.proto";
 import "cloud/storage/core/protos/diagnostics.proto";
+import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +118,36 @@ message TMonitoringUrlData
     // - diskId
     optional string MonitoringUrlTemplate = 10;
 
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Operation latency thresholds (op-based latency metric, see
+// TDiagnosticsConfig.LatencyThresholdsEnabled/LatencyThresholds below).
+
+// A single operation-size bucket: the lower bound (inclusive) of the
+// operation size range together with the execution time thresholds for read
+// and write operations of that size. An operation is considered timely if
+// it completes within the threshold configured for its size class. The
+// upper bound of a bucket is the next bucket's MinRequestBytes (open-ended
+// for the last bucket of a media kind).
+message TLatencyThresholdBucket
+{
+    // Lower bound of the operation size range, in bytes, inclusive. The
+    // first bucket of every media kind must have MinRequestBytes == 0, so
+    // that no operation size falls outside of every bucket.
+    optional uint64 MinRequestBytes = 1;
+
+    // Execution time thresholds, in milliseconds. Must be > 0.
+    optional uint32 ReadThresholdMs = 2;
+    optional uint32 WriteThresholdMs = 3;
+};
+
+// Latency threshold ladder for a single storage media kind. Buckets must be
+// sorted strictly ascending by MinRequestBytes, with no duplicates.
+message TMediaKindLatencyThresholds
+{
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 1;
+    repeated TLatencyThresholdBucket Buckets = 2;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,4 +328,16 @@ message TDiagnosticsConfig
     // Selects the critical event metrics to report.
     optional EVolumeCriticalEventsReportingMode
         VolumeCriticalEventsReportingMode = 60;
+
+    // Enables the operation latency threshold mechanism (LatencyTotalOps/
+    // LatencyGoodOps counters, see volume_stats.cpp). Disabled by default.
+    // When enabled with an empty or invalid LatencyThresholds table, the
+    // mechanism stays disabled (see the LatencyThresholdsConfigInvalid
+    // diagnostic gauge) instead of crashing on a config mistake.
+    optional bool LatencyThresholdsEnabled = 61;
+
+    // Per-media-kind operation size -> execution time threshold ladders.
+    // Empty by default. See TMediaKindLatencyThresholds/
+    // TLatencyThresholdBucket above for the validation rules.
+    repeated TMediaKindLatencyThresholds LatencyThresholds = 62;
 }
