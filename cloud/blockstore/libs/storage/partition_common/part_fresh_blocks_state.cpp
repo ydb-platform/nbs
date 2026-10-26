@@ -54,12 +54,15 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp() const
+TInstant TPartitionFreshBlobState::GetFirstUntrimmedFreshBlobTimestamp(
+    ui64 trimFreshLogToCommitId) const
 {
-    if (UntrimmedFreshBlobsByCommitId.empty()) {
+    const auto it =
+        UntrimmedFreshBlobsByCommitId.upper_bound(trimFreshLogToCommitId);
+    if (it == UntrimmedFreshBlobsByCommitId.end()) {
         return TInstant::Max();
     }
-    return UntrimmedFreshBlobsByCommitId.begin()->second.Timestamp;
+    return it->second.Timestamp;
 }
 
 void TPartitionFreshBlobState::AddFreshBlob(

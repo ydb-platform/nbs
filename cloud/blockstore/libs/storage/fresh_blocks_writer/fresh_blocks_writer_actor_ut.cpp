@@ -965,6 +965,51 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFlushFreshBlocksWriterBlobsByAge)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlobAgeFlushThreshold(60000);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(1), 1);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+
+        fbwClient.ZeroBlocks(2);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
     Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
     {
         auto config = DefaultConfig();

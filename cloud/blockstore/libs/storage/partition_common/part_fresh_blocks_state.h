@@ -166,9 +166,9 @@ public:
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    // Usually the oldest timestamp, but ordering is not guaranteed across
-    // tablet restarts.
-    [[nodiscard]] TInstant GetFirstUntrimmedFreshBlobTimestamp() const;
+    // Returns the timestamp of the first retained blob after the trim boundary.
+    [[nodiscard]] TInstant GetFirstUntrimmedFreshBlobTimestamp(
+        ui64 trimFreshLogToCommitId = 0) const;
 
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
     void TrimFreshBlobs(ui64 commitId);

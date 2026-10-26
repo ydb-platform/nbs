@@ -718,6 +718,10 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+
+    if (CurrentState == STATE_WORK && Config->GetFreshBlobAgeFlushThreshold()) {
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleUpdateYellowState(

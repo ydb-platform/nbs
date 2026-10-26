@@ -439,25 +439,47 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
 {
-    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
-        // already enqueued
-        return;
-    }
-
     const ui32 freshBlockByteCount =
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool shouldFlush =
-        !State->IsLoadStateFinished() ||
+    if (!State->IsLoadStateFinished() ||
         freshBlockByteCount >= Config->GetFlushThreshold() ||
         freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold())
+    {
+        return true;
+    }
 
-    if (!shouldFlush) {
+    const auto ageThreshold = Config->GetFreshBlobAgeFlushThreshold();
+    if (!ageThreshold) {
+        return false;
+    }
+
+    const auto timestamp = State->GetFirstUntrimmedFreshBlobTimestamp(
+        State->GetTrimFreshLogToCommitId());
+    if (timestamp == TInstant::Zero()) {
+        // Blobs without timestamps are flushed by the existing thresholds.
+        return false;
+    }
+
+    const auto now = SharedState->GetFreshWriteTimestamp(ctx);
+    return now - timestamp >= ageThreshold;
+}
+
+void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+{
+    if (State->GetFlushState().GetOperationState().Status !=
+        EOperationStatus::Idle)
+    {
+        // already enqueued
+        return;
+    }
+
+    if (!ShouldFlush(ctx)) {
         return;
     }
 

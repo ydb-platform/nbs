@@ -244,6 +244,7 @@ private:
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);

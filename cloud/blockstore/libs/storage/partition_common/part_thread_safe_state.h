@@ -10,6 +10,8 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
+#include <cloud/storage/core/libs/tablet/model/commit.h>
+
 #include <contrib/ydb/library/actors/core/monotonic.h>
 
 #include <util/system/spinlock.h>
@@ -77,7 +79,7 @@ class TPartitionThreadSafeState
 public:
     struct TFreshWriteInfo
     {
-        ui64 CommitId;
+        ui64 CommitId = InvalidCommitId;
         TInstant Timestamp;
     };
 
@@ -166,6 +168,10 @@ public:
     TFreshWriteInfo StartFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 blockCount);
+
+    // Read the same clock without allocating a commit id.
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
+
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -260,7 +266,7 @@ public:
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
-    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
+    TInstant GetFreshWriteTimestampImpl(const NActors::TActorContext& ctx);
 
     void ExecuteTxs(
         const NActors::TActorContext& ctx,

@@ -94,6 +94,57 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             state.GetFirstUntrimmedFreshBlobTimestamp());
     }
 
+    Y_UNIT_TEST(ShouldFindFirstUntrimmedBlobAfterTrimBoundary)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+
+        state.AddFreshBlob(3, 30, TInstant::Seconds(110));
+        state.AddFreshBlob(1, 10, TInstant::Seconds(100));
+        state.AddFreshBlob(5, 50, TInstant::Seconds(120));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+
+        state.FlushFreshBlob(1);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(1));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(2));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(3));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(5));
+
+        state.TrimFreshBlobs(3);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+        state.TrimFreshBlobs(5);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+    }
+
+    Y_UNIT_TEST(ShouldIncludeUnknownTimestampAfterTrimBoundary)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, 20, TInstant::Seconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(1));
+
+        state.TrimFreshBlobs(1);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(0));
+
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(2));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUntrimmedFreshBlobTimestamp(3));
+    }
+
     Y_UNIT_TEST(ShouldPreserveUnknownFreshBlobTimestamp)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
