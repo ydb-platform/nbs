@@ -71,9 +71,11 @@ void CreateStateFile(const TFsPath& path)
 {
     path.Parent().MkDirs();
     TFile(path.GetPath(), CreateNew | RdWr);
+    const auto layout = TFileRingBufferLayout::FromCapacity(64, 8);
+    UNIT_ASSERT(layout);
     TFileRingBuffer ringBuffer(
         path.GetPath(),
-        64,
+        layout->StateFileSize,
         8,
         EFileRingBufferVersion::V6);
     UNIT_ASSERT(ringBuffer.Validate());
@@ -140,7 +142,7 @@ Y_UNIT_TEST_SUITE(TStateFileToolAppTest)
         entry.SetTag(0);
         entry.SetFreeFlag(false);
         entry.SetEntryPos(0);
-        auto& request = *entry.MutableWriteDataRequestInfo();
+        auto& request = *entry.MutableWriteDataRequestMetadata();
         request.SetNodeId(Max<ui64>());
         request.SetHandle(Max<ui64>() - 1);
         request.SetOffset(Max<ui64>() - 2);
@@ -157,7 +159,7 @@ Y_UNIT_TEST_SUITE(TStateFileToolAppTest)
         UNIT_ASSERT(!parsed.GetEntries(0).HasActualDataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui64>(),
-            parsed.GetEntries(0).GetWriteDataRequestInfo().GetNodeId());
+            parsed.GetEntries(0).GetWriteDataRequestMetadata().GetNodeId());
 
         TString invalid = json;
         SubstGlobal(invalid, "18446744073709551615", "18446744073709551616");
@@ -200,7 +202,7 @@ Y_UNIT_TEST_SUITE(TStateFileToolAppTest)
         const auto otherState = TFileInput(otherStateFile).ReadAll();
 
         TFile owner(otherStateFile.GetPath(), OpenExisting | RdOnly);
-        const auto acquired = TryLock(owner, /* exclusive = */ true);
+        const auto acquired = TryLock(owner);
         UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
         UNIT_ASSERT(acquired.GetResult());
 
