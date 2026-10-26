@@ -349,7 +349,8 @@ private:
         const TIndexTabletState::TBackpressureThresholds&
             backpressureThresholds,
         const TIndexTabletState::TBackpressureValues& backpressureValues,
-        const THandlesStats& handlesStats);
+        const THandlesStats& handlesStats,
+        const TFileSystemEventSubscriptions::TStats& subscriptionsStats);
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);

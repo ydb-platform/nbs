@@ -43,13 +43,15 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         subscriptions.AddNodeSubscriber(10, Pipe2, T0);
         subscriptions.AddNodeSubscriber(10, Pipe1, T0);
         subscriptions.AddNodeSubscriber(20, Pipe2, T0);
-        UNIT_ASSERT_VALUES_EQUAL(2, subscriptions.GetNodeCount());
-        UNIT_ASSERT_VALUES_EQUAL(2, subscriptions.GetClientCount());
+        auto stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.ClientCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
             Sorted({Pipe1, Pipe2}),
             Sorted(subscriptions.ExtractNodeSubscribers(10, T0)));
-        UNIT_ASSERT_VALUES_EQUAL(1, subscriptions.GetNodeCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.NodeCount);
 
         //
         // Extraction removes the Node.
@@ -61,7 +63,8 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TActorId>{Pipe2},
             subscriptions.ExtractNodeSubscribers(20, T0));
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeCount);
     }
 
     Y_UNIT_TEST(ShouldExtractNodeRefSubscribers)
@@ -71,7 +74,8 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         subscriptions.AddNodeRefSubscriber(1, "a", Pipe2, T0);
         subscriptions.AddNodeRefSubscriber(1, "b", Pipe1, T0);
         subscriptions.AddNodeRefSubscriber(2, "a", Pipe1, T0);
-        UNIT_ASSERT_VALUES_EQUAL(3, subscriptions.GetNodeRefCount());
+        auto stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.NodeRefCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
             Sorted({Pipe1, Pipe2}),
@@ -87,7 +91,8 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TActorId>{Pipe1},
             subscriptions.ExtractNodeRefSubscribers(2, "a", T0));
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeRefCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
     }
 
     Y_UNIT_TEST(ShouldStoreClientsInFirstPage)
@@ -142,6 +147,13 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
             expected.push_back(MakePipe(i));
         }
 
+        auto stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(201, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.NodeRefCount);
+        UNIT_ASSERT_VALUES_EQUAL(200, stats.ClientCount);
+        // (200 - 64) + 2 * 2 from readers
+        UNIT_ASSERT_VALUES_EQUAL(140, stats.ExtraPageCount);
+
         UNIT_ASSERT_VALUES_EQUAL(
             Sorted(expected),
             Sorted(subscriptions.ExtractNodeSubscribers(1000, T0)));
@@ -156,6 +168,12 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TActorId>{MakePipe(150)},
             subscriptions.ExtractNodeSubscribers(150, T0));
+
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(199, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
+        UNIT_ASSERT_VALUES_EQUAL(200, stats.ClientCount);
+        UNIT_ASSERT_VALUES_EQUAL(135, stats.ExtraPageCount);
     }
 
     Y_UNIT_TEST(ShouldSealAndDropGenerations)
@@ -172,8 +190,9 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
 
         const auto t1 = T0 + SealPeriod;
         subscriptions.AddNodeSubscriber(2, Pipe2, t1);
-        UNIT_ASSERT_VALUES_EQUAL(2, subscriptions.GetNodeCount());
-        UNIT_ASSERT_VALUES_EQUAL(1, subscriptions.GetNodeRefCount());
+        auto stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.NodeRefCount);
 
         //
         // Both generations are consulted.
@@ -191,8 +210,9 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         const auto t2 = t1 + SealPeriod;
         UNIT_ASSERT(
             subscriptions.ExtractNodeRefSubscribers(1, "a", t2).empty());
-        UNIT_ASSERT_VALUES_EQUAL(1, subscriptions.GetNodeCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeRefCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TActorId>{Pipe2},
@@ -208,12 +228,14 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
 
         const auto t1 = T0 + SealPeriod;
         subscriptions.AddNodeSubscriber(1, Pipe1, t1);
-        UNIT_ASSERT_VALUES_EQUAL(2, subscriptions.GetNodeCount());
+        auto stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.NodeCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
             Sorted({Pipe1, Pipe2}),
             Sorted(subscriptions.ExtractNodeSubscribers(1, t1)));
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeCount);
     }
 }
 
