@@ -338,13 +338,9 @@ TVector<TString> ToDeviceIds(const TVector<NProto::TDeviceConfig>& devices)
     TVector<TString> result;
     result.reserve(devices.size());
 
-    std::transform(
-        devices.begin(),
-        devices.end(),
-        back_inserter(result),
-        [](const NProto::TDeviceConfig& device)
-        { return device.GetDeviceUUID(); });
-
+    for (const auto& config : devices) {
+        result.push_back(config.GetDeviceUUID());
+    }
     return result;
 }
 
@@ -353,17 +349,10 @@ TVector<NProto::TDeviceConfig> ToDeviceConfig(const TVector<TString>& devices)
     TVector<NProto::TDeviceConfig> result;
     result.reserve(devices.size());
 
-    std::transform(
-        devices.begin(),
-        devices.end(),
-        back_inserter(result),
-        [](const TString& uuid)
-        {
-            NProto::TDeviceConfig config;
-            config.SetDeviceUUID(uuid);
-            return config;
-        });
-
+    for (const auto& uuid: devices) {
+        result.emplace_back(NProto::TDeviceConfig());
+        result.back().SetDeviceUUID(uuid);
+    }
     return result;
 }
 
@@ -371,9 +360,9 @@ TResultOrError<TString> GetDeviceWithData(
     const TVector<TVector<TString>>& replicas,
     ui32 deviceIdx)
 {
-    for (ui32 r = 0; r < replicas.size(); ++r) {
-        if (!replicas[r][deviceIdx].empty()) {
-            return replicas[r][deviceIdx];
+    for (const TVector<TString>& replica: replicas) {
+        if (!replica[deviceIdx].empty()) {
+            return replica[deviceIdx];
         }
     }
     return MakeError(
