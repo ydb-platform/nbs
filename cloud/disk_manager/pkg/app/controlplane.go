@@ -171,6 +171,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolStorage,
 		nbsFactory,
+		disabledZones,
 		resourceStorage,
 	)
 	if err != nil {
