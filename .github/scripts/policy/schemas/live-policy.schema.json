@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nbs:actions-policy:live",
+  "$comment": "Live drift checks accept the GitHub response contract, including missing conditions/rules and empty allowlists. Local authoring and simulation restrictions must not hide drift.",
+  "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/response"
+}
