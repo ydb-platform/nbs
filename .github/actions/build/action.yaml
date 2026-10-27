@@ -341,7 +341,8 @@ runs:
             TRACE_OTLP_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.otlp.jsonl.gz"
             TRACE_INPUTS_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace-inputs.tar.gz"
         fi
-        bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
+        timeout --signal=TERM --kill-after=60s 5m \
+            bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
             --warning-title "Build trace" \
             --report-dir "$TMP_DIR" \
             --ya-out "$TMP_DIR" \
@@ -361,7 +362,8 @@ runs:
             --build-preset "$BUILD_PRESET" \
             --build-target "$BUILD_TARGET" \
             --retry "$YA_BUILD_ATTEMPT" \
-            --operation build
+            --operation build || \
+            echo "::warning title=Build trace::Trace bundle generation failed or timed out (exit code $?)"
     - name: Summarize build errors
       id: build-errors
       if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
