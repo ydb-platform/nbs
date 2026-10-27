@@ -1,4 +1,5 @@
 #include "blob_compressor.h"
+#include "huge_slot_sizes.h"
 
 #include <library/cpp/blockcodecs/codecs.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -200,6 +201,366 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 compression,
                 compressed,
                 payload.size()));
+    }
+
+    Y_UNIT_TEST(ShouldCompressBlobOnlyWhenSavingsExceedThreshold)
+    {
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            // A 100-byte payload gives an exact integer savings percentage.
+            constexpr ui32 blockSize = 100;
+            const TString payload(blockSize, 'a');
+            const TBlobCompressor compressor(TabletId, blockSize, blockSize,
+                                             codec);
+            const auto blob = GetResultOrFail(compressor.CompressBlob(payload));
+            UNIT_ASSERT(blob.Data.size() < payload.size());
+            const ui64 savingsPercent = payload.size() - blob.Data.size();
+
+            for (const ui64 threshold:
+                 {ui64(0), savingsPercent - 1, savingsPercent,
+                  savingsPercent + 1, ui64(100), Max<ui64>()})
+            {
+                const TBlobCompressor writer(TabletId, blockSize, blockSize,
+                                             codec, threshold);
+                const auto result = writer.CompressBlobIfNeeded(payload);
+                if (threshold < savingsPercent) {
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL(blob.Data,
+                                             result.GetResult().Data);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        blob.Compression.SerializeAsString(),
+                        result.GetResult().Compression.SerializeAsString());
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(S_ALREADY,
+                                             result.GetError().GetCode());
+                    UNIT_ASSERT(result.GetResult().Data.empty());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        0, result.GetResult().Compression.ChunkSizesSize());
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveFractionalSavingsPercent)
+    {
+        constexpr ui32 blockSize = 101;
+        const TString payload(blockSize, 'a');
+        const TBlobCompressor compressor(TabletId, blockSize, blockSize,
+                                         NProto::TBlobCompression::LZ4);
+        const auto blob = GetResultOrFail(compressor.CompressBlob(payload));
+        UNIT_ASSERT(blob.Data.size() < payload.size());
+        const ui64 savingsPercent =
+            (payload.size() - blob.Data.size()) * 100 / payload.size();
+        const TBlobCompressor writer(TabletId, blockSize, blockSize,
+                                     NProto::TBlobCompression::LZ4,
+                                     savingsPercent);
+
+        const auto result = writer.CompressBlobIfNeeded(payload);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(blob.Data, result.GetResult().Data);
+    }
+
+    Y_UNIT_TEST(ShouldSkipEmptyAndIncompressibleBlobs)
+    {
+        TFastRng64 rng(123);
+        TString payload(3 * ChunkSize, '\0');
+        for (auto& byte: payload) {
+            byte = static_cast<char>(rng.GenRand());
+        }
+
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            const TBlobCompressor compressor(TabletId, BlockSize, ChunkSize,
+                                             codec);
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                compressor.CompressBlobIfNeeded({}).GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                compressor.CompressBlobIfNeeded(payload).GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPropagateCompressionErrorsWhenCheckingSavings)
+    {
+        const TBlobCompressor reader(TabletId, BlockSize);
+        AssertArgumentError(
+            [&] { return reader.CompressBlobIfNeeded({}).GetError(); });
+        for (const ui64 threshold: {ui64(0), ui64(100)}) {
+            const TBlobCompressor writer(TabletId, BlockSize, ChunkSize,
+                                         NProto::TBlobCompression::LZ4,
+                                         threshold);
+            AssertArgumentError(
+                [&] {
+                    return writer.CompressBlobIfNeeded("unaligned").GetError();
+                });
+            const TBlobCompressor invalidWriter(
+                TabletId, BlockSize, ChunkSize,
+                NProto::TBlobCompression::CODEC_UNSPECIFIED, threshold);
+            AssertArgumentError(
+                [&]
+                { return invalidWriter.CompressBlobIfNeeded({}).GetError(); });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCalculateHugeSlotLayouts)
+    {
+        NProto::THugeSlotConfig config;
+        for (const auto layout:
+             {NProto::THugeSlotConfig::V1, NProto::THugeSlotConfig::V2,
+              NProto::THugeSlotConfig::TINY_DISK_V2})
+        {
+            config.SetLayout(layout);
+            const auto sizes = GetResultOrFail(CalculateHugeSlotSizes(config));
+            UNIT_ASSERT(IsSorted(sizes.begin(), sizes.end()));
+            UNIT_ASSERT_VALUES_EQUAL(8128, sizes.front());
+            UNIT_ASSERT_VALUES_EQUAL(
+                layout == NProto::THugeSlotConfig::V1   ? 53
+                : layout == NProto::THugeSlotConfig::V2 ? 58
+                                                        : 32, sizes.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                layout == NProto::THugeSlotConfig::V1 ? 10891520 : 11094720,
+                sizes.back());
+            UNIT_ASSERT_VALUES_EQUAL(
+                662432, *LowerBound(sizes.begin(), sizes.end(), 600000));
+            for (size_t i = 1; i < sizes.size(); ++i) {
+                UNIT_ASSERT(sizes[i - 1] < sizes[i]);
+                UNIT_ASSERT_VALUES_EQUAL(0, sizes[i] % 4064);
+            }
+        }
+
+        config.SetLayout(NProto::THugeSlotConfig::V1);
+        config.SetAppendBlockSize(10);
+        config.SetMinHugeBlobSize(10);
+        config.SetMilestoneBlobSize(40);
+        config.SetMaxBlobSize(130);
+        config.SetOverhead(2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui32>{20, 40, 60, 90, 130}),
+            GetResultOrFail(CalculateHugeSlotSizes(config)));
+    }
+
+    Y_UNIT_TEST(ShouldKeepCompressionOnlyWhenCrossingHugeSlotBoundary)
+    {
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::ErasureMirror3dc);
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            const TString payload(100, 'a');
+            const TBlobCompressor compressor(TabletId, 1, 100, codec);
+            const auto blob = GetResultOrFail(compressor.CompressBlob(payload));
+            UNIT_ASSERT(blob.Data.size() < 100);
+
+            // Grid: 100, 200, 400. Exact boundary sizes fit the smaller slot.
+            NProto::THugeSlotConfig config;
+            config.SetAppendBlockSize(1);
+            config.SetMinHugeBlobSize(50);
+            config.SetMilestoneBlobSize(100);
+            config.SetMaxBlobSize(400);
+            config.SetOverhead(1);
+            const ui32 exactHeader = 100 - blob.Data.size();
+            for (const ui32 header: {0u, 8u, exactHeader, exactHeader + 1}) {
+                config.SetBlobHeaderSize(header);
+                const TBlobCompressor writer(TabletId, 1, 100, codec, 100,
+                                             NProto::BCM_HUGE_SLOT, config);
+                const auto result =
+                    writer.CompressBlobIfNeeded(payload, &groupType);
+                if (header == 0 || header == exactHeader + 1) {
+                    UNIT_ASSERT_VALUES_EQUAL(S_ALREADY,
+                                             result.GetError().GetCode());
+                    UNIT_ASSERT(result.GetResult().Data.empty());
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL(blob.Data,
+                                             result.GetResult().Data);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        blob.Compression.SerializeAsString(),
+                        result.GetResult().Compression.SerializeAsString());
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAccountForErasureAlignmentAndCrc)
+    {
+        using TErasure = NKikimr::TErasureType;
+        const NKikimr::TBlobStorageGroupType groupType(
+            TErasure::Erasure4Plus2Block);
+        NProto::THugeSlotConfig config;
+        config.SetAppendBlockSize(1);
+        config.SetMinHugeBlobSize(16);
+        config.SetMilestoneBlobSize(32);
+        config.SetMaxBlobSize(256);
+        config.SetOverhead(1);
+        config.SetBlobHeaderSize(0);
+        for (const auto codec:
+             {NProto::TBlobCompression::LZ4, NProto::TBlobCompression::ZSTD})
+        {
+            // Both versions of a 128-byte blob need one 32-byte erasure block.
+            // Adding one input byte forces another erasure block before
+            // compression.
+            const TBlobCompressor writer(TabletId, 1, 256, codec, 100,
+                                         NProto::BCM_HUGE_SLOT, config);
+            for (const ui32 size: {128u, 129u}) {
+                const auto result =
+                    writer.CompressBlobIfNeeded(TString(size, 'a'), &groupType);
+                UNIT_ASSERT_VALUES_EQUAL(size == 128 ? S_ALREADY : S_OK,
+                                         result.GetError().GetCode());
+            }
+
+            // Grid: 40, 80, 160, 320. Parts are 32 and 64 bytes plus an
+            // eight-byte header. A four-byte CRC moves the smaller part into
+            // the same 80-byte slot as the original part.
+            auto crcConfig = config;
+            crcConfig.SetMinHugeBlobSize(20);
+            crcConfig.SetMilestoneBlobSize(40);
+            crcConfig.SetMaxBlobSize(320);
+            crcConfig.SetBlobHeaderSize(8);
+            const TBlobCompressor crcWriter(TabletId, 1, 256, codec, 100,
+                                            NProto::BCM_HUGE_SLOT, crcConfig);
+            for (const auto crcMode:
+                 {TErasure::CrcModeNone, TErasure::CrcModeWholePart})
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    crcMode == TErasure::CrcModeNone ? S_OK : S_ALREADY,
+                    crcWriter
+                        .CompressBlobIfNeeded(TString(256, 'a'), &groupType,
+                                              crcMode)
+                        .GetError()
+                        .GetCode());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseEachHugeSlotLayoutForErasureCodedBlobs)
+    {
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::Erasure4Plus2Block);
+        for (const auto layout:
+             {NProto::THugeSlotConfig::V1, NProto::THugeSlotConfig::V2,
+              NProto::THugeSlotConfig::TINY_DISK_V2})
+        {
+            NProto::THugeSlotConfig config;
+            config.SetLayout(layout);
+            const TBlobCompressor writer(TabletId, BlockSize, ChunkSize,
+                                         NProto::TBlobCompression::LZ4, 100,
+                                         NProto::BCM_HUGE_SLOT, config);
+            const TString payload(3 * ChunkSize, 'a');
+            const auto blob = GetResultOrFail(
+                writer.CompressBlobIfNeeded(payload, &groupType));
+            UNIT_ASSERT_VALUES_EQUAL(payload,
+                                     DecompressBlob(writer, blob.Compression,
+                                                    blob.Data, payload.size()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                writer.CompressBlobIfNeeded({}, &groupType)
+                    .GetError()
+                    .GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidHugeSlotConfig)
+    {
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::Erasure4Plus2Block);
+        const auto check = [&](const NProto::THugeSlotConfig& config)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                CalculateHugeSlotSizes(config).GetError().GetCode());
+            const TBlobCompressor writer(TabletId, BlockSize, ChunkSize,
+                                         NProto::TBlobCompression::LZ4, 0,
+                                         NProto::BCM_HUGE_SLOT, config);
+            AssertArgumentError(
+                [&]
+                {
+                    return writer
+                        .CompressBlobIfNeeded(TString(ChunkSize, 'a'),
+                                              &groupType)
+                        .GetError();
+                });
+        };
+        for (ui32 i = 0; i < 6; ++i) {
+            NProto::THugeSlotConfig config;
+            switch (i) {
+                case 0:
+                    config.SetAppendBlockSize(0);
+                    break;
+                case 1:
+                    config.SetMinHugeBlobSize(0);
+                    break;
+                case 2:
+                    config.SetMaxBlobSize(config.GetMinHugeBlobSize());
+                    break;
+                case 3:
+                    config.SetOverhead(0);
+                    break;
+                case 4:
+                    config.SetMilestoneBlobSize(config.GetMaxBlobSize());
+                    break;
+                case 5:
+                    config.SetMaxBlobSize(Max<ui32>());
+                    break;
+            }
+            check(config);
+        }
+        for (const auto layout: {NProto::THugeSlotConfig::V2,
+                                 NProto::THugeSlotConfig::TINY_DISK_V2})
+        {
+            for (ui32 i = 0; i < 5; ++i) {
+                NProto::THugeSlotConfig config;
+                config.SetLayout(layout);
+                switch (i) {
+                    case 0:
+                        config.SetChunkSize(0);
+                        break;
+                    case 1:
+                        config.SetChunkSize(config.GetChunkSize() + 1);
+                        break;
+                    case 2:
+                        config.SetMinHugeBlobSize(1);
+                        break;
+                    case 3:
+                        config.SetMaxBlobSize(config.GetChunkSize() + 1);
+                        break;
+                    case 4:
+                        if (layout == NProto::THugeSlotConfig::TINY_DISK_V2) {
+                            continue;
+                        }
+                        config.SetStepsBetweenPowersOf2(0);
+                        break;
+                }
+                check(config);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRequireGroupTypeAndRejectBlobsOutsideSlotGrid)
+    {
+        NProto::THugeSlotConfig config;
+        config.SetMaxBlobSize(2 * ChunkSize);
+        config.SetMilestoneBlobSize(ChunkSize);
+        const TBlobCompressor writer(TabletId, BlockSize, ChunkSize,
+                                     NProto::TBlobCompression::LZ4, 0,
+                                     NProto::BCM_HUGE_SLOT, config);
+        AssertArgumentError(
+            [&] {
+                return writer.CompressBlobIfNeeded(TString(ChunkSize, 'a'))
+                    .GetError();
+            });
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::Erasure4Plus2Block);
+        AssertArgumentError(
+            [&]
+            {
+                return writer
+                    .CompressBlobIfNeeded(TString(16 * ChunkSize, 'a'),
+                                          &groupType)
+                    .GetError();
+            });
     }
 
     Y_UNIT_TEST(ShouldDeduplicateChunksAndCoalesceAdjacentReads)

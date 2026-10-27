@@ -103,8 +103,13 @@ TPartitionActor::TPartitionActor(
     BlobCompressor = std::make_shared<TBlobCompressor>(
         TabletID(),
         PartitionConfig.GetBlockSize(),
-        Max<ui64>(32_KB, PartitionConfig.GetBlockSize()),
-        NProto::TBlobCompression::LZ4);
+        Max<ui64>(
+            Config->GetMergedBlobsCompressionChunckSize(),
+            PartitionConfig.GetBlockSize()),
+        NProto::TBlobCompression::LZ4,
+        Config->GetMergedBlobsCompressionMinSavingsPercent(),
+        Config->GetMergedBlobsCompressionMode(),
+        Config->GetMergedBlobsCompressionHugeSlotConfig());
 }
 
 TPartitionActor::~TPartitionActor()

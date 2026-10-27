@@ -1,4 +1,5 @@
 #include "blob_compressor.h"
+#include "huge_slot_sizes.h"
 
 #include "cloud/blockstore/libs/diagnostics/block_digest.h"
 
@@ -278,11 +279,21 @@ TBlobCompressor::TBlobCompressor(
     ui64 tabletId,
     ui32 blockSize,
     ui32 chunkSize,
-    NProto::TBlobCompression::ECodec codec)
+    NProto::TBlobCompression::ECodec codec,
+    ui64 minSavingsPercent,
+    NProto::EBlobCompressionMode mode,
+    const NProto::THugeSlotConfig& hugeSlotConfig)
     : TabletId(tabletId)
     , BlockSize(blockSize)
     , ChunkSize(chunkSize)
     , CodecId(codec)
+    , MinSavingsPercent(minSavingsPercent)
+    , Mode(mode)
+    , BlobHeaderSize(hugeSlotConfig.GetBlobHeaderSize())
+    , HugeSlotSizes(
+          mode == NProto::BCM_HUGE_SLOT
+              ? CalculateHugeSlotSizes(hugeSlotConfig)
+              : TResultOrError<TVector<ui32>>(TVector<ui32>{}))
 {}
 
 TBlobCompressor::TBlobCompressor(ui64 tabletId, ui32 blockSize)
@@ -290,6 +301,10 @@ TBlobCompressor::TBlobCompressor(ui64 tabletId, ui32 blockSize)
     , BlockSize(blockSize)
     , ChunkSize(std::nullopt)
     , CodecId(std::nullopt)
+    , MinSavingsPercent(0)
+    , Mode(NProto::BCM_MIN_SAVINGS)
+    , BlobHeaderSize(0)
+    , HugeSlotSizes(TVector<ui32>{})
 {}
 
 TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
@@ -338,6 +353,71 @@ TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
     }
 
     return result;
+}
+
+TResultOrError<TBlobCompressor::TCompressedBlob>
+TBlobCompressor::CompressBlobIfNeeded(
+    TStringBuf blobPayload,
+    const NKikimr::TBlobStorageGroupType* groupType,
+    NKikimr::TErasureType::ECrcMode crcMode) const
+{
+    if (Mode != NProto::BCM_MIN_SAVINGS && Mode != NProto::BCM_HUGE_SLOT) {
+        return MakeInputError(TabletId, "Unknown blob compression mode");
+    }
+    if (HasError(HugeSlotSizes.GetError())) {
+        return MakeInputError(TabletId, HugeSlotSizes.GetError().GetMessage());
+    }
+    if (Mode == NProto::BCM_HUGE_SLOT && !groupType) {
+        return MakeInputError(TabletId, "Missing target blob storage group type");
+    }
+    if (Mode == NProto::BCM_HUGE_SLOT &&
+        (blobPayload.size() > Max<ui32>() ||
+         (crcMode != NKikimr::TErasureType::CrcModeNone &&
+          crcMode != NKikimr::TErasureType::CrcModeWholePart)))
+    {
+        return MakeInputError(TabletId, "Invalid blob size or CRC mode");
+    }
+
+    auto compressedOrError = CompressBlob(blobPayload);
+    if (HasError(compressedOrError.GetError())) {
+        return compressedOrError.GetError();
+    }
+
+    const auto compressedSize = compressedOrError.GetResult().Data.size();
+    if (Mode == NProto::BCM_HUGE_SLOT) {
+        const auto& sizes = HugeSlotSizes.GetResult();
+        const auto findSlot = [&](ui32 payloadSize)
+        {
+            const ui64 partSize = groupType->MaxPartSize(crcMode, payloadSize);
+            return LowerBound(
+                sizes.begin(),
+                sizes.end(),
+                partSize + BlobHeaderSize);
+        };
+        const auto originalSlot = findSlot(static_cast<ui32>(blobPayload.size()));
+        if (originalSlot == sizes.end()) {
+            return MakeInputError(TabletId, "Blob exceeds huge-slot size grid");
+        }
+        if (compressedSize >= blobPayload.size() ||
+            findSlot(static_cast<ui32>(compressedSize)) >= originalSlot)
+        {
+            return MakeError(S_ALREADY);
+        }
+        return compressedOrError.ExtractResult();
+    }
+
+    if (compressedSize >= blobPayload.size() || MinSavingsPercent >= 100) {
+        return MakeError(S_ALREADY);
+    }
+
+    // Compute floor(payload size * percentage / 100) without overflow.
+    const auto minSavings = blobPayload.size() / 100 * MinSavingsPercent +
+                            blobPayload.size() % 100 * MinSavingsPercent / 100;
+    if (blobPayload.size() - compressedSize <= minSavings) {
+        return MakeError(S_ALREADY);
+    }
+
+    return compressedOrError.ExtractResult();
 }
 
 NProto::TError TBlobCompressor::DecompressBlob(

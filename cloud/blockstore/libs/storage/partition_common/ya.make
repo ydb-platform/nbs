@@ -17,6 +17,7 @@ SRCS(
     drain_actor_companion.cpp
     fresh_blocks_companion_initfreshblocks.cpp
     fresh_blocks_companion.cpp
+    huge_slot_sizes.cpp
     io_companion_patchblob.cpp
     io_companion_readblob.cpp
     io_companion_writeblob.cpp
@@ -29,6 +30,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/config
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core

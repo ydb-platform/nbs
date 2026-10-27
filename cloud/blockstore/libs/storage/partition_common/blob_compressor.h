@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -63,13 +64,20 @@ private:
     const ui64 TabletId;
 
     // Size of one uncompressed block in bytes, used for both reads and writes.
-    ui32 BlockSize;
+    const ui32 BlockSize;
 
     // Uncompressed chunk size in bytes, used for writes.
     const std::optional<ui32> ChunkSize;
 
     // Codec recorded in the metadata of newly compressed blobs.
     const std::optional<NProto::TBlobCompression::ECodec> CodecId;
+
+    // Compressed payloads must save strictly more than this percentage.
+    const ui64 MinSavingsPercent;
+
+    const NProto::EBlobCompressionMode Mode;
+    const ui32 BlobHeaderSize;
+    const TResultOrError<TVector<ui32>> HugeSlotSizes;
 
 public:
     /**
@@ -81,12 +89,21 @@ public:
      * @param chunkSize - Uncompressed chunk size in bytes; must be a multiple
      *  of and at least blockSize.
      * @param codec - Compression codec: LZ4 or ZSTD.
+     * @param minSavingsPercent - Minimum savings percentage in BCM_MIN_SAVINGS
+     *  mode. Values of 100 or greater always return S_ALREADY for valid input
+     *  passed to CompressBlobIfNeeded in that mode.
+     * @param mode - Retention policy for CompressBlobIfNeeded.
+     * @param hugeSlotConfig - Huge heap layout and per-blob header size, used
+     *  only by BCM_HUGE_SLOT. Slot sizes are calculated once at construction.
      */
     TBlobCompressor(
         ui64 tabletId,
         ui32 blockSize,
         ui32 chunkSize,
-        NProto::TBlobCompression::ECodec codec);
+        NProto::TBlobCompression::ECodec codec,
+        ui64 minSavingsPercent = 0,
+        NProto::EBlobCompressionMode mode = NProto::BCM_MIN_SAVINGS,
+        const NProto::THugeSlotConfig& hugeSlotConfig = {});
 
     /**
      * Constructs a blob compressor without write settings. It can only plan
@@ -111,6 +128,31 @@ public:
      */
     [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
         TStringBuf blobPayload) const;
+
+    /**
+     * Tries to compress a blob and returns compressed data and metadata only
+     * if the selected policy accepts it. BCM_MIN_SAVINGS requires payload size
+     * savings exceeding MinSavingsPercent. BCM_HUGE_SLOT requires a strictly
+     * smaller huge slot and ignores the percentage threshold. Slot lookups use
+     * the largest encoded part size for the target group, including erasure
+     * alignment, CRC and BlobHeaderSize. Payloads beyond the modeled slot grid
+     * return E_ARGUMENT.
+     * Compression metadata size is not included in either comparison.
+     *
+     * @param groupType - Target group's actual erasure type. Required by
+     *  BCM_HUGE_SLOT; ignored by BCM_MIN_SAVINGS.
+     * @param crcMode - CRC mode of the blob being written.
+     *
+     * @return - Compressed blob, S_ALREADY with no data or metadata if savings
+     *  are insufficient (including an empty payload), or an error from
+     *  CompressBlob. Callers must check the status code for S_ALREADY before
+     *  using the result, since it is a success status.
+     */
+    [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlobIfNeeded(
+        TStringBuf blobPayload,
+        const NKikimr::TBlobStorageGroupType* groupType = nullptr,
+        NKikimr::TErasureType::ECrcMode crcMode =
+            NKikimr::TErasureType::CrcModeNone) const;
 
     /**
      * Restores requested blocks using the blob's codec and chunk size. Each

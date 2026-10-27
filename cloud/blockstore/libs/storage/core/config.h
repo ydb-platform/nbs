@@ -752,6 +752,12 @@ public:
     TString GetBlobCompressionCodec() const;
     bool GetVerifyBlobCompressionInfo() const;
 
+    bool GetMergedBlobsCompressionEnabled() const;
+    ui64 GetMergedBlobsCompressionChunckSize() const;
+    ui64 GetMergedBlobsCompressionMinSavingsPercent() const;
+    NProto::EBlobCompressionMode GetMergedBlobsCompressionMode() const;
+    NProto::THugeSlotConfig GetMergedBlobsCompressionHugeSlotConfig() const;
+
     bool GetSerialNumberValidationEnabled() const;
 
     TVector<TString> GetKnownSpareNodes() const;

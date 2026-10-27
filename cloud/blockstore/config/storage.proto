@@ -12,6 +12,98 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EBlobCompressionMode
+{
+    // Keep compressed payloads only when savings exceed the configured percent.
+    BCM_MIN_SAVINGS = 0;
+    // Keep compressed payloads only when they fit in a smaller VDisk huge slot.
+    BCM_HUGE_SLOT = 1;
+}
+
+// Models a newly constructed huge heap. Configure these values to match the
+// target VDisks; a persisted heap may have a different slot layout.
+// Read the working PDisk sizes from TPDiskParams in TEvYardInitResult. YDB
+// derives them from the persisted TDiskFormat, not directly from TPDiskConfig.
+// Calculating them from TPDiskConfig assumes it matches the on-disk format.
+// The defaults below use physical ChunkSize=134217728, SectorSize=4096 and
+// PlainDataChunks=false, with the upstream eight-byte blob header.
+// Source paths below are relative to the YDB root (contrib/ydb/ in this tree,
+// ydb/ upstream). V2/tiny settings refer to upstream YDB versions with V2 heaps.
+message THugeSlotConfig
+{
+    enum ELayout
+    {
+        V1 = 0;
+        V2 = 1;
+        TINY_DISK_V2 = 2;
+    }
+
+    // Upstream core/blobstorage/vdisk/localrecovery/localrecovery_public.cpp,
+    // InitHugeBlobKeeper(): FeatureFlags.EnableTinyDisks=false selects V1;
+    // otherwise PDiskParams.IsTinyDisk selects TINY_DISK_V2, or V2 if false.
+    // IsTinyDisk is derived from TDiskFormat.DiskSize < 80 * 1024^3 bytes.
+    // These inputs cannot be inferred from the three PDisk config fields above.
+    optional ELayout Layout = 1 [default = V1];
+
+    // PDiskParams.AppendBlockSize = TDiskFormat::GetAppendBlockSize() in
+    // core/blobstorage/pdisk/blobstorage_pdisk_data.h:
+    //   SectorPayloadSize = SectorSize - sizeof(TDataSectorFooter) - CanarySize
+    //   AppendBlockSize = PlainDataChunks ? SectorSize : SectorPayloadSize
+    // The same file defines the footer (three ui64 fields, 24 bytes) and
+    // CanarySize=8. For the sample format: 4096 - 24 - 8 = 4064 bytes.
+    optional uint32 AppendBlockSize = 2 [default = 4064];
+
+    // PDiskParams.ChunkSize = TDiskFormat::GetUserAccessibleChunkSize() in
+    // core/blobstorage/pdisk/blobstorage_pdisk_data.h. This is the useful
+    // chunk size, not the physical TPDiskConfig.ChunkSize:
+    //   (physical ChunkSize / SectorSize) * SectorPayloadSize
+    //   = (134217728 / 4096) * 4064 = 133169152 bytes.
+    // Used only by V2 and TINY_DISK_V2.
+    optional uint32 ChunkSize = 3 [default = 133169152];
+
+    // core/blobstorage/vdisk/localrecovery/localrecovery_public.cpp,
+    // InitHugeBlobKeeper() passes PDiskParams.AppendBlockSize as this bound:
+    //   MinHugeBlobSize = AppendBlockSize = 4064 bytes for the sample format.
+    // This is the lower bound of the slot grid, not TVDiskConfig's
+    // MinHugeBlobInBytes threshold for storing blobs in the huge heap.
+    optional uint32 MinHugeBlobSize = 4 [default = 4064];
+
+    // TVDiskConfig::SetupHugeBytes() in
+    // core/blobstorage/vdisk/common/vdisk_config.cpp sets
+    // MilestoneHugeBlobInBytes = 512u << 10u = 524288 bytes.
+    // Independent of TPDiskConfig; used only by V1.
+    optional uint32 MilestoneBlobSize = 5 [default = 524288];
+
+    // InitHugeBlobKeeper() uses MaxLogoBlobDataSize + TDiskBlob header size.
+    // TVDiskConfig sets MaxLogoBlobDataSize = MaxVDiskBlobSize, whose constant
+    // in core/base/blobstorage.h is 10 << 20 = 10485760 bytes.
+    // With the upstream eight-byte header: 10485760 + 8 = 10485768 bytes.
+    // If BlobHeaderSize is overridden, adjust this bound to match as well.
+    optional uint32 MaxBlobSize = 6 [default = 10485768];
+
+    // TVDiskConfig's constructor in
+    // core/blobstorage/vdisk/common/vdisk_config.cpp sets HugeBlobOverhead=8.
+    // Independent of TPDiskConfig; used only by V1.
+    optional uint32 Overhead = 7 [default = 8];
+
+    // Upstream TVDiskConfig in
+    // core/blobstorage/vdisk/common/vdisk_config.cpp defines
+    // HugeBlobStepsBetweenPowersOf2=6 and TinyDiskHugeBlobStepsBetweenPowersOf2=3.
+    // Independent of TPDiskConfig. V2 uses this field; TINY_DISK_V2 always uses
+    // three steps, and V1 ignores it.
+    optional uint32 StepsBetweenPowersOf2 = 8 [default = 6];
+
+    // Source: core/blobstorage/vdisk/hulldb/base/blobstorage_blob.h.
+    // Upstream TDiskBlob::MaxHeaderSize = sizeof(ui64) = 8 bytes.
+    // This tree's older TDiskBlob::HeaderSize = sizeof(ui32) + sizeof(ui8) = 5;
+    // configure this field and MaxBlobSize for the target VDisk version.
+    // Added to each encoded part size after erasure alignment and CRC, before
+    // looking up the original and compressed blob's slots.
+    optional uint32 BlobHeaderSize = 9 [default = 8];
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum EChannelAllocationMode
 {
     // [obsolete]
@@ -927,10 +1019,6 @@ message TStorageServiceConfig
     optional uint32 BlobCompressionRate = 298;
     optional string BlobCompressionCodec = 299;
 
-    // Fail if compression metadata is missing for a blob being read.
-    // If false (default), treat blobs with missing metadata as uncompressed.
-    optional bool VerifyBlobCompressionInfo = 542;
-
     // If set, writes will be additionally throttled by disk space score
     // backpressure feature.
     optional bool DiskSpaceScoreThrottlingEnabled = 300;
@@ -1738,4 +1826,18 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Fail if compression metadata is missing for a blob being read.
+    // If false (default), treat blobs with missing metadata as uncompressed.
+    optional bool VerifyBlobCompressionInfo = 542;
+
+    optional bool MergedBlobsCompressionEnabled = 543;
+
+    optional uint64 MergedBlobsCompressionChunckSize = 544;
+
+    optional uint64 MergedBlobsCompressionMinSavingsPercent = 545;
+
+    optional EBlobCompressionMode MergedBlobsCompressionMode = 546;
+
+    optional THugeSlotConfig MergedBlobsCompressionHugeSlotConfig = 547;
 }

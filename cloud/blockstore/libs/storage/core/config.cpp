@@ -140,7 +140,15 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   Days(7)     )\
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
-                                                                               \
+    xxx(MergedBlobsCompressionEnabled,             bool,      false           )\
+    xxx(MergedBlobsCompressionChunckSize,          ui64,      32_KB          )\
+    xxx(MergedBlobsCompressionMinSavingsPercent,   ui64,      0               )\
+    xxx(MergedBlobsCompressionMode,                                            \
+        NProto::EBlobCompressionMode,                                          \
+        NProto::BCM_MIN_SAVINGS                                               )\
+    xxx(MergedBlobsCompressionHugeSlotConfig,                                  \
+        NProto::THugeSlotConfig,                                               \
+        {}                                                                    )\
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
     xxx(SystemTabletsPriority,          i32,                0                 )\
@@ -904,6 +912,11 @@ IOutputStream& operator <<(
 IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
 {
     return out << NProto::EResyncPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(IOutputStream& out, NProto::EBlobCompressionMode mode)
+{
+    return out << NProto::EBlobCompressionMode_Name(mode);
 }
 
 IOutputStream& operator<<(
