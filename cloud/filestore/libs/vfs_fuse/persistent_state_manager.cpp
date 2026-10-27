@@ -672,9 +672,12 @@ TPersistentStateManager::AcquireStateFile(
             TFile file(
                 filePath,
                 EOpenModeFlag::CreateNew | EOpenModeFlag::RdWr);
-            // A nonempty file smaller than the header is rejected as corrupt.
+            // A nonempty file smaller than
+            // TFileRingBufferLayout::MinStateFileSize is rejected as corrupt.
             // Leave it empty so the component can size it using its metadata.
-            if (component.StateFileSize >= sizeof(TFileRingBufferHeader)) {
+            if (component.StateFileSize >=
+                TFileRingBufferLayout::MinStateFileSize)
+            {
                 file.Resize(component.StateFileSize);
             }
         } catch (const TSystemError& e) {

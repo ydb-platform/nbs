@@ -128,7 +128,9 @@ struct TFileRingBufferLayout
     ui64 MetadataOffset = 0;
     ui64 StateFileSize = 0;
 
-    // Maximum supported size by API
+    static constexpr ui64 MinStateFileSize = sizeof(TFileRingBufferHeader);
+
+    // Maximum supported size by file API
     static constexpr ui64 MaxStateFileSize = Max<i64>();
 
     // Returns nullopt if offsets or file size exceed MaxStateFileSize
