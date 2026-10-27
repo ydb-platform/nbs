@@ -13,6 +13,7 @@
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/generic/algorithm.h>
+#include <util/system/align.h>
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
 #include <util/system/fstat.h>
@@ -397,18 +398,41 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         constexpr ui64 InitialStateFileSize = 4_KB;
         constexpr ui64 TargetStateFileSize = 2_KB;
+        constexpr ui64 MetadataCapacity = 13;
+
+        const ui64 dataOffset = AlignUp(
+            TFileRingBufferHeader::ReserveSize + MetadataCapacity,
+            sizeof(ui64));
 
         const auto f = TTempFileHandle();
         NCloud::TFileRingBuffer rb(
             f.GetName(),
             InitialStateFileSize,
-            0,
+            MetadataCapacity,
             ver);
 
         UNIT_ASSERT_VALUES_EQUAL(InitialStateFileSize, f.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(
+            InitialStateFileSize - dataOffset,
+            rb.GetDataCapacity());
 
         UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(TargetStateFileSize)));
         UNIT_ASSERT_VALUES_EQUAL(TargetStateFileSize, f.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TargetStateFileSize - dataOffset,
+            rb.GetDataCapacity());
+
+        UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(1)));
+        UNIT_ASSERT_VALUES_EQUAL(dataOffset, f.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
+
+        const auto smallFile = TTempFileHandle();
+        NCloud::TFileRingBuffer small(smallFile.GetName(), 1, 0, ver);
+        UNIT_ASSERT(small.Validate());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TFileRingBufferHeader::ReserveSize,
+            smallFile.GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(0, small.GetDataCapacity());
     }
 
     FILE_RING_BUFFER_TEST(ShouldPushPop)
@@ -1287,6 +1311,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_STRINGS_EQUAL("ABCD", rb->Front().Data);
         UNIT_ASSERT_STRINGS_EQUAL("123456789", rb->GetMetadata().Metadata);
         UNIT_ASSERT(rb->SetMetadata("abcdefghi").Updated);
+        UNIT_ASSERT_VALUES_EQUAL(
+            // Preserved metadata needs more space due to padding
+            TFileRingBufferHeader::ReserveSize + 16 + len,
+            f.GetLength());
     }
 
     FILE_RING_BUFFER_TEST(ShouldRejectOverflowingMetadataCapacityOnReopen)

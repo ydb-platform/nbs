@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -785,6 +786,25 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             StateFileSize,
             TFileStat(guard.GetFilePath().GetPath()).Size);
+    }
+
+    Y_UNIT_TEST_F(ShouldLeaveUndersizedStateFileEmpty, TFixture)
+    {
+        for (const ui64 size:
+             {ui64{1}, ui64{sizeof(TFileRingBufferHeader) - 1}})
+        {
+            auto manager = CreateManager(size);
+            auto result = manager->AcquireHandleOpsQueueStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            auto guard = result.ExtractResult();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                TFileStat(guard.GetFilePath().GetPath()).Size);
+            UNIT_ASSERT(!HasError(guard.DeleteStateFile()));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldNotResizeExistingStateFile, TFixture)
