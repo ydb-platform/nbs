@@ -65,6 +65,22 @@ func TestGetUserIP(t *testing.T) {
 			),
 			expected: "192.168.0.1",
 		},
+		{
+			name: "invalid IP",
+			ctx: contextWithAddr(
+				context.Background(),
+				stringAddr("not-an-ip:1234"),
+			),
+			expected: "",
+		},
+		{
+			name: "malformed first address",
+			ctx: contextWithAddr(
+				context.Background(),
+				stringAddr("192.168.0.1, 192.168.0.2:1234"),
+			),
+			expected: "",
+		},
 	}
 
 	for _, test := range tests {
