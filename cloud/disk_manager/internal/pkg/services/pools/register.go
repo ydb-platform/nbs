@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
@@ -21,6 +22,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	storage storage.Storage,
 	nbsFactory nbs.Factory,
+	disabledZones *common.DisabledZones,
 	resourceStorage resources.Storage,
 ) error {
 
@@ -214,9 +216,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("pools.DeleteBaseDisks", func() tasks.Task {
 		return &deleteBaseDisksTask{
-			storage:    storage,
-			nbsFactory: nbsFactory,
-			limit:      int(config.GetDeleteBaseDisksLimit()),
+			storage:       storage,
+			nbsFactory:    nbsFactory,
+			disabledZones: disabledZones,
+			limit:         int(config.GetDeleteBaseDisksLimit()),
 		}
 	})
 	if err != nil {

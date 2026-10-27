@@ -6,16 +6,19 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteBaseDisksTask struct {
-	storage    storage.Storage
-	nbsFactory nbs.Factory
-	limit      int
+	storage       storage.Storage
+	nbsFactory    nbs.Factory
+	disabledZones *common.DisabledZones
+	limit         int
 }
 
 func (t *deleteBaseDisksTask) Save() ([]byte, error) {
@@ -30,6 +33,16 @@ func (t *deleteBaseDisksTask) deleteBaseDisk(
 	ctx context.Context,
 	baseDisk storage.BaseDisk,
 ) error {
+
+	if t.disabledZones.IsDisabled(baseDisk.ZoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping NBS deletion of base disk %v: zone %v is disabled",
+			baseDisk.ID,
+			baseDisk.ZoneID,
+		)
+		return nil
+	}
 
 	client, err := t.nbsFactory.GetClient(ctx, baseDisk.ZoneID)
 	if err != nil {
