@@ -136,15 +136,14 @@ NProto::TError ShiftToClient(TVector<TPageGroup>* pageGroups)
 class TGroupHealth
 {
 public:
-    void Fail(const NProto::TError& error, const TString& deviceUUID)
+    void Fail(const NProto::TError& error)
     {
         {
             std::lock_guard g(Mutex);
             Error = MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
-                    << "storage group broken: device " << deviceUUID
-                    << " failed: " << FormatError(error));
+                    << "storage group broken: " << FormatError(error));
 
             SILK_ERROR("%s", FormatError(Error).c_str());
         }
@@ -178,9 +177,9 @@ class TDeviceProxy
 {
 public:
     const TString DeviceUUID;
-    const IStorageNodePtr StorageNode;
 
 private:
+    const IStorageNodePtr StorageNode;
     const TStorageGroupConfig Config;
     silk::FiberSequencer Acked;
 
@@ -210,12 +209,13 @@ public:
                 return StorageNode->WriteLogRecord(std::move(deviceRequest));
             });
 
-        if (!HasError(response.GetError())) {
-            // Acked only moves up, so we do not care about ordering here
-            Acked.advance(request.GetLogSequenceNumber());
+        if (HasError(response)) {
+            return MakeProxyError(response.GetError(), "write");
         }
 
-        return response.GetError();
+        // Acked only moves up, so we do not care about ordering here
+        Acked.advance(request.GetLogSequenceNumber());
+        return {};
     }
 
     NProto::TError Read(
@@ -233,7 +233,11 @@ public:
                 return StorageNode->ReadPages(std::move(deviceRequest));
             });
 
-        return response->GetError();
+        if (HasError(*response)) {
+            return MakeProxyError(response->GetError(), "read");
+        }
+
+        return {};
     }
 
     NProto::TError ReadJournalTail(
@@ -257,7 +261,13 @@ public:
                 return StorageNode->ReadJournalTail(std::move(deviceRequest));
             });
 
-        return response->GetError();
+        if (HasError(*response)) {
+            return MakeProxyError(
+                response->GetError(),
+                TStringBuilder() << "read tail after " << afterLsn);
+        }
+
+        return {};
     }
 
     ui64 GetLastAckedLsn() const
@@ -285,7 +295,13 @@ public:
                 return StorageNode->AdvanceLsnLowWatermark(request);
             });
 
-        return response.GetError();
+        if (HasError(response)) {
+            return MakeProxyError(
+                response.GetError(),
+                TStringBuilder() << "advance lwm to " << lsn);
+        }
+
+        return {};
     }
 
     NProto::TError Acquire(TFastShardContext& ctx)
@@ -303,7 +319,11 @@ public:
                 return StorageNode->AcquireDevices(request);
             });
 
-        return response.GetError();
+        if (HasError(response)) {
+            return MakeProxyError(response.GetError(), "acquire");
+        }
+
+        return {};
     }
 
     NProto::TError Release(TFastShardContext& ctx)
@@ -320,7 +340,22 @@ public:
                 return StorageNode->ReleaseDevices(request);
             });
 
-        return response.GetError();
+        if (HasError(response)) {
+            return MakeProxyError(response.GetError(), "release");
+        }
+
+        return {};
+    }
+
+private:
+    NProto::TError MakeProxyError(const NProto::TError& error, TStringBuf what) const
+    {
+        return MakeError(
+            error.GetCode(),
+            TStringBuilder()
+                << "[" << DeviceUUID << "] " << what
+                << " failed: " << error.GetMessage(),
+            error.GetFlags());
     }
 };
 
@@ -461,7 +496,7 @@ int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
     // is final for this device.
     if (HasError(error)) {
         // Break the group first, so the writer this wakes finds it broken.
-        state.Health.Fail(error, proxy.DeviceUUID);
+        state.Health.Fail(error);
         params->Op->Acks.stop();
     } else if (params->Op->Acks.increment() == state.Proxies.size()) {
         state.LowWatermarkLsn.advance(params->Op->Lsn);
@@ -492,16 +527,7 @@ NProto::TError InitializeDevice(
 
     SILK_INFO("sg init: writing header to %s", proxy.DeviceUUID.c_str());
 
-    auto error = proxy.Write(ctx, request);
-    if (HasError(error)) {
-        return MakeError(
-            error.GetCode(),
-            TStringBuilder()
-                << proxy.DeviceUUID << " header write failed: "
-                << FormatError(error));
-    }
-
-    return {};
+    return proxy.Write(ctx, request);
 }
 
 NProto::TError ValidateDevice(
@@ -520,11 +546,7 @@ NProto::TError ValidateDevice(
     NProto::TReadPagesResponse response;
     auto error = proxy.Read(ctx, request, &response);
     if (HasError(error)) {
-        return MakeError(
-            error.GetCode(),
-            TStringBuilder()
-                << proxy.DeviceUUID << " header read failed: "
-                << FormatError(error));
+        return error;
     }
 
     const auto& groups = response.GetPageGroups();
@@ -677,11 +699,7 @@ NProto::TError ReadRecordsAbove(
         tail);
 
     if (HasError(error)) {
-        return MakeError(
-            error.GetCode(),
-            TStringBuilder()
-                << "journal of " << source.DeviceUUID << " after lsn "
-                << afterLsn << ": " << FormatError(error));
+        return error;
     }
 
     if (GetLastLsn(*tail) != maxKnownLsn) {
@@ -766,14 +784,12 @@ void PushLowWatermarkLoop(TFastShardContext& ctx, TGroupState& state)
             }
 
             if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-                state.Health.Fail(error, proxy.DeviceUUID);
+                state.Health.Fail(error);
                 return {};
             }
 
             SILK_WARN(
-                "sg low watermark %lu not delivered to %s: %s",
-                watermark,
-                proxy.DeviceUUID.c_str(),
+                "sg low watermark not delivered: %s",
                 FormatError(error).c_str());
             return {};
         });
@@ -798,13 +814,12 @@ void RenewSessionsLoop(TFastShardContext& ctx, TGroupState& state)
             const auto kind = GetErrorKind(error);
             if (kind == EErrorKind::ErrorSession || kind == EErrorKind::ErrorFatal)
             {
-                state.Health.Fail(error, proxy.DeviceUUID);
+                state.Health.Fail(error);
                 return {};
             }
 
             SILK_WARN(
-                "sg session on %s not renewed: %s",
-                proxy.DeviceUUID.c_str(),
+                "sg session not renewed: %s",
                 FormatError(error).c_str());
             return {};
         });
