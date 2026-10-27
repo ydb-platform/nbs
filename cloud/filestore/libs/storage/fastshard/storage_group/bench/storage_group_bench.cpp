@@ -157,6 +157,12 @@ struct TNullStorageNode final: IStorageNode
         return {};
     }
 
+    NProto::TListDevicesResponse ListDevices(
+        NProto::TListDevicesRequest) override
+    {
+        return {};
+    }
+
     NProto::TReadJournalTailResponse ReadJournalTail(
         NProto::TReadJournalTailRequest) override
     {
