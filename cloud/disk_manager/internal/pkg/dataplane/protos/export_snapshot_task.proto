@@ -12,8 +12,8 @@ message ExportSnapshotRequest {
     string ComputeTaskId = 2;
     string FolderId = 3;
     string SourceDiskId = 4;
-    yandex.cloud.priv.disk_manager.v1.ExportDestination Destination = 5;
-    yandex.cloud.priv.disk_manager.v1.DecryptionInfo DecryptionInfo = 6;
+    cloud.disk_manager.ExportDestination Destination = 5;
+    cloud.disk_manager.DecryptionInfo DecryptionInfo = 6;
     uint32 BlockSize = 7;
     // Image exports use the same dataplane snapshot ID in SnapshotId.
     // This field selects image credentials and image backup metadata.
