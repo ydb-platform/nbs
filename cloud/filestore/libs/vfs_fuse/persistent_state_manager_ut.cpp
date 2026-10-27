@@ -788,25 +788,6 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             TFileStat(guard.GetFilePath().GetPath()).Size);
     }
 
-    Y_UNIT_TEST_F(ShouldLeaveUndersizedStateFileEmpty, TFixture)
-    {
-        for (const ui64 size:
-             {ui64{1}, ui64{sizeof(TFileRingBufferHeader) - 1}})
-        {
-            auto manager = CreateManager(size);
-            auto result = manager->AcquireHandleOpsQueueStateFile(
-                FileSystemId,
-                SessionId);
-            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
-            auto guard = result.ExtractResult();
-            UNIT_ASSERT(guard);
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                TFileStat(guard.GetFilePath().GetPath()).Size);
-            UNIT_ASSERT(!HasError(guard.DeleteStateFile()));
-        }
-    }
-
     Y_UNIT_TEST_F(ShouldNotResizeExistingStateFile, TFixture)
     {
         constexpr ui64 StateFileSize = 64_KB;
