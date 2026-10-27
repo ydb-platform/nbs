@@ -490,6 +490,7 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+    [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
 
     void CreateFreshBlocksCompanionClient();
 

@@ -2396,41 +2396,56 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldFlushIdleFreshBlobsByAgeOnlyWhenEnabled)
     {
-        for (bool enabled: {false, true}) {
-            auto config = DefaultConfig();
-            config.SetFreshChannelWriteRequestsEnabled(true);
-            config.SetFreshChannelZeroRequestsEnabled(true);
-            config.SetFreshBlobAgeFlushThreshold(enabled ? 60000 : 0);
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            for (bool enabled: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetFreshChannelWriteRequestsEnabled(true);
+                config.SetFreshChannelZeroRequestsEnabled(true);
+                const auto threshold = enabled ? 60000 : 0;
+                const bool isSSD =
+                    mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+                config.SetFreshBlobAgeFlushThresholdSSD(isSSD ? threshold : 1);
+                config.SetFreshBlobAgeFlushThresholdHDD(isSSD ? 1 : threshold);
 
-            auto runtime = PrepareTestActorRuntime(config);
-            TPartitionClient partition(*runtime);
-            partition.WaitReady();
+                auto runtime = PrepareTestActorRuntime(
+                    config,
+                    1024,
+                    {},
+                    {.MediaKind = mediaKind});
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
 
-            partition.WriteBlocks(1, 1);
-            partition.ZeroBlocks(2);
+                partition.WriteBlocks(1, 1);
+                partition.ZeroBlocks(2);
 
-            runtime->AdvanceCurrentTime(TDuration::Seconds(30));
-            partition.SendToPipe(
-                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
-            UNIT_ASSERT_VALUES_EQUAL(
-                2,
-                partition.StatPartition()
-                    ->Record.GetStats()
-                    .GetFreshBlocksCount());
+                runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+                partition.SendToPipe(
+                    std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount());
 
-            runtime->AdvanceCurrentTime(TDuration::Seconds(31));
-            partition.SendToPipe(
-                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
-            UNIT_ASSERT_VALUES_EQUAL(
-                enabled ? 0 : 2,
-                partition.StatPartition()
-                    ->Record.GetStats()
-                    .GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1),
-                                     GetBlockContent(partition.ReadBlocks(1)));
-            UNIT_ASSERT_VALUES_EQUAL(TString(),
-                                     GetBlockContent(partition.ReadBlocks(2)));
+                runtime->AdvanceCurrentTime(TDuration::Seconds(31));
+                partition.SendToPipe(
+                    std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 0 : 2,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(1),
+                    GetBlockContent(partition.ReadBlocks(1)));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(), GetBlockContent(partition.ReadBlocks(2)));
+            }
         }
     }
 
@@ -2440,7 +2455,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto config = DefaultConfig();
             config.SetFreshChannelWriteRequestsEnabled(true);
             config.SetFreshBlobCountFlushThreshold(2);
-            config.SetFreshBlobAgeFlushThreshold(60000);
+            config.SetFreshBlobAgeFlushThresholdHDD(60000);
 
             auto runtime = PrepareTestActorRuntime(config);
             TPartitionClient partition(*runtime);
@@ -2500,7 +2515,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetFreshBlobAgeFlushThreshold(60000);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
 
         auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
@@ -2531,7 +2546,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetFreshBlobAgeFlushThreshold(60000);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
 
         auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);

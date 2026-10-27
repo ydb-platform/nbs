@@ -968,7 +968,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     Y_UNIT_TEST(ShouldFlushFreshBlocksWriterBlobsByAge)
     {
         auto config = DefaultConfig();
-        config.SetFreshBlobAgeFlushThreshold(60000);
+        config.SetFreshBlobAgeFlushThresholdSSD(60000);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);

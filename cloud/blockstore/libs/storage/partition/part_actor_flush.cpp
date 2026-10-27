@@ -454,7 +454,7 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
         return true;
     }
 
-    const auto ageThreshold = Config->GetFreshBlobAgeFlushThreshold();
+    const auto ageThreshold = GetFreshBlobAgeFlushThreshold();
     if (!ageThreshold) {
         return false;
     }
