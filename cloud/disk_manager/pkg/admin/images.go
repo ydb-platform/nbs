@@ -358,7 +358,7 @@ func newImagesCmd(
 		newGetImageCmd(clientConfig, serverConfig),
 		newListImagesCmd(clientConfig, serverConfig),
 		newBackupImageCmd(clientConfig, serverConfig),
-		newExportImageCmd(serverConfig),
+		newExportImageCmd(clientConfig, serverConfig),
 		newCreateImageCmd(clientConfig),
 		newDeleteImageCmd(clientConfig),
 	)

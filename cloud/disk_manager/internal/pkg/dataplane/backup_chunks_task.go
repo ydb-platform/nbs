@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
@@ -365,7 +364,7 @@ func (t *backupChunksTask) putChunk(
 	// The follower client waits for the host's bandwidth itself.
 	err := t.backupS3.PutObject(
 		ctx,
-		bucket.ChunkKey(entry.ChunkID),
+		backup.ChunkKey(entry.ChunkID),
 		entry.EncryptedDEK,
 		chunks.NewS3Object(chunkBlob),
 	)

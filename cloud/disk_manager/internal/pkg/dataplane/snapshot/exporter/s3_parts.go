@@ -26,6 +26,7 @@ type s3PartUpload struct {
 	buffer   *s3PartBuffer
 	part     S3ManifestPart
 	started  time.Time
+	ready    time.Time
 	finished time.Time
 }
 
@@ -71,16 +72,24 @@ func (s *s3ReadSource) ReadChunk(
 	chunk *common.Chunk,
 ) error {
 
-	if err := s.slots.Acquire(ctx, 1); err != nil {
+	waitStarted := time.Now()
+	s.progress.metrics.addActive(s3StageReadWait, 1)
+	err := s.slots.Acquire(ctx, 1)
+	s.progress.metrics.addActive(s3StageReadWait, -1)
+	s.progress.metrics.recordStage(ctx, s3StageReadWait, waitStarted, err)
+	if err != nil {
 		return err
 	}
 	defer s.slots.Release(1)
 
 	s.progress.startRead()
 	defer s.progress.finishRead()
-	return retryS3Call(ctx, s.maxRetries, func() error {
+	started := time.Now()
+	err = retryS3Call(ctx, s.maxRetries, func() error {
 		return s.Source.ReadChunk(ctx, chunk)
 	})
+	s.progress.metrics.recordStage(ctx, s3StageRead, started, err)
+	return err
 }
 
 func readS3Part(
@@ -141,6 +150,7 @@ func readS3Part(
 		progress,
 		options.MaxRetries,
 	)
+	progress.metrics.recordStage(ctx, s3StageAssemble, started, err)
 	if err != nil {
 		return s3PartUpload{}, err
 	}
@@ -154,6 +164,7 @@ func readS3Part(
 			Length: length,
 		},
 		started: started,
+		ready:   time.Now(),
 	}, nil
 }
 
@@ -289,18 +300,17 @@ func exportS3Parts(
 	manifest *S3Manifest,
 	progress *s3ExportProgress,
 	started time.Time,
-	checkpoint *s3Checkpoint,
+	saveState func(context.Context) error,
 ) error {
 
-	if uint32(len(manifest.Parts)) == manifest.PartCount {
-		return ctx.Err()
-	}
+	// The final upload may have been checkpointed before the old runner sorted
+	// the parts. A fully uploaded checkpoint still needs stream order.
+	sort.Slice(manifest.Parts, func(i, j int) bool {
+		return manifest.Parts[i].Number < manifest.Parts[j].Number
+	})
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	completedParts := make(map[uint32]bool, len(manifest.Parts))
-	for _, part := range manifest.Parts {
-		completedParts[part.Number] = true
+	if uint64(len(manifest.Parts)) == uint64(manifest.PartCount) {
+		return ctx.Err()
 	}
 
 	payloadSize := options.PartSize
@@ -323,8 +333,20 @@ func exportS3Parts(
 
 	jobs := make(chan s3PartUpload)
 	completed := make(chan s3PartUpload)
-	group, groupCtx := errgroup.WithContext(ctx)
-	source = newS3ReadSource(source, options.ReadWorkerCount, progress, options.MaxRetries)
+	copyCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	group, groupCtx := errgroup.WithContext(copyCtx)
+	// Immutable while workers run; the collector appends to manifest.Parts.
+	uploadedParts := make(map[uint32]bool, len(manifest.Parts))
+	for _, part := range manifest.Parts {
+		uploadedParts[part.Number] = true
+	}
+	source = newS3ReadSource(
+		source,
+		options.ReadWorkerCount,
+		progress,
+		options.MaxRetries,
+	)
 	group.Go(
 		func() error {
 			defer close(jobs)
@@ -333,14 +355,20 @@ func exportS3Parts(
 			// No assembler can send a ready part after jobs is closed.
 			defer readers.Wait()
 			for number := uint64(1); number <= uint64(manifest.PartCount); number++ {
-				if completedParts[uint32(number)] {
+				if uploadedParts[uint32(number)] {
 					continue
 				}
 				progress.setStage("waiting for buffer")
 				var buffer *s3PartBuffer
+				waitStarted := time.Now()
+				progress.metrics.addActive(s3StageBufferWait, 1)
 				select {
 				case buffer = <-buffers:
 				case <-groupCtx.Done():
+					progress.metrics.addActive(s3StageBufferWait, -1)
+					progress.metrics.recordStage(
+						groupCtx, s3StageBufferWait, waitStarted, groupCtx.Err(),
+					)
 					return fmt.Errorf(
 						"backup %v stopped before part %v/%v: %w",
 						uri,
@@ -349,6 +377,11 @@ func exportS3Parts(
 						groupCtx.Err(),
 					)
 				}
+
+				progress.metrics.addActive(s3StageBufferWait, -1)
+				progress.metrics.recordStage(
+					groupCtx, s3StageBufferWait, waitStarted, nil,
+				)
 
 				partNumber := uint32(number)
 				readers.Add(1)
@@ -382,6 +415,9 @@ func exportS3Parts(
 							return nil
 						case <-groupCtx.Done():
 							progress.removeReadyPart()
+							progress.metrics.recordStage(
+								groupCtx, s3StageUploadWait, part.ready, groupCtx.Err(),
+							)
 							buffers <- buffer
 							return fmt.Errorf(
 								"backup %v stopped before uploading part %v/%v: %w",
@@ -422,13 +458,21 @@ func exportS3Parts(
 					}
 
 					progress.removeReadyPart()
+					progress.metrics.recordStage(
+						groupCtx, s3StageUploadWait, part.ready, nil,
+					)
 					if err := groupCtx.Err(); err != nil {
 						buffers <- part.buffer
-						return fmt.Errorf("backup %v upload worker stopped: %w", uri, err)
+						return fmt.Errorf(
+							"backup %v upload worker stopped: %w",
+							uri,
+							err,
+						)
 					}
 
 					payload := part.buffer.data
 					if options.Compression == "lz4" {
+						started := time.Now()
 						progress.startCompression()
 						var err error
 						if encoder == nil {
@@ -440,6 +484,9 @@ func exportS3Parts(
 						}
 
 						progress.finishCompression()
+						progress.metrics.recordStage(
+							groupCtx, s3StageCompress, started, err,
+						)
 						if err != nil {
 							buffers <- part.buffer
 							return fmt.Errorf(
@@ -456,6 +503,7 @@ func exportS3Parts(
 					sum := sha256.Sum256(payload)
 					part.part.SHA256 = hex.EncodeToString(sum[:])
 					progress.startUpload()
+					uploadStarted := time.Now()
 					err := destination.PutObjectWithOptions(
 						groupCtx,
 						options.Bucket,
@@ -468,6 +516,9 @@ func exportS3Parts(
 						},
 					)
 					progress.finishUpload()
+					progress.metrics.recordStage(
+						groupCtx, s3StageUpload, uploadStarted, err,
+					)
 					part.finished = time.Now()
 					buffers <- part.buffer
 					part.buffer = nil
@@ -481,7 +532,10 @@ func exportS3Parts(
 						)
 					}
 
-					progress.addCompleted(part.part.Length, part.part.StoredLength)
+					progress.addCompleted(
+						part.part.Length,
+						part.part.StoredLength,
+					)
 					// The collector drains until all workers have joined, including
 					// successful PUTs that finish concurrently with cancellation.
 					completed <- part
@@ -503,13 +557,14 @@ func exportS3Parts(
 		uploaded += part.Length
 		stored += part.StoredLength
 	}
+
 	initialStored := stored
-	var checkpointErr error
+	var saveError error
 	for part := range completed {
 		manifest.Parts = append(manifest.Parts, part.part)
-		if checkpointErr == nil {
-			checkpointErr = checkpoint.save(*manifest)
-			if checkpointErr != nil {
+		if saveError == nil {
+			if err := saveState(ctx); err != nil {
+				saveError = err
 				cancel()
 			}
 		}
@@ -545,8 +600,9 @@ func exportS3Parts(
 		},
 	)
 	err := <-done
-	if checkpointErr != nil {
-		return checkpointErr
+	if saveError != nil {
+		return saveError
 	}
+
 	return err
 }

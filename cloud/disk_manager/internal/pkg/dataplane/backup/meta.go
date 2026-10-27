@@ -1,4 +1,4 @@
-package bucket
+package backup
 
 import (
 	"time"
@@ -9,6 +9,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type SnapshotMeta struct {
+	BlockSize         uint32    `json:"block_size,omitempty"`
 	ID                string    `json:"id"`
 	FolderID          string    `json:"folder_id"`
 	ZoneID            string    `json:"zone_id"`
@@ -38,6 +39,7 @@ func NewSnapshotMeta(meta resources.SnapshotMeta) (SnapshotMeta, error) {
 	}
 
 	return SnapshotMeta{
+		BlockSize:         meta.BlockSize,
 		ID:                meta.ID,
 		FolderID:          meta.FolderID,
 		ZoneID:            zoneID,

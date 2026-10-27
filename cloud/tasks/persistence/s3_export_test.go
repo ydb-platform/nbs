@@ -74,6 +74,63 @@ func TestS3ExportCredentialsSessionToken(t *testing.T) {
 	}
 }
 
+func TestS3ExportAnonymousAccessDoesNotSignRequests(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "environment-id")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "environment-secret")
+	t.Setenv("AWS_SESSION_TOKEN", "environment-token")
+	requests := make(chan http.Header, 5)
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			requests <- r.Header.Clone()
+			if r.Method == http.MethodGet {
+				_, _ = io.WriteString(w, "data")
+			}
+		},
+	))
+	defer server.Close()
+	client, err := NewS3Client(
+		server.URL,
+		"",
+		S3Credentials{},
+		time.Second,
+		empty.NewRegistry(),
+		0, nil, nil, 0,
+		WithS3EmptySigningRegion(),
+		WithS3AnonymousAccess(),
+	)
+	require.NoError(t, err)
+	ctx := newContext()
+	err = client.PutObjectWithOptions(
+		ctx, "bucket", "part", S3Object{Data: []byte("data")},
+		S3PutObjectOptions{},
+	)
+	require.NoError(t, err)
+	exists, err := client.BucketExists(ctx, "bucket")
+	require.NoError(t, err)
+	require.True(t, exists)
+	exists, err = client.ObjectExists(ctx, "bucket", "part")
+	require.NoError(t, err)
+	require.True(t, exists)
+	data, err := client.GetObjectWithLimit(ctx, "bucket", "part", 100)
+	require.NoError(t, err)
+	require.Equal(t, []byte("data"), data)
+	require.NoError(t, client.DeleteObject(ctx, "bucket", "part"))
+	for i := 0; i < 5; i++ {
+		headers := <-requests
+		require.Empty(t, headers.Get("Authorization"))
+		require.Empty(t, headers.Get("X-Amz-Security-Token"))
+	}
+}
+
+func TestS3ExportAnonymousAccessRejectsIAMTokenProvider(t *testing.T) {
+	_, err := NewS3Client(
+		"https://s3.example", "region", S3Credentials{}, time.Second,
+		empty.NewRegistry(), 0, nil, &testS3TokenProvider{}, 0,
+		WithS3AnonymousAccess(),
+	)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+}
+
 func TestS3ExportUploadHeadersAndStableRetries(t *testing.T) {
 	for _, region := range []string{"", "custom-region"} {
 		t.Run(

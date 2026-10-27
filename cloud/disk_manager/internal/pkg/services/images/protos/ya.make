@@ -9,9 +9,11 @@ SRCS(
     create_image_from_snapshot_task.proto
     create_image_from_url_task.proto
     delete_image_task.proto
+    export_image_task.proto
 )
 
 PEERDIR(
+    cloud/disk_manager/api
     cloud/disk_manager/internal/pkg/types
 )
 

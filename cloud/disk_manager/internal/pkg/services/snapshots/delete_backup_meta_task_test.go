@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -47,7 +46,7 @@ func TestDeleteBackupMetaTask(t *testing.T) {
 	encryptedDEK, err := backupS3.NewEncryptedDEK()
 	require.NoError(t, err)
 
-	metaKey := bucket.SnapshotMetaKey("disk1", "snap1")
+	metaKey := backup.SnapshotMetaKey("disk1", "snap1")
 	err = backupS3.PutObject(
 		ctx,
 		metaKey,

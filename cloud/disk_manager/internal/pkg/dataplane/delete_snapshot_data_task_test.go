@@ -9,12 +9,12 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -155,67 +155,6 @@ func TestDeleteSnapshotDataTaskForNonExistingSnapshot(t *testing.T) {
 	}
 
 	err := task.Run(ctx, execCtx)
-	require.NoError(t, err)
-
-	mock.AssertExpectationsForObjects(t, execCtx)
-}
-
-func TestDeleteSnapshotDataTaskDeletesChunkMap(t *testing.T) {
-	ctx := test.NewContext()
-
-	storage, closeFunc := newStorage(t, ctx)
-	defer closeFunc()
-
-	snapshotS3 := newTestSnapshotS3(t, ctx)
-
-	snapshotID := "snapshotID"
-	deleteSnapshotDataBandwidthMiBs := uint64(42)
-
-	_, err := storage.CreateSnapshot(
-		ctx,
-		snapshot_storage.SnapshotMeta{ID: snapshotID},
-	)
-	require.NoError(t, err)
-
-	err = storage.SnapshotCreated(
-		ctx,
-		snapshotID,
-		chunkSize, // size
-		chunkSize, // storageSize
-		1,         // chunkCount
-		nil,       // encryption
-	)
-	require.NoError(t, err)
-
-	chunkMapKey := bucket.ChunkMapKey(snapshotID)
-	err = snapshotS3.PutObject(
-		ctx,
-		chunkMapKey,
-		persistence.S3Object{Data: []byte("map")},
-	)
-	require.NoError(t, err)
-
-	execCtx := mocks.NewExecutionContextMock()
-	execCtx.On("SetEstimatedInflightDuration", mock.Anything)
-
-	task := &deleteSnapshotDataTask{
-		performanceConfig: &performance_config.PerformanceConfig{
-			DeleteSnapshotDataBandwidthMiBs: &deleteSnapshotDataBandwidthMiBs,
-		},
-		storage:    storage,
-		snapshotS3: snapshotS3,
-		request:    &protos.DeleteSnapshotDataRequest{SnapshotId: snapshotID},
-		state:      &protos.DeleteSnapshotDataTaskState{},
-	}
-
-	err = task.Run(ctx, execCtx)
-	require.NoError(t, err)
-
-	_, err = snapshotS3.GetObject(ctx, chunkMapKey)
-	require.Error(t, err)
-
-	// A map already gone is not an error.
-	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
 	mock.AssertExpectationsForObjects(t, execCtx)

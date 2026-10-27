@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
@@ -20,7 +19,6 @@ import (
 type deleteSnapshotDataTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	storage           storage.Storage
-	snapshotS3        *bucket.S3
 	request           *protos.DeleteSnapshotDataRequest
 	state             *protos.DeleteSnapshotDataTaskState
 }
@@ -97,14 +95,6 @@ func (t *deleteSnapshotDataTask) deleteSnapshotData(
 		snapshotMeta.StorageSize,
 		t.performanceConfig.GetDeleteSnapshotDataBandwidthMiBs(),
 	))
-
-	// The chunk map leaves the snapshot bucket before the chunks it lists.
-	if t.snapshotS3 != nil {
-		err = t.snapshotS3.DeleteChunkMap(ctx, t.request.SnapshotId)
-		if err != nil {
-			return err
-		}
-	}
 
 	return t.storage.DeleteSnapshotData(ctx, t.request.SnapshotId)
 }

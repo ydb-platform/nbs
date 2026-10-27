@@ -160,6 +160,7 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
+		blockSize:    snapshotMeta.BlockSize,
 		id:           snapshotMeta.ID,
 		createTaskID: snapshotMeta.CreateTaskID,
 		creatingAt:   time.Now(),

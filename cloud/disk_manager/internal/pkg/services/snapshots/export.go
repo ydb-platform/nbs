@@ -31,9 +31,9 @@ func (s *service) ExportSnapshot(
 		)
 	}
 
-	if headers.GetOperationID(ctx) == "" {
+	if headers.GetTaskID(ctx) == "" {
 		return "", common.NewInvalidArgumentError(
-			"x-operation-id must contain the Compute export task ID",
+			"x-task-id must contain the Compute export task ID",
 		)
 	}
 

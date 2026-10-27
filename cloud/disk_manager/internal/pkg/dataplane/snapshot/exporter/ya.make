@@ -5,9 +5,11 @@ SRCS(
     s3.go
     s3_checkpoint.go
     s3_compression.go
+    s3_metrics.go
     s3_parts.go
     s3_progress.go
     s3_retry.go
+    s3_resume.go
     source.go
 )
 
@@ -22,6 +24,7 @@ GO_TEST_SRCS(
     s3_compression_test.go
     s3_progress_test.go
     s3_retry_test.go
+    s3_resume_test.go
     source_test.go
 )
 

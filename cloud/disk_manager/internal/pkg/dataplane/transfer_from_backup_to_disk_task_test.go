@@ -14,7 +14,6 @@ import (
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
@@ -91,7 +90,7 @@ func (r *fakeBackupReader) putChunkMap(
 	chunkIDs []string,
 ) {
 
-	r.objects[bucket.ChunkMapKey(id)] = marshalBackupChunkMap(t, chunkIDs)
+	r.objects[backup.ChunkMapKey(id)] = marshalBackupChunkMap(t, chunkIDs)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,8 +121,8 @@ func newRestoreFromImageRequest() *protos.TransferFromBackupToDiskRequest {
 }
 
 // Meta of the backup that newRestoreFromSnapshotRequest asks for.
-func newRestoreSnapshotMeta(chunkCount int) bucket.SnapshotMeta {
-	return bucket.SnapshotMeta{
+func newRestoreSnapshotMeta(chunkCount int) backup.SnapshotMeta {
+	return backup.SnapshotMeta{
 		ID:          restoreTestSnapshotID,
 		FolderID:    restoreTestFolderID,
 		DiskID:      restoreTestSrcDiskID,
@@ -133,8 +132,8 @@ func newRestoreSnapshotMeta(chunkCount int) bucket.SnapshotMeta {
 }
 
 // Meta of the backup that newRestoreFromImageRequest asks for.
-func newRestoreImageMeta(chunkCount int) bucket.ImageMeta {
-	return bucket.ImageMeta{
+func newRestoreImageMeta(chunkCount int) backup.ImageMeta {
+	return backup.ImageMeta{
 		ID:          restoreTestImageID,
 		FolderID:    restoreTestFolderID,
 		Size:        uint64(chunkCount) * chunkSize,
@@ -231,7 +230,7 @@ func TestTransferFromBackupToDiskFailsOnInvalidRequest(t *testing.T) {
 			reader := newFakeBackupReader()
 			reader.putJSON(
 				t,
-				bucket.SnapshotMetaKey(
+				backup.SnapshotMetaKey(
 					restoreTestSrcDiskID,
 					restoreTestSnapshotID,
 				),
@@ -260,47 +259,47 @@ func TestTransferFromBackupToDiskFailsOnInvalidMeta(t *testing.T) {
 
 	testCases := []struct {
 		name       string
-		invalidate func(meta *bucket.SnapshotMeta)
+		invalidate func(meta *backup.SnapshotMeta)
 	}{
 		{
 			name: "other snapshot id",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.ID = "other"
 			},
 		},
 		{
 			name: "other disk id",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.DiskID = "other"
 			},
 		},
 		{
 			name: "other folder id",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.FolderID = "other"
 			},
 		},
 		{
 			name: "zero size",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.Size = 0
 			},
 		},
 		{
 			name: "size is not a multiple of chunk size",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.Size += 4096
 			},
 		},
 		{
 			name: "chunk count does not fit into uint32",
-			invalidate: func(meta *bucket.SnapshotMeta) {
+			invalidate: func(meta *backup.SnapshotMeta) {
 				meta.Size = (math.MaxUint32 + 1) * chunkSize
 			},
 		},
 	}
 
-	metaKey := bucket.SnapshotMetaKey(
+	metaKey := backup.SnapshotMetaKey(
 		restoreTestSrcDiskID,
 		restoreTestSnapshotID,
 	)
@@ -374,10 +373,10 @@ func TestTransferFromBackupToDiskFailsOnInvalidChunkMap(t *testing.T) {
 			reader := newFakeBackupReader()
 			reader.putJSON(
 				t,
-				bucket.ImageMetaKey(restoreTestImageID),
+				backup.ImageMetaKey(restoreTestImageID),
 				newRestoreImageMeta(2),
 			)
-			reader.objects[bucket.ChunkMapKey(restoreTestImageID)] =
+			reader.objects[backup.ChunkMapKey(restoreTestImageID)] =
 				testCase.chunkMap
 
 			execCtx := tasks_mocks.NewExecutionContextMock()
@@ -420,7 +419,7 @@ func TestTransferFromBackupToDiskMissingBackupIsSilentError(t *testing.T) {
 	// Backup without the chunk map is not complete.
 	reader.putJSON(
 		t,
-		bucket.SnapshotMetaKey(restoreTestSrcDiskID, restoreTestSnapshotID),
+		backup.SnapshotMetaKey(restoreTestSrcDiskID, restoreTestSnapshotID),
 		newRestoreSnapshotMeta(1),
 	)
 
@@ -441,7 +440,7 @@ func TestTransferFromBackupToDiskPinsBackup(t *testing.T) {
 		{
 			name:    "snapshot",
 			request: newRestoreFromSnapshotRequest(),
-			metaKey: bucket.SnapshotMetaKey(
+			metaKey: backup.SnapshotMetaKey(
 				restoreTestSrcDiskID,
 				restoreTestSnapshotID,
 			),
@@ -455,7 +454,7 @@ func TestTransferFromBackupToDiskPinsBackup(t *testing.T) {
 		{
 			name:    "image",
 			request: newRestoreFromImageRequest(),
-			metaKey: bucket.ImageMetaKey(restoreTestImageID),
+			metaKey: backup.ImageMetaKey(restoreTestImageID),
 			meta:    newRestoreImageMeta(3),
 			changedMeta: func() any {
 				meta := newRestoreImageMeta(3)
@@ -478,7 +477,7 @@ func TestTransferFromBackupToDiskPinsBackup(t *testing.T) {
 
 			metaHash := sha256.Sum256(reader.objects[testCase.metaKey])
 			chunkMapHash := sha256.Sum256(
-				reader.objects[bucket.ChunkMapKey(srcID)],
+				reader.objects[backup.ChunkMapKey(srcID)],
 			)
 
 			execCtx := tasks_mocks.NewExecutionContextMock()
@@ -560,7 +559,7 @@ func TestTransferFromBackupToDiskDoesNotMountDiskIfBackupIsNotPinned(
 	reader := newFakeBackupReader()
 	reader.putJSON(
 		t,
-		bucket.SnapshotMetaKey(restoreTestSrcDiskID, restoreTestSnapshotID),
+		backup.SnapshotMetaKey(restoreTestSrcDiskID, restoreTestSnapshotID),
 		newRestoreSnapshotMeta(1),
 	)
 	reader.putChunkMap(t, restoreTestSnapshotID, []string{"chunk0"})

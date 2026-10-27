@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -71,8 +70,8 @@ func newExportBackup(
 		calls:   make(map[string]int),
 	}
 
-	metaKey := bucket.SnapshotMetaKey("disk", "resource")
-	var metaValue interface{} = bucket.SnapshotMeta{
+	metaKey := backup.SnapshotMetaKey("disk", "resource")
+	var metaValue interface{} = backup.SnapshotMeta{
 		ID:                "resource",
 		DiskID:            "disk",
 		Size:              3 * chunkSize,
@@ -82,9 +81,9 @@ func newExportBackup(
 	}
 
 	if kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE {
-		metaKey = bucket.ImageMetaKey("resource")
+		metaKey = backup.ImageMetaKey("resource")
 		// No creation source IDs are required, including for URL imports.
-		metaValue = bucket.ImageMeta{
+		metaValue = backup.ImageMeta{
 			ID:                "resource",
 			Size:              3 * chunkSize,
 			StorageSize:       2 * chunkSize,
@@ -103,7 +102,7 @@ func newExportBackup(
 	)
 
 	require.NoError(t, err)
-	r.objects[bucket.ChunkMapKey("resource")] =
+	r.objects[backup.ChunkMapKey("resource")] =
 		persistence.S3Object{Data: chunkMap}
 
 	data := make([]byte, 3*chunkSize)
@@ -127,7 +126,7 @@ func newExportBackup(
 			nil,
 		)
 		require.NoError(t, err)
-		r.objects[bucket.ChunkKey(id)] = chunks.NewS3Object(
+		r.objects[backup.ChunkKey(id)] = chunks.NewS3Object(
 			chunks.ChunkBlob{
 				Data:        encoded,
 				Checksum:    common.Chunk{Data: chunkData}.Checksum(),
@@ -290,12 +289,12 @@ func testBackupExportPreservesBytesAndEncryptionMetadata(
 				}
 
 				require.True(t, bytes.Equal(data, partitioned.Bytes()))
-				metaKey := bucket.SnapshotMetaKey("disk", "resource")
+				metaKey := backup.SnapshotMetaKey("disk", "resource")
 				if kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE {
-					metaKey = bucket.ImageMetaKey("resource")
+					metaKey = backup.ImageMetaKey("resource")
 					require.Zero(
 						t,
-						r.calls[bucket.SnapshotMetaKey(
+						r.calls[backup.SnapshotMetaKey(
 							"disk",
 							"resource",
 						)],
@@ -307,8 +306,8 @@ func testBackupExportPreservesBytesAndEncryptionMetadata(
 					1,
 					r.calls[metaKey],
 				)
-				require.Equal(t, 1, r.calls[bucket.ChunkMapKey("resource")])
-				require.Zero(t, r.calls[bucket.ChunkKey("")])
+				require.Equal(t, 1, r.calls[backup.ChunkMapKey("resource")])
+				require.Zero(t, r.calls[backup.ChunkKey("")])
 				_, err = source.CheckSnapshotReady(newContext(), "other")
 				require.Error(t, err)
 			},
@@ -344,7 +343,7 @@ func testBackupExportChunkFailureDoesNotPublishManifest(
 					types.EncryptionMode_NO_ENCRYPTION,
 					kind,
 				)
-				key := bucket.ChunkKey("incremental-chunk")
+				key := backup.ChunkKey("incremental-chunk")
 				object := r.objects[key]
 				switch failure {
 				case "missing":
@@ -450,9 +449,9 @@ func TestBackupImageSourceValidation(t *testing.T) {
 					types.EncryptionMode_NO_ENCRYPTION,
 					kind,
 				)
-				metaKey := bucket.ImageMetaKey("resource")
-				mapKey := bucket.ChunkMapKey("resource")
-				var meta bucket.ImageMeta
+				metaKey := backup.ImageMetaKey("resource")
+				mapKey := backup.ChunkMapKey("resource")
+				var meta backup.ImageMeta
 				require.NoError(
 					t,
 					json.Unmarshal(
@@ -502,14 +501,14 @@ func TestBackupImageSourceValidation(t *testing.T) {
 
 				// Existing snapshot metadata must never be used as a fallback.
 				data, err := json.Marshal(
-					bucket.SnapshotMeta{
+					backup.SnapshotMeta{
 						ID:     "resource",
 						DiskID: "disk",
 						Size:   3 * chunkSize,
 					},
 				)
 				require.NoError(t, err)
-				snapshotKey := bucket.SnapshotMetaKey("disk", "resource")
+				snapshotKey := backup.SnapshotMetaKey("disk", "resource")
 				r.objects[snapshotKey] = persistence.S3Object{Data: data}
 				source, err := NewBackupImageSource(
 					newContext(),
@@ -533,7 +532,7 @@ func TestBackupImageSourceIgnoresCreationSourceAndPreservesNormalizedRootKMS(
 	kind := protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE
 	r, data := newExportBackup(t, types.EncryptionMode_NO_ENCRYPTION, kind)
 	// Root-KMS encryption at rest has already been normalized by creation.
-	meta := bucket.ImageMeta{
+	meta := backup.ImageMeta{
 		ID:             "resource",
 		Size:           3 * chunkSize,
 		StorageSize:    2 * chunkSize,
@@ -545,7 +544,7 @@ func TestBackupImageSourceIgnoresCreationSourceAndPreservesNormalizedRootKMS(
 
 	encoded, err := json.Marshal(meta)
 	require.NoError(t, err)
-	r.objects[bucket.ImageMetaKey("resource")] = persistence.S3Object{
+	r.objects[backup.ImageMetaKey("resource")] = persistence.S3Object{
 		Data: encoded,
 	}
 
@@ -659,7 +658,7 @@ func TestS3ExportVerifiesDecodedSourceTailBeforeTrimming(t *testing.T) {
 					tail[len(tail)-1] ^= 1
 				}
 
-				r.objects[bucket.ChunkKey("incremental-chunk")] = chunks.NewS3Object(
+				r.objects[backup.ChunkKey("incremental-chunk")] = chunks.NewS3Object(
 					chunks.ChunkBlob{
 						Data:     tail,
 						Checksum: checksum,
@@ -687,7 +686,7 @@ func TestS3ExportVerifiesDecodedSourceTailBeforeTrimming(t *testing.T) {
 						},
 					},
 					readHook: func(ctx context.Context, chunk *common.Chunk) error {
-						object, err := r.GetObject(ctx, bucket.ChunkKey(chunk.ID))
+						object, err := r.GetObject(ctx, backup.ChunkKey(chunk.ID))
 						if err != nil {
 							return err
 						}

@@ -25,8 +25,9 @@ type s3ExportProgressState struct {
 }
 
 type s3ExportProgress struct {
-	mu    sync.Mutex
-	state s3ExportProgressState
+	mu      sync.Mutex
+	state   s3ExportProgressState
+	metrics *s3ExportMetrics
 }
 
 func (p *s3ExportProgress) startPart(number uint64) {
@@ -37,36 +38,42 @@ func (p *s3ExportProgress) startPart(number uint64) {
 	}
 
 	p.state.assemblingParts++
+	p.metrics.addActive(s3StageAssemble, 1)
 }
 
 func (p *s3ExportProgress) finishPart() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.assemblingParts--
+	p.metrics.addActive(s3StageAssemble, -1)
 }
 
 func (p *s3ExportProgress) addReadyPart() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.readyParts++
+	p.metrics.addActive(s3StageUploadWait, 1)
 }
 
 func (p *s3ExportProgress) removeReadyPart() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.readyParts--
+	p.metrics.addActive(s3StageUploadWait, -1)
 }
 
 func (p *s3ExportProgress) startRead() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeReads++
+	p.metrics.addActive(s3StageRead, 1)
 }
 
 func (p *s3ExportProgress) finishRead() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeReads--
+	p.metrics.addActive(s3StageRead, -1)
 }
 
 func (p *s3ExportProgress) setStage(stage string) {
@@ -79,6 +86,7 @@ func (p *s3ExportProgress) addRead(size uint64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.read += size
+	p.metrics.addRead(size)
 }
 
 func (p *s3ExportProgress) addCompleted(logical uint64, stored uint64) {
@@ -87,6 +95,16 @@ func (p *s3ExportProgress) addCompleted(logical uint64, stored uint64) {
 	p.state.uploaded += stored
 	p.state.completed += logical
 	p.state.completedParts++
+	p.metrics.addUploaded(logical, stored)
+}
+
+func (p *s3ExportProgress) restoreCompleted(logical, stored uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.state.uploaded += stored
+	p.state.completed += logical
+	p.state.completedParts++
+	p.metrics.addReused(logical)
 }
 
 func s3CompressionRatio(logical uint64, stored uint64) float64 {
@@ -101,24 +119,28 @@ func (p *s3ExportProgress) startCompression() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeCompression++
+	p.metrics.addActive(s3StageCompress, 1)
 }
 
 func (p *s3ExportProgress) finishCompression() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeCompression--
+	p.metrics.addActive(s3StageCompress, -1)
 }
 
 func (p *s3ExportProgress) startUpload() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeUploads++
+	p.metrics.addActive(s3StageUpload, 1)
 }
 
 func (p *s3ExportProgress) finishUpload() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.state.activeUploads--
+	p.metrics.addActive(s3StageUpload, -1)
 }
 
 func (p *s3ExportProgress) startLogging(

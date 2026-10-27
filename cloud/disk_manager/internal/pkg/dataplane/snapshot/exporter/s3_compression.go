@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/pierrec/lz4/v4"
+	"github.com/pierrec/lz4"
 )
 
 // A 1 GiB frame with 4 MiB blocks needs at most 256 block headers and a
@@ -50,15 +50,15 @@ func newS3PartEncoder(partSize uint64) (*s3PartEncoder, error) {
 		},
 	}
 
+	// The vendored lz4 predates v4 used in Arcadia; the frame is the same:
+	// the fastest level, 4 MiB blocks, one goroutine, content checksum.
+	// Reset keeps the header.
 	encoder.writer = lz4.NewWriter(&encoder.buffer)
-	if err := encoder.writer.Apply(
-		lz4.CompressionLevelOption(lz4.Fast),
-		lz4.BlockSizeOption(lz4.Block4Mb),
-		lz4.ConcurrencyOption(1),
-		lz4.ChecksumOption(true),
-	); err != nil {
-		return nil, err
+	encoder.writer.Header = lz4.Header{
+		BlockMaxSize:     4 << 20,
+		CompressionLevel: 0,
 	}
+	encoder.writer.WithConcurrency(1)
 
 	return encoder, nil
 }

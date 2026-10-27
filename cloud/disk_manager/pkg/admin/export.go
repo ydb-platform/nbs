@@ -11,6 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	api "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -190,6 +192,7 @@ func (c *exportResource) run() error {
 }
 
 func newExportCmd(
+	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 	kind exportResourceKind,
 	long string,
@@ -205,18 +208,38 @@ func newExportCmd(
 		partitionCount:  1,
 	}
 
+	var async bool
+	task := &exportTask{clientConfig: clientConfig, kind: kind}
 	cmd := &cobra.Command{
 		Use: "export",
 		Short: fmt.Sprintf(
-			"Exports a raw %v to stdout or an S3 backup prefix",
+			"Exports a %v to stdout/S3, or schedules export with --async",
 			kind,
 		),
-		Long:    long,
+		Long:    exportAsyncLong + long,
 		Example: example,
 		Annotations: map[string]string{
 			skipClientConfigParsingAnnotation: "true",
+			exportCommandAnnotation:           "true",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateExportModeOptions(cmd, async); err != nil {
+				return err
+			}
+			if async {
+				task.resourceID = c.resourceID
+				task.verbose = c.verbose
+				task.destination = api.ExportDestination{
+					Endpoint: c.s3Endpoint, Bucket: c.s3Bucket,
+					Prefix: c.s3Prefix, Region: c.s3Region,
+				}
+				request, err := task.request()
+				if err != nil {
+					return err
+				}
+				cmd.SilenceUsage = true
+				return task.run(request, cmd.OutOrStdout())
+			}
 			if err := c.validateExportOptions(cmd); err != nil {
 				return err
 			}
@@ -226,6 +249,14 @@ func newExportCmd(
 			return c.run()
 		},
 	}
+
+	cmd.Flags().BoolVar(
+		&async,
+		"async",
+		false,
+		"Schedule a persistent export through the DM API",
+	)
+	addExportTaskFlags(cmd, task)
 
 	cmd.Flags().StringVar(
 		&c.resourceID,
@@ -347,6 +378,23 @@ func newExportCmd(
 
 	return cmd
 }
+
+const exportAsyncLong = `By default, export runs synchronously using --server-config.
+With --async, it schedules a persistent export through the DM API using
+--config and IAM_TOKEN, prints the operation ID and returns. Add --wait to wait
+for completion. Interrupting the waiting CLI leaves the server task running.
+--async requires --id, --folder-id, --compute-task-id, --s3-endpoint and
+--s3-bucket; --s3-prefix and --s3-region are optional. S3 credentials come from
+Compute. Source, workers, part size and retry settings come from the server's
+ExportConfig. Local source, transfer and S3 credential flags cannot be combined
+with --async. No local server config is read in this mode.
+Optional --decryption-info-file supplies DecryptionInfo as JSON for the manifest;
+encrypted_dek must already be Base64. --cloud-id and --idempotency-key are also
+available with --async.
+
+The following settings describe synchronous export:
+
+`
 
 const exportStorageLong = `This command does not call the Disk Manager service
 and does not require a valid client config. The default

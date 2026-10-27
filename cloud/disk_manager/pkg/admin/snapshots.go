@@ -464,13 +464,20 @@ const exportSnapshotExample = `  disk-manager-admin \
       --source backup --src-disk-id <original-disk-id> \
       --s3-endpoint https://destination.example.com \
       --s3-bucket exported-images \
-      --s3-credentials-file /path/to/destination-credentials.json`
+      --s3-credentials-file /path/to/destination-credentials.json
+
+  disk-manager-admin --config /path/to/client.txt \
+      snapshots export --async --id <snapshot-id> \
+      --folder-id <folder-id> --compute-task-id <compute-task-id> \
+      --s3-endpoint https://destination.example.com --s3-bucket exported-images`
 
 func newExportSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	return newExportCmd(
+		clientConfig,
 		serverConfig,
 		exportSnapshotKind,
 		exportSnapshotLong,
@@ -609,8 +616,7 @@ func newSnapshotsCmd(
 		newBackupSnapshotCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
-		newExportSnapshotCmd(serverConfig),
-		newExportSnapshotTaskCmd(clientConfig),
+		newExportSnapshotCmd(clientConfig, serverConfig),
 		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,

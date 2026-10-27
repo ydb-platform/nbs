@@ -6,7 +6,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -133,6 +132,24 @@ func (t *backupSnapshotDataTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func validateChunkMapEntry(
+	entry storage.ChunkMapEntry,
+	snapshotID string,
+	chunkCount uint32,
+) error {
+
+	if entry.ChunkIndex >= chunkCount {
+		return errors.NewNonRetriableErrorf(
+			"chunk index %v of snapshot %v is out of range %v",
+			entry.ChunkIndex,
+			snapshotID,
+			chunkCount,
+		)
+	}
+
+	return nil
+}
 
 func (t *backupSnapshotDataTask) enqueueBatch(
 	ctx context.Context,
@@ -290,7 +307,28 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 		return err
 	}
 
-	chunkMap, err := readChunkMap(ctx, t.storage, meta.ID, meta.ChunkCount)
+	chunkMap := &protos.BackupChunkMap{
+		ChunkIds: make([]string, meta.ChunkCount),
+	}
+
+	readCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	entries, entriesErrors := t.storage.ReadChunkMap(
+		readCtx,
+		meta.ID,
+		0, // milestoneChunkIndex
+	)
+	for entry := range entries {
+		err := validateChunkMapEntry(entry, meta.ID, meta.ChunkCount)
+		if err != nil {
+			return err
+		}
+
+		chunkMap.ChunkIds[entry.ChunkIndex] = entry.ChunkID
+	}
+
+	err = <-entriesErrors
 	if err != nil {
 		return err
 	}
@@ -302,7 +340,7 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 
 	err = t.backupS3.PutObject(
 		ctx,
-		bucket.ChunkMapKey(meta.ID),
+		backup.ChunkMapKey(meta.ID),
 		t.request.EncryptedDek,
 		persistence.S3Object{Data: data},
 	)

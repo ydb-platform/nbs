@@ -7,7 +7,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -25,6 +24,7 @@ type LoadOptions struct {
 }
 
 type Meta struct {
+	BlockSize         uint32
 	ID                string
 	FolderID          string
 	Size              uint64
@@ -62,9 +62,9 @@ func Load(
 			)
 		}
 
-		key = bucket.SnapshotMetaKey(options.DiskID, options.ID)
+		key = SnapshotMetaKey(options.DiskID, options.ID)
 	case protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE:
-		key = bucket.ImageMetaKey(options.ID)
+		key = ImageMetaKey(options.ID)
 	default:
 		return nil, errors.NewNonRetriableErrorf(
 			"unknown backup source kind %v",
@@ -94,7 +94,7 @@ func Load(
 
 	var meta Meta
 	if options.Kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT {
-		var snapshot bucket.SnapshotMeta
+		var snapshot SnapshotMeta
 		err = json.Unmarshal(object.Data, &snapshot)
 		if err == nil && snapshot.DiskID != options.DiskID {
 			return nil, errors.NewNonRetriableErrorf(
@@ -106,6 +106,7 @@ func Load(
 		}
 
 		meta = Meta{
+			BlockSize:         snapshot.BlockSize,
 			ID:                snapshot.ID,
 			FolderID:          snapshot.FolderID,
 			Size:              snapshot.Size,
@@ -114,7 +115,7 @@ func Load(
 			EncryptionKeyHash: snapshot.EncryptionKeyHash,
 		}
 	} else {
-		var image bucket.ImageMeta
+		var image ImageMeta
 		err = json.Unmarshal(object.Data, &image)
 		meta = Meta{
 			ID:                image.ID,
@@ -171,7 +172,7 @@ func Load(
 		)
 	}
 
-	key = bucket.ChunkMapKey(options.ID)
+	key = ChunkMapKey(options.ID)
 	chunkMapObject, err := reader.GetObject(ctx, key)
 	if err != nil {
 		return nil, err
@@ -216,7 +217,7 @@ func CheckSnapshotMeta(
 	snapshotID string,
 ) error {
 
-	return checkMeta(ctx, reader, bucket.SnapshotMetaKey(diskID, snapshotID), snapshotID)
+	return checkMeta(ctx, reader, SnapshotMetaKey(diskID, snapshotID), snapshotID)
 }
 
 func CheckImageMeta(
@@ -225,7 +226,7 @@ func CheckImageMeta(
 	imageID string,
 ) error {
 
-	return checkMeta(ctx, reader, bucket.ImageMetaKey(imageID), imageID)
+	return checkMeta(ctx, reader, ImageMetaKey(imageID), imageID)
 }
 
 func checkMeta(

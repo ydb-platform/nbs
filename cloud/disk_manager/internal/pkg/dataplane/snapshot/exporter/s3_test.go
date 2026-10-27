@@ -605,7 +605,7 @@ func TestS3ExportEmptyAndEncryptionMetadata(t *testing.T) {
 					require.Equal(t, uint32(512), manifest.BlockSize)
 					require.Contains(t, string(manifestUpload.data), `"block_size": 512`)
 					require.Equal(t, "disk-kek", manifest.KekID)
-					require.Equal(t, []byte{1, 2, 3}, manifest.EncryptedDEK)
+					require.Equal(t, "AQID", manifest.EncryptedDEK)
 					require.Contains(t, string(manifestUpload.data), `"kek_id": "disk-kek"`)
 					require.Contains(t, string(manifestUpload.data), `"encrypted_dek": "AQID"`)
 				}
@@ -619,6 +619,38 @@ func TestS3ExportEmptyAndEncryptionMetadata(t *testing.T) {
 			},
 		)
 	}
+}
+
+func TestS3ExportPreservesBase64DecryptionInfo(t *testing.T) {
+	source := &s3TestSource{meta: storage.SnapshotMeta{
+		Encryption: &types.EncryptionDesc{
+			Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+		},
+	}}
+	dest := newS3TestDestination()
+	options := s3TestOptions()
+	options.KekID = "disk-kek"
+	options.DecryptionInfo = &S3DecryptionInfo{
+		KekID:        "disk-kek",
+		KekVersion:   "version-id",
+		EncryptedDEK: "AQI=\n",
+	}
+
+	_, err := ExportToS3(newContext(), source, "snapshot", dest, options)
+	require.NoError(t, err)
+
+	prefix := s3BackupPrefix(options.Prefix)
+	var manifest map[string]interface{}
+	require.NoError(t, json.Unmarshal(
+		dest.objects[prefix+"manifest.json"], &manifest,
+	))
+	require.Equal(t, "AQI=\n", manifest["encrypted_dek"])
+	require.Equal(t, map[string]interface{}{
+		"kek_id":        "disk-kek",
+		"kek_version":   "version-id",
+		"encrypted_dek": "AQI=\n",
+	}, manifest["decryption_info"])
+	require.Equal(t, []byte{1, 2}, dest.objects[prefix+"encrypted.dek"])
 }
 
 func TestS3ExportKeyFileFailuresDoNotPublishManifest(t *testing.T) {

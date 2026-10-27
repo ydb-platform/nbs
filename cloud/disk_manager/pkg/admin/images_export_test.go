@@ -60,7 +60,7 @@ func TestImageExportCommand(t *testing.T) {
 		t.Run(
 			tc.name,
 			func(t *testing.T) {
-				cmd := newExportImageCmd(&server_config.ServerConfig{})
+				cmd := newExportImageCmd(nil, &server_config.ServerConfig{})
 				cmd.SilenceErrors = true
 				cmd.SilenceUsage = true
 				cmd.SetArgs(tc.args)

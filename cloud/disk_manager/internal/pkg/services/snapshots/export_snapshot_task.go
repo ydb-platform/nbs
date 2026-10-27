@@ -48,12 +48,12 @@ func (t *exportSnapshotTask) Run(
 	}
 
 	if t.state.DataplaneTaskId == "" {
-		// The scheduler persists x-operation-id and restores it in the runner.
-		// It identifies the Compute task, while GetTaskID identifies our task.
-		operationID := headers.GetOperationID(ctx)
-		if operationID == "" {
+		// The scheduler persists x-task-id and restores it in the runner.
+		// It identifies the Compute task; execCtx.GetTaskID is our task.
+		computeTaskID := headers.GetTaskID(ctx)
+		if computeTaskID == "" {
 			return errors.NewNonRetriableErrorf(
-				"Compute export task ID is missing from x-operation-id",
+				"Compute export task ID is missing from x-task-id",
 			)
 		}
 
@@ -110,7 +110,7 @@ func (t *exportSnapshotTask) Run(
 			"",
 			&dataplane_protos.ExportSnapshotRequest{
 				SnapshotId:     t.request.SnapshotId,
-				OperationId:    operationID,
+				ComputeTaskId:  computeTaskID,
 				FolderId:       meta.FolderID,
 				SourceDiskId:   diskID,
 				BlockSize:      blockSize,

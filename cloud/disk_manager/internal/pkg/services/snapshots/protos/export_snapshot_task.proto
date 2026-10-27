@@ -8,5 +8,5 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message ExportSnapshotTaskState {
     string DataplaneTaskId = 1;
-    yandex.cloud.priv.disk_manager.v1.ExportResponse Response = 2;
+    cloud.disk_manager.ExportResponse Response = 2;
 }

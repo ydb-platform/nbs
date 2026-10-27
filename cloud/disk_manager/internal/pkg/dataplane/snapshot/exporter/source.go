@@ -85,12 +85,24 @@ func newBackupSource(
 		return nil, err
 	}
 
+	return NewLoadedBackupSource(reader, loaded, options.DiskID, metrics), nil
+}
+
+// Uses a validated backup whose metadata and chunk map were pinned by the task.
+func NewLoadedBackupSource(
+	reader backup.ObjectReader,
+	loaded *backup.LoadedBackup,
+	diskID string,
+	metrics storage_metrics.Metrics,
+) Source {
+
 	return &backupSource{
 		meta: storage.SnapshotMeta{
-			ID: loaded.Meta.ID,
+			BlockSize: loaded.Meta.BlockSize,
+			ID:        loaded.Meta.ID,
 			Disk: &types.Disk{
 				// backup.Load verifies this ID against the snapshot metadata.
-				DiskId: options.DiskID,
+				DiskId: diskID,
 			},
 			Size:        loaded.Meta.Size,
 			StorageSize: loaded.Meta.StorageSize,
@@ -111,7 +123,7 @@ func newBackupSource(
 			loaded.Meta.StorageSize,
 			metrics,
 		),
-	}, nil
+	}
 }
 
 func (s *backupSource) CheckSnapshotReady(
@@ -140,6 +152,16 @@ func (s *backupSource) ReadChunkMap(
 	start uint32,
 ) (<-chan storage.ChunkMapEntry, <-chan error) {
 
+	return s.ReadChunkMapRange(ctx, snapshotID, start, s.meta.ChunkCount)
+}
+
+func (s *backupSource) ReadChunkMapRange(
+	ctx context.Context,
+	snapshotID string,
+	start uint32,
+	end uint32,
+) (<-chan storage.ChunkMapEntry, <-chan error) {
+
 	entries := make(chan storage.ChunkMapEntry)
 	errors := make(chan error, 1)
 	go func() {
@@ -151,7 +173,12 @@ func (s *backupSource) ReadChunkMap(
 			return
 		}
 
-		for i := start; i < s.meta.ChunkCount; i++ {
+		if start > end || end > s.meta.ChunkCount {
+			errors <- fmt.Errorf("invalid backup chunk map range [%v, %v)", start, end)
+			return
+		}
+
+		for i := start; i < end; i++ {
 			entry := storage.ChunkMapEntry{
 				ChunkIndex: i,
 				ChunkID:    s.chunkIDs[i],

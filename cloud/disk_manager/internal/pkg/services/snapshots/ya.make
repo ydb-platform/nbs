@@ -17,6 +17,7 @@ SRCS(
 
 GO_TEST_SRCS(
     collect_backup_queue_metrics_task_test.go
+    export_snapshot_task_test.go
     schedule_backup_snapshot_tasks_test.go
 )
 

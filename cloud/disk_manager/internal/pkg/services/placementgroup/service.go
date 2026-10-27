@@ -49,28 +49,37 @@ func getPlacementStrategy(
 	}
 }
 
-func selectClientByGroup(
+func getZoneIDForPlacementGroup(
 	ctx context.Context,
 	storage resources.Storage,
-	nbsFactory nbs.Factory,
 	cellSelector cells.CellSelector,
 	groupID string,
 	reqZoneID string,
-) (nbs.Client, error) {
+) (string, error) {
 
 	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+
+	return resolvePlacementGroupZoneID(cellSelector, groupID, reqZoneID, pgMeta)
+}
+
+func resolvePlacementGroupZoneID(
+	cellSelector cells.CellSelector,
+	groupID string,
+	reqZoneID string,
+	pgMeta *resources.PlacementGroupMeta,
+) (string, error) {
 
 	zoneID := reqZoneID
 	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
 		zoneCells, err := cellSelector.ResolveCells(reqZoneID)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
-			return nil, errors.NewNonRetriableErrorf(
+			return "", errors.NewNonRetriableErrorf(
 				"placement group %v is in zone %v, not in requested zone %v",
 				groupID,
 				pgMeta.ZoneID,
@@ -80,9 +89,30 @@ func selectClientByGroup(
 		zoneID = pgMeta.ZoneID
 	}
 
-	client, err := nbsFactory.GetClient(ctx, zoneID)
+	return zoneID, nil
+}
 
-	return client, err
+func selectClientByGroup(
+	ctx context.Context,
+	storage resources.Storage,
+	nbsFactory nbs.Factory,
+	cellSelector cells.CellSelector,
+	groupID string,
+	reqZoneID string,
+) (nbs.Client, error) {
+
+	zoneID, err := getZoneIDForPlacementGroup(
+		ctx,
+		storage,
+		cellSelector,
+		groupID,
+		reqZoneID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return nbsFactory.GetClient(ctx, zoneID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

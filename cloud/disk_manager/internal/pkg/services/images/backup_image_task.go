@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -60,7 +59,7 @@ func (t *backupImageTask) Run(
 		return t.removeFromQueue(ctx)
 	}
 
-	imageMeta, err := bucket.NewImageMeta(*meta)
+	imageMeta, err := backup.NewImageMeta(*meta)
 	if err != nil {
 		return err
 	}
@@ -95,7 +94,7 @@ func (t *backupImageTask) Run(
 			SnapshotId:   imageID,
 			EncryptedDek: t.state.EncryptedDek,
 			// The copy writes the meta while it holds the snapshot.
-			MetaKey: bucket.ImageMetaKey(imageID),
+			MetaKey: backup.ImageMetaKey(imageID),
 			Meta:    data,
 		},
 	)

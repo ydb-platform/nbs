@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package yandex.cloud.priv.disk_manager.v1;
+package cloud.disk_manager;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
@@ -8,7 +8,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 // The exporter does not decrypt the snapshot or image data.
 message DecryptionInfo {
     string kek_id = 1;
-    int64 kek_version = 2;
+    // Opaque KEK version identifier, copied into the manifest unchanged.
+    string kek_version = 2;
     // DEK encrypted with the KEK. Encoded as Base64 in the JSON manifest.
     bytes encrypted_dek = 3;
 }

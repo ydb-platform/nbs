@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/gofrs/uuid"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -46,6 +48,8 @@ type S3Destination interface {
 }
 
 type S3ExportOptions struct {
+	// Optional registry for aggregate transfer metrics; never persisted.
+	MetricsRegistry metrics.Registry
 	// MaxRetries limits retries per source/destination operation after its
 	// initial attempt. Zero disables retries; -1 retries until ctx is canceled.
 	// Destination calls retain their individual timeouts.
@@ -63,9 +67,31 @@ type S3ExportOptions struct {
 	UploadWorkerCount int
 	BlockSize         uint32
 	KekID             string
-	EncryptedDEK      []byte
+	// Raw encrypted DEK from synchronous exports without DecryptionInfo.
+	EncryptedDEK []byte
+	// Opaque metadata supplied by Compute, copied without decrypting data.
+	DecryptionInfo    *S3DecryptionInfo
 	UnpackArchivePath string
 	UnpackReadmePath  string
+}
+
+type S3DecryptionInfo struct {
+	KekID      string `json:"kek_id"`
+	KekVersion string `json:"kek_version"`
+	// Base64 supplied by Compute, preserved without re-encoding.
+	EncryptedDEK string `json:"encrypted_dek"`
+}
+
+// S3ExportState is checkpointed before any parts are written and after each
+// successful upload. The caller keeps exclusive ownership of the destination
+// prefix and keeps the source immutable until completion or cancellation.
+type S3ExportState struct {
+	Bucket              string     `json:"bucket"`
+	Prefix              string     `json:"prefix"`
+	Manifest            S3Manifest `json:"manifest"`
+	Initialized         bool       `json:"initialized"`
+	DestinationPrepared bool       `json:"destination_prepared"`
+	Completed           bool       `json:"completed"`
 }
 
 type s3ExportFile struct {
@@ -119,13 +145,14 @@ type S3Manifest struct {
 	CreatedAt      time.Time `json:"created_at"`
 	Size           uint64    `json:"size"`
 	EncryptionMode string    `json:"encryption_mode"`
-	// Logical disk block size in bytes, only for encrypted snapshots when known.
+	// Logical disk block size in bytes, when recorded by snapshot creation.
 	BlockSize uint32 `json:"block_size,omitempty"`
 	// Optional base64-encoded disk key hash, never secret key material.
 	EncryptionKeyHash []byte `json:"encryption_key_hash,omitempty"`
 	// KMS key ID and base64-encoded encrypted data key from the source disk.
-	KekID        string `json:"kek_id,omitempty"`
-	EncryptedDEK []byte `json:"encrypted_dek,omitempty"`
+	KekID          string            `json:"kek_id,omitempty"`
+	EncryptedDEK   string            `json:"encrypted_dek,omitempty"`
+	DecryptionInfo *S3DecryptionInfo `json:"decryption_info,omitempty"`
 
 	RawDataInterpretation string           `json:"raw_data_interpretation"`
 	MaxPartSize           uint64           `json:"max_part_size"`
@@ -331,6 +358,32 @@ func ExportToS3(
 	options S3ExportOptions,
 ) (S3Manifest, error) {
 
+	return ExportToS3Resumable(
+		ctx, snapshotStorage, snapshotID, destination, options,
+		&S3ExportState{}, func(context.Context) error { return nil },
+	)
+}
+
+// ExportToS3Resumable resumes parts confirmed by a successful PutObject and a
+// durable saveState. An ambiguous or uncheckpointed PUT repeats only that part.
+func ExportToS3Resumable(
+	ctx context.Context,
+	snapshotStorage Source,
+	snapshotID string,
+	destination S3Destination,
+	options S3ExportOptions,
+	state *S3ExportState,
+	saveState func(context.Context) error,
+) (S3Manifest, error) {
+
+	if state.Initialized && (state.Bucket != options.Bucket ||
+		state.Prefix != s3BackupPrefix(options.Prefix)) {
+
+		return state.Manifest, task_errors.NewNonRetriableErrorf(
+			"destination changed since export checkpoint",
+		)
+	}
+
 	if options.Compression == "" {
 		options.Compression = DefaultS3Compression
 	}
@@ -364,18 +417,34 @@ func ExportToS3(
 		return S3Manifest{}, err
 	}
 
+	transferMetrics := newS3ExportMetrics(options.MetricsRegistry)
+	ctx = context.WithValue(ctx, s3ExportMetricsContextKey{}, transferMetrics)
+
 	// Read configured files before removing any previous completion marker.
 	files, err := readS3ExportFiles(options)
 	if err != nil {
 		return S3Manifest{}, err
 	}
 
-	meta, err := retryS3Operation(ctx, options.MaxRetries, func() (storage.SnapshotMeta, error) {
-		return checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
-	})
+	meta, err := retryS3Operation(
+		ctx,
+		options.MaxRetries,
+		func() (storage.SnapshotMeta, error) {
+			return checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
+		},
+	)
 	if err != nil {
 		return S3Manifest{}, err
 	}
+	if options.BlockSize == 0 ||
+		(meta.Encryption.GetMode() == types.EncryptionMode_NO_ENCRYPTION &&
+			options.DecryptionInfo == nil) {
+
+		// Plaintext CLI exports ignore encryption-specific overrides, while
+		// retaining block geometry recorded by snapshot creation.
+		options.BlockSize = meta.BlockSize
+	}
+
 	if options.MaxRetries != 0 {
 		destination = retryingS3Destination{
 			S3Destination: destination,
@@ -403,69 +472,125 @@ func ExportToS3(
 	prefix := s3BackupPrefix(options.Prefix)
 	uri := "s3://" + options.Bucket + "/" + prefix
 	manifestKey := prefix + "manifest.json"
-	exists, err = destination.ObjectExists(ctx, options.Bucket, manifestKey)
-	if err != nil {
-		return S3Manifest{}, fmt.Errorf(
-			"checking destination manifest: %w", err,
-		)
-	}
-
-	backupUUID, err := uuid.NewV4()
-	if err != nil {
-		return S3Manifest{}, err
-	}
 
 	logging.Info(ctx, "exporting raw backup to %v", uri)
 
 	interpretation := "plaintext"
-	if meta.Encryption.GetMode() == types.EncryptionMode_ENCRYPTION_AES_XTS {
+	if meta.Encryption.GetMode() == types.EncryptionMode_ENCRYPTION_AES_XTS ||
+		options.DecryptionInfo != nil {
 		interpretation = "ciphertext"
 	}
-	var blockSize uint32
+	blockSize := options.BlockSize
 	var kekID string
-	var encryptedDEK []byte
-	if meta.Encryption.GetMode() != types.EncryptionMode_NO_ENCRYPTION {
+	var encryptedDEK string
+	if meta.Encryption.GetMode() != types.EncryptionMode_NO_ENCRYPTION ||
+		options.DecryptionInfo != nil {
 		blockSize = options.BlockSize
 		kekID = options.KekID
-		encryptedDEK = options.EncryptedDEK
+		if options.DecryptionInfo != nil {
+			encryptedDEK = options.DecryptionInfo.EncryptedDEK
+		} else {
+			encryptedDEK = base64.StdEncoding.EncodeToString(options.EncryptedDEK)
+		}
 	}
 
-	manifest := S3Manifest{
-		FormatVersion:         1,
-		Format:                "partitioned-raw-image",
-		Compression:           options.Compression,
-		SnapshotID:            snapshotID,
-		BackupUUID:            backupUUID.String(),
-		CreatedAt:             time.Now().UTC(),
-		Size:                  meta.Size,
-		BlockSize:             blockSize,
-		KekID:                 kekID,
-		EncryptedDEK:          encryptedDEK,
-		EncryptionMode:        meta.Encryption.GetMode().String(),
-		EncryptionKeyHash:     meta.Encryption.GetKeyHash(),
-		RawDataInterpretation: interpretation,
-		MaxPartSize:           options.PartSize,
-		PartCount:             count,
-		Parts:                 make([]S3ManifestPart, 0),
+	if !state.Initialized {
+		backupUUID, err := uuid.NewV4()
+		if err != nil {
+			return S3Manifest{}, err
+		}
+		state.Manifest = S3Manifest{
+			FormatVersion:         1,
+			Format:                "partitioned-raw-image",
+			Compression:           options.Compression,
+			SnapshotID:            snapshotID,
+			BackupUUID:            backupUUID.String(),
+			CreatedAt:             time.Now().UTC(),
+			Size:                  meta.Size,
+			BlockSize:             blockSize,
+			KekID:                 kekID,
+			EncryptedDEK:          encryptedDEK,
+			DecryptionInfo:        options.DecryptionInfo,
+			EncryptionMode:        meta.Encryption.GetMode().String(),
+			EncryptionKeyHash:     meta.Encryption.GetKeyHash(),
+			RawDataInterpretation: interpretation,
+			MaxPartSize:           options.PartSize,
+			PartCount:             count,
+			Parts:                 make([]S3ManifestPart, 0),
+		}
+		state.Bucket = options.Bucket
+		state.Prefix = prefix
+		state.Initialized = true
+		if err := transferMetrics.saveCheckpoint(ctx, saveState); err != nil {
+			return state.Manifest, err
+		}
+	}
+	manifest := &state.Manifest
+	if err := validateS3ResumeState(
+		*manifest,
+		snapshotID,
+		meta,
+		options,
+		count,
+	); err != nil {
+		return *manifest, task_errors.NewNonRetriableError(err)
 	}
 
-	checkpoint, err := openS3Checkpoint(ctx, destination, options, meta, &manifest)
+	encryptedDEKData, err := base64.StdEncoding.DecodeString(manifest.EncryptedDEK)
+	if err != nil {
+		return *manifest, task_errors.NewNonRetriableErrorf(
+			"encrypted_dek must be valid Base64",
+		)
+	}
+
+	checkpoint, err := openS3Checkpoint(
+		ctx, destination, options, meta, manifest,
+	)
 	if err != nil {
 		return S3Manifest{}, err
 	}
 
-	// Persist even an empty checkpoint before changing part objects.
-	if err := checkpoint.save(manifest); err != nil {
-		return manifest, err
+	// Preserve CLI file checkpoints alongside the task's durable state callback.
+	saveTaskState := saveState
+	saveState = func(ctx context.Context) error {
+		return transferMetrics.saveCheckpoint(
+			ctx,
+			func(ctx context.Context) error {
+				if err := checkpoint.save(*manifest); err != nil {
+					return err
+				}
+
+				return saveTaskState(ctx)
+			},
+		)
 	}
 
-	if exists {
-		// A failed overwrite must not leave the old completion marker visible.
-		err = destination.DeleteObject(ctx, options.Bucket, manifestKey)
+	// Validate and persist even an empty checkpoint before changing objects.
+	if err := saveState(ctx); err != nil {
+		return *manifest, err
+	}
+
+	if !state.DestinationPrepared {
+		exists, err = destination.ObjectExists(ctx, options.Bucket, manifestKey)
 		if err != nil {
 			return S3Manifest{}, fmt.Errorf(
-				"removing previous destination manifest: %w", err,
+				"checking destination manifest: %w", err,
 			)
+		}
+
+		if exists {
+			// A failed overwrite must not leave the old marker visible.
+			err = destination.DeleteObject(ctx, options.Bucket, manifestKey)
+			if err != nil {
+				return S3Manifest{}, fmt.Errorf(
+					"removing previous destination manifest: %w", err,
+				)
+			}
+		}
+
+		state.DestinationPrepared = true
+		if err := saveState(ctx); err != nil {
+			return *manifest, err
 		}
 	}
 
@@ -473,11 +598,18 @@ func ExportToS3(
 		logging.Info(ctx, "resuming backup %v: reusing %v/%v completed parts", uri, len(manifest.Parts), count)
 	}
 	copyStarted := time.Now()
-	progress := &s3ExportProgress{}
+	progress := &s3ExportProgress{metrics: transferMetrics}
 	for _, part := range manifest.Parts {
-		progress.addCompleted(part.Length, part.StoredLength)
+		progress.restoreCompleted(part.Length, part.StoredLength)
 	}
-	stopProgress := progress.startLogging(ctx, uri, meta.Size, count, copyStarted)
+
+	stopProgress := progress.startLogging(
+		ctx,
+		uri,
+		meta.Size,
+		count,
+		copyStarted,
+	)
 	defer stopProgress()
 	err = exportS3Parts(
 		ctx,
@@ -486,34 +618,34 @@ func ExportToS3(
 		meta,
 		options,
 		prefix,
-		&manifest,
+		manifest,
 		progress,
 		copyStarted,
-		checkpoint,
+		saveState,
 	)
 	if err != nil {
-		return manifest, err
+		return *manifest, err
 	}
 
-	if err := validateS3Manifest(manifest); err != nil {
-		return manifest, fmt.Errorf("backup %v: %w", uri, err)
+	if err := validateS3Manifest(*manifest); err != nil {
+		return *manifest, fmt.Errorf("backup %v: %w", uri, err)
 	}
 
 	if len(manifest.EncryptedDEK) != 0 {
-		// EncryptedDEK contains raw protobuf bytes. JSON encodes those bytes
-		// as base64; the companion file stores them directly.
+		// The manifest preserves Base64 text; the companion file contains
+		// the decoded encrypted DEK bytes for unpack compatibility.
 		err := destination.PutObjectWithOptions(
 			ctx,
 			options.Bucket,
 			prefix+"encrypted.dek",
-			persistence.S3Object{Data: manifest.EncryptedDEK},
+			persistence.S3Object{Data: encryptedDEKData},
 			persistence.S3PutObjectOptions{
 				ContentType: "application/octet-stream",
 				ContentMD5:  true,
 			},
 		)
 		if err != nil {
-			return manifest, fmt.Errorf("backup %v uploading encrypted.dek: %w", uri, err)
+			return *manifest, fmt.Errorf("backup %v uploading encrypted.dek: %w", uri, err)
 		}
 	}
 
@@ -529,7 +661,7 @@ func ExportToS3(
 			},
 		)
 		if err != nil {
-			return manifest, fmt.Errorf("backup %v uploading kek.id: %w", uri, err)
+			return *manifest, fmt.Errorf("backup %v uploading kek.id: %w", uri, err)
 		}
 	}
 
@@ -548,21 +680,21 @@ func ExportToS3(
 			},
 		)
 		if err != nil {
-			return manifest, fmt.Errorf("backup %v uploading %v: %w", uri, file.key, err)
+			return *manifest, fmt.Errorf("backup %v uploading %v: %w", uri, file.key, err)
 		}
 	}
 
 	if err := ctx.Err(); err != nil {
-		return manifest, fmt.Errorf(
+		return *manifest, fmt.Errorf(
 			"backup %v stopped before manifest publication: %w",
 			uri,
 			err,
 		)
 	}
 
-	data, err := marshalS3Manifest(manifest, MaxS3ManifestSize)
+	data, err := marshalS3Manifest(*manifest, MaxS3ManifestSize)
 	if err != nil {
-		return manifest, fmt.Errorf("backup %v: %w", uri, err)
+		return *manifest, fmt.Errorf("backup %v: %w", uri, err)
 	}
 
 	progress.setStage("publishing manifest")
@@ -593,7 +725,7 @@ func ExportToS3(
 		}
 
 		if readErr != nil {
-			return manifest, fmt.Errorf(
+			return *manifest, fmt.Errorf(
 				"manifest publication is uncertain at %vmanifest.json: "+
 					"upload: %w; verification: %v",
 				uri,
@@ -604,5 +736,11 @@ func ExportToS3(
 	}
 
 	logging.Info(ctx, "raw backup complete: %vmanifest.json", uri)
-	return manifest, nil
+	state.Completed = true
+	if err := saveState(ctx); err != nil {
+		return *manifest, err
+	}
+
+	transferMetrics.completed.Inc()
+	return *manifest, nil
 }

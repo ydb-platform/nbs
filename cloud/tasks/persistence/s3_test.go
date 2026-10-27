@@ -431,26 +431,30 @@ func TestS3AttemptLimiterAdaptsToThrottling(t *testing.T) {
 	limiter.interval(at(1))
 	require.Equal(t, 12.0, limiter.currentRate())
 
+	// Raise the rate so the first decrease stays above the minimum.
+	limiter.interval(at(2))
+	require.Equal(t, 14.0, limiter.currentRate())
+
 	// A window with a throttled attempt cuts the rate by the factor.
 	limiter.onThrottle()
-	limiter.interval(at(2))
-	require.InDelta(t, 9.6, limiter.currentRate(), 0.001)
+	limiter.interval(at(3))
+	require.InDelta(t, 11.2, limiter.currentRate(), 0.001)
 
 	// Not below the minimum.
 	limiter.onThrottle()
-	limiter.interval(at(3))
+	limiter.interval(at(4))
 	require.Equal(t, 10.0, limiter.currentRate())
 
 	// Not above the maximum.
 	limiter.mutex.Lock()
 	limiter.rate = 99
 	limiter.mutex.Unlock()
-	limiter.interval(at(4))
+	limiter.interval(at(5))
 	require.Equal(t, 100.0, limiter.currentRate())
 
 	// Spacing follows the rate.
-	require.Equal(t, 10*time.Millisecond, limiter.interval(at(4)))
-	require.Equal(t, []float64{10, 12, 9.6, 10, 100}, rates)
+	require.Equal(t, 10*time.Millisecond, limiter.interval(at(5)))
+	require.InDeltaSlice(t, []float64{10, 12, 14, 11.2, 10, 100}, rates, 0.001)
 }
 
 func TestS3AttemptLimiterStaysFixedWithoutMinimum(t *testing.T) {

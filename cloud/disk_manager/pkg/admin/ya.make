@@ -16,11 +16,12 @@ SRCS(
     private.go
     run.go
     snapshots.go
-    snapshots_export_task.go
+    export_task.go
     tasks.go
 )
 
 GO_TEST_SRCS(
+    export_task_test.go
     images_export_test.go
     snapshots_export_s3_test.go
     snapshots_export_source_test.go

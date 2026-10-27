@@ -9,7 +9,6 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/bucket"
 	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
@@ -42,7 +41,6 @@ func initDataplane(
 	migrationDstDB *persistence.YDBClient,
 	migrationDstS3 *persistence.S3Client,
 	backupS3 *backup.S3,
-	snapshotS3 *bucket.S3,
 ) error {
 
 	dataplaneConfig := config.GetDataplaneConfig()
@@ -107,7 +105,6 @@ func initDataplane(
 		migrationDstStorage,
 		useS3InSnapshotMigration,
 		backupS3,
-		snapshotS3,
 	)
 }
 

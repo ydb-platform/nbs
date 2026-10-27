@@ -64,7 +64,8 @@ message DisabledZonesConfig {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Presence enables snapshot export on this host.
+// Presence enables the export API and coordinator on controlplane hosts.
+// On hosts without GrpcConfig it also enables the S3 transfer executor.
 message ExportConfig {
     // Uploaded with its original filename in the destination bucket root.
     // A computed <archive-name>.sha256 is also uploaded.
@@ -72,7 +73,7 @@ message ExportConfig {
     optional string UnpackArchivePath = 1;
     // Uploaded as README.md in the destination bucket root on every export.
     optional string UnpackReadmePath = 2;
-    // Required when ExportConfig is present. Calls Compute inner.DiskService.
+    // Required only on executor hosts. Calls Compute inner.DiskService.
     optional disk_service_client.ClientConfig DiskServiceClientConfig = 5;
     enum Source {
         AUTO = 0;
@@ -86,15 +87,22 @@ message ExportConfig {
     optional snapshot.SnapshotConfig SnapshotConfig = 7;
     optional uint64 PartSize = 8 [default = 268435456];
     optional uint32 ReadWorkerCount = 9 [default = 16];
+    // Upper bound. Transient PUT failures halve concurrency down to one;
+    // five successful PUTs restore one worker, up to this configured value.
     optional uint32 UploadWorkerCount = 10 [default = 2];
     optional string Compression = 11 [default = "lz4"];
     optional string S3CallTimeout = 12 [default = "10m"];
+    // Legacy SDK retry setting. Task destination calls use MaxRetries instead
+    // and disable SDK retries to avoid multiplying the retry budget.
     optional uint32 S3MaxRetriableErrorCount = 13 [default = 3];
-    // Whole-operation retries within a run. Further attempts use task retries
-    // and the durable checkpoint; transient failures do not discard parts.
+    // Destination retries after the first attempt. Exhaustion fails the task.
     optional uint32 MaxRetries = 14 [default = 3];
     optional uint64 MaxIdleConnsPerHost = 15 [default = 64];
     repeated string ForbiddenFolderIds = 16;
+    // Maximum duration of a continuous non-timeout transient source read
+    // failure. Timeouts postpone the task without a retry limit.
+    // The failure timestamp survives task retries and executor changes.
+    optional string SourceRetryTimeout = 17 [default = "30m"];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
