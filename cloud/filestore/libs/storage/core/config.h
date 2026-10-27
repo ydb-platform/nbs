@@ -201,7 +201,7 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
-    [[nodiscard]] TString GetSystemTabletBackupConfigPath() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;

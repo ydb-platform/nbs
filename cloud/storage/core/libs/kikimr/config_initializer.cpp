@@ -94,7 +94,13 @@ void TConfigInitializerYdbBase::ApplyCMSConfigs(
             ->Swap(cmsConfig.MutableDynamicNameserviceConfig());
     }
 
+    if (cmsConfig.HasSystemTabletBackupConfig()) {
+        CmsSystemTabletBackupConfig = cmsConfig.GetSystemTabletBackupConfig();
+    }
+
     ApplyCustomCMSConfigs(cmsConfig);
+
+    UpdateSystemTabletBackupConfig();
 }
 
 void TConfigInitializerYdbBase::InitKikimrConfig()
@@ -191,6 +197,39 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
         ParseProtoTextFromFileRobust(
             Options->ImmediateControlsConfig,
             immediateControlsConfig);
+    }
+
+    UpdateSystemTabletBackupConfig();
+}
+
+void TConfigInitializerYdbBase::ApplySystemTabletBackupPath(
+    const TString& path,
+    bool enabled)
+{
+    SystemTabletBackupPath = path;
+    SystemTabletBackupEnabled = enabled;
+    UpdateSystemTabletBackupConfig();
+}
+
+void TConfigInitializerYdbBase::UpdateSystemTabletBackupConfig()
+{
+    if (!KikimrConfig) {
+        return;
+    }
+
+    KikimrConfig->ClearSystemTabletBackupConfig();
+    if (!SystemTabletBackupEnabled ||
+        (!CmsSystemTabletBackupConfig && !SystemTabletBackupPath))
+    {
+        return;
+    }
+
+    auto& config = *KikimrConfig->MutableSystemTabletBackupConfig();
+    if (CmsSystemTabletBackupConfig) {
+        config = *CmsSystemTabletBackupConfig;
+    }
+    if (SystemTabletBackupPath) {
+        config.MutableFilesystem()->SetPath(SystemTabletBackupPath);
     }
 }
 

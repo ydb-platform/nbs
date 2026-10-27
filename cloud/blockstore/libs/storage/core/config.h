@@ -719,7 +719,7 @@ public:
 
     TDuration GetDiskRegistryBackupPeriod() const;
     TString GetDiskRegistryBackupDirPath() const;
-    [[nodiscard]] TString GetSystemTabletBackupConfigPath() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxNonReplicatedDiskDeallocationRequests() const;
 

@@ -155,8 +155,8 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
-    SystemTabletBackupConfigPath =
-        storageConfig.GetSystemTabletBackupConfigPath();
+    SystemTabletBackupPathFromFile =
+        storageConfig.GetSystemTabletBackupDirPath();
 
     if (GetDynamicYamlConfigurationStaticallyEnabled()) {
         StorageConfigControls =
@@ -304,8 +304,8 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
-    if (SystemTabletBackupConfigPath) {
-        config.SetSystemTabletBackupConfigPath(SystemTabletBackupConfigPath);
+    if (SystemTabletBackupPathFromFile) {
+        config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
     }
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -313,30 +313,9 @@ void TConfigInitializerYdb::SetStorageConfig(
         FeaturesConfig,
         StorageConfigControls);
 
-    UpdateSystemTabletBackupConfig();
-}
-
-void TConfigInitializerYdb::UpdateSystemTabletBackupConfig()
-{
-    if (!KikimrConfig) {
-        return;
-    }
-
-    if (CmsSystemTabletBackupConfig) {
-        KikimrConfig->MutableSystemTabletBackupConfig()->CopyFrom(
-            *CmsSystemTabletBackupConfig);
-    } else {
-        KikimrConfig->ClearSystemTabletBackupConfig();
-    }
-
-    if (StorageConfig) {
-        const auto backupPath = StorageConfig->GetSystemTabletBackupConfigPath();
-        if (backupPath) {
-            KikimrConfig->MutableSystemTabletBackupConfig()
-                ->MutableFilesystem()
-                ->SetPath(backupPath);
-        }
-    }
+    ApplySystemTabletBackupPath(
+        StorageConfig->GetSystemTabletBackupDirPath(),
+        !Options->TemporaryServer);
 }
 
 void TConfigInitializerYdb::ApplyYdbStatsConfig(const TString& text)
@@ -622,16 +601,10 @@ void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
-    if (config.HasSystemTabletBackupConfig()) {
-        CmsSystemTabletBackupConfig = config.GetSystemTabletBackupConfig();
-    }
-
     if (!GetDynamicYamlConfigurationStaticallyEnabled()) {
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);
     }
-
-    UpdateSystemTabletBackupConfig();
 }
 
 }   // namespace NCloud::NBlockStore::NServer

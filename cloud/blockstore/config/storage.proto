@@ -1739,7 +1739,10 @@ message TStorageServiceConfig
     // MaxBlobsPerRange as is instead of dividing it by the partition count.
     optional bool IgnorePartitionCountInMaxBlobsPerRange = 542;
 
-    // Filesystem directory for system tablet backups. Overrides the CMS path.
-    // If empty, the system tablet backup configuration from CMS is used.
-    optional string SystemTabletBackupConfigPath = 543;
+    // Directory for backups of tenant system tablets. A nonempty value in the
+    // local storage file overrides the path from CMS (both the named storage
+    // config and TAppConfig.SystemTabletBackupConfig) until the file is
+    // changed and the service is restarted. Empty uses the CMS config as is.
+    // Ignored for temporary servers.
+    optional string SystemTabletBackupDirPath = 543;
 }

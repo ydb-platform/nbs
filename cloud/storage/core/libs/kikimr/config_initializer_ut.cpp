@@ -43,6 +43,8 @@ struct TConfigInitializerYdb
         : TConfigInitializerYdbBase(std::move(options))
     {}
 
+    using TConfigInitializerYdbBase::ApplySystemTabletBackupPath;
+
     void ApplyCustomCMSConfigs(const NKikimrConfig::TAppConfig&) override
     {}
 };
@@ -325,6 +327,73 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             36,                // availableCores
             50                 // availableCoresPercentage
         );
+    }
+
+    Y_UNIT_TEST(ShouldApplySystemTabletBackupPathRegardlessOfInitOrder)
+    {
+        for (const bool initKikimrFirst: {false, true}) {
+            auto ci = TConfigInitializerYdb(CreateOptions());
+            if (initKikimrFirst) {
+                ci.InitKikimrConfig();
+            }
+            ci.ApplySystemTabletBackupPath("/var/backup/local");
+            if (!initKikimrFirst) {
+                ci.InitKikimrConfig();
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "/var/backup/local",
+                ci.KikimrConfig->GetSystemTabletBackupConfig()
+                    .GetFilesystem()
+                    .GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldOverrideOnlyPathInCmsSystemTabletBackupConfig)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitKikimrConfig();
+        ci.ApplySystemTabletBackupPath("/var/backup/local");
+
+        NKikimrConfig::TAppConfig cmsConfig;
+        auto& cmsBackup = *cmsConfig.MutableSystemTabletBackupConfig();
+        cmsBackup.MutableFilesystem()->SetPath("/var/backup/cms");
+        cmsBackup.SetMaxBackupsLimit(7);
+        cmsBackup.AddExcludeTabletIds(123);
+        ci.ApplyCMSConfigs(cmsConfig);
+
+        auto expected = cmsBackup;
+        expected.MutableFilesystem()->SetPath("/var/backup/local");
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.SerializeAsString(),
+            ci.KikimrConfig->GetSystemTabletBackupConfig().SerializeAsString());
+
+        ci.ApplySystemTabletBackupPath("");
+        UNIT_ASSERT_VALUES_EQUAL(
+            cmsBackup.SerializeAsString(),
+            ci.KikimrConfig->GetSystemTabletBackupConfig().SerializeAsString());
+    }
+
+    Y_UNIT_TEST(ShouldKeepSystemTabletBackupDisabledAcrossCmsUpdates)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitKikimrConfig();
+        ci.ApplySystemTabletBackupPath("/var/backup/local", false);
+        UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
+
+        NKikimrConfig::TAppConfig cmsConfig;
+        cmsConfig.MutableSystemTabletBackupConfig()
+            ->MutableFilesystem()
+            ->SetPath("/var/backup/cms");
+        ci.ApplyCMSConfigs(std::move(cmsConfig));
+        UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
+
+        ci.ApplySystemTabletBackupPath("", true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/var/backup/cms",
+            ci.KikimrConfig->GetSystemTabletBackupConfig()
+                .GetFilesystem()
+                .GetPath());
     }
 }
 

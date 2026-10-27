@@ -133,7 +133,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
     xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
     xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
-    xxx(SystemTabletBackupConfigPath,               TString,      ""         )\
+    xxx(SystemTabletBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\

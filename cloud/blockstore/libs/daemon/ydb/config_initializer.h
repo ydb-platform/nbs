@@ -38,8 +38,6 @@
 #include <library/cpp/json/writer/json_value.h>
 #include <library/cpp/logger/log.h>
 
-#include <util/generic/maybe.h>
-
 namespace google::protobuf {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,8 +114,8 @@ struct TConfigInitializerYdb final
         const NKikimrConfig::TAppConfig& config);
 
 private:
-    TString SystemTabletBackupConfigPath;
-    TMaybe<NKikimrConfig::TSystemTabletBackupConfig> CmsSystemTabletBackupConfig;
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
 
     // Build TBlockstoreConfig with current configuration sections.
     NProto::TBlockstoreConfig BuildCurrentBlockstoreConfig() const;
@@ -125,7 +123,6 @@ private:
     // Replace StorageConfig using the ICB controls selected during initialization.
     void SetStorageConfig(NProto::TStorageServiceConfig config);
     void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
-    void UpdateSystemTabletBackupConfig();
 };
 
 }   // namespace NCloud::NBlockStore::NServer

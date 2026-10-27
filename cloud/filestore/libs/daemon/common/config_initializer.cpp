@@ -51,15 +51,15 @@ void TConfigInitializerCommon::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
-    SystemTabletBackupConfigPath =
-        storageConfig.GetSystemTabletBackupConfigPath();
+    SystemTabletBackupPathFromFile =
+        storageConfig.GetSystemTabletBackupDirPath();
 
     ApplyOptionsToStorageConfig(storageConfig);
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig);
 
-    UpdateSystemTabletBackupConfig();
+    ApplySystemTabletBackupPath(StorageConfig->GetSystemTabletBackupDirPath());
 }
 
 void TConfigInitializerCommon::InitFeaturesConfig()
@@ -97,13 +97,8 @@ TNodeRegistrationSettings
 void TConfigInitializerCommon::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
-    if (config.HasSystemTabletBackupConfig()) {
-        CmsSystemTabletBackupConfig = config.GetSystemTabletBackupConfig();
-    }
-
     ApplyNamedConfigs(config);
     ApplyAllowedKikimrFeatureFlags(config);
-    UpdateSystemTabletBackupConfig();
 }
 
 void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
@@ -121,12 +116,17 @@ void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
     ParseProtoTextFromStringRobust(text, config);
 
     ApplyOptionsToStorageConfig(config);
+    if (SystemTabletBackupPathFromFile) {
+        config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
+    }
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config));
 
     Y_ENSURE(!Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
+
+    ApplySystemTabletBackupPath(StorageConfig->GetSystemTabletBackupDirPath());
 }
 
 void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
@@ -141,11 +141,6 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
 void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     NProto::TStorageConfig& storageConfig)
 {
-    if (SystemTabletBackupConfigPath) {
-        storageConfig.SetSystemTabletBackupConfigPath(
-            SystemTabletBackupConfigPath);
-    }
-
     if (Options->SchemeShardDir) {
         storageConfig.SetSchemeShardDir(Options->SchemeShardDir);
     }
@@ -167,30 +162,6 @@ void TConfigInitializerCommon::ApplyOptionsToStorageConfig(
     if (Options->NodeRegistrationTimeout) {
         storageConfig.SetNodeRegistrationTimeout(
             Options->NodeRegistrationTimeout.MilliSeconds());
-    }
-}
-
-void TConfigInitializerCommon::UpdateSystemTabletBackupConfig()
-{
-    if (!KikimrConfig) {
-        return;
-    }
-
-    if (CmsSystemTabletBackupConfig) {
-        KikimrConfig->MutableSystemTabletBackupConfig()->CopyFrom(
-            *CmsSystemTabletBackupConfig);
-    } else {
-        KikimrConfig->ClearSystemTabletBackupConfig();
-    }
-
-    if (StorageConfig) {
-        const auto backupPath =
-            StorageConfig->GetSystemTabletBackupConfigPath();
-        if (backupPath) {
-            KikimrConfig->MutableSystemTabletBackupConfig()
-                ->MutableFilesystem()
-                ->SetPath(backupPath);
-        }
     }
 }
 

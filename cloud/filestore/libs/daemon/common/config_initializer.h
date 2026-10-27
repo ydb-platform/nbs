@@ -10,8 +10,6 @@
 #include <cloud/storage/core/libs/kikimr/config_initializer.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 
-#include <util/generic/maybe.h>
-
 #include <functional>
 
 namespace NCloud::NFileStore::NDaemon {
@@ -31,9 +29,8 @@ protected:
 
 private:
     TConfigHandlers ConfigHandlers;
-    TString SystemTabletBackupConfigPath;
-    TMaybe<NKikimrConfig::TSystemTabletBackupConfig>
-        CmsSystemTabletBackupConfig;
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
 
 public:
     const TOptionsCommonPtr Options;
@@ -57,7 +54,6 @@ private:
     void ApplyFeaturesConfig(const TString& text);
 
     void ApplyOptionsToStorageConfig(NProto::TStorageConfig& storageConfig);
-    void UpdateSystemTabletBackupConfig();
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
     void ApplyAllowedKikimrFeatureFlags(
