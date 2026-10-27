@@ -2,7 +2,6 @@
 
 #include <util/digest/numeric.h>
 #include <util/generic/utility.h>
-#include <util/generic/ylimits.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/yassert.h>
@@ -326,14 +325,13 @@ std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
     ui64 metadataCapacity)
 {
     const ui64 metadataOffset = TFileRingBufferHeader::ReserveSize;
-    const ui64 maxFileSize = Max<i64>();
 
-    if (metadataOffset > maxFileSize) {
+    if (metadataOffset > MaxStateFileSize) {
         // Integer overflow prevention
         return std::nullopt;
     }
 
-    if (metadataCapacity > maxFileSize - metadataOffset) {
+    if (metadataCapacity > MaxStateFileSize - metadataOffset) {
         return std::nullopt;
     }
 
@@ -341,7 +339,9 @@ std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
     const ui64 dataOffset =
         AlignUp(metadataOffset + metadataCapacity, sizeof(ui64));
 
-    if (dataOffset > maxFileSize || dataCapacity > maxFileSize - dataOffset) {
+    if (dataOffset > MaxStateFileSize ||
+        dataCapacity > MaxStateFileSize - dataOffset)
+    {
         // Integer overflow prevention
         return std::nullopt;
     }
@@ -357,7 +357,7 @@ std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromStateFileSize(
     ui64 stateFileSize,
     ui64 metadataCapacity)
 {
-    if (stateFileSize > Max<i64>()) {
+    if (stateFileSize > MaxStateFileSize) {
         return std::nullopt;
     }
 

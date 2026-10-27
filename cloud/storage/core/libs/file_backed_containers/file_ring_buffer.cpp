@@ -108,6 +108,11 @@ THeader InitHeader(
     const TFileRingBufferArgs& args,
     const TFileRingBufferLayout& layout)
 {
+    Y_ABORT_UNLESS(layout.MetadataOffset <= layout.DataOffset);
+    Y_ABORT_UNLESS(layout.DataOffset <= layout.StateFileSize);
+    Y_ABORT_UNLESS(
+        args.MetadataCapacity <= layout.DataOffset - layout.MetadataOffset);
+
     THeader res;
     res.Version = args.Version;
     res.HeaderSize = sizeof(THeader);
@@ -483,6 +488,9 @@ public:
                 "Invalid capacities: file ring buffer layout overflows");
             return;
         }
+
+        Y_ABORT_UNLESS(
+            requestedLayout->DataOffset <= requestedLayout->StateFileSize);
 
         TargetDataCapacity =
             requestedLayout->StateFileSize - requestedLayout->DataOffset;
@@ -1128,6 +1136,8 @@ public:
         if (!layout) {
             return MakeError(E_ARGUMENT, "Invalid state file size");
         }
+
+        Y_ABORT_UNLESS(layout->DataOffset <= layout->StateFileSize);
 
         Args.StateFileSize = stateFileSize;
         TargetDataCapacity = layout->StateFileSize - layout->DataOffset;
