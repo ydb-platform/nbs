@@ -2,8 +2,6 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
-#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
-
 #include <util/generic/hash.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
@@ -37,8 +35,8 @@ struct TComponentConfig
     const TString BasePath;
     // State file name.
     const TString FileName;
-    // Requested preallocation size. Files smaller than the ring-buffer header
-    // are left empty and sized by the component itself.
+    // The size a new state file is created with. 0 means empty, in which
+    // case the file is sized by the component itself.
     const ui64 StateFileSize;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
@@ -672,12 +670,7 @@ TPersistentStateManager::AcquireStateFile(
             TFile file(
                 filePath,
                 EOpenModeFlag::CreateNew | EOpenModeFlag::RdWr);
-            // A nonempty file smaller than
-            // TFileRingBufferLayout::MinStateFileSize is rejected as corrupt.
-            // Leave it empty so the component can size it using its metadata.
-            if (component.StateFileSize >=
-                TFileRingBufferLayout::MinStateFileSize)
-            {
+            if (component.StateFileSize) {
                 file.Resize(component.StateFileSize);
             }
         } catch (const TSystemError& e) {
