@@ -106,6 +106,7 @@ func (t *backupSnapshotTask) Run(
 			// The copy writes the meta while it holds the snapshot.
 			MetaKey: backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
 			Meta:    data,
+			DiskId:  meta.Disk.DiskId,
 		},
 	)
 	if err != nil {

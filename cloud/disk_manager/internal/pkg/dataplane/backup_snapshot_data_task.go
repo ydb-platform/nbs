@@ -338,11 +338,19 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 		return errors.NewNonRetriableError(err)
 	}
 
+	var metadata map[string]*string
+	if len(t.request.DiskId) != 0 {
+		diskID := t.request.DiskId
+		metadata = map[string]*string{
+			backup.DiskIDMetadataKey: &diskID,
+		}
+	}
+
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkMapKey(meta.ID),
 		t.request.EncryptedDek,
-		persistence.S3Object{Data: data},
+		persistence.S3Object{Data: data, Metadata: metadata},
 	)
 	if err != nil {
 		return err

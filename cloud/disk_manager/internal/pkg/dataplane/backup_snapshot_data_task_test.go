@@ -93,6 +93,7 @@ func newBackupSnapshotDataTask(
 			EncryptedDek: follower.encryptedDEK,
 			MetaKey:      backupTestMetaKey(snapshotID),
 			Meta:         backupTestMeta(snapshotID),
+			DiskId:       "disk",
 		},
 		state: &protos.BackupSnapshotDataTaskState{},
 	}
@@ -252,6 +253,20 @@ func readBackupChunkMap(
 	return chunkMap
 }
 
+// The disk ID the copy put into the metadata of the chunk map, nil if none.
+func backupChunkMapDiskID(
+	t *testing.T,
+	ctx context.Context,
+	follower testFollower,
+	snapshotID string,
+) *string {
+
+	object, err := follower.getObject(ctx, backup.ChunkMapKey(snapshotID))
+	require.NoError(t, err)
+
+	return object.Metadata[backup.DiskIDMetadataKey]
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestBackupSnapshotDataTask(t *testing.T) {
@@ -339,6 +354,9 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 
 	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
+	diskID := backupChunkMapDiskID(t, ctx, follower, "snap1")
+	require.NotNil(t, diskID)
+	require.Equal(t, "disk", *diskID)
 	requireBackupMeta(t, ctx, follower, "snap1")
 
 	cleared, err := storage.ClearBackupChunks(ctx, "snap1", 10)
@@ -626,6 +644,8 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 
 	execCtx := newBackupExecutionContext(ctx)
 	task := newBackupSnapshotDataTask(storage, follower, "image1")
+	// An image has no disk.
+	task.request.DiskId = ""
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
@@ -642,6 +662,7 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 
 	chunkMap := readBackupChunkMap(t, ctx, follower, "image1")
 	require.Equal(t, []string{chunk0}, chunkMap.ChunkIds)
+	require.Nil(t, backupChunkMapDiskID(t, ctx, follower, "image1"))
 }
 
 func TestBackupSnapshotDataTaskSkipsDeletedSnapshot(t *testing.T) {
