@@ -1,6 +1,7 @@
 RECURSE(
     api
     bootstrapper
+    cell_proxy
     core
     disk_agent
     disk_common
