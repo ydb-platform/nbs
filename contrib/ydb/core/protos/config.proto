@@ -2554,6 +2554,30 @@ message TOpaqueConfig {
     // Empty
 }
 
+message TSystemTabletBackupConfig {
+    message TFilesystemBackend {
+        optional string Path = 1;
+    }
+
+    oneof Backend {
+        TFilesystemBackend Filesystem = 1;
+    }
+    repeated fixed64 ExcludeTabletIds = 2;
+    optional uint64 NewBackupChangelogMinBytes = 3 [default = 524288000]; // 500 MB
+    optional uint64 MaxBackupsLimit = 4 [default = 3];
+    optional uint64 ChangelogInFlightBytesLimit = 5 [default = 536870912]; // 512 MB
+
+    enum EFailBehaviour {
+        RETRY_BACKUP = 0;
+        TABLET_RESTART = 1;
+    }
+    optional EFailBehaviour FailBehaviour = 6 [default = RETRY_BACKUP];
+    optional uint32 RetryBackupTimeoutSeconds = 7 [default = 60];
+    optional uint32 RetryBackupMaxTimeoutSeconds = 8 [default = 900];
+    optional uint32 SnapshotWorkBudgetPercent = 9 [default = 25];
+    optional uint64 MaxGlobalBackupsLimit = 10 [default = 50];
+}
+
 message TAppConfig {
     option (NMarkers.Root) = true;
     optional TActorSystemConfig ActorSystemConfig = 1;
@@ -2659,6 +2683,7 @@ message TAppConfig {
     optional TGeneralCacheConfig ColumnDataCache = 111;
     optional TGroupedMemoryLimiterConfig DeduplicationGroupedMemoryLimiterConfig = 112;
     optional TMetricsConfig MetricsConfig = 114;
+    optional TSystemTabletBackupConfig SystemTabletBackupConfig = 115;
 
     // Built-in AWS client options (used, for example, to interact with S3).
     optional TAwsClientConfig AwsClientConfig = 116;

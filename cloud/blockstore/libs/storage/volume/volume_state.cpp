@@ -1402,7 +1402,7 @@ TPartitionStatInfo& TVolumeState::CreatePartitionStatInfo(
         diskId,
         tabletId,
         CountersPolicy(),
-        DiagnosticsConfig->GetHistogramCounterOptions()));
+        *DiagnosticsConfig));
     return PartitionStatInfos.back();
 }
 

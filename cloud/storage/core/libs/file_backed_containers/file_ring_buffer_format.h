@@ -3,6 +3,7 @@
 #include <util/system/types.h>
 
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace NCloud {
@@ -66,6 +67,9 @@ enum class EFileRingBufferVersion : ui32
 
 struct TFileRingBufferHeader
 {
+    // Reserve space for new header fields without requiring data migration
+    static constexpr ui64 ReserveSize = 256;
+
     EFileRingBufferVersion Version = EFileRingBufferVersion::NotInitialized;
     ui32 HeaderSize = 0;
     ui64 DataCapacity = 0;
@@ -79,6 +83,9 @@ struct TFileRingBufferHeader
     ui32 MetadataSize = 0;
     ui32 MetadataChecksum = 0;
 };
+
+static_assert(
+    sizeof(TFileRingBufferHeader) <= TFileRingBufferHeader::ReserveSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,6 +105,30 @@ struct TFileRingBufferCapabilities
     ui64 MaxTag = 0;
     ui64 Alignment = 0;
     bool EntryHeaderIsProcessedAtomically = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Canonical state file layout:
+// [reserved header area][metadata][alignment padding][data]
+//
+// Metadata starts right after the reserved header area;
+// Data starts right after the metadata area and is aligned to sizeof(ui64) -
+//   this is needed to read and write entry headers atomically.
+//
+// During metadata resizing, data and/or metadata may temporarily be stored
+// farther into the file. This is valid but not canonical; use the offsets from
+// TFileRingBufferHeader to access it.
+struct TFileRingBufferLayout
+{
+    ui64 DataOffset = 0;
+    ui64 MetadataOffset = 0;
+    ui64 StateFileSize = 0;
+
+    // Returns nullopt if offsets or file size exceed Max<i64>()
+    static std::optional<TFileRingBufferLayout> FromCapacity(
+        ui64 dataCapacity,
+        ui64 metadataCapacity);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

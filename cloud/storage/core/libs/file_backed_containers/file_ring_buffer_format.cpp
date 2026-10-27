@@ -2,6 +2,7 @@
 
 #include <util/digest/numeric.h>
 #include <util/generic/utility.h>
+#include <util/generic/ylimits.h>
 #include <util/system/align.h>
 #include <util/system/compiler.h>
 #include <util/system/yassert.h>
@@ -317,6 +318,40 @@ public:
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
+    ui64 dataCapacity,
+    ui64 metadataCapacity)
+{
+    const ui64 metadataOffset = TFileRingBufferHeader::ReserveSize;
+    const ui64 maxFileSize = Max<i64>();
+
+    if (metadataOffset > maxFileSize) {
+        // Integer overflow prevention
+        return std::nullopt;
+    }
+
+    if (metadataCapacity > maxFileSize - metadataOffset) {
+        return std::nullopt;
+    }
+
+    // Align the data area so entry headers can be read and written atomically
+    const ui64 dataOffset =
+        AlignUp(metadataOffset + metadataCapacity, sizeof(ui64));
+
+    if (dataOffset > maxFileSize || dataCapacity > maxFileSize - dataOffset) {
+        // Integer overflow prevention
+        return std::nullopt;
+    }
+
+    return TFileRingBufferLayout{
+        .DataOffset = dataOffset,
+        .MetadataOffset = metadataOffset,
+        .StateFileSize = dataOffset + dataCapacity,
+    };
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
