@@ -58,14 +58,6 @@ func TestGetUserIP(t *testing.T) {
 			expected: "2a02:6b8:bf00:3038:5058:7ff:fe8d:e4ca",
 		},
 		{
-			name: "first of multiple addresses",
-			ctx: contextWithAddr(
-				context.Background(),
-				stringAddr("192.168.0.1:1234, 192.168.0.2:1234"),
-			),
-			expected: "192.168.0.1",
-		},
-		{
 			name: "invalid IP",
 			ctx: contextWithAddr(
 				context.Background(),
@@ -74,10 +66,10 @@ func TestGetUserIP(t *testing.T) {
 			expected: "",
 		},
 		{
-			name: "malformed first address",
+			name: "malformed address",
 			ctx: contextWithAddr(
 				context.Background(),
-				stringAddr("192.168.0.1, 192.168.0.2:1234"),
+				stringAddr("192.168.0.1"),
 			),
 			expected: "",
 		},

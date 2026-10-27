@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
@@ -60,12 +59,7 @@ func GetUserIP(ctx context.Context) string {
 		return ""
 	}
 
-	addr := p.Addr.String()
-	if separator := strings.IndexByte(addr, ','); separator != -1 {
-		addr = addr[:separator]
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))
+	host, _, err := net.SplitHostPort(p.Addr.String())
 	if err != nil {
 		return ""
 	}
