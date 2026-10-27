@@ -102,8 +102,9 @@ func TestDiskTombstoneClassification(t *testing.T) {
 		{"explicit tombstone", diskState{status: diskStatusDeleted, tombstone: true}, true},
 		{"explicit tombstone with timestamp", diskState{status: diskStatusDeleted, tombstone: true, deletedAt: time.Now()}, true},
 		{"completed", diskState{status: diskStatusDeleted, deletedAt: time.Now()}, false},
-		{"legacy NULL before migration", diskState{status: diskStatusDeleted}, false},
-		{"legacy epoch before migration", diskState{status: diskStatusDeleted, deletedAt: time.Unix(0, 0)}, false},
+		{"legacy tombstone with timestamp", diskState{status: diskStatusDeleted, deletedAt: time.Now()}, false},
+		{"legacy NULL without flag", diskState{status: diskStatusDeleted}, false},
+		{"legacy epoch without flag", diskState{status: diskStatusDeleted, deletedAt: time.Unix(0, 0)}, false},
 		{"deleting", diskState{status: diskStatusDeleting, tombstone: true}, false},
 		{"live", diskState{status: diskStatusReady}, false},
 	} {
@@ -111,28 +112,30 @@ func TestDiskTombstoneClassification(t *testing.T) {
 	}
 }
 
-func TestLegacyDiskTombstoneUsesDeletionTime(t *testing.T) {
+func TestLegacyDeletedDiskIsNotConvertedToTombstone(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		nullTimestamp bool
+		createDisk    bool
 		timestamp     time.Time
 		completed     bool
 	}{
 		{name: "legacy NULL", nullTimestamp: true},
 		{name: "legacy epoch", timestamp: time.Unix(0, 0)},
-		{name: "completed", timestamp: time.Now(), completed: true},
+		{name: "legacy tombstone with timestamp", timestamp: time.Now(), completed: true},
+		{name: "completed disk", createDisk: true, timestamp: time.Now(), completed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, db, storage := setupTest(t)
 			defer db.Close(ctx)
 			disk := DiskMeta{ID: "disk", ZoneID: "cell", CreateRequest: &wrappers.UInt64Value{Value: 1}, CreateTaskID: "create"}
-			if tc.completed {
+			if tc.createDisk {
 				_, err := storage.CreateDisk(ctx, disk)
 				require.NoError(t, err)
 			}
 			_, err := storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), false /* ignoreMissing */)
 			require.NoError(t, err)
-			if tc.completed {
+			if tc.createDisk {
 				require.NoError(t, storage.DiskDeleted(ctx, disk.ID, tc.timestamp))
 			}
 			// Simulate a row written before the explicit tombstone flag was added.
@@ -156,10 +159,13 @@ func TestLegacyDiskTombstoneUsesDeletionTime(t *testing.T) {
 			require.NoError(t, err)
 			actual := diskDeletionCompleted(readTrackedDisk(t, ctx, db, storage, disk.ID))
 			require.Equal(t, tc.completed, actual)
-			require.Equal(t, !tc.completed, readTrackedDisk(t, ctx, db, storage, disk.ID).tombstone)
+			require.False(t, readTrackedDisk(t, ctx, db, storage, disk.ID).tombstone)
 			prepared, err := storage.PrepareDiskCleanup(ctx, disk.ID, []string{"legacy"}, true /* legacy */)
 			require.NoError(t, err)
-			require.Equal(t, !tc.completed, prepared)
+			require.False(t, prepared)
+			prepared, err = storage.PrepareDiskCleanup(ctx, disk.ID, []string{"cell"}, false /* legacy */)
+			require.NoError(t, err)
+			require.False(t, prepared)
 		})
 	}
 }

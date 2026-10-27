@@ -34,16 +34,7 @@ func (s *storageYDB) loadDiskCleanupState(
 	if len(states) == 0 {
 		return diskState{}, nil
 	}
-	state := states[0]
-	if state.status == diskStatusDeleted && !state.tombstone && !diskDeletionCompleted(state) {
-		// Older binaries left deleted_at unset (NULL or Unix epoch) for missing-disk tombstones.
-		// Persist the explicit flag before reserving any legacy cleanup.
-		state.tombstone = true
-		if err := s.updateDiskState(ctx, tx, state); err != nil {
-			return diskState{}, err
-		}
-	}
-	return state, nil
+	return states[0], nil
 }
 
 func diskIsTombstone(state diskState) bool {
