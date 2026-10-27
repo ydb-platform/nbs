@@ -13,6 +13,9 @@ message BackupSnapshotDataRequest {
     // holds the snapshot, so a deletion never runs before it.
     string MetaKey = 3;
     bytes Meta = 4;
+    // The disk of the snapshot, empty for an image. The copy keeps it in the
+    // metadata of the chunk map: the map is found by the snapshot ID alone.
+    string DiskId = 5;
 }
 
 message BackupSnapshotDataTaskState {

@@ -63,6 +63,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	var scheduledDEK []byte
 	var scheduledMetaKey string
+	var scheduledDiskID string
 	var scheduledMeta []byte
 
 	storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
@@ -84,6 +85,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 			dek := request.EncryptedDek
 			scheduledDEK = append([]byte(nil), dek...)
 			scheduledMetaKey = request.MetaKey
+			scheduledDiskID = request.DiskId
 			scheduledMeta = append([]byte(nil), request.Meta...)
 			return request.SnapshotId == "snap1" &&
 				len(request.EncryptedDek) != 0
@@ -131,6 +133,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 
 	// The task only passes the meta to the copy.
 	require.Equal(t, backup.SnapshotMetaKey("disk1", "snap1"), scheduledMetaKey)
+	require.Equal(t, "disk1", scheduledDiskID)
 
 	var meta backup.SnapshotMeta
 	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
