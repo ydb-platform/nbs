@@ -181,8 +181,6 @@ void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
         std::move(snapshot.SuspendedDevices),
         std::move(snapshot.AutomaticallyReplacedDevices),
         std::move(snapshot.DiskRegistryAgentListParams));
-
-    State->SetSuspendSecureErase(SuspendSecureErase);
 }
 
 void TDiskRegistryActor::CompleteLoadState(
@@ -205,8 +203,8 @@ void TDiskRegistryActor::CompleteLoadState(
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
 
-    SuspendSecureErase = args.SuspendSecureErase;
     InitializeState(std::move(args.Snapshot));
+    State->SetSuspendSecureErase(args.SuspendSecureErase);
 
     if (TDuration timeout = Config->GetNonReplicatedAgentMaxTimeout()) {
         const auto deadline = timeout.ToDeadLine(ctx.Now());

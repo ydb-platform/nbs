@@ -64,7 +64,7 @@ auto CreateZeroBlocksRequest(
     return request;
 }
 
-TString DumpRangeRefs(const TVector<NJournalled::TPageRangeRef>& rangeRefs)
+TString DumpRangeRefs(const TVector<TPageRangeRef>& rangeRefs)
 {
     TStringBuilder sb;
     sb << "[";

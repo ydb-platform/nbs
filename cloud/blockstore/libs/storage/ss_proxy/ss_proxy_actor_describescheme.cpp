@@ -49,6 +49,7 @@ private:
 
     const TStorageConfigConstPtr Config;
     const TString Path;
+    const bool AddPathToError;
     TActorId PathDescriptionBackup;
 
 public:
@@ -56,6 +57,7 @@ public:
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
         TString path,
+        bool addPathToError,
         TActorId pathDescriptionBackup);
 
     void Bootstrap(const TActorContext& ctx);
@@ -88,13 +90,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString path,
-        TActorId pathDescriptionBackup)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigConstPtr config,
+    TString path,
+    bool addPathToError,
+    TActorId pathDescriptionBackup)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Path(std::move(path))
+    , AddPathToError(addPathToError)
     , PathDescriptionBackup(pathDescriptionBackup)
 {}
 
@@ -174,7 +178,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    auto error = MakeDescribeSchemeError(record);
+    auto error = MakeDescribeSchemeError(record, AddPathToError);
 
     LWTRACK(
         ResponseReceived_Proxy,
@@ -370,6 +374,7 @@ void TSSProxyActor::HandleDescribeScheme(
         std::move(requestInfo),
         Config,
         msg->Path,
+        msg->AddPathToError,
         PathDescriptionBackup);
 }
 

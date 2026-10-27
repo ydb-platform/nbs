@@ -14,11 +14,13 @@ struct IJournalledDevice
 {
     virtual ~IJournalledDevice() = default;
 
-    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Start() = 0;
-    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Stop() = 0;
+    [[nodiscard]] virtual auto Start() noexcept
+        -> NThreading::TFuture<NProto::TError> = 0;
 
-    [[nodiscard]] virtual auto ReadPages(
-        NProto::TReadPagesRequest request)
+    [[nodiscard]] virtual auto Stop() noexcept
+        -> NThreading::TFuture<NProto::TError> = 0;
+
+    [[nodiscard]] virtual auto ReadPages(NProto::TReadPagesRequest request)
         -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
 
     [[nodiscard]] virtual auto WriteLogRecord(

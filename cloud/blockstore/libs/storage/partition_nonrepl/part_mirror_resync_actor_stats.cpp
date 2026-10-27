@@ -177,7 +177,7 @@ TPartNonreplCountersData TMirrorPartitionResyncActor::ExtractPartCounters()
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     if (MirrorCounters) {
         stats->AggregateWith(*MirrorCounters);

@@ -307,6 +307,14 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
         std::atomic<i64> RequestedBytesPrecharge{0};
         std::atomic<i64> PrepareAttempts{0};
         std::atomic<i64> ResponseNodeRefs{0};
+
+        ui64 PrevResponseNodeRefs = 0;
+
+        void UpdatePrev()
+        {
+            PrevResponseNodeRefs =
+                ResponseNodeRefs.load(std::memory_order_relaxed);
+        }
     } ListNodesExtra;
 
     struct TExtraCreateHandleMetrics

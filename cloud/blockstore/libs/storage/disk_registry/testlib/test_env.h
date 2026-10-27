@@ -1130,51 +1130,29 @@ public:
         const TString& diskId,
         ui32 blockSize,
         TVector<NProto::TDeviceConfig> devices,
-        bool force = false)
+        NProto::EStorageMediaKind mediaKind =
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        TVector<TVector<TString>> replicas = {},
+        bool force = false,
+        bool keepBlockCount = false)
     {
         auto request = std::make_unique<
             TEvDiskRegistry::TEvCreateDiskFromDevicesRequest>();
 
         request->Record.MutableVolumeConfig()->SetDiskId(diskId);
         request->Record.MutableVolumeConfig()->SetBlockSize(blockSize);
-
-        request->Record.SetForce(force);
-        request->Record.MutableDevices()->Assign(devices.begin(), devices.end());
-
-        return request;
-    }
-
-    auto CreateCreateMirroredDiskFromDevicesRequest(
-        const TString& diskId,
-        ui32 blockSize,
-        NProto::EStorageMediaKind mediaKind,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const TVector<TString>& freshDeviceUuids = {},
-        bool force = false,
-        bool keepBlockCount = false)
-    {
-        auto request = std::make_unique<
-            TEvDiskRegistry::TEvCreateMirroredDiskFromDevicesRequest>();
-
-        auto* volume = request->Record.MutableVolumeConfig();
-        volume->SetDiskId(diskId);
-        volume->SetBlockSize(blockSize);
-        volume->SetStorageMediaKind(mediaKind);
+        request->Record.MutableVolumeConfig()->SetStorageMediaKind(mediaKind);
 
         request->Record.SetForce(force);
         request->Record.SetKeepBlockCount(keepBlockCount);
+        request->Record.MutableDevices()->Assign(devices.begin(), devices.end());
 
-        for (const auto& replicaDevices: replicas) {
+        for (const auto& replicaDeviceUUIDs: replicas) {
             auto* replica = request->Record.AddReplicas();
-            for (const auto& device: replicaDevices) {
-                *replica->AddDevices() = device;
+            for (const auto& uuid: replicaDeviceUUIDs) {
+                replica->AddDeviceUUIDs(uuid);
             }
         }
-
-        request->Record.MutableFreshDeviceUUIDs()->Assign(
-            freshDeviceUuids.begin(),
-            freshDeviceUuids.end());
-
         return request;
     }
 

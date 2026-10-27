@@ -40,20 +40,6 @@ TString MakeDevicesNamesString(const TVector<NProto::TDeviceConfig>& devices)
     return sb;
 }
 
-void SendSkippedSecureEraseResponse(
-    const TActorContext& ctx,
-    const TActorId& selfId,
-    const TString& poolName)
-{
-    NCloud::Send(
-        ctx,
-        selfId,
-        std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
-            MakeError(E_REJECTED, "SecureErase is suspended"),
-            poolName,
-            TVector<TString>{}));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TSecureEraseActor final
@@ -381,7 +367,7 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 
 void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 {
-    if (SuspendSecureErase) {
+    if (State->GetSuspendSecureErase()) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -497,14 +483,19 @@ void TDiskRegistryActor::HandleSecureErase(
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
 
-    if (SuspendSecureErase) {
+    if (State->GetSuspendSecureErase()) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
             "%s SecureErase is suspended. Skipping.",
             LogTitle.GetWithTime().c_str());
 
-        SendSkippedSecureEraseResponse(ctx, ev->Sender, msg->PoolName);
+        auto response =
+            std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
+                MakeError(E_REJECTED, "SecureErase is suspended"),
+                msg->PoolName,
+                TVector<TString>{});
+        NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 

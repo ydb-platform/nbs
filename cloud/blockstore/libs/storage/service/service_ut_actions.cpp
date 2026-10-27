@@ -468,8 +468,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT(!drState->SuspendSecureErase);
 
-        NPrivateProto::TDiskRegistrySuspendSecureEraseRequest request;
-        request.SetState(true);
+        NProto::TSetSuspendSecureEraseRequest request;
+        request.SetSuspend(true);
 
         TString buf;
         google::protobuf::util::MessageToJsonString(request, &buf);

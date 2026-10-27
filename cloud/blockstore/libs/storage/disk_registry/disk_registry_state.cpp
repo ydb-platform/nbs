@@ -333,6 +333,54 @@ bool StateTransitionAllowed(
     }
 }
 
+TVector<TString> ToDeviceIds(const TVector<NProto::TDeviceConfig>& devices)
+{
+    TVector<TString> result;
+    result.reserve(devices.size());
+
+    std::transform(
+        devices.begin(),
+        devices.end(),
+        back_inserter(result),
+        [](const NProto::TDeviceConfig& device)
+        { return device.GetDeviceUUID(); });
+
+    return result;
+}
+
+TVector<NProto::TDeviceConfig> ToDeviceConfig(const TVector<TString>& devices)
+{
+    TVector<NProto::TDeviceConfig> result;
+    result.reserve(devices.size());
+
+    std::transform(
+        devices.begin(),
+        devices.end(),
+        back_inserter(result),
+        [](const TString& uuid)
+        {
+            NProto::TDeviceConfig config;
+            config.SetDeviceUUID(uuid);
+            return config;
+        });
+
+    return result;
+}
+
+TResultOrError<TString> GetDeviceWithData(
+    const TVector<TVector<TString>>& replicas,
+    ui32 deviceIdx)
+{
+    for (ui32 r = 0; r < replicas.size(); ++r) {
+        if (!replicas[r][deviceIdx].empty()) {
+            return replicas[r][deviceIdx];
+        }
+    }
+    return MakeError(
+        E_INVALID_STATE,
+        "no data for device " + ToString(deviceIdx));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4800,6 +4848,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
+    SelfCounters.SuspendSecureErase->Set(GetSuspendSecureErase() ? 1 : 0);
 
     ui32 migratingDeviceCount = 0;
     for (const auto& x: SourceDeviceMigrationsInProgress) {
@@ -8323,15 +8372,20 @@ bool TDiskRegistryState::CheckIfDeviceReplacementIsAllowed(
     return true;
 }
 
-NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
+NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<NProto::TDeviceConfig>& devices) const
+    const TVector<NProto::TDeviceConfig>& devices,
+    TAllocateDiskResult* result)
 {
+    Y_DEBUG_ABORT_UNLESS(result);
+
     if (devices.empty()) {
         return MakeError(E_ARGUMENT, "empty device list");
     }
 
-    const TDiskId& diskId = params.DiskId;
     ui32 blockSize = params.BlockSize;
 
     TVector<TString> deviceIds;
@@ -8381,64 +8435,24 @@ NProto::TError TDiskRegistryState::CanCreateDiskFromDevices(
         deviceIds.push_back(uuid);
     }
 
-    auto* disk = Disks.FindPtr(diskId);
-    if (!disk) {
-        return {};
-    }
+    auto& disk = Disks[diskId];
 
-    if (!disk->Devices.empty()) {
-        if (disk->LogicalBlockSize == blockSize && disk->Devices == deviceIds) {
-            for (const auto& uuid: disk->Devices) {
+    if (!disk.Devices.empty()) {
+        if (disk.LogicalBlockSize == blockSize && disk.Devices == deviceIds) {
+            for (const auto& uuid: disk.Devices) {
                 const auto* device = DeviceList.FindDevice(uuid);
                 if (!device) {
                     return MakeError(E_INVALID_STATE, TStringBuilder() <<
                         "device " << uuid.Quote() << " not found");
                 }
+                result->Devices.push_back(*device);
             }
+
             return MakeError(S_ALREADY);
         }
 
         return MakeError(E_ARGUMENT, TStringBuilder() <<
             "disk " << diskId.Quote() << " already exists");
-    }
-
-    return {};
-}
-
-NProto::TError TDiskRegistryState::CreateDiskFromDevices(
-    TInstant now,
-    TDiskRegistryDatabase& db,
-    const TCreateDiskFromDevicesParams& params,
-    const TVector<NProto::TDeviceConfig>& devices,
-    TAllocateDiskResult* result)
-{
-    Y_DEBUG_ABORT_UNLESS(result);
-
-    auto error = CanCreateDiskFromDevices(params, devices);
-    if (HasError(error)) {
-        return error;
-    }
-
-    const TDiskId& diskId = params.DiskId;
-    auto& disk = Disks[diskId];
-
-    if (error.GetCode() == S_ALREADY) {
-        for (const auto& uuid: disk.Devices) {
-            result->Devices.push_back(*DeviceList.FindDevice(uuid));
-        }
-        return error;
-    }
-
-    ui32 blockSize = params.BlockSize;
-
-    TVector<TString> deviceIds;
-    deviceIds.reserve(devices.size());
-
-    for (auto& device: devices) {
-        auto [config, error] = FindDevice(device);
-        Y_DEBUG_ABORT_UNLESS(!HasError(error));
-
-        deviceIds.push_back(config.GetDeviceUUID());
     }
 
     disk.Devices = deviceIds;
@@ -8479,49 +8493,15 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
     return {};
 }
 
-namespace {
-
-bool ReplicaHasAllData(
-    const TVector<NProto::TDeviceConfig>& replica,
-    const THashSet<TString>& freshDeviceIds)
-{
-    if (replica.empty()) {
-        return false;
-    }
-
-    for (const auto& device: replica) {
-        if (freshDeviceIds.contains(device.GetDeviceUUID())) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-}   // namespace
-
 NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
+    const TDiskId& masterId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-    const THashSet<TDeviceId>& freshDeviceIds) const
+    const TVector<TVector<TDeviceId>>& replicas) const
 {
-    NProto::EStorageMediaKind mediaKind = params.MediaKind;
-
-    if (mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
-        mediaKind != NProto::STORAGE_MEDIA_SSD_MIRROR3)
-    {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "unsupported media kind for mirrored disk restore: "
-                << static_cast<int>(mediaKind));
-    }
-
-    const ui32 replicaCount = mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
-                                  ? StorageConfig->GetMirror2DiskReplicaCount()
-                                  : StorageConfig->GetMirror3DiskReplicaCount();
-
-    const TDiskId& masterId = params.DiskId;
+    const ui32 replicaCount =
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
+            ? StorageConfig->GetMirror2DiskReplicaCount()
+            : StorageConfig->GetMirror3DiskReplicaCount();
 
     if (replicas.size() != replicaCount + 1) {
         return MakeError(
@@ -8540,37 +8520,13 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                 << "disk " << masterId.Quote() << " invalid master disk");
     }
 
-    const bool hasReplicaWithAllData = FindIfPtr(
-        replicas,
-        [&freshDeviceIds](const auto& replica)
-        { return ReplicaHasAllData(replica, freshDeviceIds); });
-
-    if (!hasReplicaWithAllData) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "mirrored disk " << masterId.Quote()
-                             << " has no replica with all data replicated");
-    }
+    const size_t devicesCount = replicas.front().size();
 
     THashSet<TDeviceId> reservedDevices;
-    reservedDevices.reserve(replicas.size() * replicas.front().size());
+    reservedDevices.reserve(replicas.size() * devicesCount);
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
-
-        auto error = CanCreateDiskFromDevices(
-            TCreateDiskFromDevicesParams(
-                replicaId,
-                params.BlockSize,
-                mediaKind,
-                params.Force,
-                params.KeepBlockCount),
-            replicas[i]);
-
-        if (HasError(error)) {
-            return error;
-        }
-
         auto* replica = Disks.FindPtr(replicaId);
 
         if (replica && replica->MasterDiskId &&
@@ -8583,45 +8539,195 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                                  << replica->MasterDiskId.Quote());
         }
 
-        for (const auto& device: replicas[i]) {
-            if (reservedDevices.contains(device.GetDeviceUUID())) {
+        if (replicas[i].size() != devicesCount) {
+            return MakeError(
+                E_INVALID_STATE,
+                "inconsistent devices count in replicas");
+        }
+
+        for (const auto& uuid: replicas[i]) {
+            if (uuid.empty()) {
+                continue;
+            }
+
+            if (reservedDevices.contains(uuid)) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
-                        << "device " << device.GetDeviceUUID().Quote()
-                        << " is already reserved");
+                        << "device " << uuid.Quote() << " is already reserved");
             }
-            reservedDevices.insert(device.GetDeviceUUID());
+            reservedDevices.insert(uuid);
         }
     }
 
     return {};
 }
 
+void TDiskRegistryState::CollectRacksByReplicas(
+    ui32 currentReplicaIdx,
+    const TVector<TVector<TDeviceId>>& replicas,
+    THashSet<TString>& preferredRacks,
+    THashSet<TString>& forbiddenRacks) const
+{
+    Y_DEBUG_ABORT_UNLESS(currentReplicaIdx < replicas.size());
+
+    for (const auto& uuid: replicas[currentReplicaIdx]) {
+        const auto* config = DeviceList.FindDevice(uuid);
+        if (config) {
+            preferredRacks.insert(config->GetRack());
+        }
+    }
+
+    for (ui32 i = 0; i < replicas.size(); ++i) {
+        if (i == currentReplicaIdx) {
+            continue;
+        }
+
+        for (const auto& uuid: replicas[i]) {
+            const auto* config = DeviceList.FindDevice(uuid);
+            if (config) {
+                forbiddenRacks.insert(config->GetRack());
+            }
+        }
+    }
+}
+
+void TDiskRegistryState::ReserveMirroredDiskReplicaDevices(
+    const TDiskId& masterId,
+    const TVector<TVector<TDeviceId>>& replicas)
+{
+    for (ui32 i = 0; i < replicas.size(); ++i) {
+        const auto replicaId = GetReplicaDiskId(masterId, i);
+        for (const auto& uuid: replicas[i]) {
+            if (!uuid.empty()) {
+                DeviceList.MarkDeviceAllocated(replicaId, uuid);
+            }
+        }
+    }
+}
+
+NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
+    TDiskRegistryDatabase& db,
+    const TDiskId& replicaId,
+    ui32 replicaIndex,
+    const TVector<TVector<TDeviceId>>& replicas,
+    ui32 blockSize,
+    TVector<TDeviceId>& resolvedReplica)
+{
+    const TVector<TDeviceId>& replica = replicas[replicaIndex];
+    resolvedReplica.reserve(replica.size());
+
+    THashSet<TString> preferredRacks;
+    THashSet<TString> forbiddenRacks;
+    CollectRacksByReplicas(
+        replicaIndex,
+        replicas,
+        preferredRacks,
+        forbiddenRacks);
+
+    for (ui32 idx = 0; idx < replica.size(); ++idx) {
+        if (!replica[idx].empty()) {
+            resolvedReplica.push_back(replica[idx]);
+            continue;
+        }
+
+        auto [uuid, incDataError] = GetDeviceWithData(replicas, idx);
+        if (HasError(incDataError)) {
+            return incDataError;
+        }
+
+        const auto* refConfig = DeviceList.FindDevice(uuid);
+        if (!refConfig) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "device " << uuid.Quote() << " not found");
+        }
+
+        const ui64 logicalBlockCount =
+            refConfig->GetBlockSize() * refConfig->GetBlocksCount() / blockSize;
+
+        TDeviceList::TAllocationQuery query{
+            .ForbiddenRacks = forbiddenRacks,
+            .PreferredRacks = preferredRacks,
+            .NodeRankingFunc = GetNodeRankingFunc(replicaId, {}),
+            .LogicalBlockSize = blockSize,
+            .BlockCount = logicalBlockCount,
+            .PoolName = refConfig->GetPoolName(),
+            .PoolKind = refConfig->GetPoolKind(),
+        };
+
+        if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
+            query.NodeIds = {refConfig->GetNodeId()};
+        }
+
+        auto [targetDevice, error] = AllocateReplacementDevice(
+            db,
+            replicaId,
+            {},
+            query,
+            /*(unused)timestamp=*/{},
+            /*(unused)message=*/{});
+
+        if (HasError(error)) {
+            return error;
+        }
+        resolvedReplica.push_back(targetDevice.GetDeviceUUID());
+    }
+
+    return {};
+}
+
+void TDiskRegistryState::ReleaseAllocatedDevices(
+    TDiskRegistryDatabase& db,
+    ui32 fromReplicaIdx,
+    const TDiskId& masterId,
+    const TVector<TVector<TDeviceId>>& replicas,
+    const TVector<TVector<TDeviceId>>& resolvedReplicas)
+{
+    for (ui32 r = fromReplicaIdx; r < replicas.size(); ++r) {
+        for (ui32 d = 0; d < replicas[r].size(); ++d) {
+            if (!replicas[r][d].empty()) {
+                DeviceList.ReleaseDevice(replicas[r][d]);
+                continue;
+            }
+            if (d >= resolvedReplicas[r].size()) {
+                continue;
+            }
+            const auto& uuid = resolvedReplicas[r][d];
+            DeviceList.ReleaseDevice(uuid);
+            db.UpdateDirtyDevice(uuid, GetReplicaDiskId(masterId, r));
+        }
+    }
+}
+
+void TDiskRegistryState::DestroyPartiallyCreatedMirroredDisk(
+    TDiskRegistryDatabase& db,
+    ui32 lastReplicaIdx,
+    const TDiskId& masterId)
+{
+    for (ui32 r = 0; r < lastReplicaIdx; ++r) {
+        const auto replicaId = GetReplicaDiskId(masterId, r);
+        if (auto* disk = Disks.FindPtr(replicaId)) {
+            DeallocateSimpleDisk(db, replicaId, *disk);
+        }
+    }
+    ReplicaTable.RemoveMirroredDisk(masterId);
+}
+
 NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     TInstant now,
     TDiskRegistryDatabase& db,
+    const TDiskId& masterId,
     const TCreateDiskFromDevicesParams& params,
-    const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-    const TVector<TDeviceId>& freshDeviceIds,
+    const TVector<TVector<TDeviceId>>& replicas,
     TAllocateDiskResult* result)
 {
-    Y_DEBUG_ABORT_UNLESS(result);
-
-    const THashSet<TString> freshDeviceIdsSet(
-        freshDeviceIds.begin(),
-        freshDeviceIds.end());
-
-    if (auto error = CanCreateMirroredDiskFromDevices(
-            params,
-            replicas,
-            freshDeviceIdsSet);
+    if (auto error =
+            CanCreateMirroredDiskFromDevices(masterId, params, replicas);
         HasError(error))
     {
         return error;
     }
-
-    const TDiskId& masterId = params.DiskId;
 
     if (auto error = CreateMirroredDiskPlacementGroup(db, masterId);
         HasError(error))
@@ -8629,25 +8735,65 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         return error;
     }
 
-    NProto::EStorageMediaKind mediaKind = params.MediaKind;
+    TVector<TVector<TDeviceId>> resolvedReplicas;
+    resolvedReplicas.resize(replicas.size());
+
+    ReserveMirroredDiskReplicaDevices(masterId, replicas);
 
     for (ui32 i = 0; i < replicas.size(); ++i) {
+        if (auto error = AllocateFreshDevicesForReplica(
+                db,
+                GetReplicaDiskId(masterId, i),
+                i,
+                replicas,
+                params.BlockSize,
+                resolvedReplicas[i]);
+            HasError(error))
+        {
+            ReleaseAllocatedDevices(
+                db,
+                0,
+                masterId,
+                replicas,
+                resolvedReplicas);
+
+            TVector<TString> affectedDisks;
+            DestroyPlacementGroup(
+                db,
+                GetMirroredDiskGroupId(masterId),
+                affectedDisks);
+            return error;
+        }
+    }
+
+    for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
         TAllocateDiskResult replicaResult;
-        auto error = CreateDiskFromDevices(
-            now,
-            db,
-            TCreateDiskFromDevicesParams(
+        if (auto error = CreateSimpleDiskFromDevices(
+                now,
+                db,
                 replicaId,
-                params.BlockSize,
-                mediaKind,
-                params.Force,
-                params.KeepBlockCount),
-            replicas[i],
-            &replicaResult);
+                params,
+                ToDeviceConfig(resolvedReplicas[i]),
+                &replicaResult);
+            HasError(error))
+        {
+            DestroyPartiallyCreatedMirroredDisk(db, i, masterId);
+            ReleaseAllocatedDevices(
+                db,
+                i,
+                masterId,
+                replicas,
+                resolvedReplicas);
 
-        Y_DEBUG_ABORT_UNLESS(!HasError(error));
+            TVector<TString> affectedDisks;
+            DestroyPlacementGroup(
+                db,
+                GetMirroredDiskGroupId(masterId),
+                affectedDisks);
+            return error;
+        }
 
         auto& replica = Disks[replicaId];
         replica.MasterDiskId = masterId;
@@ -8658,19 +8804,10 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             result->Devices = replicaResult.Devices;
         }
 
-        TVector<TDeviceId> deviceIds;
-        deviceIds.reserve(replicaResult.Devices.size());
-        for (const auto& device: replicaResult.Devices) {
-            deviceIds.push_back(device.GetDeviceUUID());
-        }
-
-        ReplicaTable.UpdateReplica(masterId, i, deviceIds);
-
-        for (const auto& deviceId: deviceIds) {
-            if (freshDeviceIdsSet.contains(deviceId)) {
-                ReplicaTable.MarkReplacementDevice(masterId, deviceId, true);
-            }
-        }
+        ReplicaTable.UpdateReplica(
+            masterId,
+            i,
+            ToDeviceIds(replicaResult.Devices));
 
         UpdateDiskPlacementInfo(
             db,
@@ -8678,22 +8815,67 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             TDiskPlacementInfo{GetMirroredDiskGroupId(masterId), 0});
 
         db.UpdateDisk(BuildDiskConfig(replicaId, replica));
-    }
 
-    const ui32 replicaCount = mediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2
-                                  ? StorageConfig->GetMirror2DiskReplicaCount()
-                                  : StorageConfig->GetMirror3DiskReplicaCount();
+        for (ui32 d = 0; d < replicaResult.Devices.size(); ++d) {
+            if (!replicas[i][d].empty()) {
+                continue;
+            }
+            ReplicaTable.MarkReplacementDevice(
+                masterId,
+                replicaResult.Devices[d].GetDeviceUUID(),
+                true);
+        }
+    }
 
     auto& master = Disks[masterId];
     master.LogicalBlockSize = params.BlockSize;
-    master.ReplicaCount = replicaCount;
-    master.MediaKind = mediaKind;
+    master.ReplicaCount = replicas.size() - 1;
+    master.MediaKind = params.MediaKind;
     master.StateTs = now;
     master.State = CalculateDiskState(masterId, master);
 
     db.UpdateDisk(BuildDiskConfig(masterId, master));
 
     return {};
+}
+
+NProto::TError TDiskRegistryState::CreateDiskFromDevices(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    const TCreateDiskFromDevicesParams& params,
+    const TVector<NProto::TDeviceConfig>& devices,
+    const TVector<TVector<TDeviceId>>& replicas,
+    TAllocateDiskResult* result)
+{
+    Y_DEBUG_ABORT_UNLESS(result);
+
+    const bool isMirrored =
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
+        params.MediaKind == NProto::STORAGE_MEDIA_SSD_MIRROR3;
+
+    if (isMirrored == replicas.empty()) {
+        return MakeError(
+            E_ARGUMENT,
+            "Replicas count is inconsistent with media kind");
+    }
+
+    if (isMirrored) {
+        return CreateMirroredDiskFromDevices(
+            now,
+            db,
+            diskId,
+            params,
+            replicas,
+            result);
+    }
+    return CreateSimpleDiskFromDevices(
+        now,
+        db,
+        diskId,
+        params,
+        devices,
+        result);
 }
 
 NProto::TError TDiskRegistryState::ChangeDiskDevice(

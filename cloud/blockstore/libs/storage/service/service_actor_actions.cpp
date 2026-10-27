@@ -81,7 +81,6 @@ void TServiceActor::HandleExecuteAction(
         {"updateusedblocks",                  &TServiceActor::CreateUpdateUsedBlocksActionActor            },
         {"getdiskregistrytabletinfo",         &TServiceActor::CreateGetDiskRegistryTabletInfo              },
         {"creatediskfromdevices",             &TServiceActor::CreateCreateDiskFromDevicesActionActor       },
-        {"createmirroreddiskfromdevices",     &TServiceActor::CreateCreateMirroredDiskFromDevicesActor     },
         {"changediskdevice",                  &TServiceActor::CreateChangeDiskDeviceActionActor            },
         {"setupchannels",                     &TServiceActor::CreateSetupChannelsActionActor               },
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },

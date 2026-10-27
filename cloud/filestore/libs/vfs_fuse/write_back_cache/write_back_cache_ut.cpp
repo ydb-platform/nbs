@@ -447,11 +447,11 @@ struct TBootstrap
         UnflushedData.Write(nodeId, offset, buffer);
         auto future = Cache.WriteData(CallContext, std::move(request));
 
-        future.Subscribe([&, nodeId, offset, buffer] (auto) {
+        return future.Apply([&, nodeId, offset, buffer](const auto& completed) {
+            auto response = completed.GetValue();
             ExpectedData.Write(nodeId, offset, buffer);
+            return response;
         });
-
-        return future;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteToCache(
@@ -1568,8 +1568,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 256);
-        b.TempFileHandle.Flush();
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto* dataProcessor = accessor.GetDataProcessor();
+            const auto entryPos = accessor.GetHeader()->ReadPos;
+            auto header = dataProcessor->ReadEntryHeader(entryPos);
+            header.DataChecksum ^= 1;
+            UNIT_ASSERT(dataProcessor->WriteEntryHeader(entryPos, header));
+        }
 
         b.RecreateCache();
 
@@ -2342,6 +2356,101 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(3, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[2]);
+    }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFlush)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .LogDataOperations = false,
+        });
+
+        THashMap<ui64, TDeque<TPromise<NProto::TWriteDataResponse>>>
+            writeRequests;
+        THashMap<ui64, TVector<ui64>> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            const auto nodeId = request->GetNodeId();
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeRequests[nodeId].push_back(promise);
+            writeHandles[nodeId].push_back(request->GetHandle());
+            return promise.GetFuture();
+        };
+
+        auto completeNext = [&](ui64 nodeId, ui32 code = S_OK)
+        {
+            auto& requests = writeRequests[nodeId];
+            UNIT_ASSERT(!requests.empty());
+            auto promise = requests.front();
+            requests.pop_front();
+
+            NProto::TWriteDataResponse response;
+            response.MutableError()->SetCode(code);
+            promise.SetValue(std::move(response));
+        };
+
+        // Two entries fit in the cache, but a third entry of this size cannot
+        const TString data(400_KB, 'x');
+        b.WriteToCacheSync(1, 101, 0, data);
+        b.WriteToCacheSync(1, 102, 1_MB, data);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1][0]);
+
+        // Release handle 102 after a failed flush, retaining its dirty data
+        auto release = b.Cache.ReleaseHandle(1, 102);
+        UNIT_ASSERT(!release.HasValue());
+        completeNext(1, E_IO);
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, release.GetValue().GetCode());
+
+        // Leave room for the ring buffer's separator byte when reusing the
+        // first entry's space after wraparound.
+        auto pending2 = b.WriteToCache(2, 201, 0, data.substr(1_KB), {});
+        auto pending1 = b.WriteToCache(1, 103, 2_MB, data, {});
+        UNIT_ASSERT(!pending2.HasValue());
+        UNIT_ASSERT(!pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1][1]);
+        completeNext(1);
+
+        // Node 2 takes the freed slot. Node 1 flushes the remaining dirty data
+        // through handle 103, whose own write is still pending
+        UNIT_ASSERT(pending2.HasValue());
+        UNIT_ASSERT(!HasError(pending2.GetValue().GetError()));
+        UNIT_ASSERT(!pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(103, writeHandles[1][2]);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles[2].size());
+        UNIT_ASSERT_VALUES_EQUAL(201, writeHandles[2][0]);
+
+        completeNext(2, E_FS_NOSPC);
+        UNIT_ASSERT(pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOSPC,
+            pending1.GetValue().GetError().GetCode());
+
+        auto releaseFlushHandle = b.Cache.ReleaseHandle(1, 103);
+        UNIT_ASSERT_C(
+            !releaseFlushHandle.HasValue(),
+            "Handle must not be released while a session write is in flight");
+
+        completeNext(1);
+        UNIT_ASSERT(releaseFlushHandle.HasValue());
+        UNIT_ASSERT(!HasError(releaseFlushHandle.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles[2].size());
+        UNIT_ASSERT_VALUES_EQUAL(201, writeHandles[2][1]);
+        completeNext(2);
+        b.CheckStatsAreEmpty();
     }
 
     Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)

@@ -445,19 +445,16 @@ public:
     struct TCreateDiskFromDevicesParams
     {
         explicit TCreateDiskFromDevicesParams(
-            TDiskId diskId,
             ui32 blockSize,
             NProto::EStorageMediaKind mediaKind,
             bool force,
             bool keepBlockCount)
-            : DiskId(std::move(diskId))
-            , BlockSize(blockSize)
+            : BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Force(force)
             , KeepBlockCount(keepBlockCount)
         {}
 
-        const TDiskId DiskId;
         ui32 BlockSize;
         NProto::EStorageMediaKind MediaKind;
         bool Force = false;
@@ -917,16 +914,10 @@ public:
     NProto::TError CreateDiskFromDevices(
         TInstant now,
         TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
-        TAllocateDiskResult* result);
-
-    NProto::TError CreateMirroredDiskFromDevices(
-        TInstant now,
-        TDiskRegistryDatabase& db,
-        const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const TVector<TDeviceId>& freshDeviceIds,
+        const TVector<TVector<TDeviceId>>& replicas,
         TAllocateDiskResult* result);
 
     NProto::TError ChangeDiskDevice(
@@ -1601,14 +1592,56 @@ private:
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig& agent);
 
-    NProto::TError CanCreateDiskFromDevices(
+    NProto::TError CreateSimpleDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<NProto::TDeviceConfig>& devices) const;
+        const TVector<NProto::TDeviceConfig>& devices,
+        TAllocateDiskResult* result);
 
     NProto::TError CanCreateMirroredDiskFromDevices(
+        const TDiskId& masterId,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<NProto::TDeviceConfig>>& replicas,
-        const THashSet<TDeviceId>& freshDeviceIds) const;
+        const TVector<TVector<TDeviceId>>& replicas) const;
+
+    void CollectRacksByReplicas(
+        ui32 currentReplicaIdx,
+        const TVector<TVector<TDeviceId>>& replicas,
+        THashSet<TString>& preferredRacks,
+        THashSet<TString>& forbiddenRacks) const;
+
+    void ReserveMirroredDiskReplicaDevices(
+        const TDiskId& masterId,
+        const TVector<TVector<TDeviceId>>& replicas);
+
+    NProto::TError AllocateFreshDevicesForReplica(
+        TDiskRegistryDatabase& db,
+        const TDiskId& replicaId,
+        ui32 replicaIndex,
+        const TVector<TVector<TDeviceId>>& replicas,
+        ui32 blockSize,
+        TVector<TDeviceId>& resolvedReplica);
+
+    void ReleaseAllocatedDevices(
+        TDiskRegistryDatabase& db,
+        ui32 fromReplicaIdx,
+        const TDiskId& masterId,
+        const TVector<TVector<TDeviceId>>& replicas,
+        const TVector<TVector<TDeviceId>>& resolvedReplicas);
+
+    void DestroyPartiallyCreatedMirroredDisk(
+        TDiskRegistryDatabase& db,
+        ui32 lastReplicaIdx,
+        const TDiskId& masterId);
+
+    NProto::TError CreateMirroredDiskFromDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& masterId,
+        const TCreateDiskFromDevicesParams& params,
+        const TVector<TVector<TDeviceId>>& replicas,
+        TAllocateDiskResult* result);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

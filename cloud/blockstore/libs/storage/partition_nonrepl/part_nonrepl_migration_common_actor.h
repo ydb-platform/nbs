@@ -178,7 +178,7 @@ private:
     TPartitionDiskCountersPtr DstCounters;
     TPartitionDiskCountersPtr MigrationCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     // Usage statistics
     ui64 NetworkBytes = 0;

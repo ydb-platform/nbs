@@ -17,7 +17,6 @@ SRCS(
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
     disk_registry_actor_create_disk_from_devices.cpp
-    disk_registry_actor_create_mirrored_disk_from_devices.cpp
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_ensure_state_integrity.cpp
@@ -40,7 +39,6 @@ SRCS(
     disk_registry_actor_placement.cpp
     disk_registry_actor_publish_disk_state.cpp
     disk_registry_actor_writable_state.cpp
-    disk_registry_actor_suspend_secure_erase.cpp
     disk_registry_actor_purge_device_cms.cpp
     disk_registry_actor_purge_host_cms.cpp
     disk_registry_actor_query_agents_info.cpp
@@ -55,6 +53,7 @@ SRCS(
     disk_registry_actor_secure_erase.cpp
     disk_registry_actor_set_user_id.cpp
     disk_registry_actor_suspend_device.cpp
+    disk_registry_actor_suspend_secure_erase.cpp
     disk_registry_actor_switch_agent_to_read_only.cpp
     disk_registry_actor_update_agent_state.cpp
     disk_registry_actor_update_cms_device_state.cpp

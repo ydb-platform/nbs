@@ -94,6 +94,7 @@ TEST(TFastShardClientTest, ShouldListEveryStorageNodeMethod)
         "acquiredevices",
         "advancelsnlowwatermark",
         "formatdevice",
+        "listdevices",
         "readjournaltail",
         "readpages",
         "releasedevices",
@@ -284,6 +285,34 @@ TEST(TFastShardClientTest, ShouldFormatWholeDevice)
     EXPECT_EQ("d1", f.Storage->FormatCalls[0].GetDeviceUUID());
     EXPECT_TRUE(f.Storage->FormatCalls[0].GetWholeDevice());
     EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldListDevices)
+{
+    TFixture f;
+
+    auto& d1 = *f.Storage->ListResp.AddDevices();
+    d1.SetDeviceUUID("d1");
+    d1.SetBlockSize(4096);
+    d1.SetLogMetaSize(1024 * 4096);
+    d1.SetLogDataSize(2048 * 4096);
+    d1.SetDataSize(8192 * 4096);
+
+    auto& d2 = *f.Storage->ListResp.AddDevices();
+    d2.SetDeviceUUID("d2");
+    d2.SetBlockSize(512);
+    d2.SetDataSize(1024 * 512);
+
+    EXPECT_TRUE(f.Run("listdevices", {"--client-id", "cli"}));
+
+    ASSERT_EQ(1u, f.Storage->ListCalls.size());
+    EXPECT_EQ("cli", f.Storage->ListCalls[0].GetHeaders().GetClientId());
+    EXPECT_EQ(
+        "DeviceUUID: d1 BlockSize: 4096 LogMetaSize: 4194304 "
+        "LogDataSize: 8388608 DataSize: 33554432\n"
+        "DeviceUUID: d2 BlockSize: 512 LogMetaSize: 0 "
+        "LogDataSize: 0 DataSize: 524288\n",
+        f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)

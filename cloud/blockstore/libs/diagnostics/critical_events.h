@@ -59,7 +59,6 @@ using TCritEventParams =
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
-    xxx(DiskAgentJournalledDeviceCreationError)                                \
     xxx(DiskAgentJournalledDeviceTcpServerStartError)                          \
     xxx(UnexpectedIdentifierRepetition)                                        \
     xxx(ChaosGeneratedError)                                                   \

@@ -38,6 +38,7 @@ RECURSE(
     testlib
     time_series_vec
     union_copy_set
+    uring
     wilson_ids
     workload
     workload

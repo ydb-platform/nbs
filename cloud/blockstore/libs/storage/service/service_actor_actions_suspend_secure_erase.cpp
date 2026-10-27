@@ -2,21 +2,13 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/core/log.h>
 
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER)
 
 namespace {
 
@@ -58,7 +50,7 @@ TSuspendSecureEraseActor::TSuspendSecureEraseActor(
 
 void TSuspendSecureEraseActor::Bootstrap(const TActorContext& ctx)
 {
-    NPrivateProto::TDiskRegistrySuspendSecureEraseRequest proto;
+    NProto::TSetSuspendSecureEraseRequest proto;
 
     if (!google::protobuf::util::JsonStringToMessage(Input, &proto).ok()) {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
@@ -68,7 +60,7 @@ void TSuspendSecureEraseActor::Bootstrap(const TActorContext& ctx)
 
     auto request =
         std::make_unique<TEvDiskRegistry::TEvSetSuspendSecureEraseRequest>();
-    request->Record.SetState(proto.GetState());
+    request->Record.SetSuspend(proto.GetSuspend());
 
     Become(&TThis::StateWork);
 
@@ -80,7 +72,7 @@ void TSuspendSecureEraseActor::ReplyAndDie(const TActorContext& ctx)
     auto response =
         std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
-        NPrivateProto::TDiskRegistrySuspendSecureEraseResponse(),
+        NProto::TSetSuspendSecureEraseResponse(),
         response->Record.MutableOutput());
 
     LWTRACK(
