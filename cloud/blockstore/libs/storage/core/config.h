@@ -163,10 +163,13 @@ public:
     ui32 GetWriteBlobThresholdSSD() const;
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThreshold() const;
+    [[nodiscard]] ui32 GetFlushThresholdSSD() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
+    [[nodiscard]] ui32 GetFreshBlobCountFlushThresholdSSD() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
     TDuration GetFreshBlobAgeFlushThresholdSSD() const;
     TDuration GetFreshBlobAgeFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 
@@ -346,13 +349,16 @@ public:
     ui32 GetCompactionScoreLimitForBackpressure() const;
     ui32 GetCompactionScoreFeatureMaxValue() const;
     ui32 GetFreshByteCountThresholdForBackpressure() const;
+    [[nodiscard]] ui32 GetFreshByteCountThresholdForBackpressureSSD() const;
     ui32 GetFreshByteCountLimitForBackpressure() const;
+    [[nodiscard]] ui32 GetFreshByteCountLimitForBackpressureSSD() const;
     ui32 GetFreshByteCountFeatureMaxValue() const;
     ui64 GetCleanupQueueBytesThresholdForBackpressure() const;
     ui64 GetCleanupQueueBytesLimitForBackpressure() const;
     ui32 GetCleanupQueueBytesFeatureMaxValue() const;
     ui32 GetMaxWriteCostMultiplier() const;
     ui32 GetFreshByteCountHardLimit() const;
+    [[nodiscard]] ui32 GetFreshByteCountHardLimitSSD() const;
     ui64 GetFreshLogicalBlocksByteCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;
 

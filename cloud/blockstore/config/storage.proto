@@ -207,7 +207,8 @@ message TStorageServiceConfig
     // to blobstorage (as a merged blob).
     optional uint32 WriteBlobThreshold = 6;
 
-    // The size of data (in bytes) in the fresh blocks table that triggers flushing.
+    // The size of data (in bytes) in the fresh blocks table that triggers flushing
+    // for HDD disks.
     optional uint32 FlushThreshold = 7;
 
     // Maximum number of fresh blocks to keep.
@@ -634,7 +635,7 @@ message TStorageServiceConfig
     // Affects only nonrepl volumes.
     optional uint32 MigrationIndexCachingInterval = 189;
 
-    // Flush threshold for fresh blobs count in fresh channel.
+    // Flush threshold for fresh blobs count in fresh channel for HDD disks.
     optional uint32 FreshBlobCountFlushThreshold = 190;
 
     // Max bandwidth used by migration in MiB/s (actual bandwidth is x2 due to
@@ -703,7 +704,7 @@ message TStorageServiceConfig
     // Max number of volumes started locally.
     optional uint32 MaxLocalVolumes = 211;
 
-    // Flush threshold for fresh blob byte count.
+    // Flush threshold for fresh blob byte count for HDD disks.
     optional uint32 FreshBlobByteCountFlushThreshold = 212;
 
     // Max block count in one transaction for updating logicalUsedBlocks.
@@ -880,8 +881,8 @@ message TStorageServiceConfig
     // Value for the 'host' label.
     optional string DiskRegistryCountersHost = 283;
 
-    // Maximum allowed fresh byte count after which we start to reject writes.
-    // Zero disables this limit.
+    // Maximum allowed fresh byte count after which we start to reject writes
+    // for HDD disks. Zero disables this limit.
     optional uint32 FreshByteCountHardLimit = 284;
 
     // Interval to postpone volume push/pull.
@@ -1757,4 +1758,21 @@ message TStorageServiceConfig
     // flushing in partition v1 for HDD/hybrid volumes. Zero disables age-based
     // flushing.
     optional uint32 FreshBlobAgeFlushThresholdHDD = 545;
+    // The size of data (in bytes) in the fresh blocks table that triggers flushing
+    // for SSD disks.
+    optional uint32 FlushThresholdSSD = 546;
+
+    // Flush threshold for fresh blobs count in fresh channel for SSD disks.
+    optional uint32 FreshBlobCountFlushThresholdSSD = 547;
+
+    // Flush threshold for fresh blob byte count for SSD disks.
+    optional uint32 FreshBlobByteCountFlushThresholdSSD = 548;
+
+    // Maximum allowed fresh byte count after which we start to reject writes
+    // for SSD disks. Zero disables this limit.
+    optional uint32 FreshByteCountHardLimitSSD = 549;
+
+    // Fresh byte count backpressure settings for SSD disks.
+    optional uint32 FreshByteCountLimitForBackpressureSSD = 550;
+    optional uint32 FreshByteCountThresholdForBackpressureSSD = 551;
 }

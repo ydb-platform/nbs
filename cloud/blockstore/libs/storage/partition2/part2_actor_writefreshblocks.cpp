@@ -460,7 +460,11 @@ void TPartitionActor::WriteFreshBlocks(
 
     const auto freshByteCount =
         State->GetFreshBlockCount() * State->GetBlockSize();
-    if (freshByteCount >= Config->GetFreshByteCountHardLimit()) {
+    const auto freshByteCountHardLimit =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetFreshByteCountHardLimitSSD()
+            : Config->GetFreshByteCountHardLimit();
+    if (freshByteCount >= freshByteCountHardLimit) {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
