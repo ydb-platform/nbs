@@ -49,10 +49,11 @@ NProto::TError MakeSchemeShardError(
 }
 
 NProto::TError MakeDescribeSchemeError(
-    const NKikimrScheme::TEvDescribeSchemeResult& result)
+    const NKikimrScheme::TEvDescribeSchemeResult& result,
+    bool addPathToError)
 {
     auto error = MakeSchemeShardError(result.GetStatus(), result.GetReason());
-    if (HasError(error) && result.GetPath()) {
+    if (addPathToError && HasError(error) && result.GetPath()) {
         // Enrich the error message with the path to improve diagnostics
         error.SetMessage(
             TStringBuilder()

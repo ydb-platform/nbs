@@ -252,7 +252,14 @@ public:
      */
     void SetCorrupted();
 
-    [[nodiscard]] ui64 GetRawCapacity() const;
+    [[nodiscard]] ui64 GetDataCapacity() const;
+
+    /**
+     * Returns the desired data capacity in bytes. It may differ from
+     * GetDataCapacity() while a resize is pending.
+     */
+    [[nodiscard]] ui64 GetTargetDataCapacity() const;
+
     [[nodiscard]] ui64 GetRawUsedBytesCount() const;
     [[nodiscard]] ui32 GetVersion() const;
     [[nodiscard]] ui64 GetMaxObservedEntryByteCount() const;

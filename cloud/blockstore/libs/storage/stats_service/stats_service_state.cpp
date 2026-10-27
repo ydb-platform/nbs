@@ -232,7 +232,9 @@ TVolumeStatsInfo* TStatsServiceState::GetOrAddVolume(
         it = VolumesById.emplace_direct(
             ctx,
             logicalDiskId,
-            TVolumeStatsInfo(std::move(config), HistCounterOptions));
+            TVolumeStatsInfo(
+                std::move(config),
+                DiagnosticsConfig));
 
         auto rit = RecentVolumesById.find(logicalDiskId);
         if (rit != RecentVolumesById.end()) {

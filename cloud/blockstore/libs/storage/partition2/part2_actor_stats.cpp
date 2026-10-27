@@ -133,7 +133,7 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
 
     PartCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::Repl,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     return counters;
 }

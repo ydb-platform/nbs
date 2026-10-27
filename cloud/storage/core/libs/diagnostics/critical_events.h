@@ -20,6 +20,7 @@ namespace NCloud {
     xxx(FailedToSerializeRdmaError)                                            \
     xxx(SchemeCacheError)                                                      \
     xxx(FileRingBufferCorruptionDetectedError)                                 \
+    xxx(FileRingBufferInitializationError)                                     \
     xxx(AccessToCorruptedFileRingBufferError)                                  \
     xxx(JournalStrandedRecordDetectedError)                                    \
     xxx(JournalledDeviceCreationError)                                         \

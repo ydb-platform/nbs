@@ -260,7 +260,7 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
     }
 
     if (!data.PartCountersData.DiskCounters) {
@@ -352,7 +352,7 @@ std::optional<TVolumeDatabase::TPartStats> TVolumeActor::UpdatePartCounters(
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
         statInfo->LastMetrics = std::move(partCountersData.BlobLoadMetrics);
     }
 
@@ -551,7 +551,7 @@ TVolumeActor::GetPartCounters(const TString& diskId)
 {
     auto stats = CreatePartitionDiskCounters(
         State->CountersPolicy(),
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
     ui64 systemCpu = 0;
     ui64 userCpu = 0;
     // XXX - we need to "manually" calculate total channel history

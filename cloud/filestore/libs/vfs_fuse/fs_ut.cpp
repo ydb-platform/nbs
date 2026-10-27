@@ -82,17 +82,31 @@ constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
 constexpr ui64 dotDotSize = dotSize;
 
 // Small directory listings for the multi-chunk paging tests below, kept tiny
-// so sanitizer builds don't time out building multi-megabyte responses. Each
-// entry serializes to +- 200 bytes; SecondChunkReadOffset lands past the first
-// chunk (~105 KB) to page in the second.
+// so sanitizer builds don't time out building multi-megabyte responses. The
+// second chunk is paged in by reading at the end of the first one.
 constexpr ui32 FirstChunkEntryCount = 600;
 constexpr ui32 SecondChunkEntryCount = 300;
-constexpr i64 SecondChunkReadOffset = 120'000;
 
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
 
 static const TTempDir TempDir;
+
+TString GetFirstChunkFileName(ui32 index)
+{
+    return "first_chunk_file_" + ToString(index) + ".txt";
+}
+
+i64 GetFirstChunkSize()
+{
+    i64 size = dotSize + dotDotSize;
+    for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
+        size += AlignUp<ui64>(
+            sizeof(fuse_direntplus) + GetFirstChunkFileName(i).size(),
+            sizeof(ui64));
+    }
+    return size;
+}
 
 TString CreateBuffer(size_t len, char fill = 0)
 {
@@ -1352,6 +1366,320 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 
+    void DoShouldServeLastChunkFromCacheAfterEmptyPage(
+        const TString& nextCookie,
+        const TString& emptyPageCookie)
+    {
+        TBootstrap bootstrap;
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                result.SetCookie(emptyPageCookie);
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie(nextCookie);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+        // ".", "..", "1.txt" and "2.txt" have the same padded dirent size
+        const ui32 size = read.GetValue();
+        UNIT_ASSERT_GT(size, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+        const ui32 entrySize = size / 4;
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        // seekdir() back to "2.txt"
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size - entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyFinalPage)
+    {
+        // tablet: the entries after the cookie were unlinked between pages
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "3.txt" /* nextCookie */,
+            "" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyPageWithCookie)
+    {
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "42" /* nextCookie */,
+            "42" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadDirBeyondCachedContent)
+    {
+        TBootstrap bootstrap;
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            const ui64 call = ++numCalls;
+
+            NProto::TListNodesResponse result;
+            for (ui64 id = 2 * call - 1; id <= 2 * call; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie("next");
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+
+        // ".", "..", "1.txt" and "2.txt" have the same padded dirent size
+        const ui32 size = read.GetValue();
+        UNIT_ASSERT_GT(size, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+        const ui32 entrySize = size / 4;
+
+        auto isInvalidArgument = [](const TSystemError& e)
+        {
+            return e.Status() == EINVAL;
+        };
+
+        // lseek() past the listed entries
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            10 * entrySize);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read.GetValue(WaitTimeout),
+            TSystemError,
+            isInvalidArgument);
+        UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2 * entrySize, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            3 * entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            5 * entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            10 * entrySize);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read.GetValue(WaitTimeout),
+            TSystemError,
+            isInvalidArgument);
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRestoreLastChunkAfterEmptyFinalPage)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(256 * 1024);
+
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            UNIT_ASSERT(state.SerializeToString(
+                result.MutableSession()->MutableSessionState()));
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls = 0;
+        auto listNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie("3.txt");
+            return MakeFuture(result);
+        };
+
+        const ui64 nodeId = 123;
+        ui64 handleId = 0;
+        ui32 size = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) /
+            "directory_handles_storage.empty_final_page");
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            auto otherHandle =
+                bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(otherHandle.Wait(WaitTimeout));
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            size = read.GetValue();
+            UNIT_ASSERT_GT(size, 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+
+            // frees the first storage record, the next record reuses it and
+            // is loaded first after the restart
+            auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+                nodeId,
+                otherHandle.GetValue());
+            UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start(false /* sendInitRequest */);
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            // seekdir() back to "2.txt"
+            const ui32 entrySize = size / 4;
+            auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size - entrySize);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+        }
+    }
+
     Y_UNIT_TEST(ShouldDropStoredDirectoryHandleWhenStorageExpansionIsRejected)
     {
         const TString sessionId = CreateGuidAsString();
@@ -1589,8 +1917,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -1684,7 +2011,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
 
         // Go beyond chunk 1
-        auto largeOffset = size1 + SecondChunkReadOffset;
+        auto largeOffset = GetFirstChunkSize();
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -1789,8 +2116,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -1854,7 +2180,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
-        const auto largeOffset = size1 + SecondChunkReadOffset;
+        const auto largeOffset = GetFirstChunkSize();
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -2080,8 +2406,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                 if (!request->GetCookie()) {
                     for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                        result.AddNames()->assign(
-                            "first_chunk_file_" + ToString(i) + ".txt");
+                        result.AddNames()->assign(GetFirstChunkFileName(i));
                         auto* node = result.AddNodes();
                         node->SetId(100 + i);
                         node->SetType(NProto::E_REGULAR_NODE);
@@ -2128,7 +2453,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 0);
 
             // Go beyond the first chunk
-            auto largeOffset = SecondChunkReadOffset;
+            auto largeOffset = GetFirstChunkSize();
             read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
                 nodeId,
                 handleId,
