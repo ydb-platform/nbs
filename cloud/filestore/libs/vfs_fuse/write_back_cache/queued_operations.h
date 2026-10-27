@@ -71,6 +71,8 @@ public:
         NThreading::TPromise<NCloud::NProto::TError> promise,
         const NCloud::NProto::TError& error);
 
+    void CompleteShutdownPromise(NThreading::TPromise<void> promise);
+
     void CompleteAcquireBarrierPromise(
         NThreading::TPromise<TResultOrError<ui64>> promise,
         ui64 barrierId);
