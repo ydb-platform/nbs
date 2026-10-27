@@ -143,9 +143,11 @@ struct TEvSSProxy
     struct TDescribeSchemeRequest
     {
         const TString Path;
+        const bool AddPathToError;
 
-        explicit TDescribeSchemeRequest(TString path)
+        TDescribeSchemeRequest(TString path, bool addPathToError)
             : Path(std::move(path))
+            , AddPathToError(addPathToError)
         {}
     };
 
