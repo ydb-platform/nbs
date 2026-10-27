@@ -79,6 +79,16 @@ struct TFlushOrReleasePromiseFailedEvent
     }
 };
 
+struct TShutdownPromiseCompletedEvent
+{
+    NThreading::TPromise<void> Promise;
+
+    void Invoke()
+    {
+        Promise.TrySetValue();
+    }
+};
+
 struct TAcquireBarrierPromiseCompletedEvent
 {
     NThreading::TPromise<TResultOrError<ui64>> Promise;
@@ -117,6 +127,7 @@ using TEventVariant = std::variant<
     TWriteDataPromiseFailedEvent,
     TFlushOrReleasePromiseCompletedEvent,
     TFlushOrReleasePromiseFailedEvent,
+    TShutdownPromiseCompletedEvent,
     TAcquireBarrierPromiseCompletedEvent,
     TAcquireBarrierPromiseFailedEvent,
     TScheduleFlushEvent>;
@@ -220,6 +231,12 @@ void TQueuedOperations::FailFlushOrReleasePromise(
 {
     Events.push_back(
         TFlushOrReleasePromiseFailedEvent{std::move(promise), error});
+}
+
+void TQueuedOperations::CompleteShutdownPromise(
+    NThreading::TPromise<void> promise)
+{
+    Events.push_back(TShutdownPromiseCompletedEvent{std::move(promise)});
 }
 
 void TQueuedOperations::CompleteAcquireBarrierPromise(

@@ -44,6 +44,7 @@ public:
               Stats->GetWriteDataRequestManagerStats(),
               Stats->GetNodeStateHolderStats(),
               TFlushBatchLimits{},
+              {},
               "[tag]")
     {
         State.Init();

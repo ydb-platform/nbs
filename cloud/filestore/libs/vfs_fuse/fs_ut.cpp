@@ -44,7 +44,6 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
-#include <util/system/file_lock.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
@@ -52,6 +51,7 @@
 #include <util/random/random.h>
 #include <util/system/align.h>
 #include <util/system/file.h>
+#include <util/system/file_lock.h>
 #include <util/system/info.h>
 #include <util/system/mutex.h>
 
@@ -7193,7 +7193,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!requestedPath.Exists());
     }
 
-    Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
+    void TestShouldRestoreAndDrainCacheAfterSessionRestart(bool handlesReleased)
     {
         const TString sessionId = CreateGuidAsString();
 
@@ -7233,6 +7233,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             {
                 counter++;
                 NProto::TWriteDataResponse result;
+                return MakeFuture(result);
+            };
+
+            bootstrap.Service->SetNodeAttrHandler =
+                [](auto, const auto& request)
+            {
+                NProto::TSetNodeAttrResponse result;
+                result.MutableNode()->SetId(request->GetNodeId());
+                result.MutableNode()->SetSize(request->GetUpdate().GetSize());
                 return MakeFuture(result);
             };
 
@@ -7276,6 +7285,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 EFileRingBufferVersion::V6);
 
             UNIT_ASSERT(!ringBuffer.Empty());
+            if (handlesReleased) {
+                // Model a restart after the last cached handle was released.
+                // Tag 1 is the persisted UnflushedHandleReleased state.
+                constexpr ui32 UnflushedHandleReleasedTag = 1;
+                UNIT_ASSERT_VALUES_EQUAL(1, ringBuffer.Size());
+                const auto entry = ringBuffer.Front();
+                UNIT_ASSERT(!HasError(entry.Error));
+                UNIT_ASSERT(!HasError(ringBuffer.SetTag(
+                    entry.Data.data(),
+                    UnflushedHandleReleasedTag)));
+            }
         }
 
         {
@@ -7287,15 +7307,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            // Drain triggers flush immediately
-            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
+            // Initialization drains the existing cache with the feature
+            // disabled. Released handles cannot flush and retain their legacy
+            // data-drop behavior.
+            const int restoredWrites = handlesReleased ? 0 : 1;
+            UNIT_ASSERT_VALUES_EQUAL(restoredWrites, writeDataCalled2.load());
 
             auto flush =
                 bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
             UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
 
-            // cache should be flushed
-            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
+            UNIT_ASSERT_VALUES_EQUAL(restoredWrites, writeDataCalled2.load());
 
             auto reqWrite = std::make_shared<TWriteRequest>(
                 nodeId,
@@ -7308,7 +7330,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             // Cache is drained and disabled - new requests go directly
             // to the session
-            UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
+            UNIT_ASSERT_VALUES_EQUAL(
+                restoredWrites + 1,
+                writeDataCalled2.load());
+
+            auto truncate = std::make_shared<TSetAttrRequest>(nodeId, handleId);
+            truncate->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            truncate->In->Body.size = 0;
+            auto truncated = bootstrap.Fuse->SendRequest(truncate);
+            UNIT_ASSERT_NO_EXCEPTION(truncated.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, truncate->Out->Header.error);
+            UNIT_ASSERT_VALUES_EQUAL(0, truncate->Out->Body.attr.size);
 
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT(suspend.Wait(WaitTimeout));
@@ -7335,6 +7367,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
 
         UNIT_ASSERT(!path.Exists());
+    }
+
+    Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
+    {
+        TestShouldRestoreAndDrainCacheAfterSessionRestart(false);
+    }
+
+    Y_UNIT_TEST(ShouldDrainRestoredCacheWithoutLiveHandlesWhenCacheIsDisabled)
+    {
+        TestShouldRestoreAndDrainCacheAfterSessionRestart(true);
     }
 
     Y_UNIT_TEST(ShouldUpdateFileSizeWhenUsingWriteBackCache)
@@ -8254,7 +8296,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(writeDSync).Wait(WaitTimeout));
         UNIT_ASSERT(writeDSync->Out->Header.error);
 
-        // 4. Release - should fail because data is dropped
+        // 4. Release - should fail because cached data could not be flushed
         auto release = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,
@@ -8262,7 +8304,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
         UNIT_ASSERT(release->Out->Header.error);
 
-        // 5. Release again - success because of no data in the cache
+        // 5. Release again - success because the handle is no longer tracked
         auto release2 = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,
@@ -8578,10 +8620,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // We use WriteBackCache in order to prevent race and enforce strict
         // ordering between StopAsync and GetAttrRequest execution.
         //
-        // WriteBackCache::FlushAll is executed after CompletionQueue is stopped
+        // WriteBackCache::Shutdown is executed after CompletionQueue is stopped
         // (new requests will be canceled) and before FUSE loop is unmounted.
         //
-        // We catch the moment when FlushAll is called by listening to
+        // We catch the moment when Shutdown is called by listening to
         // WriteData requests.
 
         features.SetServerWriteBackCacheEnabled(true);
@@ -8614,7 +8656,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto stopFuture = bootstrap.StopAsync();
 
-        // StopAsync triggers FlushAll
+        // StopAsync triggers shutdown flushing
         writeDataCalledPromise.GetFuture().GetValue(WaitTimeout);
 
         auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(NodeId + 1);
@@ -8642,7 +8684,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             1000000000000,
             "got maxTime " << maxTime);
 
-        // Complete FlushAll so StopAsync can finish
+        // Complete the shutdown flush so StopAsync can finish
         responsePromise.SetValue(NProto::TWriteDataResponse());
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
@@ -8732,8 +8774,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         // Deadlock previously happened when:
         // - automatic flush was executed on a scheduler thread;
-        // - at the same time, Stop was requested and triggered FlushAllData;
-        // - FlushAllData continuation was called on the same scheduler thread;
+        // - at the same time, Stop was requested and started cache shutdown;
+        // - shutdown continuation was called on the same scheduler thread;
         // - Stop continuation was called on the same scheduler thread and tried
         //   to stop scheduler.
 
@@ -8760,13 +8802,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             writeDataCalled.SetValue();
 
             // Returns a pending future that will be completed manually on a
-            // scheduler thread after verifying FlushAll is in progress
+            // scheduler thread after verifying shutdown is in progress
             return writeDataPromise.GetFuture();
         };
 
         bootstrap.Start();
         Y_DEFER
         {
+            writeDataPromise.TrySetValue({});
             bootstrap.Stop();
         };
 
@@ -8784,21 +8827,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
 
-        auto counter = bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
-                           ->FindSubgroup("host", "cluster")
-                           ->FindSubgroup("filesystem", FileSystemId)
-                           ->FindSubgroup("client", "")
-                           ->FindSubgroup("cloud", "")
-                           ->FindSubgroup("folder", "")
-                           ->FindSubgroup("module", "WriteBackCache")
-                           ->GetCounter("FlushAllRequests_InProgressCount");
+        auto cacheCounters =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
+                ->FindSubgroup("host", "cluster")
+                ->FindSubgroup("filesystem", FileSystemId)
+                ->FindSubgroup("client", "")
+                ->FindSubgroup("cloud", "")
+                ->FindSubgroup("folder", "")
+                ->FindSubgroup("module", "WriteBackCache");
+        auto flushAllCounter =
+            cacheCounters->GetCounter("FlushAllRequests_InProgressCount");
+        auto stoppingCounter = cacheCounters->FindSubgroup("state", "Stopping")
+                                   ->GetCounter("OperationalState");
 
         // Automatic flush does not create a request internally
-        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, flushAllCounter->GetAtomic());
 
         auto stopFuture = bootstrap.StopAsync();
 
-        // Wait until FlushAll is triggered in session destroy handler
+        // Wait until shutdown begins without creating a FlushAll request.
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]
@@ -8806,14 +8853,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 // Stats are updated automatically with 1-second interval
                 // Update it manually to speed up the test
                 bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                return counter->GetAtomic() > 0;
+                return stoppingCounter->GetAtomic() > 0;
             }));
+        UNIT_ASSERT_VALUES_EQUAL(0, flushAllCounter->GetAtomic());
 
         // WriteData completion should be done in a Scheduler thread, otherwise
         // the deadlock won't reproduce
         bootstrap.Scheduler->Schedule(
             TInstant::Zero(),
-            [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
+            [writeDataPromise]() mutable { writeDataPromise.TrySetValue({}); });
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
