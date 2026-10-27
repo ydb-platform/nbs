@@ -1063,12 +1063,12 @@ public:
 private:
     NProto::TError CheckReady() const
     {
-        if (State->Health.IsBroken()) {
-            return State->Health.GetError();
-        }
-
         if (!State->Initialized || State->Stopped) {
             return MakeError(E_REJECTED, "storage group is shutdown");
+        }
+
+        if (State->Health.IsBroken()) {
+            return State->Health.GetError();
         }
 
         return {};
