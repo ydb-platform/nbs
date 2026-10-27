@@ -11,7 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
-// Each instance cleans one cell independently of the user-facing operation.
+// Each instance retries cleanup in one cell; the parent waits for every cell.
 type deleteDiskFromCellTask struct {
 	deleteDiskTask
 	cleanupID string

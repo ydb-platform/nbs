@@ -263,9 +263,10 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	if deleteIfNonExistent {
 		storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 		storage.On("PrepareDiskCleanup", ctx, "disk", []string{"toplevel_task_id_delete_disk_from_cell_zone"}, false).Return(true, nil).Once()
-		storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+		storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string{"toplevel_task_id_delete_disk_from_cell_zone"}, nil).Once()
 		execCtx.On("SaveState", ctx).Return(nil).Twice()
 		scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_cell_zone"), "disks.DeleteDiskFromCell", "", "", mock.Anything).Return("cleanup", nil).Once()
+		scheduler.On("WaitTask", ctx, execCtx, "cleanup").Return(nil, nil).Once()
 	}
 
 	err := task.Run(ctx, execCtx)

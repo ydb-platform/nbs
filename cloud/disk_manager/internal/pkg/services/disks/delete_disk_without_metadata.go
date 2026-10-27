@@ -2,6 +2,7 @@ package disks
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,8 +126,14 @@ func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.
 			return err
 		}
 	}
+	taskIDs := make([]string, 0, len(t.state.CleanupCellIds))
 	for i, cellID := range t.state.CleanupCellIds {
-		_, err := t.scheduler.ScheduleNonCancellableTask(
+		// A released reservation means cleanup committed successfully, even if
+		// the task result was collected while another cell was unavailable.
+		if !slices.Contains(reservedIDs, cleanupIDs[i]) {
+			continue
+		}
+		taskID, err := t.scheduler.ScheduleNonCancellableTask(
 			diskCleanupTaskContext(ctx, cleanupIDs[i]),
 			"disks.DeleteDiskFromCell", "", "",
 			&protos.DeleteDiskFromCellRequest{
@@ -134,6 +141,15 @@ func (t *deleteDiskTask) scheduleDiskCleanup(ctx context.Context, execCtx tasks.
 				Sync: t.request.Sync, CleanupId: cleanupIDs[i],
 			},
 		)
+		if err != nil {
+			return err
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+	// Schedule every cell before waiting so an unavailable cell does not
+	// prevent the other workers from making progress.
+	for _, taskID := range taskIDs {
+		_, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
 		if err != nil {
 			return err
 		}

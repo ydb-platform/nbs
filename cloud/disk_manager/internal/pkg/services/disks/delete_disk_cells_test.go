@@ -44,11 +44,16 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, true).Return((*resources.DiskMeta)(nil), nil).Once()
 				storage.On("IsDiskDeletionCompleted", ctx, "disk").Return(false, nil).Once()
 				storage.On("PrepareDiskCleanup", ctx, "disk", ids, false).Return(true, nil).Once()
-				storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil)
+				storage.On("GetDiskCleanupIDs", ctx, "disk").Return(ids, nil)
 				execCtx.On("SaveState", ctx).Return(nil).Twice()
+				scheduled := make(map[int]bool)
 				schedule := func(i int, err error) {
 					scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, ids[i]), "disks.DeleteDiskFromCell", "", "",
-						&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: []string{"cell-a", "cell-b"}[i]}, Sync: sync, CleanupId: ids[i]}).Return("worker", err).Once()
+						&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: []string{"cell-a", "cell-b"}[i]}, Sync: sync, CleanupId: ids[i]}).Run(func(mock.Arguments) {
+						if err == nil {
+							scheduled[i] = true
+						}
+					}).Return(fmt.Sprintf("worker-%d", i), err).Once()
 				}
 				schedule(0, nil)
 				if failScheduling {
@@ -56,9 +61,16 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 				} else {
 					schedule(1, nil)
 				}
+				for i := range ids {
+					scheduler.On("WaitTask", ctx, execCtx, fmt.Sprintf("worker-%d", i)).Run(func(mock.Arguments) {
+						require.Len(t, scheduled, 2)
+					}).Return(nil, nil).Once()
+				}
 				err := task.Run(ctx, execCtx)
 				if failScheduling {
 					require.True(t, errors.Is(err, assert.AnError))
+					scheduler.AssertNotCalled(t, "WaitTask", mock.Anything, mock.Anything, mock.Anything)
+					scheduled = make(map[int]bool)
 					// A resumed parent must not resolve a different cell set or touch metadata again.
 					state, err := task.Save()
 					require.NoError(t, err)
@@ -74,9 +86,68 @@ func TestDeleteDiskTaskBackgroundCells(t *testing.T) {
 					require.NoError(t, err)
 				}
 				mock.AssertExpectationsForObjects(t, storage, scheduler, factory, pool, execCtx)
-				scheduler.AssertNotCalled(t, "WaitTask", mock.Anything, mock.Anything, mock.Anything)
 				factory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
 				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+			})
+		}
+	}
+}
+
+func TestDeleteDiskTaskWaitsForEveryCell(t *testing.T) {
+	for _, pendingCell := range []int{0, 1} {
+		for _, waitErr := range []error{errors.NewInterruptExecutionError(), assert.AnError} {
+			t.Run(fmt.Sprintf("pending_cell=%d/error=%v", pendingCell, waitErr), func(t *testing.T) {
+				ctx := context.Background()
+				storage := storage_mocks.NewStorageMock()
+				scheduler := tasks_mocks.NewSchedulerMock()
+				execCtx := newExecutionContextMock()
+				cellIDs := []string{"cell-a", "cell-b"}
+				ids := []string{"toplevel_task_id_delete_disk_from_cell_cell-a", "toplevel_task_id_delete_disk_from_cell_cell-b"}
+				task := &deleteDiskTask{storage: storage, scheduler: scheduler,
+					request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk"}},
+					state: &protos.DeleteDiskTaskState{
+						LegacyCleanupRegistered: true, CleanupPrepared: true, CleanupCellIds: cellIDs,
+					}}
+				storage.On("GetDiskCleanupIDs", ctx, "disk").Return(ids, nil).Once()
+				scheduled := 0
+				schedule := func(i int) {
+					scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, ids[i]), "disks.DeleteDiskFromCell", "", "",
+						&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: cellIDs[i]}, CleanupId: ids[i]}).Run(func(mock.Arguments) {
+						scheduled++
+					}).Return(fmt.Sprintf("worker-%d", i), nil).Once()
+				}
+				for i := range cellIDs {
+					schedule(i)
+				}
+				for i := 0; i <= pendingCell; i++ {
+					var err error
+					if i == pendingCell {
+						err = waitErr
+					}
+					scheduler.On("WaitTask", ctx, execCtx, fmt.Sprintf("worker-%d", i)).Run(func(mock.Arguments) {
+						require.Equal(t, 2, scheduled)
+					}).Return(nil, err).Once()
+				}
+				require.ErrorIs(t, task.Run(ctx, execCtx), waitErr)
+
+				// The other cell finishes while this one is unavailable. On restart,
+				// its result may already be collected and the feature may be disabled.
+				state, err := task.Save()
+				require.NoError(t, err)
+				request, err := proto.Marshal(task.request)
+				require.NoError(t, err)
+				require.NoError(t, task.Load(request, state))
+				require.False(t, task.request.BackgroundCleanup)
+				storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string{ids[pendingCell]}, nil).Once()
+				schedule(pendingCell)
+				scheduler.On("WaitTask", ctx, execCtx, fmt.Sprintf("worker-%d", pendingCell)).Return(nil, nil).Once()
+				require.NoError(t, task.Run(ctx, execCtx))
+
+				// A delayed parent retry also succeeds after all cleanup has committed,
+				// without scheduling workers again or reading their collected results.
+				storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+				require.NoError(t, task.Run(ctx, execCtx))
+				mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 			})
 		}
 	}
@@ -313,13 +384,14 @@ func TestDeleteDiskTaskSavedCleanupResumesWithFeatureDisabled(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, task.Load(request, state))
 			id := "toplevel_task_id_delete_disk_from_cell_cell"
-			storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+			storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string{id}, nil).Once()
 			if !prepared {
 				storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, false).Return(true, nil).Once()
 				execCtx.On("SaveState", ctx).Return(nil).Once()
 			}
 			scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, id), "disks.DeleteDiskFromCell", "", "",
 				&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, CleanupId: id}).Return("worker", nil).Once()
+			scheduler.On("WaitTask", ctx, execCtx, "worker").Return(nil, nil).Once()
 			require.NoError(t, task.Run(ctx, execCtx))
 			mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 			storage.AssertNotCalled(t, "DeleteDisk", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -357,9 +429,10 @@ func TestDeleteDiskTaskBackgroundStateSaveFailure(t *testing.T) {
 	scheduler.On("WaitTask", ctx, execCtx, "registration").Return(nil, nil).Once()
 	id := "toplevel_task_id_delete_disk_from_cell_cell"
 	storage.On("PrepareDiskCleanup", ctx, "disk", []string{id}, false).Return(true, nil).Once()
-	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string{id}, nil).Once()
 	scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, id), "disks.DeleteDiskFromCell", "", "",
 		&protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, CleanupId: id}).Return("worker", nil).Once()
+	scheduler.On("WaitTask", ctx, execCtx, "worker").Return(nil, nil).Once()
 	require.NoError(t, task.Run(ctx, execCtx))
 	mock.AssertExpectationsForObjects(t, storage, scheduler, factory, execCtx)
 }
@@ -475,6 +548,7 @@ func TestDeleteDiskTaskSchedulesLegacyObservers(t *testing.T) {
 				schedule(nil)
 			}
 			scheduler.On("ScheduleNonCancellableTask", headers.SetIncomingIdempotencyKey(ctx, cellID), "disks.DeleteDiskFromCell", "", "", &protos.DeleteDiskFromCellRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, CleanupId: cellID}).Return("cell-worker", nil).Once()
+			scheduler.On("WaitTask", ctx, execCtx, "cell-worker").Return(nil, nil).Once()
 			require.NoError(t, task.Run(ctx, execCtx))
 			scheduler.AssertNotCalled(t, "WaitTaskEndedWithTimeout", mock.Anything, mock.Anything, mock.Anything)
 			mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)

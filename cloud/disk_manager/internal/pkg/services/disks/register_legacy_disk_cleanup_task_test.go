@@ -142,7 +142,7 @@ func TestRegisterLegacyDiskCleanupSkipsBackgroundAndNonDeletingRequests(t *testi
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 }
 
-func TestBackgroundCleanupWaitsOnlyForAutomaticRegistration(t *testing.T) {
+func TestBackgroundCleanupWaitsForRegistrationAndCells(t *testing.T) {
 	ctx := headers.SetIncomingIdempotencyKey(headers.SetAccountID(context.Background(), "customer"), "customer-key")
 	storage := resource_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
@@ -168,13 +168,16 @@ func TestBackgroundCleanupWaitsOnlyForAutomaticRegistration(t *testing.T) {
 	scheduler.On("WaitTask", ctx, execCtx, "registration").Return(nil, nil).Once()
 	ids := []string{"toplevel_task_id_delete_disk_from_cell_unavailable-cell"}
 	storage.On("PrepareDiskCleanup", ctx, "disk", ids, false).Return(true, nil).Once()
-	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+	storage.On("GetDiskCleanupIDs", ctx, "disk").Return(ids, nil).Once()
 	scheduler.On("ScheduleNonCancellableTask", mock.MatchedBy(func(c context.Context) bool {
 		return headers.GetIdempotencyKey(c) == ids[0] && headers.GetAccountID(c) == "customer"
 	}), "disks.DeleteDiskFromCell", "", "", mock.Anything).Return("cell-worker", nil).Once()
-	require.NoError(t, task.Run(ctx, execCtx))
+	scheduler.On("WaitTask", ctx, execCtx, "cell-worker").Return(nil, errors.NewInterruptExecutionError()).Once()
+	require.ErrorIs(t, task.Run(ctx, execCtx), errors.NewInterruptExecutionError())
 	require.True(t, task.state.LegacyCleanupRegistered)
-	scheduler.AssertNotCalled(t, "WaitTask", mock.Anything, mock.Anything, "cell-worker")
+	// The next run observes the committed cleanup without needing its task result.
+	storage.On("GetDiskCleanupIDs", ctx, "disk").Return([]string(nil), nil).Once()
+	require.NoError(t, task.Run(ctx, execCtx))
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 }
 
