@@ -349,11 +349,10 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldOverrideOnlyPathInCmsSystemTabletBackupConfig)
+    Y_UNIT_TEST(ShouldTakeOtherSystemTabletBackupSettingsFromCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
         ci.InitKikimrConfig();
-        ci.ApplySystemTabletBackupPath("/var/backup/local");
 
         NKikimrConfig::TAppConfig cmsConfig;
         auto& cmsBackup = *cmsConfig.MutableSystemTabletBackupConfig();
@@ -361,7 +360,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         cmsBackup.SetMaxBackupsLimit(7);
         cmsBackup.AddExcludeTabletIds(123);
         ci.ApplyCMSConfigs(cmsConfig);
+        UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
 
+        ci.ApplySystemTabletBackupPath("/var/backup/local");
         auto expected = cmsBackup;
         expected.MutableFilesystem()->SetPath("/var/backup/local");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -369,12 +370,10 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             ci.KikimrConfig->GetSystemTabletBackupConfig().SerializeAsString());
 
         ci.ApplySystemTabletBackupPath("");
-        UNIT_ASSERT_VALUES_EQUAL(
-            cmsBackup.SerializeAsString(),
-            ci.KikimrConfig->GetSystemTabletBackupConfig().SerializeAsString());
+        UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
     }
 
-    Y_UNIT_TEST(ShouldKeepSystemTabletBackupDisabledAcrossCmsUpdates)
+    Y_UNIT_TEST(ShouldKeepSystemTabletBackupDisabledUntilEnabled)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
         ci.InitKikimrConfig();
@@ -382,18 +381,17 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
 
         NKikimrConfig::TAppConfig cmsConfig;
-        cmsConfig.MutableSystemTabletBackupConfig()
-            ->MutableFilesystem()
-            ->SetPath("/var/backup/cms");
+        cmsConfig.MutableSystemTabletBackupConfig()->SetMaxBackupsLimit(7);
         ci.ApplyCMSConfigs(std::move(cmsConfig));
         UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
 
-        ci.ApplySystemTabletBackupPath("", true);
+        ci.ApplySystemTabletBackupPath("/var/backup/local", true);
+        const auto& backupConfig =
+            ci.KikimrConfig->GetSystemTabletBackupConfig();
         UNIT_ASSERT_VALUES_EQUAL(
-            "/var/backup/cms",
-            ci.KikimrConfig->GetSystemTabletBackupConfig()
-                .GetFilesystem()
-                .GetPath());
+            "/var/backup/local",
+            backupConfig.GetFilesystem().GetPath());
+        UNIT_ASSERT_VALUES_EQUAL(7, backupConfig.GetMaxBackupsLimit());
     }
 }
 

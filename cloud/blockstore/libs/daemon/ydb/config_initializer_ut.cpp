@@ -1242,7 +1242,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUseCmsSystemTabletBackupConfigAsFallback)
+    Y_UNIT_TEST(ShouldTakeOtherSystemTabletBackupSettingsFromCms)
     {
         const TVector<TString> localPaths = {"", "/var/backup/local"};
         const TVector<TString> namedPaths = {"/var/backup/named-cms", ""};
@@ -1292,11 +1292,20 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                     if (!storagePath && !useYamlConfig) {
                         storagePath = namedPath;
                     }
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        storagePath,
+                        ci.StorageConfig->GetSystemTabletBackupDirPath());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        !storagePath.empty(),
+                        ci.KikimrConfig->HasSystemTabletBackupConfig());
+                    if (!storagePath) {
+                        continue;
+                    }
+
                     const auto& backupConfig =
                         ci.KikimrConfig->GetSystemTabletBackupConfig();
-                    UNIT_ASSERT(backupConfig.HasFilesystem());
                     UNIT_ASSERT_VALUES_EQUAL(
-                        storagePath ? storagePath : TString{"/var/backup/cms"},
+                        storagePath,
                         backupConfig.GetFilesystem().GetPath());
                     UNIT_ASSERT_VALUES_EQUAL(
                         7,
@@ -1307,9 +1316,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         123,
                         backupConfig.GetExcludeTabletIds(0));
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        storagePath,
-                        ci.StorageConfig->GetSystemTabletBackupDirPath());
                 }
             }
         }

@@ -47,8 +47,8 @@ struct TConfigInitializerYdbBase
     void ApplyMonitoringConfig(const TString& text);
 
 protected:
-    // A nonempty path selects the filesystem backend and replaces the path
-    // from CMS; an empty path uses the CMS config as is.
+    // Backups are enabled only with a nonempty path. The other settings come
+    // from TAppConfig.SystemTabletBackupConfig in CMS, its path is ignored.
     void ApplySystemTabletBackupPath(const TString& path, bool enabled = true);
 
     NKikimrConfig::TLogConfig GetLogConfig() const;

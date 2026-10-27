@@ -218,9 +218,7 @@ void TConfigInitializerYdbBase::UpdateSystemTabletBackupConfig()
     }
 
     KikimrConfig->ClearSystemTabletBackupConfig();
-    if (!SystemTabletBackupEnabled ||
-        (!CmsSystemTabletBackupConfig && !SystemTabletBackupPath))
-    {
+    if (!SystemTabletBackupEnabled || !SystemTabletBackupPath) {
         return;
     }
 
@@ -228,9 +226,8 @@ void TConfigInitializerYdbBase::UpdateSystemTabletBackupConfig()
     if (CmsSystemTabletBackupConfig) {
         config = *CmsSystemTabletBackupConfig;
     }
-    if (SystemTabletBackupPath) {
-        config.MutableFilesystem()->SetPath(SystemTabletBackupPath);
-    }
+    // Filesystem is a oneof branch, so the path replaces any other backend.
+    config.MutableFilesystem()->SetPath(SystemTabletBackupPath);
 }
 
 NKikimrConfig::TLogConfig TConfigInitializerYdbBase::GetLogConfig() const
