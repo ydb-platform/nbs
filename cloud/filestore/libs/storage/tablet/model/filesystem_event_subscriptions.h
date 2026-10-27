@@ -7,6 +7,7 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <util/digest/multi.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
@@ -63,8 +64,31 @@ public:
     };
 
 private:
-    // NodeId, extended attribute name.
-    using TNodeXAttrKey = std::pair<ui64, TString>;
+    struct TNodeXAttrKey
+    {
+        ui64 NodeId;
+        TString Name;
+
+        TNodeXAttrKey(ui64 nodeId, TString name)
+            : NodeId(nodeId)
+            , Name(std::move(name))
+        {}
+
+        [[nodiscard]] size_t GetHash() const
+        {
+            return MultiHash(NodeId, Name);
+        }
+
+        bool operator==(const TNodeXAttrKey& rhs) const = default;
+    };
+
+    struct TNodeXAttrKeyHash
+    {
+        size_t operator()(const TNodeXAttrKey& key) const noexcept
+        {
+            return key.GetHash();
+        }
+    };
 
     class TClientMask
     {
@@ -103,7 +127,8 @@ private:
 
         THashMap<ui64, TClientMask> NodeMasks;
         THashMap<TNodeRefKey, TClientMask, TNodeRefKeyHash> NodeRefMasks;
-        THashMap<TNodeXAttrKey, TClientMask> NodeXAttrMasks;
+        THashMap<TNodeXAttrKey, TClientMask, TNodeXAttrKeyHash>
+            NodeXAttrMasks;
 
         ui64 ExtraPageCount = 0;
 

@@ -125,7 +125,7 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
     // The client may cache the attribute value as well as its absence.
     //
 
-    if (SUCCEEDED(args.Error.GetCode()) ||
+    if (!HasError(args.Error) ||
         STATUS_FROM_CODE(args.Error.GetCode()) == NProto::E_FS_NOXATTR)
     {
         AddFileSystemEventNodeXAttrSubscriber(
@@ -136,7 +136,7 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
     }
 
     auto response = std::make_unique<TEvService::TEvGetNodeXAttrResponse>(args.Error);
-    if (SUCCEEDED(args.Error.GetCode())) {
+    if (!HasError(args.Error)) {
         TABLET_VERIFY(args.Attr);
         response->Record.SetValue(args.Attr->Value);
         response->Record.SetVersion(args.Attr->Version);
