@@ -310,21 +310,12 @@ public:
     [[nodiscard]] TSetMetadataResult SetMetadata(TStringBuf data);
 
     /**
-     * Sets the desired state file size in bytes, including the reserved
-     * header, metadata and alignment padding, using the same sizing rules as
-     * the constructor.
+     * Sets the desired state file size using the constructor's sizing rules.
      * Sizes greater than Max<i64>() are rejected without changing the buffer.
      *
-     * Resizing the file results in its remap and changing memory addresses for
-     * existing entries that can be referenced by an external code. Therefore,
-     * the buffer can be safely done only when it is empty.
-     *
-     * The buffer is resized immediately if it is empty, otherwise adding new
-     * entries will be blocked until the buffer is emptied and resize will take
-     * place.
-     *
-     * Note: while adding new entries is blocked, the buffer behaves like it is
-     * full.
+     * Resizing remaps the file and invalidates entry pointers. It happens
+     * immediately if the buffer is empty; otherwise, new allocations behave as
+     * if the buffer were full until it drains.
      */
     [[nodiscard]] NProto::TError SetTargetStateFileSize(ui64 stateFileSize);
 };

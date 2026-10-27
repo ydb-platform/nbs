@@ -4819,10 +4819,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
         TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            scheduler,
-            features,
-            GetStateFileSize(20));
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4888,10 +4885,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
         TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            scheduler,
-            features,
-            GetStateFileSize(20));
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4983,10 +4977,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
         TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            scheduler,
-            features,
-            GetStateFileSize(20));
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -5286,10 +5277,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         features.SetAsyncDestroyHandleEnabled(true);
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            scheduler,
-            features,
-            GetStateFileSize(20));
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -5482,9 +5470,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui32 queueDataCapacity = static_cast<ui32>(
             8 + createEntry.ByteSizeLong() +
             (8 + destroyEntry.ByteSizeLong()) / 2);
-        const ui32 handleOpsQueueStateFileSize =
-            GetStateFileSize(queueDataCapacity);
-
         // open fills the queue with a create confirmation. Its release
         // overflows into DelayedReleaseQueue.
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -5492,7 +5477,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             scheduler,
             features,
-            handleOpsQueueStateFileSize);
+            GetStateFileSize(queueDataCapacity));
         std::atomic_uint confirmCalled = 0;
         std::atomic_uint destroyCalled = 0;
 
