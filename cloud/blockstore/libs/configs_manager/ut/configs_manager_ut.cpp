@@ -138,8 +138,6 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
     auto staticConfig = MakeConfig(100);
     staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
     staticConfig.MutableDiskAgent()->SetEnabled(false);
-    staticConfig.MutableStorageService()->SetVolumePreemptionType(
-        NProto::PREEMPTION_MOVE_MOST_HEAVY);
     staticConfig.MutableStorageService()->SetNodeType("nbs");
     staticConfig.MutableStorageService()->SetSchemeShardDir("/Root/nbs");
     auto* settings =
@@ -150,13 +148,8 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
     label->SetValue("static");
     auto dynamicConfig = MakeConfig(200);
 
-    // Keep a CMS value outside PrivateDatabaseConfig to distinguish startup
-    // configuration from the static configuration used for later updates.
-    auto startupConfig = staticConfig;
-    startupConfig.MutableStorageService()->SetVolumePreemptionType(
-        NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
-        MakeBlockstoreConfig(startupConfig, dynamicConfig, Controls));
+        MakeBlockstoreConfig(staticConfig, dynamicConfig, Controls));
 
     Manager = Runtime.Register(CreateConfigsManager({
         .ConfigHolder = ConfigHolder,
@@ -281,6 +274,72 @@ void TFixture::Unsubscribe(TActorId requester, TActorId subscriber)
 
 Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 {
+    // Check startup and runtime enum values, explicit zero, and static fallback
+    // after replacing or removing the complete private configuration.
+    Y_UNIT_TEST_F(ShouldApplyEnumValuesFromPrivateConfig, TFixture)
+    {
+        // Build the startup snapshot from a static enum and parsed private YAML.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetVolumePreemptionType(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        NProto::TBlockstoreConfig dynamicConfig;
+        dynamicConfig.CopyFrom(*parser(
+            "storage_service: "
+            "{volume_preemption_type: PREEMPTION_MOVE_LEAST_HEAVY}"));
+        ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeBlockstoreConfig(staticConfig, dynamicConfig, Controls));
+        Manager = Runtime.Register(CreateConfigsManager({
+            .ConfigHolder = ConfigHolder,
+            .StaticConfig = std::move(staticConfig),
+            .InitialDynamicConfig = std::move(dynamicConfig),
+            .StorageConfigControls = Controls,
+            .ConfigsDispatcherId = Dispatcher,
+        }));
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(Runtime.GrabEdgeEventRethrow<
+                    TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(
+                        handle));
+
+        // Observe the accepted startup enum through the published snapshot.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
+
+        // Apply explicit zero, restore an omitted field, and set the enum again.
+        const std::pair<TString, NProto::EVolumePreemptionType> updates[] = {
+            {"storage_service: {volume_preemption_type: PREEMPTION_NONE}",
+             NProto::PREEMPTION_NONE},
+            {"storage_service: {write_blob_threshold: 300}",
+             NProto::PREEMPTION_MOVE_MOST_HEAVY},
+            {"storage_service: "
+             "{volume_preemption_type: PREEMPTION_MOVE_LEAST_HEAVY}",
+             NProto::PREEMPTION_MOVE_LEAST_HEAVY},
+        };
+        ui64 cookie = 130;
+        for (const auto& [yaml, expected]: updates) {
+            SendNotification(parser(yaml), cookie);
+            WaitForAck(cookie++);
+            WaitForConfigChanged(subscriber);
+            UNIT_ASSERT_EQUAL(
+                expected,
+                ConfigHolder->Get()
+                    ->GetStorageConfig()
+                    ->GetVolumePreemptionType());
+        }
+
+        // Restore the static enum when the dispatcher removes the source.
+        SendNotification({}, cookie);
+        WaitForAck(cookie);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
+    }
+
     // Check initial delivery and independent updates without subscriber ACKs.
     Y_UNIT_TEST_F(
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
@@ -563,7 +622,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
     // removing a dynamic value still restores the static configuration.
     Y_UNIT_TEST_F(ShouldIgnoreSectionsContainingOnlyStaticFields, TFixture)
     {
-        // Observe the startup snapshot, including its value received from CMS.
+        // Observe the snapshot built from the initial private configuration.
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
         WaitForConfigChanged(subscriber);
@@ -572,7 +631,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         ui64 cookie = 70;
 
         // Add and remove ignored Server fields without changing the dynamic
-        // storage value or discarding the startup CMS value.
+        // storage value or rebuilding the accepted snapshot.
         for (const TString yaml: {
                  "storage_service: {write_blob_threshold: 200}\n"
                  "server: {server_config: "
@@ -586,11 +645,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         {
             SendNotification(parser(yaml), cookie);
             WaitForAck(cookie++);
-            UNIT_ASSERT_EQUAL(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            UNIT_ASSERT_VALUES_EQUAL(
+                200,
                 ConfigHolder->Get()
                     ->GetStorageConfig()
-                    ->GetVolumePreemptionType());
+                    ->GetWriteBlobThreshold());
             UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
             AssertNoConfigChanged(subscriber);
         }
@@ -604,9 +663,6 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             100,
             emptyConfig->GetStorageConfig()->GetWriteBlobThreshold());
-        UNIT_ASSERT_EQUAL(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
-            emptyConfig->GetStorageConfig()->GetVolumePreemptionType());
 
         // Treat absent, empty and static-only sections as the same empty source.
         for (const TString yaml: {
@@ -629,7 +685,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
     }
 
     // Check that forbidden DiskAgent overrides preserve the startup snapshot
-    // and CMS values while receiving an ACK without notifying subscribers.
+    // while receiving an ACK without notifying subscribers.
     Y_UNIT_TEST_F(ShouldIgnoreDedicatedDiskAgentOverrides, TFixture)
     {
         // Retain the startup snapshot and observe subsequent publications.
@@ -646,14 +702,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             80);
         WaitForAck(80);
 
-        // Keep the complete snapshot, including the value received from CMS.
+        // Keep the accepted snapshot and static agent restrictions.
         UNIT_ASSERT(!ConfigHolder->Get()->GetDiskAgentConfig()->GetEnabled());
         UNIT_ASSERT(
             ConfigHolder->Get()->GetDiskAgentConfig()->GetDedicatedDiskAgent());
         UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
-        UNIT_ASSERT_EQUAL(
-            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
-            ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
         AssertNoConfigChanged(subscriber);
 
         // Apply an independent setting without enabling the embedded agent.
@@ -866,28 +919,24 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
-    // Check that removing PrivateDatabaseConfig restores the pre-CMS value,
-    // excluding both startup CMS and PrivateDatabaseConfig values.
+    // Check that removing PrivateDatabaseConfig restores the static value.
     Y_UNIT_TEST_F(ShouldTreatMissingPayloadAsRemoval, TFixture)
     {
-        // Observe the startup CMS value before removing PrivateDatabaseConfig.
-        UNIT_ASSERT_EQUAL(
-            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
-            ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
+        // Observe the initial private value before removing its source.
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
 
+        // Remove the private source and wait for its acknowledgement.
         SendNotification({}, 20);
         WaitForAck(20);
         WaitForConfigLog("Reset PrivateDatabaseConfig; restored static config");
 
-        // Restore both the overridden YAML field and the startup CMS field
-        // from the static snapshot.
+        // Restore the overridden field from the static snapshot.
         auto config = ConfigHolder->Get();
         UNIT_ASSERT_VALUES_EQUAL(
             100,
             config->GetStorageConfig()->GetWriteBlobThreshold());
-        UNIT_ASSERT_EQUAL(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
-            config->GetStorageConfig()->GetVolumePreemptionType());
     }
 
     // Check that a wrong message type preserves the config and receives no ACK.

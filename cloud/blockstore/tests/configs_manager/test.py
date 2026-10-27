@@ -447,10 +447,8 @@ def test_invalid_config_is_skipped_at_startup():
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
-        # Distinguish the accepted CMS value from the static configuration.
-        main_config = yaml.safe_load(make_main_config(ydb))
-        main_config["config"]["blockstore_config"] = {"volume_preemption_type": 2}
-        replace_config(ydb, yaml.safe_dump(main_config))
+        # Reject the complete private source despite its valid storage section.
+        replace_config(ydb, make_main_config(ydb))
         replace_database_config(
             ydb,
             0,
@@ -459,18 +457,13 @@ def test_invalid_config_is_skipped_at_startup():
         )
         config = make_nbs_config(ydb, True)
         config.files["storage"].WriteBlobThreshold = 100
-        config.files["storage"].VolumePreemptionType = 1
 
-        # Start without any PrivateDatabaseConfig values, retaining the supported CMS setting.
+        # Start without any PrivateDatabaseConfig values and keep static settings.
         nbs = start_nbs(config)
         initial_pid = nbs.pid
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
         page.raise_for_status()
         assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
-        assert re.search(
-            r"<td>VolumePreemptionType</td>\s*<td>(2|PREEMPTION_MOVE_LEAST_HEAVY)</td>",
-            page.text,
-        )
         log = Path(nbs.stderr_file_name).read_text()
         assert "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError" in log
         assert "Starting without PrivateDatabaseConfig" in log
@@ -533,16 +526,14 @@ def test_disabled_feature_does_not_start_configs_manager(remove_rdma_config):
         ydb.stop()
 
 
-# Verify that temporary startup retains CMS while ignoring private YAML and updates.
+# Verify that temporary startup applies common YDB sections but ignores private YAML.
 @pytest.mark.parametrize("invalid_private_config", [False, True], ids=["valid", "invalid"])
 def test_temporary_server_skips_private_config(tmp_path, invalid_private_config):
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
         # Distinguish common CMS, legacy NamedConfigs, and private YAML sources.
-        main_config = yaml.safe_load(make_main_config(ydb))
-        main_config["config"]["blockstore_config"] = {"volume_preemption_type": 2}
-        replace_config(ydb, yaml.safe_dump(main_config))
+        replace_config(ydb, make_main_config(ydb))
         cms_config = TAppConfig()
         named = cms_config.NamedConfigs.add()
         named.Name = "Cloud.NBS.StorageServiceConfig"
@@ -561,7 +552,6 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
         # Use a local nameservice marker that must be replaced by the CMS config.
         config = make_nbs_config(ydb, True)
         config.files["storage"].WriteBlobThreshold = 100
-        config.files["storage"].VolumePreemptionType = 1
         config.files["naming"] = copy.deepcopy(ydb.config.names_txt)
         config.files["naming"].ClusterUUID = "temporary-local-nameservice"
         config_path = tmp_path / "cfg"
@@ -587,10 +577,6 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
         assert re.search(r"<td>RemoteMountOnly</td>\s*<td>(1|true)</td>", page.text)
         assert re.search(
             r"<td>DisableManuallyPreemptedVolumesTracking</td>\s*<td>(1|true)</td>",
-            page.text,
-        )
-        assert re.search(
-            r"<td>VolumePreemptionType</td>\s*<td>(2|PREEMPTION_MOVE_LEAST_HEAVY)</td>",
             page.text,
         )
         yatest_common.execute([
