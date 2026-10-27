@@ -58,12 +58,12 @@ func TestGetUserIP(t *testing.T) {
 			expected: "2a02:6b8:bf00:3038:5058:7ff:fe8d:e4ca",
 		},
 		{
-			name: "multiple addresses",
+			name: "first of multiple addresses",
 			ctx: contextWithAddr(
 				context.Background(),
-				stringAddr("192.168.0.1:1234,192.168.0.2:1234"),
+				stringAddr("192.168.0.1:1234, 192.168.0.2:1234"),
 			),
-			expected: "",
+			expected: "192.168.0.1",
 		},
 	}
 
