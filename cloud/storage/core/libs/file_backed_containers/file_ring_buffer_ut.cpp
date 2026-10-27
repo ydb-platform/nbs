@@ -42,11 +42,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 GetStateFileSize(ui64 dataCapacity)
+ui64 GetStateFileSize(ui64 dataCapacity, ui64 metadataCapacity)
 {
-    const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
+    const auto layout =
+        TFileRingBufferLayout::FromCapacity(dataCapacity, metadataCapacity);
     UNIT_ASSERT(layout);
     return layout->StateFileSize;
+}
+
+ui64 GetStateFileSize(ui64 dataCapacity)
+{
+    return GetStateFileSize(dataCapacity, 0);
 }
 
 struct TTestFileRingBuffer: public TFileRingBuffer
@@ -58,9 +64,7 @@ struct TTestFileRingBuffer: public TFileRingBuffer
         EVersion version)
         : TFileRingBuffer(
               filePath,
-              TFileRingBufferLayout::CalculateStateFileSize(
-                  dataCapacity,
-                  metadataCapacity),
+              GetStateFileSize(dataCapacity, metadataCapacity),
               metadataCapacity,
               version)
     {}
@@ -368,7 +372,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         InitCriticalEventsCounter(counters);
 
         const auto f = TTempFileHandle();
-        TFileRingBuffer rb(f.GetName(), 0, Max<ui64>(), ver);
+        NCloud::TFileRingBuffer rb(f.GetName(), 0, Max<ui64>(), ver);
 
         UNIT_ASSERT(rb.IsCorrupted());
         UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
@@ -886,6 +890,47 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         }
     }
 
+    FILE_RING_BUFFER_TEST(ShouldRejectOversizedStateFileSizeWithoutCorruption)
+    {
+        const auto f = TTempFileHandle();
+        NCloud::TFileRingBuffer rb(f.GetName(), 4_KB, 0, ver);
+        const auto dataCapacity = rb.GetDataCapacity();
+        const ui64 maxFileSize = Max<i64>();
+
+        for (const ui64 stateFileSize: {maxFileSize + 1, Max<ui64>()}) {
+            const auto contents = Dump(f);
+            const auto error = rb.SetTargetStateFileSize(stateFileSize);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT(!rb.IsCorrupted());
+            UNIT_ASSERT(rb.Validate());
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_STRINGS_EQUAL(contents, Dump(f));
+            // The first resize is rejected on an empty buffer, the next on a
+            // non-empty one. Both must leave new allocations enabled.
+            UNIT_ASSERT(rb.PushBack("data").Pushed);
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectOversizedStateFileSizeOnReopen)
+    {
+        const auto f = TTempFileHandle();
+        {
+            NCloud::TFileRingBuffer rb(f.GetName(), 4_KB, 0, ver);
+            UNIT_ASSERT(rb.PushBack("data").Pushed);
+        }
+        const auto contents = Dump(f);
+        {
+            NCloud::TFileRingBuffer rb(f.GetName(), Max<ui64>(), 0, ver);
+            UNIT_ASSERT(rb.IsCorrupted());
+        }
+        UNIT_ASSERT_STRINGS_EQUAL(contents, Dump(f));
+
+        NCloud::TFileRingBuffer rb(f.GetName(), 4_KB, 0, ver);
+        UNIT_ASSERT(rb.Validate());
+        UNIT_ASSERT_VALUES_EQUAL("data", rb.Front().Data);
+    }
+
     FILE_RING_BUFFER_TEST(ShouldResumeAbortedDataCapacityChange)
     {
         const auto f = TTempFileHandle();
@@ -1290,7 +1335,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             {
                 // Resizing metadata must account for the existing data
                 // capacity, even when a smaller target capacity is requested.
-                TFileRingBuffer rb(f.GetName(), 0, capacity, ver);
+                NCloud::TFileRingBuffer rb(f.GetName(), 0, capacity, ver);
                 UNIT_ASSERT(rb.IsCorrupted());
             }
 

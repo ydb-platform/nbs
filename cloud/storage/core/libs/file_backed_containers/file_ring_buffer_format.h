@@ -119,6 +119,8 @@ struct TFileRingBufferCapabilities
 // During metadata resizing, data and/or metadata may temporarily be stored
 // farther into the file. This is valid but not canonical; use the offsets from
 // TFileRingBufferHeader to access it.
+//
+// Guaranteed invariant: MetadataOffset <= DataOffset <= StateFileSize
 struct TFileRingBufferLayout
 {
     ui64 DataOffset = 0;
@@ -130,14 +132,9 @@ struct TFileRingBufferLayout
         ui64 dataCapacity,
         ui64 metadataCapacity);
 
-    // Returns zero if the layout exceeds the supported file size.
-    static ui64 CalculateStateFileSize(
-        ui64 dataCapacity,
-        ui64 metadataCapacity);
-
-    // Returns zero if the header and metadata do not fit or the layout
-    // overflows
-    static ui64 CalculateDataCapacity(
+    // Grows the requested size if needed to fit the header and metadata.
+    // Returns nullopt if the requested size or layout exceeds Max<i64>().
+    static std::optional<TFileRingBufferLayout> FromStateFileSize(
         ui64 stateFileSize,
         ui64 metadataCapacity);
 };

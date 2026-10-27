@@ -42,12 +42,14 @@ struct TBootstrap
 
     NProto::TError Initialize()
     {
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(DefaultCapacity, 0);
+        UNIT_ASSERT(layout);
+
         Storage = CreateFileRingBufferPersistentStorage(
             Stats,
             {.FilePath = TempFile.GetName(),
-             .StateFileSize = TFileRingBufferLayout::CalculateStateFileSize(
-                 DefaultCapacity,
-                 0),
+             .StateFileSize = layout->StateFileSize,
              .MetadataCapacity = 0},
             Log,
             "[tag]");

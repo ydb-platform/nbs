@@ -313,6 +313,7 @@ public:
      * Sets the desired state file size in bytes, including the reserved
      * header, metadata and alignment padding, using the same sizing rules as
      * the constructor.
+     * Sizes greater than Max<i64>() are rejected without changing the buffer.
      *
      * Resizing the file results in its remap and changing memory addresses for
      * existing entries that can be referenced by an external code. Therefore,

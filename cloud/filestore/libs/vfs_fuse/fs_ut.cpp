@@ -75,8 +75,6 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
 constexpr ui64 WriteBackCacheStateFileSize = 1_MB + 4_KB;
-const ui32 SmallHandleOpsQueueStateFileSize =
-    TFileRingBufferLayout::CalculateStateFileSize(20, 0);
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
@@ -108,6 +106,13 @@ i64 GetFirstChunkSize()
             sizeof(ui64));
     }
     return size;
+}
+
+ui64 GetStateFileSize(ui64 dataCapacity)
+{
+    const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
+    UNIT_ASSERT(layout);
+    return layout->StateFileSize;
 }
 
 TString CreateBuffer(size_t len, char fill = 0)
@@ -4817,7 +4822,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             scheduler,
             features,
-            SmallHandleOpsQueueStateFileSize);
+            GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4886,7 +4891,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             scheduler,
             features,
-            SmallHandleOpsQueueStateFileSize);
+            GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4981,7 +4986,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             scheduler,
             features,
-            SmallHandleOpsQueueStateFileSize);
+            GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -5284,7 +5289,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             scheduler,
             features,
-            SmallHandleOpsQueueStateFileSize);
+            GetStateFileSize(20));
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -5478,7 +5483,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             8 + createEntry.ByteSizeLong() +
             (8 + destroyEntry.ByteSizeLong()) / 2);
         const ui32 handleOpsQueueStateFileSize =
-            TFileRingBufferLayout::CalculateStateFileSize(queueDataCapacity, 0);
+            GetStateFileSize(queueDataCapacity);
 
         // open fills the queue with a create confirmation. Its release
         // overflows into DelayedReleaseQueue.

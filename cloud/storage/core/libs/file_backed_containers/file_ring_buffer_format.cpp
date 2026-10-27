@@ -353,24 +353,19 @@ std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
     };
 }
 
-ui64 TFileRingBufferLayout::CalculateStateFileSize(
-    ui64 dataCapacity,
-    ui64 metadataCapacity)
-{
-    const auto layout = FromCapacity(dataCapacity, metadataCapacity);
-    return layout ? layout->StateFileSize : 0;
-}
-
-ui64 TFileRingBufferLayout::CalculateDataCapacity(
+std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromStateFileSize(
     ui64 stateFileSize,
     ui64 metadataCapacity)
 {
-    const auto layout = FromCapacity(0, metadataCapacity);
-    if (!layout || stateFileSize <= layout->DataOffset) {
-        return 0;
+    if (stateFileSize > Max<i64>()) {
+        return std::nullopt;
     }
 
-    return stateFileSize - layout->DataOffset;
+    auto layout = FromCapacity(0, metadataCapacity);
+    if (layout) {
+        layout->StateFileSize = Max(stateFileSize, layout->StateFileSize);
+    }
+    return layout;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
