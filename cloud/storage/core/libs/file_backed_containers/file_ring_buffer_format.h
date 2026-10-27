@@ -1,5 +1,6 @@
 #pragma once
 
+#include <util/generic/ylimits.h>
 #include <util/system/types.h>
 
 #include <memory>
@@ -119,15 +120,28 @@ struct TFileRingBufferCapabilities
 // During metadata resizing, data and/or metadata may temporarily be stored
 // farther into the file. This is valid but not canonical; use the offsets from
 // TFileRingBufferHeader to access it.
+//
+// Guaranteed invariant: MetadataOffset <= DataOffset <= StateFileSize
 struct TFileRingBufferLayout
 {
     ui64 DataOffset = 0;
     ui64 MetadataOffset = 0;
     ui64 StateFileSize = 0;
 
-    // Returns nullopt if offsets or file size exceed Max<i64>()
+    static constexpr ui64 MinStateFileSize = sizeof(TFileRingBufferHeader);
+
+    // Maximum supported size by file API
+    static constexpr ui64 MaxStateFileSize = Max<i64>();
+
+    // Returns nullopt if offsets or file size exceed MaxStateFileSize
     static std::optional<TFileRingBufferLayout> FromCapacity(
         ui64 dataCapacity,
+        ui64 metadataCapacity);
+
+    // Grows the requested size if needed to fit the header and metadata.
+    // Returns nullopt if the requested size or layout exceeds MaxStateFileSize.
+    static std::optional<TFileRingBufferLayout> FromStateFileSize(
+        ui64 stateFileSize,
         ui64 metadataCapacity);
 };
 
