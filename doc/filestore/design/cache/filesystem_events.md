@@ -17,22 +17,24 @@ NodeRefs and drop them as soon as they change.
 
 ```mermaid
 flowchart LR
-    subgraph Client["Client (filestore-vhost)"]
-        FUSE["vfs_fuse<br/>TFileSystemEventHandler"]
-        Multi["IMultiFileSystemEventHandler<br/>(FileSystemId -> handlers)"]
+    subgraph vhost["filestore-vhost"]
+        FUSE["vfs_fuse handler"]
+        Multi["MultiFileSystemEventHandler"]
         Proxy["IndexTabletProxy"]
     end
 
-    subgraph Tablet["IndexTablet (main or shard)"]
-        Clients["FileSystemEventClients<br/>PipeServerId -> client ActorId"]
-        Subs["TFileSystemEventSubscriptions<br/>Node/NodeRef -> clients"]
-        Sink["tx FileSystemEvents sink"]
+    subgraph tablet["IndexTablet: main or shard"]
+        Actor["TIndexTabletActor"]
+        Clients["FileSystemEventClients"]
+        Subs["FileSystemEventSubscriptions"]
     end
 
-    Proxy -- "requests via pipe" --> Tablet
-    Tablet -- "TEvFileSystemEvent" --> Proxy
-    Proxy -- "OnEvent / OnDisconnect" --> Multi
-    Multi --> FUSE
+    Proxy -->|"requests via pipe"| Actor
+    Actor --> Clients
+    Actor --> Subs
+    Actor -->|"TEvFileSystemEvent"| Proxy
+    Proxy -->|"OnEvent, OnDisconnect"| Multi
+    Multi -->|"by FileSystemId"| FUSE
 ```
 
 ## Subscribing (read path)
