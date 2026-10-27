@@ -1,3 +1,12 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
 import "cloud/storage/core/protos/error.proto";
@@ -1195,7 +1204,7 @@ message TRenameNodeInDestinationRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // New parent Node
     uint64 NewParentId = 3;
@@ -1207,8 +1216,8 @@ message TRenameNodeInDestinationRequest
     uint32 Flags = 5;
 
     // Source node info.
-    string SourceNodeShardId = 6;
-    string SourceNodeShardNodeName = 7;
+    bytes SourceNodeShardId = 6;
+    bytes SourceNodeShardNodeName = 7;
 
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
@@ -1264,7 +1273,7 @@ message TAbortUnlinkDirectoryNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // The node.
     uint64 NodeId = 3;
@@ -1382,7 +1391,7 @@ message TUnlinkNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Parent node.
     uint64 NodeId = 3;

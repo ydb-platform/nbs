@@ -1,3 +1,12 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
 import "cloud/filestore/private/api/protos/tablet.proto";
@@ -17,7 +26,7 @@ package NCloud.NFileStore.NProto;
 message TChannelProfile
 {
     uint32 DataKind = 1;
-    string PoolKind = 2;
+    bytes PoolKind = 2;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,11 +35,11 @@ message TFileSystem
 {
     uint32 Version = 1;
 
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
-    string ProjectId = 3;
-    string FolderId = 4;
-    string CloudId = 5;
+    bytes ProjectId = 3;
+    bytes FolderId = 4;
+    bytes CloudId = 5;
 
     uint32 BlockSize = 6;
     uint64 BlocksCount = 7;
@@ -45,17 +54,17 @@ message TFileSystem
     // Performance profile, used for throttling.
     TFileStorePerformanceProfile PerformanceProfile = 12;
 
-    repeated string ShardFileSystemIds = 13;
+    repeated bytes ShardFileSystemIds = 13;
     uint32 ShardNo = 14;
     bool AutomaticShardCreationEnabled = 15;
     uint64 ShardAllocationUnit = 16;
-    string MainFileSystemId = 17;
+    bytes MainFileSystemId = 17;
     bool DirectoryCreationInShardsEnabled = 18;
     bool StrictFileSystemSizeEnforcementEnabled = 19;
     bool Frozen = 20;
     bool ForceDirectoryCreationInShards = 21;
 
-    repeated string FileShardFileSystemIds = 22;
+    repeated bytes FileShardFileSystemIds = 22;
 
     bool IsFastShard = 23;
     NProtoPrivate.TFastShardConfig FastShardConfig = 24;
@@ -129,7 +138,7 @@ message TNode
 
 message TCheckpoint
 {
-    string CheckpointId = 1;
+    bytes CheckpointId = 1;
     uint64 NodeId = 2;
     uint64 CommitId = 3;
     bool Deleted = 4;
@@ -150,13 +159,13 @@ message TSessionOptions
 message TSession
 {
     string SessionId = 1;
-    string ClientId = 2;
-    string CheckpointId = 3;
+    bytes ClientId = 2;
+    bytes CheckpointId = 3;
     bytes SessionState = 5;
     // unused = 4
     uint64 MaxSeqNo = 6;
     uint64 MaxRwSeqNo = 7;
-    string OriginFqdn = 8;
+    bytes OriginFqdn = 8;
     uint64 RecoveryTimestampUs = 9;
 }
 
@@ -165,18 +174,18 @@ message TSession
 message TSessionHistoryEntry
 {
     uint64 EntryId = 1;
-    string SessionId = 2;
-    string ClientId = 3;
+    bytes SessionId = 2;
+    bytes ClientId = 3;
     uint64 TimestampUs = 4;
     uint32 Type = 5; // See EUpdateType in session.h
-    string OriginFqdn = 6;
+    bytes OriginFqdn = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 message TSessionHandle
 {
-    string SessionId = 1;
+    bytes SessionId = 1;
     uint64 Handle = 2;
     uint64 NodeId = 3;
     uint64 CommitId = 4;
@@ -187,7 +196,7 @@ message TSessionHandle
 
 message TSessionLock
 {
-    string SessionId = 1;
+    bytes SessionId = 1;
     uint64 LockId = 2;
     uint64 NodeId = 3;
     uint64 Owner = 4;
@@ -203,7 +212,7 @@ message TSessionLock
 
 message TDupCacheEntry
 {
-    string SessionId = 1;
+    bytes SessionId = 1;
     uint64 EntryId = 2;
     uint64 RequestId = 3;
 
@@ -231,7 +240,7 @@ message TOpLogEntry
     uint64 EntryId = 1;
 
     // For DupCache patch & commit.
-    string SessionId = 2;
+    bytes SessionId = 2;
     uint64 RequestId = 3;
 
     // For some requests it's impossible to restore TProfileLogRequestInfo from
