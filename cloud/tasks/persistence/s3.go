@@ -119,6 +119,7 @@ type S3Client struct {
 }
 
 type s3ClientOptions struct {
+	anonymousAccess               bool
 	emptySigningRegion            bool
 	minPutObjectAttemptsPerSecond uint64
 	maxPutObjectAttemptsPerSecond uint64
@@ -128,6 +129,13 @@ type s3ClientOptions struct {
 
 // S3ClientOption changes only clients whose callers explicitly opt in.
 type S3ClientOption func(*s3ClientOptions)
+
+// WithS3AnonymousAccess disables request signing and credential discovery.
+func WithS3AnonymousAccess() S3ClientOption {
+	return func(options *s3ClientOptions) {
+		options.anonymousAccess = true
+	}
+}
 
 // WithS3EmptySigningRegion permits an empty Signature V4 region for a custom
 // endpoint. The SDK normally rejects it before sending a request. Providers
@@ -200,6 +208,12 @@ func NewS3Client(
 		option(&clientOptions)
 	}
 
+	if clientOptions.anonymousAccess && tokenProvider != nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"anonymous S3 access cannot use an IAM token provider",
+		)
+	}
+
 	err := validateThrottleRetryDelays(
 		clientOptions.minThrottleRetryDelay,
 		clientOptions.maxThrottleRetryDelay,
@@ -219,6 +233,7 @@ func NewS3Client(
 	}
 
 	s3Metrics := newS3Metrics(
+		endpoint,
 		callTimeout,
 		registry,
 		availabilityMonitoring,
@@ -244,6 +259,10 @@ func NewS3Client(
 
 			metrics: s3Metrics,
 		},
+	}
+
+	if clientOptions.anonymousAccess {
+		sessionConfig.Credentials = aws_credentials.AnonymousCredentials
 	}
 
 	var transport = http.DefaultTransport

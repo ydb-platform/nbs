@@ -68,7 +68,7 @@ func TestS3ProgressRecordsSuccessfulPUTDuringCancellation(t *testing.T) {
 		manifest,
 		progress,
 		time.Now(),
-		nil,
+		func(context.Context) error { return nil },
 	)
 	require.Len(t, manifest.Parts, 1)
 	require.Equal(

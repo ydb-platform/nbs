@@ -8,13 +8,16 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message ExportSnapshotRequest {
     string SnapshotId = 1;
-    // Compute export task ID from the incoming x-operation-id header.
-    string OperationId = 2;
+    // Compute export task ID from the incoming x-task-id header.
+    string ComputeTaskId = 2;
     string FolderId = 3;
     string SourceDiskId = 4;
     yandex.cloud.priv.disk_manager.v1.ExportDestination Destination = 5;
     yandex.cloud.priv.disk_manager.v1.DecryptionInfo DecryptionInfo = 6;
     uint32 BlockSize = 7;
+    // Image exports use the same dataplane snapshot ID in SnapshotId.
+    // This field selects image credentials and image backup metadata.
+    string ImageId = 8;
 }
 
 message ExportSnapshotTaskState {
@@ -26,4 +29,11 @@ message ExportSnapshotTaskState {
     // Contains opaque decryption metadata, never S3 credentials.
     bytes ExportState = 4;
     double Progress = 5;
+    // First unresolved non-timeout transient source read failure.
+    // Unix nanoseconds; timeouts do not open this bounded window.
+    int64 SourceRetryStartedAt = 6;
+    // Successful reads of other objects must not reset this failure window.
+    string SourceRetryObject = 7;
+    // Learned upload concurrency survives retries and executor changes.
+    uint32 UploadWorkerLimit = 8;
 }

@@ -7,6 +7,9 @@ SRCS(
     collect_snapshots_task.go
     consts.go
     export_snapshot_task.go
+    export_snapshot_errors.go
+    export_snapshot_retry.go
+    export_snapshot_upload_limiter.go
     create_dr_based_disk_checkpoint_task.go
     create_snapshot_from_disk_task.go
     create_snapshot_from_snapshot_task.go
@@ -27,6 +30,9 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    export_snapshot_errors_test.go
+    export_image_task_test.go
+    export_snapshot_retry_test.go
     collect_snapshots_task_test.go
     delete_snapshot_task_test.go
     replicate_disk_task_test.go

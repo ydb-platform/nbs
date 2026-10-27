@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	grpc_codes "google.golang.org/grpc/codes"
 
+	api "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
 	filesystem_scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
 	filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
@@ -26,6 +27,18 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 var requestProtoByTaskType = map[string]func() proto.Message{
+	"images.ExportImage": func() proto.Message {
+		return &api.ExportImageRequest{}
+	},
+	"snapshots.ExportSnapshot": func() proto.Message {
+		return &api.ExportSnapshotRequest{}
+	},
+	"dataplane.ExportSnapshotToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotRequest{}
+	},
+	"dataplane.ExportImageToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotRequest{}
+	},
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskRequest{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotRequest{} },
 	"dataplane.CreateSnapshotFromURL":               func() proto.Message { return &dataplane_protos.CreateSnapshotFromURLRequest{} },
@@ -83,6 +96,15 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
+	"images.ExportImage": func() proto.Message {
+		return &images_protos.ExportImageTaskState{}
+	},
+	"dataplane.ExportSnapshotToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotTaskState{}
+	},
+	"dataplane.ExportImageToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotTaskState{}
+	},
 	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
@@ -144,6 +166,9 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
 	"dataplane.RegularScrubFilesystems":             func() proto.Message { return &filesystem_scrubbing_protos.RegularScrubFilesystemsTaskState{} },
+	"snapshots.ExportSnapshot": func() proto.Message {
+		return &snapshot_protos.ExportSnapshotTaskState{}
+	},
 }
 
 type FormattableDuration struct {

@@ -39,7 +39,7 @@ func TestExportUsageOnlyForInvalidOptions(t *testing.T) {
 			t.Run(
 				string(kind)+"/"+tc.name,
 				func(t *testing.T) {
-					cmd := newExportCmd(&config.ServerConfig{}, kind, "", "")
+					cmd := newExportCmd(nil, &config.ServerConfig{}, kind, "", "")
 					var output bytes.Buffer
 					cmd.SetOut(&output)
 					cmd.SetErr(&output)
@@ -281,6 +281,7 @@ func testExportOptionValidation(
 				}
 
 				cmd := newExportCmd(
+					nil,
 					&config.ServerConfig{},
 					kind,
 					"",

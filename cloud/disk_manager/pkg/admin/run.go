@@ -15,6 +15,25 @@ import (
 
 const skipClientConfigParsingAnnotation = "skip-client-config-parsing"
 const skipServerConfigParsingAnnotation = "skip-server-config-parsing"
+const exportCommandAnnotation = "export-command"
+
+func isAsyncExportCommand(cmd *cobra.Command) bool {
+	if !hasCommandAnnotation(cmd, exportCommandAnnotation) {
+		return false
+	}
+	async, _ := cmd.Flags().GetBool("async")
+	return async
+}
+
+func needsClientConfig(cmd *cobra.Command) bool {
+	return !hasCommandAnnotation(cmd, skipClientConfigParsingAnnotation) ||
+		isAsyncExportCommand(cmd)
+}
+
+func needsServerConfig(cmd *cobra.Command) bool {
+	return !hasCommandAnnotation(cmd, skipServerConfigParsingAnnotation) &&
+		!isAsyncExportCommand(cmd)
+}
 
 func isHelperCommand(cmd *cobra.Command) bool {
 	// cmd.Name() would be the name of the most specific subcommand
@@ -68,7 +87,7 @@ func Run(
 				return nil
 			}
 
-			if !hasCommandAnnotation(cmd, skipClientConfigParsingAnnotation) {
+			if needsClientConfig(cmd) {
 				err := util.ParseProto(clientConfigFilePath, clientConfig)
 				if err != nil {
 					return err
@@ -139,7 +158,7 @@ func Run(
 			return err
 		}
 
-		if hasCommandAnnotation(cmd, skipServerConfigParsingAnnotation) {
+		if !needsServerConfig(cmd) {
 			return nil
 		}
 

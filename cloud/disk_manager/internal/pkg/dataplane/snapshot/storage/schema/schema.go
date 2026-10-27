@@ -363,6 +363,9 @@ func chunkBlobsTableDescription(
 
 func snapshotStateTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
+		persistence.WithColumn(
+			"block_size", persistence.Optional(persistence.TypeUint32),
+		),
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),

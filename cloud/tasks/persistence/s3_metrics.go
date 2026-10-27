@@ -24,6 +24,7 @@ func s3CallDurationBuckets() metrics.DurationBuckets {
 ////////////////////////////////////////////////////////////////////////////////
 
 type s3Metrics struct {
+	endpoint               string
 	callTimeout            time.Duration
 	registry               metrics.Registry
 	availabilityMonitoring *AvailabilityMonitoring
@@ -36,6 +37,7 @@ func (m *s3Metrics) StatCall(
 	key string,
 ) func(err *error) {
 
+	ctx = logging.WithFields(ctx, logging.String("S3_ENDPOINT", m.endpoint))
 	start := time.Now()
 
 	return func(err *error) {
@@ -71,11 +73,13 @@ func (m *s3Metrics) StatCall(
 		if *err != nil {
 			logging.Error(
 				ctx,
-				"S3 call with name %v ended with error %v, bucket %v, key %v",
+				"S3 call with name %v ended with error %v, "+
+					"bucket %v, key %v, duration %v",
 				name,
 				*err,
 				bucket,
 				key,
+				time.Since(start),
 			)
 			errorCounter.Inc()
 
@@ -110,10 +114,13 @@ func (m *s3Metrics) StatCall(
 
 func (m *s3Metrics) OnRetry(req *request.Request) {
 	logging.Info(
-		req.Context(),
-		"retrying request %v for a %v time",
+		logging.WithFields(
+			req.Context(), logging.String("S3_ENDPOINT", m.endpoint),
+		),
+		"retrying request %v for a %v time, error %v",
 		req.Operation.Name,
 		req.RetryCount+1,
+		req.Error,
 	)
 
 	subRegistry := m.registry.WithTags(map[string]string{
@@ -153,12 +160,14 @@ func (m *s3Metrics) OnQuotaExceeded(ctx context.Context, name string) {
 }
 
 func newS3Metrics(
+	endpoint string,
 	callTimeout time.Duration,
 	registry metrics.Registry,
 	availabilityMonitoring *AvailabilityMonitoring,
 ) *s3Metrics {
 
 	return &s3Metrics{
+		endpoint:               endpoint,
 		callTimeout:            callTimeout,
 		registry:               registry,
 		availabilityMonitoring: availabilityMonitoring,

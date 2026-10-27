@@ -29,10 +29,15 @@ func retryS3Operation[T any](
 
 	retriesLeft := maxRetries
 	delay := 100 * time.Millisecond
+	retrying := false
 	for {
 		if err := ctx.Err(); err != nil {
 			var zero T
 			return zero, err
+		}
+
+		if retrying {
+			recordS3OperationRetry(ctx)
 		}
 
 		value, err := operation()
@@ -62,6 +67,7 @@ func retryS3Operation[T any](
 		case <-timer.C:
 		}
 
+		retrying = true
 		delay *= 2
 		if delay > 5*time.Second {
 			delay = 5 * time.Second
@@ -167,4 +173,9 @@ func (d retryingS3Destination) GetObjectWithLimit(
 	return retryS3Operation(ctx, d.maxRetries, func() ([]byte, error) {
 		return d.S3Destination.GetObjectWithLimit(ctx, bucket, key, limit)
 	})
+}
+
+// Classifies failures for task retries after bounded retries within a run.
+func IsRetryableS3Error(err error) bool {
+	return isRetryableS3OperationError(err)
 }

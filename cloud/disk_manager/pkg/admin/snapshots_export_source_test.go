@@ -202,7 +202,7 @@ func TestSnapshotExportSourceOptions(t *testing.T) {
 		t.Run(
 			tc.name,
 			func(t *testing.T) {
-				cmd := newExportSnapshotCmd(&config.ServerConfig{})
+				cmd := newExportSnapshotCmd(nil, &config.ServerConfig{})
 				require.NoError(t, cmd.ParseFlags(tc.args))
 				c := &exportResource{kind: exportSnapshotKind}
 				c.source, _ = cmd.Flags().GetString("source")
@@ -592,7 +592,7 @@ func testExportBackupNeedsOnlyS3(
 						FederatedCredentials: &auth_config.FederatedCredentials{},
 					}
 				}
-				cmd := newExportCmd(serverConfig, kind, "", "")
+				cmd := newExportCmd(nil, serverConfig, kind, "", "")
 
 				args := []string{
 					"--id=resource",
@@ -696,6 +696,7 @@ func testExportBackupNeedsOnlyS3(
 					require.NoError(t, err)
 					for partition := 1; partition <= partitionCount; partition++ {
 						rawCmd := newExportCmd(
+							nil,
 							&config.ServerConfig{
 								SnapshotStorageBackupConfig: backupConfig,
 							},

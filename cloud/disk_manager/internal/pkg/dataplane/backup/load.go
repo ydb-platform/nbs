@@ -24,6 +24,7 @@ type LoadOptions struct {
 }
 
 type Meta struct {
+	BlockSize         uint32
 	ID                string
 	FolderID          string
 	Size              uint64
@@ -105,6 +106,7 @@ func Load(
 		}
 
 		meta = Meta{
+			BlockSize:         snapshot.BlockSize,
 			ID:                snapshot.ID,
 			FolderID:          snapshot.FolderID,
 			Size:              snapshot.Size,

@@ -346,8 +346,13 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	_, err = backupS3.GetObject(ctx, backup.SnapshotMetaKey("disk1", "snap1"))
-	require.Error(t, err)
+	object, err := backupS3.GetObject(ctx, backup.SnapshotMetaKey("disk1", "snap1"))
+	require.NoError(t, err)
+
+	var meta backup.SnapshotMeta
+	require.NoError(t, json.Unmarshal(object.Data, &meta))
+	require.Equal(t, "snap1", meta.ID)
+	require.Equal(t, "disk1", meta.DiskID)
 }
 
 func TestBackupSnapshotTaskSkipsSnapshotWithoutCopy(t *testing.T) {

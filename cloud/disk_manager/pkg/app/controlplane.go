@@ -218,6 +218,7 @@ func registerControlplaneTasks(
 		cellSelector,
 		backupS3,
 		backupQueueMetricsRegistry,
+		config.GetExportConfig(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -282,6 +283,7 @@ func registerControlplaneTasks(
 	err = placementgroup.RegisterForExecution(
 		ctx,
 		config.GetPlacementGroupConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -465,7 +467,9 @@ func initControlplane(
 	facade.RegisterImageService(
 		server,
 		taskScheduler,
-		images.NewService(taskScheduler, config.GetImagesConfig()),
+		images.NewService(
+			taskScheduler, config.GetImagesConfig(), config.GetExportConfig(),
+		),
 	)
 	facade.RegisterOperationService(server, taskScheduler)
 	facade.RegisterPlacementGroupService(

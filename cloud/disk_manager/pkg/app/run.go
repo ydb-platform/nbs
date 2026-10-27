@@ -481,10 +481,13 @@ func run(
 		}
 	}
 
-	err = dataplane.RegisterExportForSerialization(taskRegistry)
+	closeExport, err := initSnapshotExport(
+		ctx, config, mon, creds, taskRegistry, backupS3,
+	)
 	if err != nil {
 		return err
 	}
+	defer closeExport()
 
 	var serve func() error
 

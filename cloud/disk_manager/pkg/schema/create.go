@@ -5,12 +5,14 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,6 +96,16 @@ func create(
 		return err
 	}
 	defer db.Close(ctx)
+
+	if config.GetExportConfig() != nil {
+		// Dedicated export nodes also need the task schema.
+		err = tasks_storage.CreateYDBTables(
+			ctx, config.GetTasksConfig(), db, dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+	}
 
 	if config.GetDataplaneConfig() != nil {
 		err = initDataplane(ctx, config, creds, db, dropUnusedColumns)

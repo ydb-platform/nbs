@@ -3,6 +3,7 @@ package admin
 import (
 	"github.com/spf13/cobra"
 
+	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 )
 
@@ -50,13 +51,20 @@ const exportImageExample = `  disk-manager-admin \
       images export --id <image-id> --source backup \
       --s3-endpoint https://destination.example.com \
       --s3-bucket exported-images \
-      --s3-credentials-file /path/to/destination-credentials.json`
+      --s3-credentials-file /path/to/destination-credentials.json
+
+  disk-manager-admin --config /path/to/client.txt \
+      images export --async --id <image-id> \
+      --folder-id <folder-id> --compute-task-id <compute-task-id> \
+      --s3-endpoint https://destination.example.com --s3-bucket exported-images`
 
 func newExportImageCmd(
+	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	return newExportCmd(
+		clientConfig,
 		serverConfig,
 		exportImageKind,
 		exportImageLong,

@@ -14,6 +14,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type SnapshotMeta struct {
+	BlockSize        uint32
 	ID               string
 	Disk             *types.Disk
 	CheckpointID     string

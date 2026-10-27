@@ -44,6 +44,7 @@ func snapshotStatusToString(status snapshotStatus) string {
 // This is mapped into a DB row. If you change this struct, make sure to update
 // the mapping code.
 type snapshotState struct {
+	blockSize         uint32
 	id                string
 	zoneID            string
 	diskID            string
@@ -74,6 +75,7 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 	}
 
 	return &SnapshotMeta{
+		BlockSize:        s.blockSize,
 		ID:               s.id,
 		Disk:             disk,
 		CheckpointID:     s.checkpointID,
@@ -96,6 +98,9 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 
 func (s *snapshotState) structValue() persistence.Value {
 	return persistence.StructValue(
+		persistence.StructFieldValue(
+			"block_size", persistence.Uint32Value(s.blockSize),
+		),
 		persistence.StructFieldValue("id", persistence.UTF8Value(s.id)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
 		persistence.StructFieldValue("disk_id", persistence.UTF8Value(s.diskID)),
@@ -119,6 +124,7 @@ func (s *snapshotState) structValue() persistence.Value {
 
 func scanSnapshotState(res persistence.Result) (state snapshotState, err error) {
 	err = res.ScanNamed(
+		persistence.OptionalWithDefault("block_size", &state.blockSize),
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("zone_id", &state.zoneID),
 		persistence.OptionalWithDefault("disk_id", &state.diskID),
@@ -166,6 +172,7 @@ func scanSnapshotStates(ctx context.Context, res persistence.Result) ([]snapshot
 
 func snapshotStateStructTypeString() string {
 	return `Struct<
+		block_size: Uint32,
 		id: Utf8,
 		zone_id: Utf8,
 		disk_id: Utf8,
