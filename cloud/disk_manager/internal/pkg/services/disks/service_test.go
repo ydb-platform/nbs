@@ -536,7 +536,7 @@ func TestDiskServiceDeleteDiskPersistsCleanupMode(t *testing.T) {
 		t.Run(map[bool]string{false: "legacy", true: "background"}[enabled], func(t *testing.T) {
 			ctx := context.Background()
 			scheduler := tasks_mocks.NewSchedulerMock()
-			config := &disks_config.DisksConfig{DeleteNonExistentDisks: proto.Bool(true), EnableBackgroundDiskCleanup: proto.Bool(enabled)}
+			config := &disks_config.DisksConfig{DeleteNonExistentDisks: proto.Bool(true), EnableMissingDiskBackgroundCleanup: proto.Bool(enabled)}
 			service := &service{config: config, taskScheduler: scheduler}
 			var savedRequest []byte
 			scheduler.On("ScheduleNonCancellableTask", ctx, "disks.DeleteDisk", "", "", mock.Anything).
@@ -549,7 +549,7 @@ func TestDiskServiceDeleteDiskPersistsCleanupMode(t *testing.T) {
 			_, err := service.DeleteDisk(ctx, &disk_manager.DeleteDiskRequest{DiskId: &disk_manager.DiskId{DiskId: "disk", ZoneId: "zone"}})
 			require.NoError(t, err)
 			// Configuration changes must not switch the path of a queued task.
-			config.EnableBackgroundDiskCleanup = proto.Bool(!enabled)
+			config.EnableMissingDiskBackgroundCleanup = proto.Bool(!enabled)
 			task := &deleteDiskTask{}
 			require.NoError(t, task.Load(savedRequest, nil))
 			require.Equal(t, enabled, task.request.BackgroundCleanup)
