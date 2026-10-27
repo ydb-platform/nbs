@@ -97,12 +97,9 @@ TPartitionActor::TPartitionActor(
               .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
-    const auto& ctx = TActivationContext::AsActorContext();
-    const auto monotonic = ctx.Monotonic();
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
-        TabletID(),
-        ctx.Now().MicroSeconds() - monotonic.MicroSeconds());
+        TabletID());
 }
 
 TPartitionActor::~TPartitionActor()

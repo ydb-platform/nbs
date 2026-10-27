@@ -4,7 +4,6 @@
 
 #include <util/stream/str.h>
 #include <util/string/builder.h>
-#include <util/string/printf.h>
 #include <util/ysaveload.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -93,6 +92,15 @@ NProto::TError ParseFreshBlobContent(
     TVector<TOwningFreshBlock>& result,
     TInstant& timestamp)
 {
+    constexpr size_t HeaderSize =
+        sizeof(TFreshBlobFormatVersion) + sizeof(TProtobufSize);
+    if (buffer.size() < HeaderSize) {
+        return MakeError(
+            E_FAIL, TStringBuilder() <<
+                "fresh blob is too small; #buffer.size()=" << buffer.size());
+    }
+
+    // Load() can't throw: the header size is checked above.
     TStringInput si(buffer);
 
     TFreshBlobFormatVersion version = 0;
@@ -104,16 +112,13 @@ NProto::TError ParseFreshBlobContent(
     TProtobufSize protoSize = 0;
     Load(&si, protoSize);
 
-    size_t offset = sizeof(version) + sizeof(protoSize);
-    if (buffer.size() < offset || buffer.size() - offset < protoSize) {
+    size_t offset = HeaderSize;
+    if (buffer.size() - offset < protoSize) {
         return MakeError(
-            E_FAIL,
-            Sprintf(
-                "fresh blob meta exceeds buffer; offset=%zu, protoSize=%u, "
-                "buffer.size()=%zu",
-                offset,
-                protoSize,
-                buffer.size()));
+            E_FAIL, TStringBuilder() <<
+                "fresh blob meta exceeds buffer; #offset=" << offset <<
+                " #protoSize=" << protoSize <<
+                " #buffer.size()=" << buffer.size());
     }
 
     NProto::TFreshBlobMeta meta;

@@ -99,6 +99,32 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         }
     }
 
+    Y_UNIT_TEST(ShouldFailToParseTruncatedFreshBlob)
+    {
+        constexpr ui32 blockSize = 4;
+
+        // A zero blob has no block data, so its content is the header
+        // followed by the meta protobuf.
+        const TString blobContent = BuildZeroFreshBlocksBlobContent(
+            ZeroFreshBlocksRange,
+            TInstant::MicroSeconds(1234567));
+
+        for (const size_t size: {0UL, 3UL, blobContent.size() - 1}) {
+            TVector<TOwningFreshBlock> result;
+            TInstant timestamp;
+            const auto error = ParseFreshBlobContent(
+                1234,   // commitId
+                {},     // BlobId
+                blockSize,
+                blobContent.substr(0, size),
+                result,
+                timestamp);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(E_FAIL, error.GetCode(), size);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, result.size(), size);
+        }
+    }
+
     Y_UNIT_TEST(SerializationShouldBeForwardAndBackwardCompatibleWrite)
     {
         constexpr ui64 commitId = 1234;

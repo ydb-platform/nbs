@@ -98,8 +98,6 @@ public:
 private:
     const TString DiskId;
     const ui64 TabletId = 0;
-    // Unix time minus monotonic time, in microseconds.
-    const ui64 FreshWriteTimeOffset = 0;
 
     TAdaptiveLock StateLock;
 
@@ -108,6 +106,10 @@ private:
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
+    // Fresh write timestamps are Unix time advanced with the monotonic clock
+    // from this anchor.
+    TInstant FreshWriteTimeAnchor;
+    NActors::TMonotonic FreshWriteMonotonicAnchor;
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
@@ -126,17 +128,17 @@ private:
 public:
     TPartitionThreadSafeState() = default;
 
-    TPartitionThreadSafeState(
-        TString diskId, ui64 tabletId, ui64 freshWriteTimeOffset)
+    TPartitionThreadSafeState(TString diskId, ui64 tabletId)
         : DiskId(std::move(diskId))
         , TabletId(tabletId)
-        , FreshWriteTimeOffset(freshWriteTimeOffset)
     {}
 
     void Init(
         NActors::TActorId partitionActorId,
         ui32 generation,
-        ui32 lastCommitId);
+        ui32 lastCommitId,
+        TInstant now,
+        NActors::TMonotonic monotonic);
 
     TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {

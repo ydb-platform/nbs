@@ -16,11 +16,15 @@ using namespace NActors;
 void TPartitionThreadSafeState::Init(
     NActors::TActorId partitionActorId,
     ui32 generation,
-    ui32 lastCommitId)
+    ui32 lastCommitId,
+    TInstant now,
+    NActors::TMonotonic monotonic)
 {
     PartitionActorId = partitionActorId;
     Generation = generation;
     LastCommitId = lastCommitId;
+    FreshWriteTimeAnchor = now;
+    FreshWriteMonotonicAnchor = monotonic;
 }
 
 ui64 TPartitionThreadSafeState::GenerateCommitId()
@@ -56,8 +60,8 @@ TInstant TPartitionThreadSafeState::GetFreshWriteTimestamp(
 {
     // Persist Unix time, but advance it with the monotonic clock so timestamps
     // follow commit order.
-    return TInstant::MicroSeconds(
-        ctx.Monotonic().MicroSeconds() + FreshWriteTimeOffset);
+    return FreshWriteTimeAnchor +
+           (ctx.Monotonic() - FreshWriteMonotonicAnchor);
 }
 
 void TPartitionThreadSafeState::FinishFreshWrite(

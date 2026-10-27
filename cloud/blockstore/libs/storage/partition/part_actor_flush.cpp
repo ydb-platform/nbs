@@ -459,13 +459,10 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
         return false;
     }
 
+    // Blobs without timestamps (TInstant::Zero()) count as old. Such blobs
+    // come from older versions and are normally flushed on startup anyway.
     const auto timestamp = State->GetFirstUntrimmedFreshBlobTimestamp(
         State->GetTrimFreshLogToCommitId());
-    if (timestamp == TInstant::Zero()) {
-        // Blobs without timestamps are flushed by the existing thresholds.
-        return false;
-    }
-
     const auto now = SharedState->GetFreshWriteTimestamp(ctx);
     return now - timestamp >= ageThreshold;
 }
