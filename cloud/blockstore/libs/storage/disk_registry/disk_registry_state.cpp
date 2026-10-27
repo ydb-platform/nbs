@@ -8520,11 +8520,6 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                 << "disk " << masterId.Quote() << " invalid master disk");
     }
 
-    const size_t devicesCount = replicas.front().size();
-
-    THashSet<TDeviceId> reservedDevices;
-    reservedDevices.reserve(replicas.size() * devicesCount);
-
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
         auto* replica = Disks.FindPtr(replicaId);
@@ -8539,24 +8534,10 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                                  << replica->MasterDiskId.Quote());
         }
 
-        if (replicas[i].size() != devicesCount) {
+        if (replicas[i].size() != replicas.front().size()) {
             return MakeError(
                 E_INVALID_STATE,
                 "inconsistent devices count in replicas");
-        }
-
-        for (const auto& uuid: replicas[i]) {
-            if (uuid.empty()) {
-                continue;
-            }
-
-            if (reservedDevices.contains(uuid)) {
-                return MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder()
-                        << "device " << uuid.Quote() << " is already reserved");
-            }
-            reservedDevices.insert(uuid);
         }
     }
 
@@ -8718,6 +8699,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     for (ui32 i = 0; i < replicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
+        // Reserve non-fresh devices to avoid using them for fresh.
         reserveDevices(replicaId, replicas[i]);
 
         TVector<TDeviceId> resolvedReplica;
@@ -8785,9 +8767,9 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 
     db.UpdateDisk(BuildDiskConfig(masterId, master));
 
-    // Volume size is equals to the size of one of the replicas.
-    // The other replicas are copies of it.
-    result->Devices = std::move(allocateResults.front().Devices);
+    // AllocateDiskResult is used to calculate logical block count. For mirrored
+    // disk it is equal to the logical block count in any of the replicas.
+    *result = std::move(allocateResults.front());
 
     return {};
 }
