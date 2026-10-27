@@ -102,14 +102,15 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         subscriptions.AddNodeXAttrSubscriber(1, "user.a", Pipe2, T0);
         subscriptions.AddNodeXAttrSubscriber(1, "user.b", Pipe1, T0);
         subscriptions.AddNodeXAttrSubscriber(2, "user.a", Pipe1, T0);
-        UNIT_ASSERT_VALUES_EQUAL(3, subscriptions.GetNodeXAttrCount());
+        auto stats = subscriptions.GetStats();
 
         //
         // NodeXAttrs, Nodes and NodeRefs are tracked independently.
         //
 
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeRefCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.NodeXAttrCount);
         UNIT_ASSERT(subscriptions.ExtractNodeSubscribers(1, T0).empty());
         UNIT_ASSERT(
             subscriptions.ExtractNodeRefSubscribers(1, "user.a", T0).empty());
@@ -128,7 +129,8 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TActorId>{Pipe1},
             subscriptions.ExtractNodeXAttrSubscribers(2, "user.a", T0));
-        UNIT_ASSERT_VALUES_EQUAL(0, subscriptions.GetNodeXAttrCount());
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeXAttrCount);
     }
 
     Y_UNIT_TEST(ShouldStoreClientsInFirstPage)

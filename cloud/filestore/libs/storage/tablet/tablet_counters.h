@@ -288,6 +288,7 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> FileSystemEventsSubscriberRegistryNodeRefCount{0};
     std::atomic<i64> FileSystemEventsSubscriberRegistryClientCount{0};
     std::atomic<i64> FileSystemEventsSubscriberRegistryExtraPageCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeXAttrCount{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
