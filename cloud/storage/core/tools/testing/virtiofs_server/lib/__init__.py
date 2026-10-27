@@ -74,7 +74,7 @@ class VirtioFsServer:
             is_alive=self.daemon.is_alive,
             timeout=timeout)
 
-    def wait_for_socket(self, tag=None, timeout=180):
+    def wait_for_socket(self, tag=None, timeout=10):
         deadline = time.time() + timeout
         while time.time() < deadline:
             if not self.daemon.is_alive():
