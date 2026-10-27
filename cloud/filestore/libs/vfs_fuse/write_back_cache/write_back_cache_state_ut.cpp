@@ -119,6 +119,7 @@ struct TBootstrap
             Stats->GetWriteDataRequestManagerStats(),
             Stats->GetNodeStateHolderStats(),
             FlushBatchLimits,
+            TLog{},
             "[test]");
 
         return !HasError(State->Init());
@@ -127,6 +128,11 @@ struct TBootstrap
     void UpdateStats() const
     {
         State->UpdateStats();
+    }
+
+    void StartShutdown() const
+    {
+        State->Shutdown();
     }
 
     TString DumpEvents()
@@ -445,7 +451,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
 
-        b.State->SetDrainingMode();
+        b.State->Drain();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -518,7 +524,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         auto error = MakeError(E_FAIL, "Flush failed");
 
-        // Nothing happens until all handles are requested to be released
+        // A live handle keeps the cached data available for retries.
         b.State->FlushFailed(1, error);
 
         // All pending WriteData requests are failed on flush failure
@@ -537,16 +543,124 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(!c2.HasValue());
 
-        // Cache should be emptied
-        b.State->FlushFailed(1, error);
+        UNIT_ASSERT(
+            b.State->FlushFailed(1, error) ==
+            EFlushRetryStatus::ShouldNotRetry);
 
         UNIT_ASSERT(c2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, c2.GetValue());
 
-        b.State->SetDrainingMode();
+        b.State->Drain();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldRejectCachedWritesInShutdownMode)
+    {
+        TBootstrap b;
+        b.StartShutdown();
+
+        auto write = b.AddAndGetError(1, 101, 0, "abc");
+
+        UNIT_ASSERT(write.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, write.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT(b.State->IsDrained());
+    }
+
+    void TestShouldWaitForScheduledFlushAfterCacheCorruption(bool retry)
+    {
+        class TFailTagStorage final: public TTestStorage
+        {
+        public:
+            using TTestStorage::TTestStorage;
+
+            NProto::TError SetTag(const void*, ui32) override
+            {
+                return MakeError(E_IO, "Injected SetTag failure");
+            }
+        };
+
+        TBootstrap b;
+        b.Storage = std::make_shared<TFailTagStorage>(
+            b.Stats->GetPersistentStorageStats());
+        UNIT_ASSERT(b.Recreate());
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(2, 202, 0, "def").GetValue());
+        b.State->AddFlushAllRequest();
+
+        if (retry) {
+            for (size_t attempt = 0; attempt < 2; ++attempt) {
+                UNIT_ASSERT_VALUES_EQUAL(202, b.State->AcquireFlushHandle(2));
+                UNIT_ASSERT(
+                    b.State->FlushFailed(2, MakeError(E_REJECTED)) ==
+                    EFlushRetryStatus::ShouldRetry);
+            }
+        }
+
+        auto shutdown = b.State->Shutdown();
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        // Node 2 is still scheduled, without a borrowed handle, when node 1's
+        // completion detects a persistent-storage failure.
+        b.State->FlushSucceeded(1, 1);
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
+        UNIT_ASSERT(!shutdown.HasValue());
+        UNIT_ASSERT(!b.State->VisitUnflushedRequestsFromFrontFlushBatch(
+            2,
+            [](const TCachedWriteDataRequest*) {}));
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        if (retry) {
+            UNIT_ASSERT(
+                b.State->FlushFailed(2, MakeError(E_REJECTED)) ==
+                EFlushRetryStatus::ShouldNotRetry);
+        } else {
+            UNIT_ASSERT(
+                b.State->FlushFailed(2, MakeError(E_INVALID_STATE)) ==
+                EFlushRetryStatus::ShouldNotRetry);
+        }
+        UNIT_ASSERT(shutdown.HasValue());
+        shutdown.GetValue();
+    }
+
+    Y_UNIT_TEST(ShouldWaitForScheduledFlushAfterCacheCorruption)
+    {
+        TestShouldWaitForScheduledFlushAfterCacheCorruption(false);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForRetriedFlushAfterCacheCorruption)
+    {
+        TestShouldWaitForScheduledFlushAfterCacheCorruption(true);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForBarrierBlockedWritesOnShutdown)
+    {
+        TBootstrap b;
+        auto barrier = b.State->AcquireBarrier(1);
+        UNIT_ASSERT(barrier.HasValue());
+        UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.DumpEvents().empty());
+
+        auto shutdown = b.State->Shutdown();
+        UNIT_ASSERT(!shutdown.HasValue());
+        UNIT_ASSERT(b.DumpEvents().empty());
+
+        b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
+        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        b.State->FlushSucceeded(1, 1);
+        UNIT_ASSERT(shutdown.HasValue());
+        shutdown.GetValue();
+        UNIT_ASSERT(b.State->IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
             b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
@@ -1472,7 +1586,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
     }
 
-    Y_UNIT_TEST(ShouldNotDropAllocatedRequestsOnFlushFailure)
+    void TestShouldNotDropAllocatedRequestsOnFlushFailure(bool shutdown)
     {
         TBootstrap b;
         b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 1;
@@ -1499,31 +1613,95 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!backpressured3.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
 
+        struct
+        {
+            bool CallbackInvoked = false;
+            EFlushRetryStatus RetryStatus = EFlushRetryStatus::ShouldNotRetry;
+            ui64 PendingCount = 0;
+            bool AllocatedWritePending = false;
+            bool SecondWriteFailed = false;
+            bool ThirdWriteFailed = false;
+            ui64 DroppedCount = 0;
+        } observed;
+
+        NThreading::TFuture<NProto::TError> shutdownFlush;
+
         barrier.Subscribe(
-            [&](auto&)
+            [&](const auto& future)
             {
+                observed.CallbackInvoked = true;
                 // The barrier is acquired after the front pending request
                 // becomes allocated but before it is serialized, so only the
                 // last two requests will be failed.
-                b.State->FlushFailed(2, MakeError(E_FS_NOSPC));
+                ui64 failedNodeId = 2;
+                if (shutdown) {
+                    // Flush the node whose serializer still holds the front
+                    // allocated request. Shutdown must preserve that request
+                    // until serialization finishes.
+                    b.State->ReleaseBarrier(1, future.GetValue().GetResult());
+                    b.StartShutdown();
+                    shutdownFlush = b.State->AddFlushRequest(1);
+                    failedNodeId = 1;
+                }
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    1,
-                    b.Metrics.PendingQueue.Count->Get());
-
-                UNIT_ASSERT(!backpressured1.HasValue());
-                UNIT_ASSERT(backpressured2.HasValue());
-                UNIT_ASSERT(!backpressured2.GetValue());
-                UNIT_ASSERT(backpressured3.HasValue());
-                UNIT_ASSERT(!backpressured3.GetValue());
+                observed.RetryStatus =
+                    b.State->FlushFailed(failedNodeId, MakeError(E_FS_NOSPC));
+                observed.PendingCount = b.Metrics.PendingQueue.Count->Get();
+                observed.AllocatedWritePending = !backpressured1.HasValue();
+                observed.SecondWriteFailed =
+                    backpressured2.HasValue() && !backpressured2.GetValue();
+                observed.ThirdWriteFailed =
+                    backpressured3.HasValue() && !backpressured3.GetValue();
+                observed.DroppedCount =
+                    b.Metrics.WriteDataRequestDroppedCount->Get();
             });
 
         b.State->FlushSucceeded(1, 1);
+
+        // Callbacks run from the lock guard's noexcept release path, so assert
+        // their observations only after that release and serialization finish.
+        UNIT_ASSERT(observed.CallbackInvoked);
+        UNIT_ASSERT(observed.RetryStatus == EFlushRetryStatus::ShouldRetry);
+        UNIT_ASSERT_VALUES_EQUAL(1, observed.PendingCount);
+        UNIT_ASSERT(observed.AllocatedWritePending);
+        UNIT_ASSERT(observed.SecondWriteFailed);
+        UNIT_ASSERT(observed.ThirdWriteFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, observed.DroppedCount);
 
         UNIT_ASSERT(backpressured1.HasValue());
         UNIT_ASSERT(backpressured1.GetValue());
         UNIT_ASSERT(barrier.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+
+        b.UpdateStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Failed->Get());
+
+        if (shutdown) {
+            UNIT_ASSERT(shutdownFlush.Initialized());
+            UNIT_ASSERT(shutdownFlush.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_NOSPC,
+                shutdownFlush.GetValue().GetCode());
+
+            // Once serialization has completed, the next failed attempt may
+            // drop the cached requests safely.
+            UNIT_ASSERT(
+                b.State->FlushFailed(1, MakeError(E_IO)) ==
+                EFlushRetryStatus::ShouldNotRetry);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                b.Metrics.WriteDataRequestDroppedCount->Get());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotDropAllocatedRequestsOnFlushFailure)
+    {
+        TestShouldNotDropAllocatedRequestsOnFlushFailure(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotDropAllocatedRequestsOnShutdownFlushFailure)
+    {
+        TestShouldNotDropAllocatedRequestsOnFlushFailure(true);
     }
 
     void DoShouldNotReleaseHandleBeingUsedForFlush(bool flushFails)

@@ -122,6 +122,7 @@ public:
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
+              Log,
               LogTag)
     {}
 
@@ -179,14 +180,16 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    void Drain()
     {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Start WriteBackCache draining");
-        }
+        StartDraining();
+        State.Drain();
+    }
 
-        State.SetDrainingMode();
-        return State.AddFlushAllRequest();
+    TFuture<void> Shutdown()
+    {
+        StartDraining();
+        return State.Shutdown();
     }
 
     bool IsDrained()
@@ -488,6 +491,13 @@ public:
     }
 
 private:
+    void StartDraining()
+    {
+        if (!DrainRequested.exchange(true)) {
+            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
+        }
+    }
+
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
@@ -504,10 +514,11 @@ private:
             });
 
         if (!success) {
-            // This may happen if the storage is corrupted or an internal
-            // problem in the logic has happened. This is fatal and should
-            // result in suspending all operations. Flush will remain in-flight
-            // until manual resolution takes place.
+            State.FlushFailed(
+                nodeId,
+                MakeError(
+                    E_INVALID_STATE,
+                    "WriteBackCache is in failed state"));
             return;
         }
 
@@ -735,9 +746,14 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
+void TWriteBackCache::Drain()
 {
-    return Impl->Drain();
+    Impl->Drain();
+}
+
+TFuture<void> TWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const
