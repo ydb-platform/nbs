@@ -770,7 +770,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     duplicateReplicas);
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-                UNIT_ASSERT(error.GetMessage().Contains("already reserved"));
+                UNIT_ASSERT(error.GetMessage().Contains("is allocated for disk"));
             });
 
         executor.WriteTx(
