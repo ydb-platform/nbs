@@ -8139,7 +8139,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(writeDSync).Wait(WaitTimeout));
         UNIT_ASSERT(writeDSync->Out->Header.error);
 
-        // 4. Release - should fail because data is dropped
+        // 4. Release - should fail because cached data could not be flushed
         auto release = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,
@@ -8147,7 +8147,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
         UNIT_ASSERT(release->Out->Header.error);
 
-        // 5. Release again - success because of no data in the cache
+        // 5. Release again - success because the handle is no longer tracked
         auto release2 = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,

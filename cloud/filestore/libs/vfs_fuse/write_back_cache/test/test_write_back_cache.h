@@ -31,6 +31,7 @@ public:
     TTestWriteBackCache& operator=(TTestWriteBackCache&&) noexcept;
 
     NThreading::TFuture<NProto::TError> Drain();
+    NThreading::TFuture<NProto::TError> Shutdown();
     bool IsDrained() const;
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(

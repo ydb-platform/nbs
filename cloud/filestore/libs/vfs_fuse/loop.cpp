@@ -1503,11 +1503,11 @@ private:
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
-                "executing Drain()",
+                "executing Shutdown()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.Drain().Subscribe(
+            WriteBackCache.Shutdown().Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto& f) mutable
                 {
@@ -1528,28 +1528,23 @@ private:
         TPromise<void> stopCompleted,
         const NProto::TError& error)
     {
-        if (WriteBackCache.IsDrained()) {
-            // It is possible for WriteBackCache to become drained after
-            // unsuccessful FlushAllData call. This may happen if the data is
-            // dropped by WriteBackCache itself (for example, if ReleaseHandle
-            // was called). In this case, we do not report FlushAllData error
-            // because it should have been already reported by WriteBackCache
-            STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str());
-        } else if (HasError(error)) {
+        if (HasError(error)) {
             STORAGE_WARN(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
-                " because of Drain() error, unflushed data will be lost."
+                "[f:%s][c:%s] (DestroySession) WriteBackCache shutdown failed,"
+                " cached data may have been lost."
                 " Error: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
+        } else if (WriteBackCache.IsDrained()) {
+            STORAGE_INFO(
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str());
         } else {
             ReportWriteBackCacheDataLossError(Sprintf(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
-                "after successful Drain(), unflushed data will be lost",
+                "after successful Shutdown(), unflushed data will be lost",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str()));
         }

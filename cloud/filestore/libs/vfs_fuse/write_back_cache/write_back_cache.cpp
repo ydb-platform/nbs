@@ -189,6 +189,12 @@ public:
         return State.AddFlushAllRequest();
     }
 
+    NThreading::TFuture<NCloud::NProto::TError> Shutdown()
+    {
+        State.SetShutdownMode();
+        return Drain();
+    }
+
     bool IsDrained()
     {
         if (DrainCompleted.load(std::memory_order_relaxed)) {
@@ -738,6 +744,11 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
 NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
 {
     return Impl->Drain();
+}
+
+NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const

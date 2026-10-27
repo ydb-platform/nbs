@@ -165,6 +165,11 @@ public:
         return Execute([this] { return Cache.Drain(); });
     }
 
+    TFuture<NProto::TError> Shutdown()
+    {
+        return Execute([this] { return Cache.Shutdown(); });
+    }
+
     bool IsDrained() const
     {
         return Cache.IsDrained();
@@ -308,6 +313,11 @@ TTestWriteBackCache& TTestWriteBackCache::operator=(
 TFuture<NProto::TError> TTestWriteBackCache::Drain()
 {
     return Impl->Drain();
+}
+
+TFuture<NProto::TError> TTestWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TTestWriteBackCache::IsDrained() const
