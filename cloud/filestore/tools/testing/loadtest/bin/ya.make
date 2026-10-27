@@ -8,7 +8,7 @@ PEERDIR(
     cloud/filestore/tools/testing/loadtest/lib
     cloud/filestore/tools/testing/loadtest/protos
 
-    cloud/fastshard/bootstrap
+    cloud/fastshard/libs/bootstrap
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
