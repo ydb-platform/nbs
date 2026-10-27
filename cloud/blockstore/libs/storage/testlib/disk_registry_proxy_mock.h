@@ -240,6 +240,7 @@ private:
         const auto& diskId = msg->Record.GetDiskId();
         auto& disk = State->Disks[diskId];
 
+        disk.BlockSize = msg->Record.GetBlockSize();
         disk.PoolName = msg->Record.GetPoolName();
         disk.MediaKind = msg->Record.GetStorageMediaKind();
         disk.Replicas.resize(State->ReplicaCount);
@@ -826,10 +827,8 @@ private:
             *response->Record.MutableError() = MakeError(E_NOT_FOUND, "disk not found");
         } else {
             const auto& disk = State->Disks[msg->Record.GetDiskId()];
-            for (const auto& device : disk.Devices) {
-                auto& dev = *response->Record.MutableDevices()->Add();
-                dev = device;
-            }
+            response->Record.SetBlockSize(disk.BlockSize);
+            ToLogicalBlocks(disk, response->Record);
         }
 
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -874,6 +873,7 @@ private:
         }
 
         TVector<NProto::TDeviceConfig> devices;
+        TVector<size_t> deviceIndices;
 
         ui64 logicalBlockCount = 0;
 
@@ -892,10 +892,22 @@ private:
                 return MakeError(E_ARGUMENT, "device not found");
             }
 
-            logicalBlockCount +=
-                config->GetBlocksCount() * config->GetBlockSize() / blockSize;
-
             devices.push_back(*config);
+            auto& device = devices.back();
+            if (device.GetUnadjustedBlockCount()) {
+                // Real CreateDiskFromDevices restores the full device size.
+                device.SetBlocksCount(device.GetUnadjustedBlockCount());
+            }
+
+            logicalBlockCount +=
+                device.GetBlocksCount() * device.GetBlockSize() / blockSize;
+            deviceIndices.push_back(config - State->Devices.data());
+        }
+
+        for (size_t i = 0; i < devices.size(); ++i) {
+            const auto index = deviceIndices[i];
+            State->Devices[index] = devices[i];
+            State->DeviceIsAllocated[index] = true;
         }
 
         auto& disk = State->Disks[diskId];
