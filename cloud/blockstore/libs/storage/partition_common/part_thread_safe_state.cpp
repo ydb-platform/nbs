@@ -43,7 +43,7 @@ TPartitionThreadSafeState::StartFreshWrite(
     TGuard guard(StateLock);
 
     ui64 commitId = GenerateCommitIdImpl();
-    const auto timestamp = GetFreshWriteTimestampImpl(ctx);
+    const auto timestamp = GetFreshWriteTimestamp(ctx);
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
     CommitQueue.AcquireBarrier(commitId);
@@ -52,10 +52,12 @@ TPartitionThreadSafeState::StartFreshWrite(
 }
 
 TInstant TPartitionThreadSafeState::GetFreshWriteTimestamp(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx) const
 {
-    TGuard guard(StateLock);
-    return GetFreshWriteTimestampImpl(ctx);
+    // Persist Unix time, but advance it with the monotonic clock so timestamps
+    // follow commit order.
+    return TInstant::MicroSeconds(
+        ctx.Monotonic().MicroSeconds() + FreshWriteTimeOffset);
 }
 
 void TPartitionThreadSafeState::FinishFreshWrite(
@@ -226,21 +228,6 @@ ui64 TPartitionThreadSafeState::GenerateCommitIdImpl()
 ui64 TPartitionThreadSafeState::GetLastCommitIdImpl() const
 {
     return MakeCommitId(Generation, LastCommitId);
-}
-
-TInstant TPartitionThreadSafeState::GetFreshWriteTimestampImpl(
-    const NActors::TActorContext& ctx)
-{
-    const auto monotonic = ctx.Monotonic();
-    if (!FreshWriteTimeAnchor) {
-        FreshWriteTimeAnchor = TFreshWriteTimeAnchor{
-            .Timestamp = ctx.Now(),
-            .Monotonic = monotonic};
-    }
-    // Persist Unix time, but advance it with the monotonic clock so that
-    // timestamps follow commit order during this tablet lifetime.
-    return FreshWriteTimeAnchor->Timestamp +
-           (monotonic - FreshWriteTimeAnchor->Monotonic);
 }
 
 void TPartitionThreadSafeState::ExecuteTxs(

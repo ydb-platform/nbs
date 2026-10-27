@@ -4,14 +4,127 @@
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/mailbox.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <barrier>
 #include <thread>
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTimestampTestRuntime: public NActors::TTestActorRuntimeBase
+{
+private:
+    NActors::TMailbox Mailbox;
+
+public:
+    TTimestampTestRuntime()
+    {
+        Initialize();
+    }
+
+    NActors::TActorContext GetContext()
+    {
+        return NActors::TActorContext(
+            Mailbox,
+            *GetNodeById(GetNodeId())->ExecutorThread,
+            0,
+            {});
+    }
+
+    void SetClocks(TInstant timestamp, NActors::TMonotonic monotonic)
+    {
+        auto* node = GetNodeById(GetNodeId());
+        AtomicStore(node->ActorSystemTimestamp, timestamp.MicroSeconds());
+        AtomicStore(node->ActorSystemMonotonic, monotonic.MicroSeconds());
+    }
+};
+
+}   // namespace
+
 Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 {
+    Y_UNIT_TEST(ShouldAdvanceFreshWriteTimestampWithMonotonicTime)
+    {
+        TTimestampTestRuntime runtime;
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state(
+            {}, 0, TDuration::Seconds(90).MicroSeconds());
+        state.Init({}, 1, 0);
+
+        {
+            // Timestamp reads must work with StateLock held.
+            auto guard = state.AccessTrimFreshLogBarriers();
+            runtime.SetClocks(TInstant::Seconds(100), TMonotonic::Seconds(10));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(100), state.GetFreshWriteTimestamp(ctx));
+
+            runtime.SetClocks(TInstant::Seconds(50), TMonotonic::Seconds(11));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(101), state.GetFreshWriteTimestamp(ctx));
+
+            runtime.SetClocks(TInstant::Seconds(1000), TMonotonic::Seconds(12));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(102), state.GetFreshWriteTimestamp(ctx));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 0), state.GetLastCommitId());
+
+        const auto firstWrite = state.StartFreshWrite(ctx, 1);
+        runtime.SetClocks(TInstant::Seconds(20), TMonotonic::Seconds(13));
+        const auto secondWrite = state.StartFreshWrite(ctx, 1);
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 1), firstWrite.CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(102), firstWrite.Timestamp);
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 2), secondWrite.CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(103), secondWrite.Timestamp);
+    }
+
+    Y_UNIT_TEST(ShouldReadFreshWriteTimestampConcurrently)
+    {
+        TTimestampTestRuntime runtime;
+        runtime.SetClocks(TInstant::Seconds(100), TMonotonic::Seconds(10));
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state(
+            {}, 0, TDuration::Seconds(90).MicroSeconds());
+        state.Init({}, 1, 0);
+
+        constexpr size_t NumThreads = 10;
+        constexpr size_t RequestsPerThread = 1000;
+        std::barrier start(NumThreads);
+        std::vector<std::thread> threads;
+        std::vector<std::vector<TInstant>> timestamps(NumThreads);
+        for (size_t i = 0; i < NumThreads; ++i) {
+            threads.emplace_back(
+                [&, i]
+                {
+                    timestamps[i].reserve(RequestsPerThread);
+                    start.arrive_and_wait();
+                    for (size_t j = 0; j < RequestsPerThread; ++j) {
+                        timestamps[i].push_back(
+                            i % 2 ? state.StartFreshWrite(ctx, 1).Timestamp
+                                  : state.GetFreshWriteTimestamp(ctx));
+                    }
+                });
+        }
+        for (auto& thread: threads) {
+            thread.join();
+        }
+        for (const auto& values: timestamps) {
+            for (const auto timestamp: values) {
+                UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100), timestamp);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeCommitId(1, NumThreads / 2 * RequestsPerThread),
+            state.GetLastCommitId());
+    }
+
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
     {
         TPartitionThreadSafeState state;

@@ -18,7 +18,6 @@
 
 #include <atomic>
 #include <memory>
-#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -99,6 +98,8 @@ public:
 private:
     const TString DiskId;
     const ui64 TabletId = 0;
+    // Unix time minus monotonic time, in microseconds.
+    const ui64 FreshWriteTimeOffset = 0;
 
     TAdaptiveLock StateLock;
 
@@ -107,13 +108,6 @@ private:
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
-    struct TFreshWriteTimeAnchor
-    {
-        TInstant Timestamp;
-        NActors::TMonotonic Monotonic;
-    };
-
-    std::optional<TFreshWriteTimeAnchor> FreshWriteTimeAnchor;
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
@@ -132,9 +126,11 @@ private:
 public:
     TPartitionThreadSafeState() = default;
 
-    TPartitionThreadSafeState(TString diskId, ui64 tabletId)
+    TPartitionThreadSafeState(
+        TString diskId, ui64 tabletId, ui64 freshWriteTimeOffset)
         : DiskId(std::move(diskId))
         , TabletId(tabletId)
+        , FreshWriteTimeOffset(freshWriteTimeOffset)
     {}
 
     void Init(
@@ -170,7 +166,7 @@ public:
         ui64 blockCount);
 
     // Read the same clock without allocating a commit id.
-    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx) const;
 
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
@@ -266,7 +262,6 @@ public:
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
-    TInstant GetFreshWriteTimestampImpl(const NActors::TActorContext& ctx);
 
     void ExecuteTxs(
         const NActors::TActorContext& ctx,
