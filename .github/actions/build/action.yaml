@@ -362,8 +362,9 @@ runs:
             --build-preset "$BUILD_PRESET" \
             --build-target "$BUILD_TARGET" \
             --retry "$YA_BUILD_ATTEMPT" \
-            --operation build || \
+            --operation build || {
             echo "::warning title=Build trace::Trace bundle generation failed or timed out (exit code $?)"
+        }
     - name: Summarize build errors
       id: build-errors
       if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
