@@ -268,7 +268,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
     config.SetFreshByteCountThresholdForBackpressure(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
     config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
@@ -969,8 +971,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1027,7 +1029,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
         config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1091,9 +1093,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     Y_UNIT_TEST(ShouldCorrectlyUpdateSharedCountersWhenFlushIsConcurrentWithFreshBlocksWriterStart)
     {
         auto config = DefaultConfig();
-        config.SetFreshByteCountHardLimit(0);
+        config.SetFreshByteCountHardLimitSSD(0);
         config.SetFreshLogicalBlocksByteCountHardLimit(DefaultBlockSize);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1889,8 +1891,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
