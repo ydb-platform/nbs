@@ -461,8 +461,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void StopDevice()
     {
-        const auto error = Device->Stop().GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        Device->Stop().Wait();
     }
 
     NCloud::NProto::TReadPagesResponse ReadPages(

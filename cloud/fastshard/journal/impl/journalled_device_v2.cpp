@@ -158,7 +158,7 @@ private:
     std::atomic_bool ShouldStop = false;
     std::atomic_bool RestoreFailed = false;
 
-    TPromise<NProto::TError> FlushCycleStopped;
+    TPromise<void> FlushCycleStopped;
 
 public:
     TJournalledDeviceV2(
@@ -181,12 +181,12 @@ public:
                                        { return self.DoStart(); });
     }
 
-    TFuture<NProto::TError> Stop() noexcept override
+    TFuture<void> Stop() noexcept override
     {
         ShouldStop.store(true);
 
         if (!FlushCycleStopped.Initialized()) {
-            return MakeFuture<NProto::TError>();
+            return MakeFuture();
         }
 
         return FlushCycleStopped.GetFuture();
@@ -308,7 +308,7 @@ private:
 
         IndexedLsnBarrier.Advance(response.GetResult());
 
-        FlushCycleStopped = NewPromise<NProto::TError>();
+        FlushCycleStopped = NewPromise<void>();
         ScheduleFlushCycle();
         return {};
     }
@@ -420,7 +420,7 @@ private:
         }
 
         if (ShouldStop.load()) {
-            FlushCycleStopped.SetValue(NProto::TError());
+            FlushCycleStopped.SetValue();
             return;
         }
 

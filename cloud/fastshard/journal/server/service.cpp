@@ -6,9 +6,11 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
+#include <library/cpp/coroutine/engine/events.h>
 #include <library/cpp/threading/future/async_semaphore.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
 #include <functional>
@@ -21,18 +23,25 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Touched only in the executor, so no locking is needed: the requests, the
+// formats and the stop all run there.
 struct TJournalledDeviceSpec
 {
     TJournalledDeviceConfig Config;
 
-    // Empty until the device is created and started.
+    // Set while a format of the device is in flight: a parallel format of
+    // the same device is rejected.
+    bool Formatting = false;
+
+    // Null while the device is not started: it failed to start or to be
+    // recreated, and stays so until the next format succeeds.
     IJournalledDevicePtr Device;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TDeviceOperation =
-    std::function<TFuture<void>(TJournalledDeviceSpec* spec)>;
+    std::function<TFuture<void>(TJournalledDeviceSpec& spec)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -66,6 +75,16 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
     return sorted;
 }
 
+template <typename T>
+T MakeErrorResponse(ui32 code, TString message)
+{
+    return TErrorResponse(code, std::move(message));
+}
+
+template <>
+void MakeErrorResponse(ui32, TString)
+{}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TJournalledDeviceHandler final
@@ -81,6 +100,15 @@ private:
     // Filled once in the constructor, only the specs themselves change later.
     THashMap<TString, TJournalledDeviceSpec> DeviceSpecs;
     const TVector<const TJournalledDeviceSpec*> SortedDevices;
+
+    // Set in the executor once Stop is called: no device is recreated after.
+    bool Stopped = false;
+
+    // The formats in flight, counted in the executor. Stop waits on
+    // |FormatsDone| until the count drops to zero; every completed format
+    // wakes the waiter up.
+    ui32 FormatsInFlight = 0;
+    TContWaitQueue FormatsDone;
 
 public:
     TJournalledDeviceHandler(
@@ -103,7 +131,7 @@ public:
     {
         auto future = RunOnDevices(
             RestoreConcurrency,
-            [weakSelf = weak_from_this()](TJournalledDeviceSpec* spec)
+            [weakSelf = weak_from_this()](TJournalledDeviceSpec& spec)
                 -> TFuture<void>
             {
                 auto self = weakSelf.lock();
@@ -112,7 +140,7 @@ public:
                 }
 
                 return self->StartJournalledDevice(spec).Apply(
-                    [uuid = spec->Config.DeviceUUID](const auto& future)
+                    [uuid = spec.Config.DeviceUUID](const auto& future)
                     {
                         auto error = ExtractResponse(future);
                         if (HasError(error)) {
@@ -129,17 +157,7 @@ public:
 
     void Stop() override
     {
-        auto future = RunOnDevices(
-            static_cast<ui32>(DeviceSpecs.size()),
-            [](TJournalledDeviceSpec* spec) -> TFuture<void>
-            {
-                if (!spec->Device) {
-                    return MakeFuture();
-                }
-
-                return spec->Device->Stop().IgnoreResult();
-            });
-
+        auto future = Execute<void>([](auto& self) { self.DoStop(); });
         future.Wait();
     }
 
@@ -158,44 +176,9 @@ public:
     [[nodiscard]] auto FormatDevice(NProto::TFormatDeviceRequest request)
         -> TFuture<NProto::TFormatDeviceResponse> final
     {
-        auto [spec, error] = GetDeviceSpec(
-            request.GetDeviceUUID(),
-            request.GetHeaders().GetClientId(),
-            NProto::ACCESS_READ_WRITE);
-
-        if (HasError(error)) {
-            return MakeFuture<NProto::TFormatDeviceResponse>(
-                TErrorResponse(error));
-        }
-
-        const auto& config = spec->Config;
-
-        // Only the journal metadata is wiped by default.
-        const ui64 blocksCount =
-            request.GetWholeDevice()
-                ? config.BlocksCount
-                : config.LogMetaSize / config.BlockSize;
-
-        if (!blocksCount) {
-            return MakeFuture(NProto::TFormatDeviceResponse());
-        }
-
-        TPageRangeRef region{.FirstPageNo = 0, .PageCount = blocksCount};
-
-        auto device = DeviceManager->CreateDevice(
-            request.GetDeviceUUID(),
-            region,
-            config.BlockSize);
-
-        return device->ZeroPages({region}).Apply(
-            [](const auto& future)
-            {
-                NProto::TFormatDeviceResponse response;
-                *response.MutableError() = SafeExecute<NProto::TError>(
-                    [&] { return future.GetValue(); });
-
-                return response;
-            });
+        return Execute<NProto::TFormatDeviceResponse>(
+            [req = std::move(request)](auto& self) mutable
+            { return self.DoFormatDevice(std::move(req)); });
     }
 
     [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
@@ -302,7 +285,7 @@ private:
 
         for (auto& [uuid, spec]: DeviceSpecs) {
             auto future = semaphore->AcquireAsync().Apply(
-                [spec = &spec, operation](const auto& acquired)
+                [&spec, operation](const auto& acquired)
                 {
                     //
                     // Hold the slot until the operation completes; an
@@ -322,16 +305,42 @@ private:
         return WaitAll(futures);
     }
 
-    TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec* spec)
+    // Runs in the executor, where the formats run too: a format that is in
+    // flight finishes first, so the device it starts is stopped here and no
+    // format starts a device afterwards.
+    void DoStop()
+    {
+        Stopped = true;
+
+        while (FormatsInFlight) {
+            auto* cont = Executor->GetContExecutor()->Running();
+            if (FormatsDone.WaitI(cont) == ECANCELED) {
+                break;
+            }
+        }
+
+        Executor->WaitFor(RunOnDevices(
+            static_cast<ui32>(DeviceSpecs.size()),
+            [](TJournalledDeviceSpec& spec) -> TFuture<void>
+            {
+                if (!spec.Device) {
+                    return MakeFuture();
+                }
+
+                return spec.Device->Stop();
+            }));
+    }
+
+    TFuture<NProto::TError> StartJournalledDevice(TJournalledDeviceSpec& spec)
     {
         return Execute<NProto::TError>(
-            [spec](auto& self) { return self.DoStartJournalledDevice(spec); });
+            [&spec](auto& self) { return self.DoStartJournalledDevice(spec); });
     }
 
     // Runs in the executor: waits for the device to start.
-    NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec* spec)
+    NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        auto [device, error] = JournalledDeviceFactory->Create(spec->Config);
+        auto [device, error] = JournalledDeviceFactory->Create(spec.Config);
         if (HasError(error)) {
             return error;
         }
@@ -341,14 +350,29 @@ private:
             return error;
         }
 
-        spec->Device = std::move(device);
+        spec.Device = std::move(device);
         return {};
     }
+
+    // Runs in the executor: waits for the device to stop. A device that is
+    // not started has nothing to stop.
+    void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
+    {
+        if (!spec.Device) {
+            return;
+        }
+
+        Executor->WaitFor(spec.Device->Stop());
+        spec.Device = nullptr;
+    }
+
+    NProto::TFormatDeviceResponse DoFormatDevice(
+        NProto::TFormatDeviceRequest request);
 
     TResultOrError<IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EAccessMode accessMode) const
+        NProto::EAccessMode accessMode)
     {
         auto [spec, error] = GetDeviceSpec(deviceUUID, clientId, accessMode);
         if (HasError(error)) {
@@ -365,10 +389,10 @@ private:
         return spec->Device;
     }
 
-    TResultOrError<const TJournalledDeviceSpec*> GetDeviceSpec(
+    TResultOrError<TJournalledDeviceSpec*> GetDeviceSpec(
         const TString& deviceUUID,
         const TString& clientId,
-        NProto::EAccessMode accessMode) const
+        NProto::EAccessMode accessMode)
     {
         if (deviceUUID.empty()) {
             return MakeError(E_ARGUMENT, "empty device UUID");
@@ -378,7 +402,7 @@ private:
             return MakeError(E_ARGUMENT, "empty client id");
         }
 
-        const auto* spec = DeviceSpecs.FindPtr(deviceUUID);
+        auto* spec = DeviceSpecs.FindPtr(deviceUUID);
         if (!spec) {
             return MakeError(
                 E_NOT_FOUND,
@@ -405,7 +429,7 @@ private:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    return TErrorResponse(
+                    return MakeErrorResponse<T>(
                         E_FAIL,
                         "TJournalledDeviceHandler is destroyed");
                 }
@@ -414,6 +438,112 @@ private:
             });
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
+    NProto::TFormatDeviceRequest request)
+{
+    //
+    // Find the device to format and check the access
+    //
+
+    auto [spec, error] = GetDeviceSpec(
+        request.GetDeviceUUID(),
+        request.GetHeaders().GetClientId(),
+        NProto::ACCESS_READ_WRITE);
+
+    if (HasError(error)) {
+        return TErrorResponse(error);
+    }
+
+    //
+    // Figure out the region to wipe
+    //
+
+    const auto& config = spec->Config;
+
+    //
+    // Wipe only the journal metadata unless the whole device is requested:
+    // a journal without metadata is empty, which is all a format needs
+    //
+
+    const ui64 blocksCount = request.GetWholeDevice()
+                                 ? config.BlocksCount
+                                 : config.LogMetaSize / config.BlockSize;
+    if (!blocksCount) {
+        return TErrorResponse(S_FALSE, "nothing to format");
+    }
+
+    //
+    // Reject a format after Stop: it would start a device nobody stops
+    //
+
+    if (Stopped) {
+        return TErrorResponse(E_INVALID_STATE, "the service is stopped");
+    }
+
+    //
+    // Mark the device as busy to reject parallel recreates. The error is not
+    // retriable: a retry would wipe the device again right after this format
+    // completes
+    //
+
+    if (spec->Formatting) {
+        return TErrorResponse(
+            E_INVALID_STATE,
+            TStringBuilder() << "Device " << config.DeviceUUID.Quote()
+                             << " is being formatted");
+    }
+
+    //
+    // Count the format so a stop waits for it, and wake the stop up once
+    // the format completes
+    //
+
+    auto& formatting = spec->Formatting;
+    formatting = true;
+    ++FormatsInFlight;
+
+    Y_DEFER
+    {
+        formatting = false;
+        --FormatsInFlight;
+        FormatsDone.BroadCast();
+    };
+
+    //
+    // Stop the current journalled device
+    //
+
+    DoStopJournalledDevice(*spec);
+
+    //
+    // Wipe the region
+    //
+
+    TPageRangeRef region{.FirstPageNo = 0, .PageCount = blocksCount};
+
+    auto device = DeviceManager->CreateDevice(
+        config.DeviceUUID,
+        region,
+        config.BlockSize);
+
+    auto zeroError = Executor->ExtractResponse(device->ZeroPages({region}));
+    if (HasError(zeroError)) {
+        return TErrorResponse(zeroError);
+    }
+
+    device.reset();
+
+    //
+    // Start a new journalled device over the wiped region
+    //
+
+    NProto::TFormatDeviceResponse response;
+    *response.MutableError() = DoStartJournalledDevice(*spec);
+    return response;
+}
 
 }   // namespace
 

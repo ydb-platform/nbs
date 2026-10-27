@@ -168,7 +168,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TServerBuilderTest)
 {
-    Y_UNIT_TEST_F(ShouldSplitDeviceIntoJournalParts, TFixture)
+    Y_UNIT_TEST_F(ShouldPartitionDeviceIntoJournalParts, TFixture)
     {
         UNIT_ASSERT(Build(true, {MakeConfig("uuid-1", 1024, 4, 64)}));
 

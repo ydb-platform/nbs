@@ -18,9 +18,9 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Stop() noexcept override
+    TFuture<void> Stop() noexcept override
     {
-        return MakeFuture<NProto::TError>();
+        return MakeFuture();
     }
 
     [[nodiscard]] auto ReadPages(NCloud::NProto::TReadPagesRequest request)
