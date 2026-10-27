@@ -39,7 +39,6 @@ namespace {
 
 using namespace NCloud;
 using namespace NCloud::NFileStore;
-namespace fs = std::filesystem;
 
 void CheckError(const NCloud::NProto::TError& error)
 {
@@ -57,7 +56,7 @@ private:
     IFileIOServicePtr FileIO = CreateAIOService();
     IFileStoreServicePtr Service;
     NVFS::IFileSystemLoopPtr Loop;
-    fs::path SocketPath;
+    std::filesystem::path SocketPath;
     bool LoggingStarted = false;
     bool SchedulerStarted = false;
     bool ThreadsStarted = false;
@@ -67,22 +66,25 @@ private:
 
 public:
     void Start(
-        const fs::path& socket, const fs::path& shared, const fs::path& state)
+        const std::filesystem::path& socket,
+        const std::filesystem::path& shared,
+        const std::filesystem::path& state)
     {
         Y_ENSURE(
-            fs::is_directory(shared), "shared directory is not a directory");
+            std::filesystem::is_directory(shared),
+            "shared directory is not a directory");
         for (const auto* name:
              {"root", "sessions", "handles", "cache", "directories"})
         {
-            fs::create_directories(state / name);
+            std::filesystem::create_directories(state / name);
         }
         const auto root = state / "root" / "nfs_shared";
-        if (fs::is_symlink(root)) {
+        if (std::filesystem::is_symlink(root)) {
             Y_ENSURE(
-                fs::canonical(root) == shared,
+                std::filesystem::canonical(root) == shared,
                 "socket state belongs to another shared directory");
         } else {
-            fs::create_directory_symlink(shared, root);
+            std::filesystem::create_directory_symlink(shared, root);
         }
 
         NFileStore::NProto::TLocalServiceConfig local;
@@ -96,7 +98,9 @@ public:
             Scheduler,
             Logging,
             MakeIntrusive<NMonitoring::TDynamicCounters>(),
-            FileIO, Threads, CreateProfileLogStub());
+            FileIO,
+            Threads,
+            CreateProfileLogStub());
 
         Logging->Start();
         LoggingStarted = true;
@@ -130,7 +134,8 @@ public:
             Logging,
             Timer,
             Scheduler,
-            Service, std::make_shared<NClient::TSessionConfig>(sessionConfig));
+            Service,
+            std::make_shared<NClient::TSessionConfig>(sessionConfig));
 
         NFileStore::NProto::TVFSConfig vfs;
         vfs.SetFileSystemId("shared");
@@ -156,7 +161,9 @@ public:
             Timer,
             CreateProfileLogStub(),
             session,
-            CreateFileMapMemoryLimiterStub(), persistentState, nullptr);
+            CreateFileMapMemoryLimiterStub(),
+            persistentState,
+            nullptr);
         CheckError(Loop->StartAsync().GetValueSync());
         LoopStarted = true;
         SocketPath = socket;
@@ -178,8 +185,8 @@ public:
         Loop.reset();
         if (LoopStarted) {
             std::error_code error;
-            fs::remove(SocketPath, error);
-            fs::remove(SocketPath.string() + ".pid", error);
+            std::filesystem::remove(SocketPath, error);
+            std::filesystem::remove(SocketPath.string() + ".pid", error);
         }
         if (Service) {
             Service->Stop();
@@ -222,11 +229,13 @@ int main(int argc, char** argv)
             .Required()
             .StoreResult(&sharedDir);
         opts.AddLongOption(
-                "state-dir", "Persistent state (default: SOCKET.state)")
+                "state-dir",
+                "Persistent state (default: SOCKET.state)")
             .RequiredArgument()
             .StoreResult(&stateDir);
         opts.AddLongOption(
-                "sandbox", "Compatibility option; only none is supported")
+                "sandbox",
+                "Compatibility option; only none is supported")
             .RequiredArgument()
             .DefaultValue("none")
             .StoreResult(&sandbox);
@@ -242,11 +251,11 @@ int main(int argc, char** argv)
         sigaddset(&signals, SIGINT);
         Y_ENSURE(pthread_sigmask(SIG_BLOCK, &signals, nullptr) == 0);
         signal(SIGUSR1, SIG_IGN);   // Used by the FUSE driver during shutdown.
-        const auto socket = fs::absolute(socketPath.c_str());
-        const auto shared = fs::canonical(sharedDir.c_str());
-        const auto state = stateDir.empty()
-                               ? fs::path(socket.string() + ".state")
-                               : fs::absolute(stateDir.c_str());
+        const auto socket = std::filesystem::absolute(socketPath.c_str());
+        const auto shared = std::filesystem::canonical(sharedDir.c_str());
+        const auto state =
+            stateDir.empty() ? std::filesystem::path(socket.string() + ".state")
+                             : std::filesystem::absolute(stateDir.c_str());
         TServer server;
         server.Start(socket, shared, state);
         int receivedSignal = 0;
