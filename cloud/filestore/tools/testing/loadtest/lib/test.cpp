@@ -127,7 +127,6 @@ struct TSetupSession
 
 struct TTeardown
 {
-    TPromise<bool> Complete;
 };
 struct TSuspendLoad {};
 struct TResumeLoad {};
@@ -400,8 +399,9 @@ public:
 
     bool HandleTeardown(TTeardown& cmd)
     {
+        Y_UNUSED(cmd);
         STORAGE_INFO("%s got teardown", MakeTestTag().c_str())
-        TeardownTest(cmd);
+        TeardownTest();
         return false;
     }
 
@@ -474,8 +474,7 @@ public:
                     }
                 }
                 if (ShouldStop() && !ShutdownFlag) {
-                    TTeardown dummy;
-                    TeardownTest(dummy);
+                    TeardownTest();
 
                     TTestFinished cmd;
                     cmd.Id = TestInstanceId;
@@ -495,7 +494,11 @@ public:
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
 
-            Result.SetException(std::current_exception());
+            // ensure controlled wakes up if it is waiting on the event queue
+            Controller.Enqueue(TTestFinished{TestInstanceId});
+
+            auto result = Result;
+            result.SetException(std::current_exception());
         }
 
         return nullptr;
@@ -773,12 +776,9 @@ private:
         return results;
     }
 
-    void TeardownTest(TTeardown& cmd)
+    void TeardownTest()
     {
         if (ShutdownFlag) {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
-            }
             return;
         }
 
@@ -801,14 +801,6 @@ private:
                     SeqNo,
                     response.GetError().GetMessage().c_str());
                 TestStats.Success = false;
-            }
-
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
-            }
-        } else {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
             }
         }
 
@@ -943,16 +935,6 @@ public:
         cmd.SessionSeqNo = sessionSeqNo;
         cmd.Complete = complete;
         test->EnqueueCommand(std::move(cmd));
-
-        return complete.GetFuture();
-    }
-
-    TFuture<bool> SendTeardownTest(std::shared_ptr<TLoadTest>& test)
-    {
-        TPromise<bool> complete = NewPromise<bool>();
-        TTeardown teardown;
-        teardown.Complete = complete;
-        test->EnqueueCommand(teardown);
 
         return complete.GetFuture();
     }
@@ -1133,24 +1115,24 @@ public:
 
     void CleanupTest()
     {
-        if (SourceTest) {
-            auto result = SendTeardownTest(SourceTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+        const auto stopTest = [this](
+            const std::shared_ptr<TLoadTest>& test,
+            const TFuture<NProto::TTestStats>& future)
+        {
+            if (test) {
+                test->EnqueueCommand(TTeardown{});
             }
-        }
 
-        if (TargetTest) {
-            auto result = SendTeardownTest(TargetTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+            if (future.Initialized()) {
+                try {
+                    future.GetValueSync();
+                } catch (...) {
+                    SaveException();
+                }
             }
-            TargetFuture.GetValueSync();
-        }
+        };
+        stopTest(SourceTest, SourceFuture);
+        stopTest(TargetTest, TargetFuture);
 
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
@@ -1193,16 +1175,18 @@ public:
                 if (!cont) {
                     break;
                 }
-            } catch(...) {
-                STORAGE_ERROR("%s test has failed: %s",
-                    MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
-                Exception = std::current_exception();
+            } catch (...) {
+                SaveException();
             }
         }
 
         STORAGE_INFO("test is going to finish");
 
-        CleanupTest();
+        try {
+            CleanupTest();
+        } catch (...) {
+            SaveException();
+        }
 
         // This is a workaround for this object being destroyed by the main
         // thread immediately after Set*() while the function is still running.
@@ -1218,6 +1202,15 @@ public:
     }
 
 private:
+    void SaveException()
+    {
+        STORAGE_ERROR("%s test has failed: %s",
+            MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
+        if (!Exception) {
+            Exception = std::current_exception();
+        }
+    }
+
     bool ShouldStop() const
     {
         return AtomicGet(Ctx.ShouldStop) ||
