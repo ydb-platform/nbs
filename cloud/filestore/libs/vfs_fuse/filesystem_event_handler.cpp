@@ -28,6 +28,17 @@ public:
 
     void OnEvent(const NProto::TFileSystemEvent& event) override
     {
+        //
+        // TODO(#6874): add a per-key version (e.g. the tablet's CommitId) to
+        // the responses and to the events before using the events for cache
+        // invalidation. The tablet sends the response before the event, but
+        // they reach the cache via different paths (the request future vs this
+        // handler), so an invalidation may be applied before the response it
+        // invalidates is put into the cache - the stale data would then stay
+        // cached for the whole cache TTL. A response older than the last
+        // applied invalidation of the same key should not be cached.
+        //
+
         if (event.HasInvalidateNode()) {
             InvalidateNode(event.GetInvalidateNode().GetNodeId());
         }
