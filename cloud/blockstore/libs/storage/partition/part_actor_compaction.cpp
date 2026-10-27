@@ -204,6 +204,10 @@ private:
     // instead of try to read blob.
     TPartialBlobId2CompressionInfoMap BlobId2CompressionInfo;
 
+    const std::shared_ptr<TBlobCompressor> BlobCompressor;
+
+    const TTabletStorageInfoPtr TabletStorageInfo;
+
 public:
     TCompactionActor(
         TRequestInfoPtr requestInfo,
@@ -224,7 +228,9 @@ public:
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
         TVector<TPartialBlobId> blobsToReadBlobMetas,
-        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo);
+        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo,
+        std::shared_ptr<TBlobCompressor> blobCompressor,
+        TTabletStorageInfoPtr tabletStorageInfo);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -232,6 +238,7 @@ private:
     void InitBlockDigests();
 
     void ReadBlocks(const TActorContext& ctx);
+    void CompressBlobsIfNeeded();
     void WriteBlobs(const TActorContext& ctx);
     void AddBlobs(const TActorContext& ctx);
     void MakeDiffs(TRangeCompactionInfo& rc);
@@ -301,7 +308,9 @@ TCompactionActor::TCompactionActor(
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
         TVector<TPartialBlobId> blobsToReadBlobMetas,
-        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo)
+        TPartialBlobId2CompressionInfoMap blobId2CompressionInfo,
+        std::shared_ptr<TBlobCompressor> blobCompressor,
+        TTabletStorageInfoPtr tabletStorageInfo)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
@@ -321,6 +330,8 @@ TCompactionActor::TCompactionActor(
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
     , CompactionTxTime(compactionTxTime)
     , BlobId2CompressionInfo(std::move(blobId2CompressionInfo))
+    , BlobCompressor(std::move(blobCompressor))
+    , TabletStorageInfo(std::move(tabletStorageInfo))
 {}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
@@ -457,7 +468,10 @@ void TCompactionActor::ReadBlobFinished(const TActorContext& ctx)
 void TCompactionActor::InitBlockDigests()
 {
     for (auto& rc: RangeCompactionInfos) {
-        const auto& sgList = rc.BlobContent.Get().GetBlocks();
+        const auto& sgList =
+            std::get<TGuardedBuffer<TBlockBuffer>>(rc.BlobContent)
+                .Get()
+                .GetBlocks();
 
         if (rc.DataBlobId) {
             Y_ABORT_UNLESS(sgList.size() == rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
@@ -613,7 +627,10 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
         }
 
         auto& blobContent = batch.RangeCompactionInfo->BlobContent;
-        const auto& srcSglist = blobContent.Get().GetBlocks();
+        const auto& srcSglist =
+            std::get<TGuardedBuffer<TBlockBuffer>>(blobContent)
+                .Get()
+                .GetBlocks();
 
         TSgList subset(Reserve(batch.Requests.size()));
         for (const auto* r: batch.Requests) {
@@ -624,7 +641,8 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
         // leave zeroes at those offsets => checksum verification can produce
         // false negatives in case BlobPatchingEnabled == true
 
-        auto subSgList = blobContent.CreateGuardedSgList(std::move(subset));
+        auto subSgList = std::get<TGuardedBuffer<TBlockBuffer>>(blobContent)
+                             .CreateGuardedSgList(std::move(subset));
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
@@ -662,7 +680,9 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
 void TCompactionActor::MakeDiffs(TRangeCompactionInfo& rc)
 {
-    const auto& sgList = rc.BlobContent.Get().GetBlocks();
+    const auto& sgList = std::get<TGuardedBuffer<TBlockBuffer>>(rc.BlobContent)
+                             .Get()
+                             .GetBlocks();
 
     rc.DiffCount = sgList.size() - rc.UnchangedBlobOffsets.size();
     rc.Diffs.Reset(new TEvBlobStorage::TEvPatch::TDiff[rc.DiffCount]);
@@ -687,11 +707,58 @@ void TCompactionActor::MakeDiffs(TRangeCompactionInfo& rc)
     }
 }
 
+void TCompactionActor::CompressBlobsIfNeeded()
+{
+    if (!BlobCompressor) {
+        return;
+    }
+
+    for (auto& rc: RangeCompactionInfos) {
+        if (rc.OriginalBlobId || !rc.DataBlobId ||
+            rc.ChannelDataKind != EChannelDataKind::Merged)
+        {
+            continue;
+        }
+
+        const auto* channelInfo =
+            TabletStorageInfo->ChannelInfo(rc.DataBlobId.Channel());
+
+        auto compressedBlob = BlobCompressor->CompressBlobIfNeeded(
+            std::get<TGuardedBuffer<TBlockBuffer>>(rc.BlobContent)
+                .Get()
+                .GetBlocks(),
+            &channelInfo->Type,
+            static_cast<NKikimr::TErasureType::ECrcMode>(
+                MakeBlobId(TabletId, rc.DataBlobId).CrcMode()));
+        if (compressedBlob.GetError().GetCode() == S_ALREADY) {
+            continue;
+        }
+        STORAGE_VERIFY_C(
+            !HasError(compressedBlob.GetError()),
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            TStringBuilder() << "Failed to compress blob " << rc.DataBlobId
+                             << ": " << compressedBlob.GetError().GetMessage());
+
+        auto compressionResult = compressedBlob.ExtractResult();
+        rc.DataBlobId = TPartialBlobId(
+            rc.DataBlobId.Generation(),
+            rc.DataBlobId.Step(),
+            rc.DataBlobId.Channel(),
+            static_cast<ui32>(compressionResult.Data.size()),
+            rc.DataBlobId.Cookie(),
+            rc.DataBlobId.PartId());
+        rc.BlobContent = std::move(compressionResult.Data);
+        rc.CompressionInfo = std::move(compressionResult.Compression);
+    }
+}
+
 void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 {
     WriteBlobsStarted = ctx.Now();
 
     InitBlockDigests();
+    CompressBlobsIfNeeded();
 
     const auto deadline = BlobStorageAsyncRequestTimeout
                               ? ctx.Now() + BlobStorageAsyncRequestTimeout
@@ -738,13 +805,27 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 Tablet,
                 std::move(request));
         } else {
-            auto request =
-                std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
+            std::unique_ptr<TEvPartitionCommonPrivate::TEvWriteBlobRequest> request;
+            if (std::holds_alternative<TGuardedBuffer<TBlockBuffer>>(
+                    rc.BlobContent))
+            {
+                request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
-                    rc.BlobContent.GetGuardedSgList(),
+                    std::get<TGuardedBuffer<TBlockBuffer>>(rc.BlobContent)
+                        .GetGuardedSgList(),
                     0,           // blockSizeForChecksums
                     true,        // async
                     deadline);   // deadline
+            } else if (std::holds_alternative<TString>(rc.BlobContent)) {
+                request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
+                    rc.DataBlobId,
+                    std::move(std::get<TString>(rc.BlobContent)),
+                    0,           // blockSizeForChecksums
+                    true,        // async
+                    deadline);   // deadline
+            }
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
@@ -800,7 +881,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         ui32 blocksSkipped,
         bool hasBlocksWithCommitIdGreaterThanCompactionCommitId,
         ui32 mixedBlocksSkipped,
-        EChannelDataKind channelDataKind)
+        EChannelDataKind channelDataKind,
+        std::optional<NProto::TBlobCompression> compressionInfo)
     {
         while (skipMask.Get(range.End - range.Start)) {
             Y_ABORT_UNLESS(range.End > range.Start);
@@ -819,7 +901,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 range,
                 skipMask,
-                std::move(ensuredBlockChecksums));
+                std::move(ensuredBlockChecksums),
+                compressionInfo);
             mergedBlobCompactionInfos.push_back(
                 {blobsSkipped,
                  blocksSkipped,
@@ -865,7 +948,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlocksSkippedByCompaction,
                 rc.HasBlocksWithCommitIdGreaterThanCompactionCommitId,
                 rc.MixedBlockCountSkippedByCompaction,
-                rc.ChannelDataKind);
+                rc.ChannelDataKind,
+                std::move(rc.CompressionInfo));
         }
 
         if (rc.ZeroBlobId) {
@@ -891,7 +975,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blocksSkipped,
                 hasBlocksWithCommitIdGreaterThanCompactionCommitId,
                 mixedBlocksSkipped,
-                rc.ChannelDataKind);
+                rc.ChannelDataKind,
+                std::nullopt);
         }
 
         if (rc.DataBlobId && rc.ZeroBlobId) {
@@ -1013,7 +1098,10 @@ void TCompactionActor::NotifyCompleted(
         ui64 blocksCount = 0;
         ui64 realBlocksCount = 0;
         for (auto& rc: RangeCompactionInfos) {
-            const ui32 curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
+            const ui32 curBlocksCount =
+                rc.DataBlobId
+                    ? rc.BlockRange.Size() - rc.DataBlobSkipMask.Count()
+                    : 0;
             blocksCount += curBlocksCount;
             realBlocksCount += rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
         }
@@ -2444,7 +2532,8 @@ void TPartitionActor::CompleteCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
     const bool blobPatchingEnabled =
-        Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud;
+        !Config->GetMergedBlobsCompressionEnabled() &&
+        (Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud);
 
     TVector<TRangeCompactionInfo> rangeCompactionInfos;
     TVector<TCompactionActor::TRequest> requests;
@@ -2457,8 +2546,15 @@ void TPartitionActor::CompleteCompaction(
             ? 0
             : Config->GetCompactionMergedBlobThresholdHDD();
     for (auto& rangeCompaction: args.RangeCompactions) {
+        const bool blobPatchingEnabledForRange =
+            blobPatchingEnabled &&
+            AllOf(rangeCompaction.AffectedBlobs, [&](const auto& blob) {
+                const auto* compressionInfo =
+                    args.BlobId2CompressionInfo.FindPtr(blob.first);
+                return !compressionInfo || !compressionInfo->has_value();
+            });
         CompleteRangeCompaction(
-            blobPatchingEnabled,
+            blobPatchingEnabledForRange,
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
@@ -2511,7 +2607,9 @@ void TPartitionActor::CompleteCompaction(
         TVector<TPartialBlobId>(
             args.BlobsToReadBlobMetas.begin(),
             args.BlobsToReadBlobMetas.end()),
-        std::move(args.BlobId2CompressionInfo));
+        std::move(args.BlobId2CompressionInfo),
+        Config->GetMergedBlobsCompressionEnabled() ? BlobCompressor : nullptr,
+        Info());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

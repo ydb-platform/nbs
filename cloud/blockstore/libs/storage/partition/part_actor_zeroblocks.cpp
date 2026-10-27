@@ -333,8 +333,9 @@ void TPartitionActor::HandleZeroBlocks(
         requests.emplace_back(
             blobId,
             range,
-            TBlockMask(),       // skipMask
-            TVector<ui32>());   // checksums
+            TBlockMask(),      // skipMask
+            TVector<ui32>(),   // checksums
+            std::nullopt);     // compressionInfo
     }
 
     STORAGE_VERIFY(requests, TWellKnownEntityTypes::TABLET, TabletID());

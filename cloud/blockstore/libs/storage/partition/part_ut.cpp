@@ -927,6 +927,16 @@ bool EventHandler(
 
 namespace NTest {
 
+TPartitionWithRuntime SetupPartition(
+    const NProto::TStorageServiceConfig& config)
+{
+    TPartitionWithRuntime result;
+    result.Runtime = PrepareTestActorRuntime(config);
+    result.Partition = std::make_unique<TPartitionClient>(*result.Runtime);
+    result.Partition->WaitReady();
+    return result;
+}
+
 TPartitionWithRuntime SetupOverlayPartition(
     ui64 overlayTabletId,
     ui64 baseTabletId,

@@ -82,7 +82,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 payload.append(TString(BlockSize, 'a' + i));
             }
             const TBlobCompressor writer(TabletId, BlockSize, ChunkSize, codec);
-            auto blobOrError = writer.CompressBlob(payload);
+            auto sgListOrError = SgListNormalize(
+                TBlockDataRef(payload.data(), payload.size()), BlockSize);
+            UNIT_ASSERT_C(!HasError(sgListOrError.GetError()),
+                          FormatError(sgListOrError.GetError()));
+            auto blobOrError = writer.CompressBlob(sgListOrError.GetResult());
             UNIT_ASSERT_C(
                 !HasError(blobOrError.GetError()),
                 FormatError(blobOrError.GetError()));

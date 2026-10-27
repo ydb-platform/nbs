@@ -119,7 +119,8 @@ public:
      * chunk may be shorter than ChunkSize. Returns an error if the settings
      * or payload are invalid, or compression fails.
      *
-     * @param blobPayload - Uncompressed blob data containing whole blocks.
+     * @param blobPayload - Uncompressed blocks in blob order, with one buffer
+     *  of exactly BlockSize bytes per block. Null data represents a zero block.
      *
      * @return - Concatenated compressed chunks and their metadata, or an error.
      *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
@@ -127,7 +128,7 @@ public:
      *  size still recorded in the metadata.
      */
     [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
-        TStringBuf blobPayload) const;
+        const TSgList& blobPayload) const;
 
     /**
      * Tries to compress a blob and returns compressed data and metadata only
@@ -139,6 +140,7 @@ public:
      * return E_ARGUMENT.
      * Compression metadata size is not included in either comparison.
      *
+     * @param blobPayload - Uncompressed blocks, as accepted by CompressBlob.
      * @param groupType - Target group's actual erasure type. Required by
      *  BCM_HUGE_SLOT; ignored by BCM_MIN_SAVINGS.
      * @param crcMode - CRC mode of the blob being written.
@@ -149,7 +151,7 @@ public:
      *  using the result, since it is a success status.
      */
     [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlobIfNeeded(
-        TStringBuf blobPayload,
+        const TSgList& blobPayload,
         const NKikimr::TBlobStorageGroupType* groupType = nullptr,
         NKikimr::TErasureType::ECrcMode crcMode =
             NKikimr::TErasureType::CrcModeNone) const;

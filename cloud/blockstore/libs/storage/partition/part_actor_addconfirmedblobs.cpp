@@ -294,8 +294,9 @@ void TPartitionActor::HandleAddConfirmedBlobs(
             mergedBlobs.emplace_back(
                 MakePartialBlobId(commitId, blob.UniqueId),
                 blob.BlockRange,
-                TBlockMask(), // skipMask
-                blob.Checksums);
+                TBlockMask(),   // skipMask
+                blob.Checksums,
+                std::nullopt);
         }
 
         auto request = std::make_unique<TRequest>(

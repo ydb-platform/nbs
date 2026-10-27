@@ -46,7 +46,7 @@ struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
     const TPartialBlobId OriginalBlobId;
-    const TPartialBlobId DataBlobId;
+    TPartialBlobId DataBlobId;
     const TBlockMask DataBlobSkipMask;
     const TPartialBlobId ZeroBlobId;
     const TBlockMask ZeroBlobSkipMask;
@@ -57,7 +57,7 @@ struct TRangeCompactionInfo
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
-    TGuardedBuffer<TBlockBuffer> BlobContent;
+    std::variant<TGuardedBuffer<TBlockBuffer>, TString> BlobContent;
     TVector<ui32> ZeroBlocks;
     TAffectedBlobs AffectedBlobs;
     TAffectedBlocks AffectedBlocks;
@@ -65,6 +65,7 @@ struct TRangeCompactionInfo
     TVector<TChecksumFixup> ChecksumFixups;
     TArrayHolder<NKikimr::TEvBlobStorage::TEvPatch::TDiff> Diffs;
     ui32 DiffCount = 0;
+    std::optional<NProto::TBlobCompression> CompressionInfo;
 
     TRangeCompactionInfo(
             TBlockRange32 blockRange,

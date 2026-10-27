@@ -77,7 +77,7 @@ NProto::TError ValidateCompressBlobInput(
     ui32 blockSize,
     const std::optional<ui32>& chunkSize,
     const std::optional<NProto::TBlobCompression::ECodec>& codecId,
-    TStringBuf blobPayload)
+    const TSgList& blobPayload)
 {
     if (!chunkSize || !codecId) {
         return MakeInputError(tabletId, "Missing blob compression settings");
@@ -88,9 +88,11 @@ NProto::TError ValidateCompressBlobInput(
     {
         return error;
     }
-    if (blobPayload.size() % blockSize != 0) {
-        return MakeInputError(
-            tabletId, "Blob payload must contain whole blocks");
+    for (const auto& buffer: blobPayload) {
+        if (buffer.Size() != blockSize) {
+            return MakeInputError(
+                tabletId, "Input buffer size must match block size");
+        }
     }
     return {};
 }
@@ -308,7 +310,7 @@ TBlobCompressor::TBlobCompressor(ui64 tabletId, ui32 blockSize)
 {}
 
 TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
-    TStringBuf blobPayload) const
+    const TSgList& blobPayload) const
 {
     if (auto error = ValidateCompressBlobInput(
             TabletId,
@@ -330,10 +332,23 @@ TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
     result.Compression.SetCodec(*CodecId);
     result.Compression.SetChunkSize(*ChunkSize);
 
+    const size_t blocksPerChunk = *ChunkSize / BlockSize;
+    TString chunk;
     TString compressedChunk;
-    while (blobPayload) {
-        const auto chunk =
-            blobPayload.Head(Min<size_t>(*ChunkSize, blobPayload.size()));
+    for (size_t blockIndex = 0; blockIndex < blobPayload.size();) {
+        const size_t blockCount =
+            Min(blocksPerChunk, blobPayload.size() - blockIndex);
+        chunk.ReserveAndResize(blockCount * BlockSize);
+        char* dest = chunk.begin();
+        for (size_t i = 0; i < blockCount; ++i) {
+            const auto& block = blobPayload[blockIndex + i];
+            if (block.Data()) {
+                memcpy(dest, block.Data(), BlockSize);
+            } else {
+                memset(dest, 0, BlockSize);
+            }
+            dest += BlockSize;
+        }
         try {
             codec->Encode(chunk, compressedChunk);
         } catch (...) {
@@ -349,7 +364,7 @@ TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
         result.Compression.AddChunkSizes(
             static_cast<ui32>(compressedChunk.size()));
         result.Data.append(compressedChunk);
-        blobPayload.Skip(chunk.size());
+        blockIndex += blockCount;
     }
 
     return result;
@@ -357,7 +372,7 @@ TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
 
 TResultOrError<TBlobCompressor::TCompressedBlob>
 TBlobCompressor::CompressBlobIfNeeded(
-    TStringBuf blobPayload,
+    const TSgList& blobPayload,
     const NKikimr::TBlobStorageGroupType* groupType,
     NKikimr::TErasureType::ECrcMode crcMode) const
 {
@@ -370,8 +385,9 @@ TBlobCompressor::CompressBlobIfNeeded(
     if (Mode == NProto::BCM_HUGE_SLOT && !groupType) {
         return MakeInputError(TabletId, "Missing target blob storage group type");
     }
+    const auto payloadSize = SgListGetSize(blobPayload);
     if (Mode == NProto::BCM_HUGE_SLOT &&
-        (blobPayload.size() > Max<ui32>() ||
+        (payloadSize > Max<ui32>() ||
          (crcMode != NKikimr::TErasureType::CrcModeNone &&
           crcMode != NKikimr::TErasureType::CrcModeWholePart)))
     {
@@ -394,11 +410,11 @@ TBlobCompressor::CompressBlobIfNeeded(
                 sizes.end(),
                 partSize + BlobHeaderSize);
         };
-        const auto originalSlot = findSlot(static_cast<ui32>(blobPayload.size()));
+        const auto originalSlot = findSlot(static_cast<ui32>(payloadSize));
         if (originalSlot == sizes.end()) {
             return MakeInputError(TabletId, "Blob exceeds huge-slot size grid");
         }
-        if (compressedSize >= blobPayload.size() ||
+        if (compressedSize >= payloadSize ||
             findSlot(static_cast<ui32>(compressedSize)) >= originalSlot)
         {
             return MakeError(S_ALREADY);
@@ -406,14 +422,14 @@ TBlobCompressor::CompressBlobIfNeeded(
         return compressedOrError.ExtractResult();
     }
 
-    if (compressedSize >= blobPayload.size() || MinSavingsPercent >= 100) {
+    if (compressedSize >= payloadSize || MinSavingsPercent >= 100) {
         return MakeError(S_ALREADY);
     }
 
     // Compute floor(payload size * percentage / 100) without overflow.
-    const auto minSavings = blobPayload.size() / 100 * MinSavingsPercent +
-                            blobPayload.size() % 100 * MinSavingsPercent / 100;
-    if (blobPayload.size() - compressedSize <= minSavings) {
+    const auto minSavings = payloadSize / 100 * MinSavingsPercent +
+                            payloadSize % 100 * MinSavingsPercent / 100;
+    if (payloadSize - compressedSize <= minSavings) {
         return MakeError(S_ALREADY);
     }
 

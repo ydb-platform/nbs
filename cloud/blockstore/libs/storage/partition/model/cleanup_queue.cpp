@@ -129,6 +129,7 @@ bool TCleanupQueue::Add(const TCleanupQueueItem& item)
 {
     bool result = Impl->Add(item);
     if (result) {
+        // TODO: handle compressed blobs
         QueueBytes += item.BlobId.BlobSize();
         QueueBlocks += item.BlobId.BlobSize() / BlockSize;
     }
@@ -142,6 +143,7 @@ bool TCleanupQueue::Add(const TVector<TCleanupQueueItem>& items)
         if (!result) {
             return false;
         }
+        // TODO: handle compressed blobs
         QueueBytes += item.BlobId.BlobSize();
         QueueBlocks += item.BlobId.BlobSize() / BlockSize;
     }
@@ -152,6 +154,7 @@ bool TCleanupQueue::Remove(const TCleanupQueueItem& item)
 {
     bool result = Impl->Remove(item);
     if (result) {
+        // TODO: handle compressed blobs
         QueueBytes -= item.BlobId.BlobSize();
         QueueBlocks -= item.BlobId.BlobSize() / BlockSize;
     }

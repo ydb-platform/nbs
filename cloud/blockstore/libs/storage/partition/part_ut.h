@@ -62,6 +62,9 @@ struct TPartitionWithRuntime
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TPartitionWithRuntime SetupPartition(
+    const NProto::TStorageServiceConfig& config);
+
 TPartitionWithRuntime SetupOverlayPartition(
     ui64 overlayTabletId,
     ui64 baseTabletId,
