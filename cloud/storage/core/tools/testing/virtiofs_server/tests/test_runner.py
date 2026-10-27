@@ -14,7 +14,8 @@ def test_reject_missing_share():
             runner, "--socket-path", str(root / "vhost.sock"),
             "--shared-dir", str(root / "missing"),
         ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
-        assert result.returncode != 0
+        assert result.returncode == 1, result.stdout.decode(errors="replace")
+        assert b"missing" in result.stdout
         assert not (root / "vhost.sock").exists()
         assert not (root / "vhost.sock.state").exists()
 
