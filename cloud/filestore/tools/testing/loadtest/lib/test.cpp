@@ -125,9 +125,7 @@ struct TSetupSession
     TPromise<bool> Complete;
 };
 
-struct TTeardown
-{
-};
+struct TTeardown {};
 struct TSuspendLoad {};
 struct TResumeLoad {};
 struct TProcessCompletedRequests {};
@@ -494,7 +492,7 @@ public:
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
 
-            // ensure controlled wakes up if it is waiting on the event queue
+            // ensure controller wakes up if it is waiting on the event queue
             Controller.Enqueue(TTestFinished{TestInstanceId});
 
             auto result = Result;
