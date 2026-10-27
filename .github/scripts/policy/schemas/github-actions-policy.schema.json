@@ -1,0 +1,710 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nbs:actions-policy:github:2026-03-10",
+  "$comment": "Pinned GitHub OpenAPI 3.0.3 schemas for API 2026-03-10. Internal references were relocated to $defs and nullable was converted to a JSON Schema null alternative. See README.md and LICENSE.github.",
+  "x-source": {
+    "repository": "github/rest-api-description",
+    "revision": "0029c0d4a6d330559abe0e45b22263bbe1c6b1a7",
+    "api_version": "2026-03-10",
+    "path": "descriptions/api.github.com/api.github.com.2026-03-10.json"
+  },
+  "$ref": "#/$defs/response",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the policy."
+        },
+        "enforcement": {
+          "$ref": "#/$defs/repository-rule-enforcement"
+        },
+        "conditions": {
+          "$ref": "#/$defs/actions-policy-repo-conditions"
+        },
+        "rules": {
+          "type": "array",
+          "description": "An array of rules within the policy.",
+          "items": {
+            "$ref": "#/$defs/actions-rule"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "enforcement"
+      ]
+    },
+    "response": {
+      "$ref": "#/$defs/actions-policy"
+    },
+    "actions-policy": {
+      "title": "Actions Policy",
+      "description": "An Actions policy defines rules for workflow execution protection.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "target",
+        "source_type",
+        "source",
+        "enforcement"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "The ID of the policy"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the policy"
+        },
+        "target": {
+          "type": "string",
+          "description": "The target of the policy",
+          "enum": [
+            "actions"
+          ]
+        },
+        "source_type": {
+          "type": "string",
+          "description": "The type of the source of the policy",
+          "enum": [
+            "Repository",
+            "Organization",
+            "Enterprise"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "description": "The name of the source"
+        },
+        "enforcement": {
+          "$ref": "#/$defs/repository-rule-enforcement"
+        },
+        "conditions": {
+          "anyOf": [
+            {
+              "description": "When workflow path targeting is available, detailed responses represent an omitted stored\nworkflow condition as `workflow_path` with `include` set to `[\"~ALL\"]` and `exclude` set to `[]`.\nWhen workflow path targeting is unavailable, an omitted stored condition remains omitted.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/actions-policy-repo-conditions"
+                },
+                {
+                  "$ref": "#/$defs/actions-policy-org-conditions"
+                },
+                {
+                  "$ref": "#/$defs/actions-policy-enterprise-conditions"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rules": {
+          "type": "array",
+          "description": "An array of rules within the policy",
+          "items": {
+            "$ref": "#/$defs/actions-rule"
+          }
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "_links": {
+          "type": "object",
+          "properties": {
+            "self": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "type": "string",
+                  "description": "The URL of the policy"
+                }
+              }
+            },
+            "html": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "type": "string",
+                  "description": "The html URL of the policy"
+                }
+              }
+            }
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "repository-rule-enforcement": {
+      "type": "string",
+      "description": "The enforcement level of the ruleset. `evaluate` allows admins to test rules before enforcing them. Admins can view insights on the Rule Insights page (`evaluate` is only available with GitHub Enterprise).",
+      "enum": [
+        "disabled",
+        "active",
+        "evaluate"
+      ]
+    },
+    "actions-policy-repo-conditions": {
+      "title": "Repository Actions policy conditions",
+      "type": "object",
+      "description": "Conditions for a repository Actions policy. The object may be empty to preserve or use the\ndefault workflow targeting, or contain only `workflow_path`.",
+      "oneOf": [
+        {
+          "type": "object",
+          "maxProperties": 0
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ],
+          "required": [
+            "workflow_path"
+          ],
+          "maxProperties": 1
+        }
+      ]
+    },
+    "actions-policy-workflow-path-condition": {
+      "title": "Actions policy workflow path condition",
+      "type": "object",
+      "description": "Parameters for an Actions policy workflow path condition. Omitting `workflow_path` when creating\na policy targets all workflows without storing an explicit condition. Omitting it when updating a\npolicy preserves the existing workflow targeting. For new or changed workflow conditions, the API\nrequires at least one included or excluded pattern. This is validated server-side rather than by\nthis schema, which can also describe existing stored conditions.",
+      "properties": {
+        "workflow_path": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "Array of workflow file paths or glob patterns to include. An empty array includes all\nworkflows not matched by an excluded pattern. Use `~ALL` by itself to include all workflows.\n`~ALL` cannot be combined with other included patterns.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "Array of workflow file paths or glob patterns to exclude. The condition will not pass\nif any of these patterns match. `~ALL` is not allowed in this array.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "include",
+            "exclude"
+          ]
+        }
+      }
+    },
+    "actions-policy-org-conditions": {
+      "title": "Organization Actions policy conditions",
+      "type": "object",
+      "description": "Conditions for an organization Actions policy. The conditions object should contain one of\n`repository_name`, `repository_id`, or `repository_property`, and may also contain `workflow_path`.",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-name-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-id-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-property-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        }
+      ]
+    },
+    "repository-ruleset-conditions-repository-name-target": {
+      "title": "Repository ruleset conditions for repository names",
+      "type": "object",
+      "description": "Parameters for a repository name condition",
+      "properties": {
+        "repository_name": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "Array of repository names or patterns to include. One of these patterns must match for the condition to pass. Also accepts `~ALL` to include all repositories.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "Array of repository names or patterns to exclude. The condition will not pass if any of these patterns match.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "protected": {
+              "type": "boolean",
+              "description": "Whether renaming of target repositories is prevented."
+            }
+          }
+        }
+      },
+      "required": [
+        "repository_name"
+      ]
+    },
+    "repository-ruleset-conditions-repository-id-target": {
+      "title": "Repository ruleset conditions for repository IDs",
+      "type": "object",
+      "description": "Parameters for a repository ID condition",
+      "properties": {
+        "repository_id": {
+          "type": "object",
+          "properties": {
+            "repository_ids": {
+              "type": "array",
+              "description": "The repository IDs that the ruleset applies to. One of these IDs must match for the condition to pass.",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "repository_id"
+      ]
+    },
+    "repository-ruleset-conditions-repository-property-target": {
+      "title": "Repository ruleset conditions for repository properties",
+      "type": "object",
+      "description": "Parameters for a repository property condition",
+      "properties": {
+        "repository_property": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "The repository properties and values to include. All of these properties must match for the condition to pass.",
+              "items": {
+                "$ref": "#/$defs/repository-ruleset-conditions-repository-property-spec"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "The repository properties and values to exclude. The condition will not pass if any of these properties match.",
+              "items": {
+                "$ref": "#/$defs/repository-ruleset-conditions-repository-property-spec"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "repository_property"
+      ]
+    },
+    "repository-ruleset-conditions-repository-property-spec": {
+      "title": "Repository ruleset property targeting definition",
+      "type": "object",
+      "description": "Parameters for a targeting a repository property",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the repository property to target"
+        },
+        "property_values": {
+          "type": "array",
+          "description": "The values to match for the repository property",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "type": "string",
+          "description": "The source of the repository property. Defaults to 'custom' if not specified.",
+          "enum": [
+            "custom",
+            "system"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "property_values"
+      ]
+    },
+    "actions-policy-enterprise-conditions": {
+      "title": "Enterprise Actions policy conditions",
+      "type": "object",
+      "description": "Conditions for an enterprise Actions policy. The conditions object supports one organization\ntarget (`organization_name`, `organization_id`, or `organization_property`) combined with one\nrepository target (`repository_name` or `repository_property`), and may also contain `workflow_path`.",
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "organization_name_and_repository_name",
+          "description": "Conditions to target organizations by name and repositories by name",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-name-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-name-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "title": "organization_name_and_repository_property",
+          "description": "Conditions to target organizations by name and repositories by property",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-name-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-property-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "title": "organization_id_and_repository_name",
+          "description": "Conditions to target organizations by id and repositories by name",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-id-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-name-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "title": "organization_id_and_repository_property",
+          "description": "Conditions to target organizations by id and repositories by property",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-id-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-property-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "title": "organization_property_and_repository_name",
+          "description": "Conditions to target organizations by property and repositories by name",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-property-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-name-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "title": "organization_property_and_repository_property",
+          "description": "Conditions to target organizations by property and repositories by property",
+          "allOf": [
+            {
+              "$ref": "#/$defs/enterprise-ruleset-conditions-organization-property-target"
+            },
+            {
+              "$ref": "#/$defs/repository-ruleset-conditions-repository-property-target"
+            },
+            {
+              "$ref": "#/$defs/actions-policy-workflow-path-condition"
+            }
+          ]
+        }
+      ]
+    },
+    "enterprise-ruleset-conditions-organization-name-target": {
+      "title": "Repository ruleset conditions for organization names",
+      "type": "object",
+      "description": "Parameters for an organization name condition",
+      "properties": {
+        "organization_name": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "Array of organization names or patterns to include. One of these patterns must match for the condition to pass. Also accepts `~ALL` to include all organizations and ~EMUS to target all enterprise managed user accounts.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "Array of organization names or patterns to exclude. The condition will not pass if any of these patterns match.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "organization_name"
+      ]
+    },
+    "enterprise-ruleset-conditions-organization-id-target": {
+      "title": "Repository ruleset conditions for organization IDs",
+      "type": "object",
+      "description": "Parameters for an organization ID condition",
+      "properties": {
+        "organization_id": {
+          "type": "object",
+          "properties": {
+            "organization_ids": {
+              "type": "array",
+              "description": "The organization IDs that the ruleset applies to. One of these IDs must match for the condition to pass.",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "organization_id"
+      ]
+    },
+    "enterprise-ruleset-conditions-organization-property-target": {
+      "title": "Repository ruleset conditions for organization properties",
+      "type": "object",
+      "description": "Parameters for a organization property condition",
+      "properties": {
+        "organization_property": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "The organization properties and values to include. All of these properties must match for the condition to pass.",
+              "items": {
+                "$ref": "#/$defs/enterprise-ruleset-conditions-organization-property-spec"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "The organization properties and values to exclude. The condition will not pass if any of these properties match.",
+              "items": {
+                "$ref": "#/$defs/enterprise-ruleset-conditions-organization-property-spec"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "organization_property"
+      ]
+    },
+    "enterprise-ruleset-conditions-organization-property-spec": {
+      "title": "Repository ruleset property targeting definition",
+      "type": "object",
+      "description": "Parameters for a targeting a organization property",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the organization property to target"
+        },
+        "property_values": {
+          "type": "array",
+          "description": "The values to match for the organization property",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "property_values"
+      ]
+    },
+    "actions-rule": {
+      "title": "Actions Rule",
+      "type": "object",
+      "description": "An actions rule.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/actions-rule-restrict-actions-actors"
+        },
+        {
+          "$ref": "#/$defs/actions-rule-restrict-action-events"
+        }
+      ]
+    },
+    "actions-rule-restrict-actions-actors": {
+      "title": "restrict_actions_actors",
+      "description": "Choose specific actors that are authorized to trigger Actions workflows.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "restrict_actions_actors"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "allowed_actors": {
+              "type": "array",
+              "description": "Select the actors who can run Actions workflows.",
+              "items": {
+                "$ref": "#/$defs/actions-rule-params-actor"
+              }
+            }
+          },
+          "required": [
+            "allowed_actors"
+          ]
+        }
+      }
+    },
+    "actions-rule-params-actor": {
+      "title": "Actor",
+      "description": "An actor authorized to trigger Actions workflows",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "ID of the actor authorized to trigger Actions workflows."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of the actor",
+          "enum": [
+            "User",
+            "Bot",
+            "Team",
+            "BusinessTeam",
+            "EnterpriseTeam",
+            "IntegrationInstallation",
+            "App",
+            "RepositoryRole"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ]
+    },
+    "actions-rule-restrict-action-events": {
+      "title": "restrict_action_events",
+      "description": "Choose specific GitHub events that will trigger Actions workflows.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "restrict_action_events"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "allowed_events": {
+              "type": "array",
+              "description": "Select the events that can trigger Actions workflows.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "branch_protection_rule",
+                  "check_run",
+                  "check_suite",
+                  "create",
+                  "delete",
+                  "deployment",
+                  "deployment_status",
+                  "discussion",
+                  "discussion_comment",
+                  "fork",
+                  "gollum",
+                  "image_version",
+                  "issue_comment",
+                  "issues",
+                  "label",
+                  "merge_group",
+                  "milestone",
+                  "page_build",
+                  "project",
+                  "project_card",
+                  "project_column",
+                  "public",
+                  "pull_request",
+                  "pull_request_review",
+                  "pull_request_review_comment",
+                  "pull_request_target",
+                  "push",
+                  "registry_package",
+                  "release",
+                  "repository_dispatch",
+                  "schedule",
+                  "status",
+                  "watch",
+                  "workflow_call",
+                  "workflow_dispatch",
+                  "workflow_run"
+                ]
+              }
+            }
+          },
+          "required": [
+            "allowed_events"
+          ]
+        }
+      }
+    }
+  }
+}

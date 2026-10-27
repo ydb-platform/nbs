@@ -205,6 +205,46 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, maxBlobsPerRange);
     }
+
+    Y_UNIT_TEST(ShouldIgnorePartitionCountInMaxBlobsPerRangeIfConfigured)
+    {
+        NProto::TPartitionConfig partitionConfig;
+        partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        NProto::TStorageServiceConfig storageConfigProto;
+        storageConfigProto.SetSSDMaxBlobsPerRange(66);
+        storageConfigProto.SetSSDV2MaxBlobsPerRange(6);
+        storageConfigProto.SetHDDMaxBlobsPerRange(44);
+        storageConfigProto.SetHDDV2MaxBlobsPerRange(4);
+
+        auto getMaxBlobsPerRange =
+            [&](bool ignorePartitionCount, ui32 siblingCount)
+        {
+            storageConfigProto.SetIgnorePartitionCountInMaxBlobsPerRange(
+                ignorePartitionCount);
+            TStorageConfig storageConfig(
+                storageConfigProto,
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig()));
+            return GetMaxBlobsPerRange(
+                partitionConfig,
+                storageConfig,
+                siblingCount);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(66, getMaxBlobsPerRange(false, 1));
+        UNIT_ASSERT_VALUES_EQUAL(33, getMaxBlobsPerRange(false, 2));
+        UNIT_ASSERT_VALUES_EQUAL(1, getMaxBlobsPerRange(false, 100));
+        UNIT_ASSERT_VALUES_EQUAL(66, getMaxBlobsPerRange(true, 1));
+        UNIT_ASSERT_VALUES_EQUAL(66, getMaxBlobsPerRange(true, 2));
+        UNIT_ASSERT_VALUES_EQUAL(66, getMaxBlobsPerRange(true, 100));
+
+        partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HDD);
+        partitionConfig.SetTabletVersion(2);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, getMaxBlobsPerRange(false, 2));
+        UNIT_ASSERT_VALUES_EQUAL(4, getMaxBlobsPerRange(true, 2));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

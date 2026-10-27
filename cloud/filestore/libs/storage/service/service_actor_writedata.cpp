@@ -175,7 +175,7 @@ private:
 
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
-    const bool EnableRdmaForWrites = false;
+    [[maybe_unused]] const bool EnableRdmaForWrites = false;
 
 public:
     TWriteDataActor(

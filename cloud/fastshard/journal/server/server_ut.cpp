@@ -1184,12 +1184,15 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(content, ReadPageContent(pageNo));
 
-        // The device has no journal, so the default format leaves the data
-        // untouched
+        // The device has no journal, so the default format has nothing to
+        // wipe and leaves the data untouched
 
         {
             const auto error = FormatDevice(false);
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_FALSE,
+                error.GetCode(),
+                FormatError(error));
         }
 
         UNIT_ASSERT_VALUES_EQUAL(content, ReadPageContent(pageNo));

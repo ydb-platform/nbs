@@ -10,9 +10,13 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/unittest/tests_data.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
+
+#include <tuple>
 
 namespace NCloud::NJournalled {
 
@@ -77,10 +81,12 @@ struct TTestDeviceManager final: public IDeviceManager
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
+    TPortManager PortManager;
     NMonitoring::TDynamicCountersPtr Counters;
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
     std::shared_ptr<TTestDeviceManager> DeviceManager;
+    IStartablePtr Server;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -92,6 +98,19 @@ struct TFixture: public NUnitTest::TBaseFixture
             {.FiltrationLevel = TLOG_RESOURCES});
         Executor = TExecutor::Create("TestExecutor");
         DeviceManager = std::make_shared<TTestDeviceManager>();
+
+        Logging->Start();
+        Executor->Start();
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*context*/) override
+    {
+        if (Server) {
+            Server->Stop();
+        }
+
+        Executor->Stop();
+        Logging->Stop();
     }
 
     i64 CriticalEventCount(const TString& name) const
@@ -99,23 +118,33 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Counters->GetCounter("AppCriticalEvents/" + name, true)->Val();
     }
 
+    // Builds the server and starts it, as the devices are created on start.
     IStartablePtr Build(
         bool journalEnabled,
         TVector<TJournalledDeviceConfig> configs,
         ui32 restoreConcurrency = 1)
     {
-        return TServerBuilder(
-                   Logging,
-                   Executor,
-                   DeviceManager,
-                   TServerConfig{
-                       // the server is never started
-                       .ListenAddress = TNetworkAddress{0},
-                       .JournalEnabled = journalEnabled,
-                       .RestoreConcurrency = restoreConcurrency,
-                   },
-                   std::move(configs))
-            .Build();
+        if (Server) {
+            Server->Stop();
+            Server.reset();
+        }
+
+        auto server =
+            TServerBuilder(
+                Logging,
+                Executor,
+                DeviceManager,
+                TServerConfig{
+                    .ListenAddress = TNetworkAddress{PortManager.GetTcpPort()},
+                    .JournalEnabled = journalEnabled,
+                    .RestoreConcurrency = restoreConcurrency,
+                },
+                std::move(configs))
+                .Build();
+
+        server->Start();
+        Server = server;
+        return server;
     }
 
     static TJournalledDeviceConfig MakeConfig(
@@ -139,7 +168,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TServerBuilderTest)
 {
-    Y_UNIT_TEST_F(ShouldSplitDeviceIntoJournalParts, TFixture)
+    Y_UNIT_TEST_F(ShouldPartitionDeviceIntoJournalParts, TFixture)
     {
         UNIT_ASSERT(Build(true, {MakeConfig("uuid-1", 1024, 4, 64)}));
 
@@ -189,21 +218,41 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
 
     Y_UNIT_TEST_F(ShouldSkipJournalPartsWhenJournalIsDisabled, TFixture)
     {
-        // the journal parts make no sense without the journal, so such devices
-        // are reported and skipped
+        // without the journal the data stays where a journalled device keeps
+        // it, so the journal parts are skipped and only the data is served
         UNIT_ASSERT(Build(
             false,
             {MakeConfig("uuid-1", 1024, 4, 0),
              MakeConfig("uuid-2", 1024, 0, 64),
-             MakeConfig("uuid-3", 1024, 0, 0)}));
+             MakeConfig("uuid-3", 1024, 4, 64)}));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            0,
             CriticalEventCount("JournalledDeviceCreationError"));
 
+        const std::tuple<TString, ui64, ui64> expected[]{
+            {"uuid-1", 4, 1024 - 4},
+            {"uuid-2", 64, 1024 - 64},
+            {"uuid-3", 68, 1024 - 68},
+        };
+
+        // the devices are created in parallel, so look them up by uuid
         const auto& calls = DeviceManager->CreateDeviceCalls;
-        UNIT_ASSERT_VALUES_EQUAL(1, calls.size());
-        UNIT_ASSERT_VALUES_EQUAL("uuid-3", calls[0].DeviceUUID);
+        UNIT_ASSERT_VALUES_EQUAL(std::size(expected), calls.size());
+
+        for (const auto& [uuid, firstPageNo, pageCount]: expected) {
+            const auto call = FindIf(
+                calls,
+                [&](const auto& call) { return call.DeviceUUID == uuid; });
+            UNIT_ASSERT_C(call != calls.end(), uuid);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(DefaultBlockSize, call->BlockSize, uuid);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                firstPageNo,
+                call->Region.FirstPageNo,
+                uuid);
+            UNIT_ASSERT_VALUES_EQUAL_C(pageCount, call->Region.PageCount, uuid);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldSkipDevicesWithInvalidConfig, TFixture)
@@ -251,10 +300,13 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
     {
         // a server without devices still answers ListDevices, so it is built
         // even when every configured device is skipped
-        auto config = MakeConfig("uuid-1", 1024, 4, 64);
-        config.BlockSize = 0;
+        auto config1 = MakeConfig("uuid-1", 1024, 4, 64);
+        config1.BlockSize = 0;
 
-        UNIT_ASSERT(Build(true, {config, config}));
+        auto config2 = MakeConfig("uuid-2", 1024, 4, 64);
+        config2.BlockSize = 0;
+
+        UNIT_ASSERT(Build(true, {config1, config2}));
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,

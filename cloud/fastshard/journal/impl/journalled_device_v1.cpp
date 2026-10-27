@@ -41,9 +41,9 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Stop() noexcept final
+    TFuture<void> Stop() noexcept final
     {
-        return MakeFuture<NProto::TError>();
+        return MakeFuture();
     }
 
     [[nodiscard]] auto ReadPages(
