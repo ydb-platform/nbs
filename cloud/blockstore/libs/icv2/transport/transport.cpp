@@ -1,17 +1,18 @@
 #include "transport.h"
 
-#include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_direct_session.h>
+#include <contrib/ydb/library/actors/util/datetime.h>
 
-#include <util/datetime/cputimer.h>
+#include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/vector.h>
+#include <util/system/guard.h>
+#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 
 #include <atomic>
-#include <deque>
-#include <mutex>
 #include <optional>
 #include <utility>
-#include <vector>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
@@ -23,7 +24,7 @@ class TConnection;
 
 class TEngineClient final: public NActors::IUringEngineClient
 {
-    std::mutex Mutex;
+    TAdaptiveLock Mutex;
     THashMap<NActors::TActorId, std::weak_ptr<TConnection>> Connections;
     std::atomic<ui64> DestroyCycles = 0;
 
@@ -38,20 +39,20 @@ public:
         NActors::TActorId id,
         const std::shared_ptr<TConnection>& connection)
     {
-        std::lock_guard guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Mutex);
         Connections.emplace(id, connection);
     }
 
     void Remove(NActors::TActorId id)
     {
-        std::lock_guard guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Mutex);
         Connections.erase(id);
     }
 
-    std::vector<std::shared_ptr<TConnection>> GetConnections()
+    TVector<std::shared_ptr<TConnection>> GetConnections()
     {
-        std::vector<std::shared_ptr<TConnection>> connections;
-        std::lock_guard guard(Mutex);
+        TVector<std::shared_ptr<TConnection>> connections;
+        TGuard<TAdaptiveLock> guard(Mutex);
         for (auto& [id, weak]: Connections) {
             if (auto connection = weak.lock()) {
                 connections.push_back(std::move(connection));
@@ -84,7 +85,7 @@ struct TTransportState
 {
     // Serializes engine admission, including registration, sends, and
     // unregister. Never held while invoking a user handler or joining a worker.
-    std::mutex Mutex;
+    TMutex Mutex;
     NActors::TUringEnginePtr Engine;
     const std::shared_ptr<TEngineClient> Client =
         std::make_shared<TEngineClient>();
@@ -113,9 +114,9 @@ class TConnection final
     // Handle is used only under State->Mutex. Other fields below are guarded by
     // Mutex. Callbacks arriving during Register are queued until Ready is set.
     ui64 Handle = 0;
-    std::mutex Mutex;
+    TAdaptiveLock Mutex;
     std::shared_ptr<IConnectionHandler> Handler;
-    std::deque<TNotification> Pending;
+    TDeque<TNotification> Pending;
     bool Activated = false;
     bool Ready = false;
     bool Closing = false;
@@ -144,7 +145,7 @@ public:
     ~TConnection() override
     {
         Close();
-        std::lock_guard admission(State->Mutex);
+        TGuard<TMutex> admission(State->Mutex);
         State->Client->Remove(SessionId);
     }
 
@@ -153,9 +154,9 @@ public:
         const auto keepAlive = shared_from_this();
         bool accepted = false;
         {
-            std::lock_guard admission(State->Mutex);
+            TGuard<TMutex> admission(State->Mutex);
             {
-                std::lock_guard guard(Mutex);
+                TGuard<TAdaptiveLock> guard(Mutex);
                 if (Activated || Closing || State->Stopping) {
                     return false;
                 }
@@ -167,7 +168,7 @@ public:
                 Socket,
                 SessionId,
                 NActors::TScopeId(),
-                [weak](NActors::TDisconnectReason reason)
+                [weak](const NActors::TDisconnectReason& reason)
                 {
                     if (auto connection = weak.lock()) {
                         connection->OnDisconnect(reason.ToString());
@@ -179,7 +180,7 @@ public:
                 XdcSocket);
             accepted = Handle != 0;
             {
-                std::lock_guard guard(Mutex);
+                TGuard<TAdaptiveLock> guard(Mutex);
                 Ready = true;
             }
         }
@@ -192,9 +193,9 @@ public:
 
     bool Send(std::unique_ptr<NActors::IEventHandle> ev) override
     {
-        std::lock_guard admission(State->Mutex);
+        TGuard<TMutex> admission(State->Mutex);
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Mutex);
             if (!Ready || Closing || State->Stopping || !Handle) {
                 return false;
             }
@@ -214,11 +215,11 @@ public:
     void Close() override
     {
         const auto keepAlive = weak_from_this().lock();
-        std::deque<TNotification> discarded;
+        TDeque<TNotification> discarded;
         {
-            std::lock_guard admission(State->Mutex);
+            TGuard<TMutex> admission(State->Mutex);
             {
-                std::lock_guard guard(Mutex);
+                TGuard<TAdaptiveLock> guard(Mutex);
                 Closing = true;
                 discarded.swap(Pending);
             }
@@ -249,7 +250,7 @@ public:
 
     ui64 GetOutputQueueSize() const override
     {
-        std::lock_guard admission(State->Mutex);
+        TGuard<TMutex> admission(State->Mutex);
         return Handle && !State->Stopping
                    ? State->Engine->GetTotalOutputQueueSize(Handle)
                    : 0;
@@ -257,19 +258,19 @@ public:
 
     void Receive(std::unique_ptr<NActors::IEventHandle> ev)
     {
-        Enqueue({std::move(ev), {}});
+        Enqueue({.Event = std::move(ev)});
     }
 
 private:
     void OnDisconnect(TString reason)
     {
-        Enqueue({{}, std::move(reason)});
+        Enqueue({.Disconnect = std::move(reason)});
     }
 
     void Enqueue(TNotification notification)
     {
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Mutex);
             if (Closing || (notification.Disconnect && DisconnectReceived)) {
                 return;
             }
@@ -282,7 +283,7 @@ private:
     void Dispatch()
     {
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Mutex);
             if (!Ready || Closing || Dispatching) {
                 return;
             }
@@ -292,7 +293,7 @@ private:
             TNotification notification;
             std::shared_ptr<IConnectionHandler> handler;
             {
-                std::lock_guard guard(Mutex);
+                TGuard<TAdaptiveLock> guard(Mutex);
                 if (Closing || Pending.empty()) {
                     Dispatching = false;
                     break;
@@ -315,7 +316,7 @@ private:
     {
         std::shared_ptr<IConnectionHandler> handler;
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Mutex);
             if (!Closing || Dispatching || Published) {
                 return;
             }
@@ -331,7 +332,7 @@ void TEngineClient::Send(std::unique_ptr<NActors::IEventHandle> ev)
 {
     std::shared_ptr<TConnection> connection;
     {
-        std::lock_guard guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Mutex);
         if (auto it = Connections.find(ev->InterconnectSession);
             it != Connections.end())
         {
@@ -347,7 +348,7 @@ class TTransport final: public ITransport
 {
     const std::shared_ptr<TTransportState> State =
         std::make_shared<TTransportState>();
-    std::mutex StopMutex;
+    TMutex StopMutex;
     // Guarded by State->Mutex. Never reuse IDs: the engine may still deliver
     // notifications from a closed connection after its wrapper is destroyed.
     ui64 NextSessionId = 1;
@@ -371,7 +372,7 @@ public:
         bool sendPings,
         ui64 maxOutputQueueBytes) override
     {
-        std::lock_guard admission(State->Mutex);
+        TGuard<TMutex> admission(State->Mutex);
         if (State->Stopping || !socket || !handler || !maxOutputQueueBytes) {
             return {};
         }
@@ -398,11 +399,11 @@ public:
 
     void Stop() override
     {
-        std::lock_guard stop(StopMutex);
+        TGuard<TMutex> stop(StopMutex);
         auto connections = CloseConnections();
         NActors::TUringEnginePtr engine;
         {
-            std::lock_guard admission(State->Mutex);
+            TGuard<TMutex> admission(State->Mutex);
             if (State->EngineStopping) {
                 return;
             }
@@ -419,11 +420,11 @@ public:
     }
 
 private:
-    std::vector<std::shared_ptr<TConnection>> CloseConnections()
+    TVector<std::shared_ptr<TConnection>> CloseConnections()
     {
-        std::vector<std::shared_ptr<TConnection>> connections;
+        TVector<std::shared_ptr<TConnection>> connections;
         {
-            std::lock_guard admission(State->Mutex);
+            TGuard<TMutex> admission(State->Mutex);
             State->Stopping = true;
             connections = State->Client->GetConnections();
         }

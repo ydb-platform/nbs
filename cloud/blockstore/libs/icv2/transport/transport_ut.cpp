@@ -2,12 +2,12 @@
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
-#include <contrib/ydb/library/actors/interconnect/interconnect_direct_session.h>
 #include <contrib/ydb/library/actors/interconnect/uring_context.h>
 #include <contrib/ydb/library/actors/protos/unittests.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/vector.h>
 #include <util/network/pair.h>
 #include <util/network/socket.h>
 
@@ -22,7 +22,6 @@
 #include <mutex>
 #include <thread>
 #include <utility>
-#include <vector>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
@@ -89,7 +88,7 @@ struct TTestEngine final: IUringEngine
     };
 
     IUringEngineClientPtr Client;
-    std::vector<TRegistration> Registrations;
+    TVector<TRegistration> Registrations;
     std::function<void(TDisconnectReason)> Disconnect;
     std::function<void()> OnRegister;
     std::function<void()> OnSend;
@@ -103,7 +102,7 @@ struct TTestEngine final: IUringEngine
     bool HoldEvents = false;
     bool TrackQueue = false;
     ui64 OutputQueueBytes = 17;
-    std::vector<std::unique_ptr<IEventHandle>> PendingEvents;
+    TVector<std::unique_ptr<IEventHandle>> PendingEvents;
 
     void SetClient(IUringEngineClientPtr client) override
     {
