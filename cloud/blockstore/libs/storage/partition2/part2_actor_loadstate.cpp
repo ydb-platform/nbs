@@ -115,6 +115,9 @@ void TPartitionActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxPartition::TLoadState& args)
 {
+    const bool isSSD =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD;
+
     // initialize state
     TBackpressureFeaturesConfig bpConfig {
         {
@@ -123,8 +126,10 @@ void TPartitionActor::CompleteLoadState(
             static_cast<double>(Config->GetCompactionScoreFeatureMaxValue()),
         },
         {
-            Config->GetFreshByteCountLimitForBackpressure(),
-            Config->GetFreshByteCountThresholdForBackpressure(),
+            isSSD ? Config->GetFreshByteCountLimitForBackpressureSSD()
+                  : Config->GetFreshByteCountLimitForBackpressure(),
+            isSSD ? Config->GetFreshByteCountThresholdForBackpressureSSD()
+                  : Config->GetFreshByteCountThresholdForBackpressure(),
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {

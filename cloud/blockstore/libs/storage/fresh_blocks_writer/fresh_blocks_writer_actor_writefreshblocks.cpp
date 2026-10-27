@@ -35,7 +35,9 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -146,7 +148,9 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {

@@ -141,7 +141,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
     config.SetFreshByteCountThresholdForBackpressure(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
     config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
@@ -17843,7 +17845,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThresholdSSD(1_MB);
         config.SetCleanupThreshold(1000);
         config.SetSSDMaxBlobsPerRange(1000);
-        config.SetFlushThreshold(1000_MB);
+        config.SetFlushThresholdSSD(1000_MB);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(999999);
