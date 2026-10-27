@@ -25,11 +25,13 @@ TVolumeAsPartitionActor::TVolumeAsPartitionActor(
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
         TString diskId,
-        TDuration shutdownTimeout)
+        TDuration shutdownTimeout,
+        TString remoteCellId)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
     , ShutdownTimeout(shutdownTimeout)
+    , RemoteCellId(std::move(remoteCellId))
 {}
 
 TVolumeAsPartitionActor::~TVolumeAsPartitionActor() = default;
@@ -44,10 +46,17 @@ void TVolumeAsPartitionActor::Bootstrap(const TActorContext& ctx)
         "%s VolumeAsPartitionActor created",
         LogTitle.GetWithTime().c_str());
 
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+    if (RemoteCellId) {
+        NCloud::SendWithUndeliveryTracking(
+            ctx, MakeCellProxyServiceId(),
+            std::make_unique<TEvCellProxy::TEvDescribeVolumeRequest>(
+                RemoteCellId, DiskId));
+    } else {
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+    }
 }
 
 bool TVolumeAsPartitionActor::CheckRange(TBlockRange64 range) const
@@ -63,6 +72,9 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
 {
     auto* msg = ev->Get();
     msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    if (RemoteCellId) {
+        msg->Record.MutableHeaders()->SetCellId(RemoteCellId);
+    }
 
     const ui64 requestId = RequestsInProgress.AddWriteRequest(
         BuildRequestBlockRange(*msg, OriginalBlockSize),
@@ -73,7 +85,7 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
 
     NActors::TActorId nondeliveryActor = SelfId();
     auto message = std::make_unique<NActors::IEventHandle>(
-        MakeVolumeProxyServiceId(),
+        RemoteCellId ? MakeCellProxyServiceId() : MakeVolumeProxyServiceId(),
         SelfId(),
         ev->ReleaseBase().Release(),
         ev->Flags | NActors::IEventHandle::FlagForwardOnNondelivery,
@@ -312,8 +324,42 @@ void TVolumeAsPartitionActor::HandleDescribeVolumeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ProcessDescribeVolumeResponse(ctx, msg->GetError(), {});
+        return;
+    }
 
-    const auto& error = msg->GetError();
+    const auto& pathDescription = msg->PathDescription;
+    const auto& volumeDescription =
+        pathDescription.GetBlockStoreVolumeDescription();
+    const auto& volumeConfig = volumeDescription.GetVolumeConfig();
+    NProto::TVolume volume;
+    VolumeConfigToVolume(volumeConfig, "", volume);
+
+    ProcessDescribeVolumeResponse(ctx, msg->GetError(), volume);
+}
+
+void TVolumeAsPartitionActor::HandleDescribeRemoteVolumeResponse(
+    const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ProcessDescribeVolumeResponse(ctx, ev->Get()->GetError(), ev->Get()->Volume);
+}
+
+void TVolumeAsPartitionActor::HandleCellProxyUndelivery(const TActorContext& ctx)
+{
+    ProcessDescribeVolumeResponse(
+        ctx, MakeError(E_REJECTED, "CellProxy is unavailable"), {});
+}
+
+void TVolumeAsPartitionActor::ProcessDescribeVolumeResponse(
+    const TActorContext& ctx,
+    const NProto::TError& error,
+    const NProto::TVolume& volume)
+{
+    if (State != EState::Describing) {
+        return;
+    }
     if (FAILED(error.GetCode())) {
         LOG_ERROR(
             ctx,
@@ -325,13 +371,6 @@ void TVolumeAsPartitionActor::HandleDescribeVolumeResponse(
         State = EState::Error;
         return;
     }
-
-    const auto& pathDescription = msg->PathDescription;
-    const auto& volumeDescription =
-        pathDescription.GetBlockStoreVolumeDescription();
-    const auto& volumeConfig = volumeDescription.GetVolumeConfig();
-    NProto::TVolume volume;
-    VolumeConfigToVolume(volumeConfig, "", volume);
 
     BlockCount = volume.GetBlocksCount();
     BlockSize = volume.GetBlockSize();
@@ -605,9 +644,11 @@ void TVolumeAsPartitionActor::HandleShutdownTimeout(
 STFUNC(TVolumeAsPartitionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(
-            TEvSSProxy::TEvDescribeVolumeResponse,
-            HandleDescribeVolumeResponse);
+        HFunc(TEvSSProxy::TEvDescribeVolumeResponse,
+              HandleDescribeVolumeResponse);
+        HFunc(TEvCellProxy::TEvDescribeVolumeResponse,
+              HandleDescribeRemoteVolumeResponse);
+        CFunc(TEvCellProxy::EvDescribeVolumeRequest, HandleCellProxyUndelivery);
 
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);

@@ -105,7 +105,11 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
         LogTitle,
         LeaderBlockSize,
         FollowerDiskInfo.Link.FollowerDiskId,
-        GetConfig()->GetDestroyVolumeTimeout());
+        GetConfig()->GetDestroyVolumeTimeout(),
+        FollowerDiskInfo.Link.FollowerCellId !=
+                FollowerDiskInfo.Link.LeaderCellId
+            ? FollowerDiskInfo.Link.FollowerCellId
+            : TString());
 
     InitWork(
         ctx,

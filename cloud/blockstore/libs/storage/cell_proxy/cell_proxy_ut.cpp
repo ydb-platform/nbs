@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
@@ -208,6 +209,35 @@ struct TEnv: TTestActorRuntimeBase
 
 Y_UNIT_TEST_SUITE(TCellProxyTest)
 {
+    Y_UNIT_TEST(ShouldRejectUnimplementedDataRequests)
+    {
+        TEnv env;
+        env.Initialize();
+        for (const ui64 cookie: {1, 2}) {
+            if (cookie == 1) {
+                env.Send(new IEventHandle(
+                    MakeCellProxyServiceId(), env.Sender,
+                    new TEvService::TEvWriteBlocksRequest(), 0, cookie));
+                const auto response = env.GrabEdgeEventRethrow<
+                    TEvService::TEvWriteBlocksResponse>(env.Sender);
+                UNIT_ASSERT_VALUES_EQUAL(cookie, response->Cookie);
+                UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED,
+                                         response->Get()->GetStatus());
+            } else {
+                env.Send(new IEventHandle(
+                    MakeCellProxyServiceId(), env.Sender,
+                    new TEvService::TEvZeroBlocksRequest(), 0, cookie));
+                const auto response =
+                    env.GrabEdgeEventRethrow<TEvService::TEvZeroBlocksResponse>(
+                        env.Sender);
+                UNIT_ASSERT_VALUES_EQUAL(cookie, response->Cookie);
+                UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED,
+                                         response->Get()->GetStatus());
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Manager->Requests);
+    }
+
     Y_UNIT_TEST(ShouldExecuteActionInTheRequestedCell)
     {
         TEnv env;

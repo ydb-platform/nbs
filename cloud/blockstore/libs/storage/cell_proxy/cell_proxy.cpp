@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -379,12 +380,28 @@ private:
                                                 msg->Timeout));
     }
 
+    template <typename TMethod>
+    void HandleDataRequest(const typename TMethod::TRequest::TPtr& ev,
+                           const TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_NOT_IMPLEMENTED,
+                          "Inter-cell data forwarding is not implemented")));
+    }
+
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvCellProxy::TEvInitializeRequest, HandleInitialize);
             HFunc(TEvCellProxy::TEvDescribeVolumeRequest, HandleDescribeVolume);
             HFunc(TEvCellProxy::TEvExecuteActionRequest, HandleExecuteAction);
+            HFunc(TEvService::TEvWriteBlocksRequest,
+                  HandleDataRequest<TEvService::TWriteBlocksMethod>);
+            HFunc(TEvService::TEvZeroBlocksRequest,
+                  HandleDataRequest<TEvService::TZeroBlocksMethod>);
             CFunc(TEvents::TEvPoisonPill::EventType, Die);
             default:
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::CELLS,

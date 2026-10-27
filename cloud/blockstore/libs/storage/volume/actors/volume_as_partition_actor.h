@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -51,6 +52,7 @@ private:
     const ui32 OriginalBlockSize;
     const TString DiskId;
     const TDuration ShutdownTimeout;
+    const TString RemoteCellId;
 
     EState State = EState::Describing;
     ui64 BlockCount = 0;
@@ -67,7 +69,8 @@ public:
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
         TString diskId,
-        TDuration shutdownTimeout);
+        TDuration shutdownTimeout,
+        TString remoteCellId = {});
 
     ~TVolumeAsPartitionActor() override;
 
@@ -112,6 +115,17 @@ private:
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleDescribeRemoteVolumeResponse(
+        const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessDescribeVolumeResponse(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error,
+        const NProto::TVolume& volume);
+
+    void HandleCellProxyUndelivery(const NActors::TActorContext& ctx);
 
     void HandleWriteBlocks(
         const TEvService::TEvWriteBlocksRequest::TPtr& ev,

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/testlib/cell_manager_mock.h>
@@ -32,7 +33,8 @@ NProto::TGetLinkStatusResponse GetLinkStatus(
     TServiceClient& service,
     const TString& leaderDiskId,
     const TString& followerDiskId,
-    const TString& followerCellId)
+    const TString& followerCellId,
+    ui32 maxAttempts = 1)
 {
     NProto::TGetLinkStatusRequest request;
     request.SetLeaderDiskId(leaderDiskId);
@@ -40,14 +42,24 @@ NProto::TGetLinkStatusResponse GetLinkStatus(
     request.SetFollowerCellId(followerCellId);
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
-    auto response = service.ExecuteAction("GetLinkStatus", buf);
+    std::unique_ptr<TEvService::TEvExecuteActionResponse> response;
+    for (ui32 attempt = 0; attempt < maxAttempts; ++attempt) {
+        service.SendExecuteActionRequest("GetLinkStatus", buf);
+        response = service.RecvExecuteActionResponse();
+        if (!HasError(response->GetError()) ||
+            GetErrorKind(response->GetError()) != EErrorKind::ErrorRetriable)
+        {
+            break;
+        }
+    }
+    UNIT_ASSERT(response);
+    UNIT_ASSERT_C(!HasError(response->GetError()),
+                  FormatError(response->GetError()));
     NProto::TGetLinkStatusResponse proto;
     UNIT_ASSERT_C(
         google::protobuf::util::JsonStringToMessage(
-            response->Record.GetOutput(),
-            &proto)
-            .ok(),
-        response->Record.GetOutput());
+            response->Record.GetOutput(), &proto)
+            .ok(), response->Record.GetOutput());
     return proto;
 }
 
@@ -920,7 +932,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCopyDataBetweenCellsEndToEnd)
+    Y_UNIT_TEST(ShouldCopyDataBetweenCellsWithEmulatedData)
     {
         constexpr ui64 volumeSize = 32_MB;
         constexpr ui32 blocksCount = volumeSize / DefaultBlockSize;
@@ -976,9 +988,55 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         bool rangeDelayed = false;
         bool migrationFinished = false;
         ui32 followerActions = 0;
+        THashMap<TActorId, NProto::ELinkAction> pendingFollowerActions;
+        ui32 backgroundWrites = 0;
+        ui32 backgroundZeroes = 0;
+        ui32 mirroredWrites = 0;
+        ui32 mirroredZeroes = 0;
         runtime.SetEventFilter(
             [&](auto&, TAutoPtr<IEventHandle>& event)
             {
+                const auto type = event->GetTypeRewrite();
+                if (event->Recipient == MakeCellProxyServiceId() &&
+                    (type == TEvService::EvWriteBlocksRequest ||
+                     type == TEvService::EvZeroBlocksRequest))
+                {
+                    auto checkRequest = [&](const auto& record)
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(followerDiskId,
+                                                 record.GetDiskId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "cell-b", record.GetHeaders().GetCellId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            TString(CopyVolumeClientId),
+                            record.GetHeaders().GetClientId());
+                        UNIT_ASSERT(record.GetHeaders().GetExactDiskIdMatch());
+                        return record.GetHeaders().GetIsBackgroundRequest();
+                    };
+                    if (type == TEvService::EvWriteBlocksRequest) {
+                        const auto& record =
+                            event->Get<TEvService::TEvWriteBlocksRequest>()
+                                ->Record;
+                        ++(checkRequest(record) ? backgroundWrites
+                                                : mirroredWrites);
+                    } else {
+                        const auto& record =
+                            event->Get<TEvService::TEvZeroBlocksRequest>()
+                                ->Record;
+                        ++(checkRequest(record) ? backgroundZeroes
+                                                : mirroredZeroes);
+                    }
+                    // Replace only the inter-cell data transport. Write the
+                    // intercepted payload to the real follower and let its
+                    // volume acknowledge the operation to the copying actor.
+                    runtime.Send(
+                        new IEventHandle(
+                            runtime.GetLocalServiceId(
+                                MakeVolumeProxyServiceId(), nodeB),
+                            event->Sender, event->ReleaseBase().Release(), 0,
+                            event->Cookie), nodeA);
+                    return true;
+                }
                 if (event->GetTypeRewrite() ==
                         TEvService::EvExecuteActionRequest &&
                     event->GetRecipientRewrite().NodeId() ==
@@ -1003,7 +1061,20 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                                                  request.GetLeaderCellId());
                         UNIT_ASSERT_VALUES_EQUAL("cell-b",
                                                  request.GetFollowerCellId());
-                        followerActions |= 1u << request.GetAction();
+                        pendingFollowerActions[event->Sender] =
+                            request.GetAction();
+                    }
+                }
+                if (type == TEvService::EvExecuteActionResponse) {
+                    const auto it =
+                        pendingFollowerActions.find(event->Recipient);
+                    if (it != pendingFollowerActions.end()) {
+                        const auto* msg =
+                            event->Get<TEvService::TEvExecuteActionResponse>();
+                        UNIT_ASSERT_C(!HasError(msg->GetError()),
+                                      FormatError(msg->GetError()));
+                        followerActions |= 1u << it->second;
+                        pendingFollowerActions.erase(it);
                     }
                 }
                 if (event->GetTypeRewrite() ==
@@ -1014,8 +1085,13 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 {
                     const auto* msg = event->Get<
                         TEvNonreplPartitionPrivate::TEvRangeMigrated>();
-                    UNIT_ASSERT_C(!HasError(msg->GetError()),
-                                  FormatError(msg->GetError()));
+                    if (HasError(msg->GetError())) {
+                        UNIT_ASSERT_C(GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable,
+                                      FormatError(msg->GetError()));
+                        // Let the migration actor retry transient errors while
+                        // the leader partition and follower adapter start.
+                        return false;
+                    }
                     UNIT_ASSERT(msg->Range.End < blocksCount - 2);
                     rangeDelayed = true;
                     delayedRange = event.Release();
@@ -1040,8 +1116,8 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 return false;
             });
 
-        // Readiness test: exercise production routing without forwarding or
-        // answering inter-cell requests in the test.
+        // Metadata and link notifications always use the production path.
+        // The data transport is emulated above.
         serviceA.CreateVolumeLink(leaderDiskId, followerDiskId, "cell-b");
 
         TDispatchOptions options;
@@ -1077,8 +1153,10 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         };
         runtime.DispatchEvents(options, TDuration::Seconds(30));
         UNIT_ASSERT_C(migrationFinished, "Cross-cell copying did not finish");
+        // Leadership transfer restarts the leader; the first request can
+        // fail while its tablet pipe is reconnecting.
         const auto transferred =
-            GetLinkStatus(serviceA, leaderDiskId, followerDiskId, "cell-b");
+            GetLinkStatus(serviceA, leaderDiskId, followerDiskId, "cell-b", 10);
         UNIT_ASSERT_EQUAL_C(NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED,
                             transferred.GetStatus(),
                             transferred.ShortDebugString());
@@ -1094,13 +1172,18 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         const ui32 expectedActions = (1u << NProto::LINK_ACTION_CREATE) |
                                      (1u << NProto::LINK_ACTION_COMPLETED) |
                                      (1u << NProto::LINK_ACTION_DESTROY);
-        // DestroyVolumeLink replies before notifying the follower.
+        // DestroyVolumeLink replies before notifying the follower. Wait for
+        // the remote action's response, after the follower commits the change.
         options.CustomFinalCondition = [&]
         {
             return followerActions == expectedActions;
         };
         runtime.DispatchEvents(options, TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(expectedActions, followerActions);
+        UNIT_ASSERT(backgroundWrites > 0);
+        UNIT_ASSERT(backgroundZeroes > 0);
+        UNIT_ASSERT(mirroredWrites > 0);
+        UNIT_ASSERT(mirroredZeroes > 0);
 
         sessionB = serviceB.MountVolume(followerDiskId)->Record.GetSessionId();
         constexpr ui32 readSize = 4096;
