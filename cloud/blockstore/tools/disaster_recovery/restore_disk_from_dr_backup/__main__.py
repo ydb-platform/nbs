@@ -10,7 +10,7 @@ from cloud.storage.core.protos.media_pb2 import (
     STORAGE_MEDIA_SSD_MIRROR2,
     STORAGE_MEDIA_SSD_MIRROR3,
 )
-from google.protobuf.json_format import MessageToDict, MessageToJson, ParseDict
+from google.protobuf.json_format import MessageToJson, ParseDict
 
 
 def quote(value):
@@ -57,41 +57,6 @@ def validate_device(old_device, new_device):
     )
 
 
-def resolve_disk_devices(old_disk, old_by_uuid, current_by_physical, device_to_disk):
-    if len(old_disk.DeviceUUIDs) == 0:
-        raise RuntimeError(f"disk {quote(old_disk.DiskId)} has no devices in old backup")
-
-    devices = []
-    for uuid in old_disk.DeviceUUIDs:
-        old_device = old_by_uuid.get(uuid)
-        if old_device is None:
-            raise RuntimeError(f"device {quote(uuid)} not found in old backup")
-
-        current_device = current_by_physical.get(
-            (old_device.SerialNumber, old_device.PhysicalOffset)
-        )
-        if current_device is None:
-            raise RuntimeError(
-                f"device {quote(uuid)} with serial number {quote(old_device.SerialNumber)}"
-                f" and physical offset {old_device.PhysicalOffset} not found in current backup"
-            )
-
-        if not validate_device(old_device, current_device):
-            raise RuntimeError(
-                f"device {quote(uuid)} is inconsistent with device in previous backup"
-            )
-
-        current_uuid = current_device.DeviceUUID
-        if current_uuid in device_to_disk and device_to_disk[current_uuid] != old_disk.DiskId:
-            raise RuntimeError(f"device {quote(current_uuid)}"
-                f"already exists on other disk {quote(device_to_disk[current_uuid])}")
-
-        device_to_disk[current_uuid] = old_disk.DiskId
-        devices.append(current_device)
-
-    return devices
-
-
 def is_mirrored_disk(disk):
     return disk.StorageMediaKind in (
         STORAGE_MEDIA_SSD_MIRROR2,
@@ -115,78 +80,6 @@ def resolve_master_disk(disk, disk_id_to_old_config):
     return master
 
 
-def build_nonreplicated_disk_request(old_disk, new_devices):
-    device_uuids = []
-    for device in new_devices:
-        if not device.DeviceUUID:
-            raise RuntimeError("device from current backup has no UUID")
-        device_uuids.append(device.DeviceUUID)
-
-    return disk_pb2.TCreateVolumeFromDevicesRequest(
-        DiskId=old_disk.DiskId,
-        BlockSize=old_disk.BlockSize,
-        DeviceUUIDs=device_uuids,
-        Force=True,
-        KeepBlockCount=True,
-    )
-
-
-def resolve_fresh_device_uuids(master, old_by_uuid, current_by_physical):
-    fresh_device_uuids = []
-    for uuid in master.DeviceReplacementUUIDs:
-        old_device = old_by_uuid.get(uuid)
-        if old_device is None:
-            raise RuntimeError(
-                f"fresh device {quote(uuid)} not found in old backup"
-            )
-
-        current_device = current_by_physical.get(
-            (old_device.SerialNumber, old_device.PhysicalOffset)
-        )
-        if current_device is None:
-            raise RuntimeError(
-                f"fresh device {quote(uuid)} with serial number "
-                f"{quote(old_device.SerialNumber)} and physical offset "
-                f"{old_device.PhysicalOffset} not found in current backup"
-            )
-
-        fresh_device_uuids.append(current_device.DeviceUUID)
-
-    return fresh_device_uuids
-
-
-def build_mirrored_disk_request(old_master, replicas, fresh_device_uuids):
-    volume_config = {}
-    if old_master.BlockSize:
-        volume_config["blockSize"] = old_master.BlockSize
-    if old_master.DiskId:
-        volume_config["diskId"] = old_master.DiskId
-    if old_master.StorageMediaKind:
-        volume_config["storageMediaKind"] = old_master.StorageMediaKind
-
-    return {
-        "volumeConfig": volume_config,
-        "replicas": [
-            {"devices": [MessageToDict(device) for device in replica_devices]}
-            for replica_devices in replicas
-        ],
-        "force": True,
-        "keepBlockCount": True,
-        "freshDeviceUUIDs": fresh_device_uuids,
-    }
-
-
-def request_payload(request, disk_id):
-    try:
-        if isinstance(request, dict):
-            return json.dumps(request, ensure_ascii=False, separators=(",", ":"))
-        return MessageToJson(request)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Error serializing request for disk {quote(disk_id)} error: {exc}"
-        ) from exc
-
-
 def suspend_secure_erase():
     send_request(
         "DiskRegistrySuspendSecureErase",
@@ -195,127 +88,214 @@ def suspend_secure_erase():
     )
 
 
-def send_request(action, request, disk_id):
+def send_request(request, disk_id):
     args = [
         "blockstore-client", "executeaction",
-        "--action", action,
+        "--action", "CreateDiskFromDevices",
         "--verbose", "error",
-        "--input-bytes", request_payload(request, disk_id),
+        "--input-bytes", MessageToJson(request),
     ]
     subprocess.run(args, check=True, text=True, stdout=sys.stdout, stderr=sys.stdout)
 
 
-def process_disk(
-    disk_id,
-    old_disk,
-    disk_id_to_old_config,
-    old_by_uuid,
-    current_by_physical,
-    device_to_disk,
-    seen_master_disks
-):
-    if old_disk is None:
-        raise RuntimeError(f" disk with id {quote(disk_id)} not found in old backup")
+def validate_replicas(replicas):
+    if len(replicas) == 0:
+        return True
 
-    if not is_mirrored_disk(old_disk):
-        devices = resolve_disk_devices(
-            old_disk, old_by_uuid, current_by_physical, device_to_disk
-        )
-        return "CreateDiskFromDevices", build_nonreplicated_disk_request(old_disk, devices)
+    devices_len = len(replicas[0])
+    for d in range(devices_len):
+        has_data = False
 
-    master = resolve_master_disk(old_disk, disk_id_to_old_config)
-    if master.DiskId in seen_master_disks:
-        return None
+        for r in range(len(replicas)):
+            if replicas[r][d] != "":
+                has_data = True
+                break
+        if not has_data:
+            return False
 
-    fresh_device_uuids = resolve_fresh_device_uuids(
-        master, old_by_uuid, current_by_physical
+    return True
+
+
+def get_available_devices(devices):
+    available_devices = []
+    for uuid in devices:
+        if uuid != "":
+            available_devices.append(uuid)
+    return available_devices
+
+
+def build_request(disk, devices=None, replicas=None):
+    request = disk_pb2.TCreateVolumeFromDevicesRequest(
+        DiskId=disk.DiskId,
+        BlockSize=disk.BlockSize,
+        StorageMediaKind=disk.StorageMediaKind,
+        Force=True,
+        KeepBlockCount=True,
+        # DoNotCreateIfTabletExists=True,
     )
 
-    replicas = []
-    for replica_index in range(master.ReplicaCount + 1):
-        replica_id = build_replica_id(master.DiskId, replica_index)
+    if disk.ProjectId:
+        request.ProjectId = disk.ProjectId
+    if disk.FolderId:
+        request.FolderId = disk.FolderId
+    if disk.CloudId:
+        request.CloudId = disk.CloudId
 
-        replica = disk_id_to_old_config.get(replica_id)
-        if replica is None:
-            raise RuntimeError(f"replica {quote(replica_id)} not found in old backup")
-        replicas.append(
-            resolve_disk_devices(
-                replica, old_by_uuid, current_by_physical, device_to_disk
-            )
+    if (replicas is None) == (devices is None):
+        raise RuntimeError(
+            f"Disk {quote(disk.DiskId)}: "
+            "either devices or replicas must be set, but not both"
         )
+    if replicas is not None:
+        for replica_uuids in replicas:
+            replica = request.Replicas.add()
+            replica.DeviceUUIDs.extend(replica_uuids)
+    else:
+        request.DeviceUUIDs.extend(devices)
 
-    seen_master_disks.add(master.DiskId)
-    return (
-        "CreateMirroredDiskFromDevices",
-        build_mirrored_disk_request(master, replicas, fresh_device_uuids),
-    )
+    return request
 
 
-def run(old_backup_path, current_backup_path, disk_ids, dry_run):
-    old_backup = load_backup(old_backup_path)
-    old_by_uuid, _ = build_device_index(old_backup)
+class IncompleteDisk:
+    def __init__(self, disk_id, available_devices: list[str]):
+        self.disk_id = disk_id
+        self.available_devices = available_devices
 
-    current_backup = load_backup(current_backup_path)
-    _, current_by_physical = build_device_index(current_backup)
+    def __str__(self):
+        return f"Incomplete disk {quote(self.disk_id)}\n"
+        "available devices uuids:\n{self.available_devices}"
 
-    disk_id_to_old_config = build_disk_id_to_config(old_backup)
-    device_to_disk = {}
-    disks_to_restore = []
-    incomplete_disks = []
-    seen_master_disks = set()
 
-    for disk_id in disk_ids:
-        try:
-            result = process_disk(
-                disk_id,
-                disk_id_to_old_config.get(disk_id),
-                disk_id_to_old_config,
-                old_by_uuid,
-                current_by_physical,
-                device_to_disk,
-                seen_master_disks
-            )
-        except RuntimeError as exc:
-            incomplete_disks.append(disk_id)
-            print(f"Disk {quote(disk_id)}: incomplete data to restore: {exc}")
-            continue
+class RestoreDiskFromDrBackup:
+    def __init__(self, old_backup_path, current_backup_path, disk_ids, dry_run):
+        self._old_backup_path = old_backup_path
+        self._current_backup_path = current_backup_path
+        self._disk_ids = disk_ids
+        self._dry_run = dry_run
 
-        if result is None:
-            print(f"Disk {quote(disk_id)}: skip, its master disk is already queued")
-            continue
+        old_backup = load_backup(self._old_backup_path)
+        self.old_by_uuid, _ = build_device_index(old_backup)
 
-        action, request = result
-        disks_to_restore.append((disk_id, action, request))
-        print(f"Disk {quote(disk_id)}: ready to restore")
+        current_backup = load_backup(self._current_backup_path)
+        _, self.current_by_physical = build_device_index(current_backup)
 
-    print(f"Disks to restore count: {len(disks_to_restore)}")
-    print(f"Disks with incomplete data count: {len(incomplete_disks)}")
+        self.disk_id_to_old_config = build_disk_id_to_config(old_backup)
 
-    restore_failed = []
-    if not dry_run:
-        try:
-            suspend_secure_erase()
-        except Exception as exc:
-            print(f"Failed to suspend secure erase: {exc}", file=sys.stderr)
-            return 1
-        print("Secure erase suspended")
+        self.device_to_disk = {}
+        self.requests = []
+        self.incomplete_disks = []
+        self.processed_master_disks = set()
 
-        for disk_id, action, request in disks_to_restore:
-            try:
-                send_request(action, request, disk_id)
-            except Exception as exc:
-                restore_failed.append(disk_id)
-                print(f"Disk {quote(disk_id)}: restore failed: {exc}", file=sys.stderr)
+    def resolve_disk_devices(self, old_disk, allow_fresh):
+        devices = []
+        for uuid in old_disk.DeviceUUIDs:
+
+            if allow_fresh and uuid in old_disk.DeviceReplacementUUIDs:
+                devices.append("")
                 continue
-            print(f"Disk {quote(disk_id)} restored")
 
-        print(f"Disks restored count: {len(disks_to_restore) - len(restore_failed)}")
-        print(f"Disks failed to restore count: {len(restore_failed)}")
+            old_device = self.old_by_uuid.get(uuid)
+            if old_device is None:
+                raise RuntimeError(f"Device {quote(uuid)} not found in old backup")
 
-    if incomplete_disks or restore_failed:
-        return 1
+            current_device = self.current_by_physical.get((old_device.SerialNumber, old_device.PhysicalOffset))
+            if current_device is None and allow_fresh:
+                devices.append("")
+                continue
 
-    return 0
+            if current_device is None:
+                raise RuntimeError(
+                    f"Device {quote(uuid)} with serial number {quote(old_device.SerialNumber)}"
+                    f" and physical offset {old_device.PhysicalOffset} not found in current backup"
+                )
+
+            if not validate_device(old_device, current_device):
+                raise RuntimeError(
+                    f"Device {quote(uuid)} is inconsistent with device in previous backup"
+                )
+
+            uuid = current_device.DeviceUUID
+            if uuid in self.device_to_disk and self.device_to_disk[uuid] != old_disk.DiskId:
+                raise RuntimeError(f"device {quote(current_uuid)}"
+                    f"already exists on disk {quote(self.device_to_disk[current_uuid])}")
+
+            self.device_to_disk[uuid] = old_disk.DiskId
+            devices.append(uuid)
+
+        return devices
+
+    def process_disk(self, disk_id):
+        old_disk = self.disk_id_to_old_config.get(disk_id)
+        if old_disk is None:
+            raise RuntimeError(f"Disk {quote(disk_id)} is not found in old backup")
+
+        if not is_mirrored_disk(old_disk):
+            devices = self.resolve_disk_devices(old_disk, allow_fresh=False)
+            self.requests.append(build_request(old_disk, devices))
+            return
+
+        master = resolve_master_disk(old_disk, self.disk_id_to_old_config)
+        if master.DiskId in self.processed_master_disks:
+            return
+
+        replicas = []
+        for replica_index in range(master.ReplicaCount + 1):
+            replica_id = build_replica_id(master.DiskId, replica_index)
+
+            replica = self.disk_id_to_old_config.get(replica_id)
+            if replica is None:
+                raise RuntimeError(f"Disk {quote(replica_id)} not found in old backup")
+
+            replicas.append(self.resolve_disk_devices(replica, allow_fresh=True))
+
+        if not validate_replicas(replicas):
+            raise RuntimeError(f"Disk {quote(master.DiskId)}: incomplete data")
+
+        self.processed_master_disks.add(master.DiskId)
+        self.requests.append(build_request(master, replicas=replicas))
+
+    def run(self):
+        for disk_id in self._disk_ids:
+            try:
+                self.process_disk(disk_id)
+            except RuntimeError as exc:
+                self.incomplete_disks.append(IncompleteDisk(disk_id, []))
+                # TODO: print list of avalible devices
+                print(f"Disk {quote(disk_id)}: cannot be restored: {exc}")
+                continue
+
+            print(f"Disk {quote(disk_id)}: ready to restore")
+
+        print(f"Disks to restore count: {len(self.requests)}")
+        print(f"Disks with unavailable devices count: {len(self.incomplete_disks)}")
+
+        restore_failed = []
+        if not self._dry_run:
+            try:
+                suspend_secure_erase()
+            except Exception as exc:
+                print(f"Failed to suspend secure erase: {exc}", file=sys.stderr)
+                return 1
+            print("Secure erase suspended")
+
+            for disk_id, request in self.requests:
+                try:
+                    send_request(request, disk_id)
+                except Exception as exc:
+                    restore_failed.append(disk_id)
+                    print(
+                        f"Disk {quote(disk_id)}: restore failed: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+                print(f"Disk {quote(disk_id)} restored")
+
+            print(f"Disks failed to restore count: {len(restore_failed)}")
+
+        if self.incomplete_disks or restore_failed:
+            return 1
+
+        return 0
 
 
 def parse_args(argv):
@@ -347,12 +327,12 @@ def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     disk_ids = [disk_id for disk_id in args.disk_ids.split(",") if disk_id]
     try:
-        return run(
+        return RestoreDiskFromDrBackup(
             args.old_backup_path,
             args.current_backup_path,
             disk_ids,
             args.dry_run,
-        )
+        ).run()
     except Exception as exc:
         print(exc, file=sys.stderr)
         return 1
