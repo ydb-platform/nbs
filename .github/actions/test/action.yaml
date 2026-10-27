@@ -628,6 +628,7 @@ runs:
                 } >> "$SUMMARY_OUT_ENV_PATH"
             fi
             PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                timeout --signal=TERM --kill-after=60s 5m \
                 bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
                 --warning-title "Trace report" \
                 --report-dir "$REPORT_DIR" \
@@ -649,7 +650,8 @@ runs:
                 --test-size "$TEST_SIZE" \
                 --retry "$i" \
                 --test-log-url-prefix "$S3_WEBSITE_PREFIX/logs/${COMPONENT_DIR}${i}/" \
-                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/"
+                --test-data-url-prefix "$S3_WEBSITE_PREFIX/test_data/${COMPONENT_DIR}${i}$GITHUB_WORKSPACE/" || \
+                echo "::warning title=Trace report::Trace bundle generation failed or timed out (exit code $?)"
             cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
             echo "::endgroup::"
 
