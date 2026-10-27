@@ -484,9 +484,10 @@ private:
         }
     }
 
-    void RegisterFileSystemEventClient(
+    NActors::TActorId RegisterFileSystemEventClient(
         const NActors::TActorId& recipient,
-        const NActors::TActorId& clientId);
+        const NActors::TActorId& clientId,
+        const NProto::THeaders& headers);
 
     void AddFileSystemEventNodeSubscriber(
         const NActors::TActorContext& ctx,

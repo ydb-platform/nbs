@@ -353,12 +353,12 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     if (!HasError(msg->GetError())) {
         //
         // The client caches the entries from the leader and the attrs from
-        // the shards - the response may be cached only as long as all of them
-        // allow.
+        // the leader and from the shards - the attrs may be cached only as
+        // long as all of them allow.
         //
 
-        Response.SetCacheTTL(
-            Min(Response.GetCacheTTL(), msg->Record.GetCacheTTL()));
+        Response.SetNodeCacheTTL(
+            Min(Response.GetNodeCacheTTL(), msg->Record.GetNodeCacheTTL()));
     }
 
     auto& responses = *msg->Record.MutableResponses();

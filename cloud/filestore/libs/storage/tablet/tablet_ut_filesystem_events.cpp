@@ -174,18 +174,41 @@ void CheckCacheTTL(
     TFileSystemEventsEnv env(std::move(config));
 
     auto tablet = env.CreateClient("client", "session");
-    tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"));
+    const auto nodeId =
+        tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+            ->Record.GetNode()
+            .GetId();
+
+    const auto lookup = tablet->GetNodeAttr(RootNodeId, "f");
+    const auto getAttr = tablet->GetNodeAttr(nodeId);
+    const auto batch =
+        tablet->GetNodeAttrBatch(RootNodeId, TVector<TString>{"f"});
+    const auto list = tablet->ListNodes(RootNodeId);
+    const auto listInternal = tablet->ListNodesInternal(RootNodeId);
 
     const TVector<ui32> cacheTTLs = {
-        tablet->GetNodeAttr(RootNodeId, "f")->Record.GetCacheTTL(),
-        tablet->GetNodeAttrBatch(RootNodeId, TVector<TString>{"f"})
-            ->Record.GetCacheTTL(),
-        tablet->ListNodes(RootNodeId)->Record.GetCacheTTL(),
-        tablet->ListNodesInternal(RootNodeId)->Record.GetCacheTTL(),
+        lookup->Record.GetNodeCacheTTL(),
+        lookup->Record.GetNodeRefCacheTTL(),
+        getAttr->Record.GetNodeCacheTTL(),
+        getAttr->Record.GetNodeRefCacheTTL(),
+        batch->Record.GetNodeCacheTTL(),
+        list->Record.GetNodeCacheTTL(),
+        list->Record.GetNodeRefCacheTTL(),
+        listInternal->Record.GetNodeCacheTTL(),
+        listInternal->Record.GetNodeRefCacheTTL(),
     };
+
+    //
+    // GetNodeAttr by NodeId doesn't return any NodeRef.
+    //
 
     const TVector<ui32> expected = {
         expectedCacheTTL,
+        expectedCacheTTL,
+        expectedCacheTTL,
+        0,
+        expectedListingCacheTTL,
+        expectedListingCacheTTL,
         expectedListingCacheTTL,
         expectedListingCacheTTL,
         expectedListingCacheTTL,
@@ -262,6 +285,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
                 ->Record.GetNode()
                 .GetId();
 
+        //
+        // GetNodeAttrBatch is used to look up the shard-internal NodeRefs -
+        // only the Nodes are subscribed to.
+        //
+
         auto tablet2 = env.CreateClient("client2", "session2");
         tablet2->GetNodeAttrBatch(RootNodeId, TVector<TString>{"f"});
 
@@ -276,9 +304,83 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
         invalidate->SetNodeId(RootNodeId);
         invalidate->SetName("f");
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
-        UNIT_ASSERT_VALUES_EQUAL(2, env.SentEventCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.SentEventCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotSubscribeIfSubscriptionDisabledInHeaders)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        config.SetFileSystemListingEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        const auto nodeId =
+            tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
+
+        //
+        // The pipe of client 2 gets registered by a regular request, but the
+        // requests with the disabled subscription still don't subscribe the
+        // client - the pipe may be shared with other senders.
+        //
+
+        auto tablet2 = env.CreateClient("client2", "session2");
+        tablet2->GetNodeAttr(RootNodeId);
+
+        auto getNodeAttrRequest = tablet2->CreateGetNodeAttrRequest(
+            RootNodeId,
+            "f");
+        getNodeAttrRequest->Record.MutableHeaders()
+            ->SetFileSystemEventSubscriptionDisabled(true);
+        tablet2->SendRequest(std::move(getNodeAttrRequest));
+        auto getNodeAttrResponse = tablet2->RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            getNodeAttrResponse->Record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            getNodeAttrResponse->Record.GetNodeRefCacheTTL());
+
+        auto batchRequest = tablet2->CreateGetNodeAttrBatchRequest(
+            RootNodeId,
+            TVector<TString>{"f"});
+        batchRequest->Record.MutableHeaders()
+            ->SetFileSystemEventSubscriptionDisabled(true);
+        tablet2->SendRequest(std::move(batchRequest));
+        auto batchResponse = tablet2->RecvGetNodeAttrBatchResponse();
+        UNIT_ASSERT_VALUES_EQUAL(0, batchResponse->Record.GetNodeCacheTTL());
+
+        auto listNodesRequest = tablet2->CreateListNodesRequest(RootNodeId);
+        listNodesRequest->Record.MutableHeaders()
+            ->SetFileSystemEventSubscriptionDisabled(true);
+        tablet2->SendRequest(std::move(listNodesRequest));
+        auto listNodesResponse = tablet2->RecvListNodesResponse();
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse->Record.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse->Record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse->Record.GetNodeRefCacheTTL());
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(nodeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+
+        event.Clear();
+        auto* invalidate = event.MutableInvalidateNodeRef();
+        invalidate->SetNodeId(RootNodeId);
+        invalidate->SetName("f");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet1->GenerateFileSystemEvent(event)->Record.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
     }
 
     Y_UNIT_TEST(ShouldNotSubscribeUponCreateNodeAndCreateHandle)
@@ -407,7 +509,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
         tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"));
 
         auto tablet2 = env.CreateClient("client2", "session2");
-        tablet2->GetNodeAttr(RootNodeId, "f");
+        const auto response = tablet2->GetNodeAttr(RootNodeId, "f");
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds(),
+            response->Record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetNodeRefCacheTTL());
 
         NProto::TFileSystemEvent event;
         auto* invalidate = event.MutableInvalidateNodeRef();

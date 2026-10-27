@@ -184,9 +184,14 @@ void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
 
     const auto listNodesResponse = service.ListNodes(headers, RootNodeId);
     UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse->Record.NodesSize());
+    const ui32 cacheTTL =
+        (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds();
     UNIT_ASSERT_VALUES_EQUAL(
-        (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds(),
-        listNodesResponse->Record.GetCacheTTL());
+        cacheTTL,
+        listNodesResponse->Record.GetNodeCacheTTL());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        listNodesResponse->Record.GetNodeRefCacheTTL());
 
     for (ui32 i = 0; i < nodeIds.size(); ++i) {
         auto response = GenerateFileSystemEvent(
@@ -206,6 +211,23 @@ void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
     for (const auto& event: handler->Events) {
         UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, event.GetFileSystemId());
     }
+
+    //
+    // GetNodeAttr of a shard-resident node: the NodeRef comes from the main
+    // tablet, the Node - from the shard.
+    //
+
+    const auto getNodeAttrResponse =
+        service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "f0");
+    UNIT_ASSERT_VALUES_EQUAL(
+        nodeIds[0],
+        getNodeAttrResponse->Record.GetNode().GetId());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        getNodeAttrResponse->Record.GetNodeCacheTTL());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        getNodeAttrResponse->Record.GetNodeRefCacheTTL());
 }
 
 }   // namespace
@@ -268,9 +290,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 
         const auto getNodeAttrResponse =
             service.GetNodeAttr(headers, "test", RootNodeId, "f");
+        const ui32 cacheTTL =
+            (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds();
         UNIT_ASSERT_VALUES_EQUAL(
-            (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds(),
-            getNodeAttrResponse->Record.GetCacheTTL());
+            cacheTTL,
+            getNodeAttrResponse->Record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(
+            cacheTTL,
+            getNodeAttrResponse->Record.GetNodeRefCacheTTL());
 
         response = GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());

@@ -230,12 +230,11 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
         //
         // The client caches the NodeRef from the leader and the Node attrs
-        // from the shard - the response may be cached only as long as both of
-        // them allow.
+        // from the shard. The NodeRef looked up in the shard is shard-internal
+        // and the shard doesn't allow caching it.
         //
 
-        msg->Record.SetCacheTTL(
-            Min(msg->Record.GetCacheTTL(), LeaderResponse.GetCacheTTL()));
+        msg->Record.SetNodeRefCacheTTL(LeaderResponse.GetNodeRefCacheTTL());
 
         ReplyAndDie(ctx, std::move(msg->Record));
         return;

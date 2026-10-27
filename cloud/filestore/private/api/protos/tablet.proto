@@ -963,8 +963,9 @@ message TGetNodeAttrBatchResponse
     repeated NProto.TGetNodeAttrResponse Responses = 2;
 
     // For how long (in milliseconds) the client is allowed to cache the
-    // returned Nodes and NodeRefs. Zero means that caching is not allowed.
-    uint32 CacheTTL = 3;
+    // returned Nodes. Zero means that caching is not allowed. The NodeRefs
+    // looked up by GetNodeAttrBatch are shard-internal and are never cached.
+    uint32 NodeCacheTTL = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1566,8 +1567,12 @@ message TListNodesInternalResponse
     bytes Cookie = 9;
 
     // For how long (in milliseconds) the client is allowed to cache the
-    // returned Nodes and NodeRefs. Zero means that caching is not allowed.
-    uint32 CacheTTL = 10;
+    // returned Nodes. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 10;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned NodeRefs. Zero means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 11;
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
