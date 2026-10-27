@@ -1,17 +1,15 @@
 # FileSystemEvents
 
-Tablet → client notifications about the changes of the cached Nodes and
-NodeRefs. The goal is to let the clients (vhost / vfs_fuse) cache Nodes and
-NodeRefs and drop them as soon as they change.
+Tablet → client notifications about the changes of the Nodes, NodeRefs and
+XAttrs the client has read. The goal is to let the clients (vhost / vfs_fuse)
+cache them and drop them as soon as they change.
 
 ## Events
 
 - `InvalidateNode {NodeId}` - node attrs changed or the node was removed
-- `InvalidateNodeRef {NodeId (parent), Name}` - directory entry created or
-  removed
-- `FileSystemId` is always the main filesystem id, even for the events sent by
-  the shards
-- proto: `cloud/filestore/public/api/protos/filesystem_event.proto`
+- `InvalidateNodeRef {ParentNodeId, Name}` - directory entry created or removed
+- `InvalidateNodeXAttr {NodeId, Name}` - extended attribute created or changed
+- Always carry the main `FileSystemId`, even when sent by a shard
 
 ## Components
 
@@ -19,143 +17,122 @@ NodeRefs and drop them as soon as they change.
 flowchart LR
     subgraph vhost["filestore-vhost"]
         FUSE["vfs_fuse handler"]
-        Multi["MultiFileSystemEventHandler"]
         Proxy["IndexTabletProxy"]
     end
 
     subgraph tablet["IndexTablet: main or shard"]
         Actor["TIndexTabletActor"]
-        Clients["FileSystemEventClients"]
-        Subs["FileSystemEventSubscriptions"]
+        Subs["subscriptions"]
     end
 
-    Proxy -->|"requests via pipe"| Actor
-    Actor --> Clients
-    Actor --> Subs
-    Actor -->|"TEvFileSystemEvent"| Proxy
-    Proxy -->|"OnEvent, OnDisconnect"| Multi
-    Multi -->|"by FileSystemId"| FUSE
+    Proxy -->|"reads via pipe"| Actor
+    Actor -->|"subscribe reader"| Subs
+    Actor -->|"reply with cache TTLs"| Proxy
+    Actor -->|"invalidations"| Proxy
+    Proxy -->|"events, disconnects"| FUSE
 ```
 
-## Subscribing (read path)
-
-- The client is identified by the tablet pipe server it's connected through
-  (`ev->Recipient`), the events are sent to `ev->Sender`
-- Requests sent without a pipe (`Recipient == SelfId()`) are not registered
-- The subscription is made in the Complete stage of the read tx
+## Read path: subscribing
 
 ```mermaid
 flowchart TD
-    R["GetNodeAttr / GetNodeAttrBatch / ListNodes /<br/>ListNodesInternal / CreateNode / CreateHandle"]
-    R --> Reg["RegisterFileSystemEventClient<br/>(PipeServerId -> client)"]
-    Reg --> Tx["read tx (in-memory index or executor)"]
-    Tx --> C{"Complete:<br/>success?"}
-    C -- no --> Reply
-    C -- yes --> E{"events enabled and<br/>pipe still registered?"}
-    E -- no --> Reply
-    E -- yes --> S["AddNodeSubscriber / AddNodeRefSubscriber<br/>(skip shard-internal NodeRefs)"]
-    S --> Reply["reply"]
+    R["read: GetNodeAttr, ListNodes,<br/>GetNodeXAttr, ..."] --> Tx["read tx"]
+    Tx --> C["tx Complete"]
+    C --> S["subscribe the client to the returned<br/>Nodes, NodeRefs, XAttrs"]
+    S --> Reply["reply with cache TTLs"]
 ```
 
-- Shard-internal NodeRefs (`RootNodeId`, generated name) in the shards are
-  never subscribed to and never produce events
-- The attrs of external nodes are subscribed to in the shards (via the
-  GetNodeAttr / GetNodeAttrBatch requests sent by the service to the shards)
+- A client is identified by its tablet pipe; the subscriptions of a
+  disconnected pipe are dropped and the client gets a disconnect notification
+- Subscriptions are one-shot: an event removes them, the client re-subscribes
+  upon the next read
+- Shard-internal NodeRefs (shard root entries named by the main tablet) are
+  invisible to the clients - never subscribed to, never produce events
+- Only the reads whose responses may be cached subscribe; e.g. CreateNode and
+  CreateHandle responses are not cacheable
+- A sender that doesn't cache anything (e.g. the directory viewer) sets
+  `THeaders.FileSystemEventSubscriptionDisabled`; the decision is per request,
+  since a pipe (e.g. of the tablet proxy) may be shared with caching senders
 
-## Generating and sending (write path)
+## Cache TTLs
+
+The responses tell the client for how long it may cache each kind of data. A
+nonzero TTL means the client is subscribed to the corresponding key.
+
+| Response | NodeCacheTTL | NodeRefCacheTTL | XAttrCacheTTL |
+|----------|:---:|:---:|:---:|
+| GetNodeAttr | if the node is local | if looked up by name | - |
+| ListNodes, ListNodesInternal | + | + | - |
+| GetNodeAttrBatch | + | - (NodeRefs are shard-internal) | - |
+| GetNodeXAttr | - | - | + (also for "no such xattr") |
+
+- TTL = seal period - `FileSystemEventSubscriptionsCacheTTLMargin` (the margin
+  covers the delivery and processing delays)
+- TTL = 0 if events are disabled, in dry run mode, if the subscription is
+  disabled by the sender or the pipe is not registered
+- The service combines the responses of the main tablet and the shards:
+  - GetNodeAttr: NodeRef TTL from the main tablet, Node TTL from the shard
+  - ListNodes: Node TTL = min over the main tablet and the shards
+- Negative caching is allowed for XAttrs only
+
+## Write path: sending
 
 ```mermaid
 flowchart TD
-    W["RW tx Execute"] --> M["state mutators append events<br/>to args.FileSystemEvents"]
-    M --> Commit["commit"]
-    Commit --> U["Complete: UpdateInMemoryIndexState"]
-    U --> X["SendTxFileSystemEvents"]
-    X --> Ex["Extract subscribers of the key<br/>(both generations, key removed)"]
-    Ex --> F["filter by FileSystemEventClients"]
-    F --> Cnt["count sends"]
-    Cnt --> D{"dry run?"}
-    D -- yes --> Done["done"]
-    D -- no --> Send["TEvFileSystemEvent to each client"]
+    W["write tx Execute:<br/>collect events"] --> Commit["commit"]
+    Commit --> U["tx Complete:<br/>update in-memory index cache"]
+    U --> X["take and remove the subscribers"]
+    X --> Send["send the events"]
 ```
 
-- Sources:
-  - `CreateNodeRef` / `RemoveNodeRef` -> `InvalidateNodeRef`
-  - `RemoveNode` -> `InvalidateNode`
-  - `UpdateNode` -> `InvalidateNode` only for non-time attr changes (a write
-    produces an event only if it changes the size)
-  - `SetNodeAttr` -> `InvalidateNode` for explicit time changes too
-  - `GenerateFileSystemEvent` private action - manual event (tests, debug)
-- Events are sent after `UpdateInMemoryIndexState` - otherwise the client
-  could re-read stale data from the in-memory index cache
-- Subscriptions are one-shot: the client registers again upon the next read
+- Event sources:
+  - entry created / removed -> `InvalidateNodeRef`
+  - node removed or its attrs changed -> `InvalidateNode`
+  - time-only changes (e.g. MTime upon write) don't produce events; explicit
+    time changes via SetNodeAttr do
+  - XAttr created / changed -> `InvalidateNodeXAttr` (creation invalidates the
+    cached absence)
+- Events are sent only after the in-memory index cache is updated - otherwise
+  the client could re-read stale data from that cache
+- TODO: XAttr removal -> `InvalidateNodeXAttr`; node removal should drop the
+  node's XAttrs on the client
 
-## Ordering
+## Correctness
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant T as Tablet
-    participant X as Executor
 
-    C->>T: GetNodeAttr (read R)
-    Note over T: R executes before W:<br/>Complete(R) runs before Complete(W)
-    T-->>C: reply (old data), subscribed
-    C->>T: SetNodeAttr (write W)
-    T->>X: commit W
-    X-->>T: Complete(W)
-    T->>C: InvalidateNode
-    Note over T: R executed after W (dirty read):<br/>Complete(R) is queued behind W -<br/>reply contains W's data
+    C->>T: read R
+    T-->>C: reply with TTL, subscribed
+    C->>T: write W
+    Note over T: W committed and completed
+    T->>C: invalidate
 ```
 
-- In-memory index reads complete synchronously and see only completed txs
-- Executor RO txs complete only after all the previously committed RW txs
-  (`TLogicRedo::CommitROTransaction`)
-- => the tablet never replies with data that isn't covered by a subscription
-  or already includes the change
-- Client side TODO: the response and the event reach the client cache via
-  different paths - a per-key version is needed before using the events for
-  cache invalidation (see `filesystem_event_handler.cpp`)
+- The tablet never replies with data that neither is covered by a
+  subscription nor already includes the change:
+  - in-memory cache reads complete immediately and see only completed writes
+  - executor reads complete only after all the previously committed writes
+    (`TLogicRedo::CommitROTransaction`) - a read that saw an uncommitted
+    write replies after that write has completed
+- Client side TODO: the reply and the event reach the client cache via
+  different paths - a per-key version is needed so that an invalidation
+  applied before the reply is cached isn't lost
 
-## Subscription registry
+## Subscription lifetime
 
-- `TFileSystemEventSubscriptions` (`libs/storage/tablet/model`)
-- 2 generations: Active and Sealed
-  - new registrations go to Active
-  - every `FileSystemEventSubscriptionsSealPeriod` (lazy, upon access): drop
-    Sealed, Active -> Sealed, new Active
-  - a registration lives between 1 and 2 seal periods
-  - lookups consult both generations
-- Per generation:
-  - `Clients` vector + `PipeServerId -> index` map
-  - `Node -> TClientMask`, `NodeRef -> TClientMask`
-  - `TClientMask` - paged bitmap: first ui64 page inline, other pages on
-    demand
-- Pipe disconnect (`TEvServerDisconnected`) removes the client from
-  `FileSystemEventClients`; its stale bits are filtered out upon send and
-  disappear with the rotation
-- The client side gets `OnDisconnect(tabletId)` when its pipe to the tablet
-  breaks
+- Two generations of subscriptions: active and sealed
+- Every seal period the sealed one is dropped and the active one is sealed
+- => a subscription lives between 1 and 2 seal periods, hence TTL < seal period
 
 ## Config
 
 | Field | Meaning |
 |-------|---------|
-| `FileSystemEventsEnabled` | generate, subscribe and send events |
-| `FileSystemEventsDryRunModeEnabled` | subscribe and count, but don't send |
-| `FileSystemEventSubscriptionsSealPeriod` | generation rotation period (default 30 min) |
-
-## Metrics
-
-- `InvalidateNodeEventSendCount`, `InvalidateNodeRefEventSendCount` - number of
-  (event, client) pairs, counted in dry run mode too
-- `FileSystemEventsSubscriberRegistry*` - registry size: `NodeCount`,
-  `NodeRefCount`, `ClientCount`, `ExtraPageCount`
-
-## Client side
-
-- `IndexTabletProxy` delivers `TEvFileSystemEvent` to
-  `IMultiFileSystemEventHandler`, which dispatches by `FileSystemId`
-- vfs_fuse registers its handler under the filesystem id returned by
-  CreateSession, not under the requested one (which may be an alias)
-- `vfs_fuse` `TFileSystemEventHandler` - logging only for now; names are
-  logged at DEBUG level only (masked at INFO)
+| `FileSystemEventsEnabled` | generate, subscribe and send events; nonzero TTLs for GetNodeAttr and GetNodeXAttr |
+| `FileSystemListingEventsEnabled` | also subscribe and return TTLs for ListNodes, ListNodesInternal, GetNodeAttrBatch |
+| `FileSystemEventsDryRunModeEnabled` | subscribe and count, don't send; TTLs are 0 |
+| `FileSystemEventSubscriptionsSealPeriod` | subscription generation period |
+| `FileSystemEventSubscriptionsCacheTTLMargin` | TTL = seal period - margin |
