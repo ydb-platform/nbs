@@ -158,7 +158,7 @@ message TSessionOptions
 
 message TSession
 {
-    string SessionId = 1;
+    bytes SessionId = 1;
     bytes ClientId = 2;
     bytes CheckpointId = 3;
     bytes SessionState = 5;
