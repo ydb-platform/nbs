@@ -38,7 +38,7 @@
 #include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>

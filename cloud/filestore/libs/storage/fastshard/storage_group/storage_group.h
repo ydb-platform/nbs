@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>

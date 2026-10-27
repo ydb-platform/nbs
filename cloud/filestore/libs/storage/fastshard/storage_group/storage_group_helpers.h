@@ -2,7 +2,7 @@
 
 #include "storage_group.h"
 
-#include <cloud/fastshard/common/error.h>
+#include <cloud/fastshard/libs/common/error.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

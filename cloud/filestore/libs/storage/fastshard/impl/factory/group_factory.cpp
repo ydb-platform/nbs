@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
-#include <cloud/fastshard/sn/client/client.h>
+#include <cloud/fastshard/libs/sn/client/client.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
