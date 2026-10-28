@@ -313,6 +313,10 @@ struct TBootstrap
         Stats = CreateWriteBackCacheStats();
         Metrics = Stats->CreateMetrics();
 
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(CacheCapacityBytes, 0);
+        UNIT_ASSERT(layout);
+
         Cache = TTestWriteBackCache(
             {.Session = Session,
              .Scheduler = Scheduler,
@@ -322,7 +326,7 @@ struct TBootstrap
              .FileSystemId = "FileSystemId",
              .ClientId = "ClientId",
              .FilePath = TempFileHandle.GetName(),
-             .CapacityBytes = CacheCapacityBytes,
+             .StateFileSize = layout->StateFileSize,
              .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
              .FlushRetryPeriod = CacheFlushRetryPeriod,
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,

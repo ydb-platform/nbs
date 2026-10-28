@@ -282,6 +282,12 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> InvalidateNodeEventSendCount{0};
     std::atomic<i64> InvalidateNodeRefEventSendCount{0};
 
+    // FileSystemEvents stats: subscriber registry stats
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeRefCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryClientCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryExtraPageCount{0};
+
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
     using TLatHistogram =

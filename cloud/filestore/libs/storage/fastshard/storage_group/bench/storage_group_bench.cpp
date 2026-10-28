@@ -1,9 +1,9 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
-#include <cloud/fastshard/sn/iface/storage_node.h>
-#include <cloud/fastshard/testlib/delay_policy.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/delay_policy.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

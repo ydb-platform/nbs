@@ -2678,6 +2678,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui32 RangeId;
         const bool FilterNodes;
+        const bool Forced;
 
         // should persist across tx restarts
         bool RangeLoaded = false;
@@ -2687,11 +2688,16 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         bool SkipRangeRewrite = false;
 
-        TCompaction(TRequestInfoPtr requestInfo, ui32 rangeId, bool filterNodes)
+        TCompaction(
+                TRequestInfoPtr requestInfo,
+                ui32 rangeId,
+                bool filterNodes,
+                bool forced)
             : TProfileAware(EFileStoreSystemRequest::Compaction)
             , RequestInfo(std::move(requestInfo))
             , RangeId(rangeId)
             , FilterNodes(filterNodes)
+            , Forced(forced)
         {}
 
         void Clear() override

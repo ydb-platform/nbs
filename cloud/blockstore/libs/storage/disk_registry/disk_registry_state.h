@@ -1611,10 +1611,6 @@ private:
         THashSet<TString>& preferredRacks,
         THashSet<TString>& forbiddenRacks) const;
 
-    void ReserveMirroredDiskReplicaDevices(
-        const TDiskId& masterId,
-        const TVector<TVector<TDeviceId>>& replicas);
-
     NProto::TError AllocateFreshDevicesForReplica(
         TDiskRegistryDatabase& db,
         const TDiskId& replicaId,
@@ -1622,18 +1618,6 @@ private:
         const TVector<TVector<TDeviceId>>& replicas,
         ui32 blockSize,
         TVector<TDeviceId>& resolvedReplica);
-
-    void ReleaseAllocatedDevices(
-        TDiskRegistryDatabase& db,
-        ui32 fromReplicaIdx,
-        const TDiskId& masterId,
-        const TVector<TVector<TDeviceId>>& replicas,
-        const TVector<TVector<TDeviceId>>& resolvedReplicas);
-
-    void DestroyPartiallyCreatedMirroredDisk(
-        TDiskRegistryDatabase& db,
-        ui32 lastReplicaIdx,
-        const TDiskId& masterId);
 
     NProto::TError CreateMirroredDiskFromDevices(
         TInstant now,

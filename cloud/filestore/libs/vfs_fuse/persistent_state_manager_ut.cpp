@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>

@@ -77,6 +77,54 @@ NProto::TError CreateMirroredDiskFromDevices(
         &result);
 }
 
+void AssertDevicesNotAttachedToDiskIfCreateFailed(
+    const TDiskRegistryState& state,
+    const TString& diskId,
+    const TVector<TString>& deviceUuids)
+{
+    const TString prefix = diskId + "/";
+    for (const auto& uuid : deviceUuids) {
+        if (uuid.empty()) {
+            continue;
+        }
+        const auto owner = state.FindDisk(uuid);
+        UNIT_ASSERT(owner.empty() || owner != diskId);
+    }
+}
+
+void AssertSimpleCreateFromDevicesFailedClean(
+    const TDiskRegistryState& state,
+    const TString& diskId,
+    const TVector<TString>& deviceUuids)
+{
+    UNIT_ASSERT(!state.FindDisk(diskId));
+    AssertDevicesNotAttachedToDiskIfCreateFailed(state, diskId, deviceUuids);
+}
+
+void AssertMirrorCreateFromDevicesFailedClean(
+    const TDiskRegistryState& state,
+    const TString& masterId,
+    const TVector<TVector<TString>>& replicas)
+{
+    UNIT_ASSERT(!state.FindDisk(masterId));
+    UNIT_ASSERT(!state.FindPlacementGroup(masterId + "/g"));
+    for (ui32 i = 0; i < replicas.size(); ++i) {
+        UNIT_ASSERT(!state.FindDisk(masterId + "/" + ToString(i)));
+    }
+    for (const auto& replica : replicas) {
+        AssertDevicesNotAttachedToDiskIfCreateFailed(state, masterId, replica);
+    }
+}
+
+void AssertNoMirror2DiskArtifactsForMaster(
+    const TDiskRegistryState& state,
+    const TString& masterId)
+{
+    UNIT_ASSERT(!state.FindPlacementGroup(masterId + "/g"));
+    UNIT_ASSERT(!state.FindDisk(masterId + "/0"));
+    UNIT_ASSERT(!state.FindDisk(masterId + "/1"));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -182,6 +230,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("not found"));
 
+            AssertSimpleCreateFromDevicesFailedClean(state, "foo", {});
             UNIT_ASSERT(state.FindDisk("uuid-2.3").empty());
             UNIT_ASSERT(state.FindDisk("foo-2").empty());
         });
@@ -204,6 +253,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("is allocated for"));
+
+            AssertSimpleCreateFromDevicesFailedClean(state, "foo", {"uuid-1.1"});
         });
 
         // dirty device (!force)
@@ -224,6 +275,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("is dirty"));
+
+            AssertSimpleCreateFromDevicesFailedClean(state, "foo", {"uuid-2.1"});
         });
 
         // disk already exists
@@ -244,6 +297,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             UNIT_ASSERT(error.GetMessage().Contains("already exists"));
+
+            TDiskInfo info;
+            UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", info));
+            UNIT_ASSERT_VALUES_EQUAL(1, info.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", info.Devices[0].GetDeviceUUID());
+            AssertDevicesNotAttachedToDiskIfCreateFailed(state, "disk-1", {"uuid-2.2"});
         });
 
         // dirty device (force)
@@ -719,6 +778,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains(
                     "Replicas count is inconsistent with media kind"));
+
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    MakeMirror2ReplicaUuids());
             });
 
         executor.WriteTx(
@@ -733,6 +797,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("expects 2 replicas"));
+
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    {MakeMirror2ReplicaUuids()[0]});
             });
 
         executor.WriteTx(
@@ -752,6 +821,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("no data for device"));
+
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    replicasWithGap);
             });
 
         executor.WriteTx(
@@ -770,7 +844,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     duplicateReplicas);
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-                UNIT_ASSERT(error.GetMessage().Contains("already reserved"));
+                UNIT_ASSERT(error.GetMessage().Contains("is allocated for disk"));
+
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    duplicateReplicas);
             });
 
         executor.WriteTx(
@@ -804,6 +883,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("invalid master disk"));
+
+                AssertNoMirror2DiskArtifactsForMaster(*masterStatePtr, "disk-1");
+                TDiskInfo info;
+                UNIT_ASSERT_SUCCESS(masterStatePtr->GetDiskInfo("disk-1", info));
+                UNIT_ASSERT_VALUES_EQUAL(1, info.Devices.size());
             });
 
         executor.WriteTx(
@@ -842,22 +926,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(
                     error.GetMessage().Contains("already attached to disk"));
+
+                AssertNoMirror2DiskArtifactsForMaster(*boundStatePtr, "disk-1");
+                TDiskInfo info;
+                UNIT_ASSERT_SUCCESS(boundStatePtr->GetDiskInfo("disk-1/1", info));
+                UNIT_ASSERT_VALUES_EQUAL("other-disk", info.MasterDiskId);
             });
 
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
+                const TVector<TVector<TString>> replicas = {
+                    {"uuid-1", "missing"},
+                    {"uuid-3"},
+                };
+
                 const auto error = CreateMirroredDiskFromDevices(
                     state,
                     db,
                     "disk-1",
                     MakeMirror2Params(),
-                    {
-                        {"uuid-1", "missing"},
-                        {"uuid-3"},
-                    });
+                    replicas);
 
                 UNIT_ASSERT(error.GetCode() != S_OK);
+
+                AssertMirrorCreateFromDevicesFailedClean(state, "disk-1", replicas);
             });
     }
 
@@ -976,6 +1069,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
                 UNIT_ASSERT(error.GetMessage().Contains("no data for device"));
+
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    replicasWithGap);
             });
     }
 

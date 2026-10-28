@@ -14,6 +14,7 @@
 
 #include <contrib/ydb/library/actors/protos/actors.pb.h>
 
+#include <util/generic/overloaded.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 #include <util/string/join.h>
