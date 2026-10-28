@@ -182,6 +182,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(TabletBootInfoBackupFilePath,             TString,   ""               )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,   bool,      false            )\
     xxx(HiveProxyFallbackMode,                    bool,      false            )\
+    xxx(SystemTabletBackupDirPath,                TString,   ""               )\
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
                                                                                \
