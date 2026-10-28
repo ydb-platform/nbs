@@ -81,6 +81,7 @@ struct TFileSystemConfig
     ui32 ChannelCount = DefaultChannelCount;
     ui32 StorageMediaKind = 0;
     TPerformanceProfile PerformanceProfile;
+    ui32 BlockGroupSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1331,6 +1332,7 @@ public:
         c->SetBlocksCount(config.BlockCount);
         c->SetNodesCount(config.NodeCount);
         c->SetRangeIdHasherType(RangeIdHasherType);
+        c->SetBlockGroupSize(config.BlockGroupSize);
         c->SetStorageMediaKind(config.StorageMediaKind);
 
         c->SetPerformanceProfileThrottlingEnabled(

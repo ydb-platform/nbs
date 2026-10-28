@@ -495,6 +495,7 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
 void TAlterFileStoreActor::AlterFileStore(const TActorContext& ctx)
 {
     FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
+    FileStoreConfig.MainFileSystemConfig.ClearBlockGroupSize();
     FileStoreConfig.MainFileSystemConfig.SetAlterTs(ctx.Now().MicroSeconds());
     auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
         FileStoreConfig.MainFileSystemConfig);
@@ -529,6 +530,7 @@ void TAlterFileStoreActor::AlterShard(
     const ui32 shardIndex)
 {
     FileStoreConfig.ShardConfigs[shardIndex].ClearBlockSize();
+    FileStoreConfig.ShardConfigs[shardIndex].ClearBlockGroupSize();
     FileStoreConfig.ShardConfigs[shardIndex].SetAlterTs(
         ctx.Now().MicroSeconds());
     auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
@@ -1084,6 +1086,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreForAlterResponse(
 
     config.SetAlterTs(ctx.Now().MicroSeconds());
     config.ClearBlockSize();
+    config.ClearBlockGroupSize();
 
     FileStoreConfig.MainFileSystemConfig.Swap(&config);
 

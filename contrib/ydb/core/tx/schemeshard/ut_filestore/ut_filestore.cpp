@@ -332,6 +332,58 @@ Y_UNIT_TEST_SUITE(TFileStore) {
         env.TestWaitNotification(runtime, txId);
     }
 
+    Y_UNIT_TEST(CreateFileStoreRejectsInvalidBlockGroupSize)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        for (ui32 size: {3, 255, 1025, 2048}) {
+            NKikimrSchemeOp::TFileStoreDescription descr;
+            auto& config =
+                InitCreateFileStoreConfig("InvalidGroupingFS", descr);
+            config.SetBlockGroupSize(size);
+            TestCreateFileStore(
+                runtime,
+                ++txId,
+                "/MyRoot",
+                descr.DebugString(),
+                {NKikimrScheme::StatusInvalidParameter});
+        }
+    }
+
+    Y_UNIT_TEST(AlterFileStoreRejectsBlockGroupSize)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        ui64 txId = 100;
+        NKikimrSchemeOp::TFileStoreDescription descr;
+        auto& config = InitCreateFileStoreConfig("GroupingFS", descr);
+        config.SetBlockGroupSize(256);
+        TestCreateFileStore(runtime, ++txId, "/MyRoot", descr.DebugString());
+        env.TestWaitNotification(runtime, txId);
+        config.ClearBlockSize();
+        config.SetBlockGroupSize(64);
+        TestAlterFileStore(
+            runtime,
+            ++txId,
+            "/MyRoot",
+            descr.DebugString(),
+            {NKikimrScheme::StatusInvalidParameter});
+        TestDescribeResult(
+            DescribePath(runtime, "/MyRoot/GroupingFS"),
+            {NLs::PathExist,
+             NLs::Finished,
+             [](const NKikimrScheme::TEvDescribeSchemeResult& record)
+             {
+                 UNIT_ASSERT_VALUES_EQUAL(
+                     256,
+                     record.GetPathDescription()
+                         .GetFileStoreDescription()
+                         .GetConfig()
+                         .GetBlockGroupSize());
+             }});
+    }
+
     Y_UNIT_TEST(CreateFileStoreRejectsZeroBlockSize) {
         TTestBasicRuntime runtime;
         TTestEnv env(runtime);

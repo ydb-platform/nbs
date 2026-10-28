@@ -27,15 +27,15 @@ namespace {
  * @param range Aligned byte range
  * @returns The vector of sizes of the blobs that the data should be split into.
  */
-TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
+TVector<ui64> SplitData(ui32 blockSize, ui32 blockGroupSize, TByteRange range)
 {
     TVector<ui64> blobSizes;
-    blobSizes.reserve(range.AlignedBlockCount() / BlockGroupSize + 1);
+    blobSizes.reserve(range.AlignedBlockCount() / blockGroupSize + 1);
 
     SplitRange(
         range.FirstAlignedBlock(),
         range.AlignedBlockCount(),
-        BlockGroupSize,
+        blockGroupSize,
         [&](ui32 /*blockOffset*/, ui64 blocksCount)
         { blobSizes.push_back(blocksCount * blockSize); });
 
@@ -247,7 +247,7 @@ void TIndexTabletActor::CompleteTx_AddData(
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&](ui32 blockOffset, ui32 blocksCount)
         {
             TBlock block{
@@ -420,7 +420,9 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>();
     ui64 offset = range.Offset;
-    for (auto [blobIndex, length]: Enumerate(SplitData(blockSize, range))) {
+    for (auto [blobIndex, length]:
+         Enumerate(SplitData(blockSize, GetBlockGroupSize(), range)))
+    {
         TPartialBlobId partialBlobId;
         // TODO(debnatkh): better selection of channel
 

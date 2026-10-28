@@ -28,6 +28,7 @@ def start(argv):
     parser.add_argument("--mount-seqno", action="store", default=0)
     parser.add_argument("--shard-count", action="store", default=0, type=int)
     parser.add_argument("--blocks-count", action="store", default=None, type=int)
+    parser.add_argument("--block-group-size", action="store", default=None, type=int)
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--endpoint-count", action="store", default=1, type=int)
@@ -52,36 +53,23 @@ def start(argv):
         verbose=args.verbose,
         cwd=common.output_path())
 
-    if args.blocks_count is None:
-        client.create(args.filesystem, "test_cloud", "test_folder")
-    else:
-        client.create(
-            args.filesystem,
-            "test_cloud",
-            "test_folder",
-            blk_count=args.blocks_count)
-    set_env("NFS_FILESYSTEM", args.filesystem)
+    create_opts = {}
+    if args.blocks_count is not None:
+        create_opts["blk_count"] = args.blocks_count
+
+    if args.block_group_size is not None:
+        create_opts["block_group_size"] = args.block_group_size
 
     if args.shard_count > 0:
-        shards = []
-        shard_ids = [
-            args.filesystem + "_shard_" + str(i) for i in range(args.shard_count)
-        ]
-        for i, shard_id in enumerate(shard_ids):
-            shard_id = args.filesystem + "_shard_" + str(i)
-            client.create(shard_id, "test_cloud", "test_folder")
-            shards.append(shard_id)
-            client.execute_action("configureasshard", {
-                "FileSystemId": shard_id,
-                "ShardNo": i + 1,
-                "ShardFileSystemIds": shard_ids,
-                "MainFileSystemId": args.filesystem,
-            })
+        create_opts["shard_count"] = args.shard_count
 
-        client.execute_action("configureshards", {
-            "FileSystemId": args.filesystem,
-            "ShardFileSystemIds": shards,
-        })
+    client.create(
+        args.filesystem,
+        "test_cloud",
+        "test_folder",
+        **create_opts
+        )
+    set_env("NFS_FILESYSTEM", args.filesystem)
 
     set_env("NFS_VHOST_SOCKET_COUNT", str(args.endpoint_count))
     set_env("FILESTORE_SHARD_COUNT", str(args.shard_count))

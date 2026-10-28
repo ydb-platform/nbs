@@ -438,6 +438,11 @@ const NKikimrFileStore::TConfig* TAlterFileStore::ParseParams(
 
     const auto& config = operation.GetConfig();
 
+    if (config.HasBlockGroupSize()) {
+        errStr = "Cannot change block group size after creation";
+        return nullptr;
+    }
+
     if (config.HasBlockSize()) {
         errStr = "Cannot change block size after creation";
         return nullptr;

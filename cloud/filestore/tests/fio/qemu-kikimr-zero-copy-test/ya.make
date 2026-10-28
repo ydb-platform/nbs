@@ -25,6 +25,7 @@ SET(
 )
 
 SET(QEMU_VIRTIO fs)
+SET(FILESTORE_BLOCK_GROUP_SIZE 256)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

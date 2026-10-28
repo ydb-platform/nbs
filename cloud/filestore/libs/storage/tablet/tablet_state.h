@@ -431,6 +431,11 @@ public:
         return Generation;
     }
 
+    ui32 GetBlockGroupSize() const
+    {
+        return GetEffectiveBlockGroupSize(FileSystem.GetBlockGroupSize());
+    }
+
     ui32 GetBlockSize() const
     {
         return FileSystem.GetBlockSize();

@@ -2346,6 +2346,7 @@ struct TFileStoreInfo : public TSimpleRefCount<TFileStoreInfo> {
 
         Y_ENSURE(!AlterConfig->GetBlockSize());
         AlterConfig->SetBlockSize(Config.GetBlockSize());
+        AlterConfig->SetBlockGroupSize(Config.GetBlockGroupSize());
 
         AlterVersion = Version + 1;
     }

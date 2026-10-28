@@ -67,6 +67,7 @@ struct TConfigs
         SrcConfig.SetBlocksCount(5);
         SrcConfig.SetNodesCount(6);
         SrcConfig.SetRangeIdHasherType(7);
+        SrcConfig.SetBlockGroupSize(256);
         SrcConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         SrcConfig.SetPerformanceProfileThrottlingEnabled(true);
@@ -102,6 +103,7 @@ struct TConfigs
         TargetFileSystem.SetBlocksCount(SrcConfig.GetBlocksCount());
         TargetFileSystem.SetNodesCount(SrcConfig.GetNodesCount());
         TargetFileSystem.SetRangeIdHasherType(SrcConfig.GetRangeIdHasherType());
+        TargetFileSystem.SetBlockGroupSize(SrcConfig.GetBlockGroupSize());
         TargetFileSystem.SetStorageMediaKind(
             static_cast<NCloud::NProto::EStorageMediaKind>(
                 SrcConfig.GetStorageMediaKind()));
@@ -161,6 +163,7 @@ struct TConfigs
         SrcFileSystem.SetBlocksCount(23);
         SrcFileSystem.SetNodesCount(24);
         SrcFileSystem.SetRangeIdHasherType(25);
+        SrcFileSystem.SetBlockGroupSize(256);
         SrcFileSystem.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL);
 
         SrcFileSystem.MutablePerformanceProfile()->SetThrottlingEnabled(true);
@@ -195,6 +198,8 @@ struct TConfigs
         TargetFileSystemConfig.SetBlocksCount(SrcFileSystem.GetBlocksCount());
         TargetFileSystemConfig.SetNodesCount(SrcFileSystem.GetNodesCount());
         TargetFileSystemConfig.SetRangeIdHasherType(SrcFileSystem.GetRangeIdHasherType());
+        TargetFileSystemConfig.SetBlockGroupSize(
+            SrcFileSystem.GetBlockGroupSize());
         TargetFileSystemConfig.SetStorageMediaKind(
             static_cast<NCloud::NProto::EStorageMediaKind>(
                 SrcFileSystem.GetStorageMediaKind()));
