@@ -19,7 +19,7 @@
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/sn/client/client.h>
+#include <cloud/fastshard/libs/sn/client/client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>

@@ -74,7 +74,7 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
-constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
+constexpr ui64 WriteBackCacheStateFileSize = 1_MB + 4_KB;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
@@ -106,6 +106,13 @@ i64 GetFirstChunkSize()
             sizeof(ui64));
     }
     return size;
+}
+
+ui64 GetStateFileSize(ui64 dataCapacity)
+{
+    const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
+    UNIT_ASSERT(layout);
+    return layout->StateFileSize;
 }
 
 TString CreateBuffer(size_t len, char fill = 0)
@@ -203,9 +210,9 @@ struct TBootstrap
             ITimerPtr timer = CreateWallClockTimer(),
             ISchedulerPtr scheduler = CreateScheduler(),
             const NProto::TFileStoreFeatures& featuresConfig = {},
-            ui32 handleOpsQueueSize = 1000,
+            ui32 handleOpsQueueStateFileSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
+            ui64 writeBackCacheStateFileSize = WriteBackCacheStateFileSize,
             ui64 directoryHandlesInitialDataSize = 0,
             ui64 directoryHandlesMaxDataAreaStepSize = 0,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
@@ -286,7 +293,7 @@ struct TBootstrap
         // Keep the path configured to allow restoring
         // an existing HandleOpsQueue.
         proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-        proto.SetHandleOpsQueueSize(handleOpsQueueSize);
+        proto.SetHandleOpsQueueSize(handleOpsQueueStateFileSize);
 
         proto.SetDirectoryHandlesStoragePath(
             TempDir.Path() / "DirectoryHandles");
@@ -304,8 +311,7 @@ struct TBootstrap
 
         // WriteBackCache should be configured even if it is disabled
         proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-        // minimum possible capacity
-        proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
+        proto.SetWriteBackCacheStateFileSize(writeBackCacheStateFileSize);
         proto.SetWriteBackCacheAutomaticFlushPeriod(
             writeBackCacheAutomaticFlushPeriodMs);
 
@@ -472,7 +478,7 @@ struct TBootstrap
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
+            WriteBackCacheStateFileSize,
             directoryHandlesInitialDataSize,
             directoryHandlesMaxDataAreaStepSize,
             std::move(fileMapMemoryLimiter));
@@ -666,9 +672,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 CreateWallClockTimer(),
                 CreateScheduler(),
                 {} /* featuresConfig */,
-                1000 /* handleOpsQueueSize */,
+                1000 /* handleOpsQueueStateFileSize */,
                 1000 /* writeBackCacheAutomaticFlushPeriodMs */,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0 /* directoryHandlesInitialDataSize */,
                 0 /* directoryHandlesMaxDataAreaStepSize */,
                 CreateFileMapMemoryLimiterStub(),
@@ -2272,9 +2278,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            1000,   // handleOpsQueueSize
+            1000,   // handleOpsQueueStateFileSize
             1000,   // writeBackCacheAutomaticFlushPeriodMs
-            WriteBackCacheCapacity,
+            WriteBackCacheStateFileSize,
             initialDataAreaSize,
             initialDataAreaSize};
 
@@ -4812,7 +4818,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4877,7 +4884,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4968,7 +4976,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -5267,7 +5276,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
         auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -5457,15 +5467,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // protobuf entries have an 8-byte header and unaligned data. This fits
         // the create-confirm entry, but leaves less than one destroy entry
         // free.
-        const ui32 queueSize = static_cast<ui32>(
+        const ui32 queueDataCapacity = static_cast<ui32>(
             8 + createEntry.ByteSizeLong() +
             (8 + destroyEntry.ByteSizeLong()) / 2);
-
         // open fills the queue with a create confirmation. Its release
         // overflows into DelayedReleaseQueue.
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(
-            CreateWallClockTimer(), scheduler, features, queueSize);
+            CreateWallClockTimer(),
+            scheduler,
+            features,
+            GetStateFileSize(queueDataCapacity));
         std::atomic_uint confirmCalled = 0;
         std::atomic_uint destroyCalled = 0;
 
@@ -6259,7 +6271,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
+            WriteBackCacheStateFileSize,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6331,7 +6343,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 features,
                 1000,
                 1000,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 0,
                 CreateFileMapMemoryLimiterStub(),
@@ -6353,7 +6365,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
+            WriteBackCacheStateFileSize,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6525,7 +6537,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldSupportWriteBackCacheCapacity4GiB)
+    Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
@@ -6536,7 +6548,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            4_GB + 100500); // writeBackCacheCapacity
+            4_GB + 100500); // writeBackCacheStateFileSize
 
         // Narrowing ui64 to ui32 will result in verification failure because
         // 100500 is less than the minimal allowed cache capacity
@@ -6634,9 +6646,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            /* handleOpsQueueSize= */ 1000,
+            /* handleOpsQueueStateFileSize= */ 1000,
             /* writeBackCacheAutomaticFlushPeriodMs= */ 0,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
 
         auto writeDataPromise = NewPromise();
         std::atomic<int> writeDataCalledCount = 0;
@@ -7094,7 +7106,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 
@@ -7140,7 +7152,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 
@@ -8669,7 +8681,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 CreateWallClockTimer(),
                 CreateScheduler(),
                  features,
-                 /* handleOpsQueueSize = */ 0,
+                 /* handleOpsQueueStateFileSize = */ 0,
                  /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
             const ui64 nodeId = 123;
@@ -8845,7 +8857,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            /* handleOpsQueueSize = */ 0,
+            /* handleOpsQueueStateFileSize = */ 0,
             /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
         bootstrap.Start();

@@ -10,14 +10,14 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TFileSystemEventSubscriptions::TClientMask::Set(ui32 clientIndex)
+ui32 TFileSystemEventSubscriptions::TClientMask::Set(ui32 clientIndex)
 {
     const ui32 pageNo = clientIndex / PageSize;
     const ui64 bit = 1ULL << (clientIndex % PageSize);
 
     if (pageNo == 0) {
         FirstPage |= bit;
-        return;
+        return 0;
     }
 
     if (!OtherPages) {
@@ -27,11 +27,12 @@ void TFileSystemEventSubscriptions::TClientMask::Set(ui32 clientIndex)
     for (auto& page: *OtherPages) {
         if (page.PageNo == pageNo) {
             page.Bits |= bit;
-            return;
+            return 0;
         }
     }
 
     OtherPages->push_back({.PageNo = pageNo, .Bits = bit});
+    return 1;
 }
 
 template <typename TFunc>
@@ -44,6 +45,11 @@ void TFileSystemEventSubscriptions::TClientMask::ForEachInPage(
         func(base + CountTrailingZeroBits(bits));
         bits &= bits - 1;
     }
+}
+
+ui32 TFileSystemEventSubscriptions::TClientMask::GetExtraPageCount() const
+{
+    return OtherPages ? OtherPages->size() : 0;
 }
 
 template <typename TFunc>
@@ -76,14 +82,14 @@ void TFileSystemEventSubscriptions::TGeneration::AddNode(
     ui64 nodeId,
     const TActorId& pipeServerId)
 {
-    NodeMasks[nodeId].Set(GetClientIndex(pipeServerId));
+    ExtraPageCount += NodeMasks[nodeId].Set(GetClientIndex(pipeServerId));
 }
 
 void TFileSystemEventSubscriptions::TGeneration::AddNodeRef(
     const TNodeRefKey& key,
     const TActorId& pipeServerId)
 {
-    NodeRefMasks[key].Set(GetClientIndex(pipeServerId));
+    ExtraPageCount += NodeRefMasks[key].Set(GetClientIndex(pipeServerId));
 }
 
 void TFileSystemEventSubscriptions::TGeneration::CollectClients(
@@ -105,6 +111,7 @@ void TFileSystemEventSubscriptions::TGeneration::ExtractNode(
     }
 
     CollectClients(it->second, out);
+    ExtraPageCount -= it->second.GetExtraPageCount();
     NodeMasks.erase(it);
 }
 
@@ -118,22 +125,18 @@ void TFileSystemEventSubscriptions::TGeneration::ExtractNodeRef(
     }
 
     CollectClients(it->second, out);
+    ExtraPageCount -= it->second.GetExtraPageCount();
     NodeRefMasks.erase(it);
 }
 
-ui64 TFileSystemEventSubscriptions::TGeneration::GetClientCount() const
+auto TFileSystemEventSubscriptions::TGeneration::GetStats() const -> TStats
 {
-    return Clients.size();
-}
-
-ui64 TFileSystemEventSubscriptions::TGeneration::GetNodeCount() const
-{
-    return NodeMasks.size();
-}
-
-ui64 TFileSystemEventSubscriptions::TGeneration::GetNodeRefCount() const
-{
-    return NodeRefMasks.size();
+    return {
+        .NodeCount = NodeMasks.size(),
+        .NodeRefCount = NodeRefMasks.size(),
+        .ClientCount = Clients.size(),
+        .ExtraPageCount = ExtraPageCount,
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,19 +211,16 @@ TVector<TActorId> TFileSystemEventSubscriptions::ExtractNodeRefSubscribers(
     return {clients.begin(), clients.end()};
 }
 
-ui64 TFileSystemEventSubscriptions::GetNodeCount() const
+auto TFileSystemEventSubscriptions::GetStats() const -> TStats
 {
-    return Active.GetNodeCount() + Sealed.GetNodeCount();
-}
-
-ui64 TFileSystemEventSubscriptions::GetNodeRefCount() const
-{
-    return Active.GetNodeRefCount() + Sealed.GetNodeRefCount();
-}
-
-ui64 TFileSystemEventSubscriptions::GetClientCount() const
-{
-    return Active.GetClientCount() + Sealed.GetClientCount();
+    const auto aStats = Active.GetStats();
+    const auto sStats = Sealed.GetStats();
+    return {
+        .NodeCount = aStats.NodeCount + sStats.NodeCount,
+        .NodeRefCount = aStats.NodeRefCount + sStats.NodeRefCount,
+        .ClientCount = aStats.ClientCount + sStats.ClientCount,
+        .ExtraPageCount = aStats.ExtraPageCount + sStats.ExtraPageCount,
+    };
 }
 
 }   // namespace NCloud::NFileStore::NStorage

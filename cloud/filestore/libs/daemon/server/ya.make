@@ -19,7 +19,7 @@ PEERDIR(
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/server
 
-    cloud/fastshard/bootstrap
+    cloud/fastshard/libs/bootstrap
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
