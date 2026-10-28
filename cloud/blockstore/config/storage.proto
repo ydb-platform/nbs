@@ -1775,4 +1775,14 @@ message TStorageServiceConfig
     // Fresh byte count backpressure settings for SSD disks.
     optional uint32 FreshByteCountLimitForBackpressureSSD = 550;
     optional uint32 FreshByteCountThresholdForBackpressureSSD = 551;
+
+    // Bytes of dead untrimmed fresh blobs after which partition v1 trims the
+    // fresh log without waiting for a flush. A blob dies when the last of its
+    // block versions is overwritten or flushed, and counts at least one block.
+    // An ordinary trim starts when the dead blobs older than every live or
+    // in-flight fresh blob reach this value. Zero disables these trims, and
+    // the fresh log is trimmed only after flushes. The SSD value applies to
+    // SSD volumes, the HDD value to HDD and hybrid volumes.
+    optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 552;
+    optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 553;
 }

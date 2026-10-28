@@ -104,6 +104,12 @@ class TPartitionActor final
         {}
     };
 
+    enum class ETrimFreshLogKind
+    {
+        None,
+        Ordinary,
+    };
+
     static constexpr ui64 BootWakeupEventTag = 1;
 
     friend TFreshBlocksCompanionClient;
@@ -244,6 +250,10 @@ private:
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
+    [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    // For debug checks.
+    [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -483,6 +493,7 @@ private:
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
+    [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
 
     void CreateFreshBlocksCompanionClient();
 

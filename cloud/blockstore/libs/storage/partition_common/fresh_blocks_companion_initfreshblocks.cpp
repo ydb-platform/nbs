@@ -59,6 +59,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     TVector<TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
+        const size_t blockCount = blocks.size();
         TInstant timestamp;
         auto error = ParseFreshBlobContent(
             blob.CommitId,
@@ -81,6 +82,11 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
         }
 
         FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size(), timestamp);
+
+        // A blob without blocks gets no trim barrier reference.
+        if (blocks.size() == blockCount) {
+            FreshBlobState.MarkFreshBlobDead(blob.CommitId);
+        }
     }
 
     for (const auto& block: blocks) {
