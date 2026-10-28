@@ -254,7 +254,13 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
+    // For zero requests the fresh index stores no blob id, but the message
+    // carries the id of the zero blob that was written.
+    State->AddFreshBlob(
+        msg->CommitId,
+        msg->BlobId,
+        msg->BlobSize,
+        msg->Timestamp);
     for (ui64 commitId: deadCommitIds) {
         State->MarkFreshBlobDead(commitId);
     }

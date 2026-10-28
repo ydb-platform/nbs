@@ -70,6 +70,19 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // TrimFreshLogCompleted
+    //
+
+    struct TTrimFreshLogCompleted: TOperationCompleted
+    {
+        // Set explicitly, because a selective trim may collect nothing.
+        bool SelectiveTrim = false;
+        // See TSelectiveTrimPlan::CollectingCommitIds. Meaningful only if the
+        // trim succeeded.
+        TVector<ui64> CollectedCommitIds;
+    };
+
+    //
     // LoadFreshBlobsCompleted
     //
 
@@ -496,7 +509,7 @@ struct TEvPartitionCommonPrivate
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvLoadFreshBlobsCompleted = TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
-    using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
+    using TEvTrimFreshLogCompleted = TResponseEvent<TTrimFreshLogCompleted, EvTrimFreshLogCompleted>;
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
     using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;

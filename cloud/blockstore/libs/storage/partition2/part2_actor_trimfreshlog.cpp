@@ -133,6 +133,8 @@ void TPartitionActor::HandleTrimFreshLog(
         false,   // hard
         TVector<TPartialBlobId>(),   // keep
         TVector<TPartialBlobId>(),   // doNotKeep
+        false,   // selectiveTrim
+        TVector<ui64>(),   // collectingCommitIds
         std::move(freshChannels),
         VolumeLabels,
         Config->GetTrimFreshLogTimeout());

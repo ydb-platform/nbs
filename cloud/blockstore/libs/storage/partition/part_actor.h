@@ -112,6 +112,10 @@ class TPartitionActor final
         // highest commit id below every live fresh blob. Every fresh blob at or
         // below it is dead, so the barrier deletes all of them.
         Ordinary,
+        // A soft barrier above TrimFreshLogToCommitId, below every in-flight
+        // fresh write, with Keep flags for the live blobs below it. Deletes
+        // dead blobs that an ordinary trim cannot reach yet.
+        Selective,
     };
 
     static constexpr ui64 BootWakeupEventTag = 1;
@@ -255,8 +259,13 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    [[nodiscard]] bool ShouldStartSelectiveTrim(
+        const NActors::TActorContext& ctx,
+        ui64 ordinaryTrimToCommitId);
     [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
-    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind(
+        const NActors::TActorContext& ctx,
+        ui64 ordinaryTrimToCommitId);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -498,6 +507,8 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
+    [[nodiscard]] bool GetFreshSelectiveTrimEnabled() const;
+    [[nodiscard]] bool IsSelectiveTrimEnabled() const;
 
     void CreateFreshBlocksCompanionClient();
 

@@ -1,8 +1,10 @@
 #include "part_fresh_blocks_state.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/tablet/model/channels.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -65,11 +67,22 @@ TInstant TPartitionFreshBlobState::GetFirstUnflushedFreshBlobTimestamp(
 
 void TPartitionFreshBlobState::AddFreshBlob(
     ui64 commitId,
+    const TPartialBlobId& blobId,
     ui64 blobSize,
     TInstant timestamp)
 {
+    // A flag with a wrong blob id would protect a blob that does not exist,
+    // and a nonzero part id in a flag is rejected by every VDisk.
+    STORAGE_VERIFY_C(
+        blobId.CommitId() == commitId && blobId.PartId() == 0,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId << ", blob id: " << blobId);
+
     {
-        const TUntrimmedFreshBlob blob{.ByteCount = blobSize};
+        const TUntrimmedFreshBlob blob{
+            .ByteCount = blobSize,
+            .BlobId = blobId};
         const bool inserted =
             UntrimmedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
@@ -107,6 +120,7 @@ void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
 
     it->second.Dead = true;
     DeadUntrimmedFreshBlobByteCount += it->second.ByteCount;
+    TotalKilledFreshBlobByteCount += it->second.ByteCount;
 }
 
 ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
@@ -183,6 +197,145 @@ TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
             EraseUnflushedFreshBlob(unflushed.begin());
     }
     return result;
+}
+
+ui64 TPartitionFreshBlobState::TrimCollectedFreshBlobs(
+    const TVector<ui64>& commitIds)
+{
+    ui64 unflushedByteCount = 0;
+    for (ui64 commitId: commitIds) {
+        // No other trim runs during a selective trim, so every entry is still
+        // there.
+        auto it = UntrimmedFreshBlobsByCommitId.find(commitId);
+        STORAGE_VERIFY_C(
+            it != UntrimmedFreshBlobsByCommitId.end(),
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        EraseUntrimmedFreshBlob(it);
+        // A flush that captured the blob accepts its missing unflushed entry.
+        TrimmedToCommitId = Max(TrimmedToCommitId, commitId);
+
+        // A flush may have removed the unflushed entry already.
+        auto& unflushed = UnflushedFreshBlobsByCommitId;
+        if (auto jt = unflushed.find(commitId); jt != unflushed.end()) {
+            unflushedByteCount += EraseUnflushedFreshBlob(jt);
+        }
+    }
+    return unflushedByteCount;
+}
+
+std::optional<TSelectiveTrimPlan>
+TPartitionFreshBlobState::BuildSelectiveTrimPlan(
+    ui64 ordinaryTrimToCommitId,
+    ui64 selectiveTrimToCommitId,
+    const TVector<ui64>& liveCommitIds,
+    ui64 keptToCommitId,
+    ui64 lastSentSelectiveTrimToCommitId,
+    ui32 currentGeneration,
+    ui64 maxFlags) const
+{
+    const ui64 minSelectiveTrimCommitId =
+        Max(ordinaryTrimToCommitId, lastSentSelectiveTrimToCommitId);
+
+    TSelectiveTrimPlan plan{.TrimToCommitId = minSelectiveTrimCommitId};
+    // Live blobs between the current barrier and the next dead blob.
+    TVector<TPartialBlobId> pendingKeep;
+    // Dead blobs at or below the floor that may carry Keep flags.
+    TVector<std::pair<ui64, TPartialBlobId>> deadKept;
+
+    auto liveIt = liveCommitIds.begin();
+    for (auto it =
+             UntrimmedFreshBlobsByCommitId.upper_bound(ordinaryTrimToCommitId);
+         it != UntrimmedFreshBlobsByCommitId.end() &&
+         it->first <= selectiveTrimToCommitId;
+         ++it)
+    {
+        const auto& [commitId, blob] = *it;
+
+        if (liveIt != liveCommitIds.end() && *liveIt < commitId) {
+            // A referenced commit without an untrimmed entry would get no
+            // Keep flag: never move the barrier past it. Below the floor, the
+            // list of blobs that need Keep again would be incomplete.
+            ReportFreshBlobLiveCommitNotFound(
+                {{"tablet_id", TabletID}, {"commit_id", *liveIt}});
+            if (*liveIt <= minSelectiveTrimCommitId) {
+                return std::nullopt;
+            }
+            break;
+        }
+
+        const bool isLive = liveIt != liveCommitIds.end() && *liveIt == commitId;
+        if (isLive) {
+            ++liveIt;
+        }
+
+        if (commitId <= minSelectiveTrimCommitId) {
+            if (!isLive) {
+                deadKept.emplace_back(commitId, blob.BlobId);
+            } else if (commitId > keptToCommitId) {
+                // Covered by a soft command that failed. The new barrier is
+                // at least as high, so this Keep is mandatory.
+                plan.Keep.push_back(blob.BlobId);
+            }
+            continue;
+        }
+
+        if (isLive) {
+            pendingKeep.push_back(blob.BlobId);
+            if (plan.Keep.size() + pendingKeep.size() > maxFlags) {
+                break;
+            }
+            continue;
+        }
+
+        // A dead blob above the floor: move the barrier onto it and keep the
+        // live blobs below it.
+        plan.Keep.insert(
+            plan.Keep.end(),
+            pendingKeep.begin(),
+            pendingKeep.end());
+        pendingKeep.clear();
+        plan.TrimToCommitId = commitId;
+        plan.CollectingCommitIds.push_back(commitId);
+    }
+
+    // DoNotKeep uses the budget that Keep left. Entries left out stay in the
+    // map for the next trim, or for the hard barrier.
+    for (const auto& [commitId, blobId]: deadKept) {
+        if (plan.Keep.size() + plan.DoNotKeep.size() >= maxFlags) {
+            break;
+        }
+        plan.DoNotKeep.push_back(blobId);
+        plan.CollectingCommitIds.push_back(commitId);
+    }
+
+    // Without flags, a barrier at the floor collects nothing that the hard
+    // barrier of an ordinary trim does not.
+    if (plan.TrimToCommitId == minSelectiveTrimCommitId && !plan.Keep &&
+        !plan.DoNotKeep)
+    {
+        return std::nullopt;
+    }
+
+    // The barrier is at or above OrdinaryTrimToCommitId, so it also collects
+    // the dead blobs below it that carry no Keep flag. Every Keep flag of this
+    // tablet lifetime is at or below the barrier of its command, and the Keep
+    // flags of earlier lifetimes are unknown. The other blobs below
+    // OrdinaryTrimToCommitId wait for the hard barrier.
+    const ui64 unkeptFromCommitId =
+        Max(lastSentSelectiveTrimToCommitId,
+            MakeCommitId(currentGeneration, 0));
+    for (auto it =
+             UntrimmedFreshBlobsByCommitId.upper_bound(unkeptFromCommitId);
+         it != UntrimmedFreshBlobsByCommitId.end() &&
+         it->first <= ordinaryTrimToCommitId;
+         ++it)
+    {
+        plan.CollectingCommitIds.push_back(it->first);
+    }
+
+    return plan;
 }
 
 TFlushFreshBlobResult TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
