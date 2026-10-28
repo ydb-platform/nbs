@@ -1079,6 +1079,8 @@ void TBootstrapBase::Start()
     // order
     START_COMMON_COMPONENT(Scheduler);
 
+    SetupCellProxy();
+
     // register the cells mon page only now: its disk search needs the cell
     // manager's gRPC client (started above) to have executors to run on
     SetupCellMonitoringActor();
