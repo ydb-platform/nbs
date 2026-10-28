@@ -152,19 +152,23 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
             accessor.GetLastValidationError().GetMessage());
     }
 
-    const auto* header = accessor.GetHeader();
-    if (header != nullptr) {
-        FillHeader(*result.MutableHeader(), *header);
+    const auto* headerPtr = accessor.GetHeader();
+    if (headerPtr == nullptr) {
+        return result;
     }
 
+    const TFileRingBufferHeader header = *headerPtr;
+    FillHeader(*result.MutableHeader(), header);
+
     auto* dataProcessor = accessor.GetDataProcessor();
-    if (header == nullptr || dataProcessor == nullptr) {
+    if (dataProcessor == nullptr) {
         // Even in Debug mode, no data processor is created when the header
         // version or layout is invalid (e.g. the file is truncated).
         return result;
     }
 
-    const auto metadata = accessor.GetRawMetadata().first(header->MetadataSize);
+    const auto metadata =
+        accessor.GetRawData(header.MetadataOffset, header.MetadataSize);
     const auto metadataChecksum = Crc32c(metadata.data(), metadata.size());
     result.SetActualMetadataChecksum(metadataChecksum);
     result.SetChecksum(Crc32cCombine(
@@ -172,15 +176,15 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
         metadataChecksum,
         metadata.size()));
 
-    const auto readPos = header->ReadPos;
-    const auto writePos = header->WritePos;
+    const auto readPos = header.ReadPos;
+    const auto writePos = header.WritePos;
 
-    if (readPos <= header->DataCapacity && writePos <= header->DataCapacity) {
+    if (readPos <= header.DataCapacity && writePos <= header.DataCapacity) {
         // For a wrapped buffer, assume the entire data area has already been
         // used and include it all in the snapshot checksum.
         ui64 begin = readPos <= writePos ? readPos : 0;
-        ui64 end = readPos <= writePos ? writePos : header->DataCapacity;
-        auto data = rawData.subspan(header->DataOffset + begin, end - begin);
+        ui64 end = readPos <= writePos ? writePos : header.DataCapacity;
+        auto data = accessor.GetRawData(header.DataOffset + begin, end - begin);
 
         result.SetChecksum(Crc32cExtend(
             result.GetChecksum(),
@@ -190,7 +194,7 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
 
     const auto capabilities = dataProcessor->GetCapabilities(false);
     auto pos = readPos;
-    while (pos > header->WritePos) {
+    while (pos > writePos) {
         const auto entryResult =
             DumpEntry(result, *dataProcessor, capabilities, pos, fileType);
 
@@ -209,7 +213,7 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
         }
     }
 
-    while (pos < header->WritePos) {
+    while (pos < writePos) {
         const auto entryResult =
             DumpEntry(result, *dataProcessor, capabilities, pos, fileType);
 

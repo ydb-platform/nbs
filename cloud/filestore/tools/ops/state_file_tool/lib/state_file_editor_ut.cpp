@@ -88,9 +88,13 @@ struct TBootstrap
         const TFunctionRef<void(TFileRingBuffer&)>& fn,
         EFileRingBufferVersion version)
     {
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(DataCapacity, MetadataCapacity);
+        UNIT_ASSERT(layout);
+
         TFileRingBuffer ringBuffer(
             TempFileHandle.Name(),
-            DataCapacity,
+            layout->StateFileSize,
             MetadataCapacity,
             version);
 
