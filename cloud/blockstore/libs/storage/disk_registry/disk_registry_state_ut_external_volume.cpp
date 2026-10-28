@@ -130,6 +130,44 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateExternalVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPreserveExternalVolumeTabletIdWhenAddingReplicas)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto statePtr = TDiskRegistryStateBuilder()
+            .WithKnownAgents(Agents)
+            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(AllocateDisk(db, state, Params("fs", 42, 1)));
+            UNIT_ASSERT_SUCCESS(state.UpdateDiskReplicaCount(db, "fs", 2));
+        });
+
+        auto check = [] (const TDiskRegistryState& state) {
+            for (const auto* diskId: {"fs", "fs/0", "fs/1", "fs/2"}) {
+                TDiskInfo info;
+                UNIT_ASSERT_SUCCESS(state.GetDiskInfo(diskId, info));
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    42,
+                    info.ExternalVolumeTabletId,
+                    diskId);
+            }
+        };
+
+        check(state);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto reloaded = TDiskRegistryStateBuilder::LoadState(db)
+                .WithKnownAgents(Agents)
+                .Build();
+            check(*reloaded);
+        });
+    }
+
     Y_UNIT_TEST(ShouldRejectExternalVolumeTabletIdChangeOnReallocation)
     {
         TTestExecutor executor;

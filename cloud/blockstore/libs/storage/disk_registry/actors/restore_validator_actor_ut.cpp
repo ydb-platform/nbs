@@ -194,6 +194,87 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             disks[0].GetExternalVolumeTabletId());
     }
 
+    Y_UNIT_TEST_F(ShouldRejectExternalDiskWithStaleDevices, TSetupEnvironment)
+    {
+        // The same stale layout must be rejected for both native and external
+        // disks. Device 2 was free in the backup and is now used by the volume.
+        for (ui64 externalVolumeTabletId: {0, 42}) {
+            TDiskRegistryStateSnapshot backup;
+            auto& disk = backup.Disks.emplace_back();
+            disk.SetDiskId("Disk 1");
+            disk.SetBlockSize(4096);
+            disk.SetExternalVolumeTabletId(externalVolumeTabletId);
+            disk.AddDeviceUUIDs("Device 1");
+
+            auto& agent = backup.Agents.emplace_back();
+            agent.SetAgentId("Agent 1");
+            agent.AddDevices()->SetDeviceUUID("Device 1");
+            agent.AddDevices()->SetDeviceUUID("Device 2");
+
+            const auto validatorId = ActorSystem.Register(
+                new TRestoreValidationActor(EdgeActor, {}, 0, backup));
+
+            ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
+            auto volumes =
+                std::make_unique<TEvService::TEvListVolumesResponse>();
+            if (!externalVolumeTabletId) {
+                volumes->Record.AddVolumes("Disk 1");
+            }
+            ActorSystem.Send(new NActors::IEventHandle(
+                validatorId,
+                EdgeActor,
+                volumes.release()));
+
+            for (;;) {
+                TAutoPtr<NActors::IEventHandle> handle;
+                auto [describe, info, result] = ActorSystem.GrabEdgeEvents<
+                    TEvSSProxy::TEvDescribeVolumeRequest,
+                    TEvVolume::TEvGetVolumeInfoRequest,
+                    TEvDiskRegistryPrivate::
+                        TEvRestoreDiskRegistryValidationResponse>(handle);
+
+                if (result) {
+                    UNIT_ASSERT_C(
+                        HasError(result->GetError()),
+                        "Stale devices accepted for ExternalVolumeTabletId="
+                            << externalVolumeTabletId);
+                    break;
+                }
+
+                if (describe) {
+                    UNIT_ASSERT_VALUES_EQUAL("Disk 1", describe->DiskId);
+                    NKikimrSchemeOp::TPathDescription description;
+                    auto* config =
+                        description.MutableBlockStoreVolumeDescription()
+                            ->MutableVolumeConfig();
+                    config->SetDiskId("Disk 1");
+                    config->SetBlockSize(4096);
+                    ActorSystem.Send(new NActors::IEventHandle(
+                        handle->Sender,
+                        EdgeActor,
+                        new TEvSSProxy::TEvDescribeVolumeResponse(
+                            "",
+                            std::move(description)),
+                        0,
+                        handle->Cookie));
+                } else if (info) {
+                    UNIT_ASSERT_VALUES_EQUAL("Disk 1", info->Record.GetDiskId());
+                    auto response =
+                        std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+                    auto* volume = response->Record.MutableVolume();
+                    volume->SetDiskId("Disk 1");
+                    volume->AddDevices()->SetDeviceUUID("Device 2");
+                    ActorSystem.Send(new NActors::IEventHandle(
+                        handle->Sender,
+                        EdgeActor,
+                        response.release(),
+                        0,
+                        handle->Cookie));
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(CheckNewDisksInSS, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;
