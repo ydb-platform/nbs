@@ -1261,6 +1261,189 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         CheckSharedPipeWhenSecondConnectionExpires(true);
     }
 
+    void CheckSharedPipeCleanupAfterDisconnect(bool completeFirstRequest)
+    {
+        const auto inactivityTimeout = TDuration::Seconds(1);
+        const auto timeoutMargin = TDuration::MilliSeconds(100);
+
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            inactivityTimeout.MilliSeconds());
+        const ui32 nodeIdx = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        TActorId volumeActorId;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() != MakeVolumeProxyServiceId())
+                {
+                    volumeActorId = event->GetRecipientRewrite();
+                }
+                return false;
+            });
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            service.CreateStatVolumeRequest());
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        UNIT_ASSERT(volumeActorId);
+
+        // Expire the setup connection before creating two shared connections.
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(1)));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        };
+        auto waitFor = [&](auto condition)
+        {
+            UNIT_ASSERT(runtime.DispatchEvents(
+                TDispatchOptions{.CustomFinalCondition = condition},
+                TDuration::Seconds(1)));
+        };
+
+        TVector<IEventHandlePtr> describeResponses;
+        bool holdDescribeResponses = true;
+        bool dropRequests = !completeFirstRequest;
+        ui32 droppedRequests = 0;
+        ui64 tabletId = 0;
+        TActorId pipeClientId;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (holdDescribeResponses &&
+                    event->GetTypeRewrite() ==
+                        TEvSSProxy::EvDescribeVolumeResponse)
+                {
+                    const auto* msg = event->template Get<
+                        TEvSSProxy::TEvDescribeVolumeResponse>();
+                    tabletId = msg->PathDescription
+                                   .GetBlockStoreVolumeDescription()
+                                   .GetVolumeTabletId();
+                    describeResponses.emplace_back(event.Release());
+                    return true;
+                }
+                if (event->GetTypeRewrite() == TEvTabletPipe::EvSend &&
+                    event->Type == TEvService::EvStatVolumeRequest)
+                {
+                    pipeClientId = event->GetRecipientRewrite();
+                }
+                if (dropRequests &&
+                    event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() == volumeActorId)
+                {
+                    ++droppedRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        // Hold both lookups so ordinary and exact requests cannot reuse a
+        // connection. Describe cookies and Wakeup tags are connection ids.
+        sendStatRequest(false);
+        waitFor([&] { return describeResponses.size() == 1; });
+        sendStatRequest(true);
+        waitFor([&] { return describeResponses.size() == 2; });
+        const ui64 firstConnectionId = describeResponses[0]->Cookie;
+        const ui64 secondConnectionId = describeResponses[1]->Cookie;
+        UNIT_ASSERT(firstConnectionId != secondConnectionId);
+        UNIT_ASSERT(tabletId);
+
+        holdDescribeResponses = false;
+        runtime.Send(describeResponses[0].release(), nodeIdx);
+        if (completeFirstRequest) {
+            UNIT_ASSERT(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+            dropRequests = true;
+            sendStatRequest(false);
+        }
+        waitFor([&] { return droppedRequests == 1; });
+        const TActorId originalPipeClientId = pipeClientId;
+        UNIT_ASSERT(originalPipeClientId);
+
+        runtime.Send(describeResponses[1].release(), nodeIdx);
+        waitFor([&] { return droppedRequests == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(originalPipeClientId, pipeClientId);
+
+        if (completeFirstRequest) {
+            // Consume the first connection's timer while its request is active.
+            runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+            options.FinalEvents.clear();
+            options.FinalEvents.emplace_back(
+                [firstConnectionId](IEventHandle& event)
+                {
+                    return event.GetTypeRewrite() == TEvents::TSystem::Wakeup &&
+                        event.Get<TEvents::TEvWakeup>()->Tag == firstConnectionId;
+                });
+            UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(1)));
+        }
+
+        RebootTablet(runtime, tabletId, service.GetSender(), nodeIdx);
+        for (ui32 i = 0; i != 2; ++i) {
+            auto response =
+                runtime.GrabEdgeEvent<TEvService::TEvStatVolumeResponse>(
+                    service.GetSender(),
+                    TDuration::Seconds(1));
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->Get()->GetStatus());
+        }
+
+        // Only the second connection retries. The first stays idle after the
+        // shared pipe reconnects and must not retain the replacement pipe.
+        dropRequests = false;
+        sendStatRequest(true);
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        const TActorId replacementPipeClientId = pipeClientId;
+        UNIT_ASSERT(replacementPipeClientId != originalPipeClientId);
+
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        options.FinalEvents.clear();
+        THashSet<ui64> expiredConnections;
+        options.FinalEvents.emplace_back(
+            [&](IEventHandle& event)
+            {
+                if (event.GetTypeRewrite() == TEvents::TSystem::Wakeup) {
+                    const ui64 connectionId =
+                        event.Get<TEvents::TEvWakeup>()->Tag;
+                    if (connectionId == firstConnectionId ||
+                        connectionId == secondConnectionId)
+                    {
+                        expiredConnections.insert(connectionId);
+                    }
+                }
+                return expiredConnections.size() == 2;
+            });
+        UNIT_ASSERT_C(
+            runtime.DispatchEvents(options, TDuration::Seconds(1)),
+            "Both connections must get a cleanup timer after disconnect");
+
+        sendStatRequest(true);
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        UNIT_ASSERT(pipeClientId != replacementPipeClientId);
+    }
+
+    Y_UNIT_TEST(ShouldShutdownSharedPipeAfterDisconnectWithConsumedTimer)
+    {
+        CheckSharedPipeCleanupAfterDisconnect(true);
+    }
+
+    Y_UNIT_TEST(ShouldShutdownSharedPipeAfterDisconnectOnFirstRequest)
+    {
+        CheckSharedPipeCleanupAfterDisconnect(false);
+    }
+
     Y_UNIT_TEST(ShouldCancelRequestsForAllConnectionsSharingTablet)
     {
         TTestEnv env;
