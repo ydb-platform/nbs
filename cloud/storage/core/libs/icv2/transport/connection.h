@@ -32,6 +32,7 @@ struct IConnection
 
     // Returns true if accepted for sending. Delivery is not guaranteed.
     // Rejects events exceeding the transport's shared output queue byte limit.
+    // Requires a non-null ev.
     virtual bool Send(std::unique_ptr<NActors::IEventHandle> ev) = 0;
 
     // Does not wait for callbacks; use WhenClosed() to await completion.
@@ -41,9 +42,9 @@ struct IConnection
     // Ready after closure and completion of all admitted operations and
     // callbacks. Outgoing events may still be retained after this future is
     // ready. Do not wait for this future from a callback of this connection.
+    // Subscribers run inline when the future becomes ready, or when subscribing
+    // to an already ready future, and must not throw exceptions.
     virtual NThreading::TFuture<void> WhenClosed() const = 0;
-
-    virtual ui64 GetOutputQueueSize() const = 0;
 };
 
 using IConnectionPtr = std::shared_ptr<IConnection>;

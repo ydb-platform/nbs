@@ -91,13 +91,6 @@ struct TTestEngine final: IUringEngine
     {
         TActorId SessionId;
         bool Active;
-        ui64 OutputQueueBytes = 17;
-    };
-
-    struct TPendingEvent
-    {
-        ui64 Handle;
-        std::unique_ptr<IEventHandle> Event;
     };
 
     IUringEngineClientPtr Client;
@@ -106,7 +99,6 @@ struct TTestEngine final: IUringEngine
     std::function<void()> OnRegister;
     std::function<void()> OnSend;
     std::function<void()> OnUnregister;
-    std::function<void()> OnGetOutputQueueSize;
     std::function<void()> OnStop;
     std::atomic<size_t> Sends = 0;
     std::atomic<size_t> Unregisters = 0;
@@ -115,8 +107,7 @@ struct TTestEngine final: IUringEngine
     ui64 RegisterResult = 1;
     std::thread Worker;
     bool HoldEvents = false;
-    bool TrackQueue = false;
-    TVector<TPendingEvent> PendingEvents;
+    TVector<std::unique_ptr<IEventHandle>> PendingEvents;
 
     void SetClient(IUringEngineClientPtr client) override
     {
@@ -165,11 +156,8 @@ struct TTestEngine final: IUringEngine
             std::lock_guard guard(Mutex);
             UNIT_ASSERT(Registrations.at(handle - 1).Active);
             ++Sends;
-            if (TrackQueue) {
-                Registrations.at(handle - 1).OutputQueueBytes += ev->GetSize();
-            }
             if (HoldEvents) {
-                PendingEvents.push_back({handle, std::move(ev)});
+                PendingEvents.push_back(std::move(ev));
             }
         }
         if (OnSend) {
@@ -226,24 +214,18 @@ struct TTestEngine final: IUringEngine
 
     ui64 GetTotalOutputQueueSize(ui64 handle) override
     {
-        if (OnGetOutputQueueSize) {
-            OnGetOutputQueueSize();
-        }
-        std::lock_guard guard(Mutex);
-        UNIT_ASSERT(Registrations.at(handle - 1).Active);
-        return Registrations.at(handle - 1).OutputQueueBytes;
+        Y_UNUSED(handle);
+
+        UNIT_FAIL("Transport must not query the engine output queue size");
+        return 0;
     }
 
     std::unique_ptr<IEventHandle> TakePendingEvent(size_t index)
     {
         std::lock_guard guard(Mutex);
         auto& pending = PendingEvents.at(index);
-        UNIT_ASSERT(pending.Event);
-        if (TrackQueue) {
-            Registrations.at(pending.Handle - 1).OutputQueueBytes -=
-                pending.Event->GetSize();
-        }
-        return std::move(pending.Event);
+        UNIT_ASSERT(pending);
+        return std::move(pending);
     }
 
     void CompletePendingEvent(size_t index)
@@ -381,6 +363,8 @@ struct TTestEventDestructor final: IEventDestructor
 void CheckDeferredDestruction(bool serialized)
 {
     auto event = MakeEvent(100);
+    auto destroyed = std::make_shared<std::atomic<size_t>>(0);
+    event->Get<TEvTest>()->Destroyed = destroyed;
     if (serialized) {
         event->GetChainBuffer();
     }
@@ -390,7 +374,9 @@ void CheckDeferredDestruction(bool serialized)
     UNIT_ASSERT(f.Connection->Activate());
     f.Engine->HoldEvents = true;
     UNIT_ASSERT(f.Connection->Send(std::move(event)));
+    UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 0u);
     f.Engine->CompletePendingEvent(0);
+    UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 0u);
     UNIT_ASSERT_VALUES_EQUAL(bool(destructor->Event), !serialized);
     UNIT_ASSERT_VALUES_EQUAL(bool(destructor->Buffer), serialized);
     UNIT_ASSERT(!f.Connection->Send(MakeEvent(1)));
@@ -402,6 +388,7 @@ void CheckDeferredDestruction(bool serialized)
             destructor->Buffer.Reset();
         })
         .get();
+    UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 1u);
     UNIT_ASSERT(f.Connection->Send(MakeEvent(1)));
     f.Engine->Client->GetAndResetDestroyEventsCycles();
     UNIT_ASSERT_VALUES_EQUAL(destructor->MetricReads, 0u);
@@ -525,7 +512,6 @@ void CheckCloseDuringWrite(bool xdc)
     // Wait for writes to start while the unread peer keeps data queued.
     pollfd peer{static_cast<int>(*sockets[1]), POLLIN, 0};
     UNIT_ASSERT_VALUES_EQUAL(poll(&peer, 1, 10000), 1);
-    UNIT_ASSERT(connection->GetOutputQueueSize() > 0);
     connection->Close();
     UNIT_ASSERT(connection->WhenClosed().HasValue());
     transport->Stop();
@@ -555,10 +541,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT(f.Connection->Activate());
         UNIT_ASSERT(second->Activate());
         f.Engine->HoldEvents = true;
-        f.Engine->TrackQueue = true;
-        for (auto& registration: f.Engine->Registrations) {
-            registration.OutputQueueBytes = 0;
-        }
         std::atomic<size_t> admitted = 0;
         std::array<std::future<void>, 8> senders;
         size_t index = 0;
@@ -578,9 +560,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         }
         UNIT_ASSERT_VALUES_EQUAL(admitted.load(), 4);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->PendingEvents.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(
-            f.Connection->GetOutputQueueSize() + second->GetOutputQueueSize(),
-            limit);
         f.Engine->CompletePendingEvent(0);
         UNIT_ASSERT(second->Send(makeEvent()));
         UNIT_ASSERT(!f.Connection->Send(makeEvent()));
@@ -599,8 +578,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         TFixture f(limit);
         UNIT_ASSERT(f.Connection->Activate());
         f.Engine->HoldEvents = true;
-        f.Engine->TrackQueue = true;
-        f.Engine->Registrations[0].OutputQueueBytes = 0;
         UNIT_ASSERT(f.Connection->Send(std::move(event)));
         f.Connection->Close();
         f.Connection.reset();
@@ -609,7 +586,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         auto connection =
             f.Transport->CreateConnection(sockets[0], {}, f.Handler, false);
         UNIT_ASSERT(connection->Activate());
-        f.Engine->Registrations[1].OutputQueueBytes = 0;
         UNIT_ASSERT(!connection->Send(MakeEvent(1)));
         f.Engine->TakePendingEvent(0).reset();
         UNIT_ASSERT(connection->Send(MakeEvent(1)));
@@ -654,8 +630,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         TFixture f(0);
         UNIT_ASSERT(f.Connection->Activate());
         f.Engine->HoldEvents = true;
-        f.Engine->TrackQueue = true;
-        f.Engine->Registrations[0].OutputQueueBytes = 0;
         const TRope chunk(TString(1_MB, 'x'));
         TRope payload;
         for (ui64 size = 0; size < DefaultMaxOutputQueueBytes;
@@ -673,9 +647,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
                     std::move(payload),
                     TEventSerializationInfo{}),
                 0)));
-        UNIT_ASSERT_VALUES_EQUAL(
-            f.Connection->GetOutputQueueSize(),
-            DefaultMaxOutputQueueBytes);
         UNIT_ASSERT(!f.Connection->Send(MakeEvent(1)));
         f.Engine->TakePendingEvent(0).reset();
         UNIT_ASSERT(f.Connection->Send(MakeEvent(1)));
@@ -980,31 +951,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), 2u);
     }
 
-    Y_UNIT_TEST(QueueSizeReadKeepsHandleRegisteredDuringClose)
-    {
-        TFixture f;
-        TSignal entered;
-        TSignal release;
-        f.Engine->OnGetOutputQueueSize = [&]
-        {
-            entered.Set();
-            release.Wait();
-        };
-        UNIT_ASSERT(f.Connection->Activate());
-        const ui64 expected = f.Engine->Registrations[0].OutputQueueBytes;
-        auto reading = std::async(
-            std::launch::async,
-            [&] { return f.Connection->GetOutputQueueSize(); });
-        entered.Wait();
-        f.Connection->Close();
-        const bool stillRegistered = !f.Engine->Unregistered.load();
-        release.Set();
-        UNIT_ASSERT_VALUES_EQUAL(reading.get(), expected);
-        UNIT_ASSERT(stillRegistered);
-        UNIT_ASSERT_VALUES_EQUAL(f.Engine->Unregisters.load(), 1u);
-        UNIT_ASSERT_VALUES_EQUAL(f.Connection->GetOutputQueueSize(), 0u);
-    }
-
     Y_UNIT_TEST(StopWaitsForActiveSendBeforeStoppingEngine)
     {
         TFixture f;
@@ -1064,24 +1010,19 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
             std::async(std::launch::async, [&] { f.Transport->RequestStop(); });
         firstClosed.Wait();
         bool firstActive;
-        ui64 expectedSize;
         {
             std::lock_guard guard(f.Engine->Mutex);
             firstActive = f.Engine->Registrations[0].Active;
-            expectedSize =
-                f.Engine->Registrations[firstActive ? 0 : 1].OutputQueueBytes;
         }
         const auto open = firstActive ? f.Connection : second;
         const auto closed = firstActive ? second : f.Connection;
         const bool accepted = open->Send(MakeEvent());
-        const ui64 queueSize = open->GetOutputQueueSize();
         const bool rejected = !closed->Send(MakeEvent());
         const bool creationRejected =
             !f.Transport->CreateConnection(sockets[1], {}, f.Handler, false);
         release.Set();
         stopping.get();
         UNIT_ASSERT(accepted);
-        UNIT_ASSERT_VALUES_EQUAL(queueSize, expectedSize);
         UNIT_ASSERT(rejected);
         UNIT_ASSERT(creationRejected);
         UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
@@ -1093,7 +1034,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
     {
         TFixture f;
         UNIT_ASSERT(f.Connection->Activate());
-        UNIT_ASSERT_VALUES_EQUAL(f.Connection->GetOutputQueueSize(), 17);
         TSignal start;
         std::array<std::thread, 4> senders;
         std::atomic<size_t> accepted = 0;
@@ -1121,7 +1061,6 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), accepted.load());
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Unregisters.load(), 1u);
         UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
-        UNIT_ASSERT_VALUES_EQUAL(f.Connection->GetOutputQueueSize(), 0u);
     }
 
     Y_UNIT_TEST(CloseWaitsForActiveCallback)

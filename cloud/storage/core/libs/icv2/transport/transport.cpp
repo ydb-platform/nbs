@@ -442,11 +442,6 @@ public:
         Engine->Send(Handle, std::move(ev));
     }
 
-    ui64 GetOutputQueueSize() const
-    {
-        return Engine->GetTotalOutputQueueSize(Handle);
-    }
-
     void HandleEvent(std::unique_ptr<NActors::IEventHandle> ev) const noexcept
     {
         Handler->HandleEvent(std::move(ev));
@@ -613,12 +608,6 @@ public:
     NThreading::TFuture<void> WhenClosed() const override
     {
         return Closed.GetFuture();
-    }
-
-    ui64 GetOutputQueueSize() const override
-    {
-        const auto active = ActiveState.AtomicLoad();
-        return active ? active->GetOutputQueueSize() : 0;
     }
 
     void Receive(std::unique_ptr<NActors::IEventHandle> ev)
