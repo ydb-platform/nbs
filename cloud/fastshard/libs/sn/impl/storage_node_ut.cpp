@@ -1,3 +1,4 @@
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/fastshard/libs/sn/impl/storage_node.h>
 #include <cloud/fastshard/libs/sn/testlib/silk_env.h>
@@ -40,6 +41,7 @@ struct TFixture
 {
     TTempFileHandle Temp;
     IStorageNodePtr Node;
+    TFastShardContext Ctx{0};
 
     TFixture()
         : TFixture(FileSize)
@@ -73,7 +75,7 @@ TEST(NaiveFileStorageNodeTest, AcquireDevicesReturnsSuccess)
             TFixture fx;
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
-            auto resp = fx.Node->AcquireDevices(std::move(req));
+            auto resp = fx.Node->AcquireDevices(std::move(req), fx.Ctx);
             EXPECT_FALSE(HasError(resp.GetError()));
             return 0;
         },
@@ -89,7 +91,7 @@ TEST(NaiveFileStorageNodeTest, ReleaseDevicesReturnsSuccess)
             TFixture fx;
             NCloud::NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
-            auto resp = fx.Node->ReleaseDevices(std::move(req));
+            auto resp = fx.Node->ReleaseDevices(std::move(req), fx.Ctx);
             EXPECT_FALSE(HasError(resp.GetError()));
             return 0;
         },
@@ -108,7 +110,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsSinglePage)
             auto* pg = wreq.AddPageGroups();
             pg->SetFirstPageNo(3);
             pg->AddContent(Pattern('a', PageSize));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_FALSE(HasError(wresp.GetError()));
 
             NCloud::NProto::TReadPagesRequest rreq;
@@ -116,7 +118,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsSinglePage)
             ref->SetFirstPageNo(3);
             ref->SetPageCount(1);
             ref->SetPageSize(PageSize);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(1U, rresp.PageGroupsSize());
             EXPECT_EQ(3U, rresp.GetPageGroups(0).GetFirstPageNo());
@@ -143,7 +145,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
             pg->AddContent(Pattern('A', PageSize));
             pg->AddContent(Pattern('B', PageSize));
             pg->AddContent(Pattern('C', PageSize));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_FALSE(HasError(wresp.GetError()));
 
             NCloud::NProto::TReadPagesRequest rreq;
@@ -151,7 +153,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
             ref->SetFirstPageNo(0);
             ref->SetPageCount(3);
             ref->SetPageSize(PageSize);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(1U, rresp.PageGroupsSize());
             const auto& out = rresp.GetPageGroups(0);
@@ -181,7 +183,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultipleGroups)
             auto* g1 = wreq.AddPageGroups();
             g1->SetFirstPageNo(10);
             g1->AddContent(Pattern('z', PageSize));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_FALSE(HasError(wresp.GetError()));
 
             NCloud::NProto::TReadPagesRequest rreq;
@@ -193,7 +195,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultipleGroups)
             r1->SetFirstPageNo(10);
             r1->SetPageCount(1);
             r1->SetPageSize(PageSize);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(2U, rresp.PageGroupsSize());
 
@@ -230,7 +232,7 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
                 auto* pg = wreq.AddPageGroups();
                 pg->SetFirstPageNo(5);
                 pg->AddContent(Pattern(c, PageSize));
-                auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+                auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
                 EXPECT_FALSE(HasError(wresp.GetError()));
             }
 
@@ -239,7 +241,7 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
             ref->SetFirstPageNo(5);
             ref->SetPageCount(1);
             ref->SetPageSize(PageSize);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(1U, rresp.PageGroupsSize());
             EXPECT_EQ(
@@ -258,7 +260,7 @@ TEST(NaiveFileStorageNodeTest, EmptyReadReturnsSuccessWithNoGroups)
         {
             TFixture fx;
             NCloud::NProto::TReadPagesRequest rreq;
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(0U, rresp.PageGroupsSize());
             return 0;
@@ -274,7 +276,7 @@ TEST(NaiveFileStorageNodeTest, EmptyWriteReturnsSuccess)
         {
             TFixture fx;
             NCloud::NProto::TWriteLogRecordRequest wreq;
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_FALSE(HasError(wresp.GetError()));
             return 0;
         },
@@ -308,7 +310,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReturnsErrorOnShortRead)
             ref->SetFirstPageNo(0);
             ref->SetPageCount(2);
             ref->SetPageSize(PageSize);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_TRUE(HasError(rresp.GetError()));
             EXPECT_EQ(0U, rresp.PageGroupsSize());
             return 0;
@@ -341,7 +343,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReportsErrorOnPartialFailure)
             poison->SetFirstPageNo(1ULL << 63 /* off_t sees INT64_MIN */);
             poison->SetPageCount(1);
             poison->SetPageSize(1);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_TRUE(HasError(rresp.GetError()));
             EXPECT_EQ(0U, rresp.PageGroupsSize());
             return 0;
@@ -363,7 +365,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsPageCountPageSizeOverflow)
             ref->SetFirstPageNo(0);
             ref->SetPageCount(1ULL << 40);
             ref->SetPageSize(1U << 25);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_TRUE(HasError(rresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -387,7 +389,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsFirstPageNoPageSizeOverflow)
             ref->SetFirstPageNo(1ULL << 60);
             ref->SetPageCount(1);
             ref->SetPageSize(1U << 20);
-            auto rresp = fx.Node->ReadPages(std::move(rreq));
+            auto rresp = fx.Node->ReadPages(std::move(rreq), fx.Ctx);
             EXPECT_TRUE(HasError(rresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -412,7 +414,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsFirstPageNoPageSizeOverflow)
             // 2^60 * 512 == 2^69 comfortably does.
             pg->SetFirstPageNo(1ULL << 60);
             pg->AddContent(Pattern('q', PageSize));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_TRUE(HasError(wresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -439,7 +441,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizes)
             auto* g1 = wreq.AddPageGroups();
             g1->SetFirstPageNo(4);
             g1->AddContent(Pattern('b', PageSize / 2));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_TRUE(HasError(wresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -462,7 +464,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizesWithinGroup)
             pg->SetFirstPageNo(0);
             pg->AddContent(Pattern('a', PageSize));
             pg->AddContent(Pattern('b', PageSize / 2));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_TRUE(HasError(wresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -493,7 +495,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsOverlappingIntervals)
             for (int i = 0; i < 2; ++i) {
                 g1->AddContent(Pattern('b', PageSize));
             }
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_TRUE(HasError(wresp.GetError()));
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_ARGUMENT),
@@ -519,7 +521,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordAcceptsAdjacentIntervals)
             auto* g1 = wreq.AddPageGroups();
             g1->SetFirstPageNo(2);
             g1->AddContent(Pattern('c', PageSize));
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_FALSE(HasError(wresp.GetError()));
             return 0;
         },
@@ -545,7 +547,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordReportsErrorOnPartialFailure)
             auto* bad = wreq.AddPageGroups();
             bad->SetFirstPageNo(1ULL << 63 /* off_t sees INT64_MIN */);
             bad->AddContent("x");
-            auto wresp = fx.Node->WriteLogRecord(std::move(wreq));
+            auto wresp = fx.Node->WriteLogRecord(std::move(wreq), fx.Ctx);
             EXPECT_TRUE(HasError(wresp.GetError()));
             return 0;
         },

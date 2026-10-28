@@ -98,7 +98,12 @@ int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
         *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->AcquireDevices(request); });
+        [&]
+        {
+            return params->Device.Node->AcquireDevices(
+                request,
+                *params->Context);
+        });
 
     return 0;
 }
@@ -111,7 +116,12 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
         *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->ReleaseDevices(request); });
+        [&]
+        {
+            return params->Device.Node->ReleaseDevices(
+                request,
+                *params->Context);
+        });
 
     return 0;
 }

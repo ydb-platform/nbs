@@ -1,4 +1,5 @@
 #include <cloud/fastshard/libs/bootstrap/core.h>
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/sn/client/client.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/fastshard/libs/sn/server/server.h>
@@ -51,6 +52,7 @@ struct TBenchFixture
     NTesting::TPortHolder Port;
     IServerPtr Server;
     IStorageNodePtr Client;
+    TFastShardContext Ctx{0};
 
     TBenchFixture()
         : Storage(std::make_shared<TFakeStorageNode>())
@@ -95,7 +97,8 @@ int CallFiberMain(TDriverParams* params) noexcept
                 pg->AddContent(TString(4_KB, 'x'));
             }
             auto resp = params->Fixture->Client->WriteLogRecord(
-                std::move(req));
+                std::move(req),
+                params->Fixture->Ctx);
             if (resp.GetError().GetCode()) {
                 params->ErrorCount->fetch_add(1);
             }
@@ -103,7 +106,8 @@ int CallFiberMain(TDriverParams* params) noexcept
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("bench-dev");
             auto resp = params->Fixture->Client->AcquireDevices(
-                std::move(req));
+                std::move(req),
+                params->Fixture->Ctx);
             if (resp.GetError().GetCode()) {
                 params->ErrorCount->fetch_add(1);
             }

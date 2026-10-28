@@ -211,7 +211,9 @@ public:
             {
                 NProto::TWriteLogRecordRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->WriteLogRecord(std::move(deviceRequest));
+                return StorageNode->WriteLogRecord(
+                    std::move(deviceRequest),
+                    ctx);
             });
 
         if (HasError(response)) {
@@ -236,7 +238,7 @@ public:
             {
                 NProto::TReadPagesRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->ReadPages(std::move(deviceRequest));
+                return StorageNode->ReadPages(std::move(deviceRequest), ctx);
             });
 
         if (HasError(*response)) {
@@ -265,7 +267,9 @@ public:
             {
                 NProto::TReadJournalTailRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->ReadJournalTail(std::move(deviceRequest));
+                return StorageNode->ReadJournalTail(
+                    std::move(deviceRequest),
+                    ctx);
             });
 
         if (HasError(*response)) {
@@ -300,7 +304,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->AdvanceLsnLowWatermark(request);
+                return StorageNode->AdvanceLsnLowWatermark(request, ctx);
             });
 
         if (HasError(response)) {
@@ -325,7 +329,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->AcquireDevices(request);
+                return StorageNode->AcquireDevices(request, ctx);
             });
 
         if (HasError(response)) {
@@ -347,7 +351,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->ReleaseDevices(request);
+                return StorageNode->ReleaseDevices(request, ctx);
             });
 
         if (HasError(response)) {

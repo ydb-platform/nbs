@@ -1,3 +1,4 @@
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/sn/client/client.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/fastshard/libs/sn/server/server.h>
@@ -7,6 +8,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 
@@ -41,6 +43,7 @@ struct TFixture
     IServerPtr Server;
     TStorageNodeClientMetricsPtr Metrics;
     IStorageNodePtr Client;
+    TFastShardContext Ctx{0};
 
     TFixture()
         : Storage(std::make_shared<TFakeStorageNode>())
@@ -66,6 +69,7 @@ struct TUnreachableFixture
 {
     NTesting::TPortHolder Port;
     IStorageNodePtr Client;
+    TFastShardContext Ctx{0};
 
     TUnreachableFixture()
         : Port(NTesting::GetFreePort())
@@ -96,12 +100,13 @@ struct TSlowStorageNode: public IStorageNode
 
 #define SLOW_SN_METHOD(name, ...)                                              \
     NCloud::NProto::T##name##Response name(                                    \
-        NCloud::NProto::T##name##Request request) override                     \
+        NCloud::NProto::T##name##Request request,                              \
+        TFastShardContext& ctx) override                                       \
     {                                                                          \
         FiberScheduler::SleepFuture sf;                                        \
         FiberScheduler::sleep(DelayNs, &sf);                                   \
         sf.wait();                                                             \
-        return Inner->name(std::move(request));                                \
+        return Inner->name(std::move(request), ctx);                           \
     }                                                                          \
     // SLOW_SN_METHOD
 
@@ -111,12 +116,31 @@ struct TSlowStorageNode: public IStorageNode
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Holds every acquire until the gate opens, and says when one has arrived.
+
+struct TParkingStorageNode: public TFakeStorageNode
+{
+    silk::FiberEvent Arrived;
+    silk::FiberEvent Gate;
+
+    NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+        NCloud::NProto::TAcquireDevicesRequest request,
+        TFastShardContext& ctx) override
+    {
+        Arrived.set();
+        Gate.wait();
+        return TFakeStorageNode::AcquireDevices(std::move(request), ctx);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // Fires Count concurrent AcquireDevices calls on `client` from separate
 // fibers and returns the number of failed responses.
 
 struct TBurstParams
 {
     IStorageNode* Client;
+    TFastShardContext* Ctx;
     std::atomic<ui32>* ErrorCount;
 };
 
@@ -126,7 +150,7 @@ int BurstCallFiber(TBurstParams* params) noexcept
 {
     NCloud::NProto::TAcquireDevicesRequest req;
     req.AddDeviceUUIDs("dev-burst");
-    auto resp = params->Client->AcquireDevices(std::move(req));
+    auto resp = params->Client->AcquireDevices(std::move(req), *params->Ctx);
     if (resp.GetError().GetCode()) {
         params->ErrorCount->fetch_add(1);
     }
@@ -135,6 +159,7 @@ int BurstCallFiber(TBurstParams* params) noexcept
 
 ui32 RunBurst(IStorageNode& client, ui32 count)
 {
+    TFastShardContext ctx(0);
     std::atomic<ui32> errorCount{0};
 
     constexpr ui32 MaxBurst = 64U;
@@ -144,7 +169,10 @@ ui32 RunBurst(IStorageNode& client, ui32 count)
     for (ui32 i = 0; i < count; ++i) {
         const int r = FiberScheduler::run(
             BurstCallFiber,
-            TBurstParams{.Client = &client, .ErrorCount = &errorCount},
+            TBurstParams{
+                .Client = &client,
+                .Ctx = &ctx,
+                .ErrorCount = &errorCount},
             &futures[i]);
         Y_ABORT_UNLESS(r == 0);
     }
@@ -169,7 +197,7 @@ TEST(ClientTest, AcquireDevicesRoundTrip)
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
             req.AddDeviceUUIDs("dev-b");
-            auto resp = fx.Client->AcquireDevices(std::move(req));
+            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
 
             EXPECT_FALSE(resp.HasError() && resp.GetError().GetCode())
                 << resp.GetError().GetMessage();
@@ -177,6 +205,7 @@ TEST(ClientTest, AcquireDevicesRoundTrip)
             EXPECT_EQ(2u, fx.Storage->AcquireCalls[0].DeviceUUIDsSize());
             EXPECT_EQ("dev-a", fx.Storage->AcquireCalls[0].GetDeviceUUIDs(0));
             EXPECT_EQ("dev-b", fx.Storage->AcquireCalls[0].GetDeviceUUIDs(1));
+            EXPECT_LT(0u, fx.Ctx.ExecCycles.load());
             return 0;
         },
         0);
@@ -192,7 +221,7 @@ TEST(ClientTest, ReleaseDevicesRoundTrip)
 
             NCloud::NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
-            auto resp = fx.Client->ReleaseDevices(std::move(req));
+            auto resp = fx.Client->ReleaseDevices(std::move(req), fx.Ctx);
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, fx.Storage->ReleaseCalls.size());
@@ -228,7 +257,7 @@ TEST(ClientTest, ReadPagesRoundTrip)
             ref->SetPageCount(2);
             ref->SetPageSize(4096);
 
-            auto resp = fx.Client->ReadPages(std::move(req));
+            auto resp = fx.Client->ReadPages(std::move(req), fx.Ctx);
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, resp.PageGroupsSize());
@@ -267,7 +296,7 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
             pg->SetFirstPageNo(0);
             pg->AddContent("payload");
 
-            auto resp = fx.Client->WriteLogRecord(std::move(req));
+            auto resp = fx.Client->WriteLogRecord(std::move(req), fx.Ctx);
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, fx.Storage->WriteCalls.size());
@@ -300,7 +329,7 @@ TEST(ClientTest, StorageErrorPassesThrough)
 
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
-            auto resp = fx.Client->AcquireDevices(std::move(req));
+            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
 
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_FS_IO),
@@ -321,7 +350,7 @@ TEST(ClientTest, ConnectFailureReturnsRejected)
 
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
-            auto resp = fx.Client->AcquireDevices(std::move(req));
+            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
 
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_REJECTED),
@@ -425,11 +454,12 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             server->Start();
 
             auto client = CreateStorageNodeClient("localhost", port);
+            TFastShardContext ctx(0);
 
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-before");
-                auto resp = client->AcquireDevices(std::move(req));
+                auto resp = client->AcquireDevices(std::move(req), ctx);
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -443,7 +473,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-down");
-                auto resp = client->AcquireDevices(std::move(req));
+                auto resp = client->AcquireDevices(std::move(req), ctx);
                 EXPECT_EQ(
                     static_cast<ui32>(NCloud::E_REJECTED),
                     resp.GetError().GetCode());
@@ -466,7 +496,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-after");
-                auto resp = client->AcquireDevices(std::move(req));
+                auto resp = client->AcquireDevices(std::move(req), ctx);
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -493,7 +523,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             for (ui32 i = 1; i <= 3; ++i) {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs(TString("dev-") + ToString(i));
-                auto resp = fx.Client->AcquireDevices(std::move(req));
+                auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -506,6 +536,60 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             EXPECT_EQ(1u, fx.Metrics->ConnectionsUsed.load());
             EXPECT_EQ(3u, fx.Metrics->RequestsCompleted.load());
             EXPECT_GT(fx.Metrics->ConnectTimeUs.load(), 0u);
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(ClientTest, ShouldInterruptNetworkPollOnCtxCancel)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto storage = std::make_shared<TParkingStorageNode>();
+            NTesting::TPortHolder port = NTesting::GetFreePort();
+            auto server = CreateServer(port, storage);
+            server->Start();
+
+            auto metrics = std::make_shared<TStorageNodeClientMetrics>();
+            auto client =
+                CreateStorageNodeClient("localhost", port, metrics);
+
+            // The server holds the request; the cancel ends the call.
+            std::atomic<ui32> errorCount = 0;
+            {
+                TFastShardContext clientCtx(0);
+
+                silk::FiberFuture done;
+                int r = FiberScheduler::run(
+                    BurstCallFiber,
+                    TBurstParams{
+                        .Client = client.get(),
+                        .Ctx = &clientCtx,
+                        .ErrorCount = &errorCount},
+                    &done);
+                Y_ABORT_UNLESS(r == 0);
+
+                storage->Arrived.wait();
+                clientCtx.Cancel.set();
+
+                done.wait();
+                EXPECT_EQ(1u, errorCount.load());
+                EXPECT_EQ(0u, metrics->RequestsCompleted.load());
+                storage->Gate.set();
+            }
+
+            // connection should be dropped
+            NCloud::NProto::TAcquireDevicesRequest req;
+            req.AddDeviceUUIDs("dev-a");
+
+            TFastShardContext ctx(1);
+            auto resp = client->AcquireDevices(std::move(req), ctx);
+            EXPECT_EQ(0u, resp.GetError().GetCode());
+            EXPECT_EQ(2u, metrics->ConnectionsCreated.load());
+
+            server->Stop();
             return 0;
         },
         0);

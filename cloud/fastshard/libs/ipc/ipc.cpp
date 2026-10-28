@@ -11,9 +11,35 @@ namespace NCloud::NFastShard {
 
 using silk::FiberScheduler;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFiberPoller final: IPoller
+{
+    int Poll(int fd, uint32_t events) override
+    {
+        return FiberScheduler::poll(fd, events);
+    }
+};
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int RecvAll(int fd, void* buf, size_t len)
+{
+    TFiberPoller poller;
+    return RecvAll(fd, buf, len, poller);
+}
+
+int SendAll(int fd, const void* buf, size_t len)
+{
+    TFiberPoller poller;
+    return SendAll(fd, buf, len, poller);
+}
+
+int RecvAll(int fd, void* buf, size_t len, IPoller& poller)
 {
     auto* p = static_cast<ui8*>(buf);
     size_t done = 0;
@@ -27,7 +53,7 @@ int RecvAll(int fd, void* buf, size_t len)
             return EIO;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            if (int r = FiberScheduler::poll(fd, POLLIN); r) {
+            if (int r = poller.Poll(fd, POLLIN); r) {
                 return r;
             }
             continue;
@@ -40,7 +66,7 @@ int RecvAll(int fd, void* buf, size_t len)
     return 0;
 }
 
-int SendAll(int fd, const void* buf, size_t len)
+int SendAll(int fd, const void* buf, size_t len, IPoller& poller)
 {
     const auto* p = static_cast<const ui8*>(buf);
     size_t done = 0;
@@ -51,7 +77,7 @@ int SendAll(int fd, const void* buf, size_t len)
             continue;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            if (int r = FiberScheduler::poll(fd, POLLOUT); r) {
+            if (int r = poller.Poll(fd, POLLOUT); r) {
                 return r;
             }
             continue;
