@@ -6257,7 +6257,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto persistentStateManager = CreatePersistentStateManager({
             .HandleOpsQueueBasePath = statePath,
             .WriteBackCacheBasePath = statePath,
-            .WriteBackCacheTotalSizeLimit = 1,
+            .WriteBackCacheTotalSizeLimit = WriteBackCacheStateFileSize - 1,
             .DirectoryHandlesStorageBasePath = statePath,
         });
 
@@ -8680,7 +8680,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 CreateWallClockTimer(),
                 CreateScheduler(),
                  features,
-                 /* handleOpsQueueStateFileSize = */ 0,
+                 /* handleOpsQueueStateFileSize = */ 1000,
                  /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
             const ui64 nodeId = 123;
@@ -8856,7 +8856,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            /* handleOpsQueueStateFileSize = */ 0,
+            /* handleOpsQueueStateFileSize = */ 1000,
             /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
         bootstrap.Start();

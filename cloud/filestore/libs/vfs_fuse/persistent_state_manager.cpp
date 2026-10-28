@@ -35,17 +35,10 @@ struct TComponentConfig
     const TString BasePath;
     // State file name.
     const TString FileName;
+    // Whether the caller must supply a positive state file size.
+    const bool StateFileSizeRequired;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
-
-    TComponentConfig(
-            TString basePath,
-            TString fileName,
-            ui64 totalSizeLimit)
-        : BasePath(std::move(basePath))
-        , FileName(std::move(fileName))
-        , TotalSizeLimit(totalSizeLimit)
-    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -318,18 +311,21 @@ private:
 
 TPersistentStateManager::TPersistentStateManager(
         TPersistentStateManagerConfig config)
-    : HandleOpsQueue(
-          std::move(config.HandleOpsQueueBasePath),
-          TString(HandleOpsQueueFileName),
-          config.HandleOpsQueueTotalSizeLimit)
-    , WriteBackCache(
-          std::move(config.WriteBackCacheBasePath),
-          TString(WriteBackCacheFileName),
-          config.WriteBackCacheTotalSizeLimit)
-    , DirectoryHandleStorage(
-          std::move(config.DirectoryHandlesStorageBasePath),
-          TString(DirectoryHandleStorageFileName),
-          0)   // totalSizeLimit: not limited
+    : HandleOpsQueue{
+          .BasePath = std::move(config.HandleOpsQueueBasePath),
+          .FileName = TString(HandleOpsQueueFileName),
+          .StateFileSizeRequired = true,
+          .TotalSizeLimit = config.HandleOpsQueueTotalSizeLimit}
+    , WriteBackCache{
+          .BasePath = std::move(config.WriteBackCacheBasePath),
+          .FileName = TString(WriteBackCacheFileName),
+          .StateFileSizeRequired = true,
+          .TotalSizeLimit = config.WriteBackCacheTotalSizeLimit}
+    , DirectoryHandleStorage{
+          .BasePath = std::move(config.DirectoryHandlesStorageBasePath),
+          .FileName = TString(DirectoryHandleStorageFileName),
+          .StateFileSizeRequired = false,
+          .TotalSizeLimit = 0}
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -612,6 +608,13 @@ TPersistentStateManager::AcquireStateFile(
     const TString& sessionId,
     ui64 stateFileSize)
 {
+    if (component.StateFileSizeRequired && !stateFileSize) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "State file size for " << component.FileName
+                             << " must be positive");
+    }
+
     if (!component.BasePath) {
         return MakeError(
             E_INVALID_STATE,
@@ -636,10 +639,10 @@ TPersistentStateManager::AcquireStateFile(
                              << " is already acquired");
     }
 
-    // An existing state file is acquired regardless of the limit, so that the
-    // state of a previous session is always restored. A new one is created
-    // only if it fits into the limit, otherwise the component is not to be
-    // used by the session at all, which is what an empty guard means.
+    // An existing state file bypasses the size limit, provided the acquisition
+    // arguments are valid, so previous-session state can be restored. A new one
+    // is created only if it fits into the limit, otherwise the component is not
+    // used by the session, which is what an empty guard means.
     const bool isNew = !Registry.IsRegistered(dir.GetPath(), fileName);
     if (isNew && component.TotalSizeLimit &&
         Registry.GetTotalSize(fileName) + stateFileSize >
@@ -772,12 +775,6 @@ TPersistentStateManager::AcquireWriteBackCacheStateFile(
     const TString& sessionId,
     ui64 stateFileSize)
 {
-    if (!stateFileSize) {
-        return MakeError(
-            E_ARGUMENT,
-            "WriteBackCache state file size must be positive");
-    }
-
     return AcquireStateFile(
         WriteBackCache,
         fileSystemId,

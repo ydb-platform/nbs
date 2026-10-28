@@ -76,8 +76,8 @@ struct IPersistentStateManager
     // size limit of the component is reached. That is the only case in which
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
-    // stateFileSize is used to create and account a new file. Zero creates an
-    // empty file to be sized by the component itself.
+    // stateFileSize must be positive and is used to create and account a
+    // new file. Zero returns E_ARGUMENT even if the file already exists.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
@@ -95,7 +95,7 @@ struct IPersistentStateManager
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
     // stateFileSize must be positive and is used to create and account a
-    // new file.
+    // new file. Zero returns E_ARGUMENT even if the file already exists.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
@@ -141,8 +141,8 @@ struct TPersistentStateManagerConfig
 //
 // The total size of the state files of a component is the sum of the sizes
 // of all the files present under its base path. It is checked only when a new
-// state file is about to be created: an existing one is acquired regardless,
-// so that the state of a previous session is always restored.
+// state file is about to be created: existing files bypass this limit,
+// provided their acquisition arguments are valid.
 IPersistentStateManagerPtr CreatePersistentStateManager(
     TPersistentStateManagerConfig config);
 
