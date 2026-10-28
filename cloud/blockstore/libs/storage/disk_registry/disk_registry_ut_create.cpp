@@ -130,6 +130,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("is allocated for"),
                 response->GetErrorReason());
+            UNIT_ASSERT(!diskRegistry.Exists("foo"));
         }
 
         diskRegistry.CreateDiskFromDevices(
@@ -200,6 +201,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 E_ARGUMENT,
                 response->GetStatus(),
                 response->GetErrorReason());
+            UNIT_ASSERT(diskRegistry.Exists("bar"));
         }
 
         {
@@ -292,6 +294,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains(
                 "Replicas count is inconsistent with media kind"));
+            UNIT_ASSERT(!diskRegistry.Exists("mirror-2"));
         }
 
         diskRegistry.RebootTablet();
