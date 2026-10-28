@@ -35,7 +35,8 @@ struct TComponentConfig
     const TString BasePath;
     // State file name.
     const TString FileName;
-    // Whether the caller must supply a positive state file size.
+    // Whether the caller must supply a positive stateFileSize in
+    // AcquireStateFile.
     const bool StateFileSizeRequired;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
