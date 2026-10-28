@@ -10155,6 +10155,101 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRebuildPendingBlobCountSensors)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            TAutoPtr<IEventHandle> pendingAdd;
+            TAutoPtr<IEventHandle> pendingRebuild;
+            bool holdAdd = true;
+            bool holdRebuild = true;
+            bool completed = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (holdAdd && event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest)
+                    {
+                        pendingAdd = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (holdRebuild && event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
+                    {
+                        pendingRebuild = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                    {
+                        completed = true;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            // Allocate a commit id without adding the blob to the index yet.
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1024),
+                1);
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!pendingAdd;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(pendingAdd);
+
+            // Capture the initial counters and scan boundary before the write
+            // completes, then postpone scanning until the blob is indexed.
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 100);
+            if (!pendingRebuild) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!pendingRebuild;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(pendingRebuild);
+
+            holdAdd = false;
+            runtime->Send(pendingAdd.Release());
+            UNIT_ASSERT(SUCCEEDED(
+                partition.RecvWriteBlocksResponse()->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
+
+            holdRebuild = false;
+            runtime->Send(pendingRebuild.Release());
+            if (!completed) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return completed;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(completed);
+
+            // The pending blob must not be counted both by the scan and by
+            // the counter delta accumulated since the rebuild started.
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1 : 0,
+                stats.GetMergedIndexBlobsCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldRebuildBlobCountSensors)
     {
         for (bool useChannelCounters: {false, true}) {
