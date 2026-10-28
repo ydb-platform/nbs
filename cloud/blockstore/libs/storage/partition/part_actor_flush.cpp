@@ -562,6 +562,11 @@ void TPartitionActor::HandleFlush(
         UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -680,6 +685,10 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             ProcessCommitQueue(ctx);
         }
 
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -785,6 +794,10 @@ void TPartitionActor::CompleteFlushToDevNull(
     Y_UNUSED(args);
 
     State->AccessFlushState().SetIdle(ctx.Now());
+
+    if (IsSelectiveTrimEnabled()) {
+        EnqueueTrimFreshLogIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleFlushCompleted(

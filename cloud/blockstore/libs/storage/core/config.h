@@ -172,6 +172,8 @@ public:
     [[nodiscard]] ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdSSD() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdHDD() const;
+    [[nodiscard]] bool GetFreshSelectiveTrimEnabledSSD() const;
+    [[nodiscard]] bool GetFreshSelectiveTrimEnabledHDD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 
