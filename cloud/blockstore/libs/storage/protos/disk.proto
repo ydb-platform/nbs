@@ -395,6 +395,9 @@ message TDiskRegistryConfig
 
     // Last backup timestamp (in milliseconds)
     uint64 LastBackupTs = 8;
+
+    // Whether all secure erases are suspended.
+    bool SuspendSecureErase = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1480,6 +1483,24 @@ message TSetWritableStateRequest
 }
 
 message TSetWritableStateResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Suspends or resumes secure erase in Disk Registry.
+
+message TSetSuspendSecureEraseRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // If true, secure erase does not run.
+    bool Suspend = 2;
+}
+
+message TSetSuspendSecureEraseResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

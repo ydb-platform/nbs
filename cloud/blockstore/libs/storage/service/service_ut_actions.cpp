@@ -456,6 +456,29 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT(drState->WritableState);
     }
 
+    Y_UNIT_TEST(ShouldForwardSuspendSecureEraseRequestsToDiskRegistry)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        UNIT_ASSERT(!drState->SuspendSecureErase);
+
+        NProto::TSetSuspendSecureEraseRequest request;
+        request.SetSuspend(true);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        service.ExecuteAction("diskregistrysuspendsecureerase", buf);
+
+        UNIT_ASSERT(drState->SuspendSecureErase);
+    }
+
     Y_UNIT_TEST(ShouldForwardBackupRequestsToDiskRegistry)
     {
         auto drState = MakeIntrusive<TDiskRegistryState>();

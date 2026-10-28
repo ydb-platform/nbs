@@ -53,6 +53,7 @@ SRCS(
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp
     service_actor_actions_suspend_disk_agent.cpp
+    service_actor_actions_suspend_secure_erase.cpp
     service_actor_actions_set_vhost_discard_enabled_flag.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
