@@ -198,6 +198,7 @@ void TPartitionActor::HandleAddFreshBlocks(
 {
     auto* msg = ev->Get();
     ui64 removedBlocksCount = 0;
+    TVector<ui64> deadCommitIds;
 
     STORAGE_VERIFY(
         msg->WriteHandlers.size() == msg->BlockRanges.size() ||
@@ -212,7 +213,8 @@ void TPartitionActor::HandleAddFreshBlocks(
             State->ZeroFreshBlocks(
                 blockRange,
                 msg->CommitId,
-                removedBlocksCount);
+                removedBlocksCount,
+                deadCommitIds);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
@@ -229,7 +231,8 @@ void TPartitionActor::HandleAddFreshBlocks(
                 msg->CommitId,
                 sgList,
                 msg->BlobId,
-                removedBlocksCount);
+                removedBlocksCount,
+                deadCommitIds);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
@@ -270,6 +273,26 @@ void TPartitionActor::HandleAddFreshBlocks(
         // start to reject all requests. Therefore, we should trigger Flush on
         // the AddFreshBlock request.
         EnqueueFlushIfNeeded(ctx);
+    }
+
+    const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
+    if (threshold && deadCommitIds) {
+        // A blob counts at least one block, so that many small dead blobs
+        // reach the threshold before FreshBlobCountFlushThreshold.
+        ui64 deadByteCount = 0;
+        for (ui64 commitId: deadCommitIds) {
+            deadByteCount += Max<ui64>(
+                State->GetFreshBlobByteCount(commitId),
+                State->GetBlockSize());
+        }
+        if (State->AddDeadBlobByteCount(deadByteCount, threshold)) {
+            State->SetPrefixTrimRequested(true);
+        }
+        // The dead blobs may have moved P, which a pending prefix request
+        // waits for.
+        if (State->IsPrefixTrimRequested()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
     }
 }
 

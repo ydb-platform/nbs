@@ -813,12 +813,18 @@ void TPartitionActor::HandleFlushCompleted(
                 i.CommitId,
                 i.BlockCount);
         }
+        // The flush released the references of every flushed version, so P
+        // moved.
+        State->SetPrefixTrimRequested(true);
 
         ui64 flushedFreshBlobByteCount = 0;
 
+        // A trim that completed during the flush may have removed some of
+        // the dead blobs that the flush captured.
         for (const ui64& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
-            flushedFreshBlobByteCount +=
-                State->FlushFreshBlob(freshBlobCommitId);
+            flushedFreshBlobByteCount += State->FlushFreshBlob(
+                freshBlobCommitId,
+                State->GetLastTrimFreshLogToCommitId());
         }
 
         if (IsFreshBlocksWriterEnabled()) {

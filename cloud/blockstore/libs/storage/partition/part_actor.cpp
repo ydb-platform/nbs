@@ -1051,6 +1051,13 @@ TDuration TPartitionActor::GetFreshBlobAgeFlushThreshold() const
                : Config->GetFreshBlobAgeFlushThresholdHDD();
 }
 
+ui32 TPartitionActor::GetFreshDeadBlobByteCountTrimThreshold() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshDeadBlobByteCountTrimThresholdSSD()
+               : Config->GetFreshDeadBlobByteCountTrimThresholdHDD();
+}
+
 void TPartitionActor::CreateFreshBlocksCompanionClient()
 {
     FreshBlocksCompanionClient =

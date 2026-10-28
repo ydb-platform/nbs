@@ -47,6 +47,31 @@ Y_UNIT_TEST_SUITE(TBarriersTest)
 
         barriers.ReleaseBarrierN(2, 4);
     }
+
+    Y_UNIT_TEST(ShouldReportLastRelease)
+    {
+        TBarriers barriers;
+
+        barriers.AcquireBarrierN(10, 3);
+        barriers.AcquireBarrier(20);
+
+        UNIT_ASSERT(!barriers.ReleaseBarrier(10));
+        UNIT_ASSERT(!barriers.ReleaseBarrierN(10, 1));
+        UNIT_ASSERT(barriers.ReleaseBarrier(10));
+        UNIT_ASSERT_VALUES_EQUAL(20, barriers.GetMinCommitId());
+
+        barriers.AcquireBarrierN(30, 4);
+        UNIT_ASSERT(!barriers.ReleaseBarrierN(30, 3));
+        UNIT_ASSERT(barriers.ReleaseBarrierN(30, 1));
+
+        // One call can release several references at once.
+        barriers.AcquireBarrierN(40, 2);
+        barriers.AcquireBarrier(40);
+        UNIT_ASSERT(barriers.ReleaseBarrierN(40, 3));
+
+        UNIT_ASSERT(barriers.ReleaseBarrier(20));
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(), barriers.GetMinCommitId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -171,9 +171,22 @@ public:
     [[nodiscard]] TInstant GetFirstUnflushedFreshBlobTimestamp(
         ui64 trimFreshLogToCommitId) const;
 
+    // Returns the byte count of an untrimmed blob.
+    [[nodiscard]] ui64 GetFreshBlobByteCount(ui64 commitId) const;
+
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
-    void TrimFreshBlobs(ui64 commitId);
-    ui64 FlushFreshBlob(ui64 commitId);
+
+    // Trims every blob at or below commitId. Returns the unflushed bytes
+    // removed.
+    [[nodiscard]] ui64 TrimFreshBlobs(ui64 commitId);
+
+    // A missing blob must be at or below trimmedToCommitId: a trim that
+    // completed during the flush removed it. Returns 0 then.
+    ui64 FlushFreshBlob(ui64 commitId, ui64 trimmedToCommitId);
+
+private:
+    ui64 EraseUnflushedFreshBlob(
+        TMap<ui64, TUnflushedFreshBlob>::iterator it);
 };
 
 class TPartitionTrimFreshLogState
@@ -185,6 +198,14 @@ private:
         TDuration::Zero(),
         TDuration::MilliSeconds(100),
         TDuration::Seconds(5)};
+
+    // Bytes of fresh blobs killed by fresh writes since the last threshold
+    // step, at least one block per blob.
+    ui64 DeadBlobByteCount = 0;
+
+    // A flush or a threshold step requested a prefix trim, or the last one
+    // failed. Cleared when a prefix trim starts.
+    bool PrefixTrimRequested = false;
 
 public:
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
@@ -221,6 +242,27 @@ public:
     {
         LastTrimFreshLogToCommitId = commitId;
     }
+
+    [[nodiscard]] bool IsPrefixTrimRequested() const
+    {
+        return PrefixTrimRequested;
+    }
+
+    void SetPrefixTrimRequested(bool requested)
+    {
+        PrefixTrimRequested = requested;
+    }
+
+    // Returns true when the dead blobs reach the threshold.
+    [[nodiscard]] bool AddDeadBlobByteCount(ui64 byteCount, ui64 threshold)
+    {
+        DeadBlobByteCount += byteCount;
+        if (DeadBlobByteCount < threshold) {
+            return false;
+        }
+        DeadBlobByteCount = 0;
+        return true;
+    }
 };
 
 class TPartitionFreshBlocksState
@@ -248,17 +290,21 @@ public:
         const TBlockRange32& readRange,
         ui64 maxCommitId);
 
+    // deadCommitIds receives the fresh blobs whose last trim barrier
+    // reference was released by the write.
     void WriteFreshBlocks(
         const TBlockRange32& writeRange,
         ui64 commitId,
         TSgList sglist,
         TPartialBlobId blobId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 
     void ZeroFreshBlocks(
         const TBlockRange32& zeroRange,
         ui64 commitId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 
     void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
@@ -276,7 +322,8 @@ private:
         ui64 commitId,
         auto getBlockContent,
         TPartialBlobId blobId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
