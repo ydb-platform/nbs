@@ -118,6 +118,18 @@ func GetRawImageCrc32(t *testing.T) uint32 {
 	return uint32(value)
 }
 
+func GetGeneratedImage(t *testing.T, name string) (url string, size uint64, crc32 uint32) {
+	t.Helper()
+	prefix := "DISK_MANAGER_RECIPE_" + strings.ToUpper(name) + "_IMAGE_"
+	port := os.Getenv(prefix + "FILE_SERVER_PORT")
+	require.NotEmpty(t, port)
+	size, err := strconv.ParseUint(os.Getenv(prefix+"SIZE"), 10, 64)
+	require.NoError(t, err)
+	checksum, err := strconv.ParseUint(os.Getenv(prefix+"CRC32"), 10, 32)
+	require.NoError(t, err)
+	return fmt.Sprintf("http://localhost:%v", port), size, uint32(checksum)
+}
+
 func GetNonExistentImageFileURL() string {
 	port := os.Getenv("DISK_MANAGER_RECIPE_NON_EXISTENT_IMAGE_FILE_SERVER_PORT")
 	return fmt.Sprintf("http://localhost:%v", port)

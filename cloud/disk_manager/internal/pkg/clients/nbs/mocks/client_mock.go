@@ -252,20 +252,22 @@ func (c *ClientMock) MountRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (*nbs.Session, error) {
+) (nbs.Session, error) {
 
 	args := c.Called(ctx, diskID, encryption)
-	return args.Get(0).(*nbs.Session), args.Error(1)
+	session, _ := args.Get(0).(nbs.Session)
+	return session, args.Error(1)
 }
 
 func (c *ClientMock) MountLocalRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (*nbs.Session, error) {
+) (nbs.Session, error) {
 
 	args := c.Called(ctx, diskID, encryption)
-	return args.Get(0).(*nbs.Session), args.Error(1)
+	session, _ := args.Get(0).(nbs.Session)
+	return session, args.Error(1)
 }
 
 func (c *ClientMock) MountRW(
@@ -274,10 +276,11 @@ func (c *ClientMock) MountRW(
 	fillGeneration uint64,
 	fillSeqNumber uint64,
 	encryption *types.EncryptionDesc,
-) (*nbs.Session, error) {
+) (nbs.Session, error) {
 
 	args := c.Called(ctx, diskID, fillGeneration, fillSeqNumber, encryption)
-	return args.Get(0).(*nbs.Session), args.Error(1)
+	session, _ := args.Get(0).(nbs.Session)
+	return session, args.Error(1)
 }
 
 func (c *ClientMock) GetChangedBlocks(
@@ -297,6 +300,7 @@ func (c *ClientMock) GetChangedBlocks(
 		blockCount,
 		baseCheckpointID,
 		checkpointID,
+		ignoreBaseDisk,
 	)
 	return args.Get(0).([]byte), args.Error(1)
 }

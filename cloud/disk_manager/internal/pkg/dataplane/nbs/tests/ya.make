@@ -1,6 +1,7 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/dataplane/nbs)
 
-SET_APPEND(RECIPE_ARGS --nbs-only)
+# Exercise nonreplicated disks that cannot provide changed-block masks.
+SET_APPEND(RECIPE_ARGS --nbs-only --without-shadow-disks)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_XTEST_SRCS(

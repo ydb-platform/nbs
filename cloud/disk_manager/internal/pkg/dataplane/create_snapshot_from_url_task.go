@@ -58,7 +58,7 @@ func (t *createSnapshotFromURLTask) Run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	_, err := t.storage.CreateSnapshot(
+	snapshotMeta, err := t.storage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
 			ID: t.request.DstSnapshotId,
@@ -170,7 +170,12 @@ func (t *createSnapshotFromURLTask) Run(
 		return err
 	}
 
-	size := uint64(t.state.ChunkCount) * chunkSize
+	size := source.Size()
+	if snapshotMeta.Ready {
+		// SnapshotCreated preserves metadata already committed by a previous
+		// attempt. Older workers could have included chunk padding in Size.
+		size = snapshotMeta.Size
+	}
 	storageSize := dataChunkCount * chunkSize
 
 	t.state.SnapshotSize = size
