@@ -35,20 +35,15 @@ struct TComponentConfig
     const TString BasePath;
     // State file name.
     const TString FileName;
-    // The size a new state file is created with. 0 means empty, in which
-    // case the file is sized by the component itself.
-    const ui64 StateFileSize;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
 
     TComponentConfig(
             TString basePath,
             TString fileName,
-            ui64 stateFileSize,
             ui64 totalSizeLimit)
         : BasePath(std::move(basePath))
         , FileName(std::move(fileName))
-        , StateFileSize(stateFileSize)
         , TotalSizeLimit(totalSizeLimit)
     {}
 };
@@ -262,7 +257,8 @@ public:
         const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override;
+        const TString& sessionId,
+        ui64 stateFileSize) override;
 
     // WriteBackCache
 
@@ -271,7 +267,8 @@ public:
         const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override;
+        const TString& sessionId,
+        ui64 stateFileSize) override;
 
     // DirectoryHandleStorage
 
@@ -313,7 +310,8 @@ private:
     TResultOrError<TAcquireStateFileGuard> AcquireStateFile(
         const TComponentConfig& component,
         const TString& fileSystemId,
-        const TString& sessionId);
+        const TString& sessionId,
+        ui64 stateFileSize);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -323,17 +321,14 @@ TPersistentStateManager::TPersistentStateManager(
     : HandleOpsQueue(
           std::move(config.HandleOpsQueueBasePath),
           TString(HandleOpsQueueFileName),
-          config.HandleOpsQueueStateFileSize,
           config.HandleOpsQueueTotalSizeLimit)
     , WriteBackCache(
           std::move(config.WriteBackCacheBasePath),
           TString(WriteBackCacheFileName),
-          config.WriteBackCacheStateFileSize,
           config.WriteBackCacheTotalSizeLimit)
     , DirectoryHandleStorage(
           std::move(config.DirectoryHandlesStorageBasePath),
           TString(DirectoryHandleStorageFileName),
-          0,   // stateFileSize: sized by the component itself
           0)   // totalSizeLimit: not limited
 {}
 
@@ -614,7 +609,8 @@ TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireStateFile(
     const TComponentConfig& component,
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
     if (!component.BasePath) {
         return MakeError(
@@ -646,7 +642,7 @@ TPersistentStateManager::AcquireStateFile(
     // used by the session at all, which is what an empty guard means.
     const bool isNew = !Registry.IsRegistered(dir.GetPath(), fileName);
     if (isNew && component.TotalSizeLimit &&
-        Registry.GetTotalSize(fileName) + component.StateFileSize >
+        Registry.GetTotalSize(fileName) + stateFileSize >
             component.TotalSizeLimit)
     {
         // State file is not created: the total file size limit has been
@@ -670,8 +666,8 @@ TPersistentStateManager::AcquireStateFile(
             TFile file(
                 filePath,
                 EOpenModeFlag::CreateNew | EOpenModeFlag::RdWr);
-            if (component.StateFileSize) {
-                file.Resize(component.StateFileSize);
+            if (stateFileSize) {
+                file.Resize(stateFileSize);
             }
         } catch (const TSystemError& e) {
             if (e.Status() != EEXIST) {
@@ -693,7 +689,7 @@ TPersistentStateManager::AcquireStateFile(
     Registry.Register(
         dir.GetPath(),
         fileName,
-        component.StateFileSize,
+        stateFileSize,
         false /* fileAcquired */);
 
     THolder<TFileLock> lock;
@@ -731,7 +727,7 @@ TPersistentStateManager::AcquireStateFile(
     Registry.Register(
         impl->Dir.GetPath(),
         impl->FileName,
-        component.StateFileSize,
+        stateFileSize,
         true /* fileAcquired */);
 
     return TAcquireStateFileGuard(std::move(impl));
@@ -750,9 +746,14 @@ TResultOrError<bool> TPersistentStateManager::HasHandleOpsQueueState(
 TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireHandleOpsQueueStateFile(
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
-    return AcquireStateFile(HandleOpsQueue, fileSystemId, sessionId);
+    return AcquireStateFile(
+        HandleOpsQueue,
+        fileSystemId,
+        sessionId,
+        stateFileSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -768,9 +769,20 @@ TResultOrError<bool> TPersistentStateManager::HasWriteBackCacheState(
 TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireWriteBackCacheStateFile(
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
-    return AcquireStateFile(WriteBackCache, fileSystemId, sessionId);
+    if (!stateFileSize) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteBackCache state file size must be positive");
+    }
+
+    return AcquireStateFile(
+        WriteBackCache,
+        fileSystemId,
+        sessionId,
+        stateFileSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -788,7 +800,11 @@ TPersistentStateManager::AcquireDirectoryHandleStorageStateFile(
     const TString& fileSystemId,
     const TString& sessionId)
 {
-    return AcquireStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
+    return AcquireStateFile(
+        DirectoryHandleStorage,
+        fileSystemId,
+        sessionId,
+        0 /* stateFileSize: sized by the component itself */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -809,9 +825,10 @@ public:
 
     TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override
+        const TString& sessionId,
+        ui64 stateFileSize) override
     {
-        Y_UNUSED(fileSystemId, sessionId);
+        Y_UNUSED(fileSystemId, sessionId, stateFileSize);
         return NotImplemented(HandleOpsQueueFileName);
     }
 
@@ -827,9 +844,10 @@ public:
 
     TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override
+        const TString& sessionId,
+        ui64 stateFileSize) override
     {
-        Y_UNUSED(fileSystemId, sessionId);
+        Y_UNUSED(fileSystemId, sessionId, stateFileSize);
         return NotImplemented(WriteBackCacheFileName);
     }
 

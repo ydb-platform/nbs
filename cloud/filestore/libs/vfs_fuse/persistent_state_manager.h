@@ -76,10 +76,13 @@ struct IPersistentStateManager
     // size limit of the component is reached. That is the only case in which
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
+    // stateFileSize is used to create and account a new file. Zero creates an
+    // empty file to be sized by the component itself.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) = 0;
+        const TString& sessionId,
+        ui64 stateFileSize) = 0;
 
     // WriteBackCache
 
@@ -91,10 +94,13 @@ struct IPersistentStateManager
     // size limit of the component is reached. That is the only case in which
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
+    // stateFileSize must be positive and is used to create and account a
+    // new file.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) = 0;
+        const TString& sessionId,
+        ui64 stateFileSize) = 0;
 
     // DirectoryHandleStorage
 
@@ -114,17 +120,11 @@ struct IPersistentStateManager
 struct TPersistentStateManagerConfig
 {
     TString HandleOpsQueueBasePath;
-    // Size of a single HandleOpsQueue state file. A new file comes into
-    // existence with this size, and it is what a new file is assumed to add
-    // to the total size when the limit below is checked. 0 means the file is
-    // created empty and sized by the component itself.
-    ui64 HandleOpsQueueStateFileSize = 0;
     // Limit of the total size of the HandleOpsQueue state files of all the
     // filesystems and sessions. 0 disables the limiting.
     ui64 HandleOpsQueueTotalSizeLimit = 0;
 
     TString WriteBackCacheBasePath;
-    ui64 WriteBackCacheStateFileSize = 0;
     ui64 WriteBackCacheTotalSizeLimit = 0;
 
     TString DirectoryHandlesStorageBasePath;
