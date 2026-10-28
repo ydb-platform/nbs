@@ -2,44 +2,65 @@
 
 #include "connection.h"
 
-#include <contrib/ydb/library/actors/interconnect/interconnect_uring_engine.h>
+#include <util/generic/ptr.h>
+#include <util/generic/size_literals.h>
+
+namespace NActors {
+
+class IUringEngine;
+class IEventDestructor;
+using TUringEnginePtr = TIntrusivePtr<IUringEngine>;
+
+}   // namespace NActors
+
+namespace NInterconnect {
+
+class TStreamSocket;
+
+}   // namespace NInterconnect
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui64 DefaultMaxOutputQueueBytes = 512_MB;
+
 struct ITransport
 {
     virtual ~ITransport() = default;
 
-    // Prepares routing without registering any I/O. The transport assigns an
-    // internal connection identity independent of the event actor IDs.
-    // xdcSocket is optional; when supplied it belongs to the same logical
-    // connection and is shut down together with socket. XDC I/O errors close
-    // the pair; an idle XDC disconnect is detected on subsequent payload I/O.
-    // maxOutputQueueBytes must be positive; Send rejects admission above it.
-    // Returns null on invalid arguments or after RequestStop().
+    // Requires Activate() before use.
+    // Optional xdcSocket is closed together with socket; an error in either
+    // closes both. Idle XDC disconnects may remain undetected until a data
+    // transfer is attempted. Returns null if socket or handler is null, or
+    // shutdown has started.
     virtual IConnectionPtr CreateConnection(
         TIntrusivePtr<NInterconnect::TStreamSocket> socket,
         TIntrusivePtr<NInterconnect::TStreamSocket> xdcSocket,
         std::shared_ptr<IConnectionHandler> handler,
-        bool sendPings,
-        ui64 maxOutputQueueBytes) = 0;
+        bool sendPings) = 0;
 
-    // Safe from callbacks. Rejects new work and closes every connection.
+    // Safe from callbacks. Rejects new work without waiting for callbacks to
+    // finish.
     virtual void RequestStop() = 0;
 
-    // External thread only. Concurrent callers wait for the same completion.
-    // Joins workers and waits for user callbacks, then releases the engine.
-    // The transport owner must call Stop before releasing its last reference;
-    // destruction must also take place outside transport callbacks.
+    // Waits for all callbacks. Call outside callbacks and before releasing
+    // the transport's last reference.
     virtual void Stop() = 0;
 };
 
 using ITransportPtr = std::shared_ptr<ITransport>;
 
-// Takes exclusive control of a fresh engine: installs its client and owns Stop.
-// Callers must not register connections or call Stop directly on this engine.
-ITransportPtr CreateTransport(NActors::TUringEnginePtr engine);
+// Requires exclusive control of an unused engine.
+// maxOutputQueueBytes limits the combined output queues of all connections,
+// including data not yet released after a connection closes.
+// Zero maxOutputQueueBytes selects DefaultMaxOutputQueueBytes.
+// Optional eventDestructor receives outgoing payloads for deferred destruction.
+// Stop() does not wait for deferred destruction to complete.
+// Returns null if engine is null.
+ITransportPtr CreateTransport(
+    NActors::TUringEnginePtr engine,
+    ui64 maxOutputQueueBytes,
+    std::shared_ptr<NActors::IEventDestructor> eventDestructor);
 
 }   // namespace NCloud::NBlockStore::NIcV2

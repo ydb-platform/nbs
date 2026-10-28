@@ -7,6 +7,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/actors/interconnect
     library/cpp/threading/future
+    library/cpp/threading/hot_swap
 )
 
 END()

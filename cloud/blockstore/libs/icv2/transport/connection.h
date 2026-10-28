@@ -14,37 +14,33 @@ struct IConnectionHandler
 {
     virtual ~IConnectionHandler() = default;
 
-    // Serialized per connection, outside transport locks. Normally called on an
-    // engine worker; early notifications may be dispatched by Activate().
-    // Must not block waiting for Close/Stop or throw exceptions.
-    virtual void HandleEvent(std::unique_ptr<NActors::IEventHandle> ev) = 0;
-    virtual void HandleDisconnect(const TString& reason) = 0;
+    // Callbacks may overlap and arrive out of order for the same connection.
+    virtual void HandleEvent(
+        std::unique_ptr<NActors::IEventHandle> ev) noexcept = 0;
+    // Called at most once per connection.
+    virtual void HandleDisconnect(const TString& reason) noexcept = 0;
 };
 
 struct IConnection
 {
     virtual ~IConnection() = default;
 
-    // Call after the owner and handler are ready. May invoke callbacks before
-    // returning. Exactly one activation is accepted; false also means closed or
-    // stopping. No user callbacks occur before activation.
+    // Callbacks may start before this method returns, but never before
+    // activation. Repeated activation returns false.
+    // Registration failure returns false and invokes HandleDisconnect().
     virtual bool Activate() = 0;
 
-    // Consumes ev even on rejection. True means accepted, not delivered.
-    // Concurrent sends are ordered by admission; Close may discard queued data.
-    // Rejects events exceeding the connection output queue byte limit.
+    // Returns true if accepted for sending. Delivery is not guaranteed.
+    // Rejects events exceeding the transport's shared output queue byte limit.
     virtual bool Send(std::unique_ptr<NActors::IEventHandle> ev) = 0;
 
-    // Thread-safe, nonblocking and idempotent, including from a callback.
-    // Stops admitting callbacks; an already admitted callback may still run.
-    // Shuts down the socket and requests engine unregistration.
-    // Local close does not call HandleDisconnect; remote failure calls it once.
+    // Does not wait for callbacks; use WhenClosed() to await completion.
+    // Safe from callbacks. Local closure does not invoke HandleDisconnect().
     virtual void Close() = 0;
 
-    // Ready after closure and the last user callback has returned. The engine
-    // may still be draining I/O and holding outgoing events/buffers. Received
-    // events already transferred to the handler belong to that handler.
-    // Do not wait for this future from a callback of this connection.
+    // Ready after closure and completion of all admitted operations and
+    // callbacks. Outgoing events may still be retained after this future is
+    // ready. Do not wait for this future from a callback of this connection.
     virtual NThreading::TFuture<void> WhenClosed() const = 0;
 
     virtual ui64 GetOutputQueueSize() const = 0;
