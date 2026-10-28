@@ -59,28 +59,36 @@ struct TFakeStorageNode: public IStorageNode
     TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
-        NCloud::NProto::TAcquireDevicesRequest request) override;
+        NCloud::NProto::TAcquireDevicesRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
-        NCloud::NProto::TReleaseDevicesRequest request) override;
+        NCloud::NProto::TReleaseDevicesRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TFormatDeviceResponse FormatDevice(
-        NCloud::NProto::TFormatDeviceRequest request) override;
+        NCloud::NProto::TFormatDeviceRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TListDevicesResponse ListDevices(
-        NCloud::NProto::TListDevicesRequest request) override;
+        NCloud::NProto::TListDevicesRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TReadPagesResponse ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override;
+        NCloud::NProto::TReadPagesRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request) override;
+        NCloud::NProto::TWriteLogRecordRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
-        NCloud::NProto::TReadJournalTailRequest request) override;
+        NCloud::NProto::TReadJournalTailRequest request,
+        TFastShardContext&) override;
 
     NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override;
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request,
+        TFastShardContext&) override;
 };
 
 }   // namespace NCloud::NFastShard

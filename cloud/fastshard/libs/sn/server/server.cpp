@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/ipc/ipc.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -159,14 +160,15 @@ using THandlerRegistryPtr = std::shared_ptr<THandlerRegistry>;
 
 TDeviceProtocolResponse Dispatch(
     IStorageNode& storage,
-    const TDeviceProtocolRequest& req)
+    const TDeviceProtocolRequest& req,
+    TFastShardContext& ctx)
 {
     TDeviceProtocolResponse resp;
 
     switch (req.GetRequestCase()) {
 #define DISPATCH_REQUEST(name, ...)                                            \
     case TDeviceProtocolRequest::k##name: {                                    \
-        *resp.Mutable##name() = storage.name(req.Get##name());                 \
+        *resp.Mutable##name() = storage.name(req.Get##name(), ctx);            \
         break;                                                                 \
     }                                                                          \
         // DISPATCH_REQUEST
@@ -252,7 +254,8 @@ int ConnFiberMain(TConnParams* params) noexcept
         }
 
         // Dispatch.
-        TDeviceProtocolResponse resp = Dispatch(*storage, req);
+        TFastShardContext ctx(req.GetRequestId());
+        TDeviceProtocolResponse resp = Dispatch(*storage, req, ctx);
 
         // Echo the outer request id so the client can correlate.
         resp.SetRequestId(req.GetRequestId());

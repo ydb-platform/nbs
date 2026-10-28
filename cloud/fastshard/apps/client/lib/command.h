@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/sn/client/client.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/fastshard/public/api/protos/device.pb.h>
@@ -12,6 +13,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/random/random.h>
 #include <util/stream/input.h>
 #include <util/stream/output.h>
 #include <util/system/event.h>
@@ -87,6 +89,8 @@ protected:
     IStorageNodePtr Client;
     TStorageNodeClientMetricsPtr Metrics;
 
+    TFastShardContext Context{RandomNumber<ui64>()};
+
     // Wall time of the Call made by DoExecute, including connection
     // setup; valid once Called is set.
     bool Called = false;
@@ -150,7 +154,7 @@ protected:
 
     template <typename TRequest, typename TResponse>
     TResponse Call(
-        TResponse (IStorageNode::*method)(TRequest),
+        TResponse (IStorageNode::*method)(TRequest, TFastShardContext&),
         TRequest request)
     {
         bool needAcquire = false;
@@ -169,7 +173,7 @@ protected:
         }
 
         const TInstant started = TInstant::Now();
-        TResponse response = ((*Client).*method)(std::move(request));
+        TResponse response = ((*Client).*method)(std::move(request), Context);
         CallTime = TInstant::Now() - started;
         Called = true;
 
