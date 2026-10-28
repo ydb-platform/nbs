@@ -110,6 +110,7 @@ using TCritEventParams =
     xxx(BlockChecksumAbsent)                                                   \
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
     xxx(ServiceProxyReceivedUnknownCookie)                                     \
+    xxx(FreshBlobLiveCommitNotFound)                                           \
     xxx(Bug) /* General software bug event.                                    \
                 Used for non-specialized or unclassified errors. */            \
     // BLOCKSTORE_IMPOSSIBLE_EVENTS

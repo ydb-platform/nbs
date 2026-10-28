@@ -82,6 +82,20 @@ public:
         TInstant Timestamp;
     };
 
+    struct TFreshTrimSnapshot
+    {
+        // An ordinary trim may go up to this commit: it is below every
+        // referenced fresh blob and every in-flight fresh write.
+        ui64 OrdinaryTrimToCommitId = 0;
+        // Below every in-flight fresh write. Every fresh write at or below it
+        // has been added to the partition state or has failed.
+        ui64 SelectiveTrimToCommitId = 0;
+        // Referenced commits in
+        // (OrdinaryTrimToCommitId, SelectiveTrimToCommitId], ascending: the
+        // live installed blobs.
+        TVector<ui64> LiveCommitIds;
+    };
+
     TResourceMetricsQueue ResourceMetricsQueue;
     TThreadSafePartCounters PartCounters;
     TThreadSafePartStats PartStats;
@@ -189,6 +203,10 @@ public:
     }
 
     ui64 GetTrimFreshLogToCommitId() const;
+
+    // OrdinaryTrimToCommitId, SelectiveTrimToCommitId and the live commits
+    // between them, consistent with each other.
+    TFreshTrimSnapshot GetFreshTrimSnapshot() const;
 
     auto GetCommitQueue()
     {

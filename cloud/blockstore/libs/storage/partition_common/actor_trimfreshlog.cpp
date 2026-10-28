@@ -28,6 +28,8 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         bool hard,
         TVector<TPartialBlobId> keep,
         TVector<TPartialBlobId> doNotKeep,
+        bool selectiveTrim,
+        TVector<ui64> collectingCommitIds,
         TVector<ui32> freshChannels,
         TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout)
@@ -40,6 +42,8 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , Hard(hard)
     , Keep(std::move(keep))
     , DoNotKeep(std::move(doNotKeep))
+    , SelectiveTrim(selectiveTrim)
+    , CollectingCommitIds(std::move(collectingCommitIds))
     , FreshChannels(std::move(freshChannels))
     , VolumeLabels(std::move(volumeLabels))
     , Timeout(timeout)
@@ -77,6 +81,14 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
         tabletId,
         "Too many flags, keep: " << Keep.size()
                                  << ", do not keep: " << DoNotKeep.size());
+    // Only a selective trim, which sends a soft barrier, collects blobs by id.
+    STORAGE_VERIFY_C(
+        SelectiveTrim ? !Hard : !CollectingCommitIds,
+        TWellKnownEntityTypes::TABLET,
+        tabletId,
+        "Inconsistent trim kind, selective: "
+            << SelectiveTrim << ", hard: " << Hard
+            << ", collecting: " << CollectingCommitIds.size());
 
     // The barrier goes to every group in each channel's history. Known blobs
     // would lower it, so pass none.
@@ -160,6 +172,8 @@ void TTrimFreshLogActor::NotifyCompleted(const TActorContext& ctx)
     auto ev = std::make_unique<TEvent>(Error);
 
     ev->CommitId = TrimFreshLogToCommitId;
+    ev->SelectiveTrim = SelectiveTrim;
+    ev->CollectedCommitIds = std::move(CollectingCommitIds);
     ev->ExecCycles = RequestInfo->GetExecCycles();
     ev->TotalCycles = RequestInfo->GetTotalCycles();
 

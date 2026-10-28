@@ -30,6 +30,8 @@ private:
     const bool Hard;
     const TVector<TPartialBlobId> Keep;
     const TVector<TPartialBlobId> DoNotKeep;
+    const bool SelectiveTrim;
+    TVector<ui64> CollectingCommitIds;
     const TVector<ui32> FreshChannels;
     const TVolumeLabelsConstPtr VolumeLabels;
     const TDuration Timeout;
@@ -49,6 +51,9 @@ public:
         // Soft barriers only. Each flag goes to the group that stores the blob.
         TVector<TPartialBlobId> keep,
         TVector<TPartialBlobId> doNotKeep,
+        // Returned in the completion event, for the partition to apply.
+        bool selectiveTrim,
+        TVector<ui64> collectingCommitIds,
         TVector<ui32> freshChannels,
         TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout);

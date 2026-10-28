@@ -40,6 +40,12 @@ public:
     ui64 GetMaxCommitId() const;
 
     void GetCommitIds(TVector<ui64>& result) const;
+
+    // Appends referenced commit ids in [minCommitId, maxCommitId], ascending.
+    void GetCommitIds(
+        ui64 minCommitId,
+        ui64 maxCommitId,
+        TVector<ui64>& result) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

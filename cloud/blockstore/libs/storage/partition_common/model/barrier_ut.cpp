@@ -72,6 +72,42 @@ Y_UNIT_TEST_SUITE(TBarriersTest)
         UNIT_ASSERT(barriers.ReleaseBarrier(20));
         UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(), barriers.GetMinCommitId());
     }
+
+    Y_UNIT_TEST(ShouldListCommitIdsInRange)
+    {
+        TBarriers barriers;
+
+        auto getCommitIds = [&](ui64 minCommitId, ui64 maxCommitId)
+        {
+            TVector<ui64> result;
+            barriers.GetCommitIds(minCommitId, maxCommitId, result);
+            return result;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), getCommitIds(0, Max()));
+
+        barriers.AcquireBarrier(10);
+        barriers.AcquireBarrierN(20, 2);
+        barriers.AcquireBarrier(30);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({10, 20, 30}),
+            getCommitIds(0, Max()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({10, 20, 30}),
+            getCommitIds(10, 30));
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({20}), getCommitIds(11, 29));
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({20}), getCommitIds(20, 20));
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), getCommitIds(21, 29));
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), getCommitIds(31, 40));
+        // An empty range.
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), getCommitIds(30, 10));
+
+        // The result is appended to.
+        TVector<ui64> result = {1};
+        barriers.GetCommitIds(25, 35, result);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({1, 30}), result);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
