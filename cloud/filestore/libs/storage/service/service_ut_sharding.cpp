@@ -3984,6 +3984,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     }
 
     SERVICE_TEST(
+        ShouldNotEnableStrictFileSystemSizeEnforcementForOtherFileSystems)
+    {
+        // Resizing a filesystem with StrictFileSystemSizeEnforcement must not
+        // affect the filesystems created after it: resize used to merge this
+        // flag into the storage config shared by the whole service.
+        config.SetStrictFileSystemSizeEnforcementEnabled(false);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            0 /* shardCount */,
+            true /* enableStrictSizeMode */);
+        UNIT_ASSERT(GetFileSystemTopology(service, fsConfig.FsId)
+                        .GetStrictFileSystemSizeEnforcementEnabled());
+
+        const TString otherFsId = "other";
+        service.CreateFileStore(otherFsId, fsConfig.MainFsBlockCount);
+
+        const auto topology = GetFileSystemTopology(service, otherFsId);
+        UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
+        UNIT_ASSERT(!topology.GetStrictFileSystemSizeEnforcementEnabled());
+        for (const auto& shardId: topology.GetShardFileSystemIds()) {
+            UNIT_ASSERT_C(
+                !GetFileSystemTopology(service, shardId)
+                     .GetStrictFileSystemSizeEnforcementEnabled(),
+                shardId);
+        }
+    }
+
+    SERVICE_TEST(
         ShouldResizeShardsInStrictWithStrictFileSystemSizeEnforcement)
     {
         // Create file system with two shards 1000 * 4 * 1024 bytes each
