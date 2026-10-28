@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NStateFileTool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStateFileProcessor
+class TStateFileEditor
 {
 public:
     // The caller must keep the mapped file stable throughout the dump, e.g. by

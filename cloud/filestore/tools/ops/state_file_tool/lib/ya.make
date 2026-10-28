@@ -2,7 +2,7 @@ LIBRARY()
 
 SRCS(
     state_file_locator.cpp
-    state_file_processor.cpp
+    state_file_editor.cpp
 )
 
 PEERDIR(

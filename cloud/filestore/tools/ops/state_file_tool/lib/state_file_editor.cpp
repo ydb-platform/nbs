@@ -1,4 +1,4 @@
-#include "state_file_processor.h"
+#include "state_file_editor.h"
 
 #include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_data_request.h>
 
@@ -31,7 +31,7 @@ void FillHeader(
     protoHeader.SetMetadataChecksum(header.MetadataChecksum);
 }
 
-void FillWriteDataRequestInfo(
+void FillWriteBackCacheEntryPayloadInfo(
     NProto::TStateFileEntry& entry,
     const char* dataPtr,
     ui32 dataSize)
@@ -47,11 +47,12 @@ void FillWriteDataRequestInfo(
     // payload can still be useful while diagnosing or repairing a file.
     auto header = ReadUnaligned<TSerializedWriteDataRequestHeader>(dataPtr);
 
-    auto& requestInfo = *entry.MutableWriteDataRequestInfo();
-    requestInfo.SetNodeId(header.NodeId);
-    requestInfo.SetHandle(header.Handle);
-    requestInfo.SetOffset(header.Offset);
-    requestInfo.SetSize(dataSize - sizeof(TSerializedWriteDataRequestHeader));
+    auto& requestMetadata = *entry.MutableWriteDataRequestMetadata();
+    requestMetadata.SetNodeId(header.NodeId);
+    requestMetadata.SetHandle(header.Handle);
+    requestMetadata.SetOffset(header.Offset);
+    requestMetadata.SetSize(
+        dataSize - sizeof(TSerializedWriteDataRequestHeader));
 }
 
 void FillEntryInfo(
@@ -73,7 +74,10 @@ void FillEntryInfo(
 
     switch (fileType) {
         case NProto::EStateFileType::WriteBackCache:
-            FillWriteDataRequestInfo(entry, dataPtr, entryHeader.DataSize);
+            FillWriteBackCacheEntryPayloadInfo(
+                entry,
+                dataPtr,
+                entryHeader.DataSize);
             break;
         default:
             break;
@@ -118,7 +122,7 @@ EDumpEntryResult DumpEntry(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
+NProto::TStateFileDump TStateFileEditor::DumpStateFile(
     TFileRingBufferAccessor& accessor,
     NProto::EStateFileType fileType)
 {
@@ -127,9 +131,9 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     const auto rawData = accessor.GetRawData();
     const auto validationResult = accessor.ValidateAndInitialize();
 
-    // Detect changes since the dump so patching can reject a stale snapshot.
-    // Cover the header, used metadata and data without reading unused sparse
-    // capacity, which would commit tmpfs pages to RAM.
+    // The Checksum field detects file changes between dumping and patching.
+    // Checksum calculation skips unused sparse capacity to avoid committing
+    // tmpfs pages to RAM.
     const auto headerData =
         rawData.first(Min(rawData.size(), sizeof(TFileRingBufferHeader)));
     result.SetChecksum(Crc32c(headerData.data(), headerData.size()));
@@ -144,7 +148,7 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     }
 
     if (result.GetIsCorrupted()) {
-        result.SetValidationError(
+        result.SetValidationErrorMessage(
             accessor.GetLastValidationError().GetMessage());
     }
 
@@ -155,6 +159,8 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
 
     auto* dataProcessor = accessor.GetDataProcessor();
     if (header == nullptr || dataProcessor == nullptr) {
+        // Even in Debug mode, no data processor is created when the header
+        // version or layout is invalid (e.g. the file is truncated).
         return result;
     }
 
@@ -185,32 +191,29 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     const auto capabilities = dataProcessor->GetCapabilities(false);
     auto pos = readPos;
     while (pos > header->WritePos) {
-        const auto entryResult = DumpEntry(
-            result,
-            *dataProcessor,
-            capabilities,
-            pos,
-            fileType);
+        const auto entryResult =
+            DumpEntry(result, *dataProcessor, capabilities, pos, fileType);
+
+        if (entryResult == EDumpEntryResult::Slack) {
+            // A slack marker at ReadPos means empty-file normalization or
+            // corruption. In either case, there are no more entries to dump.
+            if (pos != readPos) {
+                pos = 0;
+            } else {
+                return result;
+            }
+        }
 
         if (entryResult != EDumpEntryResult::Dumped) {
-            // A slack marker at ReadPos is invalid unless WritePos == 0. Do
-            // not wrap in that case: doing so would report unrelated entries
-            // at the start of a corrupt buffer as if they were live.
-            if (entryResult == EDumpEntryResult::Slack && pos != readPos) {
-                pos = 0;
-            }
             break;
         }
     }
 
     while (pos < header->WritePos) {
-        if (DumpEntry(
-                result,
-                *dataProcessor,
-                capabilities,
-                pos,
-                fileType) != EDumpEntryResult::Dumped)
-        {
+        const auto entryResult =
+            DumpEntry(result, *dataProcessor, capabilities, pos, fileType);
+
+        if (entryResult != EDumpEntryResult::Dumped) {
             // A slack marker is not valid in the second, low-address segment.
             break;
         }

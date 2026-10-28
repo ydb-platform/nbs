@@ -1,5 +1,8 @@
 syntax = "proto2";
 
+import "cloud/filestore/libs/vfs_fuse/protos/queue_entry.proto";
+import "cloud/filestore/public/api/protos/data.proto";
+
 package NCloud.NFileStore.NStateFileTool.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,7 +33,8 @@ message TStateFileList
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TWriteDataRequestInfo
+// WriteBackCache state files contain only write-data requests as entry payloads
+message TWriteDataRequestMetadata
 {
     required uint64 NodeId = 1;
     required uint64 Handle = 2;
@@ -60,7 +64,18 @@ message TStateFileEntry
     required bool FreeFlag = 4;
     optional uint32 ActualDataChecksum = 5;
     required uint64 EntryPos = 6;
-    optional TWriteDataRequestInfo WriteDataRequestInfo = 7;
+
+    // Decoded request information; the format depends on the state file type.
+    // Unset when the payload cannot be decoded.
+    oneof Request
+    {
+        // WriteBackCache
+        TWriteDataRequestMetadata WriteDataRequestMetadata = 7;
+
+        // HandleOpsQueue
+        .NCloud.NFileStore.NProto.TQueuedCreateHandleRequest QueuedCreateHandleRequest = 8;
+        .NCloud.NFileStore.NProto.TDestroyHandleRequest DestroyHandleRequest = 9;
+    }
 }
 
 message TStateFileDump
@@ -75,5 +90,5 @@ message TStateFileDump
     optional uint32 ActualMetadataChecksum = 3;
     optional TStateFileHeader Header = 4;
     repeated TStateFileEntry Entries = 5;
-    optional string ValidationError = 6;
+    optional string ValidationErrorMessage = 6;
 }

@@ -1,4 +1,4 @@
-#include "state_file_processor.h"
+#include "state_file_editor.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
@@ -111,7 +111,7 @@ struct TBootstrap
 
     NProto::TStateFileDump Dump(NProto::EStateFileType fileType)
     {
-        return TStateFileProcessor::DumpStateFile(Accessor, fileType);
+        return TStateFileEditor::DumpStateFile(Accessor, fileType);
     }
 
 private:
@@ -127,7 +127,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
+Y_UNIT_TEST_SUITE(TStateFileEditorTest)
 {
     Y_UNIT_TEST(ShouldDumpUninitializedAndMalformedStateFiles)
     {
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
-            UNIT_ASSERT(!dump.HasValidationError());
+            UNIT_ASSERT(!dump.HasValidationErrorMessage());
             UNIT_ASSERT(!dump.HasHeader());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetChecksum());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
@@ -151,7 +151,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
             UNIT_ASSERT(dump.GetIsCorrupted());
             UNIT_ASSERT(!dump.HasHeader());
-            UNIT_ASSERT(dump.HasValidationError());
+            UNIT_ASSERT(dump.HasValidationErrorMessage());
             UNIT_ASSERT_VALUES_EQUAL(
                 Crc32c(bootstrap.RawData.data(), bootstrap.RawData.size()),
                 dump.GetChecksum());
@@ -165,7 +165,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
             UNIT_ASSERT(!dump.GetIsCorrupted());
-            UNIT_ASSERT(!dump.HasValidationError());
+            UNIT_ASSERT(!dump.HasValidationErrorMessage());
             UNIT_ASSERT(!dump.HasHeader());
             UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
         }
@@ -179,7 +179,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
 
         UNIT_ASSERT(!dump.GetIsCorrupted());
-        UNIT_ASSERT(!dump.HasValidationError());
+        UNIT_ASSERT(!dump.HasValidationErrorMessage());
         UNIT_ASSERT(dump.HasHeader());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -233,7 +233,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(corruptDump.GetIsCorrupted());
         UNIT_ASSERT(corruptDump.HasActualMetadataChecksum());
-        UNIT_ASSERT(corruptDump.HasValidationError());
+        UNIT_ASSERT(corruptDump.HasValidationErrorMessage());
         UNIT_ASSERT_VALUES_UNEQUAL(
             corruptDump.GetHeader().GetMetadataChecksum(),
             corruptDump.GetActualMetadataChecksum());
@@ -259,7 +259,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
         const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
-        UNIT_ASSERT(dump.HasValidationError());
+        UNIT_ASSERT(dump.HasValidationErrorMessage());
         UNIT_ASSERT(!dump.HasActualMetadataChecksum());
     }
 
@@ -495,7 +495,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             sizeDump.GetEntries(1).GetDataSize());
         UNIT_ASSERT_VALUES_EQUAL(0, sizeDump.GetEntries(1).GetDataChecksum());
         UNIT_ASSERT(!sizeDump.GetEntries(1).HasActualDataChecksum());
-        UNIT_ASSERT(sizeDump.HasValidationError());
+        UNIT_ASSERT(sizeDump.HasValidationErrorMessage());
 
         bootstrap.Execute(
             [](TFileRingBuffer& ringBuffer)
@@ -527,7 +527,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
             const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
             UNIT_ASSERT(dump.GetIsCorrupted());
-            UNIT_ASSERT(dump.HasValidationError());
+            UNIT_ASSERT(dump.HasValidationErrorMessage());
             UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
 
             const auto& entry = dump.GetEntries(0);
@@ -577,7 +577,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
         const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
-        UNIT_ASSERT(dump.HasValidationError());
+        UNIT_ASSERT(dump.HasValidationErrorMessage());
         UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
         UNIT_ASSERT_VALUES_EQUAL(
             malformedPos,
@@ -599,7 +599,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasHeader());
-        UNIT_ASSERT(dump.HasValidationError());
+        UNIT_ASSERT(dump.HasValidationErrorMessage());
         UNIT_ASSERT(!dump.HasActualMetadataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
     }
@@ -623,7 +623,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         auto error = readOnlyAccessor.Map();
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
 
-        const auto dump = TStateFileProcessor::DumpStateFile(
+        const auto dump = TStateFileEditor::DumpStateFile(
             readOnlyAccessor,
             NProto::EStateFileType::Unknown);
         UNIT_ASSERT(!dump.GetIsCorrupted());
@@ -686,7 +686,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     checksum,
                     entry.GetActualDataChecksum());
-                UNIT_ASSERT(!entry.HasWriteDataRequestInfo());
+                UNIT_ASSERT(!entry.HasWriteDataRequestMetadata());
             }
         }
     }
@@ -716,7 +716,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             const auto genericDump =
                 bootstrap.Dump(NProto::EStateFileType::Unknown);
             UNIT_ASSERT_VALUES_EQUAL(2, genericDump.GetEntries().size());
-            UNIT_ASSERT(!genericDump.GetEntries(1).HasWriteDataRequestInfo());
+            UNIT_ASSERT(!genericDump.GetEntries(1).HasWriteDataRequestMetadata());
 
             const auto dump =
                 bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
@@ -725,8 +725,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
 
             const auto& entry = dump.GetEntries(1);
             UNIT_ASSERT_VALUES_EQUAL(freeEntry, entry.GetFreeFlag());
-            UNIT_ASSERT(entry.HasWriteDataRequestInfo());
-            const auto& info = entry.GetWriteDataRequestInfo();
+            UNIT_ASSERT(entry.HasWriteDataRequestMetadata());
+            const auto& info = entry.GetWriteDataRequestMetadata();
             UNIT_ASSERT_VALUES_EQUAL(10, info.GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL(20, info.GetHandle());
             UNIT_ASSERT_VALUES_EQUAL(30, info.GetOffset());
@@ -750,7 +750,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
             UNIT_ASSERT(!dump.GetIsCorrupted());
             UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
-            UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestInfo());
+            UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestMetadata());
         }
     }
 }

@@ -4,7 +4,7 @@ SRCDIR(cloud/filestore/tools/ops/state_file_tool/lib)
 
 SRCS(
     state_file_locator_ut.cpp
-    state_file_processor_ut.cpp
+    state_file_editor_ut.cpp
 )
 
 PEERDIR(

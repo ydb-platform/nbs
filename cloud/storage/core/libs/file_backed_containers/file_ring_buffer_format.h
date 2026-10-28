@@ -90,6 +90,7 @@ static_assert(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// These values are packed into bit fields in the 64-bit entry header
 struct TFileRingBufferEntryHeader
 {
     ui32 DataSize = 0;
@@ -112,9 +113,13 @@ inline bool IsSlackSpaceMarker(
     const TFileRingBufferEntryHeader& entryHeader,
     const TFileRingBufferCapabilities& capabilities)
 {
+    // DataSize, FreeFlag and Tag are bit fields in the entry header
+    // The specific combination of them is treated as a slack space marker
     return entryHeader.DataSize == 0 && !entryHeader.FreeFlag &&
            entryHeader.Tag == 0 &&
-           // A non-atomically written slack marker may retain a stale checksum
+           // V5 writes the two words separately, so an interrupted update can
+           // leave a stale checksum. V6 writes all 64 bits atomically; its
+           // decoded checksum must be zero as well
            (!capabilities.EntryHeaderIsProcessedAtomically ||
             entryHeader.DataChecksum == 0);
 }
