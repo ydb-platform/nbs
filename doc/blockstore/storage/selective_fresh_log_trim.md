@@ -1,5 +1,12 @@
 # Selective Fresh Log Trim
 
+## Background
+
+A tablet deletes its blobs with CollectGarbage commands, one per channel. A command sets a barrier at a commit id: blobs at or below it become garbage. Each channel has two independent barriers, and neither may decrease:
+
+- A **soft barrier** spares blobs with a Keep flag. A command can set Keep on a blob, and a later command can set DoNotKeep, which cancels Keep permanently.
+- A **hard barrier** deletes every blob at or below it, Keep flags or not.
+
 ## Problem
 
 Small writes go to fresh channels as fresh blobs. The partition trims them with a CollectGarbage barrier at `TrimFreshLogToCommitId`, which stays below every fresh blob with a referenced block and every in-flight fresh write. A trim used to follow each flush.
@@ -79,7 +86,7 @@ stateDiagram-v2
 | Ordinary | `TrimFreshLogToCommitId` moved since the previous ordinary trim, and one of: `T` is 0 (as before), a flush completed, the previous ordinary trim failed, the dead blobs at or below `TrimFreshLogToCommitId` reach `T`. |
 | Selective | Selective trims are enabled, and all of: the dead blobs above `TrimFreshLogToCommitId` reach `T`, `T` more bytes died since the partition last tried a selective trim, unless that trim failed, no flush runs or is due, `TrimFreshLogToCommitId` is in the current tablet generation. |
 
-When both are due, they alternate.
+When both are due, the ordinary trim runs first. It is cheaper, its hard barrier also deletes dead blobs with Keep flags, and it removes as many bytes from the dead blobs as from the trimmable ones, so the selective trim stays due.
 
 ### Failures
 
