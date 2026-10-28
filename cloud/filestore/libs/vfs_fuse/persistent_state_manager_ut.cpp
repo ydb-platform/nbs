@@ -991,15 +991,20 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
     Y_UNIT_TEST_F(ShouldAccountExplicitWriteBackCacheStateFileSize, TFixture)
     {
-        auto manager = CreateManager(12_KB);
+        auto manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackMinStateFileSize = 4_KB,
+            .WriteBackCacheTotalSizeLimit = 12_KB,
+        });
 
         auto first = manager->AcquireWriteBackCacheStateFile(
             "fs-1",
             SessionId,
-            4_KB);
+            1);
         UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
         auto firstGuard = first.ExtractResult();
         UNIT_ASSERT(firstGuard);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, firstGuard.GetTargetStateFileSize());
         UNIT_ASSERT_VALUES_EQUAL(
             4_KB,
             TFileStat(firstGuard.GetFilePath().GetPath()).Size);

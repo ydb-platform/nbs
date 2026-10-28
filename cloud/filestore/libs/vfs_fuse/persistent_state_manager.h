@@ -41,6 +41,10 @@ public:
     // Path to the held state file. Aborts if the guard holds none.
     const TFsPath& GetFilePath() const;
 
+    // Target size selected during acquisition; may differ from the current
+    // file size. Aborts if the guard holds none.
+    ui64 GetTargetStateFileSize() const;
+
     // Releases the lock and removes the state file, and the session directory
     // too once it is empty. Leaves the guard holding nothing; no-op if it
     // holds nothing already.
@@ -96,6 +100,7 @@ struct IPersistentStateManager
     // not to be used, since there is no state file for it.
     // stateFileSize must be positive and is used to create and account a
     // new file. Zero returns E_ARGUMENT even if the file already exists.
+    // Positive sizes below the manager's minimum are increased to it.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
@@ -125,6 +130,7 @@ struct TPersistentStateManagerConfig
     ui64 HandleOpsQueueTotalSizeLimit = 0;
 
     TString WriteBackCacheBasePath;
+    ui64 WriteBackMinStateFileSize = 0;
     ui64 WriteBackCacheTotalSizeLimit = 0;
 
     TString DirectoryHandlesStorageBasePath;

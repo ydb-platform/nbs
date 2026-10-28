@@ -38,6 +38,9 @@ struct TComponentConfig
     // Whether the caller must supply a positive stateFileSize in
     // AcquireStateFile.
     const bool StateFileSizeRequired;
+    // Lower bound for the requested state file size. Existing files are not
+    // resized during acquisition. Zero leaves the requested size unchanged.
+    const ui64 MinStateFileSize;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
 };
@@ -150,6 +153,7 @@ struct TAcquireStateFileGuard::TImpl
     // State file name.
     TString FileName;
     TFsPath FilePath;
+    ui64 TargetStateFileSize = 0;
 
     THolder<TFileLock> Lock;
 
@@ -204,6 +208,12 @@ const TFsPath& TAcquireStateFileGuard::GetFilePath() const
 {
     Y_ABORT_UNLESS(Impl, "The guard holds no state file");
     return Impl->FilePath;
+}
+
+ui64 TAcquireStateFileGuard::GetTargetStateFileSize() const
+{
+    Y_ABORT_UNLESS(Impl, "The guard holds no state file");
+    return Impl->TargetStateFileSize;
 }
 
 NProto::TError TAcquireStateFileGuard::DeleteStateFile()
@@ -316,16 +326,19 @@ TPersistentStateManager::TPersistentStateManager(
           .BasePath = std::move(config.HandleOpsQueueBasePath),
           .FileName = TString(HandleOpsQueueFileName),
           .StateFileSizeRequired = true,
+          .MinStateFileSize = 0,
           .TotalSizeLimit = config.HandleOpsQueueTotalSizeLimit}
     , WriteBackCache{
           .BasePath = std::move(config.WriteBackCacheBasePath),
           .FileName = TString(WriteBackCacheFileName),
           .StateFileSizeRequired = true,
+          .MinStateFileSize = config.WriteBackMinStateFileSize,
           .TotalSizeLimit = config.WriteBackCacheTotalSizeLimit}
     , DirectoryHandleStorage{
           .BasePath = std::move(config.DirectoryHandlesStorageBasePath),
           .FileName = TString(DirectoryHandleStorageFileName),
           .StateFileSizeRequired = false,
+          .MinStateFileSize = 0,
           .TotalSizeLimit = 0}
 {}
 
@@ -616,6 +629,8 @@ TPersistentStateManager::AcquireStateFile(
                              << " must be positive");
     }
 
+    stateFileSize = Max(stateFileSize, component.MinStateFileSize);
+
     if (!component.BasePath) {
         return MakeError(
             E_INVALID_STATE,
@@ -717,6 +732,7 @@ TPersistentStateManager::AcquireStateFile(
             .Dir = std::move(dir),
             .FileName = std::move(fileName),
             .FilePath = std::move(filePath),
+            .TargetStateFileSize = stateFileSize,
             .Lock = std::move(lock),
             .Release = [manager = shared_from_this()](
                            TAcquireStateFileGuard::TImpl& impl,
