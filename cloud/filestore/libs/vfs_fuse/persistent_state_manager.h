@@ -145,8 +145,8 @@ struct TPersistentStateManagerConfig
 // returns false for it. Different components may be configured with the same
 // base path and thus share a session directory.
 //
-// The total size of the state files of a component is the sum of the sizes
-// of all the files present under its base path. It is checked only when a new
+// The total size limit accounts for all files under the component's base path,
+// including growth reserved on acquisition. It is checked only when a new
 // state file is about to be created: existing files bypass this limit,
 // provided their acquisition arguments are valid.
 IPersistentStateManagerPtr CreatePersistentStateManager(

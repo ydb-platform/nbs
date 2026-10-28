@@ -6536,6 +6536,42 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 
+    Y_UNIT_TEST(ShouldUseMinimumWriteBackCacheStateFileSize)
+    {
+        constexpr ui64 MinStateFileSize = 2_MB;
+        const TString statePath = TempDir.Path() / "MinimumWriteBackCacheState";
+        auto persistentStateManager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = statePath,
+            .WriteBackMinStateFileSize = MinStateFileSize,
+        });
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,   // handleOpsQueueStateFileSize
+            1000,   // writeBackCacheAutomaticFlushPeriodMs
+            WriteBackCacheStateFileSize,
+            0,
+            0,
+            CreateFileMapMemoryLimiterStub(),
+            persistentStateManager);
+
+        const auto error = bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        const auto stateFile = TFsPath(statePath) / FileSystemId / SessionId /
+                               "write_back_cache";
+        UNIT_ASSERT_VALUES_EQUAL(
+            MinStateFileSize,
+            TFileStat(stateFile.GetPath()).Size);
+    }
+
     Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)
     {
         NProto::TFileStoreFeatures features;
