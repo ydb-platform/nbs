@@ -5990,7 +5990,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"disk-1", seqNo1},
+                        TDiskNotification{"disk-1", seqNo1, 0},
                         {},
                     });
             });
@@ -6006,7 +6006,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{"disk-1", seqNo2},
+                    TDiskNotification{"disk-1", seqNo2, 0},
                     {},
                 });
         });
@@ -9206,7 +9206,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         Now(),
                         db,
                         TDiskNotificationResult{
-                            TDiskNotification{diskId, seqNo},
+                            TDiskNotification{diskId, seqNo, 0},
                             {},
                         });
                 }
@@ -10152,7 +10152,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         Now(),
                         db,
                         TDiskNotificationResult{
-                            TDiskNotification{diskId, seqNo},
+                            TDiskNotification{diskId, seqNo, 0},
                             {},
                         });
                 }
@@ -10247,7 +10247,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         Now(),
                         db,
                         TDiskNotificationResult{
-                            TDiskNotification{diskId, seqNo},
+                            TDiskNotification{diskId, seqNo, 0},
                             {},
                         });
                 }
@@ -10830,7 +10830,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         Now(),
                         db,
                         TDiskNotificationResult{
-                            TDiskNotification{diskId, seqNo},
+                            TDiskNotification{diskId, seqNo, 0},
                             {},
                         });
                 }
@@ -12099,7 +12099,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                         Now(),
                         db,
                         TDiskNotificationResult{
-                            TDiskNotification{diskId, seqNo},
+                            TDiskNotification{diskId, seqNo, 0},
                             {},
                         });
                 }
@@ -12404,7 +12404,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"vol1", seqNo},
+                        TDiskNotification{"vol1", seqNo, 0},
                         {},
                     });
             });

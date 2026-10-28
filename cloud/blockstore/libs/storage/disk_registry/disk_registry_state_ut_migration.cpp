@@ -1119,7 +1119,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"disk-1", notification->second},
+                        TDiskNotification{"disk-1", notification->second, 0},
                         {},
                     });
             });
@@ -1269,7 +1269,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{"disk-1", notification->second},
+                    TDiskNotification{"disk-1", notification->second, 0},
                     {},
                 });
         });
@@ -1378,7 +1378,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{"disk-1", notification->second},
+                    TDiskNotification{"disk-1", notification->second, 0},
                     {},
                 });
         });
