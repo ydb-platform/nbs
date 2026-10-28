@@ -1738,4 +1738,14 @@ message TStorageServiceConfig
     // When set, partitions of multipartition volumes use the configured
     // MaxBlobsPerRange as is instead of dividing it by the partition count.
     optional bool IgnorePartitionCountInMaxBlobsPerRange = 542;
+
+    // Directory for backups of tenant system tablets. Empty disables backups.
+    // The other backup settings come from TAppConfig.SystemTabletBackupConfig
+    // in CMS, its own path is ignored. A nonempty value in the local storage
+    // file overrides the named storage config from CMS until the file is
+    // changed and the service is restarted. In YAML mode named configs are
+    // not read at startup, so only the local file applies. Ignored for
+    // temporary servers. YDB cleans up old backups per directory, so the
+    // directory must not be shared with other processes.
+    optional string SystemTabletBackupDirPath = 543;
 }
