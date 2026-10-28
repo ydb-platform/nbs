@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NIcV2 {
+namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -48,4 +48,4 @@ struct IConnection
 
 using IConnectionPtr = std::shared_ptr<IConnection>;
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

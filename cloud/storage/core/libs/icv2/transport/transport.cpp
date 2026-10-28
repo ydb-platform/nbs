@@ -20,7 +20,7 @@
 #include <optional>
 #include <utility>
 
-namespace NCloud::NBlockStore::NIcV2 {
+namespace NCloud::NIcV2 {
 
 namespace {
 
@@ -826,4 +826,4 @@ ITransportPtr CreateTransport(
                   : nullptr;
 }
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

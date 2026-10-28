@@ -19,7 +19,7 @@ class TStreamSocket;
 
 }   // namespace NInterconnect
 
-namespace NCloud::NBlockStore::NIcV2 {
+namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -63,4 +63,4 @@ ITransportPtr CreateTransport(
     ui64 maxOutputQueueBytes,
     std::shared_ptr<NActors::IEventDestructor> eventDestructor);
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

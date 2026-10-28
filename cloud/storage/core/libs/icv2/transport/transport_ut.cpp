@@ -25,7 +25,7 @@
 #include <thread>
 #include <utility>
 
-namespace NCloud::NBlockStore::NIcV2 {
+namespace NCloud::NIcV2 {
 
 namespace {
 
@@ -1376,4 +1376,4 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
 
 }   // Y_UNIT_TEST_SUITE(TIcV2TransportTest)
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

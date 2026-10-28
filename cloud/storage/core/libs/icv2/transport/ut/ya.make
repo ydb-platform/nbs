@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/blockstore/libs/icv2/transport)
+UNITTEST_FOR(cloud/storage/core/libs/icv2/transport)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
