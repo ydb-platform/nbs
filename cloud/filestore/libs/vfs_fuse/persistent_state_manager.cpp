@@ -58,9 +58,9 @@ class TStateFileRegistry
 public:
     struct TStateFile
     {
-        // The size the file is known: the actual one for a listed file, the one
-        // it was created with otherwise (a component may adjust it slightly,
-        // which is only picked up by a listing).
+        // Size reserved for quota checks: at least the listed or created size
+        // and the target size selected on acquisition. Shrinking may be
+        // deferred, so a smaller target does not reduce the reservation.
         ui64 Size = 0;
         // Whether the file is acquired by a guard.
         bool Acquired = false;
@@ -87,10 +87,8 @@ public:
         return file && file->Acquired;
     }
 
-    // Registers the state file, adding it with the given size if it is not
-    // known yet (the size of a known one is left as is).
-    // A file found (listed) is registered as not acquired, it might be later
-    // acquired by a guard as such.
+    // Registers the state file, adding it with the given size if unknown.
+    // Successful acquisition also reserves any growth to the target size.
     void Register(
         const TString& dir,
         const TString& fileName,
@@ -99,6 +97,9 @@ public:
     {
         const TStateFile unknownFile{.Size = size, .Acquired = false};
         auto it = StateFiles[dir].insert({fileName, unknownFile}).first;
+        if (fileAcquired) {
+            it->second.Size = Max(it->second.Size, size);
+        }
         it->second.Acquired = fileAcquired;
     }
 

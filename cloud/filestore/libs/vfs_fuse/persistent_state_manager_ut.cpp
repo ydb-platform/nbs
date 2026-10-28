@@ -1029,6 +1029,60 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!SessionDir("fs-3", SessionId).Exists());
     }
 
+    Y_UNIT_TEST_F(ShouldReserveExistingStateFileTargetSize, TFixture)
+    {
+        constexpr ui64 StateFileSize = 8_KB;
+        constexpr ui64 MinStateFileSize = 2 * StateFileSize;
+
+        auto manager = CreateManager();
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                StateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackMinStateFileSize = MinStateFileSize,
+            .WriteBackCacheTotalSizeLimit = 3 * MinStateFileSize,
+        });
+
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                StateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            auto guard = result.ExtractResult();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT_VALUES_EQUAL(
+                MinStateFileSize,
+                guard.GetTargetStateFileSize());
+            // Reserve the target even before the component grows the file.
+            UNIT_ASSERT_VALUES_EQUAL(
+                StateFileSize,
+                TFileStat(guard.GetFilePath().GetPath()).Size);
+        }
+
+        auto third = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            StateFileSize);
+        UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
+        UNIT_ASSERT(third.GetResult());
+
+        auto fourth = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-4",
+            StateFileSize);
+        UNIT_ASSERT_C(!HasError(fourth), fourth.GetError().GetMessage());
+        UNIT_ASSERT(!fourth.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-4").Exists());
+    }
+
     Y_UNIT_TEST_F(ShouldAccountStateFilesOfAllFileSystemsAndSessions, TFixture)
     {
         constexpr ui64 StateFileSize = 4_KB;
