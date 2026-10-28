@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -26,6 +27,9 @@ private:
     const ui64 TrimFreshLogToCommitId;
     const ui32 RecordGeneration;
     const ui32 PerGenerationCounter;
+    const bool Hard;
+    const TVector<TPartialBlobId> Keep;
+    const TVector<TPartialBlobId> DoNotKeep;
     const TVector<ui32> FreshChannels;
     const TVolumeLabelsConstPtr VolumeLabels;
     const TDuration Timeout;
@@ -41,6 +45,10 @@ public:
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
+        bool hard,
+        // Soft barriers only. Each flag goes to the group that stores the blob.
+        TVector<TPartialBlobId> keep,
+        TVector<TPartialBlobId> doNotKeep,
         TVector<ui32> freshChannels,
         TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout);

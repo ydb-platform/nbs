@@ -25,6 +25,9 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
+        bool hard,
+        TVector<TPartialBlobId> keep,
+        TVector<TPartialBlobId> doNotKeep,
         TVector<ui32> freshChannels,
         TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout)
@@ -34,6 +37,9 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , TrimFreshLogToCommitId(trimFreshLogToCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , Hard(hard)
+    , Keep(std::move(keep))
+    , DoNotKeep(std::move(doNotKeep))
     , FreshChannels(std::move(freshChannels))
     , VolumeLabels(std::move(volumeLabels))
     , Timeout(timeout)
@@ -58,15 +64,51 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
 {
     const ui64 tabletId = TabletInfo->TabletID;
 
+    STORAGE_VERIFY(
+        !Hard || (!Keep && !DoNotKeep),
+        TWellKnownEntityTypes::TABLET,
+        tabletId);
+    STORAGE_VERIFY(
+        Keep.size() + DoNotKeep.size() <= MaxCollectGarbageFlagsPerMessage,
+        TWellKnownEntityTypes::TABLET,
+        tabletId);
+
+    // The barrier goes to every group in each channel's history. Known blobs
+    // would lower it, so pass none.
     auto barriers = BuildGCBarriers(
         *TabletInfo,
         FreshChannels,
         TVector<TPartialBlobId>(),  // knownBlobIds
         TrimFreshLogToCommitId);
 
+    // Flags go only to the groups that store the blobs. With equal commit
+    // ids, BuildGCRequests adds no history groups. It also verifies that
+    // there are no duplicates and builds part-0 ids.
+    auto flags = BuildGCRequests(
+        *TabletInfo,
+        FreshChannels,
+        Keep,
+        DoNotKeep,
+        false,                    // cleanupHistory
+        TrimFreshLogToCommitId,   // lastGCCommitId
+        TrimFreshLogToCommitId,   // collectCommitId
+        PerGenerationCounter);
+
     for (ui32 channelId: FreshChannels) {
+        auto& channelFlags = flags.GetRequests(channelId);
+
         for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
             auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
+
+            TVector<TLogoBlobID>* keep = nullptr;
+            TVector<TLogoBlobID>* doNotKeep = nullptr;
+            if (auto it = channelFlags.find(bsProxyId);
+                it != channelFlags.end())
+            {
+                keep = it->second.Keep.release();
+                doNotKeep = it->second.DoNotKeep.release();
+                channelFlags.erase(it);
+            }
 
             auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
 
@@ -78,11 +120,11 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 true,                   // yes, collect
                 barrierGen,             // barrier gen
                 barrierStep,            // barrier step
-                nullptr,                // keep
-                nullptr,                // do not keep
+                keep,                   // keep
+                doNotKeep,              // do not keep
                 deadline,               // deadline
                 false,                  // multicollect not allowed
-                false);                 // soft barrier
+                Hard);                  // hard barrier
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
                 "[%lu] %s",
@@ -96,6 +138,12 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
 
             ++RequestsInFlight;
         }
+
+        // A flag is only valid in the command that carries the barrier.
+        STORAGE_VERIFY(
+            channelFlags.empty(),
+            TWellKnownEntityTypes::TABLET,
+            tabletId);
     }
 }
 

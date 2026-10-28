@@ -6716,6 +6716,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                     case TEvBlobStorage::EvCollectGarbage: {
                         auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
                         if (msg->Channel == 4) {
+                            // Partition v2 keeps soft fresh-log barriers.
+                            UNIT_ASSERT(!msg->Hard);
                             trimSeen = true;
                         }
                         break;
