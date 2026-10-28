@@ -128,6 +128,9 @@ message TVhostServiceConfig
     // which has no state file yet is started without WriteBackCache.
     // 0 disables the limiting.
     optional uint64 WriteBackCacheTotalSizeLimit = 27;
+
+    // Minimum server WriteBackCache state file size in bytes.
+    optional uint64 ServerWriteBackMinStateFileSize = 28;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -621,6 +621,8 @@ void TBootstrapVhost::InitEndpoints()
         .HandleOpsQueueTotalSizeLimit =
             vhostConfig.GetHandleOpsQueueTotalSizeLimit(),
         .WriteBackCacheBasePath = vhostConfig.GetWriteBackCachePath(),
+        .WriteBackMinStateFileSize =
+            vhostConfig.GetServerWriteBackMinStateFileSize(),
         .WriteBackCacheTotalSizeLimit =
             vhostConfig.GetWriteBackCacheTotalSizeLimit(),
         .DirectoryHandlesStorageBasePath =
