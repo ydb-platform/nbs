@@ -5451,6 +5451,43 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldKeepFreshChannelVersionsBetweenCheckpoints)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.CreateCheckpoint("c1");
+        partition.WriteBlocks(1, 2);
+        partition.CreateCheckpoint("c2");
+        partition.WriteBlocks(1, 3);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(1),
+                GetBlockContent(partition.ReadBlocks(1, "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(2),
+                GetBlockContent(partition.ReadBlocks(1, "c2")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(3),
+                GetBlockContent(partition.ReadBlocks(1)));
+        };
+
+        check();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        check();
+    }
+
     Y_UNIT_TEST(ShouldKillTabletIfCriticalFailureDuringWriteBlocks)
     {
         auto runtime = PrepareTestActorRuntime();
