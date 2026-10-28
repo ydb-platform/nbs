@@ -75,10 +75,12 @@ struct TBootstrap
     TFileMapFileRingBufferAccessor Accessor;
     std::span<char> RawData;
 
-    TBootstrap()
+    explicit TBootstrap(
+        EFileRingBufferAccessorValidationMode validationMode =
+            EFileRingBufferAccessorValidationMode::Debug)
         : Accessor(
               TempFileHandle.Name(),
-              EFileRingBufferAccessorValidationMode::Debug,
+              validationMode,
               TMemoryMapCommon::EOpenModeFlag::oRdWr)
     {
         Remap();
@@ -231,6 +233,7 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
             initialDump.GetHeader().GetMetadataChecksum(),
             initialDump.GetActualMetadataChecksum());
 
+        bootstrap.Accessor.ValidateAndInitialize();
         bootstrap.Accessor.GetRawMetadata()[0] ^= 1;
 
         const auto corruptDump =
@@ -265,6 +268,91 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
         UNIT_ASSERT(dump.GetIsCorrupted());
         UNIT_ASSERT(dump.HasValidationErrorMessage());
         UNIT_ASSERT(!dump.HasActualMetadataChecksum());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldSkipDataChecksumForOutOfBoundsCursors)
+    {
+        for (const bool invalidReadPos: {false, true}) {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+                version);
+
+            bootstrap.Accessor.ValidateAndInitialize();
+            auto* header = bootstrap.Accessor.GetHeader();
+            auto& cursor = invalidReadPos ? header->ReadPos : header->WritePos;
+            cursor = header->DataCapacity + 1;
+
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT(dump.GetIsCorrupted());
+            UNIT_ASSERT(dump.HasHeader());
+            UNIT_ASSERT(dump.HasActualMetadataChecksum());
+            UNIT_ASSERT(dump.HasValidationErrorMessage());
+            UNIT_ASSERT_STRING_CONTAINS(
+                dump.GetValidationErrorMessage(),
+                invalidReadPos ? "read position" : "write position");
+            UNIT_ASSERT_VALUES_EQUAL(
+                Crc32c(bootstrap.RawData.data(), sizeof(TFileRingBufferHeader)),
+                dump.GetChecksum());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportMisalignedV6Cursors)
+    {
+        for (const bool invalidReadPos: {false, true}) {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+                EVersion::V6);
+
+            bootstrap.Accessor.ValidateAndInitialize();
+            auto* header = bootstrap.Accessor.GetHeader();
+            if (invalidReadPos) {
+                ++header->ReadPos;
+            } else {
+                --header->WritePos;
+            }
+
+            const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT(dump.GetIsCorrupted());
+            UNIT_ASSERT(dump.HasHeader());
+            UNIT_ASSERT(dump.HasValidationErrorMessage());
+            UNIT_ASSERT_STRING_CONTAINS(
+                dump.GetValidationErrorMessage(),
+                "expected to be aligned to 8");
+            UNIT_ASSERT_VALUES_EQUAL(
+                invalidReadPos ? 0 : 1,
+                dump.GetEntries().size());
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldDumpWithNormalModeAccessor)
+    {
+        TBootstrap bootstrap(EFileRingBufferAccessorValidationMode::Normal);
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+
+        const auto validDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!validDump.GetIsCorrupted());
+        UNIT_ASSERT(validDump.HasHeader());
+        UNIT_ASSERT_VALUES_EQUAL(1, validDump.GetEntries().size());
+
+        bootstrap.Accessor.ValidateAndInitialize();
+        bootstrap.Accessor.GetHeader()->ReadPos = TBootstrap::DataCapacity + 1;
+
+        const auto corruptDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(corruptDump.GetIsCorrupted());
+        UNIT_ASSERT(corruptDump.HasValidationErrorMessage());
+        UNIT_ASSERT(!corruptDump.HasHeader());
+        UNIT_ASSERT(!corruptDump.HasActualMetadataChecksum());
+        UNIT_ASSERT_VALUES_EQUAL(0, corruptDump.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Crc32c(bootstrap.RawData.data(), sizeof(TFileRingBufferHeader)),
+            corruptDump.GetChecksum());
     }
 
     FILE_RING_BUFFER_TEST(ShouldDumpFileWithSingleEntry)
@@ -358,6 +446,7 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
 
         if (version == EVersion::V5) {
             // A non-atomic free may leave the stored checksum stale.
+            bootstrap.Accessor.ValidateAndInitialize();
             auto* processor = bootstrap.Accessor.GetDataProcessor();
             auto header = processor->ReadEntryHeader(skipped.GetEntryPos());
             header.DataChecksum = 1;
@@ -458,16 +547,16 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
         UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
 
         const auto entryPos = dump.GetEntries(1).GetEntryPos();
+        bootstrap.Accessor.ValidateAndInitialize();
         const auto entryHeader =
             bootstrap.Accessor.GetDataProcessor()->ReadEntryHeader(entryPos);
 
         auto headerWithCorruptedChecksum = entryHeader;
         headerWithCorruptedChecksum.DataChecksum ^= 1;
 
-        bootstrap.Accessor.ValidateAndInitialize();
-        bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
+        UNIT_ASSERT(bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
             entryPos,
-            headerWithCorruptedChecksum);
+            headerWithCorruptedChecksum));
 
         const auto checksumDump =
             bootstrap.Dump(NProto::EStateFileType::Unknown);
@@ -487,9 +576,9 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
         headerWithCorruptedSize.DataChecksum = 0;
 
         bootstrap.Accessor.ValidateAndInitialize();
-        bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
+        UNIT_ASSERT(bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
             entryPos,
-            headerWithCorruptedSize);
+            headerWithCorruptedSize));
 
         const auto sizeDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
         UNIT_ASSERT(sizeDump.GetIsCorrupted());
@@ -546,6 +635,28 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
                 entry.GetFreeFlag());
             UNIT_ASSERT(!entry.HasActualDataChecksum());
         }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldStopAtSlackMarkerInLowSegment)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+
+        bootstrap.Accessor.ValidateAndInitialize();
+        UNIT_ASSERT(bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
+            0,
+            {}));
+
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(dump.GetIsCorrupted());
+        UNIT_ASSERT(dump.HasValidationErrorMessage());
+        UNIT_ASSERT_STRING_CONTAINS(
+            dump.GetValidationErrorMessage(),
+            "unexpected slack space marker");
+        UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
     }
 
     FILE_RING_BUFFER_TEST(ShouldNotWrapAfterMalformedZeroSizeHeader)
