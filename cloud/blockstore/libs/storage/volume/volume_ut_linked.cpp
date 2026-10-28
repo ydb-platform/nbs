@@ -384,6 +384,172 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 }   // namespace
 
+Y_UNIT_TEST_SUITE(TUpdateLinkOnFollowerTest)
+{
+    struct TEnv
+    {
+        std::unique_ptr<TTestActorRuntime> Runtime = PrepareTestActorRuntime();
+        TVolumeClient Volume{*Runtime};
+        const TLeaderFollowerLink Link{
+            .LinkUUID = "link-uuid",
+            .LeaderDiskId = "leader",
+            .LeaderCellId = "cell-a",
+            .FollowerDiskId = "vol0",
+            .FollowerCellId = "cell-a"};
+
+        TEnv()
+        {
+            Volume.UpdateVolumeConfig();
+            Volume.WaitReady();
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                UpdateLink(Link, NProto::LINK_ACTION_CREATE));
+            CheckLinkStatus(NProto::LINK_STATUS_PREPARING);
+        }
+
+        ui32 UpdateLink(
+            const TLeaderFollowerLink& link,
+            NProto::ELinkAction action)
+        {
+            auto request =
+                std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+            request->Record.SetDiskId(link.FollowerDiskId);
+            request->Record.SetLinkUUID(link.LinkUUID);
+            request->Record.SetLeaderDiskId(link.LeaderDiskId);
+            request->Record.SetLeaderCellId(link.LeaderCellId);
+            request->Record.SetFollowerCellId(link.FollowerCellId);
+            request->Record.SetAction(action);
+            Volume.SendToPipe(std::move(request));
+            return Volume.RecvResponse<
+                TEvVolume::TEvUpdateLinkOnFollowerResponse>()->GetStatus();
+        }
+
+        void CheckLinkStatus(NProto::ELinkStatus expectedStatus)
+        {
+            // Query by the original disk and cell ids, without a UUID that
+            // could hide an accidental change to the persisted identity.
+            auto request =
+                std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+            request->Record.SetDiskId(Link.FollowerDiskId);
+            request->Record.SetLeaderDiskId(Link.LeaderDiskId);
+            request->Record.SetLeaderCellId(Link.LeaderCellId);
+            request->Record.SetFollowerDiskId(Link.FollowerDiskId);
+            request->Record.SetFollowerCellId(Link.FollowerCellId);
+            Volume.SendToPipe(std::move(request));
+            auto response =
+                Volume.RecvResponse<TEvVolume::TEvGetLinkStatusResponse>();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetErrorReason());
+            const auto& record = response->Record;
+            UNIT_ASSERT_EQUAL_C(
+                expectedStatus,
+                record.GetStatus(),
+                record.ShortDebugString());
+            if (expectedStatus != NProto::LINK_STATUS_NOT_FOUND) {
+                UNIT_ASSERT_VALUES_EQUAL(Link.LinkUUID, record.GetLinkUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Link.LeaderCellId,
+                    record.GetLeaderCellId());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Link.FollowerCellId,
+                    record.GetFollowerCellId());
+            }
+        }
+
+        void Reboot()
+        {
+            Volume.RebootTablet();
+            Volume.WaitReady();
+        }
+
+        void CheckCompletion(const TLeaderFollowerLink& requestLink)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                UpdateLink(requestLink, NProto::LINK_ACTION_COMPLETED));
+            CheckLinkStatus(NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED);
+            Reboot();
+            CheckLinkStatus(NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED);
+
+            // Repeating the completion must still find the original record.
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_ALREADY,
+                UpdateLink(Link, NProto::LINK_ACTION_COMPLETED));
+        }
+    };
+
+    void DoShouldPersistLinkDestruction(bool withUuid)
+    {
+        TEnv env;
+        auto requestLink = env.Link;
+        if (!withUuid) {
+            requestLink.LinkUUID.clear();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            env.UpdateLink(requestLink, NProto::LINK_ACTION_DESTROY));
+        env.CheckLinkStatus(NProto::LINK_STATUS_NOT_FOUND);
+        env.Reboot();
+        env.CheckLinkStatus(NProto::LINK_STATUS_NOT_FOUND);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            env.UpdateLink(requestLink, NProto::LINK_ACTION_DESTROY));
+    }
+
+    Y_UNIT_TEST(ShouldPersistLinkDestructionWithUuid)
+    {
+        DoShouldPersistLinkDestruction(true);
+    }
+
+    Y_UNIT_TEST(ShouldPersistLinkDestructionWithoutUuid)
+    {
+        DoShouldPersistLinkDestruction(false);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveLinkIdentityOnCompletion)
+    {
+        TEnv env;
+        env.CheckCompletion(env.Link);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveLinkIdentityOnCompletionWithoutUuid)
+    {
+        TEnv env;
+        auto requestLink = env.Link;
+        requestLink.LinkUUID.clear();
+        env.CheckCompletion(requestLink);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveLinkIdentityOnCompletionWithoutCells)
+    {
+        TEnv env;
+        auto requestLink = env.Link;
+        requestLink.LeaderCellId.clear();
+        requestLink.FollowerCellId.clear();
+        env.CheckCompletion(requestLink);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveLinkIdentityOnCompletionWithAnotherLeaderCell)
+    {
+        TEnv env;
+        auto requestLink = env.Link;
+        requestLink.LeaderCellId = "another-cell";
+        env.CheckCompletion(requestLink);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveLinkIdentityOnCompletionWithAnotherLeaderDisk)
+    {
+        TEnv env;
+        auto requestLink = env.Link;
+        requestLink.LeaderDiskId = "another-leader";
+        env.CheckCompletion(requestLink);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
     Y_UNIT_TEST(ShouldManageFollowerLink)
