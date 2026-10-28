@@ -1,3 +1,12 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
 package NCloud.NFileStore.NProto;
@@ -52,7 +61,7 @@ message THeaders
         uint64 ClientTabletId = 4;
 
         // Peer address of the request sender.
-        string Peer = 5;
+        bytes Peer = 5;
 
         enum ERequestOrigin
         {
