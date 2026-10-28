@@ -13,7 +13,7 @@ cache them and drop them as soon as they change.
 
 ## Overview
 
-![overview](../../drawio/filesystem_events_main.svg)
+![overview](../../excalidraw/filesystem_events_main.svg)
 
 ## Read path: subscribing
 
