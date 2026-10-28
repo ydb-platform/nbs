@@ -284,6 +284,23 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
 
     //
+    // Removing "user.a" notifies client 2 - it's still subscribed. The
+    // removal of a missing attribute fails and doesn't generate anything.
+    //
+
+    tablet1->RemoveNodeXAttr(nodeId, "user.a");
+    UNIT_ASSERT_VALUES_EQUAL(
+        3,
+        env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
+
+    tablet2->AssertGetNodeXAttrFailed(nodeId, "user.a");
+    tablet1->AssertRemoveNodeXAttrFailed(nodeId, "user.a");
+    UNIT_ASSERT_VALUES_EQUAL(
+        3,
+        env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
+
+    //
     // GenerateFileSystemEvent goes through the same path: client 3 is still
     // subscribed to "user.b".
     //
@@ -309,7 +326,7 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
     UNIT_ASSERT_VALUES_EQUAL(
         0,
         env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
 }
 
 }   // namespace
@@ -795,6 +812,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
 
     Y_UNIT_TEST(ShouldNotSubscribeUponGetNodeXAttrOfMissingNode)
     {
+        TFileSystemEventsEnv env({});
+
         const ui64 nodeId = RootNodeId + 100;
 
         auto tablet = env.CreateClient("client", "session");

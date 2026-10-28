@@ -774,6 +774,7 @@ public:
 
     void RemoveNodeAttr(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,

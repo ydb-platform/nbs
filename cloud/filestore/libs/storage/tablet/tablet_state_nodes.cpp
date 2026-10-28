@@ -446,6 +446,7 @@ ui64 TIndexTabletState::UpdateNodeAttr(
 
 void TIndexTabletState::RemoveNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -468,6 +469,8 @@ void TIndexTabletState::RemoveNodeAttr(
     }
 
     DecrementAttrsUsedBytesCount(db, SizeSum(attr.Name, attr.Value));
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, attr.Name);
 }
 
 bool TIndexTabletState::ReadNodeAttr(

@@ -32,7 +32,10 @@ void TIndexTabletActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+    RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        ev->Get()->Record.GetHeaders());
 
     if (!AcceptRequest<TEvService::TGetNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
         return;
