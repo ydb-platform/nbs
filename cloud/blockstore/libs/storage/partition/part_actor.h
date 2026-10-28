@@ -116,6 +116,7 @@ class TPartitionActor final
     {
         None,
         Prefix,
+        Partial,
     };
 
     static constexpr ui64 BootWakeupEventTag = 1;
@@ -259,7 +260,11 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     [[nodiscard]] bool ShouldStartPrefixTrim() const;
-    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind() const;
+    [[nodiscard]] bool ShouldStartPartialTrim(
+        const NActors::TActorContext& ctx,
+        ui64 prefixCommitId);
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind(
+        const NActors::TActorContext& ctx);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -500,6 +505,8 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
+    [[nodiscard]] bool GetFreshPartialTrimEnabled() const;
+    [[nodiscard]] bool IsPartialTrimEnabled() const;
 
     void CreateFreshBlocksCompanionClient();
 

@@ -1058,6 +1058,19 @@ ui32 TPartitionActor::GetFreshDeadBlobByteCountTrimThreshold() const
                : Config->GetFreshDeadBlobByteCountTrimThresholdHDD();
 }
 
+bool TPartitionActor::GetFreshPartialTrimEnabled() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshPartialTrimEnabledSSD()
+               : Config->GetFreshPartialTrimEnabledHDD();
+}
+
+bool TPartitionActor::IsPartialTrimEnabled() const
+{
+    return GetFreshPartialTrimEnabled() &&
+           GetFreshDeadBlobByteCountTrimThreshold();
+}
+
 void TPartitionActor::CreateFreshBlocksCompanionClient()
 {
     FreshBlocksCompanionClient =

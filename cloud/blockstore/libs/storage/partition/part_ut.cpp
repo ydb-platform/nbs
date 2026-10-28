@@ -39,6 +39,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -265,13 +266,49 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TStorageServiceConfig PartialTrimConfig()
+{
+    auto config = DefaultConfig();
+    config.SetFreshChannelWriteRequestsEnabled(true);
+    config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+    config.SetFreshPartialTrimEnabledHDD(true);
+    return config;
+}
+
+TVector<ui64> GetCommitIds(const TVector<TLogoBlobID>* blobIds)
+{
+    TVector<ui64> result;
+    if (blobIds) {
+        for (const auto& blobId: *blobIds) {
+            result.push_back(
+                MakeCommitId(blobId.Generation(), blobId.Step()));
+        }
+    }
+    Sort(result);
+    return result;
+}
+
 struct TFreshLogTrimCounters
 {
     // TEvCollectGarbage commands sent to the fresh channel.
     ui32 TrimCommands = 0;
+    ui32 HardCommands = 0;
+    ui32 SoftCommands = 0;
+    // 'H' for hard commands and 'S' for soft ones, in order.
+    TString CommandKinds;
     ui32 TrimsCompleted = 0;
     ui32 TrimsFailed = 0;
     ui32 FlushesCompleted = 0;
+
+    // The barrier and flags of the last soft command.
+    ui64 SoftBarrierCommitId = 0;
+    TVector<ui64> Keep;
+    TVector<ui64> DoNotKeep;
+
+    // Fresh blobs in the order they were added to the partition.
+    TVector<ui64> FreshBlobCommitIds;
+    // Fresh blobs read at the last start.
+    TVector<ui64> ReplayedCommitIds;
 };
 
 TTestActorRuntime::TEventObserver CountFreshLogTrims(
@@ -283,9 +320,37 @@ TTestActorRuntime::TEventObserver CountFreshLogTrims(
         switch (event->GetTypeRewrite()) {
             case TEvBlobStorage::EvCollectGarbage: {
                 auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
-                if (msg->Channel == freshChannel) {
-                    ++counters.TrimCommands;
+                if (msg->Channel != freshChannel) {
+                    break;
                 }
+                ++counters.TrimCommands;
+                if (msg->Hard) {
+                    ++counters.HardCommands;
+                    counters.CommandKinds += 'H';
+                    break;
+                }
+                ++counters.SoftCommands;
+                counters.CommandKinds += 'S';
+                counters.SoftBarrierCommitId =
+                    MakeCommitId(msg->CollectGeneration, msg->CollectStep);
+                counters.Keep = GetCommitIds(msg->Keep.Get());
+                counters.DoNotKeep = GetCommitIds(msg->DoNotKeep.Get());
+                break;
+            }
+            case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
+                auto* msg = event->Get<
+                    TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>();
+                counters.FreshBlobCommitIds.push_back(msg->CommitId);
+                break;
+            }
+            case TEvPartitionCommonPrivate::EvLoadFreshBlobsCompleted: {
+                auto* msg = event->Get<
+                    TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted>();
+                counters.ReplayedCommitIds.clear();
+                for (const auto& blob: msg->Blobs) {
+                    counters.ReplayedCommitIds.push_back(blob.CommitId);
+                }
+                Sort(counters.ReplayedCommitIds);
                 break;
             }
             case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
@@ -320,6 +385,19 @@ void WaitForTrimsCompleted(
     UNIT_ASSERT_GE(counters.TrimsCompleted, count);
 }
 
+ui64 GetFreshBlobsCount(TPartitionClient& partition)
+{
+    return partition.StatPartition()->Record.GetStats().GetFreshBlobsCount();
+}
+
+// Unlike RebootTablet, keeps the observer while the tablet starts.
+void RestartTablet(TPartitionClient& partition)
+{
+    partition.KillTablet();
+    partition.ReconnectPipe();
+    partition.WaitReady();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitTestActorRuntime(
@@ -329,13 +407,17 @@ void InitTestActorRuntime(
     ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    TControlBoard* controlBoard = nullptr)
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
         std::make_shared<NFeatures::TFeaturesConfig>(
             NCloud::NProto::TFeaturesConfig())
     );
+    if (controlBoard) {
+        storageConfig->Register(*controlBoard);
+    }
 
     NProto::TPartitionConfig partConfig;
 
@@ -449,7 +531,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TMaybe<ui32> channelsCount = {},
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    TControlBoard* controlBoard = nullptr)
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -497,7 +580,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
         std::move(tabletInfo),
         testPartitionInfo,
-        storageAccessMode
+        storageAccessMode,
+        controlBoard
     );
 
     return runtime;
@@ -3618,6 +3702,1170 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                    << ", own: " << ownMediaKind);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogPartiallyBehindLiveBlob)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        // The pin holds P below every other blob.
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+
+        // The threshold step requests one trim of each kind. The prefix trim
+        // cannot pass the pin. The partial trim moves the soft barrier onto
+        // the newest dead blob and keeps the pin.
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL(5, commits.size());
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[3], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({commits[0]}), counters.Keep);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetFreshBlobsCount(partition));
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('p'),
+                GetBlockContent(partition.ReadBlocks(100)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('d'),
+                GetBlockContent(partition.ReadBlocks(1)));
+        };
+
+        check();
+
+        // Replay reads the kept blob and the live one.
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[4]}),
+            counters.ReplayedCommitIds);
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldNotFlushFreshLogPinnedByLiveBlob)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = PartialTrimConfig();
+        config.SetFreshBlobCountFlushThreshold(20);
+        config.SetFreshByteCountHardLimit(64_KB);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        partition.WriteBlocks(100, 'p');
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            partition.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // The pin never dies, so only the first prefix trim moves P.
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HardCommands);
+        UNIT_ASSERT_GT(counters.SoftCommands, 10);
+        UNIT_ASSERT_LT(GetFreshBlobsCount(partition), 20);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('p'),
+                GetBlockContent(partition.ReadBlocks(100)));
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlockContent(partition.ReadBlocks(i % RegionSize)));
+            }
+        };
+
+        check();
+
+        RestartTablet(partition);
+        UNIT_ASSERT(IsIn(counters.ReplayedCommitIds, commits[0]));
+        UNIT_ASSERT_LT(counters.ReplayedCommitIds.size(), 20);
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldNotPassInFlightFreshWriteWithSoftBarrier)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdPut = false;
+        TAutoPtr<IEventHandle> heldPut;
+        ui64 heldCommitId = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (holdPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    if (msg->Id.Channel() == 4) {
+                        holdPut = false;
+                        heldCommitId = MakeCommitId(
+                            msg->Id.Generation(),
+                            msg->Id.Step());
+                        heldPut = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(1, 'a');
+
+        holdPut = true;
+        partition.SendWriteBlocksRequest(50, 'x');
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!heldPut;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The prefix trim stops below the write in flight, and the partial
+        // trim finds nothing at or below S.
+        for (char c = 'b'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("H", counters.CommandKinds);
+
+        runtime->Send(heldPut.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvWriteBlocksResponse()->GetStatus());
+
+        // Once the write is added, the soft barrier passes it with a Keep
+        // flag.
+        for (char c = 'e'; c <= 'g'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(8, commits.size());
+        UNIT_ASSERT_VALUES_EQUAL(heldCommitId, commits[4]);
+        UNIT_ASSERT_VALUES_EQUAL(commits[6], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({heldCommitId}), counters.Keep);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                GetBlockContent(partition.ReadBlocks(50)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('g'),
+                GetBlockContent(partition.ReadBlocks(1)));
+        };
+
+        check();
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({heldCommitId, commits[7]}),
+            counters.ReplayedCommitIds);
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldServePartialTrimRequestAfterFlush)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdAddBlobs = false;
+        TAutoPtr<IEventHandle> addBlobs;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (holdAddBlobs &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest &&
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
+                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                {
+                    holdAddBlobs = false;
+                    addBlobs = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(5, 'f');
+
+        holdAddBlobs = true;
+        partition.SendFlushRequest();
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!addBlobs;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // Written after the flush started, so the flush does not release it.
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+
+        // While the flush runs, only the prefix trim starts.
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("H", counters.CommandKinds);
+
+        // The partial request made during the flush is served after it. Both
+        // kinds are due then, and they alternate.
+        runtime->Send(addBlobs.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(6, commits.size());
+        UNIT_ASSERT_VALUES_EQUAL(commits[4], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({commits[1]}), counters.Keep);
+
+        // A flush requests only a prefix trim.
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 4);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSHH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetFreshBlobsCount(partition));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('p'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('d'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldSendNoSoftBarrierWithoutDeadBlobBehindLiveOne)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        partition.WriteBlocks(1, 'a');
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 1);
+
+        // After a prefix trim, the partial trim goes first when both are due.
+        // Every dead blob is below P, so it falls back to a prefix trim.
+        for (char c = 'b'; c <= 'e'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetFreshBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldReleaseKeptFreshBlobsThatDied)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(100, 'p');
+        partition.WriteBlocks(2, 'k');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[4], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1]}),
+            counters.Keep);
+
+        // A kept blob dies above P: the next partial trim releases it.
+        partition.WriteBlocks(2, 'K');
+        partition.WriteBlocks(1, 'e');
+        partition.WriteBlocks(1, 'f');
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        UNIT_ASSERT_VALUES_EQUAL("HSS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[7], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({commits[6]}), counters.Keep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[1]}),
+            counters.DoNotKeep);
+
+        // The pin dies, and P moves past it: the hard prefix barrier deletes
+        // it without a DoNotKeep flag.
+        partition.WriteBlocks(100, 'P');
+        WaitForTrimsCompleted(*runtime, counters, 4);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSSH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(10, commits.size());
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[6], commits[8], commits[9]}),
+            counters.ReplayedCommitIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('P'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('K'),
+            GetBlockContent(partition.ReadBlocks(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('f'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldResendKeepFlagsAfterFailedSoftCommand)
+    {
+        for (const bool restart: {false, true}) {
+            auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            TFreshLogTrimCounters counters;
+            auto countTrims = CountFreshLogTrims(counters);
+            bool failSoftCommand = true;
+            bool failNextResult = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvBlobStorage::EvCollectGarbage: {
+                            auto* msg =
+                                event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                            if (msg->Channel == 4 && !msg->Hard &&
+                                failSoftCommand)
+                            {
+                                failSoftCommand = false;
+                                failNextResult = true;
+                            }
+                            break;
+                        }
+                        case TEvBlobStorage::EvCollectGarbageResult: {
+                            auto* msg = event->Get<
+                                TEvBlobStorage::TEvCollectGarbageResult>();
+                            // The fake BlobStorage has applied the command.
+                            if (msg->Channel == 4 && failNextResult) {
+                                failNextResult = false;
+                                msg->Status = NKikimrProto::ERROR;
+                            }
+                            break;
+                        }
+                    }
+                    return countTrims(event);
+                });
+            const auto& commits = counters.FreshBlobCommitIds;
+
+            partition.WriteBlocks(100, 'p');
+            for (char c = 'a'; c <= 'd'; ++c) {
+                partition.WriteBlocks(1, c);
+            }
+            WaitForTrimsCompleted(*runtime, counters, 2);
+            UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsFailed);
+            UNIT_ASSERT_VALUES_EQUAL(commits[3], counters.SoftBarrierCommitId);
+
+            if (restart) {
+                RestartTablet(partition);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TVector<ui64>({commits[0], commits[4]}),
+                    counters.ReplayedCommitIds);
+            } else {
+                // The retry waits for the backoff. Its barrier is not lower,
+                // it resends Keep for the live blob, and it releases the dead
+                // ones.
+                WaitForTrimsCompleted(*runtime, counters, 3);
+                UNIT_ASSERT_VALUES_EQUAL("HSS", counters.CommandKinds);
+                UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsFailed);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    commits[3],
+                    counters.SoftBarrierCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TVector<ui64>({commits[0]}),
+                    counters.Keep);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TVector<ui64>({commits[1], commits[2], commits[3]}),
+                    counters.DoNotKeep);
+                UNIT_ASSERT_VALUES_EQUAL(2, GetFreshBlobsCount(partition));
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('p'),
+                GetBlockContent(partition.ReadBlocks(100)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('d'),
+                GetBlockContent(partition.ReadBlocks(1)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotSendSoftBarrierBeforeStartupFlush)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdAddBlobs = false;
+        TAutoPtr<IEventHandle> addBlobs;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (holdAddBlobs &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest &&
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
+                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                {
+                    holdAddBlobs = false;
+                    addBlobs = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+
+        // The startup flush waits in AddBlobs.
+        holdAddBlobs = true;
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[4]}),
+            counters.ReplayedCommitIds);
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!addBlobs;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // Replayed blobs hold P in the previous generation. A threshold step
+        // starts only a hard prefix trim.
+        for (char c = 'e'; c <= 'h'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+
+        // After the startup flush, the first hard prefix barrier deletes the
+        // blob kept in the previous lifetime.
+        runtime->Send(addBlobs.Release());
+        WaitForTrimsCompleted(*runtime, counters, 4);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSHH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(9, commits.size());
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[8]}),
+            counters.ReplayedCommitIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('p'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('h'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldNotSendSoftBarrierWhilePrefixIsInPreviousGeneration)
+    {
+        auto config = PartialTrimConfig();
+        config.SetMaxWriteBlobErrorsBeforeSuicide(10);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool failFlushPut = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (failFlushPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPutResult)
+                {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                    // The flush writes to the merged channel.
+                    if (msg->Id.Channel() == 3) {
+                        failFlushPut = false;
+                        msg->Status = NKikimrProto::ERROR;
+                    }
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        // The partial trim keeps blobs below its soft barrier.
+        partition.WriteBlocks(100, 'p');
+        partition.WriteBlocks(2, 'k');
+        partition.WriteBlocks(3, 'q');
+        partition.WriteBlocks(4, 'r');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[6], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1], commits[2], commits[3]}),
+            counters.Keep);
+
+        // The startup flush fails, so the replayed blobs keep P in the
+        // previous generation, and no flush runs.
+        failFlushPut = true;
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>(
+                {commits[0], commits[1], commits[2], commits[3], commits[7]}),
+            counters.ReplayedCommitIds);
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return counters.FlushesCompleted == 1;
+            };
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT(!failFlushPut);
+
+        // Only kept blobs die. A soft barrier on them would be lower than the
+        // one of the previous lifetime, so only the prefix trim runs.
+        partition.WriteBlocks(2, 'K');
+        partition.WriteBlocks(3, 'Q');
+        partition.WriteBlocks(4, 'R');
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('p'),
+                GetBlockContent(partition.ReadBlocks(100)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('K'),
+                GetBlockContent(partition.ReadBlocks(2)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('Q'),
+                GetBlockContent(partition.ReadBlocks(3)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('R'),
+                GetBlockContent(partition.ReadBlocks(4)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('d'),
+                GetBlockContent(partition.ReadBlocks(1)));
+        };
+
+        check();
+
+        // After a flush, P is in the current generation, and the hard prefix
+        // barrier deletes every blob kept in the previous lifetime.
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 4);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSHH", counters.CommandKinds);
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.ReplayedCommitIds);
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldFlushFreshBlobsCollectedByPartialTrimDuringFlush)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdSoftResult = false;
+        TAutoPtr<IEventHandle> softResult;
+        bool holdAddBlobs = false;
+        TAutoPtr<IEventHandle> addBlobs;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == 4 && !msg->Hard && !softResult) {
+                            holdSoftResult = true;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg = event->Get<
+                            TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (msg->Channel == 4 && holdSoftResult) {
+                            holdSoftResult = false;
+                            softResult = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (holdAddBlobs &&
+                            msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                        {
+                            holdAddBlobs = false;
+                            addBlobs = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                }
+                return countTrims(event);
+            });
+
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+
+        // The partial trim waits for its result.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!softResult;
+            };
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+
+        // A flush captures the dead blobs that the partial trim collects.
+        holdAddBlobs = true;
+        partition.SendFlushRequest();
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!addBlobs;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The partial trim completes first and removes them.
+        runtime->Send(softResult.Release());
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetFreshBlobsCount(partition));
+
+        // The flush finds them missing and counts nothing for them.
+        runtime->Send(addBlobs.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetFreshBlobsCount(partition));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('p'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('d'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldServePartialTrimRequestAfterEmptyFlush)
+    {
+        auto config = PartialTrimConfig();
+        config.SetWaitForFreshWritesBeforeFlushEnabled(true);
+        config.SetMaxWriteBlobErrorsBeforeSuicide(10);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdPut = false;
+        TAutoPtr<IEventHandle> heldPut;
+        bool failPut = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut: {
+                        auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                        if (holdPut && msg->Id.Channel() == 4) {
+                            holdPut = false;
+                            heldPut = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvPutResult: {
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (failPut && msg->Id.Channel() == 4) {
+                            failPut = false;
+                            msg->Status = NKikimrProto::ERROR;
+                        }
+                        break;
+                    }
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(1, 'a');
+
+        holdPut = true;
+        partition.SendWriteBlocksRequest(50, 'x');
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!heldPut;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The flush waits for the write in flight.
+        partition.SendFlushRequest();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Written after the flush started. The step starts only the prefix
+        // trim, and the partial trim waits for the flush.
+        partition.WriteBlocks(100, 'q');
+        for (char c = 'b'; c <= 'e'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("H", counters.CommandKinds);
+
+        // The write in flight fails, and newer writes overwrote every version
+        // that the flush could see, so it has nothing to flush.
+        failPut = true;
+        runtime->Send(heldPut.Release());
+        UNIT_ASSERT(FAILED(partition.RecvWriteBlocksResponse()->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            partition.RecvFlushResponse()->GetStatus());
+
+        // The empty flush still serves the partial request it blocked.
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(6, commits.size());
+        UNIT_ASSERT_VALUES_EQUAL(commits[4], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({commits[1]}), counters.Keep);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('q'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('e'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldNotStartPartialTrimWhenFlushIsDue)
+    {
+        auto config = PartialTrimConfig();
+        config.SetFreshBlobCountFlushThreshold(6);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+
+        // The write that makes the next step also reaches the blob count
+        // flush threshold. The flush moves P past these blobs, so the partial
+        // trim does not start before it.
+        partition.WriteBlocks(2, 'k');
+        for (char c = 'e'; c <= 'g'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetFreshBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldKeepFreshVersionNeededByCheckpointInFlight)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool holdPut = false;
+        TAutoPtr<IEventHandle> heldPut;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (holdPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    event->Get<TEvBlobStorage::TEvPut>()->Id.Channel() == 4)
+                {
+                    holdPut = false;
+                    heldPut = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return countTrims(event);
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(1, 'v');
+        partition.WriteBlocks(2, 'a');
+        partition.WriteBlocks(2, 'b');
+
+        holdPut = true;
+        partition.SendWriteBlocksRequest(50, 'x');
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!heldPut;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The checkpoint waits for the write in flight. A write made meanwhile
+        // keeps the version that the checkpoint needs.
+        partition.SendCreateCheckpointRequest("c1");
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        partition.WriteBlocks(1, 'w');
+        for (char c = 'z'; c >= 'x'; --c) {
+            partition.WriteBlocks(3, c);
+        }
+
+        // The partial trim keeps that version, and its barrier stays below
+        // the write in flight.
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[1], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({commits[0]}), counters.Keep);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.DoNotKeep);
+
+        runtime->Send(heldPut.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvWriteBlocksResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvCreateCheckpointResponse()->GetStatus());
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('v'),
+                GetBlockContent(partition.ReadBlocks(1, "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('w'),
+                GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                GetBlockContent(partition.ReadBlocks(50)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('b'),
+                GetBlockContent(partition.ReadBlocks(2, "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                GetBlockContent(partition.ReadBlocks(3)));
+        };
+
+        check();
+
+        RestartTablet(partition);
+        UNIT_ASSERT(IsIn(counters.ReplayedCommitIds, commits[0]));
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldUsePartialTrimSettingOfPartitionMediaKind)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+            for (const bool ownMediaKind: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetFreshChannelWriteRequestsEnabled(true);
+                config.SetFreshDeadBlobByteCountTrimThresholdSSD(
+                    3 * DefaultBlockSize);
+                config.SetFreshDeadBlobByteCountTrimThresholdHDD(
+                    3 * DefaultBlockSize);
+                if (isSSD == ownMediaKind) {
+                    config.SetFreshPartialTrimEnabledSSD(true);
+                } else {
+                    config.SetFreshPartialTrimEnabledHDD(true);
+                }
+
+                TTestPartitionInfo partitionInfo;
+                partitionInfo.MediaKind = mediaKind;
+                auto runtime =
+                    PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                TFreshLogTrimCounters counters;
+                runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+                partition.WriteBlocks(100, 'p');
+                for (char c = 'a'; c <= 'd'; ++c) {
+                    partition.WriteBlocks(1, c);
+                }
+                WaitForTrimsCompleted(*runtime, counters, ownMediaKind ? 2 : 1);
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    ownMediaKind ? "HS" : "H",
+                    counters.CommandKinds,
+                    "media kind: " << static_cast<int>(mediaKind)
+                                   << ", own: " << ownMediaKind);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepFreshVersionsNeededByCheckpoints)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(1, 'a');
+        partition.CreateCheckpoint("c1");
+        partition.WriteBlocks(1, 'b');
+        partition.CreateCheckpoint("c2");
+        for (char c = 'c'; c <= 'f'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+
+        // The checkpoints keep the first two versions live.
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[4], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1]}),
+            counters.Keep);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('a'),
+                GetBlockContent(partition.ReadBlocks(1, "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('b'),
+                GetBlockContent(partition.ReadBlocks(1, "c2")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('f'),
+                GetBlockContent(partition.ReadBlocks(1)));
+        };
+
+        check();
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1], commits[5]}),
+            counters.ReplayedCommitIds);
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldReleaseFreshVersionOfDeletedCheckpoint)
+    {
+        auto runtime = PrepareTestActorRuntime(PartialTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(100, 'p');
+        partition.WriteBlocks(1, 'a');
+        partition.CreateCheckpoint("c1");
+        for (char c = 'b'; c <= 'e'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1]}),
+            counters.Keep);
+
+        // Without the checkpoint, the next overwrite kills its version, and
+        // the next partial trim releases it.
+        partition.DeleteCheckpoint("c1");
+        partition.WriteBlocks(1, 'f');
+        partition.WriteBlocks(1, 'g');
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        UNIT_ASSERT_VALUES_EQUAL("HSS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(commits[6], counters.SoftBarrierCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.Keep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[1]}),
+            counters.DoNotKeep);
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[7]}),
+            counters.ReplayedCommitIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('g'),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldDeleteKeptFreshBlobsAfterPartialTrimIsDisabled)
+    {
+        TControlBoard controlBoard;
+        auto runtime = PrepareTestActorRuntime(
+            PartialTrimConfig(),
+            1024,
+            {},
+            {},
+            {},
+            EStorageAccessMode::Default,
+            &controlBoard);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        partition.WriteBlocks(100, 'p');
+        partition.WriteBlocks(2, 'k');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[0], commits[1]}),
+            counters.Keep);
+
+        TAtomic previousValue = {};
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_FreshPartialTrimEnabledHDD",
+            0,
+            previousValue));
+        UNIT_ASSERT_VALUES_EQUAL(1, AtomicGet(previousValue));
+
+        // Nothing new is kept or released.
+        partition.WriteBlocks(2, 'K');
+        partition.WriteBlocks(1, 'e');
+        partition.WriteBlocks(1, 'f');
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HS", counters.CommandKinds);
+
+        // Once P passes them, the hard prefix barrier deletes the kept blobs.
+        partition.WriteBlocks(100, 'P');
+        WaitForTrimsCompleted(*runtime, counters, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("HSH", counters.CommandKinds);
+
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({commits[6], commits[7], commits[8], commits[9]}),
+            counters.ReplayedCommitIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('P'),
+            GetBlockContent(partition.ReadBlocks(100)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('K'),
+            GetBlockContent(partition.ReadBlocks(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('f'),
+            GetBlockContent(partition.ReadBlocks(1)));
     }
 
     Y_UNIT_TEST(ShouldNotAddSmallNonDeletionBlobsDuringFlush)

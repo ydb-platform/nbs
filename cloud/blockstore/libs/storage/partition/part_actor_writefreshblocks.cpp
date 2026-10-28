@@ -252,7 +252,13 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
+    // For zero requests the fresh index stores no blob id, but the message
+    // carries the id of the zero blob that was written.
+    State->AddFreshBlob(
+        msg->CommitId,
+        msg->BlobId,
+        msg->BlobSize,
+        msg->Timestamp);
 
     if (FreshBlocksWriter) {
         SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
@@ -287,6 +293,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
         if (State->AddDeadBlobByteCount(deadByteCount, threshold)) {
             State->SetPrefixTrimRequested(true);
+            State->SetPartialTrimRequested(true);
         }
         // The dead blobs may have moved P, which a pending prefix request
         // waits for.

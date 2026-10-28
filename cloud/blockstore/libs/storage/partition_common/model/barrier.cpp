@@ -63,4 +63,17 @@ void TBarriers::GetCommitIds(TVector<ui64>& result) const
     }
 }
 
+void TBarriers::GetCommitIds(
+    ui64 minCommitId,
+    ui64 maxCommitId,
+    TVector<ui64>& result) const
+{
+    for (auto it = Barriers.lower_bound(TBarrier(minCommitId, 0));
+         it != Barriers.end() && it->CommitId <= maxCommitId;
+         ++it)
+    {
+        result.push_back(it->CommitId);
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

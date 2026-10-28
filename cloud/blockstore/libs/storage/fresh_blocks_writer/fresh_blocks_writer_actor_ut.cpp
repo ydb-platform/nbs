@@ -10,10 +10,12 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <cmath>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -559,9 +561,13 @@ struct TFreshLogTrimObserver
 {
     // TEvCollectGarbage commands sent to the fresh channels.
     ui32 TrimCommands = 0;
+    ui32 SoftCommands = 0;
     ui32 TrimsCompleted = 0;
     ui32 TrimsFailed = 0;
     ui32 FlushesCompleted = 0;
+    ui64 MaxSoftBarrierCommitId = 0;
+    // Every blob that got a Keep flag.
+    THashSet<ui64> Kept;
     // Fresh blobs in the order they were added to the partition.
     TVector<ui64> FreshBlobCommitIds;
     TVector<ui64> FreshBlobSizes;
@@ -578,8 +584,23 @@ struct TFreshLogTrimObserver
             switch (event->GetTypeRewrite()) {
                 case TEvBlobStorage::EvCollectGarbage: {
                     auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
-                    if (IsFreshChannel(msg->Channel)) {
-                        ++TrimCommands;
+                    if (!IsFreshChannel(msg->Channel)) {
+                        break;
+                    }
+                    ++TrimCommands;
+                    if (msg->Hard) {
+                        break;
+                    }
+                    ++SoftCommands;
+                    MaxSoftBarrierCommitId = Max(
+                        MaxSoftBarrierCommitId,
+                        MakeCommitId(msg->CollectGeneration, msg->CollectStep));
+                    if (msg->Keep) {
+                        for (const auto& blobId: *msg->Keep) {
+                            Kept.insert(MakeCommitId(
+                                blobId.Generation(),
+                                blobId.Step()));
+                        }
                     }
                     break;
                 }
@@ -1864,6 +1885,169 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogPartiallyBehindLiveBlob)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = DefaultConfig();
+        config.SetFreshBlobCountFlushThresholdSSD(20);
+        config.SetFreshByteCountHardLimitSSD(64_KB);
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+        config.SetFreshPartialTrimEnabledSSD(true);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        // The pin holds P below every other blob.
+        fbwClient.WriteBlocks(100, 'p');
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            fbwClient.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime.DispatchEvents({}, 100ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.FlushesCompleted);
+        UNIT_ASSERT_GT(trims.SoftCommands, 10);
+        UNIT_ASSERT(trims.Kept.contains(trims.FreshBlobCommitIds[0]));
+        UNIT_ASSERT_LT(GetFreshBlobsCount(partition), 20);
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('p'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(100))));
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlocksContent(client.ReadBlocks(
+                        TBlockRange32::MakeOneBlock(i % RegionSize))));
+            }
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
+    }
+
+    Y_UNIT_TEST(ShouldNotPassInFlightFreshWriteWithSoftBarrier)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+        config.SetFreshPartialTrimEnabledSSD(true);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        auto observer = trims.Observer();
+        bool holdPut = false;
+        std::unique_ptr<IEventHandle> heldPut;
+        ui64 heldCommitId = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (holdPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    if (TFreshLogTrimObserver::IsFreshChannel(
+                            msg->Id.Channel()))
+                    {
+                        holdPut = false;
+                        heldCommitId = MakeCommitId(
+                            msg->Id.Generation(),
+                            msg->Id.Step());
+                        heldPut.reset(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return observer(event);
+            });
+
+        fbwClient.WriteBlocks(1, 'a');
+
+        holdPut = true;
+        fbwClient.SendWriteBlocksRequest(50, 'x');
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT(heldPut);
+
+        // No soft barrier passes the write in flight.
+        for (char c = 'b'; c <= 'd'; ++c) {
+            fbwClient.WriteBlocks(1, c);
+        }
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_GT(trims.TrimsCompleted, 0);
+        UNIT_ASSERT_LT(trims.MaxSoftBarrierCommitId, heldCommitId);
+
+        runtime.Send(heldPut.release());
+        auto response = fbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_C(
+            !HasError(response->GetError()),
+            FormatError(response->GetError()));
+
+        // Once the write is added, the soft barrier passes it with a Keep
+        // flag.
+        for (char c = 'e'; c <= 'g'; ++c) {
+            fbwClient.WriteBlocks(1, c);
+        }
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_GT(trims.MaxSoftBarrierCommitId, heldCommitId);
+        UNIT_ASSERT(trims.Kept.contains(heldCommitId));
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(50))));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('g'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
     }
 
     Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)

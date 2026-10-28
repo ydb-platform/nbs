@@ -1777,11 +1777,21 @@ message TStorageServiceConfig
     optional uint32 FreshByteCountThresholdForBackpressureSSD = 551;
 
     // Bytes of fresh blobs killed by fresh writes after which partition v1
-    // trims the fresh log without waiting for a flush. A blob is killed when
+    // trims the fresh log without waiting for a flush: one prefix trim and,
+    // with FreshPartialTrimEnabled, one partial trim. A blob is killed when
     // the last of its block versions is overwritten, and counts at least one
     // block. Zero disables these trims, and the fresh log is trimmed only
     // after flushes. The SSD value applies to SSD volumes, the HDD value to
     // HDD and hybrid volumes.
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 552;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 553;
+
+    // Allow fresh-log trim to move a soft barrier past live fresh blobs and
+    // protect them with Keep flags. Requires a nonzero
+    // FreshDeadBlobByteCountTrimThreshold for the same media kind. Once
+    // either has been enabled, kept blobs are deleted only by hard prefix
+    // barriers, so binaries that send soft prefix barriers must not be
+    // deployed again.
+    optional bool FreshPartialTrimEnabledSSD = 554;
+    optional bool FreshPartialTrimEnabledHDD = 555;
 }

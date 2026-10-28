@@ -82,6 +82,18 @@ public:
         TInstant Timestamp;
     };
 
+    struct TFreshTrimSnapshot
+    {
+        // P: below every referenced fresh blob and every in-flight fresh
+        // write.
+        ui64 PrefixCommitId = 0;
+        // S: below every in-flight fresh write. Every fresh write at or below
+        // S has been added to the partition state or has failed.
+        ui64 SafeCommitId = 0;
+        // Referenced commits in (P, S], ascending: the live installed blobs.
+        TVector<ui64> LiveCommitIds;
+    };
+
     TResourceMetricsQueue ResourceMetricsQueue;
     TThreadSafePartCounters PartCounters;
     TThreadSafePartStats PartStats;
@@ -189,6 +201,9 @@ public:
     }
 
     ui64 GetTrimFreshLogToCommitId() const;
+
+    // P, S and the live commits between them, consistent with each other.
+    TFreshTrimSnapshot GetFreshTrimSnapshot() const;
 
     auto GetCommitQueue()
     {

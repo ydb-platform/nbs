@@ -16,6 +16,8 @@
 #include <util/generic/set.h>
 #include <util/system/types.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,9 +127,26 @@ public:
     }
 };
 
+struct TPartialTrimPlan
+{
+    // New soft barrier. Equal to the floor when only flags are sent.
+    ui64 SoftBarrierCommitId = 0;
+    TVector<TPartialBlobId> Keep;
+    TVector<TPartialBlobId> DoNotKeep;
+    // See TPartitionTrimFreshLogState::CollectingCommitIds.
+    TVector<ui64> CollectingCommitIds;
+};
+
 class TPartitionFreshBlobState
 {
 private:
+    struct TUntrimmedFreshBlob
+    {
+        ui64 ByteCount = 0;
+        // The blob as written. Partial trim names it in Keep and DoNotKeep.
+        TPartialBlobId BlobId;
+    };
+
     struct TUnflushedFreshBlob
     {
         ui64 ByteCount = 0;
@@ -137,7 +156,7 @@ private:
     ui64 TabletID = 0;
 
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+    TMap<ui64, TUntrimmedFreshBlob> UntrimmedFreshBlobsByCommitId;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
@@ -174,11 +193,32 @@ public:
     // Returns the byte count of an untrimmed blob.
     [[nodiscard]] ui64 GetFreshBlobByteCount(ui64 commitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
+    void AddFreshBlob(
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui64 blobSize,
+        TInstant timestamp);
 
     // Trims every blob at or below commitId. Returns the unflushed bytes
     // removed.
     [[nodiscard]] ui64 TrimFreshBlobs(ui64 commitId);
+
+    // Trims the blobs that a partial trim collected or released. Returns the
+    // unflushed bytes removed.
+    [[nodiscard]] ui64 TrimCollectedFreshBlobs(const TVector<ui64>& commitIds);
+
+    // Places the soft barrier on the newest dead blob in (P, S] that the flag
+    // budget allows, with Keep flags for the live blobs below it and
+    // DoNotKeep flags for kept blobs that died. liveCommitIds: referenced
+    // commits in (prefixCommitId, safeCommitId], ascending. Returns
+    // std::nullopt when no soft command is needed.
+    [[nodiscard]] std::optional<TPartialTrimPlan> BuildPartialTrimPlan(
+        ui64 prefixCommitId,
+        ui64 safeCommitId,
+        const TVector<ui64>& liveCommitIds,
+        ui64 keptToCommitId,
+        ui64 softBarrierCommitId,
+        ui64 maxFlags) const;
 
     // A missing blob must be at or below trimmedToCommitId: a trim that
     // completed during the flush removed it. Returns 0 then.
@@ -206,6 +246,30 @@ private:
     // A flush or a threshold step requested a prefix trim, or the last one
     // failed. Cleared when a prefix trim starts.
     bool PrefixTrimRequested = false;
+
+    // Partial trim. Nothing here is persisted.
+
+    // Every live untrimmed blob at or below this commit carries a Keep flag
+    // that every group acknowledged.
+    ui64 KeptToCommitId = 0;
+
+    // The highest soft barrier sent in this tablet lifetime, whether or not
+    // the command succeeded. A later soft barrier must not be lower.
+    ui64 SoftBarrierCommitId = 0;
+
+    // A threshold step requested a partial trim, or the last one failed.
+    // Cleared when a partial trim scan starts.
+    bool PartialTrimRequested = false;
+
+    // The kind of the last trim started, to alternate when both are requested.
+    bool LastTrimWasPrefix = false;
+
+    // The partial trim in flight.
+    bool PartialTrimInFlight = false;
+    // Dead blobs that the soft command collects or releases. They leave the
+    // untrimmed and unflushed accounting only after the command succeeds in
+    // every group.
+    TVector<ui64> CollectingCommitIds;
 
 public:
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
@@ -262,6 +326,74 @@ public:
         }
         DeadBlobByteCount = 0;
         return true;
+    }
+
+    [[nodiscard]] ui64 GetKeptToCommitId() const
+    {
+        return KeptToCommitId;
+    }
+
+    [[nodiscard]] ui64 GetSoftBarrierCommitId() const
+    {
+        return SoftBarrierCommitId;
+    }
+
+    [[nodiscard]] bool IsPartialTrimRequested() const
+    {
+        return PartialTrimRequested;
+    }
+
+    void SetPartialTrimRequested(bool requested)
+    {
+        PartialTrimRequested = requested;
+    }
+
+    [[nodiscard]] bool GetLastTrimWasPrefix() const
+    {
+        return LastTrimWasPrefix;
+    }
+
+    void SetLastTrimWasPrefix(bool prefix)
+    {
+        LastTrimWasPrefix = prefix;
+    }
+
+    [[nodiscard]] bool IsPartialTrimInFlight() const
+    {
+        return PartialTrimInFlight;
+    }
+
+    void StartPartialTrim(
+        ui64 softBarrierCommitId,
+        TVector<ui64> collectingCommitIds)
+    {
+        Y_ABORT_UNLESS(!PartialTrimInFlight);
+        Y_ABORT_UNLESS(softBarrierCommitId >= SoftBarrierCommitId);
+        // Set before sending: a failed or timed-out command may still apply,
+        // so its value is the floor for every later soft barrier.
+        SoftBarrierCommitId = softBarrierCommitId;
+        CollectingCommitIds = std::move(collectingCommitIds);
+        PartialTrimInFlight = true;
+    }
+
+    // Returns the untrimmed entries to erase.
+    [[nodiscard]] TVector<ui64> CompletePartialTrim()
+    {
+        Y_ABORT_UNLESS(PartialTrimInFlight);
+        KeptToCommitId = SoftBarrierCommitId;
+        PartialTrimInFlight = false;
+        return std::exchange(CollectingCommitIds, {});
+    }
+
+    void FailPartialTrim()
+    {
+        Y_ABORT_UNLESS(PartialTrimInFlight);
+        // Keep SoftBarrierCommitId. The entries stay, and the next scan
+        // resends Keep for live blobs in (KeptToCommitId, SoftBarrierCommitId]
+        // and DoNotKeep for dead ones.
+        CollectingCommitIds.clear();
+        PartialTrimInFlight = false;
+        PartialTrimRequested = true;
     }
 };
 

@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/actor_trimfreshlog.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -29,11 +30,47 @@ bool TPartitionActor::ShouldStartPrefixTrim() const
            State->IsPrefixTrimRequested();
 }
 
-TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind()
-    const
+bool TPartitionActor::ShouldStartPartialTrim(
+    const TActorContext& ctx,
+    ui64 prefixCommitId)
 {
-    return ShouldStartPrefixTrim() ? ETrimFreshLogKind::Prefix
-                                   : ETrimFreshLogKind::None;
+    if (!IsPartialTrimEnabled() || !State->IsPartialTrimRequested()) {
+        return false;
+    }
+
+    // Flush completion moves P past these blobs without Keep flags. The
+    // request stays set until a partial trim starts.
+    if (State->GetFlushState().GetOperationState().Status !=
+            EOperationStatus::Idle ||
+        ShouldFlush(ctx))
+    {
+        return false;
+    }
+
+    // Before P reaches the current generation, a soft barrier from an earlier
+    // generation may be above P, and VDisks reject a decreasing barrier.
+    return ParseCommitId(prefixCommitId).first == Executor()->Generation();
+}
+
+TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind(
+    const TActorContext& ctx)
+{
+    const bool prefix = ShouldStartPrefixTrim();
+    const bool partial =
+        ShouldStartPartialTrim(ctx, State->GetTrimFreshLogToCommitId());
+
+    if (prefix && partial) {
+        // Alternate, so that frequent requests cannot starve either kind.
+        return State->GetLastTrimWasPrefix() ? ETrimFreshLogKind::Partial
+                                             : ETrimFreshLogKind::Prefix;
+    }
+    if (prefix) {
+        return ETrimFreshLogKind::Prefix;
+    }
+    if (partial) {
+        return ETrimFreshLogKind::Partial;
+    }
+    return ETrimFreshLogKind::None;
 }
 
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
@@ -43,7 +80,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
+    if (ChooseTrimFreshLogKind(ctx) == ETrimFreshLogKind::None) {
         // not ready
         return;
     }
@@ -129,7 +166,42 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
+    auto kind = ChooseTrimFreshLogKind(ctx);
+
+    std::optional<TPartialTrimPlan> plan;
+    if (kind == ETrimFreshLogKind::Partial) {
+        State->SetPartialTrimRequested(false);
+
+        const auto snapshot = SharedState->GetFreshTrimSnapshot();
+        plan = State->BuildPartialTrimPlan(
+            snapshot.PrefixCommitId,
+            snapshot.SafeCommitId,
+            snapshot.LiveCommitIds,
+            State->GetKeptToCommitId(),
+            State->GetSoftBarrierCommitId(),
+            MaxCollectGarbageFlagsPerMessage);
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Partial TrimFreshLog scan P: @%lu, S: @%lu, C: @%lu, "
+            "keep: %lu, do not keep: %lu, collecting: %lu",
+            LogTitle.GetWithTime().c_str(),
+            snapshot.PrefixCommitId,
+            snapshot.SafeCommitId,
+            plan ? plan->SoftBarrierCommitId : 0,
+            plan ? plan->Keep.size() : 0,
+            plan ? plan->DoNotKeep.size() : 0,
+            plan ? plan->CollectingCommitIds.size() : 0);
+
+        if (!plan) {
+            // Nothing to collect behind live blobs, but P may have moved.
+            kind = ShouldStartPrefixTrim() ? ETrimFreshLogKind::Prefix
+                                           : ETrimFreshLogKind::None;
+        }
+    }
+
+    if (kind == ETrimFreshLogKind::None) {
         State->AccessTrimFreshLogState().SetStatus(
             EOperationStatus::Idle,
             ctx.Now());
@@ -137,20 +209,36 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    State->SetPrefixTrimRequested(false);
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
-
     ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "TrimFreshLog");
         return;
     }
 
+    // Prefix trims send hard barriers, so partial trims send the only soft
+    // barriers on fresh channels.
+    ui64 trimFreshLogToCommitId = 0;
+    TVector<TPartialBlobId> keep;
+    TVector<TPartialBlobId> doNotKeep;
+    if (plan) {
+        trimFreshLogToCommitId = plan->SoftBarrierCommitId;
+        keep = std::move(plan->Keep);
+        doNotKeep = std::move(plan->DoNotKeep);
+        State->StartPartialTrim(
+            trimFreshLogToCommitId,
+            std::move(plan->CollectingCommitIds));
+    } else {
+        State->SetPrefixTrimRequested(false);
+        trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    }
+    State->SetLastTrimWasPrefix(!plan);
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Start TrimFreshLog @%lu @%lu",
+        "%s Start %s TrimFreshLog @%lu @%lu",
         LogTitle.GetWithTime().c_str(),
+        plan ? "partial" : "prefix",
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
@@ -170,9 +258,9 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         Executor()->Generation(),
         nextPerGenerationCounter,
-        true,   // hard
-        TVector<TPartialBlobId>(),   // keep
-        TVector<TPartialBlobId>(),   // doNotKeep
+        !plan,   // hard
+        std::move(keep),
+        std::move(doNotKeep),
         std::move(freshChannels),
         VolumeLabels,
         Config->GetTrimFreshLogTimeout());
@@ -185,8 +273,9 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const bool failed = FAILED(msg->GetStatus());
 
-    if (FAILED(msg->GetStatus())) {
+    if (failed) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -196,7 +285,6 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             FormatError(msg->GetError()).c_str());
 
         State->RegisterTrimFreshLogError();
-        State->SetPrefixTrimRequested(true);
     } else {
         LOG_DEBUG(
             ctx,
@@ -205,12 +293,26 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str());
 
         State->RegisterTrimFreshLogSuccess();
-        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-        const ui64 trimmedByteCount = State->TrimFreshBlobs(msg->CommitId);
-        if (IsFreshBlocksWriterEnabled()) {
-            SharedState->UnflushedFreshBlobByteCount.fetch_sub(
-                trimmedByteCount);
+    }
+
+    // msg->CommitId is used only for prefix trims.
+    ui64 trimmedByteCount = 0;
+    if (State->IsPartialTrimInFlight()) {
+        if (!failed) {
+            trimmedByteCount =
+                State->TrimCollectedFreshBlobs(State->CompletePartialTrim());
+        } else {
+            State->FailPartialTrim();
         }
+    } else if (!failed) {
+        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
+        trimmedByteCount = State->TrimFreshBlobs(msg->CommitId);
+    } else {
+        State->SetPrefixTrimRequested(true);
+    }
+
+    if (IsFreshBlocksWriterEnabled()) {
+        SharedState->UnflushedFreshBlobByteCount.fetch_sub(trimmedByteCount);
     }
 
     State->AccessTrimFreshLogState().SetStatus(

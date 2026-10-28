@@ -561,6 +561,12 @@ void TPartitionActor::HandleFlush(
         UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        // A partial trim may wait for this flush.
+        if (State->IsPartialTrimRequested()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -679,6 +685,11 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             ProcessCommitQueue(ctx);
         }
 
+        // A partial trim may wait for this flush.
+        if (State->IsPartialTrimRequested()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -784,6 +795,11 @@ void TPartitionActor::CompleteFlushToDevNull(
     Y_UNUSED(args);
 
     State->AccessFlushState().SetIdle(ctx.Now());
+
+    // A partial trim may wait for this flush.
+    if (State->IsPartialTrimRequested()) {
+        EnqueueTrimFreshLogIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleFlushCompleted(
@@ -820,11 +836,15 @@ void TPartitionActor::HandleFlushCompleted(
         ui64 flushedFreshBlobByteCount = 0;
 
         // A trim that completed during the flush may have removed some of
-        // the dead blobs that the flush captured.
+        // the dead blobs that the flush captured. A partial trim collects
+        // only blobs at or below its barrier.
+        const ui64 trimmedToCommitId = Max(
+            State->GetLastTrimFreshLogToCommitId(),
+            State->GetSoftBarrierCommitId());
         for (const ui64& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
             flushedFreshBlobByteCount += State->FlushFreshBlob(
                 freshBlobCommitId,
-                State->GetLastTrimFreshLogToCommitId());
+                trimmedToCommitId);
         }
 
         if (IsFreshBlocksWriterEnabled()) {
