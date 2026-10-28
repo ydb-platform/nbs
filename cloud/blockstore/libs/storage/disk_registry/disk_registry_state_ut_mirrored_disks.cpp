@@ -35,7 +35,7 @@ void NotifyDisks(
     TVector<TDiskNotificationResult> diskBeingNotify;
     for (const auto& [disk, seqNo]: state.GetDisksToReallocate()) {
         TDiskNotificationResult notification{
-            TDiskNotification{disk, seqNo},
+            TDiskNotification{disk, seqNo, 0},
             {},
         };
         diskBeingNotify.push_back(notification);
@@ -1065,7 +1065,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }
@@ -1419,7 +1419,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }
@@ -3180,7 +3180,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{"disk-1", 4},
+                    TDiskNotification{"disk-1", 4, 0},
                     {},
                 });
         });
@@ -3388,7 +3388,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }

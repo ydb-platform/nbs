@@ -300,7 +300,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"vol0", notification->second},
+                        TDiskNotification{"vol0", notification->second, 0},
                         {},
                     });
             });
@@ -1341,7 +1341,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{"nrd0", notification->second},
+                        TDiskNotification{"nrd0", notification->second, 0},
                         {},
                     });
             });
