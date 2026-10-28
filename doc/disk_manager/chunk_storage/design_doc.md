@@ -109,7 +109,7 @@ Creation uses the existing lifecycle checks. Deletion marks the snapshot Deletin
 
 The migration task checks Ready status and takes `snapshots.lock_task_id` in one transaction. It keeps this lock until both the replication and detach children finish. Deletion waits for the lock; readers continue. If deletion marks the snapshot first, migration fails admission.
 
-Incremental creation uses the same lock on its source snapshot. Creation retries while migration holds it. Migration likewise waits for a creator holding the lock. Snapshots that share chunks can otherwise migrate independently, even after the chunk's original snapshot has been deleted.
+Snapshot creation uses the same lock on its source snapshot. The creation task keeps that lock until every reused chunk has all required destination copies recorded in the new snapshot's actual lists. Creation retries while migration holds the lock. Migration likewise waits for a creator holding it. Cancellation stops the copy workers before releasing the source lock. If unfinished deletion on the source snapshot blocks creation, the task releases and reacquires the lock as described under "Reference an existing chunk". Snapshots that share chunks can otherwise migrate independently, even after the chunk's original snapshot has been deleted.
 
 The parent task also uses `snapshots.operation_generation`. It advances this value when it takes ownership or cancels. Children receive the parent's task ID and generation. Every migration write checks Ready status, that ID, and that generation. Retries keep the same generation. A cancelled task cannot take the lock again.
 
@@ -185,17 +185,32 @@ sequenceDiagram
 
 ### Reference an existing chunk
 
-The creator locks the source against deletion while reading its map and adding references. It saves the destination map before, or together with, the new reference.
+The dataplane tasks [createSnapshotFromDiskTask](../../../cloud/disk_manager/internal/pkg/dataplane/create_snapshot_from_disk_task.go) and [createSnapshotFromSnapshotTask](../../../cloud/disk_manager/internal/pkg/dataplane/create_snapshot_from_snapshot_task.go) reuse existing chunks during incremental creation and snapshot-to-snapshot copying, respectively. The creation task locks the source snapshot against deletion and migration until all required destination copies of the reused chunks are recorded in the new snapshot's actual lists.
 
-A transaction checks that the source reference and root still exist. It uses only copies that appear in both actual and desired on a source reference and have no tombstone. This check covers reused, inherited, and temporary source copies. The new reference gets the requested list in desired. Its actual list contains reusable destinations and source copies needed to finish replication. The transaction increments `refcnt` once.
+The source snapshot's `chunk_map` associates each chunk index with a chunk ID. For each reused chunk, the creation task saves that index and ID in the new snapshot's `chunk_map` before, or in the same transaction as, adding the new snapshot's reference. This ordering lets cleanup find the chunk if creation fails.
 
-For an empty creation list, the new reference puts these usable source backends in both desired and actual. For a non-empty list, the creator copies to every missing destination. It detaches temporary source backends from the new snapshot only after all requested copies exist. A failed copy leaves the source copies readable.
+The same chunk can have references from several snapshots, each with different backend lists. The transaction that adds the new snapshot's reference checks that the source snapshot's reference and the chunk's root still exist, and reads the chunk's other references. A backend copy is reusable if at least one existing reference lists that backend in both actual and desired, and the root has no tombstone for it. Both entries must be on the same reference, but copies on different backends can come from different references. These checks also apply to inherited copies. A cached chunk ID alone does not prove that a reusable copy still exists.
 
-If a requested backend is tombstoned, registration waits for deletion and the reuse delay. The transaction that adds a reference and the detach transaction check the same root. If registration commits first, the new lists keep the object alive. If detach commits first, the tombstone makes registration retry. A retry after registration reuses the saved reference and count. A cached chunk ID cannot replace the source-reference check.
+The transaction fills the new snapshot's reference according to the creation request:
+
+- With an empty backend list, it inherits the usable backends from the source snapshot's own reference and puts them in both desired and actual.
+- With an explicit backend list, desired contains exactly the requested backends. Actual contains only requested backends whose copies can already be reused through the existing references checked above.
+
+The transaction increments `refcnt` only when it inserts the new reference. A retry keeps the saved lists and does not increment the count again.
+
+For each requested backend missing from actual, the snapshot creation task reads the chunk through the locked source snapshot's reference and writes it to that backend. After a successful write, it adds the destination backend to the new snapshot's actual list, with the same checks as a new chunk write. A failed copy keeps the completed destination copies for retry; the source snapshot remains locked while copying is retried.
+
+For example, snapshot 1 stores the chunk on A and snapshot 2 requests B. Snapshot 2's reference starts with desired `{B}` and actual `{}`. The creation task reads from A using snapshot 1's reference, writes to B, and changes snapshot 2's actual to `{B}`. Snapshot 1's reference and lock protect A throughout the copy. Snapshot 2's reference contains only B throughout creation, so there is no source backend to remove from it.
+
+Before adding a requested backend to the new reference, the transaction checks its tombstone. If deletion of an old copy is still pending or `BackendReattachDelay` has not passed, the creation task retries later. Once deletion and the delay have finished, the transaction removes the tombstone and adds the backend to desired together.
+
+If that unfinished deletion belongs to the locked source snapshot, the creation task stops its copy workers and releases the source lock so deletion can finish. Before resuming, it reacquires the lock and rechecks the source reference and root. Cancellation also stops the copy workers before releasing the lock; the collector cleans up the partial destination snapshot.
+
+The transaction that adds the new reference and the transaction that starts deleting a backend copy check the same root. If the new reference commits first, its actual or desired entries keep the copy alive. If deletion marks the backend first, the transaction adding the reference sees the tombstone and retries.
 
 ### Replicate a chunk
 
-The replication task keeps the chunk ID and reference count. It checks tombstones before adding requested backends, as described below. Its transaction adds every requested backend to desired and keeps the current source requirements. The same transaction can reuse a completed copy from another reference, with the checks used for reference creation. The task then writes each backend missing from actual. It reads the source with the read procedure above. Separate S3 clients allow different endpoints, buckets, credentials, and regions.
+The replication task keeps the chunk ID and reference count. It checks tombstones before adding requested backends, as described below. Its transaction adds every requested backend to desired and keeps the current source requirements. The same transaction can reuse a completed copy from another reference, with the checks used for reference creation. The task then writes each backend missing from actual. It reads the source with the read procedure above.
 
 The task records each successful copy in actual with the same checks as a new write. Migration also checks the parent's ownership generation. The task advances its chunk milestone only after every requested copy is recorded. A source read failure or failed destination leaves the successful copies and remaining desired entries for retry.
 
@@ -396,7 +411,7 @@ flowchart TD
 
 Creation keeps the existing base lookup and checkpoints. For unchanged chunks, it adds references to the same chunk IDs and copies only to missing requested backends. It writes changed chunks to every requested backend. A base on another backend remains usable.
 
-For a non-empty request list, creation finishes when every nonzero chunk has all requested copies and temporary source backends have been detached from the new snapshot. For an empty list, creation keeps the existing per-chunk rules and accepts mixed backends. A retry preserves chunks written before its saved milestone.
+For a non-empty request list, creation finishes when every nonzero chunk has all requested copies recorded in the new snapshot's actual lists. For an empty list, creation keeps the existing per-chunk rules and accepts mixed backends. A retry preserves chunks written before its saved milestone.
 
 A failed copy keeps its map, reference, successful copies, and remaining desired entries. If all copies succeed but marking the snapshot Ready fails, the task retries that step using the saved copies. Tombstones cause retries after deletion and the reuse delay. Creation cancellation deletes the partial destination through the reference deletion procedure.
 
