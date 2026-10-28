@@ -1780,9 +1780,20 @@ message TStorageServiceConfig
     // fresh log without waiting for a flush. A blob dies when the last of its
     // block versions is overwritten or flushed, and counts at least one block.
     // An ordinary trim starts when the dead blobs older than every live or
-    // in-flight fresh blob reach this value. Zero disables these trims, and
-    // the fresh log is trimmed only after flushes. The SSD value applies to
-    // SSD volumes, the HDD value to HDD and hybrid volumes.
+    // in-flight fresh blob reach this value, and, with
+    // FreshSelectiveTrimEnabled, a selective trim when the other dead blobs
+    // do. Zero disables these trims, and the fresh log is trimmed only after
+    // flushes. The SSD value applies to SSD volumes, the HDD value to HDD and
+    // hybrid volumes.
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 552;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 553;
+
+    // Allow fresh-log trim to move a soft barrier past live fresh blobs and
+    // protect them with Keep flags. Requires a nonzero
+    // FreshDeadBlobByteCountTrimThreshold for the same media kind. Once
+    // either has been enabled, kept blobs are deleted only by the hard
+    // barriers of ordinary trims, so binaries whose ordinary trims send soft
+    // barriers must not be deployed again.
+    optional bool FreshSelectiveTrimEnabledSSD = 554;
+    optional bool FreshSelectiveTrimEnabledHDD = 555;
 }

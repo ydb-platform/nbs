@@ -99,6 +99,28 @@ ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
         TrimFreshLogBarriers.GetMinCommitId() - 1);
 }
 
+TPartitionThreadSafeState::TFreshTrimSnapshot
+TPartitionThreadSafeState::GetFreshTrimSnapshot() const
+{
+    TGuard guard(StateLock);
+
+    const ui64 lastCommitId = GetLastCommitIdImpl();
+
+    // FinishFreshWrite releases the FreshWritesCommitQueue barrier only after
+    // the blob was added to the partition state, so SafeCommitId is below every
+    // write that is not added yet.
+    TFreshTrimSnapshot snapshot;
+    snapshot.OrdinaryTrimToCommitId =
+        Min(lastCommitId, TrimFreshLogBarriers.GetMinCommitId() - 1);
+    snapshot.SafeCommitId =
+        Min(lastCommitId, FreshWritesCommitQueue.GetMinCommitId() - 1);
+    TrimFreshLogBarriers.GetCommitIds(
+        snapshot.OrdinaryTrimToCommitId + 1,
+        snapshot.SafeCommitId,
+        snapshot.LiveCommitIds);
+    return snapshot;
+}
+
 void TPartitionThreadSafeState::WaitCommitForCompaction(
     const NActors::TActorContext& ctx,
     std::unique_ptr<ITransactionBase> tx,

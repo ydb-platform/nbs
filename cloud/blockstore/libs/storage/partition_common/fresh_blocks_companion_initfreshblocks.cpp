@@ -81,7 +81,11 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size(), timestamp);
+        FreshBlobState.AddFreshBlob(
+            blob.CommitId,
+            blob.BlobId,
+            blob.Data.size(),
+            timestamp);
 
         // A blob without blocks gets no trim barrier reference.
         if (blocks.size() == blockCount) {

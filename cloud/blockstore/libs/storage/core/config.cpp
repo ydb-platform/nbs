@@ -216,6 +216,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlobAgeFlushThresholdHDD, TDuration, TDuration::Zero()           )\
     xxx(FreshDeadBlobByteCountTrimThresholdSSD, ui32,   0                     )\
     xxx(FreshDeadBlobByteCountTrimThresholdHDD, ui32,   0                     )\
+    xxx(FreshSelectiveTrimEnabledSSD,  bool,      false                       )\
+    xxx(FreshSelectiveTrimEnabledHDD,  bool,      false                       )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
