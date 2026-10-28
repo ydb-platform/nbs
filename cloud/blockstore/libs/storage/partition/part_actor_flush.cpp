@@ -562,6 +562,12 @@ void TPartitionActor::HandleFlush(
         UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        // A selective trim may wait for this flush.
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -680,6 +686,11 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             ProcessCommitQueue(ctx);
         }
 
+        // A selective trim may wait for this flush.
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -785,6 +796,11 @@ void TPartitionActor::CompleteFlushToDevNull(
     Y_UNUSED(args);
 
     State->AccessFlushState().SetIdle(ctx.Now());
+
+    // A selective trim may wait for this flush.
+    if (IsSelectiveTrimEnabled()) {
+        EnqueueTrimFreshLogIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleFlushCompleted(

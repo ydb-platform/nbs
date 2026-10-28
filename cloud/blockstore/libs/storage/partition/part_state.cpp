@@ -620,11 +620,20 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 void TPartitionState::AddFreshBlob(
     ui64 commitId,
+    const TPartialBlobId& blobId,
     ui64 blobSize,
     TInstant timestamp)
 {
-    Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize, timestamp);
+    // Every installed fresh blob is above every barrier sent.
+    Y_ABORT_UNLESS(
+        commitId >
+        Max(GetLastTrimFreshLogToCommitId(),
+            GetLastSentSelectiveTrimToCommitId()));
+    TPartitionFreshBlobState::AddFreshBlob(
+        commitId,
+        blobId,
+        blobSize,
+        timestamp);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)

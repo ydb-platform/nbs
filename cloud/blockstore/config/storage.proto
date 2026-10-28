@@ -1791,4 +1791,10 @@ message TStorageServiceConfig
     // dies when all its blocks are overwritten or flushed.
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 555;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 556;
+
+    // Allow fresh-log trim to move a soft barrier past live fresh blobs and
+    // protect them with Keep flags. Requires a nonzero
+    // FreshDeadBlobByteCountTrimThreshold for the same media kind.
+    optional bool FreshSelectiveTrimEnabledSSD = 557;
+    optional bool FreshSelectiveTrimEnabledHDD = 558;
 }
