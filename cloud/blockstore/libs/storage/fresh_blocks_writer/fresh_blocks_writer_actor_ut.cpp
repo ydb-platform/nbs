@@ -554,6 +554,76 @@ TString GetBlocksContent(
     return result;
 }
 
+// Fresh-log trims and flushes of the test partition.
+struct TFreshLogTrimObserver
+{
+    // TEvCollectGarbage commands sent to the fresh channels.
+    ui32 TrimCommands = 0;
+    ui32 TrimsCompleted = 0;
+    ui32 TrimsFailed = 0;
+    ui32 FlushesCompleted = 0;
+    // Fresh blobs in the order they were added to the partition.
+    TVector<ui64> FreshBlobCommitIds;
+    TVector<ui64> FreshBlobSizes;
+
+    static bool IsFreshChannel(ui32 channel)
+    {
+        return channel == 4 || channel == 5;
+    }
+
+    TTestActorRuntime::TEventObserver Observer()
+    {
+        return [this](TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvCollectGarbage: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (IsFreshChannel(msg->Channel)) {
+                        ++TrimCommands;
+                    }
+                    break;
+                }
+                case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>();
+                    FreshBlobCommitIds.push_back(msg->CommitId);
+                    FreshBlobSizes.push_back(msg->BlobSize);
+                    break;
+                }
+                case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                    ++TrimsCompleted;
+                    if (FAILED(msg->GetStatus())) {
+                        ++TrimsFailed;
+                    }
+                    break;
+                }
+                case TEvPartitionPrivate::EvFlushCompleted:
+                    ++FlushesCompleted;
+                    break;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+    }
+
+    void WaitForTrimsCompleted(TTestActorRuntime& runtime, ui32 count) const
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return TrimsCompleted >= count;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT_GE(TrimsCompleted, count);
+    }
+};
+
+ui64 GetFreshBlobsCount(TPartitionClient& partition)
+{
+    return partition.StatPartition()->Record.GetStats().GetFreshBlobsCount();
+}
+
 TTestActorRuntime::TEventObserver StorageStateChanger(
     ui32  flag,
     TMaybe<ui32> groupIdFilter = {})
@@ -1678,6 +1748,124 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         check(newFbwClient);
     }
 
+    Y_UNIT_TEST(ShouldTrimFreshLogWithoutFlushWhenOverwritesKillBlobs)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = DefaultConfig();
+        config.SetFreshBlobCountFlushThresholdSSD(20);
+        // Trimmed blobs must leave the writer's byte count, or the writes are
+        // rejected.
+        config.SetFreshByteCountHardLimitSSD(64_KB);
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        ui32 trimsCompleted = 0;
+        ui32 flushesCompleted = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted:
+                        ++trimsCompleted;
+                        break;
+                    case TEvPartitionPrivate::EvFlushCompleted:
+                        ++flushesCompleted;
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            fbwClient.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime.DispatchEvents({}, 100ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, flushesCompleted);
+        UNIT_ASSERT_GT(trimsCompleted, 10);
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlocksContent(client.ReadBlocks(
+                        TBlockRange32::MakeOneBlock(i % RegionSize))));
+            }
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithoutFlushWhenZeroRequestsKillBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlobCountFlushThresholdSSD(6);
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        ui32 trimsCompleted = 0;
+        ui32 flushesCompleted = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted:
+                        ++trimsCompleted;
+                        break;
+                    case TEvPartitionPrivate::EvFlushCompleted:
+                        ++flushesCompleted;
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Each dead zero blob counts one block.
+        for (ui32 i = 0; i < 10; ++i) {
+            fbwClient.ZeroBlocks(1);
+        }
+        runtime.DispatchEvents({}, 100ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, trimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, flushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)
     {
         TMyTestEnv testEnv;
@@ -2057,6 +2245,335 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
         fbwClient.RecvDrainResponse();
     }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWhenDeadBlobBytesReachThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
+
+        // Each overwrite kills one blob, which is a bit larger than a block.
+        fbwClient.WriteBlocks(1, '1');
+        fbwClient.WriteBlocks(1, '2');
+        fbwClient.WriteBlocks(1, '3');
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.TrimCommands);
+
+        fbwClient.WriteBlocks(1, '4');
+        trims.WaitForTrimsCompleted(runtime, 1);
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, GetFreshBlobsCount(partition));
+
+        // A flush requests an ordinary trim too.
+        partition.Flush();
+        trims.WaitForTrimsCompleted(runtime, 2);
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(2, trims.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetFreshBlobsCount(partition));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('4'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+    }
+
+    Y_UNIT_TEST(ShouldNotTrimFreshLogWhenWritesKillNoBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
+
+        // Unique writes overwrite nothing.
+        for (ui32 i = 0; i < 20; ++i) {
+            fbwClient.WriteBlocks(i, '1');
+        }
+
+        // Partial overwrites leave every multi-block blob live.
+        constexpr ui32 BlobBlockCount = 16;
+        for (ui32 i = 0; i < 4; ++i) {
+            fbwClient.WriteBlocks(
+                TBlockRange32::WithLength(
+                    100 + i * BlobBlockCount,
+                    BlobBlockCount),
+                '2');
+        }
+        for (ui32 i = 0; i < 4; ++i) {
+            for (ui32 j = 0; j + 1 < BlobBlockCount; ++j) {
+                fbwClient.WriteBlocks(100 + i * BlobBlockCount + j, '3');
+            }
+        }
+        runtime.DispatchEvents({}, 100ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.TrimCommands);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.FlushesCompleted);
+    }
+
+    Y_UNIT_TEST(ShouldCountBytesOfDataBlobsKilledByZeroRequests)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(2 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
+
+        // One two-block blob is larger than the threshold.
+        fbwClient.WriteBlocks(TBlockRange32::WithLength(0, 2), '1');
+        fbwClient.ZeroBlocks(TBlockRange32::WithLength(0, 2));
+        trims.WaitForTrimsCompleted(runtime, 1);
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsCompleted);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::WithLength(0, 2))));
+    }
+
+    Y_UNIT_TEST(ShouldNotTrimFreshLogWhileLiveBlobHoldsOrdinaryTrimToCommitId)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
+
+        // The live blob holds OrdinaryTrimToCommitId.
+        fbwClient.WriteBlocks(0, '1');
+
+        // The killed blobs are above OrdinaryTrimToCommitId, where no ordinary
+        // trim reaches.
+        for (ui32 i = 0; i < 7; ++i) {
+            fbwClient.WriteBlocks(1, '2');
+        }
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.TrimsCompleted);
+
+        // The live blob dies, OrdinaryTrimToCommitId passes every dead blob,
+        // and one trim collects them.
+        fbwClient.WriteBlocks(0, '3');
+        trims.WaitForTrimsCompleted(runtime, 1);
+        runtime.DispatchEvents({}, 100ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(2, GetFreshBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldRetryFailedOrdinaryTrim)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        // The retry is scheduled with the backoff.
+        runtime.EnableScheduleForActor(testEnv.PartitionActorId);
+
+        TFreshLogTrimObserver trims;
+        auto observer = trims.Observer();
+        bool failTrim = true;
+        TInstant failedAt;
+        TInstant retriedAt;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbageResult: {
+                        auto* msg = event->Get<
+                            TEvBlobStorage::TEvCollectGarbageResult>();
+                        if (TFreshLogTrimObserver::IsFreshChannel(
+                                msg->Channel) &&
+                            failTrim)
+                        {
+                            failTrim = false;
+                            msg->Status = NKikimrProto::ERROR;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (TFreshLogTrimObserver::IsFreshChannel(
+                                msg->Channel) &&
+                            failedAt != TInstant() &&
+                            retriedAt == TInstant())
+                        {
+                            retriedAt = runtime.GetCurrentTime();
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                        auto* msg = event->Get<
+                            TEvPartitionCommonPrivate::
+                                TEvTrimFreshLogCompleted>();
+                        if (FAILED(msg->GetStatus())) {
+                            failedAt = runtime.GetCurrentTime();
+                        }
+                        break;
+                    }
+                }
+                return observer(event);
+            });
+
+        for (ui32 i = 0; i < 4; ++i) {
+            fbwClient.WriteBlocks(1, '1');
+        }
+        trims.WaitForTrimsCompleted(runtime, 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsFailed);
+        UNIT_ASSERT_VALUES_EQUAL(4, GetFreshBlobsCount(partition));
+
+        // The request survives the failure, and the retry waits for the
+        // backoff.
+        trims.WaitForTrimsCompleted(runtime, 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, trims.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(1, trims.TrimsFailed);
+        UNIT_ASSERT_GE(retriedAt - failedAt, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(1, GetFreshBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldUpdateSharedCountersWhenTrimRemovesBlobsCapturedByFlush)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        TFreshLogTrimObserver trims;
+        auto observer = trims.Observer();
+        TPartitionThreadSafeStatePtr sharedState;
+        bool holdAddBlobs = false;
+        std::unique_ptr<IEventHandle> addBlobs;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvGetFreshChannelsInfoResponse)
+                {
+                    sharedState =
+                        event
+                            ->Get<TEvPartitionCommonPrivate::
+                                      TEvGetFreshChannelsInfoResponse>()
+                            ->SharedState;
+                }
+                if (holdAddBlobs &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest &&
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
+                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                {
+                    holdAddBlobs = false;
+                    addBlobs.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return observer(event);
+            });
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+        UNIT_ASSERT(sharedState);
+
+        fbwClient.WriteBlocks(1, '1');
+        fbwClient.WriteBlocks(1, '2');
+        fbwClient.WriteBlocks(2, '3');
+        runtime.DispatchEvents({}, 10ms);
+        const auto& sizes = trims.FreshBlobSizes;
+        UNIT_ASSERT_VALUES_EQUAL(3, sizes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            sizes[0] + sizes[1] + sizes[2],
+            sharedState->UnflushedFreshBlobByteCount.load());
+
+        // The flush captures all three blobs, including the dead one.
+        holdAddBlobs = true;
+        partition.SendFlushRequest();
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT(addBlobs);
+
+        // The trim removes the dead blob while the flush runs.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            sizes[1] + sizes[2],
+            sharedState->UnflushedFreshBlobByteCount.load());
+
+        // The flush subtracts only the blobs that are still there.
+        runtime.Send(addBlobs.release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlobByteCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlocksCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, GetFreshBlobsCount(partition));
+
+        fbwClient.WriteBlocks(1, '4');
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('4'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('3'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(2))));
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

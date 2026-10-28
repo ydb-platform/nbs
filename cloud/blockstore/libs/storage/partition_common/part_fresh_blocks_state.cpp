@@ -69,9 +69,9 @@ void TPartitionFreshBlobState::AddFreshBlob(
     TInstant timestamp)
 {
     {
+        const TUntrimmedFreshBlob blob{.ByteCount = blobSize};
         const bool inserted =
-            UntrimmedFreshBlobByteCountByCommitId.emplace(commitId, blobSize)
-                .second;
+            UntrimmedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
             inserted,
             TWellKnownEntityTypes::TABLET,
@@ -96,40 +96,152 @@ void TPartitionFreshBlobState::AddFreshBlob(
     }
 }
 
-void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
 {
-    auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
-
-    while (blobs && blobs.begin()->first <= commitId) {
-        ui64 blobSize = blobs.begin()->second;
-        STORAGE_VERIFY_C(
-            UntrimmedFreshBlobByteCount >= blobSize,
-            TWellKnownEntityTypes::TABLET,
-            TabletID,
-            "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
-                                            << " < BlobSize: " << blobSize);
-        UntrimmedFreshBlobByteCount -= blobSize;
-        blobs.erase(blobs.begin());
-    }
-}
-
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
-{
-    auto& blobs = UnflushedFreshBlobsByCommitId;
-
-    auto it = blobs.find(commitId);
+    // A trim never removes a referenced blob, and a blob dies only once.
+    auto it = UntrimmedFreshBlobsByCommitId.find(commitId);
     STORAGE_VERIFY_C(
-        it != blobs.end(),
+        it != UntrimmedFreshBlobsByCommitId.end() && !it->second.Dead,
         TWellKnownEntityTypes::TABLET,
         TabletID,
         "Commit id: " << commitId);
 
+    it->second.Dead = true;
+    const ui64 byteCount = GetDeadByteCount(it->second);
+    DeadUntrimmedFreshBlobByteCount += byteCount;
+}
+
+ui64 TPartitionFreshBlobState::GetOrdinaryTrimmableFreshBlobByteCount(
+    ui64 ordinaryTrimToCommitId)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        ordinaryTrimToCommitId >= TrimmableByOrdinaryToCommitId,
+        "OrdinaryTrimToCommitId moved down: %lu < %lu",
+        ordinaryTrimToCommitId,
+        TrimmableByOrdinaryToCommitId);
+
+    if (ordinaryTrimToCommitId > TrimmableByOrdinaryToCommitId) {
+        for (auto it = UntrimmedFreshBlobsByCommitId.upper_bound(
+                 TrimmableByOrdinaryToCommitId);
+             it != UntrimmedFreshBlobsByCommitId.end() &&
+             it->first <= ordinaryTrimToCommitId;
+             ++it)
+        {
+            OrdinaryTrimmableFreshBlobByteCount += GetDeadByteCount(it->second);
+        }
+        TrimmableByOrdinaryToCommitId = ordinaryTrimToCommitId;
+    }
+
+    return OrdinaryTrimmableFreshBlobByteCount;
+}
+
+bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
+    const TVector<ui64>& liveCommitIds) const
+{
+    ui64 deadByteCount = 0;
+    ui64 ordinaryTrimByteCount = 0;
+
+    auto live = liveCommitIds.begin();
+    for (const auto& [commitId, blob]: UntrimmedFreshBlobsByCommitId) {
+        while (live != liveCommitIds.end() && *live < commitId) {
+            ++live;
+        }
+        const bool isLive = live != liveCommitIds.end() && *live == commitId;
+        if (blob.Dead == isLive) {
+            return false;
+        }
+        if (blob.Dead) {
+            deadByteCount += GetDeadByteCount(blob);
+        }
+        if (commitId <= TrimmableByOrdinaryToCommitId) {
+            if (isLive) {
+                return false;
+            }
+            ordinaryTrimByteCount += GetDeadByteCount(blob);
+        }
+    }
+
+    return deadByteCount == DeadUntrimmedFreshBlobByteCount &&
+           ordinaryTrimByteCount == OrdinaryTrimmableFreshBlobByteCount;
+}
+
+ui64 TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+{
+    auto& blobs = UntrimmedFreshBlobsByCommitId;
+
+    while (blobs && blobs.begin()->first <= commitId) {
+        EraseUntrimmedFreshBlob(blobs.begin());
+    }
+
+    // Every blob at or below commitId is dead, so nothing flushes it later.
+    ui64 trimmedByteCount = 0;
+    auto& unflushed = UnflushedFreshBlobsByCommitId;
+    while (unflushed && unflushed.begin()->first <= commitId) {
+        trimmedByteCount += EraseUnflushedFreshBlob(unflushed.begin());
+    }
+    return trimmedByteCount;
+}
+
+ui64 TPartitionFreshBlobState::FlushFreshBlob(
+    ui64 commitId,
+    ui64 trimmedToCommitId)
+{
+    auto it = UnflushedFreshBlobsByCommitId.find(commitId);
+    if (it == UnflushedFreshBlobsByCommitId.end()) {
+        STORAGE_VERIFY_C(
+            commitId <= trimmedToCommitId,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        return 0;
+    }
+    return EraseUnflushedFreshBlob(it);
+}
+
+ui64 TPartitionFreshBlobState::GetDeadByteCount(
+    const TUntrimmedFreshBlob& blob) const
+{
+    return Max<ui64>(blob.ByteCount, BlockSize);
+}
+
+void TPartitionFreshBlobState::EraseUntrimmedFreshBlob(
+    TUntrimmedFreshBlobsByCommitId::iterator it)
+{
+    const auto& [commitId, blob] = *it;
+
+    STORAGE_VERIFY_C(
+        UntrimmedFreshBlobByteCount >= blob.ByteCount,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
+                                        << " < BlobSize: " << blob.ByteCount);
+    UntrimmedFreshBlobByteCount -= blob.ByteCount;
+
+    // A trimmed blob is dead. If its death was not reported, it was never
+    // counted, and the debug checks catch that.
+    const ui64 deadByteCount = GetDeadByteCount(blob);
+    if (blob.Dead) {
+        DeadUntrimmedFreshBlobByteCount =
+            SafeDecrement(DeadUntrimmedFreshBlobByteCount, deadByteCount);
+    }
+    // Only the blobs at or below TrimmableByOrdinaryToCommitId are counted.
+    if (commitId <= TrimmableByOrdinaryToCommitId) {
+        OrdinaryTrimmableFreshBlobByteCount =
+            SafeDecrement(OrdinaryTrimmableFreshBlobByteCount, deadByteCount);
+    }
+
+    UntrimmedFreshBlobsByCommitId.erase(it);
+}
+
+ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(
+    TUnflushedFreshBlobsByCommitId::iterator it)
+{
     const ui64 blobSize = it->second.ByteCount;
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
-    blobs.erase(it);
+    UnflushedFreshBlobsByCommitId.erase(it);
 
     return blobSize;
 }
@@ -197,7 +309,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
     ui64 commitId,
     TSgList sglist,
     TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
@@ -206,20 +319,23 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
         commitId,
         [&](ui32 index) { return sglist[index]; },
         blobId,
-        removedBlocksCount);
+        removedBlocksCount,
+        deadCommitIds);
 }
 
 void TPartitionFreshBlocksState::ZeroFreshBlocks(
     const TBlockRange32& zeroRange,
     ui64 commitId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
         [](ui32) { return TBlockDataRef(); },
         {},  // blobId
-        removedBlocksCount);
+        removedBlocksCount,
+        deadCommitIds);
 }
 
 void TPartitionFreshBlocksState::DeleteFreshBlock(
@@ -241,7 +357,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     ui64 commitId,
     auto getBlockContent,
     TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
@@ -282,8 +399,11 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
             if (removed) {
                 ++removedBlocksCount;
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                ThreadSafeState->AccessTrimFreshLogBarriers()->ReleaseBarrier(
-                    garbageCommitId);
+                if (ThreadSafeState->AccessTrimFreshLogBarriers()
+                        ->ReleaseBarrier(garbageCommitId))
+                {
+                    deadCommitIds.push_back(garbageCommitId);
+                }
             }
         }
 

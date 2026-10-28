@@ -32,8 +32,9 @@ private:
 public:
     void AcquireBarrier(ui64 commitId);
     void AcquireBarrierN(ui64 commitId, ui32 refCount);
-    void ReleaseBarrier(ui64 commitId);
-    void ReleaseBarrierN(ui64 commitId, ui32 refCount);
+    // Return true when the last reference to commitId is released.
+    bool ReleaseBarrier(ui64 commitId);
+    bool ReleaseBarrierN(ui64 commitId, ui32 refCount);
 
     ui64 GetMinCommitId() const;
     ui64 GetMaxCommitId() const;

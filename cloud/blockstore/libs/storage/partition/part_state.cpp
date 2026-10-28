@@ -145,7 +145,7 @@ TPartitionState::TPartitionState(
           reassignSystemChannelsImmediately,
           channelCount)
     , TCommitIdsState()
-    , TPartitionFreshBlobState(tabletId)
+    , TPartitionFreshBlobState(tabletId, meta.GetConfig().GetBlockSize())
     , TPartitionTrimFreshLogState()
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
@@ -917,7 +917,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                             << ", InFlight: " << GetFreshBlocksInFlight()
                             << ", Queued: " << GetFreshBlocksQueued()
                             << ", UntrimmedBytes: "
-                            << GetUntrimmedFreshBlobByteCount();
+                            << GetUntrimmedFreshBlobByteCount()
+                            << ", DeadBytes: "
+                            << GetDeadUntrimmedFreshBlobByteCount();
                     }
                 }
                 TABLER() {
@@ -966,6 +968,7 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
+        state["FreshBlobDeadBytes"] = GetDeadUntrimmedFreshBlobByteCount();
         const auto firstUnflushedFreshBlobTimestamp =
             GetFirstUnflushedFreshBlobTimestamp(GetTrimFreshLogToCommitId());
         if (firstUnflushedFreshBlobTimestamp != TInstant::Max()) {
