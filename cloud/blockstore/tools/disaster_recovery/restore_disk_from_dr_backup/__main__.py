@@ -80,18 +80,10 @@ def resolve_master_disk(disk, disk_id_to_old_config):
     return master
 
 
-def suspend_secure_erase():
-    send_request(
-        "DiskRegistrySuspendSecureErase",
-        {"state": True},
-        "disk registry",
-    )
-
-
-def send_request(request, disk_id):
+def send_request(action, request):
     args = [
         "blockstore-client", "executeaction",
-        "--action", "CreateDiskFromDevices",
+        "--action", action,
         "--verbose", "error",
         "--input-bytes", MessageToJson(request),
     ]
@@ -161,13 +153,15 @@ def build_request(disk, devices=None, replicas=None):
 
 
 class IncompleteDisk:
-    def __init__(self, disk_id, available_devices: list[str], error):
+    def __init__(self, disk_id, available_devices: list[str]):
         self.disk_id = disk_id
         self.available_devices = available_devices
 
     def __str__(self):
-        return f"Incomplete disk {quote(self.disk_id)}\n"
-        "available devices uuids:\n{self.available_devices}"
+        return (
+            f"Incomplete disk {quote(self.disk_id)}\n"
+            f"available devices uuids:\n{self.available_devices}"
+        )
 
 
 class RestoreDiskFromDrBackup:
@@ -204,7 +198,7 @@ class RestoreDiskFromDrBackup:
                 continue
 
             old_device = self.old_by_uuid.get(uuid)
-            if current_device is None:
+            if old_device is None:
                 handle_missing_device(f"Device {quote(uuid)} not found in old backup")
                 continue
 
@@ -235,7 +229,7 @@ class RestoreDiskFromDrBackup:
             raise RuntimeError(f"Disk {quote(disk_id)} is not found in old backup")
 
         if not is_mirrored_disk(old_disk):
-            devices = self.resolve_disk_devices(old_disk, allow_fresh=False)
+            devices = self.resolve_disk_devices(old_disk)
             available_devices = get_available_devices(devices)
 
             if len(available_devices) != len(devices):
@@ -255,8 +249,7 @@ class RestoreDiskFromDrBackup:
 
             replica = self.disk_id_to_old_config.get(replica_id)
             if replica is None:
-                RuntimeError(f"Disk {quote(replica_id)} not found in old backup")
-                continue
+                raise RuntimeError(f"Disk {quote(replica_id)} not found in old backup")
 
             devices = self.resolve_disk_devices(replica)
             replicas.append(devices)
@@ -267,7 +260,8 @@ class RestoreDiskFromDrBackup:
             devices = []
             for replica in replicas:
                 devices.extend(get_available_devices(replica))
-            self.incomplete_disks.append(IncompleteDisk(master.DiskId, get_available_devices(devices)))
+            self.incomplete_disks.append(IncompleteDisk(master.DiskId,
+                                        get_available_devices(devices)))
 
     def run(self):
         for disk_id in self._disk_ids:
@@ -277,10 +271,12 @@ class RestoreDiskFromDrBackup:
                 print(f"Disk {quote(disk_id)} error: {exc}")
                 continue
 
-            print(f"Disk {quote(disk_id)}: ready to restore")
 
         print(f"Disks to restore count: {len(self.requests)}")
         print(f"Disks with unavailable devices count: {len(self.incomplete_disks)}")
+
+        for request in self.requests:
+            print(f"Disk {quote(request.DiskId)}: ready to restore")
 
         for incomplete_disk in self.incomplete_disks:
             print(incomplete_disk)
@@ -288,23 +284,25 @@ class RestoreDiskFromDrBackup:
         restore_failed = []
         if not self._dry_run:
             try:
-                suspend_secure_erase()
+                send_request("DiskRegistrySuspendSecureErase",
+                    disk_pb2.TSetSuspendSecureEraseRequest(Suspend=True),
+                )
             except Exception as exc:
                 print(f"Failed to suspend secure erase: {exc}", file=sys.stderr)
                 return 1
             print("Secure erase suspended")
 
-            for disk_id, request in self.requests:
+            for request in self.requests:
                 try:
-                    send_request(request, disk_id)
+                    send_request("CreateDiskFromDevices", request)
                 except Exception as exc:
-                    restore_failed.append(disk_id)
+                    restore_failed.append(request.DiskId)
                     print(
-                        f"Disk {quote(disk_id)}: restore failed: {exc}",
+                        f"Disk {quote(request.DiskId)}: restore failed: {exc}",
                         file=sys.stderr,
                     )
                     continue
-                print(f"Disk {quote(disk_id)} restored")
+                print(f"Disk {quote(request.DiskId)} restored")
 
             print(f"Disks failed to restore count: {len(restore_failed)}")
 
@@ -341,7 +339,8 @@ def parse_args(argv):
 
 def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    disk_ids = [disk_id for disk_id in args.disk_ids.split(",") if disk_id]
+    disk_ids = [disk_id.strip()
+                for disk_id in args.disk_ids.split(",") if disk_id.strip()]
     try:
         return RestoreDiskFromDrBackup(
             args.old_backup_path,
