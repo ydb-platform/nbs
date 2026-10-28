@@ -8,15 +8,6 @@ Migration takes a destination list. To move from `[A, B]` to `[C, D]`, it first 
 
 Images are disk templates. Snapshots are backups. We can put images near their disks, keep snapshot replicas in another region, and move chunks before retiring a backend. Task storage and snapshot metadata stay in the existing YDB databases.
 
-```mermaid
-flowchart LR
-    DM[Disk Manager] -->|Read image chunks| Images[Image S3 backend]
-    DM -->|Create disks| NBS[Disks in NBS]
-    DM -->|Write snapshot chunks| A[Snapshot backend A]
-    DM -->|Write replicas| B[Snapshot backend B]
-    DM -->|Store metadata and optional chunk data| YDB[YDB]
-```
-
 The controlplane passes a backend list when creating a snapshot. The dataplane supports YDB and several S3 backends. Each snapshot keeps its own list for each shared chunk.
 
 Migration accepts **Ready** snapshots. Images use the same dataplane snapshot records. Readers continue working during migration. The migration task holds the snapshot's existing lock to prevent deletion.
