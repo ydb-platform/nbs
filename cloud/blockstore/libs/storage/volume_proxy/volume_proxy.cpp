@@ -406,6 +406,8 @@ void TVolumeProxyActor::DetachFromTablet(
 
     const ui64 tabletId = conn.AttachedTabletId;
     conn.AttachedTabletId = 0;
+    // Both attachment guards are intentional in release builds: report broken
+    // invariants without aborting the server or dereferencing a missing entry.
     auto it = TabletConnections.find(tabletId);
     if (it == TabletConnections.end()) {
         LOG_ERROR(
@@ -604,6 +606,8 @@ void TVolumeProxyActor::ForwardRequest(
 {
     auto* msg = ev->Get();
 
+    // A STARTED connection must be attached. Keep this guard in release builds
+    // to reject requests safely if that invariant is broken.
     auto tabletIt = TabletConnections.find(conn.TabletId);
     if (tabletIt == TabletConnections.end() ||
         !tabletIt->second.ConnectionIds.contains(conn.Id))
