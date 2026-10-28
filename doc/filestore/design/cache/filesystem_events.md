@@ -11,36 +11,11 @@ cache them and drop them as soon as they change.
 - `InvalidateNodeXAttr {NodeId, Name}` - extended attribute created or changed
 - Always carry the main `FileSystemId`, even when sent by a shard
 
-## Components
+## Overview
 
-```mermaid
-flowchart LR
-    subgraph vhost["filestore-vhost"]
-        FUSE["vfs_fuse handler"]
-        Proxy["IndexTabletProxy"]
-    end
-
-    subgraph tablet["IndexTablet: main or shard"]
-        Actor["TIndexTabletActor"]
-        Subs["subscriptions"]
-    end
-
-    Proxy -->|"reads via pipe"| Actor
-    Actor -->|"subscribe reader"| Subs
-    Actor -->|"reply with cache TTLs"| Proxy
-    Actor -->|"invalidations"| Proxy
-    Proxy -->|"events, disconnects"| FUSE
-```
+![overview](../../drawio/filesystem_events_main.svg)
 
 ## Read path: subscribing
-
-```mermaid
-flowchart TD
-    R["read: GetNodeAttr, ListNodes,<br/>GetNodeXAttr, ..."] --> Tx["read tx"]
-    Tx --> C["tx Complete"]
-    C --> S["subscribe the client to the returned<br/>Nodes, NodeRefs, XAttrs"]
-    S --> Reply["reply with cache TTLs"]
-```
 
 - A client is identified by its tablet pipe; the subscriptions of a
   disconnected pipe are dropped and the client gets a disconnect notification
@@ -76,14 +51,6 @@ nonzero TTL means the client is subscribed to the corresponding key.
 - Negative caching is allowed for XAttrs only
 
 ## Write path: sending
-
-```mermaid
-flowchart TD
-    W["write tx Execute:<br/>collect events"] --> Commit["commit"]
-    Commit --> U["tx Complete:<br/>update in-memory index cache"]
-    U --> X["take and remove the subscribers"]
-    X --> Send["send the events"]
-```
 
 - Event sources:
   - entry created / removed -> `InvalidateNodeRef`
