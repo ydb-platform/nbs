@@ -36,8 +36,9 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/tablet
-    contrib/ydb/library/actors/core
+    cloud/storage/core/libs/tablet/model
     contrib/ydb/core/base
+    contrib/ydb/library/actors/core
     library/cpp/blockcodecs
 )
 

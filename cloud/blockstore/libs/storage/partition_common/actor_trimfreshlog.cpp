@@ -25,6 +25,9 @@ TTrimFreshLogActor::TTrimFreshLogActor(
         ui64 trimFreshLogToCommitId,
         ui32 recordGeneration,
         ui32 perGenerationCounter,
+        bool hard,
+        TVector<TPartialBlobId> keep,
+        TVector<TPartialBlobId> doNotKeep,
         TVector<ui32> freshChannels,
         TVolumeLabelsConstPtr volumeLabels,
         TDuration timeout)
@@ -34,6 +37,9 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , TrimFreshLogToCommitId(trimFreshLogToCommitId)
     , RecordGeneration(recordGeneration)
     , PerGenerationCounter(perGenerationCounter)
+    , Hard(hard)
+    , Keep(std::move(keep))
+    , DoNotKeep(std::move(doNotKeep))
     , FreshChannels(std::move(freshChannels))
     , VolumeLabels(std::move(volumeLabels))
     , Timeout(timeout)
@@ -58,31 +64,50 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
 {
     const ui64 tabletId = TabletInfo->TabletID;
 
-    auto barriers = BuildGCBarriers(
+    STORAGE_VERIFY_C(
+        !Hard || (!Keep && !DoNotKeep),
+        TWellKnownEntityTypes::TABLET,
+        tabletId,
+        "Hard barrier with flags, keep: " << Keep.size()
+                                          << ", do not keep: "
+                                          << DoNotKeep.size());
+    STORAGE_VERIFY_C(
+        Keep.size() + DoNotKeep.size() <= MaxCollectGarbageFlagsPerMessage,
+        TWellKnownEntityTypes::TABLET,
+        tabletId,
+        "Too many flags, keep: " << Keep.size()
+                                 << ", do not keep: " << DoNotKeep.size());
+
+    // Generation 0 never matches the current one, so with cleanupHistory the
+    // barrier goes to every group in each channel's history.
+    auto requests = BuildGCRequests(
         *TabletInfo,
         FreshChannels,
-        TVector<TPartialBlobId>(),  // knownBlobIds
-        TrimFreshLogToCommitId);
+        Keep,
+        DoNotKeep,
+        true,                     // cleanupHistory
+        0,                        // lastGCCommitId
+        TrimFreshLogToCommitId,   // collectCommitId
+        PerGenerationCounter);    // collectCounter
 
+    auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
     for (ui32 channelId: FreshChannels) {
-        for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
-            auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
-
+        for (auto& [bsProxyId, flags]: requests.GetRequests(channelId)) {
             auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
 
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
-                tabletId,               // tabletId
-                RecordGeneration,       // record generation
-                PerGenerationCounter,   // per generation counter
-                channelId,              // channel
-                true,                   // yes, collect
-                barrierGen,             // barrier gen
-                barrierStep,            // barrier step
-                nullptr,                // keep
-                nullptr,                // do not keep
-                deadline,               // deadline
-                false,                  // multicollect not allowed
-                false);                 // soft barrier
+                tabletId,                   // tabletId
+                RecordGeneration,           // record generation
+                PerGenerationCounter,       // per generation counter
+                channelId,                  // channel
+                true,                       // yes, collect
+                barrierGen,                 // barrier gen
+                barrierStep,                // barrier step
+                flags.Keep.release(),       // keep
+                flags.DoNotKeep.release(),  // do not keep
+                deadline,                   // deadline
+                false,                      // multicollect not allowed
+                Hard);                      // hard barrier
 
             LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
                 "[%lu] %s",
