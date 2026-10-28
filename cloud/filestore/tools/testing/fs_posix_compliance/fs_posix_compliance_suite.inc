@@ -1,6 +1,6 @@
 # The compliance suites (suite/tests) and everything needed to run them, but
 # not the suite's own python tests (suite/python_tests): to run the suites as a
-# workload, e.g. in the profile log tests.
+# workload.
 
 DEPENDS(
     cloud/filestore/tools/testing/fs_posix_compliance/suite
