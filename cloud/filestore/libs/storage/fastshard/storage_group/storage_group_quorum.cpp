@@ -4,7 +4,6 @@
 #include "storage_group_inflight.h"
 
 #include <cloud/fastshard/libs/fiber/event.h>
-#include <cloud/fastshard/libs/fiber/spawn.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
@@ -31,7 +30,6 @@
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
-using NCloud::NFastShard::Spawn;
 using NCloud::NFastShard::TFastShardContext;
 using NCloud::NFastShard::WaitFor;
 
@@ -181,13 +179,18 @@ public:
 private:
     const IStorageNodePtr StorageNode;
     const TStorageGroupConfig Config;
+    ITimer& Timer;
     silk::FiberSequencer Acked;
 
 public:
-    TDeviceProxy(TStorageDevice device, TStorageGroupConfig config)
+    TDeviceProxy(
+            TStorageDevice device,
+            TStorageGroupConfig config,
+            ITimer& timer)
         : DeviceUUID(std::move(device.DeviceUUID))
         , StorageNode(std::move(device.Node))
         , Config(std::move(config))
+        , Timer(timer)
     {}
 
     bool CanServe(ui64 lsn) const
@@ -202,6 +205,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 NProto::TWriteLogRecordRequest deviceRequest = request;
@@ -226,6 +230,7 @@ public:
         *response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 NProto::TReadPagesRequest deviceRequest = request;
@@ -254,6 +259,7 @@ public:
         *response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 NProto::TReadJournalTailRequest deviceRequest = request;
@@ -290,6 +296,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 return StorageNode->AdvanceLsnLowWatermark(request);
@@ -314,6 +321,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 return StorageNode->AcquireDevices(request);
@@ -335,6 +343,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            Timer,
             [&]
             {
                 return StorageNode->ReleaseDevices(request);
@@ -384,6 +393,7 @@ using TLoopPtr = std::shared_ptr<TLoop>;
 struct TGroupState
 {
     TStorageGroupConfig Config;
+    ITimerPtr Timer;
     TGroupHealth Health;
     TVector<TDeviceProxyPtr> Proxies;
     ui32 WriteQuorum = 0;
@@ -437,7 +447,7 @@ NProto::TError ForEachProxy(
     TVector<NProto::TError> errors(count);
 
     for (ui32 i = 0; i < count; ++i) {
-        Spawn(
+        const int r = silk::FiberScheduler::run(
             ProxyCallFiberMain,
             TProxyCallParams{
                 .Call = &call,
@@ -446,6 +456,10 @@ NProto::TError ForEachProxy(
                 .Ctx = &ctx,
                 .Error = &errors[i]},
             &futures[i]);
+        if (r) {
+            errors[i] = MakeSpawnError(r);
+            futures[i].set(0);
+        }
     }
 
     for (auto& future: futures) {
@@ -848,7 +862,7 @@ int LoopFiberMain(TLoopPtr* params) noexcept
     return 0;
 }
 
-TLoopPtr RunLoop(
+TResultOrError<TLoopPtr> RunLoop(
     const TGroupStatePtr& state,
     TDuration period,
     std::function<void(TFastShardContext&, TGroupState&)> body)
@@ -858,7 +872,12 @@ TLoopPtr RunLoop(
     loop->Period = period;
     loop->Body = std::move(body);
 
-    Spawn(LoopFiberMain, TLoopPtr(loop), &loop->Done);
+    const int r =
+        silk::FiberScheduler::run(LoopFiberMain, TLoopPtr(loop), &loop->Done);
+    if (r) {
+        return MakeSpawnError(r);
+    }
+
     return loop;
 }
 
@@ -869,15 +888,19 @@ class TQuorumMirroredStorageGroup final: public IStorageGroup
 public:
     TQuorumMirroredStorageGroup(
             TStorageGroupConfig config,
-            TVector<TStorageDevice> devices)
+            TVector<TStorageDevice> devices,
+            ITimerPtr timer)
         : State(std::make_shared<TGroupState>())
     {
         State->Config = std::move(config);
+        State->Timer = std::move(timer);
         State->WriteQuorum = devices.size() / 2 + 1;
         State->Proxies.reserve(devices.size());
         for (auto& device: devices) {
-            State->Proxies.push_back(
-                std::make_shared<TDeviceProxy>(std::move(device), State->Config));
+            State->Proxies.push_back(std::make_shared<TDeviceProxy>(
+                std::move(device),
+                State->Config,
+                *State->Timer));
         }
     }
 
@@ -906,7 +929,10 @@ public:
             State,
             State->Config.ReacquirePeriod,
             RenewSessionsLoop);
-        State->Loops.push_back(std::move(loop));
+        if (HasError(loop)) {
+            return loop.GetError();
+        }
+        State->Loops.push_back(loop.ExtractResult());
 
         error = ValidateGroupConfigAndInitIfNeeded(ctx, *State);
         if (HasError(error)) {
@@ -926,7 +952,10 @@ public:
             State,
             State->Config.LowWatermarkPeriod,
             PushLowWatermarkLoop);
-        State->Loops.push_back(std::move(loop));
+        if (HasError(loop)) {
+            return loop.GetError();
+        }
+        State->Loops.push_back(loop.ExtractResult());
 
         State->Initialized = true;
         return State->QuorumLsn.get();
@@ -991,13 +1020,17 @@ public:
 
         SILK_DEBUG("sg write: %s", DebugMessage(op->Request).c_str());
         for (const auto& proxy: State->Proxies) {
-            Spawn(
+            const int r = silk::FiberScheduler::run(
                 WriteDispatchFiberMain,
                 TWriteDispatchParams{
                     .State = State,
                     .Op = op,
                     .Proxy = proxy},
                 nullptr);
+            if (r) {
+                State->Health.Fail(MakeSpawnError(r));
+                op->Acks.stop();
+            }
         }
 
         const int cancelled = op->Acks.wait(State->WriteQuorum);
@@ -1099,11 +1132,13 @@ private:
 
 IStorageGroupPtr CreateQuorumMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices)
+    TVector<TStorageDevice> devices,
+    ITimerPtr timer)
 {
     return std::make_shared<TQuorumMirroredStorageGroup>(
         std::move(config),
-        std::move(devices));
+        std::move(devices),
+        std::move(timer));
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

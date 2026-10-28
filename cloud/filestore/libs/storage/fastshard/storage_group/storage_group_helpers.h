@@ -62,9 +62,10 @@ template <typename TCall>
 auto CallWithRetries(
     NCloud::NFastShard::TFastShardContext& ctx,
     const TStorageGroupRetryPolicy& policy,
+    ITimer& timer,
     TCall call)
 {
-    const TInstant start = TInstant::Now();
+    const TInstant start = timer.Now();
     ui32 errorCount = 0;
 
     for (;;) {
@@ -80,7 +81,7 @@ auto CallWithRetries(
             return response;
         }
 
-        if (TInstant::Now() - start >= policy.TotalTimeout) {
+        if (timer.Now() - start >= policy.TotalTimeout) {
             SILK_ERROR(
                 "sg req %lu: retries timed out after %u errors: %s",
                 ctx.RequestId,
@@ -103,6 +104,17 @@ auto CallWithRetries(
         NCloud::NFastShard::WaitFor(ctx.Cancel, backoff);
         ctx.BackoffCycles += GetCycleCount() - parked;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline NProto::TError MakeSpawnError(int r)
+{
+    return MakeError(
+        E_FAIL,
+        TStringBuilder()
+            << "failed to spawn fiber: "
+            << NCloud::NFastShard::SystemErrorText(r));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,6 +147,7 @@ struct TAcquireDevicesParams
     NProto::TAcquireDevicesRequest* Request;
     NProto::TAcquireDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
+    ITimer* Timer;
     NCloud::NFastShard::TFastShardContext* Context;
 };
 
@@ -146,6 +159,7 @@ struct TReleaseDevicesParams
     NProto::TReleaseDevicesRequest* Request;
     NProto::TReleaseDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
+    ITimer* Timer;
     NCloud::NFastShard::TFastShardContext* Context;
 };
 
@@ -167,6 +181,7 @@ NProto::TError MirrorRequest(
     NCloud::NFastShard::TFastShardContext& ctx,
     const TStorageGroupConfig& config,
     const TVector<TStorageDevice>& devices,
+    ITimer& timer,
     int (*fiberMain)(TParams*) noexcept,
     TRequest request,
     TVector<TResponse>* responses = nullptr)
@@ -189,12 +204,13 @@ NProto::TError MirrorRequest(
                 .Request = &request,
                 .Response = &(*responses)[i],
                 .RetryPolicy = &config.RetryPolicy,
+                .Timer = &timer,
                 .Context = &ctx},
             &futures[i]);
-        Y_ABORT_UNLESS(
-            r == 0,
-            "failed to spawn fiber: %s",
-            NCloud::NFastShard::SystemErrorText(r).c_str());
+        if (r) {
+            *(*responses)[i].MutableError() = MakeSpawnError(r);
+            futures[i].set(0);
+        }
     }
 
     NProto::TError error;

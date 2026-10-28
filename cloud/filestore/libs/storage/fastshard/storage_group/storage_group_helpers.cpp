@@ -97,6 +97,7 @@ int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
     *params->Response = CallWithRetries(
         *params->Context,
         *params->RetryPolicy,
+        *params->Timer,
         [&] { return params->Device.Node->AcquireDevices(request); });
 
     return 0;
@@ -109,6 +110,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
     *params->Response = CallWithRetries(
         *params->Context,
         *params->RetryPolicy,
+        *params->Timer,
         [&] { return params->Device.Node->ReleaseDevices(request); });
 
     return 0;

@@ -19,12 +19,29 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TFiberTimer final: public ITimer
+{
+public:
+    TInstant Now() override
+    {
+        return TInstant::Now();
+    }
+
+    void Sleep(TDuration duration) override
+    {
+        silk::FiberScheduler::sleep(duration.NanoSeconds());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TWriteLogRecordParams
 {
     TStorageDevice Device;
     NProto::TWriteLogRecordRequest* Request;
     NProto::TWriteLogRecordResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
+    ITimer* Timer;
     TFastShardContext* Context;
 };
 
@@ -35,6 +52,7 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
     *params->Response = CallWithRetries(
         *params->Context,
         *params->RetryPolicy,
+        *params->Timer,
         [&] { return params->Device.Node->WriteLogRecord(request); });
     return 0;
 }
@@ -45,6 +63,7 @@ struct TReadJournalTailParams
     NProto::TReadJournalTailRequest* Request;
     NProto::TReadJournalTailResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
+    ITimer* Timer;
     TFastShardContext* Context;
 };
 
@@ -55,6 +74,7 @@ int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
     *params->Response = CallWithRetries(
         *params->Context,
         *params->RetryPolicy,
+        *params->Timer,
         [&] { return params->Device.Node->ReadJournalTail(request); });
 
     return 0;
@@ -67,6 +87,7 @@ class TStorageGroupImpl final: public IStorageGroup
 private:
     const TStorageGroupConfig Config;
     TVector<TStorageDevice> Devices;
+    ITimerPtr Timer;
     std::atomic<ui64> NextRequestId = 1;
     std::atomic<ui32> Selector{0};
     bool TornDown = false;
@@ -74,9 +95,11 @@ private:
 public:
     TStorageGroupImpl(
             TStorageGroupConfig config,
-            TVector<TStorageDevice> devices)
+            TVector<TStorageDevice> devices,
+            ITimerPtr timer)
         : Config(std::move(config))
         , Devices(std::move(devices))
+        , Timer(std::move(timer))
     {}
 
 public:
@@ -91,6 +114,7 @@ public:
             ctx,
             Config,
             Devices,
+            *Timer,
             AcquireDevicesFiberMain,
             std::move(acquire));
         if (HasError(error)) {
@@ -104,6 +128,7 @@ public:
             ctx,
             Config,
             Devices,
+            *Timer,
             ReadJournalTailFiberMain,
             std::move(tail),
             &responses);
@@ -131,6 +156,7 @@ public:
             ctx,
             Config,
             Devices,
+            *Timer,
             ReleaseDevicesFiberMain,
             NProto::TReleaseDevicesRequest{});
         if (HasError(error)) {
@@ -155,6 +181,7 @@ public:
             ctx,
             Config,
             Devices,
+            *Timer,
             WriteLogRecordFiberMain,
             std::move(request));
     }
@@ -175,6 +202,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
+            *Timer,
             [&]
             {
                 const ui32 i =
@@ -201,11 +229,18 @@ public:
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices)
+    TVector<TStorageDevice> devices,
+    ITimerPtr timer)
 {
     return std::make_shared<TStorageGroupImpl>(
         std::move(config),
-        std::move(devices));
+        std::move(devices),
+        std::move(timer));
+}
+
+ITimerPtr CreateFiberTimer()
+{
+    return std::make_shared<TFiberTimer>();
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

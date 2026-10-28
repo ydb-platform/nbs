@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/libs/fiber/spawn.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/fastshard/libs/sn/testlib/fake_storage_node.h>
 #include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
@@ -280,7 +279,10 @@ struct TNaiveFixture: TGroupFixture
     TNaiveFixture(TStorageGroupConfig config = MakeConfig())
         : TGroupFixture(std::move(config), DeviceCount)
     {
-        Group = CreateNaiveMirroredStorageGroup(Config, StorageDevices());
+        Group = CreateNaiveMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
     }
 };
 
@@ -293,7 +295,10 @@ struct TQuorumFixture: TGroupFixture
             ui32 deviceCount = DeviceCount)
         : TGroupFixture(std::move(config), deviceCount)
     {
-        Group = CreateQuorumMirroredStorageGroup(Config, StorageDevices());
+        Group = CreateQuorumMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
         if (init) {
             auto error = Group->Init().GetError();
             Y_ABORT_UNLESS(
@@ -1363,13 +1368,23 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
 
     NProto::TError error;
     silk::FiberFuture init;
-    Spawn(InitFiberMain, TInitParams{.Fixture = &fx, .Error = &error}, &init);
+    ASSERT_EQ(
+        0,
+        silk::FiberScheduler::run(
+            InitFiberMain,
+            TInitParams{.Fixture = &fx, .Error = &error},
+            &init));
     ASSERT_TRUE(WaitFor([&] { return fx[2].Reads.Parked == 1; }));
 
     // TearDown waits for Init, which then fails instead of starting a loop
     // that nothing would stop.
     silk::FiberFuture tearDown;
-    Spawn<TGroupFixture*>(TearDownFiberMain, &fx, &tearDown);
+    ASSERT_EQ(
+        0,
+        silk::FiberScheduler::run<TGroupFixture*>(
+            TearDownFiberMain,
+            &fx,
+            &tearDown));
     ASSERT_TRUE(StillRunning(tearDown));
 
     fx[2].Reads.Unpause();

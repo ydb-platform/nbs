@@ -3,6 +3,7 @@
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/buffer.h>
@@ -113,10 +114,21 @@ struct TStorageGroupConfig
  *
  * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
+ * @param timer - Time source for the retry deadline checks. Production
+ *                callers should pass the timer returned by CreateFiberTimer().
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices);
+    TVector<TStorageDevice> devices,
+    ITimerPtr timer);
+
+/**
+ * Returns an ITimer which sleeps by suspending the calling silk fiber, so a
+ * sleep never blocks a fiber scheduler thread.
+ *
+ * @return - The constructed timer.
+ */
+ITimerPtr CreateFiberTimer();
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

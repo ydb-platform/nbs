@@ -1,17 +1,6 @@
 #pragma once
 
-#ifdef FASTSHARD_IPC_STUB
-
-namespace NCloud::NFastShard {
-
-struct TFastShardContext
-{};
-
-}   // namespace NCloud::NFastShard
-
-#else
-
-#include <silk/fibers/event.h>   // Y_IGNORE
+#include <silk/fibers/event.h>
 
 #include <util/system/types.h>
 
@@ -34,5 +23,3 @@ struct TFastShardContext
 };
 
 }   // namespace NCloud::NFastShard
-
-#endif

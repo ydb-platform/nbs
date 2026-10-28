@@ -1,13 +1,14 @@
 LIBRARY()
 
 SRCS(
-    context.cpp
     error.cpp
 )
 
-IF (NOT OPENSOURCE OR FORCE_FASTSHARD_IPC_STUB)
-    CFLAGS(GLOBAL -DFASTSHARD_IPC_STUB)
-ELSE()
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    SRCS(
+        context.cpp
+    )
+
     PEERDIR(
         contrib/libs/silk/src/fibers
     )

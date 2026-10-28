@@ -16,10 +16,13 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  *
  * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
+ * @param timer - Time source for the retry deadline checks. Production
+ *                callers should pass the timer returned by CreateFiberTimer().
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateQuorumMirroredStorageGroup(
     TStorageGroupConfig config,
-    TVector<TStorageDevice> devices);
+    TVector<TStorageDevice> devices,
+    ITimerPtr timer);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
