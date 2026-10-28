@@ -501,6 +501,7 @@ void TVolumeProxyActor::OnDisconnect(
 
     CancelActiveRequests(ctx, conn);
     ProcessPendingRequests(conn);
+    ScheduleConnectionShutdown(ctx, conn);
 }
 
 void TVolumeProxyActor::ProcessPendingRequests(TConnection& conn)
