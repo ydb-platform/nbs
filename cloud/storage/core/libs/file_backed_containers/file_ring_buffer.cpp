@@ -37,7 +37,7 @@ constexpr ui64 INVALID_POS = Max<ui64>();
 struct TFileRingBufferArgs
 {
     TString FilePath;
-    ui64 DataCapacity = 0;
+    ui64 StateFileSize = 0;
     ui64 MetadataCapacity = 0;
     EFileRingBufferVersion Version = EFileRingBufferVersion::NotInitialized;
 };
@@ -108,13 +108,18 @@ THeader InitHeader(
     const TFileRingBufferArgs& args,
     const TFileRingBufferLayout& layout)
 {
+    Y_ABORT_UNLESS(layout.MetadataOffset <= layout.DataOffset);
+    Y_ABORT_UNLESS(layout.DataOffset <= layout.StateFileSize);
+    Y_ABORT_UNLESS(
+        args.MetadataCapacity <= layout.DataOffset - layout.MetadataOffset);
+
     THeader res;
     res.Version = args.Version;
     res.HeaderSize = sizeof(THeader);
     res.MetadataOffset = layout.MetadataOffset;
     res.MetadataCapacity = args.MetadataCapacity;
     res.DataOffset = layout.DataOffset;
-    res.DataCapacity = args.DataCapacity;
+    res.DataCapacity = layout.StateFileSize - layout.DataOffset;
     return res;
 }
 
@@ -141,6 +146,7 @@ class TFileRingBuffer::TImpl
 {
 private:
     TFileRingBufferArgs Args;
+    ui64 TargetDataCapacity = 0;
     TFileMapFileRingBufferAccessor Accessor;
     std::atomic<bool> Corrupted = false;
 
@@ -280,7 +286,7 @@ private:
     bool IsMigrationOrDataCapacityResizeNeeded() const
     {
         return !IsCorrupted() && (Header()->Version != Args.Version ||
-                                  Header()->DataCapacity != Args.DataCapacity);
+                                  Header()->DataCapacity != TargetDataCapacity);
     }
 
     void TryMigrateAndResizeDataCapacity()
@@ -304,27 +310,28 @@ private:
             }
         }
 
-        if (Header()->DataCapacity == Args.DataCapacity) {
+        if (Header()->DataCapacity == TargetDataCapacity) {
             return;
         }
 
-        if (Header()->DataOffset > Max<ui64>() - Args.DataCapacity) {
+        if (Header()->DataOffset > Max<ui64>() - TargetDataCapacity) {
             SetCorrupted(Sprintf(
                 "Cannot resize data capacity to %lu",
-                Args.DataCapacity));
+                TargetDataCapacity));
             return;
         }
 
-        const ui64 newFileSize = Header()->DataOffset + Args.DataCapacity;
+        const ui64 newFileSize = Header()->DataOffset + TargetDataCapacity;
 
         // Header must never claim more capacity than the file has
-        Header()->DataCapacity = Min(Header()->DataCapacity, Args.DataCapacity);
+        Header()->DataCapacity =
+            Min(Header()->DataCapacity, TargetDataCapacity);
 
         if (!ResizeAndRemap(newFileSize) || !Validate()) {
             return;
         }
 
-        Header()->DataCapacity = Args.DataCapacity;
+        Header()->DataCapacity = TargetDataCapacity;
 
         Validate();
     }
@@ -472,6 +479,22 @@ public:
             "Unsupported requested FileRingBuffer version - %u",
             static_cast<ui32>(args.Version));
 
+        const auto requestedLayout = TFileRingBufferLayout::FromStateFileSize(
+            args.StateFileSize,
+            args.MetadataCapacity);
+
+        if (!requestedLayout) {
+            SetInitializationError(
+                "Invalid capacities: file ring buffer layout overflows");
+            return;
+        }
+
+        Y_ABORT_UNLESS(
+            requestedLayout->DataOffset <= requestedLayout->StateFileSize);
+
+        TargetDataCapacity =
+            requestedLayout->StateFileSize - requestedLayout->DataOffset;
+
         auto mapResult = Accessor.Map();
         if (HasError(mapResult)) {
             SetCorrupted(FormatError(mapResult));
@@ -482,18 +505,7 @@ public:
 
         switch (status) {
             case EFileRingBufferAccessorValidationStatus::NotInitialized: {
-                const auto layout = TFileRingBufferLayout::FromCapacity(
-                    args.DataCapacity,
-                    args.MetadataCapacity);
-
-                if (!layout) {
-                    SetInitializationError(
-                        "Invalid capacities: file ring buffer layout "
-                        "overflows");
-                    return;
-                }
-
-                if (!ResizeAndRemap(layout->StateFileSize)) {
+                if (!ResizeAndRemap(requestedLayout->StateFileSize)) {
                     return;
                 }
 
@@ -502,7 +514,8 @@ public:
                     Accessor.GetRawData().size());
 
                 *reinterpret_cast<TFileRingBufferHeader*>(
-                    Accessor.GetRawData().data()) = InitHeader(args, *layout);
+                    Accessor.GetRawData().data()) =
+                    InitHeader(args, *requestedLayout);
 
                 if (!Validate()) {
                     return;
@@ -1017,7 +1030,7 @@ public:
 
     ui64 GetTargetDataCapacity() const
     {
-        return Args.DataCapacity;
+        return TargetDataCapacity;
     }
 
     ui64 GetRawUsedBytesCount() const
@@ -1073,7 +1086,7 @@ public:
             return 0;
         }
 
-        return Data()->GetMaxAllocationByteCount(Args.DataCapacity);
+        return Data()->GetMaxAllocationByteCount(TargetDataCapacity);
     }
 
     TGetMetadataResult GetMetadata()
@@ -1110,13 +1123,24 @@ public:
         return TSetMetadataResult(true);
     }
 
-    NProto::TError SetTargetDataCapacity(ui64 dataCapacity)
+    NProto::TError SetTargetStateFileSize(ui64 stateFileSize)
     {
-        if (!ValidateAccess("SetTargetDataCapacity")) {
+        if (!ValidateAccess("SetTargetStateFileSize")) {
             return MakeBufferIsCorruptError();
         }
 
-        Args.DataCapacity = dataCapacity;
+        const auto layout = TFileRingBufferLayout::FromStateFileSize(
+            stateFileSize,
+            Args.MetadataCapacity);
+
+        if (!layout) {
+            return MakeError(E_ARGUMENT, "Invalid state file size");
+        }
+
+        Y_ABORT_UNLESS(layout->DataOffset <= layout->StateFileSize);
+
+        Args.StateFileSize = stateFileSize;
+        TargetDataCapacity = layout->StateFileSize - layout->DataOffset;
 
         TryMigrateAndResizeDataCapacity();
 
@@ -1128,14 +1152,15 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
     const TString& filePath,
-    ui64 dataCapacity,
+    ui64 stateFileSize,
     ui64 metadataCapacity,
     EFileRingBufferVersion version)
-    : Impl(new TImpl(
-          {.FilePath = filePath,
-           .DataCapacity = dataCapacity,
-           .MetadataCapacity = metadataCapacity,
-           .Version = version}))
+    : Impl(
+          std::make_unique<TImpl>(TFileRingBufferArgs{
+              .FilePath = filePath,
+              .StateFileSize = stateFileSize,
+              .MetadataCapacity = metadataCapacity,
+              .Version = version}))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;
@@ -1273,9 +1298,9 @@ TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(
     return Impl->SetMetadata(data);
 }
 
-NProto::TError TFileRingBuffer::SetTargetDataCapacity(ui64 dataCapacity)
+NProto::TError TFileRingBuffer::SetTargetStateFileSize(ui64 stateFileSize)
 {
-    return Impl->SetTargetDataCapacity(dataCapacity);
+    return Impl->SetTargetStateFileSize(stateFileSize);
 }
 
 }   // namespace NCloud

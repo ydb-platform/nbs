@@ -3,11 +3,11 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/protos/device.pb.h>
-#include <cloud/fastshard/sn/iface/storage_node.h>
-#include <cloud/fastshard/testlib/fake_storage_node.h>
-#include <cloud/fastshard/testlib/fiber_test.h>
-#include <cloud/fastshard/testlib/silk_env.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fake_storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
+#include <cloud/fastshard/libs/sn/testlib/silk_env.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>

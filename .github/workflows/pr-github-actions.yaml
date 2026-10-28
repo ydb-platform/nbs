@@ -336,6 +336,7 @@ jobs:
               --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
               --self-contained-html \
               .github/scripts/*_test.py \
+              .github/scripts/policy \
               .github/scripts/tests
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}

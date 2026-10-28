@@ -1,0 +1,50 @@
+{
+  "name": "NBS: restrict workflow actors by default",
+  "enforcement": "disabled",
+  "conditions": {
+    "workflow_path": {
+      "include": [
+        "~ALL"
+      ],
+      "exclude": [
+        ".github/workflows/approvals.yaml",
+        ".github/workflows/check-pr-source.yaml",
+        ".github/workflows/pr.yaml",
+        ".github/workflows/pre-commit.yaml"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 4,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 2,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 5,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 9863268,
+            "type": "Team"
+          },
+          {
+            "id": 9863273,
+            "type": "Team"
+          },
+          {
+            "id": 19724215,
+            "type": "Team"
+          }
+        ]
+      }
+    }
+  ]
+}

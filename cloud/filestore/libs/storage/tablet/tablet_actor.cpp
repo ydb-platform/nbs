@@ -14,6 +14,8 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
+#include <util/generic/overloaded.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;

@@ -1,10 +1,10 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
-#include <cloud/fastshard/journal/iface/journalled_device.h>
-#include <cloud/fastshard/protos/device.pb.h>
-#include <cloud/fastshard/testlib/fiber_test.h>
-#include <cloud/fastshard/testlib/journalled_storage_node.h>
+#include <cloud/fastshard/libs/journal/iface/journalled_device.h>
+#include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
+#include <cloud/fastshard/libs/sn/testlib/journalled_storage_node.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>

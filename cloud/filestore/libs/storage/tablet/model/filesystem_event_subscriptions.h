@@ -40,6 +40,23 @@ namespace NCloud::NFileStore::NStorage {
  */
 class TFileSystemEventSubscriptions
 {
+public:
+    struct TStats
+    {
+        // The number of the Nodes registered in both generations.
+        ui64 NodeCount;
+
+        // The number of the NodeRefs registered in both generations.
+        ui64 NodeRefCount;
+
+        // The number of the unique clients of both generations (a client
+        // present in both generations is counted twice).
+        ui64 ClientCount;
+
+        // The number of extra pages stored in all generations.
+        ui64 ExtraPageCount;
+    };
+
 private:
     class TClientMask
     {
@@ -58,10 +75,12 @@ private:
         std::unique_ptr<TVector<TPage>> OtherPages;
 
     public:
-        void Set(ui32 clientIndex);
+        [[nodiscard]] ui32 Set(ui32 clientIndex);
 
         template <typename TFunc>
         void ForEach(TFunc&& func) const;
+
+        [[nodiscard]] ui32 GetExtraPageCount() const;
 
     private:
         template <typename TFunc>
@@ -77,6 +96,8 @@ private:
         THashMap<ui64, TClientMask> NodeMasks;
         THashMap<TNodeRefKey, TClientMask, TNodeRefKeyHash> NodeRefMasks;
 
+        ui64 ExtraPageCount = 0;
+
     public:
         void AddNode(ui64 nodeId, const NActors::TActorId& pipeServerId);
         void AddNodeRef(
@@ -88,9 +109,7 @@ private:
             const TNodeRefKey& key,
             THashSet<NActors::TActorId>& out);
 
-        ui64 GetClientCount() const;
-        ui64 GetNodeCount() const;
-        ui64 GetNodeRefCount() const;
+        [[nodiscard]] TStats GetStats() const;
 
     private:
         ui32 GetClientIndex(const NActors::TActorId& pipeServerId);
@@ -166,20 +185,9 @@ public:
         TInstant now);
 
     /**
-     * @return - The number of the Nodes registered in both generations.
+     * @return - TStats describing this subscription registry.
      */
-    ui64 GetNodeCount() const;
-
-    /**
-     * @return - The number of the NodeRefs registered in both generations.
-     */
-    ui64 GetNodeRefCount() const;
-
-    /**
-     * @return - The number of the unique clients of both generations (a
-     * client present in both generations is counted twice).
-     */
-    ui64 GetClientCount() const;
+    [[nodiscard]] TStats GetStats() const;
 
 private:
     void SealIfNeeded(TInstant now);
