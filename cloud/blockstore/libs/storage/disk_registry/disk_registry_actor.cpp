@@ -910,6 +910,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             HandleEnsureDiskRegistryStateIntegrityResponse
         )
 
+        HFunc(
+            TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+            HandleSetSuspendSecureErase);
+
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
