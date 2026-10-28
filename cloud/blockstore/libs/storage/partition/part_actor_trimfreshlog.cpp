@@ -111,7 +111,14 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
+    if (trimFreshLogToCommitId == State->GetLastTrimFreshLogToCommitId()) {
+        State->AccessTrimFreshLogState().SetStatus(
+            EOperationStatus::Idle,
+            ctx.Now());
+        replyError(ctx, *requestInfo, S_ALREADY, "nothing to trim");
+        return;
+    }
 
     ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
@@ -143,6 +150,9 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         Executor()->Generation(),
         nextPerGenerationCounter,
+        true,   // hard
+        TVector<TPartialBlobId>(),   // keep
+        TVector<TPartialBlobId>(),   // doNotKeep
         std::move(freshChannels),
         VolumeLabels,
         Config->GetTrimFreshLogTimeout());
