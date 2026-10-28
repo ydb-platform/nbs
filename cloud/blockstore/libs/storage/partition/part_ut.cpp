@@ -2943,6 +2943,155 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(6, collectStep);
     }
 
+    Y_UNIT_TEST(ShouldTrimFreshLogWithHardBarrierOnlyWhenBarrierAdvances)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 trimCount = 0;
+        ui64 lastBarrierCommitId = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCollectGarbage)
+                {
+                    auto* msg =
+                        event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (msg->Channel == 4) {
+                        UNIT_ASSERT(msg->Hard);
+                        UNIT_ASSERT(!msg->Keep);
+                        UNIT_ASSERT(!msg->DoNotKeep);
+                        const ui64 barrierCommitId = MakeCommitId(
+                            msg->CollectGeneration,
+                            msg->CollectStep);
+                        UNIT_ASSERT_GT(barrierCommitId, lastBarrierCommitId);
+                        lastBarrierCommitId = barrierCommitId;
+                        ++trimCount;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // The live blob keeps the barrier below it.
+        partition.WriteBlocks(1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        // The barrier cannot move, so nothing is sent.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        // The overwrite kills the blob, so the barrier can pass it.
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(2, 3);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(2, trimCount);
+
+        partition.Flush();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, trimCount);
+
+        partition.WriteBlocks(2, 4);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(4),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithHardBarrierBeforeStartupFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(1, 3);
+
+        bool dropFlush = true;
+        ui32 trimCount = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvFlushRequest: {
+                        if (dropFlush) {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == 4 && dropFlush) {
+                            UNIT_ASSERT(msg->Hard);
+                            // Replayed blobs keep the barrier in the previous
+                            // generation.
+                            UNIT_ASSERT_LT(
+                                msg->CollectGeneration,
+                                msg->RecordGeneration);
+                            ++trimCount;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // RebootTablet replaces the observer while the tablet starts.
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(3),
+                GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(2),
+                GetBlockContent(partition.ReadBlocks(2)));
+        };
+
+        check();
+
+        // Replay reads the blobs that the hard barrier kept.
+        dropFlush = false;
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        check();
+    }
+
     Y_UNIT_TEST(ShouldNotAddSmallNonDeletionBlobsDuringFlush)
     {
         auto config = DefaultConfig(4_MB);
