@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
@@ -32,6 +33,7 @@ namespace NCloud::NBlockStore::NCells {
 TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
     , Bootstrap(std::move(bootstrap))
+    , TransportUpdates(CreateThreadPool("CELLS_MON", 1))
 {
     for (const auto& cell: Config->GetCells()) {
         Pools.emplace(
@@ -49,6 +51,10 @@ std::shared_ptr<TCellInboundActivity> TCellManager::GetInboundActivity()
 
 void TCellManager::Start()
 {
+    TransportUpdates->Start();
+    with_lock (TransportUpdatesLock) {
+        TransportUpdatesEnabled = true;
+    }
     Bootstrap.CertProvider->Start();
     Bootstrap.GrpcClient->Start();
 
@@ -59,6 +65,22 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    auto drained = NThreading::NewPromise<void>();
+    bool waitForUpdates = false;
+    with_lock (TransportUpdatesLock) {
+        waitForUpdates = TransportUpdatesEnabled;
+        TransportUpdatesEnabled = false;
+        if (waitForUpdates) {
+            // The single worker processes admitted updates before this marker.
+            // TThreadPool::Stop itself does not drain its pending queue.
+            TransportUpdates->ExecuteSimple([drained]() mutable
+                                            { drained.SetValue(); });
+        }
+    }
+    if (waitForUpdates) {
+        drained.GetFuture().GetValueSync();
+    }
+    TransportUpdates->Stop();
     // before the client goes down: a sweep that outlived it would find
     // every host unreachable and migrate every connection on the way out
     for (auto& pool: Pools) {
@@ -88,6 +110,55 @@ TCellsSnapshot TCellManager::GetSnapshot()
         snapshot.Mounts = GetCellMounts(*Bootstrap.Connections);
     }
     return snapshot;
+}
+
+NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
+    TString cellId,
+    TString diskId,
+    TString clientId,
+    NProto::ECellDataTransport transport)
+{
+    auto promise = NThreading::NewPromise<NProto::TError>();
+    with_lock (TransportUpdatesLock) {
+        if (!TransportUpdatesEnabled) {
+            return NThreading::MakeFuture(
+                MakeError(E_CANCELLED, "Cell manager is not running"));
+        }
+        // Endpoint setup can resolve DNS. Keep it off the monitoring actor.
+        TransportUpdates->ExecuteSimple(
+            [connections = Bootstrap.Connections,
+             logging = Bootstrap.Logging,
+             cellId = std::move(cellId),
+             diskId = std::move(diskId),
+             clientId = std::move(clientId),
+             transport,
+             promise]() mutable
+            {
+                NProto::TError error;
+                try {
+                    error = SwitchCellDataTransport(
+                        *connections,
+                        cellId,
+                        diskId,
+                        clientId,
+                        transport);
+                } catch (...) {
+                    error = MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+                if (HasError(error)) {
+                    auto Log = logging->CreateLog("BLOCKSTORE_CELLS");
+                    STORAGE_WARN(
+                        "Cell data transport switch failed: cell=" << cellId
+                            << " disk=" << diskId
+                            << " client=" << clientId
+                            << " to="
+                            << NProto::ECellDataTransport_Name(transport)
+                            << " error=" << FormatError(error));
+                }
+                promise.SetValue(std::move(error));
+            });
+    }
+    return promise.GetFuture();
 }
 
 NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
@@ -218,6 +289,7 @@ ICellManagerPtr CreateCellManager(
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    NIcV2::IServicePtr icV2Service,
     IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
@@ -252,6 +324,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .IcV2Service = std::move(icV2Service),
         .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap(),

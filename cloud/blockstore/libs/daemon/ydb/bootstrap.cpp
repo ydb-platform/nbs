@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
-#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
@@ -66,6 +65,7 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
@@ -1046,6 +1046,7 @@ void TBootstrapYdb::SetupCellManager()
             ServerStats,
             std::move(cellCertProvider),
             RdmaClient,
+            IcV2Service,
             Service);
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);

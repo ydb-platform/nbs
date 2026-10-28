@@ -42,6 +42,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/icv2/service/service.h>
 #include <cloud/blockstore/libs/local_nvme/device_provider.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/local_nvme/service_proxy.h>
@@ -460,6 +461,7 @@ void TBootstrapBase::Init()
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
         Configs->ServerConfig->GetEncryptZeroPolicy());
 
+    InitIcV2Service();
     SetupCellManager();
 
     auto sessionManager = CreateSessionManager(
@@ -1013,6 +1015,27 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
     }
 }
 
+void TBootstrapBase::InitIcV2Service()
+{
+    if (!Configs->CellsConfig->GetCellsConfig().GetIcV2().GetEnabled()) {
+        return;
+    }
+    auto [service, error] = NIcV2::CreateService(
+        Configs->CellsConfig,
+        Service,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "icv2"));
+    Y_ENSURE(
+        !HasError(error),
+        "IC V2 initialization failed: " << FormatError(error));
+    IcV2Service = std::move(service);
+    STORAGE_INFO("IC V2 service initialized");
+}
+
 void TBootstrapBase::Start()
 {
 #define START_COMMON_COMPONENT(c)                                              \
@@ -1067,6 +1090,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GetTraceServiceClient());
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(IcV2Service);
     START_COMMON_COMPONENT(CellManager);
     START_COMMON_COMPONENT(LongRunningTaskExecutor);
     START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
@@ -1130,6 +1154,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
+    STOP_COMMON_COMPONENT(IcV2Service);
     STOP_COMMON_COMPONENT(CellManager);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);

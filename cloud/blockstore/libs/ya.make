@@ -17,6 +17,7 @@ RECURSE(
     endpoints_rdma
     endpoints_spdk
     endpoints_vhost
+    icv2
     kikimr
     kms
     local_nvme

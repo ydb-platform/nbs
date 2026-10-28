@@ -9,4 +9,4 @@ rm -f backups.*/{*.txt,*.json}
 rm -f nbs/nbs-disk-agent-*.txt
 rm -f nbs/nbs-disk-registry.txt
 rm -f nbs/nbs-location-*.txt
-rm -f nbs/nbs-cells.txt
+rm -f nbs/nbs-cells.txt nbs/nbs-cells2.txt

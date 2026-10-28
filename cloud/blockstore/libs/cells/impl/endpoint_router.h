@@ -19,6 +19,18 @@ struct ITransportTarget
 
 using ITransportTargetPtr = std::shared_ptr<ITransportTarget>;
 
+struct TEndpointIoStats
+{
+    ui64 ReadRequests = 0;
+    ui64 ReadErrors = 0;
+    ui64 ReadBytes = 0;
+    ui64 WriteRequests = 0;
+    ui64 WriteErrors = 0;
+    ui64 WriteBytes = 0;
+    ui64 ZeroRequests = 0;
+    ui64 ZeroErrors = 0;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Forwards every request to the endpoint currently selected for it. Knows
@@ -39,6 +51,8 @@ struct IEndpointRouter
     : public IBlockStore
     , public ITransportTarget
 {
+    // Stats belong to the current target and reset on SetTarget.
+    virtual TEndpointIoStats GetIoStats() const = 0;
 };
 
 using IEndpointRouterPtr = std::shared_ptr<IEndpointRouter>;

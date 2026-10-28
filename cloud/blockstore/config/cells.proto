@@ -14,6 +14,7 @@ enum ECellDataTransport
     CELL_DATA_TRANSPORT_GRPC = 1;
     CELL_DATA_TRANSPORT_NBD = 2;
     CELL_DATA_TRANSPORT_RDMA = 3;
+    CELL_DATA_TRANSPORT_ICV2 = 4;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,6 +75,60 @@ message TCellConfig
     // How long a ping may take before the host counts as dead, in
     // milliseconds.
     optional uint32 HostPingTimeout = 15;
+
+    // IC V2 port on the hosts listed above. Unset or zero means that the
+    // peer has no configured IC V2 endpoint. Independent of data Transport.
+    optional uint32 IcV2Port = 16;
+
+    reserved 17;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// IC V2 listener and outgoing data connections.
+// Each peer selects its data transport independently.
+message TCellsIcV2Config
+{
+    optional bool Enabled = 1 [default = false];
+
+    // Numeric IPv4 or IPv6 address. IPv6 listener accepts only IPv6 sockets.
+    optional string ListenAddress = 2 [default = "::"];
+    // Must be set explicitly. Zero selects an ephemeral port.
+    optional uint32 Port = 3;
+    reserved 4;
+    optional uint32 Threads = 5 [default = 1];
+    // For outgoing channels, also includes TCP connection attempts.
+    optional uint32 HandshakeTimeoutMs = 6 [default = 5000];
+    optional bool ChecksumEvents = 7 [default = false];
+
+    // Logical incoming connections, including completing callbacks. These
+    // share the admission limit with pending hellos; with XDC this shared
+    // limit is doubled. A completed auxiliary hello belongs to its main pair.
+    optional uint32 MaxConnections = 8 [default = 128];
+    // Per channel/data endpoint and for the data target; also bounds total
+    // outstanding diagnostic Ping calls. Includes
+    // queued results and running continuations.
+    optional uint32 MaxPendingRequests = 9 [default = 1024];
+    // Shared output queue limit for all IC V2 connections in this NBS;
+    // also limits payload bytes held by diagnostic Ping calls.
+    optional uint64 MaxOutputQueueBytes = 10 [default = 67108864];
+    // Future continuations run here, separately from I/O and timer workers.
+    optional uint32 CompletionThreads = 11 [default = 2];
+    // Outgoing channels, including attempts and queued result continuations.
+    // Also bounds live/retiring data bindings, including queued results.
+    optional uint32 MaxOutgoingConnections = 12 [default = 128];
+    // Serialized request and read/write payload limit.
+    optional uint64 MaxDataRequestBytes = 13 [default = 4194304];
+    // Per outgoing data endpoint and for the shared incoming data target.
+    optional uint64 MaxDataInflightBytes = 14 [default = 67108864];
+    // Incoming storage invocation, decoding and replies.
+    optional uint32 DataWorkers = 15 [default = 1];
+
+    // Negotiate a separate data socket when both peers enable XDC.
+    // A peer with XDC disabled selects the ordinary single-socket channel.
+    optional bool EnableXdc = 16 [default = false];
+
+    reserved 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,4 +153,6 @@ message TCellsConfig
 
     // Enable/Disable feature
     optional bool CellsEnabled = 6;
+
+    optional TCellsIcV2Config IcV2 = 7;
 }

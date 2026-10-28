@@ -331,6 +331,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
             nullptr,
+            nullptr,
             CreateLocalService());
 
         server->Start();
@@ -393,6 +394,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            nullptr,
             nullptr,
             CreateLocalService());
 
@@ -605,6 +607,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
             nullptr,
+            nullptr,
             CreateLocalService());
 
         // A cell id we never configured can only come from broken internal
@@ -676,6 +679,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            nullptr,
             nullptr,
             CreateLocalService());
 
@@ -789,6 +793,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
             nullptr,
+            nullptr,
             CreateLocalService());
 
         server->Start();
@@ -839,6 +844,39 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
         UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].TabletHost);
 
+        auto selected = cellManager
+                            ->SwitchDataTransport(
+                                "xyz",
+                                "disk-1",
+                                "client-1",
+                                NProto::CELL_DATA_TRANSPORT_GRPC)
+                            .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(selected), FormatError(selected));
+        UNIT_ASSERT(
+            cellManager->GetSnapshot().Mounts[0].SelectedTransport ==
+            NProto::CELL_DATA_TRANSPORT_GRPC);
+        // An unavailable transport must not disturb the mounted gRPC path.
+        const auto unavailable = cellManager
+                                     ->SwitchDataTransport(
+                                         "xyz",
+                                         "disk-1",
+                                         "client-1",
+                                         NProto::CELL_DATA_TRANSPORT_ICV2)
+                                     .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(unavailable.GetCode(), E_ARGUMENT);
+        const auto noRdma = cellManager
+                                ->SwitchDataTransport(
+                                    "xyz",
+                                    "disk-1",
+                                    "client-1",
+                                    NProto::CELL_DATA_TRANSPORT_RDMA)
+                                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(noRdma.GetCode(), E_ARGUMENT);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            cellManager->GetSnapshot().Mounts[0].DataTransport,
+            "grpc");
+
         auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
         request->SetDiskId("disk-1");
         request->MutableHeaders()->SetClientId("client-1");
@@ -877,6 +915,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            nullptr,
             nullptr,
             CreateLocalService());
 

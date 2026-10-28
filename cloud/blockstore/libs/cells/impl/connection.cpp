@@ -2,11 +2,12 @@
 
 #include "detachable_target.h"
 #include "endpoint_router.h"
-#include "transport_switcher.h"
 #include "remote_storage.h"
+#include "transport_switcher.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/icv2/service/service.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -14,9 +15,12 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/scope.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -91,7 +95,7 @@ void NoteMount(
 
 void NoteUnmount(TCellConnection& connection, const TString& diskId);
 
-// what carries a binding's data right now
+// The selected data route; IC V2 connection liveness is reported separately.
 TString DescribeDataTransport(
     const THostBinding& binding,
     const ITransportSwitcherPtr& switcher)
@@ -100,6 +104,8 @@ TString DescribeDataTransport(
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
+            return "icv2";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             // until the switcher is in, the data goes the fallback way
             if (hostConfig.GetGrpcDataFallbackEnabled() &&
@@ -111,6 +117,21 @@ TString DescribeDataTransport(
         default:
             return "unknown";
     }
+}
+
+TStringBuf DescribeIcV2ChannelState(NIcV2::EHostChannelState state)
+{
+    switch (state) {
+        case NIcV2::EHostChannelState::Idle:
+            return "idle";
+        case NIcV2::EHostChannelState::Connecting:
+            return "connecting";
+        case NIcV2::EHostChannelState::Connected:
+            return "connected";
+        case NIcV2::EHostChannelState::Disconnected:
+            return "disconnected";
+    }
+    return "unknown";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,6 +287,7 @@ private:
     mutable TAdaptiveLock Lock;
     THostBindingPtr Binding;
     ui64 LastGeneration = 0;
+    std::optional<NProto::ECellDataTransport> TransportOverride;
 
     // the disk mounted through this connection
     TString MountedDiskId;
@@ -396,7 +418,117 @@ public:
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
         status.DataTransport = DescribeDataTransport(*binding, switcher);
+        status.SelectedTransport = binding->HostConfig.GetTransport();
+        const auto io = DataRouter->GetIoStats();
+        status.ReadRequests = io.ReadRequests;
+        status.ReadErrors = io.ReadErrors;
+        status.ReadBytes = io.ReadBytes;
+        status.WriteRequests = io.WriteRequests;
+        status.WriteErrors = io.WriteErrors;
+        status.WriteBytes = io.WriteBytes;
+        status.ZeroRequests = io.ZeroRequests;
+        status.ZeroErrors = io.ZeroErrors;
+        if (status.SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2 &&
+            Bootstrap.IcV2Service)
+        {
+            const auto channel = Bootstrap.IcV2Service->GetDataEndpointStatus(
+                binding->DataEndpoint);
+            status.IcV2ChannelState = DescribeIcV2ChannelState(channel.State);
+            status.IcV2ConnectionAttempts = channel.ConnectionAttempts;
+            status.IcV2ConnectionFailures = channel.ConnectionFailures;
+        }
         return status;
+    }
+
+    NProto::TError SwitchDataTransport(
+        const TString& diskId,
+        const TString& clientId,
+        NProto::ECellDataTransport transport)
+    {
+        if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
+            transport != NProto::CELL_DATA_TRANSPORT_RDMA &&
+            transport != NProto::CELL_DATA_TRANSPORT_ICV2)
+        {
+            return MakeError(E_ARGUMENT, "Unsupported cell data transport");
+        }
+
+        THostBindingPtr old;
+        with_lock (Lock) {
+            if (MountedDiskId != diskId || MountedClientId != clientId) {
+                return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+            }
+            if (!BindingInstalled || MigrationInFlight) {
+                return MakeError(
+                    E_REJECTED,
+                    "Cell connection is changing; retry");
+            }
+            if (Binding->HostConfig.GetTransport() == transport) {
+                TransportOverride = transport;
+                return {};
+            }
+            MigrationInFlight = true;
+            old = Binding;
+        }
+
+        Y_DEFER
+        {
+            EndMigration();
+        };
+        THostBindingPtr binding;
+        NProto::TError error;
+        try {
+            auto config = old->HostConfig;
+            config.SetTransport(transport);
+            auto built =
+                BuildHostBinding(Bootstrap, config, old->ControlService);
+            error = built.GetError();
+            if (!HasError(error)) {
+                binding = built.ExtractResult();
+                binding->ChannelEpoch = old->ChannelEpoch;
+                error = PrepareDataPath(binding);
+            }
+        } catch (...) {
+            error = MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+        if (HasError(error)) {
+            return error;
+        }
+
+        with_lock (Lock) {
+            if (MountedDiskId != diskId || MountedClientId != clientId) {
+                return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+            }
+            Binding = binding;
+            TransportOverride = transport;
+            if (transport != NProto::CELL_DATA_TRANSPORT_RDMA) {
+                for (auto& [host, avoidance]: Avoid) {
+                    Y_UNUSED(host);
+                    avoidance.RdmaUntil = {};
+                }
+            }
+        }
+        if (old->Sink) {
+            old->Sink->Detach();
+        }
+        // The control channel and pool subscription stay on the same host.
+        // Old endpoints remain alive through their in-flight router requests.
+        InstallBinding(binding);
+        STORAGE_INFO(
+            "Cell data transport switched: cell=" << Pool->GetCellId()
+                << " disk=" << diskId
+                << " client=" << clientId
+                << " host=" << old->HostConfig.GetFqdn()
+                << " from=" << NProto::ECellDataTransport_Name(
+                       old->HostConfig.GetTransport())
+                << " to=" << NProto::ECellDataTransport_Name(transport));
+        if (MigrationEnabled &&
+            Pool->IsHostKnownDead(binding->HostConfig.GetFqdn()))
+        {
+            OnHostUnavailable(
+                binding->HostConfig.GetFqdn(),
+                binding->ChannelEpoch);
+        }
+        return {};
     }
 
     IBlockStorePtr GetService() override
@@ -777,6 +909,11 @@ private:
         TResultOrError<THostBindingPtr> built = MakeError(E_FAIL);
         try {
             auto hostConfig = Pool->MakeHostConfig(fqdn);
+            with_lock (Lock) {
+                if (TransportOverride) {
+                    hostConfig.SetTransport(*TransportOverride);
+                }
+            }
             built = BuildHostBinding(Bootstrap, hostConfig, controlService);
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
@@ -1202,6 +1339,18 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
     binding->ControlService = controlService;
 
     switch (hostConfig.GetTransport()) {
+        case NProto::CELL_DATA_TRANSPORT_ICV2: {
+            auto [endpoint, error] =
+                bootstrap.EndpointsSetup->SetupHostIcV2Endpoint(
+                    bootstrap,
+                    hostConfig);
+            if (HasError(error)) {
+                return error;
+            }
+            binding->DataEndpoint = std::move(endpoint);
+            return binding;
+        }
+
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             if (hostConfig.GetGrpcDataFallbackEnabled()) {
                 // the switcher starts on this and returns to it whenever rdma
@@ -1253,24 +1402,52 @@ public:
 
     TVector<TCellMountStatus> GetMounts()
     {
-        TVector<TCellConnectionPtr> live;
-        with_lock (Lock) {
-            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
-            for (const auto& weak: Connections) {
-                if (auto connection = weak.lock()) {
-                    live.push_back(std::move(connection));
-                }
-            }
-        }
-
         TVector<TCellMountStatus> mounts;
-        for (const auto& connection: live) {
+        for (const auto& connection: GetLiveConnections()) {
             auto status = connection->GetMountStatus();
             if (status.DiskId) {
                 mounts.push_back(std::move(status));
             }
         }
         return mounts;
+    }
+
+    NProto::TError SwitchDataTransport(
+        const TString& cellId,
+        const TString& diskId,
+        const TString& clientId,
+        NProto::ECellDataTransport transport)
+    {
+        if (cellId.empty() || diskId.empty()) {
+            return MakeError(E_ARGUMENT, "Cell and disk must be specified");
+        }
+        for (const auto& connection: GetLiveConnections()) {
+            const auto status = connection->GetMountStatus();
+            if (status.CellId == cellId && status.DiskId == diskId &&
+                status.ClientId == clientId)
+            {
+                return connection->SwitchDataTransport(
+                    diskId,
+                    clientId,
+                    transport);
+            }
+        }
+        return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+    }
+
+private:
+    TVector<TCellConnectionPtr> GetLiveConnections()
+    {
+        TVector<TCellConnectionPtr> live;
+        with_lock (Lock) {
+            EraseIf(Connections, [](const auto& c) { return c.expired(); });
+            for (const auto& weak: Connections) {
+                if (auto connection = weak.lock()) {
+                    live.push_back(std::move(connection));
+                }
+            }
+        }
+        return live;
     }
 };
 
@@ -1282,6 +1459,16 @@ TCellConnectionRegistryPtr CreateCellConnectionRegistry()
 TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry)
 {
     return registry.GetMounts();
+}
+
+NProto::TError SwitchCellDataTransport(
+    TCellConnectionRegistry& registry,
+    const TString& cellId,
+    const TString& diskId,
+    const TString& clientId,
+    NProto::ECellDataTransport transport)
+{
+    return registry.SwitchDataTransport(cellId, diskId, clientId, transport);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -17,6 +17,9 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapResult;
 
+    TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap& bootstrap, const TCellHostConfig& config) override;
+
     auto SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;

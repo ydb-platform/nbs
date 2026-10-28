@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
@@ -23,8 +24,10 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/utility.h>
-#include <util/string/builder.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
+
+#include <array>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -48,6 +51,7 @@ struct TEvPrivate
     enum EEv
     {
         EvSearchCompleted = TBlockStorePrivateEvents::CELLS_START,
+        EvTransportChanged,
         EvEnd
     };
 
@@ -60,14 +64,28 @@ struct TEvPrivate
         const TVector<TCellDescribeResult> Results;
 
         TEvSearchCompleted(
-                TActorId replyTo,
-                ui64 cookie,
-                TString diskId,
-                TVector<TCellDescribeResult> results)
+            TActorId replyTo,
+            ui64 cookie,
+            TString diskId,
+            TVector<TCellDescribeResult> results)
             : ReplyTo(replyTo)
             , Cookie(cookie)
             , DiskId(std::move(diskId))
             , Results(std::move(results))
+        {}
+    };
+
+    struct TEvTransportChanged
+        : public TEventLocal<TEvTransportChanged, EvTransportChanged>
+    {
+        const TActorId ReplyTo;
+        const ui64 Cookie;
+        const NProto::TError Error;
+
+        TEvTransportChanged(TActorId replyTo, ui64 cookie, NProto::TError error)
+            : ReplyTo(replyTo)
+            , Cookie(cookie)
+            , Error(std::move(error))
         {}
     };
 };
@@ -240,6 +258,8 @@ TString DescribeTransport(
     switch (transport) {
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
+            return "icv2";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             return grpcDataFallbackEnabled ? "rdma + grpc fallback" : "rdma";
         default:
@@ -309,6 +329,7 @@ void RenderCell(
                     TABLEH() { out << "gRPC"; }
                     TABLEH() { out << "Secure gRPC"; }
                     TABLEH() { out << "RDMA"; }
+                    TABLEH() { out << "IC V2"; }
                 }
             }
             TABLEBODY() {
@@ -350,6 +371,9 @@ void RenderCell(
                             out << FormatPort(host.GetSecureGrpcPort());
                         }
                         TABLED() { out << FormatPort(host.GetRdmaPort()); }
+                        TABLED() {
+                            out << FormatPort(host.GetIcV2Port());
+                        }
                     }
                 }
             }
@@ -396,13 +420,48 @@ TStringBuf TransportLabelKind(const TString& transport)
     return "default";
 }
 
+void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
+{
+    out << "<form method='post' action='cells' class='form-inline'>"
+        << "<input type='hidden' name='action' value='switchTransport'>"
+        << "<input type='hidden' name='CellId' value='"
+        << EncodeHtmlPcdata(mount.CellId) << "'>"
+        << "<input type='hidden' name='Volume' value='"
+        << EncodeHtmlPcdata(mount.DiskId) << "'>"
+        << "<input type='hidden' name='ClientId' value='"
+        << EncodeHtmlPcdata(mount.ClientId) << "'>"
+        << "<select name='Transport' class='form-control input-sm'>";
+    constexpr std::array transports = {
+        NProto::CELL_DATA_TRANSPORT_GRPC,
+        NProto::CELL_DATA_TRANSPORT_RDMA,
+        NProto::CELL_DATA_TRANSPORT_ICV2};
+    constexpr std::array names = {"gRPC", "RDMA", "IC V2"};
+    for (size_t i = 0; i < transports.size(); ++i) {
+        out << "<option value='"
+            << NProto::ECellDataTransport_Name(transports[i]) << "'";
+        if (mount.SelectedTransport == transports[i]) {
+            out << " selected";
+        }
+        out << ">" << names[i] << "</option>";
+    }
+    out << "</select> <button type='submit' class='btn btn-default btn-sm'>"
+        << "Apply</button></form>";
+}
+
 void RenderMounts(
     IOutputStream& out,
     const TVector<TCellMountStatus>& mounts,
     const TDiagnosticsConfig& diagnosticsConfig)
 {
     out << "<h3>Intercell mounts <small>disks this node serves through other "
-           "cells</small></h3>";
+           "cells</small></h3>"
+        << "<p class='text-muted'>Transport selection applies to this "
+           "disk/client "
+           "on this node until the connection closes. RDMA keeps its "
+           "configured "
+           "gRPC fallback policy. The transport badge shows the selected "
+           "route; the IC V2 channel column shows its live TCP state. "
+           "Idle means no connection has been attempted yet.</p>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
         return;
@@ -417,6 +476,8 @@ void RenderMounts(
                     TABLEH() { out << "Cell"; }
                     TABLEH() { out << "Host"; }
                     TABLEH() { out << "Transport"; }
+                    TABLEH() { out << "IC V2 channel"; }
+                    TABLEH() { out << "I/O (current transport)"; }
                     TABLEH() { out << "Tablet"; }
                 }
             }
@@ -440,8 +501,38 @@ void RenderMounts(
                                 out,
                                 TransportLabelKind(mount.DataTransport),
                                 mount.DataTransport);
+                            RenderTransportControl(out, mount);
                         }
                         TABLED() {
+                            if (mount.IcV2ChannelState) {
+                                const TStringBuf kind =
+                                    mount.IcV2ChannelState == "connected"
+                                        ? "success"
+                                        : mount.IcV2ChannelState == "disconnected"
+                                              ? "warning"
+                                              : "default";
+                                RenderLabel(
+                                    out,
+                                    kind,
+                                    mount.IcV2ChannelState);
+                                out << " <small>attempts: "
+                                    << mount.IcV2ConnectionAttempts
+                                    << ", failures: "
+                                    << mount.IcV2ConnectionFailures
+                                    << "</small>";
+                            }
+                        }
+                        TABLED() {
+                            out << "R: " << mount.ReadRequests
+                                << "/" << mount.ReadErrors
+                                << " (" << FormatByteSize(mount.ReadBytes)
+                                << ")<br>W: " << mount.WriteRequests
+                                << "/" << mount.WriteErrors
+                                << " (" << FormatByteSize(mount.WriteBytes)
+                                << ")<br>Z: " << mount.ZeroRequests
+                                << "/" << mount.ZeroErrors;
+                        }
+                        TABLED () {
                             // empty when the cell is older than the field
                             if (mount.TabletHost == mount.Host) {
                                 out << "<span class='text-muted'>"
@@ -559,6 +650,7 @@ public:
         switch (ev->GetTypeRewrite()) {
             HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
             HFunc(TEvPrivate::TEvSearchCompleted, HandleSearchCompleted);
+            HFunc(TEvPrivate::TEvTransportChanged, HandleTransportChanged);
             default:
                 break;
         }
@@ -569,7 +661,54 @@ private:
         const NMon::TEvHttpInfo::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto& params = ev->Get()->Request.GetParams();
+        const auto& request = ev->Get()->Request;
+        const auto& params = request.GetMethod() == HTTP_METHOD_POST
+                                 ? request.GetPostParams()
+                                 : request.GetParams();
+        if (params.Get("action") == "switchTransport") {
+            NProto::ECellDataTransport transport;
+            if (request.GetMethod() != HTTP_METHOD_POST ||
+                !NProto::ECellDataTransport_Parse(
+                    params.Get("Transport"),
+                    &transport) ||
+                (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
+                 transport != NProto::CELL_DATA_TRANSPORT_RDMA &&
+                 transport != NProto::CELL_DATA_TRANSPORT_ICV2) ||
+                params.Get("CellId").empty() || params.Get("Volume").empty())
+            {
+                ReplyTransportChanged(
+                    ctx,
+                    ev->Sender,
+                    ev->Cookie,
+                    MakeError(
+                        E_ARGUMENT,
+                        "Expected POST with cell, disk and gRPC/RDMA/IC V2 "
+                        "transport"));
+                return;
+            }
+            auto* actorSystem = ctx.ActorSystem();
+            const auto self = SelfId();
+            CellManager
+                ->SwitchDataTransport(
+                    params.Get("CellId"),
+                    params.Get("Volume"),
+                    params.Get("ClientId"),
+                    transport)
+                .Subscribe(
+                    [actorSystem,
+                     self,
+                     replyTo = ev->Sender,
+                     cookie = ev->Cookie](const auto& future)
+                    {
+                        actorSystem->Send(
+                            self,
+                            new TEvPrivate::TEvTransportChanged(
+                                replyTo,
+                                cookie,
+                                future.GetValue()));
+                    });
+            return;
+        }
 
         if (params.Get("action") == "search" && params.Get("Volume")) {
             StartSearch(ctx, ev->Sender, ev->Cookie, params.Get("Volume"));
@@ -588,6 +727,46 @@ private:
             new NMon::TEvHttpInfoRes(out.Str()),
             0,
             ev->Cookie);
+    }
+
+    void ReplyTransportChanged(
+        const TActorContext& ctx,
+        TActorId replyTo,
+        ui64 cookie,
+        const NProto::TError& error)
+    {
+        if (!HasError(error)) {
+            // The browser must land on a GET, so reload does not repeat Apply.
+            ctx.Send(
+                replyTo,
+                new NMon::TEvHttpInfoRes(
+                    "HTTP/1.1 303 See Other\r\n"
+                    "Location: /blockstore/cells\r\n"
+                    "Content-Length: 0\r\n\r\n",
+                    0,
+                    NMon::IEvHttpInfoRes::Custom),
+                0,
+                cookie);
+            return;
+        }
+
+        TStringStream out;
+        out << "<div class='alert alert-danger'>"
+            << EncodeHtmlPcdata(FormatError(error)) << "</div>";
+        RenderCellsPage(
+            out,
+            *CellManager->Config,
+            CellManager->GetSnapshot(),
+            *DiagnosticsConfig);
+        ctx.Send(replyTo, new NMon::TEvHttpInfoRes(out.Str()), 0, cookie);
+    }
+
+    void HandleTransportChanged(
+        const TEvPrivate::TEvTransportChanged::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto& msg = *ev->Get();
+        ReplyTransportChanged(ctx, msg.ReplyTo, msg.Cookie, msg.Error);
     }
 
     void StartSearch(

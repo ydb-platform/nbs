@@ -119,6 +119,12 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
         return MakeFuture<IBlockStorePtr>(service);
     }
 
+    TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap&, const TCellHostConfig&) override
+    {
+        return MakeError(E_NOT_IMPLEMENTED);
+    }
+
     TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,

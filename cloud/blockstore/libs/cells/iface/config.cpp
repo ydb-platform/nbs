@@ -14,6 +14,7 @@ namespace {
 #define BLOCKSTORE_CELL_DEFAULT_CONFIG(xxx)                                    \
     xxx(CellId,                      TString,                {}               )\
     xxx(GrpcPort,                    ui32,                   0                )\
+    xxx(IcV2Port,                    ui32,                   0                )\
     xxx(NbdPort,                     ui32,                   {}               )\
     xxx(RdmaPort,                    ui32,                   0                )\
     xxx(SecureGrpcPort,              ui32,                   {}               )\
@@ -138,6 +139,8 @@ TCellHostConfig::TCellHostConfig(
     , RdmaPort(cellConfig.GetRdmaPort())
     , NbdPort(cellConfig.GetNbdPort())
     , Fqdn(hostConfig.GetFqdn())
+    , CellId(cellConfig.GetCellId())
+    , IcV2Port(cellConfig.GetIcV2Port())
     , Transport(hostConfig.GetTransport() ?
         hostConfig.GetTransport():
         cellConfig.GetTransport())

@@ -83,6 +83,10 @@ Entry {
   Level: 6
 }
 Entry {
+  Component: "BLOCKSTORE_CELLS"
+  Level: 6
+}
+Entry {
   Component: "BLOCKSTORE_BOOTSTRAPPER"
   Level: 6
 }

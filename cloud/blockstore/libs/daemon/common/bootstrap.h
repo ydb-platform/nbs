@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
+#include <cloud/blockstore/libs/icv2/service/public.h>
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
@@ -63,6 +64,7 @@ protected:
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
     NCells::ICellManagerPtr CellManager;
+    NIcV2::IServicePtr IcV2Service;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;
@@ -139,6 +141,7 @@ protected:
     void InitLWTrace(const TString& serviceNameForExporter);
 
     virtual void SetupCellManager() = 0;
+    void InitIcV2Service();
     virtual void SetupCellMonitoringActor() = 0;
     virtual IBlockStorePtr WrapServiceForInterCellForward(
         IBlockStorePtr authorized,

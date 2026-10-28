@@ -32,6 +32,9 @@ struct ICellHostEndpointBootstrap
         const TCellHostConfig& config,
         NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) = 0;
 
+    virtual TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap& bootstrap, const TCellHostConfig& config) = 0;
+
     virtual ~ICellHostEndpointBootstrap() = default;
 };
 
