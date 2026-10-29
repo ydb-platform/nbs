@@ -46,13 +46,24 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
             Follower.Link.LeaderDiskId,
             true),
         DESCRIBE_KIND_LEADER);
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.FollowerDiskId,
-            true),
-        DESCRIBE_KIND_FOLLOWER);
+    if (Follower.Link.FollowerCellId &&
+        Follower.Link.FollowerCellId != Follower.Link.LeaderCellId)
+    {
+        NCloud::SendWithUndeliveryTracking(
+            ctx,
+            MakeCellProxyServiceId(),
+            std::make_unique<TEvCellProxy::TEvDescribeVolumeRequest>(
+                Follower.Link.FollowerCellId,
+                Follower.Link.FollowerDiskId));
+    } else {
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                Follower.Link.FollowerDiskId,
+                true),
+            DESCRIBE_KIND_FOLLOWER);
+    }
 }
 
 void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
@@ -153,6 +164,28 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
     LinkVolumes(ctx);
 }
 
+void TCreateVolumeLinkActor::HandleDescribeRemoteVolumeResponse(
+    const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+            "%s Describe volume %s failed: %s", LogPrefix.c_str(),
+            Follower.Link.FollowerDiskIdForPrint().Quote().c_str(),
+            FormatError(msg->GetError()).c_str());
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+    FollowerVolume = std::move(msg->Volume);
+    LinkVolumes(ctx);
+}
+
+void TCreateVolumeLinkActor::HandleCellProxyUndelivery(const TActorContext& ctx)
+{
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "CellProxy is unavailable"));
+}
+
 void TCreateVolumeLinkActor::HandlePersistedOnLeader(
     const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
@@ -238,6 +271,12 @@ STFUNC(TCreateVolumeLinkActor::StateWork)
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
+
+        HFunc(
+            TEvCellProxy::TEvDescribeVolumeResponse,
+            HandleDescribeRemoteVolumeResponse);
+
+        CFunc(TEvCellProxy::EvDescribeVolumeRequest, HandleCellProxyUndelivery);
 
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,

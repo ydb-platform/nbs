@@ -7,6 +7,8 @@
 
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <google/protobuf/util/json_util.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -45,7 +47,8 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         TryCount);
 
     auto request =
-        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>(
+            RequestInfo->CallContext);
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
@@ -69,7 +72,27 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         }
     }
 
-    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+    if (Link.FollowerCellId && Link.FollowerCellId != Link.LeaderCellId) {
+        NProto::TExecuteActionRequest action;
+        action.SetAction("updatelinkonfollower");
+        // The action carries link fields only; it sets routing headers itself.
+        request->Record.ClearHeaders();
+        const auto status = google::protobuf::util::MessageToJsonString(
+            request->Record, action.MutableInput());
+        if (!status.ok()) {
+            ReplyAndDie(ctx,
+                        MakeError(E_FAIL, "Failed to serialize follower link"));
+            return;
+        }
+        NCloud::SendWithUndeliveryTracking(
+            ctx,
+            MakeCellProxyServiceId(),
+            std::make_unique<TEvCellProxy::TEvExecuteActionRequest>(
+                RequestInfo->CallContext, Link.FollowerCellId,
+                std::move(action)));
+    } else {
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+    }
 
     ctx.Schedule(
         DelayProvider.GetDelayAndIncrease(),
@@ -80,8 +103,25 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
     const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* message = ev->Get();
-    const auto& error = message->GetError();
+    ProcessResponse(ev->Get()->GetError(), ctx);
+}
+
+void TPropagateLinkToFollowerActor::HandleExecutedOnFollower(
+    const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ProcessResponse(ev->Get()->GetError(), ctx);
+}
+
+void TPropagateLinkToFollowerActor::HandleCellProxyUndelivery(
+    const NActors::TActorContext& ctx)
+{
+    ProcessResponse(MakeError(E_REJECTED, "CellProxy is unavailable"), ctx);
+}
+
+void TPropagateLinkToFollowerActor::ProcessResponse(
+    const NProto::TError& error, const NActors::TActorContext& ctx)
+{
     const bool hasError = HasError(error);
 
     LOG_LOG(
@@ -101,7 +141,7 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
         return;
     }
 
-    ReplyAndDie(ctx, message->GetError());
+    ReplyAndDie(ctx, error);
 }
 
 void TPropagateLinkToFollowerActor::HandleWakeup(
@@ -165,6 +205,9 @@ STFUNC(TPropagateLinkToFollowerActor::StateWork)
         HFunc(
             TEvVolume::TEvUpdateLinkOnFollowerResponse,
             HandlePersistedOnFollower);
+
+        HFunc(TEvCellProxy::TEvExecuteActionResponse, HandleExecutedOnFollower);
+        CFunc(TEvCellProxy::EvExecuteActionRequest, HandleCellProxyUndelivery);
 
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 

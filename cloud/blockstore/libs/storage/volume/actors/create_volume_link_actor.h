@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
@@ -75,6 +76,12 @@ private:
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleDescribeRemoteVolumeResponse(
+        const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCellProxyUndelivery(const NActors::TActorContext& ctx);
 
     void HandlePersistedOnLeader(
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,

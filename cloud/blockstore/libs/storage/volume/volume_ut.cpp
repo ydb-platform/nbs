@@ -11574,7 +11574,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower(link);
