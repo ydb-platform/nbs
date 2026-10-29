@@ -1025,7 +1025,8 @@ private:
                     auto result =
                         PersistentState->AcquireHandleOpsQueueStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetHandleOpsQueueSize());
 
                     if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1083,7 +1084,8 @@ private:
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
