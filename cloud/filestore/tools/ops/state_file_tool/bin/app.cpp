@@ -230,8 +230,10 @@ private:
                 break;
         }
 
-        const auto patchError =
-            TStateFileEditor::PatchStateFile(accessor, PatchState);
+        const auto patchError = TStateFileEditor::PatchStateFile(
+            accessor,
+            PatchState,
+            NProto::EStateFileType::WriteBackCache);
 
         if (HasError(patchError)) {
             Cerr << "Failed to patch state file: " << FormatError(patchError)
