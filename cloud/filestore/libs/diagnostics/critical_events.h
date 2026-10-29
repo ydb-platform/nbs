@@ -73,6 +73,7 @@ namespace NCloud::NFileStore{
     xxx(AvailabilityCountersMissingIntervals)                                  \
     xxx(PersistentStateSessionDirNotEmpty)                                     \
     xxx(ListNodesLocalNodeNotFound)                                            \
+    xxx(PersistentStateFileRequestedSizeTooSmall)                              \
     xxx(PersistentStateUnstatableEntry)                                        \
     xxx(PersistentStateUnlistableDir)                                          \
     xxx(DupCacheEntryRequestIdCollision)                                       \

@@ -42,7 +42,8 @@ public:
     const TFsPath& GetFilePath() const;
 
     // Target size selected during acquisition; may differ from the current
-    // file size. Aborts if the guard holds none.
+    // file size. Undersized requests for existing files use their current size.
+    // Aborts if the guard holds none.
     ui64 GetTargetStateFileSize() const;
 
     // Releases the lock and removes the state file, and the session directory
@@ -100,7 +101,8 @@ struct IPersistentStateManager
     // not to be used, since there is no state file for it.
     // stateFileSize must be positive and is used to create and account a
     // new file. Zero returns E_ARGUMENT even if the file already exists.
-    // Positive sizes below the manager's minimum are increased to it.
+    // Positive sizes below the minimum reject new-file creation and preserve
+    // the current size of existing files. Both cases report a critical event.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
@@ -145,10 +147,9 @@ struct TPersistentStateManagerConfig
 // returns false for it. Different components may be configured with the same
 // base path and thus share a session directory.
 //
-// The total size limit accounts for all files under the component's base path,
-// including growth reserved on acquisition. It is checked only when a new
-// state file is about to be created: existing files bypass this limit,
-// provided their acquisition arguments are valid.
+// For HandleOpsQueue and WriteBackCache, quota accounting reserves the larger
+// of each file's known size and effective target size. The limit applies only
+// to new files; existing files bypass it with valid acquisition arguments.
 IPersistentStateManagerPtr CreatePersistentStateManager(
     TPersistentStateManagerConfig config);
 
