@@ -10,6 +10,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <exception>
+#include <limits>
 
 namespace NCloud::NConfig {
 
@@ -886,6 +887,50 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("ExplicitFalse.Mutable") ==
             ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+    }
+
+    // Verify that unchanged frozen NaNs produce no diagnostics, while changes
+    // and removals restore both a scalar and a collection with diagnostics.
+    Y_UNIT_TEST(ShouldIgnoreUnchangedNaN)
+    {
+        // Keep NaN in a frozen scalar and a frozen collection at startup.
+        NProto::NTest::TRuntimeConfig startup;
+        const auto nan = std::numeric_limits<double>::quiet_NaN();
+        startup.SetFrozenDouble(nan);
+        startup.AddFrozenDoubles(nan);
+        const auto startupBytes = startup.SerializeAsStringOrThrow();
+
+        // Accept an unchanged copy without reporting forbidden changes.
+        auto requested = startup;
+        const auto diagnostics =
+            FilterRuntimeConfig(startup, startup, requested);
+        UNIT_ASSERT(diagnostics.IgnoredPaths.empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            startupBytes, requested.SerializeAsStringOrThrow());
+
+        for (const bool remove: {false, true}) {
+            // Request either finite replacements or removal of both fields.
+            requested = startup;
+            if (remove) {
+                requested.ClearFrozenDouble();
+                requested.ClearFrozenDoubles();
+            } else {
+                requested.SetFrozenDouble(0);
+                requested.SetFrozenDoubles(0, 0);
+            }
+
+            // Restore the startup values and presence, reporting both paths.
+            const auto rejected =
+                FilterRuntimeConfig(startup, startup, requested);
+            UNIT_ASSERT_VALUES_EQUAL(2, rejected.IgnoredPaths.size());
+            for (const auto* path: {"FrozenDouble", "FrozenDoubles[]"}) {
+                UNIT_ASSERT(
+                    rejected.IgnoredPaths.at(path) ==
+                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                startupBytes, requested.SerializeAsStringOrThrow());
+        }
     }
 
     // Verify silent unknown removal beside an allowed known update.

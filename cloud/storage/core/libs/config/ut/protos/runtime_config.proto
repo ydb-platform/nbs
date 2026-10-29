@@ -78,6 +78,8 @@ message TRuntimeConfig
     map<string, TParameters> MessageMap = 21 [(NMarkers.AllowRuntimeUpdate) = true];
     map<string, TParameters> FrozenMessageMap = 22;
     repeated TParameters FrozenRecords = 23;
+    optional double FrozenDouble = 24;
+    repeated double FrozenDoubles = 25;
 }
 
 // A message that allows extensions but has none defined.
