@@ -993,7 +993,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto manager = CreatePersistentStateManager({
             .WriteBackCacheBasePath = StatePath,
-            .WriteBackMinStateFileSize = 4_KB,
+            .WriteBackCacheMinStateFileSize = 4_KB,
             .WriteBackCacheTotalSizeLimit = 12_KB,
         });
 
@@ -1043,7 +1043,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         auto manager = CreatePersistentStateManager({
             .WriteBackCacheBasePath = StatePath,
-            .WriteBackMinStateFileSize = 2 * WriteBackCacheStateFileSize,
+            .WriteBackCacheMinStateFileSize = 2 * WriteBackCacheStateFileSize,
         });
         auto counter = Counters->GetCounter(
             GetCriticalEventForPersistentStateFileRequestedSizeTooSmall(),
@@ -1103,7 +1103,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         manager = CreatePersistentStateManager({
             .WriteBackCacheBasePath = StatePath,
-            .WriteBackMinStateFileSize = MinStateFileSize,
+            .WriteBackCacheMinStateFileSize = MinStateFileSize,
             .WriteBackCacheTotalSizeLimit = 3 * MinStateFileSize,
         });
 
