@@ -2256,6 +2256,43 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
     }
 
+    Y_UNIT_TEST_F(ShouldNotDetachUnavailableDeviceWithDisk, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+        auto config = CreateDefaultStorageConfig();
+        config.SetAttachDetachPathsEnabled(true);
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+        RegisterAndWaitForAgents(*Runtime, {agent});
+        AddDevice("agent-1", "dev-1");
+        DiskRegistry->AllocateDisk("vol1", 10_GB);
+        DiskRegistry->ChangeAgentState(
+            "agent-1", NProto::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeDeviceState("uuid-1", NProto::DEVICE_STATE_ERROR);
+
+        ui64 detachRequests = 0;
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvDetachPathsRequest) {
+                    ++detachRequests;
+                }
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
+
+        const auto [error, timeout] = RemoveDevice("agent-1", "dev-1");
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+        UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(0, detachRequests);
+    }
+
     Y_UNIT_TEST_F(ShouldRetryCmsRequestsWhenInFlightLimitExceeded, TFixture)
     {
         const auto agent = CreateAgentConfig(

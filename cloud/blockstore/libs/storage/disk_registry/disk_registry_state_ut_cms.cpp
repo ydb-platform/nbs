@@ -180,6 +180,83 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldNotDetachUnavailableDeviceWithDisk)
+    {
+        for (const auto mediaKind:
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+              NProto::STORAGE_MEDIA_HDD_NONREPLICATED})
+        {
+            TTestExecutor executor;
+            executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+            auto agent = AgentConfig(
+                1,
+                NProto::AGENT_STATE_UNAVAILABLE,
+                {Device("shared/path", "uuid-1", NProto::DEVICE_STATE_ERROR),
+                 Device("shared/path", "uuid-2", NProto::DEVICE_STATE_ERROR),
+                 Device("other/path", "uuid-3", NProto::DEVICE_STATE_ERROR)});
+            for (const auto& device: agent.GetDevices()) {
+                (*agent.MutablePathAttachStates())[device.GetDeviceName()] =
+                    NProto::PATH_ATTACH_STATE_ATTACHED;
+            }
+
+            auto config = CreateDefaultStorageConfigProto();
+            config.SetAttachDetachPathsEnabled(true);
+            auto disk = Disk("disk-1", {"uuid-2"});
+            disk.SetStorageMediaKind(mediaKind);
+            auto state = TDiskRegistryStateBuilder()
+                             .WithStorageConfig(config)
+                             .WithKnownAgents({agent})
+                             .WithDisks({disk})
+                             .Build();
+
+            auto removeDevice = [&](const TString& path, bool keepAttached)
+            {
+                executor.WriteTx(
+                    [&](TDiskRegistryDatabase db)
+                    {
+                        const auto result = state->UpdateCmsDeviceState(
+                            db,
+                            agent.GetAgentId(),
+                            path,
+                            NProto::DEVICE_STATE_WARNING,
+                            /*customMessage=*/TString(),
+                            Now(),
+                            false,    // shouldResume
+                            false);   // dryRun
+                        UNIT_ASSERT_SUCCESS(result.Error);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            TDuration::Zero(), result.Timeout);
+
+                        const auto* updatedAgent =
+                            state->FindAgent(agent.GetAgentId());
+                        UNIT_ASSERT(updatedAgent);
+                        const auto& pathStates =
+                            updatedAgent->GetPathAttachStates();
+                        const auto it = pathStates.find(path);
+                        UNIT_ASSERT(it != pathStates.end());
+                        const auto expectedState =
+                            keepAttached ? NProto::PATH_ATTACH_STATE_ATTACHED
+                                         : NProto::PATH_ATTACH_STATE_DETACHED;
+                        UNIT_ASSERT_C(it->second == expectedState, path);
+                    });
+            };
+
+            removeDevice("shared/path", true);
+            removeDevice("other/path", false);
+
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    UNIT_ASSERT_SUCCESS(
+                        state->MarkDiskForCleanup(db, "disk-1"));
+                    UNIT_ASSERT_SUCCESS(state->DeallocateDisk(db, "disk-1"));
+                });
+
+            removeDevice("shared/path", false);
+        }
+    }
+
     Y_UNIT_TEST(ShouldPurgeDevice)
     {
         TTestExecutor executor;
@@ -682,6 +759,98 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agents[1].DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, agents[1].UnknownDevicesSize());
         });
+    }
+
+    Y_UNIT_TEST(ShouldNotDetachUnavailableHostWithDisks)
+    {
+        for (const auto mediaKind:
+             {NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+              NProto::STORAGE_MEDIA_HDD_NONREPLICATED})
+        {
+            for (const auto deviceState:
+                 {NProto::DEVICE_STATE_ONLINE, NProto::DEVICE_STATE_ERROR})
+            {
+                TTestExecutor executor;
+                executor.WriteTx([&](TDiskRegistryDatabase db)
+                                 { db.InitSchema(); });
+
+                auto agent = AgentConfig(
+                    1,
+                    NProto::AGENT_STATE_UNAVAILABLE,
+                    {Device("dev-1", "uuid-1", deviceState),
+                     Device("dev-2", "uuid-2")});
+                for (const auto& device: agent.GetDevices()) {
+                    (*agent.MutablePathAttachStates())[device.GetDeviceName()] =
+                        NProto::PATH_ATTACH_STATE_ATTACHED;
+                }
+
+                auto config = CreateDefaultStorageConfigProto();
+                config.SetAttachDetachPathsEnabled(true);
+                config.SetDiskRegistryAlwaysAllocatesLocalDisks(true);
+                auto storageConfig = CreateStorageConfig(config);
+                auto now = Now();
+                agent.SetCmsTs(now.MicroSeconds());
+                now += storageConfig
+                           ->GetNonReplicatedInfraUnavailableAgentTimeout() +
+                       TDuration::Seconds(1);
+
+                auto disk = Disk("disk-1", {"uuid-1"});
+                disk.SetStorageMediaKind(mediaKind);
+                auto state = TDiskRegistryStateBuilder()
+                                 .With(storageConfig)
+                                 .WithKnownAgents({agent})
+                                 .WithDisks({disk})
+                                 .Build();
+
+                auto removeHost = [&](bool hasDisks)
+                {
+                    executor.WriteTx(
+                        [&](TDiskRegistryDatabase db)
+                        {
+                            TVector<TString> affectedDisks;
+                            TDuration timeout;
+                            UNIT_ASSERT_SUCCESS(state->UpdateCmsHostState(
+                                db,
+                                agent.GetAgentId(),
+                                NProto::AGENT_STATE_WARNING,
+                                /*customMessage=*/TString(),
+                                now,
+                                false,   // dryRun
+                                affectedDisks, timeout));
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                TDuration::Zero(), timeout);
+
+                            const auto* updatedAgent =
+                                state->FindAgent(agent.GetAgentId());
+                            UNIT_ASSERT(updatedAgent);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                2, updatedAgent->GetPathAttachStates().size());
+                            const auto expectedAttachState =
+                                hasDisks ? NProto::PATH_ATTACH_STATE_ATTACHED
+                                         : NProto::PATH_ATTACH_STATE_DETACHED;
+                            for (const auto& [path, attachState]:
+                                 updatedAgent->GetPathAttachStates())
+                            {
+                                UNIT_ASSERT_C(
+                                    attachState == expectedAttachState, path);
+                            }
+                        });
+                };
+
+                removeHost(true);
+
+                executor.WriteTx(
+                    [&](TDiskRegistryDatabase db)
+                    {
+                        UNIT_ASSERT_SUCCESS(
+                            state->MarkDiskForCleanup(db, "disk-1"));
+                        UNIT_ASSERT_SUCCESS(
+                            state->DeallocateDisk(db, "disk-1"));
+                    });
+
+                removeHost(false);
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldCleanupDRConfig)

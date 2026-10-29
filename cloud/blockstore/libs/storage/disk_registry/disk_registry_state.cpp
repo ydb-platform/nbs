@@ -5837,6 +5837,16 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     if (newState == NProto::AGENT_STATE_WARNING) {
+        // An unavailable agent may still contain disk data that must be kept
+        // attached when it reconnects.
+        if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+            AnyOf(
+                agent->GetDevices(),
+                [&](const auto& device)
+                { return !FindDisk(device.GetDeviceUUID()).empty(); }))
+        {
+            return result;
+        }
         DetachPathsOnAgentIfNeeded(db, *agent);
     } else if (newState == NProto::AGENT_STATE_ONLINE) {
         AttachPathsOnAgentIfNeeded(db, *agent);
@@ -6671,7 +6681,17 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     if (!dryRun && !HasError(result.Error) &&
         newState == NProto::DEVICE_STATE_WARNING)
     {
-        DetachPathIfNeeded(db, *agent, path);
+        // Keep disk data attached on unavailable agents, including disks on
+        // failed devices and other logical devices sharing this path.
+        const bool keepAttached =
+            agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+            AnyOf(
+                devices,
+                [&](const auto* device)
+                { return !FindDisk(device->GetDeviceUUID()).empty(); });
+        if (!keepAttached) {
+            DetachPathIfNeeded(db, *agent, path);
+        }
     } else if (
         !dryRun && !HasError(result.Error) &&
         newState == NProto::DEVICE_STATE_ONLINE)
