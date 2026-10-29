@@ -252,7 +252,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         BlobId,
         std::move(BlobContent),
         0,  // blockSizeForChecksums
-        false);  // async
+        false,  // async
+        false); // compressedSizeEstimationCandidate
 
     NCloud::Send(
         ctx,

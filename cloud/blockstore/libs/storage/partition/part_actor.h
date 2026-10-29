@@ -50,14 +50,6 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
-namespace NBlockCodecs {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct ICodec;
-
-}   // namespace NBlockCodecs
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,7 +123,6 @@ private:
     const ui32 SiblingCount;
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
-    const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
     TLogTitle LogTitle;
 
@@ -176,6 +167,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
+    std::shared_ptr<TBlobsCompressor> BlobsCompressor;
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
