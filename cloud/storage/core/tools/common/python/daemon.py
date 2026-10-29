@@ -221,7 +221,8 @@ class Daemon(object):
                 logger.exception("Daemon cleanup or diagnostics failed")
             if not isinstance(exc_value, DaemonError):
                 try:
-                    logger.error("%s", self.failure(str(exc_value)))
+                    logger.error("Daemon diagnostics after cleanup (exit code may reflect cleanup signals): %s",
+                                 self.failure(str(exc_value)))
                 except Exception:
                     logger.exception("Could not read daemon failure details")
         return False
@@ -514,11 +515,11 @@ class Daemon(object):
     def is_alive(self):
         with self.__lock:
             if self.__process is None:
-                logger.warning("process is empty")
+                logger.debug("process is empty")
                 return False
 
             if not self.__process.running:
-                logger.warning("process (pid={}) is not running".format(
+                logger.debug("process (pid={}) is not running".format(
                     self.__process.process.pid))
                 return False
         return True
