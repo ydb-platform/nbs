@@ -48,16 +48,24 @@ def extract_log_tail(log_file, max_lines=0, label="Stderr"):
 
 
 def extract_log_head(log_file, max_lines=0, label="Stderr"):
-    """Return at most max_lines log lines from the start of a file."""
+    """Return at most max_lines log lines from the first 64 KiB of a file."""
     if max_lines <= 0 or log_file is None:
         return []
 
-    details = ["{} content:".format(label), ""]
     try:
-        with open(log_file, 'r', errors='replace') as log:
-            details.extend(line.strip() for _, line in zip(range(max_lines), log))
+        with open(log_file, 'rb') as log:
+            file_size = log.seek(0, os.SEEK_END)
+            log.seek(0)
+            data = log.read(_MAX_LOG_TAIL_BYTES)
     except OSError as error:
         return ["{} unavailable: {}".format(label, error)]
+
+    lines = data.splitlines()
+    details = ["{} content:".format(label), ""]
+    details.extend(line.decode('utf-8', errors='replace').strip() for line in lines[:max_lines])
+    if file_size > len(data) and len(lines) <= max_lines:
+        details.append("[truncated to the first {} KiB; last line may be incomplete]".format(
+            _MAX_LOG_TAIL_BYTES // 1024))
     return details
 
 
@@ -137,7 +145,7 @@ class DaemonError(RuntimeError):
             exit_code: Process exit status, if known.
             stdout: Path to the stdout log, if available.
             stderr: Path to the stderr log, if available.
-            max_stderr_lines: Limit for stderr diagnostics; zero omits them.
+            max_stderr_lines: Maximum number of stderr log lines; zero omits them.
             stderr_tail: Include the last stderr lines instead of the first.
         """
         message = "Daemon failed with message: {}.".format(message)
@@ -147,14 +155,9 @@ class DaemonError(RuntimeError):
             message += "\nStdout file name: \n{}".format(stdout)
         if stderr is not None:
             message += "\nStderr file name: \n{}".format(stderr)
-        if max_stderr_lines and stderr is not None:
-            label = "Stderr tail:" if stderr_tail else "Stderr content:"
-            if max_stderr_lines <= 2:
-                details = [label, ""][:max_stderr_lines]
-            elif stderr_tail:
-                details = extract_log_tail(stderr, max_stderr_lines - 2)
-            else:
-                details = extract_log_head(stderr, max_stderr_lines - 2)
+        if max_stderr_lines > 0 and stderr is not None:
+            details = (extract_log_tail if stderr_tail else extract_log_head)(
+                stderr, max_stderr_lines)
             if details:
                 message += "\n" + "\n".join(details)
         super(DaemonError, self).__init__(message)

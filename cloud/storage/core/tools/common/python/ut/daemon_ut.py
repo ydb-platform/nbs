@@ -68,7 +68,7 @@ def test_stderr_tail_contains_last_lines(tmp_path, separator, trailing_newline):
 
 def test_stderr_tail_limits_read_size(tmp_path):
     log = tmp_path / "stderr"
-    log.write_bytes(b"startup\n" * 100000 + b"failure\n" * 100)
+    log.write_bytes(b"x" * 1000000)
     bytes_read = []
     original_open = open
 
@@ -93,8 +93,8 @@ def test_stderr_tail_limits_read_size(tmp_path):
             original_open(*args, **kwargs)), create=True):
         tail = daemon_module.extract_log_tail(str(log), 100)
 
-    assert tail == ["Stderr tail:", ""] + ["failure"] * 100
-    assert sum(bytes_read) <= 64 * 1024
+    assert tail[2].startswith("[truncated")
+    assert sum(bytes_read) == daemon_module._MAX_LOG_TAIL_BYTES
 
 
 @pytest.mark.parametrize("content", [
@@ -109,7 +109,8 @@ def test_stderr_tail_handles_short_logs(tmp_path, content):
 
 def test_stderr_tail_handles_long_line(tmp_path):
     log = tmp_path / "stderr"
-    last_line = "ошибка " * 5000
+    unit = "ошибка "
+    last_line = unit * (daemon_module._MAX_LOG_TAIL_BYTES // len(unit.encode('utf-8')) - 2)
     log.write_bytes(("old line\n" + last_line + "\n").encode("utf-8"))
     assert daemon_module.extract_log_tail(str(log), 1) == ["Stderr tail:", "", last_line]
 
@@ -139,6 +140,42 @@ def test_log_tail_uses_requested_label(tmp_path):
         "Mount listing tail:", "", "entry"]
     assert daemon_module.extract_log_tail(str(tmp_path / "missing"), 1, label="Mount listing")[0].startswith(
         "Mount listing tail unavailable:")
+
+
+def test_log_head_limits_read_size_and_marks_truncation(tmp_path):
+    log = tmp_path / "stderr"
+    log.write_bytes(b"x" * 1000000)
+    bytes_read = []
+    original_open = open
+
+    class TrackedFile:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def read(self, size):
+            bytes_read.append(size)
+            return self.stream.read(size)
+
+    with mock.patch.object(daemon_module, "open", side_effect=lambda *args, **kwargs: TrackedFile(
+            original_open(*args, **kwargs)), create=True):
+        head = daemon_module.extract_log_head(str(log), 1)
+
+    assert head == [
+        "Stderr content:",
+        "",
+        "x" * daemon_module._MAX_LOG_TAIL_BYTES,
+        "[truncated to the first 64 KiB; last line may be incomplete]",
+    ]
+    assert bytes_read == [daemon_module._MAX_LOG_TAIL_BYTES]
 
 
 def test_context_closes_logs_and_keeps_successful_process(tmp_path):
@@ -262,7 +299,7 @@ def test_failure_includes_stderr_tail_and_exit_code(tmp_path):
         assert str(stdout) in str(error)
         assert str(stderr) in str(error)
         assert "last error" in str(error)
-        assert str(error).count("old") == 97
+        assert str(error).splitlines().count("old") == 99
     finally:
         daemon._Daemon__files.close()
 
@@ -293,15 +330,15 @@ def test_failure_uses_head_of_stderr_by_default(tmp_path):
     try:
         stderr.write_text("first\nsecond\nlast\n")
         error = daemon.failure("failed")
-        assert "Stderr content:\n\nfirst\nsecond" in str(error)
-        assert "\nlast" not in str(error)
+        assert "Stderr content:\n\nfirst\nsecond\nlast" in str(error)
+        assert str(error).splitlines().count("last") == 1
     finally:
         daemon._Daemon__files.close()
 
 
 @pytest.mark.parametrize("stderr_tail", [False, True])
-@pytest.mark.parametrize("max_stderr_lines", [1, 2, 3])
-def test_failure_limits_entire_stderr_block(tmp_path, stderr_tail, max_stderr_lines):
+@pytest.mark.parametrize("max_stderr_lines", [-1, 0, 1, 2, 3])
+def test_failure_limits_stderr_log_lines(tmp_path, stderr_tail, max_stderr_lines):
     stderr = tmp_path / "stderr"
     daemon = Daemon(
         commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
@@ -310,10 +347,16 @@ def test_failure_limits_entire_stderr_block(tmp_path, stderr_tail, max_stderr_li
         stderr.write_text("first\nsecond\nlast\n")
         error = daemon.failure("failed")
         label = "Stderr tail:" if stderr_tail else "Stderr content:"
-        details = str(error).split(label, 1)[1]
-        assert len((label + details).split("\n")) == max_stderr_lines
-        if max_stderr_lines == 3:
-            assert ("last" if stderr_tail else "first") in details
+        if max_stderr_lines <= 0:
+            assert label not in str(error)
+        else:
+            details = str(error).split(label + "\n\n", 1)[1].splitlines()
+            expected = ["first", "second", "last"]
+            if stderr_tail:
+                expected = expected[-max_stderr_lines:]
+            else:
+                expected = expected[:max_stderr_lines]
+            assert details == expected
     finally:
         daemon._Daemon__files.close()
 
