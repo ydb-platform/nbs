@@ -127,7 +127,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    NProto::TError BuildBlobContentAndComputeDigest(TInstant timestamp);
+    NProto::TError BuildBlobContentAndComputeDigest();
 
     void WriteBlob(const NActors::TActorContext& ctx);
     void AddBlocks(const NActors::TActorContext& ctx);

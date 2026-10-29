@@ -718,6 +718,10 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+
+    if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleUpdateYellowState(
@@ -1038,6 +1042,13 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
+TDuration TPartitionActor::GetFreshBlobAgeFlushThreshold() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshBlobAgeFlushThresholdSSD()
+               : Config->GetFreshBlobAgeFlushThresholdHDD();
 }
 
 void TPartitionActor::CreateFreshBlocksCompanionClient()
