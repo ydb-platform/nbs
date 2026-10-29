@@ -42,9 +42,6 @@ void FillWriteBackCacheEntryPayloadInfo(
     const char* dataPtr,
     ui32 dataSize)
 {
-    using NFuse::NWriteBackCache::HasWriteDataRequestPayload;
-    using NFuse::NWriteBackCache::TSerializedWriteDataRequestHeader;
-
     if (dataPtr == nullptr || !HasWriteDataRequestPayload(dataSize)) {
         return;
     }
@@ -135,9 +132,13 @@ TResultOrError<TEntryRange> FindRetainedEntryRange(
             range.Begin = i;
             beginFound = true;
         }
+        if (!beginFound) {
+            continue;
+        }
         if (entry.GetEntryPos() == writePos) {
             range.End = i;
             endFound = true;
+            break;
         }
 
         const ui64 entrySize = dataProcessor.GetEntrySize(entry.GetDataSize());
@@ -147,10 +148,11 @@ TResultOrError<TEntryRange> FindRetainedEntryRange(
         {
             range.End = i + 1;
             endFound = true;
+            break;
         }
     }
 
-    if (writePos == state.GetHeader().GetWritePos()) {
+    if (!endFound && writePos == state.GetHeader().GetWritePos()) {
         range.End = entryCount;
         endFound = true;
     }
@@ -194,7 +196,7 @@ bool IsKnownEntryBoundary(
 }
 
 NCloud::NProto::TError ValidateHeaderPositionPatch(
-    TStringBuf fieldName,
+    const char* fieldName,
     ui64 curPos,
     ui64 newPos,
     const NProto::TStateFileDump& curState,
@@ -208,7 +210,7 @@ NCloud::NProto::TError ValidateHeaderPositionPatch(
     if (newPos > dataCapacity) {
         return MakeArgumentError(Sprintf(
             "%s %lu exceeds data capacity %lu",
-            fieldName.data(),
+            fieldName,
             newPos,
             dataCapacity));
     }
@@ -217,7 +219,7 @@ NCloud::NProto::TError ValidateHeaderPositionPatch(
     if (capabilities.Alignment > 1 && newPos % capabilities.Alignment != 0) {
         return MakeArgumentError(Sprintf(
             "%s %lu is not aligned to %lu",
-            fieldName.data(),
+            fieldName,
             newPos,
             capabilities.Alignment));
     }
@@ -225,35 +227,8 @@ NCloud::NProto::TError ValidateHeaderPositionPatch(
     if (!IsKnownEntryBoundary(curState, newPos, dataProcessor)) {
         return MakeArgumentError(Sprintf(
             "%s %lu does not point to a known entry boundary",
-            fieldName.data(),
+            fieldName,
             newPos));
-    }
-
-    return {};
-}
-
-NCloud::NProto::TError ValidateHeaderRangePatch(
-    const NProto::TStateFileDump& curState,
-    ui64 newReadPos,
-    ui64 newWritePos,
-    const IFileRingBufferDataProcessor& dataProcessor)
-{
-    const auto& curHeader = curState.GetHeader();
-    if ((newReadPos == curHeader.GetReadPos() &&
-         newWritePos == curHeader.GetWritePos()) ||
-        newReadPos == newWritePos)
-    {
-        return {};
-    }
-
-    const auto range = FindRetainedEntryRange(
-        curState,
-        newReadPos,
-        newWritePos,
-        dataProcessor);
-
-    if (HasError(range)) {
-        return range.GetError();
     }
 
     return {};
@@ -353,15 +328,6 @@ NCloud::NProto::TError ValidateHeaderPatch(
         if (HasError(error)) {
             return error;
         }
-
-        error = ValidateHeaderRangePatch(
-            curState,
-            newHeader.GetReadPos(),
-            newHeader.GetWritePos(),
-            dataProcessor);
-        if (HasError(error)) {
-            return error;
-        }
     }
 
     TFileRingBufferValidator validator(/* validateChecksums = */ false);
@@ -451,6 +417,12 @@ NCloud::NProto::TError ValidateEntryPatch(
             newState.GetDataSize()));
     }
 
+    if (curState.GetFreeFlag() && !newState.GetFreeFlag()) {
+        return MakeArgumentError(Sprintf(
+            "Making a free entry live is not allowed at pos %lu",
+            curState.GetEntryPos()));
+    }
+
     bool entryUpdateRequested = false;
 
     if (curState.GetDataChecksum() != newState.GetDataChecksum()) {
@@ -481,15 +453,11 @@ NCloud::NProto::TError ValidateEntryPatch(
         entryUpdateRequested = true;
     }
 
-    if (curState.HasWriteDataRequestMetadata() !=
-        newState.HasWriteDataRequestMetadata())
-    {
+    if (curState.Request_case() != newState.Request_case()) {
         return MakeArgumentError(Sprintf(
-            "Changing request data presence for entry at pos %lu is not "
-            "allowed (cur: %s, new: %s)",
-            curState.GetEntryPos(),
-            curState.HasWriteDataRequestMetadata() ? "present" : "absent",
-            newState.HasWriteDataRequestMetadata() ? "present" : "absent"));
+            "Changing request data presence or type for entry at pos %lu "
+            "is not allowed",
+            curState.GetEntryPos()));
     }
 
     if (newState.HasWriteDataRequestMetadata()) {
@@ -592,7 +560,8 @@ NCloud::NProto::TError ValidateEntryPatchRanges(
 NCloud::NProto::TError ValidatePatch(
     const NProto::TStateFileDump& curState,
     const NProto::TStateFileDump& newState,
-    const IFileRingBufferDataProcessor& dataProcessor)
+    const IFileRingBufferDataProcessor& dataProcessor,
+    NProto::EStateFileType fileType)
 {
     if (!newState.IsInitialized()) {
         return MakeArgumentError("Patch is missing required fields");
@@ -649,9 +618,21 @@ NCloud::NProto::TError ValidatePatch(
             return error;
         }
 
-        if (retainedEntries.Contains(i) && !newEntry.GetFreeFlag() &&
-            newEntry.GetTag() >
-                static_cast<ui32>(ECachedWriteDataRequestTag::Max))
+        if (fileType != NProto::EStateFileType::WriteBackCache ||
+            !retainedEntries.Contains(i) || newEntry.GetFreeFlag())
+        {
+            continue;
+        }
+
+        if (!HasWriteDataRequestPayload(newEntry.GetDataSize())) {
+            return MakeArgumentError(Sprintf(
+                "Invalid write request payload size %u at entry position %lu",
+                newEntry.GetDataSize(),
+                newEntry.GetEntryPos()));
+        }
+
+        if (newEntry.GetTag() >
+            static_cast<ui32>(ECachedWriteDataRequestTag::Max))
         {
             return MakeArgumentError(Sprintf(
                 "Invalid write request tag %u at entry position %lu",
@@ -659,9 +640,7 @@ NCloud::NProto::TError ValidatePatch(
                 newEntry.GetEntryPos()));
         }
 
-        if (retainedEntries.Contains(i) && !newEntry.GetFreeFlag() &&
-            newEntry.HasWriteDataRequestMetadata())
-        {
+        if (newEntry.HasWriteDataRequestMetadata()) {
             const auto& request = newEntry.GetWriteDataRequestMetadata();
             if (request.GetOffset() > Max<ui64>() - request.GetSize()) {
                 return MakeArgumentError(Sprintf(
@@ -880,9 +859,10 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
 
 NCloud::NProto::TError TStateFileEditor::PatchStateFile(
     TFileRingBufferAccessor& accessor,
-    const NProto::TStateFileDump& newState)
+    const NProto::TStateFileDump& newState,
+    NProto::EStateFileType fileType)
 {
-    auto curState = DumpStateFile(accessor, NProto::EStateFileType::WriteBackCache);
+    auto curState = DumpStateFile(accessor, fileType);
 
     auto* header = accessor.GetHeader();
     auto* dataProcessor = accessor.GetDataProcessor();
@@ -891,33 +871,12 @@ NCloud::NProto::TError TStateFileEditor::PatchStateFile(
             "State file is not initialized, nothing to patch");
     }
 
-    std::unique_ptr<IFileRingBufferDataProcessor> clearDataProcessor;
-    const bool clearBuffer =
-        newState.HasHeader() && newState.GetHeader().GetReadPos() == 0 &&
-        newState.GetHeader().GetWritePos() == 0;
-
-    if (dataProcessor == nullptr && clearBuffer) {
-        const auto rawData = accessor.GetRawData();
-        auto error = TFileRingBufferValidator::ValidateHeaderLayout(
-            *header,
-            rawData.size());
-
-        if (HasError(error)) {
-            return MakeInvalidStateError(error.GetMessage());
-        }
-
-        clearDataProcessor = CreateFileRingBufferDataProcessor(
-            header->Version,
-            rawData.subspan(header->DataOffset, header->DataCapacity));
-        dataProcessor = clearDataProcessor.get();
-    }
-
     if (dataProcessor == nullptr) {
         return MakeInvalidStateError(
-            "State file is not initialized, nothing to patch");
+            accessor.GetLastValidationError().GetMessage());
     }
 
-    auto error = ValidatePatch(curState, newState, *dataProcessor);
+    auto error = ValidatePatch(curState, newState, *dataProcessor, fileType);
     if (HasError(error)) {
         return error;
     }
