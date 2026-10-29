@@ -31,6 +31,7 @@ Repeated values are aligned by index and map values by key across sources.
 
 #include <array>
 #include <optional>
+#include <vector>
 
 namespace NCloud::NBlockStore {
 
@@ -170,7 +171,19 @@ GetMessage(const Message* message, const FieldDescriptor* field, int index = -1)
                : &reflection->GetMessage(*message, field);
 }
 
-// Format a singular or indexed value and redact explicitly named secrets.
+// Check whether a present message has no explicitly set known fields.
+bool IsMessageEmpty(const Message* message)
+{
+    if (!message) {
+        return false;
+    }
+
+    std::vector<const FieldDescriptor*> fields;
+    message->GetReflection()->ListFields(*message, &fields);
+    return fields.empty();
+}
+
+// Format scalars, mark empty messages and redact explicitly named secrets.
 std::optional<TString>
 GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
 {
@@ -180,6 +193,12 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
 
     if (IsSensitive(*field)) {
         return TString("[redacted]");
+    }
+
+    if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
+        return IsMessageEmpty(GetMessage(message, field, index))
+                   ? std::optional<TString>("{}")
+                   : std::nullopt;
     }
 
     TString value;
@@ -304,7 +323,7 @@ bool RenderMessage(
     const TRenderContext& context,
     TSectionCounts& counts);
 
-// Render present message children while retaining their section counters.
+// Render message fields and show explicitly empty messages as separate rows.
 bool RenderNestedMessage(
     IOutputStream& out,
     const TMessages& sources,
@@ -315,20 +334,35 @@ bool RenderNestedMessage(
     int index = -1)
 {
     TMessages children;
+    bool hasEmptyMessage = false;
     for (size_t source = 0; source != sources.size(); ++source) {
         children[source] = GetMessage(sources[source], field, index);
+        // Ignore empty top-level sections created by BuildEffectiveConfig.
+        hasEmptyMessage |=
+            IsMessageEmpty(children[source]) &&
+            (source != EffectiveSource ||
+             field->containing_type() != NProto::TBlockstoreConfig::descriptor());
     }
     // Stop at absent messages before descending into their schemas.
     if (AllOf(children, [](const auto* child) { return !child; })) {
         return false;
     }
-    return RenderMessage(
+
+    // Retain empty source cells even when another source has populated fields.
+    if (hasEmptyMessage) {
+        counts.Dynamic +=
+            IsMessageEmpty(children[context.CurrentDynamicSource]);
+        RenderField(out, sources, field, path, context, std::nullopt, index);
+    }
+
+    const bool rendered = RenderMessage(
         out,
         children,
         field->message_type(),
         path,
         context,
         counts);
+    return rendered || hasEmptyMessage;
 }
 
 // Render one collection element without adding its children to section totals.
