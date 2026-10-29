@@ -10,8 +10,7 @@
 #include <util/generic/ylimits.h>
 #include <util/string/printf.h>
 #include <util/system/unaligned_mem.h>
-
-#include <cstring>
+#include <util/system/yassert.h>
 
 namespace NCloud::NFileStore::NStateFileTool {
 
@@ -108,6 +107,18 @@ struct TEntryRange
     }
 };
 
+bool IsEntryEndPos(
+    const NProto::TStateFileEntry& entry,
+    ui64 pos,
+    ui64 dataCapacity,
+    const IFileRingBufferDataProcessor& dataProcessor)
+{
+    const ui64 entryPos = entry.GetEntryPos();
+    const ui64 entrySize = dataProcessor.GetEntrySize(entry.GetDataSize());
+    return entryPos <= dataCapacity &&
+           entrySize <= dataCapacity - entryPos && entryPos + entrySize == pos;
+}
+
 // Consumer validation and overlap checks apply only to entries retained by
 // the proposed ring-buffer boundaries.
 TResultOrError<TEntryRange> FindRetainedEntryRange(
@@ -141,11 +152,7 @@ TResultOrError<TEntryRange> FindRetainedEntryRange(
             break;
         }
 
-        const ui64 entrySize = dataProcessor.GetEntrySize(entry.GetDataSize());
-        if (entry.GetEntryPos() <= dataCapacity &&
-            entrySize <= dataCapacity - entry.GetEntryPos() &&
-            entry.GetEntryPos() + entrySize == writePos)
-        {
+        if (IsEntryEndPos(entry, writePos, dataCapacity, dataProcessor)) {
             range.End = i + 1;
             endFound = true;
             break;
@@ -183,11 +190,7 @@ bool IsKnownEntryBoundary(
             return true;
         }
 
-        const ui64 entrySize = dataProcessor.GetEntrySize(entry.GetDataSize());
-        if (entry.GetEntryPos() <= dataCapacity &&
-            entrySize <= dataCapacity - entry.GetEntryPos() &&
-            pos == entry.GetEntryPos() + entrySize)
-        {
+        if (IsEntryEndPos(entry, pos, dataCapacity, dataProcessor)) {
             return true;
         }
     }
@@ -246,63 +249,39 @@ NCloud::NProto::TError ValidateHeaderPatch(
     const auto& curHeader = curState.GetHeader();
     const auto& newHeader = newState.GetHeader();
 
-    const char* messagePattern =
-        "Changing header field %s is not allowed (cur: %lu, new: %lu)";
+    struct THeaderField
+    {
+        const char* Name;
+        ui64 CurrentValue;
+        ui64 NewValue;
+    };
 
-    if (curHeader.GetVersion() != newHeader.GetVersion()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "Version",
-            static_cast<ui64>(curHeader.GetVersion()),
-            static_cast<ui64>(newHeader.GetVersion())));
-    }
+    const THeaderField immutableFields[] = {
+        {"Version", curHeader.GetVersion(), newHeader.GetVersion()},
+        {"HeaderSize", curHeader.GetHeaderSize(), newHeader.GetHeaderSize()},
+        {"DataCapacity",
+         curHeader.GetDataCapacity(),
+         newHeader.GetDataCapacity()},
+        {"DataOffset", curHeader.GetDataOffset(), newHeader.GetDataOffset()},
+        {"MetadataCapacity",
+         curHeader.GetMetadataCapacity(),
+         newHeader.GetMetadataCapacity()},
+        {"MetadataOffset",
+         curHeader.GetMetadataOffset(),
+         newHeader.GetMetadataOffset()},
+        {"MetadataSize",
+         curHeader.GetMetadataSize(),
+         newHeader.GetMetadataSize()},
+    };
 
-    if (curHeader.GetHeaderSize() != newHeader.GetHeaderSize()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "HeaderSize",
-            static_cast<ui64>(curHeader.GetHeaderSize()),
-            static_cast<ui64>(newHeader.GetHeaderSize())));
-    }
-
-    if (curHeader.GetDataCapacity() != newHeader.GetDataCapacity()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "DataCapacity",
-            curHeader.GetDataCapacity(),
-            newHeader.GetDataCapacity()));
-    }
-
-    if (curHeader.GetDataOffset() != newHeader.GetDataOffset()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "DataOffset",
-            curHeader.GetDataOffset(),
-            newHeader.GetDataOffset()));
-    }
-
-    if (curHeader.GetMetadataCapacity() != newHeader.GetMetadataCapacity()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "MetadataCapacity",
-            curHeader.GetMetadataCapacity(),
-            newHeader.GetMetadataCapacity()));
-    }
-
-    if (curHeader.GetMetadataOffset() != newHeader.GetMetadataOffset()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "MetadataOffset",
-            curHeader.GetMetadataOffset(),
-            newHeader.GetMetadataOffset()));
-    }
-
-    if (curHeader.GetMetadataSize() != newHeader.GetMetadataSize()) {
-        return MakeArgumentError(Sprintf(
-            messagePattern,
-            "MetadataSize",
-            static_cast<ui64>(curHeader.GetMetadataSize()),
-            static_cast<ui64>(newHeader.GetMetadataSize())));
+    for (const auto& field: immutableFields) {
+        if (field.CurrentValue != field.NewValue) {
+            return MakeArgumentError(Sprintf(
+                "Changing header field %s is not allowed (cur: %lu, new: %lu)",
+                field.Name,
+                field.CurrentValue,
+                field.NewValue));
+        }
     }
 
     NCloud::NProto::TError error;
@@ -390,10 +369,9 @@ bool HasEntryPatch(
 NCloud::NProto::TError ValidateEntryPatch(
     const NProto::TStateFileEntry& curState,
     const NProto::TStateFileEntry& newState,
-    const IFileRingBufferDataProcessor& dataProcessor)
+    const IFileRingBufferDataProcessor& dataProcessor,
+    const TFileRingBufferCapabilities& capabilities)
 {
-    const auto capabilities = dataProcessor.GetCapabilities(false);
-
     if (curState.GetEntryPos() != newState.GetEntryPos()) {
         return MakeInvalidStateError(Sprintf(
             "Entry pos mismatch (cur: %lu, new: %lu)",
@@ -415,6 +393,12 @@ NCloud::NProto::TError ValidateEntryPatch(
             curState.GetEntryPos(),
             curState.GetDataSize(),
             newState.GetDataSize()));
+    }
+
+    if (curState.GetDataSize() == 0 && HasEntryPatch(curState, newState)) {
+        return MakeArgumentError(Sprintf(
+            "Changing a zero-size entry is not allowed at pos %lu",
+            curState.GetEntryPos()));
     }
 
     if (curState.GetFreeFlag() && !newState.GetFreeFlag()) {
@@ -607,13 +591,15 @@ NCloud::NProto::TError ValidatePatch(
 
     const auto& retainedEntries = retainedEntriesOrError.GetResult();
     const size_t entryCount = curState.GetEntries().size();
+    const auto capabilities = dataProcessor.GetCapabilities(false);
 
     for (size_t i = 0; i < entryCount; ++i) {
         const auto& newEntry = newState.GetEntries(i);
         error = ValidateEntryPatch(
             curState.GetEntries(i),
             newEntry,
-            dataProcessor);
+            dataProcessor,
+            capabilities);
         if (HasError(error)) {
             return error;
         }
@@ -657,7 +643,7 @@ NCloud::NProto::TError ValidatePatch(
         retainedEntries);
 }
 
-NCloud::NProto::TError ApplyEntryPatch(
+void ApplyEntryPatch(
     const NProto::TStateFileEntry& curState,
     const NProto::TStateFileEntry& newState,
     IFileRingBufferDataProcessor& dataProcessor)
@@ -669,28 +655,22 @@ NCloud::NProto::TError ApplyEntryPatch(
     const bool requestChanged = HasWriteDataRequestPatch(curState, newState);
 
     if (!checksumChanged && !headerChanged && !requestChanged) {
-        return {};
+        return;
     }
 
     char* dataPtr = dataProcessor.GetEntryDataPtr(
         newState.GetEntryPos(),
         newState.GetDataSize());
-    if (dataPtr == nullptr) {
-        return MakeInvalidStateError(Sprintf(
-            "Entry data at pos %lu is no longer accessible",
-            newState.GetEntryPos()));
-    }
+    Y_ABORT_UNLESS(dataPtr != nullptr);
 
     if (requestChanged) {
-        TSerializedWriteDataRequestHeader requestHeader;
-        std::memcpy(&requestHeader, dataPtr, sizeof(requestHeader));
-
+        Y_DEBUG_ABORT_UNLESS(HasWriteDataRequestPayload(newState.GetDataSize()));
         const auto& newRequestInfo = newState.GetWriteDataRequestMetadata();
-        requestHeader.NodeId = newRequestInfo.GetNodeId();
-        requestHeader.Handle = newRequestInfo.GetHandle();
-        requestHeader.Offset = newRequestInfo.GetOffset();
-
-        std::memcpy(dataPtr, &requestHeader, sizeof(requestHeader));
+        const TSerializedWriteDataRequestHeader requestHeader{
+            .NodeId = newRequestInfo.GetNodeId(),
+            .Handle = newRequestInfo.GetHandle(),
+            .Offset = newRequestInfo.GetOffset()};
+        WriteUnaligned<TSerializedWriteDataRequestHeader>(dataPtr, requestHeader);
     }
 
     ui32 dataChecksum = newState.GetDataChecksum();
@@ -706,13 +686,9 @@ NCloud::NProto::TError ApplyEntryPatch(
         .Tag = newState.GetTag(),
         .FreeFlag = newState.GetFreeFlag()};
 
-    if (!dataProcessor.WriteEntryHeader(newState.GetEntryPos(), entryHeader)) {
-        return MakeInvalidStateError(Sprintf(
-            "Entry header at pos %lu is no longer writable",
-            newState.GetEntryPos()));
-    }
-
-    return {};
+    const bool written =
+        dataProcessor.WriteEntryHeader(newState.GetEntryPos(), entryHeader);
+    Y_ABORT_UNLESS(written);
 }
 
 enum class EDumpEntryResult
@@ -862,6 +838,11 @@ NCloud::NProto::TError TStateFileEditor::PatchStateFile(
     const NProto::TStateFileDump& newState,
     NProto::EStateFileType fileType)
 {
+    if (fileType == NProto::EStateFileType::DirectoryHandles) {
+        return MakeArgumentError(
+            "DirectoryHandles state files are not ring buffers");
+    }
+
     auto curState = DumpStateFile(accessor, fileType);
 
     auto* header = accessor.GetHeader();
@@ -882,13 +863,10 @@ NCloud::NProto::TError TStateFileEditor::PatchStateFile(
     }
 
     for (int i = 0; i < curState.GetEntries().size(); ++i) {
-        error = ApplyEntryPatch(
+        ApplyEntryPatch(
             curState.GetEntries(i),
             newState.GetEntries(i),
             *dataProcessor);
-        if (HasError(error)) {
-            return error;
-        }
     }
 
     const auto& newHeader = newState.GetHeader();

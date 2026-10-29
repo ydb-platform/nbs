@@ -28,6 +28,10 @@ public:
     // Retained live WriteBackCache entries must have valid request size, tag
     // and offset. Entries being freed or discarded are exempt from these checks.
     // Free entries cannot be made live.
+    // DirectoryHandles state files are not supported by this ring-buffer editor.
+    //
+    // For an empty file with ReadPos at a slack marker and WritePos == 0,
+    // set both cursors to zero in the patch, including metadata-only repairs.
     static NCloud::NProto::TError PatchStateFile(
         TFileRingBufferAccessor& accessor,
         const NProto::TStateFileDump& newState,
