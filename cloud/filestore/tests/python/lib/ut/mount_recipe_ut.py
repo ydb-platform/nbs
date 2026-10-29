@@ -56,6 +56,16 @@ def test_stop_without_startup_state(recipe, monkeypatch):
     recipe.stop([])
 
 
+def test_stop_clients_skips_blank_lines(recipe, monkeypatch, tmp_path):
+    (tmp_path / recipe.PID_FILE_NAME).write_text("\n123\n  \n456\n\n")
+    stopped = []
+    monkeypatch.setattr(recipe, "shutdown", stopped.append)
+
+    recipe.stop_clients()
+
+    assert stopped == [123, 456]
+
+
 @pytest.mark.parametrize("unblocks_on_shutdown", [False, True])
 def test_stop_shuts_down_clients_after_shared_listing_deadline(
         recipe, monkeypatch, tmp_path, caplog, unblocks_on_shutdown):

@@ -60,9 +60,10 @@ def test_mount_timeout_stops_client(launch_client, tmp_path):
     launch, processes, streams = launch_client
     client = launch("import time; time.sleep(60)", timeout=0.01)
 
-    with pytest.raises(RuntimeError, match="mount was not ready"):
+    with pytest.raises(RuntimeError, match="mount was not ready") as error:
         client.mount("test-fs", str(tmp_path / "mount"))
 
+    assert "client pid {}".format(processes[0].pid) in str(error.value)
     assert processes[0].poll() is not None
     assert all(stream.closed for stream in streams)
 
