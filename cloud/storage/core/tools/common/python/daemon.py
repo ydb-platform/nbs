@@ -201,9 +201,13 @@ class Daemon(object):
             self.__stdout_file = files.enter_context(
                 open(stdout_file, 'wb') if stdout_file is not None else
                 tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False))
-            self.__stderr_file = files.enter_context(
-                open(stderr_file, 'wb') if stderr_file is not None else
-                tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False))
+            if (stdout_file is not None and stderr_file is not None
+                    and os.path.abspath(stdout_file) == os.path.abspath(stderr_file)):
+                self.__stderr_file = self.__stdout_file
+            else:
+                self.__stderr_file = files.enter_context(
+                    open(stderr_file, 'wb') if stderr_file is not None else
+                    tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False))
             self.__files = files.pop_all()
 
         self.__lock = threading.Lock()

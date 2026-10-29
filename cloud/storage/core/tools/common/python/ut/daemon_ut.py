@@ -179,6 +179,26 @@ def test_log_head_limits_read_size_and_marks_truncation(tmp_path):
     assert bytes_read == [daemon_module._MAX_LOG_TAIL_BYTES]
 
 
+@pytest.mark.parametrize("relative_stderr", [False, True])
+def test_shared_stdout_and_stderr_preserve_both_streams(tmp_path, monkeypatch, relative_stderr):
+    monkeypatch.chdir(tmp_path)
+    log = tmp_path / "combined.log"
+    log.write_text("old contents must be replaced\n")
+    with Daemon(
+            commands=[["unused"]], cwd=str(tmp_path), stdout_file=str(log),
+            stderr_file="combined.log" if relative_stderr else str(log)) as daemon:
+        subprocess.run(
+            [common.python_path(), "-c",
+             "import os; os.write(1, b'first\\n'); os.write(2, b'error\\n'); os.write(1, b'last\\n')"],
+            stdout=daemon._Daemon__stdout_file,
+            stderr=daemon._Daemon__stderr_file,
+            check=True)
+
+    assert log.read_text() == "first\nerror\nlast\n"
+    assert daemon._Daemon__stdout_file.closed
+    assert daemon._Daemon__stderr_file.closed
+
+
 def test_context_closes_logs_and_keeps_successful_process(tmp_path):
     stdout = tmp_path / "stdout"
     stderr = tmp_path / "stderr"
