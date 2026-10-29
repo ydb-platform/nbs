@@ -3,6 +3,7 @@
 #include "storage_group_helpers.h"
 #include "storage_group_inflight.h"
 
+#include <cloud/fastshard/libs/common/context.h>
 #include <cloud/fastshard/libs/fiber/event.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -179,18 +180,18 @@ public:
 private:
     const IStorageNodePtr StorageNode;
     const TStorageGroupConfig Config;
-    ITimer& Timer;
+    const ITimerPtr Timer;
     silk::FiberSequencer Acked;
 
 public:
     TDeviceProxy(
             TStorageDevice device,
             TStorageGroupConfig config,
-            ITimer& timer)
+            ITimerPtr timer)
         : DeviceUUID(std::move(device.DeviceUUID))
         , StorageNode(std::move(device.Node))
         , Config(std::move(config))
-        , Timer(timer)
+        , Timer(std::move(timer))
     {}
 
     bool CanServe(ui64 lsn) const
@@ -205,7 +206,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 NProto::TWriteLogRecordRequest deviceRequest = request;
@@ -230,7 +231,7 @@ public:
         *response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 NProto::TReadPagesRequest deviceRequest = request;
@@ -259,7 +260,7 @@ public:
         *response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 NProto::TReadJournalTailRequest deviceRequest = request;
@@ -296,7 +297,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 return StorageNode->AdvanceLsnLowWatermark(request);
@@ -321,7 +322,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 return StorageNode->AcquireDevices(request);
@@ -343,7 +344,7 @@ public:
         auto response = CallWithRetries(
             ctx,
             Config.RetryPolicy,
-            Timer,
+            *Timer,
             [&]
             {
                 return StorageNode->ReleaseDevices(request);
@@ -409,11 +410,16 @@ struct TGroupState
     ui64 LowWatermarkPushed = 0;
 
     TVector<TLoopPtr> Loops;
-    TInflightTracker Inflight;
+    TInflightTracker InflightTracker;
 
     std::atomic<bool> Initialized = false;
-    std::atomic<bool> Stopped = false;
     std::atomic<ui64> RequestId = 1;
+
+    TGroupState(TStorageGroupConfig config, ITimerPtr timer)
+        : Config(std::move(config))
+        , Timer(std::move(timer))
+        , InflightTracker(Config.MaxInflight)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -477,18 +483,25 @@ NProto::TError ForEachProxy(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteState
+struct TWriteState: public TInflightRequest
 {
-    TFastShardContext Ctx;
-    TInflightTracker::TInflight Inflight;
     NProto::TWriteLogRecordRequest Request;
     ui64 Lsn = 0;
-    silk::FiberSequencer Acks;
 
-    TWriteState(TGroupState& state)
-        : Ctx(state.RequestId++)
-        , Inflight(state.Inflight.Add(Ctx))
+    silk::FiberSequencer Acked;
+
+    std::atomic<ui32> Done = 0;
+
+    TWriteState(ui64 requestId)
+        : TInflightRequest(requestId)
     {}
+
+    void Finish(TGroupState& state)
+    {
+        if (++Done == state.Proxies.size() + 1) {
+            state.InflightTracker.Remove(*this);
+        }
+    }
 };
 
 using TWriteStatePtr = std::shared_ptr<TWriteState>;
@@ -510,12 +523,15 @@ int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
     // is final for this device.
     if (HasError(error)) {
         // Break the group first, so the writer this wakes finds it broken.
-        state.Health.Fail(error);
-        params->Op->Acks.stop();
-    } else if (params->Op->Acks.increment() == state.Proxies.size()) {
+        if (!params->Op->Ctx.Cancel.isSet()) {
+            state.Health.Fail(error);
+        }
+        params->Op->Acked.stop();
+    } else if (params->Op->Acked.increment() == state.Proxies.size()) {
         state.LowWatermarkLsn.advance(params->Op->Lsn);
     }
 
+    params->Op->Finish(state);
     return 0;
 }
 
@@ -854,9 +870,14 @@ int LoopFiberMain(TLoopPtr* params) noexcept
             break;
         }
 
-        TFastShardContext ctx(state->RequestId++);
-        auto inflight = state->Inflight.Add(ctx);
-        loop.Body(ctx, *state);
+        TInflightRequest op(state->RequestId++);
+        if (auto error = state->InflightTracker.AddUnlimited(op); HasError(error))
+        {
+            break;
+        }
+
+        loop.Body(op.Ctx, *state);
+        state->InflightTracker.RemoveUnlimited(op);
     }
 
     return 0;
@@ -890,17 +911,17 @@ public:
             TStorageGroupConfig config,
             TVector<TStorageDevice> devices,
             ITimerPtr timer)
-        : State(std::make_shared<TGroupState>())
+        : State(std::make_shared<TGroupState>(
+              std::move(config),
+              std::move(timer)))
     {
-        State->Config = std::move(config);
-        State->Timer = std::move(timer);
         State->WriteQuorum = devices.size() / 2 + 1;
         State->Proxies.reserve(devices.size());
         for (auto& device: devices) {
             State->Proxies.push_back(std::make_shared<TDeviceProxy>(
                 std::move(device),
                 State->Config,
-                *State->Timer));
+                State->Timer));
         }
     }
 
@@ -910,62 +931,21 @@ public:
             return MakeError(E_ARGUMENT, "empty device configuration");
         }
 
-        TFastShardContext ctx(State->RequestId++);
-        auto inflight = State->Inflight.Add(ctx);
-        auto error = ForEachProxy(
-            ctx,
-            *State,
-            [](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
-            {
-                return proxy.Acquire(ctx);
-            });
-
-        if (HasError(error)) {
+        TInflightRequest op(State->RequestId++);
+        if (auto error = State->InflightTracker.AddUnlimited(op); HasError(error))
+        {
             return error;
         }
 
-        // launch reacquire loop immediately
-        auto loop = RunLoop(
-            State,
-            State->Config.ReacquirePeriod,
-            RenewSessionsLoop);
-        if (HasError(loop)) {
-            return loop.GetError();
-        }
-        State->Loops.push_back(loop.ExtractResult());
-
-        error = ValidateGroupConfigAndInitIfNeeded(ctx, *State);
-        if (HasError(error)) {
-            return error;
-        }
-
-        error = RebuildJournal(ctx, *State);
-        if (HasError(error)) {
-            return error;
-        }
-
-        if (State->Stopped) {
-            return MakeError(E_REJECTED, "storage group is shutdown");
-        }
-
-        loop = RunLoop(
-            State,
-            State->Config.LowWatermarkPeriod,
-            PushLowWatermarkLoop);
-        if (HasError(loop)) {
-            return loop.GetError();
-        }
-        State->Loops.push_back(loop.ExtractResult());
-
-        State->Initialized = true;
-        return State->QuorumLsn.get();
+        auto result = DoInit(op.Ctx);
+        State->InflightTracker.RemoveUnlimited(op);
+        return result;
     }
 
     void TearDown() override
     {
-        State->Stopped = true;
-        State->Inflight.Stop();
-        State->Inflight.Wait();
+        State->InflightTracker.Stop();
+        State->InflightTracker.Wait();
 
         // Nothing starts a loop once Init is drained.
         for (const auto& loop: State->Loops) {
@@ -1008,7 +988,7 @@ public:
         }
 
         FillHeaders(State->Config, &headers);
-        auto op = std::make_shared<TWriteState>(*State);
+        auto op = std::make_shared<TWriteState>(State->RequestId++);
         op->Lsn = link.Lsn;
         op->Request = MakeWriteLogRecordRequest(
             std::move(headers),
@@ -1019,36 +999,13 @@ public:
         }
 
         SILK_DEBUG("sg write: %s", DebugMessage(op->Request).c_str());
-        for (const auto& proxy: State->Proxies) {
-            const int r = silk::FiberScheduler::run(
-                WriteDispatchFiberMain,
-                TWriteDispatchParams{
-                    .State = State,
-                    .Op = op,
-                    .Proxy = proxy},
-                nullptr);
-            if (r) {
-                State->Health.Fail(MakeSpawnError(r));
-                op->Acks.stop();
-            }
+        if (auto error = State->InflightTracker.Add(*op); HasError(error)) {
+            return error;
         }
 
-        const int cancelled = op->Acks.wait(State->WriteQuorum);
-
-        // Check overall health first
-        if (State->Health.IsBroken()) {
-            return State->Health.GetError();
-        }
-
-        if (cancelled) {
-            return MakeError(E_REJECTED, "write cancelled");
-        }
-
-        // Publish before acking the caller. Quorum is monotonic, so we
-        // do not care about actual ordering here.
-        State->QuorumLsn.advance(link.Lsn);
-
-        return {};
+        auto error = DoWrite(op);
+        op->Finish(*State);
+        return error;
     }
 
     NProto::TError ReadPages(
@@ -1071,8 +1028,105 @@ public:
             return error;
         }
 
-        TFastShardContext ctx(State->RequestId++);
-        auto inflight = State->Inflight.Add(ctx);
+        TInflightRequest op(State->RequestId++);
+        if (auto error = State->InflightTracker.Add(op); HasError(error)) {
+            return error;
+        }
+
+        auto error = DoRead(op.Ctx, request, pageGroups);
+        State->InflightTracker.Remove(op);
+
+        return error;
+    }
+
+private:
+    TResultOrError<ui64> DoInit(TFastShardContext& ctx)
+    {
+        auto error = ForEachProxy(
+            ctx,
+            *State,
+            [](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
+            {
+                return proxy.Acquire(ctx);
+            });
+
+        if (HasError(error)) {
+            return error;
+        }
+
+        // launch reacquire loop immediately
+        auto loop = RunLoop(
+            State,
+            State->Config.ReacquirePeriod,
+            RenewSessionsLoop);
+        if (HasError(loop)) {
+            return loop.GetError();
+        }
+        State->Loops.push_back(loop.ExtractResult());
+
+        error = ValidateGroupConfigAndInitIfNeeded(ctx, *State);
+        if (HasError(error)) {
+            return error;
+        }
+
+        error = RebuildJournal(ctx, *State);
+        if (HasError(error)) {
+            return error;
+        }
+
+        loop = RunLoop(
+            State,
+            State->Config.LowWatermarkPeriod,
+            PushLowWatermarkLoop);
+        if (HasError(loop)) {
+            return loop.GetError();
+        }
+        State->Loops.push_back(loop.ExtractResult());
+
+        State->Initialized = true;
+        return State->QuorumLsn.get();
+    }
+
+    NProto::TError DoWrite(const TWriteStatePtr& op)
+    {
+        for (const auto& proxy: State->Proxies) {
+            const int r = silk::FiberScheduler::run(
+                WriteDispatchFiberMain,
+                TWriteDispatchParams{
+                    .State = State,
+                    .Op = op,
+                    .Proxy = proxy},
+                nullptr);
+            if (r) {
+                State->Health.Fail(MakeSpawnError(r));
+                op->Acked.stop();
+                op->Finish(*State);
+            }
+        }
+
+        const int cancelled = op->Acked.wait(State->WriteQuorum);
+
+        // Check overall health first
+        if (State->Health.IsBroken()) {
+            return State->Health.GetError();
+        }
+
+        if (cancelled) {
+            return MakeError(E_REJECTED, "write cancelled");
+        }
+
+        // Publish before acking the caller. Quorum is monotonic, so we
+        // do not care about actual ordering here.
+        State->QuorumLsn.advance(op->Lsn);
+
+        return {};
+    }
+
+    NProto::TError DoRead(
+        TFastShardContext& ctx,
+        const NProto::TReadPagesRequest& request,
+        TVector<TPageGroup>* pageGroups)
+    {
         const ui64 required = State->QuorumLsn.get();
         const ui32 count = State->Proxies.size();
         const ui32 start = State->Selector.fetch_add(
@@ -1108,10 +1162,9 @@ public:
         return lastError;
     }
 
-private:
     NProto::TError CheckReady() const
     {
-        if (!State->Initialized || State->Stopped) {
+        if (!State->Initialized) {
             return MakeError(E_REJECTED, "storage group is shutdown");
         }
 

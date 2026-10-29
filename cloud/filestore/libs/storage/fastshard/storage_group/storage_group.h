@@ -102,6 +102,8 @@ struct TStorageGroupConfig
     TDuration ReacquirePeriod = TDuration::Seconds(4);
 
     ui32 PageSize = DefaultBlockSize;
+
+    ui32 MaxInflight = 8192;
 };
 
 /**

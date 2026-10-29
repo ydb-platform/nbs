@@ -148,7 +148,6 @@ struct TFakeDevice: TFakeStorageNode
         NProto::TAdvanceLsnLowWatermarkResponse>
         Watermarks;
 
-
     NProto::TReadPagesResponse ReadPages(
         NProto::TReadPagesRequest request) override
     {
@@ -211,6 +210,8 @@ TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
     config.PageSize = pageSize;
     // Retries are instant: a test counts the attempts.
     config.RetryPolicy.BackoffIncrement = TDuration::Zero();
+    config.ReacquirePeriod = TDuration::Hours(1);
+    config.LowWatermarkPeriod = TDuration::Hours(1);
     return config;
 }
 
@@ -430,10 +431,14 @@ int TearDownFiberMain(TGroupFixture** fx) noexcept
 template <typename TPredicate>
 [[nodiscard]] bool WaitFor(TPredicate predicate)
 {
-    for (ui32 i = 0; i < 100000 && !predicate(); ++i) {
+    const TInstant deadline = TInstant::Now() + TDuration::Seconds(10);
+    while (!predicate()) {
+        if (TInstant::Now() >= deadline) {
+            return false;
+        }
         FiberScheduler::yield();
     }
-    return predicate();
+    return true;
 }
 
 // Naive check if fut is still unset after letting fibers do the active round.
@@ -1357,13 +1362,14 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
 
 FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
 {
-    // Init held at the header read of the third device, with nothing left to
-    // ask the devices once it is through.
+    // Init held at the header read of the third device, which lags: the journal
+    // fetch that follows runs on the cancelled context.
     TQuorumFixture fx(false /* init */);
     for (ui32 i = 0; i < DeviceCount; ++i) {
         fx[i].Reads.Response = PageResponse(0, HeaderPages()[i]);
         fx[i].Reads.Response.SetLastAckedLogSequenceNumber(Lsn);
     }
+    fx[2].Reads.Response.SetLastAckedLogSequenceNumber(Lsn - 1);
     fx[2].Reads.Paused = true;
 
     NProto::TError error;
@@ -1390,7 +1396,10 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
     fx[2].Reads.Unpause();
     Y_UNUSED(tearDown.wait());
     Y_UNUSED(init.wait());
+
     ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(0U, fx[2].Writes.Count());
+    ASSERT_EQ(E_REJECTED, Write(*fx.Group).GetCode());
 }
 
 FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
@@ -1398,8 +1407,6 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
     // Loops asleep for an hour, a write acked by the quorum and stuck in an
     // hour-long backoff on the third device.
     auto config = MakeConfig();
-    config.ReacquirePeriod = TDuration::Hours(1);
-    config.LowWatermarkPeriod = TDuration::Hours(1);
     config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
     config.RetryPolicy.TotalTimeout = TDuration::Hours(2);
     TQuorumFixture fx(true, config);
@@ -1413,4 +1420,31 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
     fx.Group->TearDown();
     ASSERT_LT(TInstant::Now() - start, TDuration::Seconds(5));
     ASSERT_EQ(1U, fx[2].Writes.Count());
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldRejectWritesOverInflightLimit)
+{
+    auto config = MakeConfig();
+    config.MaxInflight = 1;
+    TQuorumFixture fx(true, config);
+    fx.ForgetRequests();
+
+    fx[2].Writes.Paused = true;
+    silk::FiberFuture held;
+    StartWrite(fx, Lsn, &held);
+    ASSERT_EQ(0, held.wait());
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Parked == 1; }));
+
+    auto error = Write(*fx.Group, Lsn + 1);
+    ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+
+    fx[2].Writes.Unpause();
+    NProto::TError last;
+    ASSERT_TRUE(WaitFor(
+        [&]
+        {
+            last = Write(*fx.Group, Lsn + 1);
+            return !HasError(last);
+        }))
+        << last.GetMessage();
 }
