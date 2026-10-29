@@ -68,9 +68,34 @@ using TServerResponsePtr = TIntrusivePtr<TServerResponse>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TRequestToken
+{
+private:
+    IServerContextPtr Context;
+
+public:
+    TRequestToken() = default;
+    explicit TRequestToken(IServerContextPtr context);
+
+    TRequestToken(TRequestToken&&) = default;
+    TRequestToken& operator=(TRequestToken&&) = delete;
+
+    TRequestToken(const TRequestToken&) = delete;
+    TRequestToken& operator=(const TRequestToken&) = delete;
+
+    ~TRequestToken();
+
+    explicit operator bool() const
+    {
+        return Context != nullptr;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IServerContext : TThrRefBase, ITaskQueue
 {
-    virtual bool AcquireRequest(size_t requestBytes) = 0;
+    virtual TRequestToken AcquireRequest(size_t requestBytes) = 0;
 
     virtual const NProto::TReadBlocksLocalResponse& WaitFor(
         const NThreading::TFuture<NProto::TReadBlocksLocalResponse>& future) = 0;
@@ -80,7 +105,25 @@ struct IServerContext : TThrRefBase, ITaskQueue
         const NThreading::TFuture<NProto::TZeroBlocksResponse>& future) = 0;
 
     virtual void SendResponse(TServerResponsePtr response) = 0;
+
+private:
+    friend class TRequestToken;
+
+    virtual void CompleteRequest() = 0;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline TRequestToken::TRequestToken(IServerContextPtr context)
+    : Context(std::move(context))
+{}
+
+inline TRequestToken::~TRequestToken()
+{
+    if (Context) {
+        Context->CompleteRequest();
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
