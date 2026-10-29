@@ -419,6 +419,158 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(!requested.HasFixedMessage());
     }
 
+    // Verify that a restored oneof message has required scalar and message
+    // defaults while keeping startup-only values.
+    Y_UNIT_TEST(ShouldRestoreRequiredOneofFields)
+    {
+        // Build initialized inputs with different static and startup choices.
+        NProto::NTest::TRequiredConfig staticConfig;
+        staticConfig.SetNumber(1);
+        auto startup = staticConfig;
+        auto* message = startup.MutableMessage();
+        message->SetValue(20);
+        message->MutableChild()->SetValue(21);
+        message->MutableEmptyChild();
+        message->SetFrozen(31);
+        UNIT_ASSERT(staticConfig.IsInitialized());
+        UNIT_ASSERT(startup.IsInitialized());
+        ValidateRuntimeConfigSchema(*startup.GetDescriptor());
+
+        // Remove the override and restore the required fields.
+        auto requested = staticConfig;
+        FilterRuntimeConfig(staticConfig, startup, requested);
+        const auto& result = requested.GetMessage();
+        UNIT_ASSERT(requested.HasMessage());
+        UNIT_ASSERT(result.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(7, result.GetValue());
+        UNIT_ASSERT(result.HasChild());
+        UNIT_ASSERT(result.GetChild().HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(17, result.GetChild().GetValue());
+        UNIT_ASSERT(!result.GetChild().HasFrozen());
+        UNIT_ASSERT(result.HasEmptyChild());
+        UNIT_ASSERT(!result.GetEmptyChild().HasMutable());
+        UNIT_ASSERT(!result.GetEmptyChild().HasFrozen());
+        UNIT_ASSERT_VALUES_EQUAL(31, result.GetFrozen());
+        UNIT_ASSERT(requested.IsInitialized());
+        UNIT_ASSERT(!requested.SerializeAsStringOrThrow().empty());
+    }
+
+    // Verify that required defaults do not recreate removed optional messages.
+    // Reject new containers that need a startup-only required field.
+    Y_UNIT_TEST(ShouldCompleteRequiredFieldsInRetainedMessages)
+    {
+        // Keep the fixed member selected so its value can change independently.
+        NProto::NTest::TRequiredConfig staticConfig;
+        staticConfig.SetNumber(1);
+        for (const bool keepFrozen: {false, true}) {
+            // Retain the optional message only when a frozen sibling needs it.
+            auto startup = staticConfig;
+            startup.MutableOptionalChild()->SetValue(20);
+            if (keepFrozen) {
+                startup.MutableOptionalChild()->SetFrozen(30);
+            }
+            auto requested = staticConfig;
+            FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT_VALUES_EQUAL(keepFrozen, requested.HasOptionalChild());
+            if (keepFrozen) {
+                UNIT_ASSERT(requested.GetOptionalChild().HasValue());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    17, requested.GetOptionalChild().GetValue());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    30, requested.GetOptionalChild().GetFrozen());
+            }
+            UNIT_ASSERT(requested.IsInitialized());
+        }
+
+        // Reject a new message that needs an absent startup-only field.
+        auto requested = staticConfig;
+        auto* message = requested.MutableOptionalParameters();
+        message->SetValue(20);
+        message->MutableChild()->SetValue(21);
+        message->MutableEmptyChild();
+        message->SetFrozen(30);
+        requested.MutableOptionalEnvelope()->MutableChild()->CopyFrom(*message);
+        requested.MutableOptionalNestedEnvelope()->MutableChild()->CopyFrom(
+            requested.GetOptionalEnvelope());
+        requested.MutableOptionalChild()->SetValue(20);
+        requested.SetNumber(42);
+
+        // Reject the optional subtree without removing its valid required
+        // sibling.
+        auto* nested = requested.MutableOptionalNestedContainer();
+        nested->MutableChild()->SetValue(10);
+        nested->MutableChild()->MutableChild();
+        nested->MutableOptionalEnvelope()->CopyFrom(
+            requested.GetOptionalEnvelope());
+        UNIT_ASSERT(requested.IsInitialized());
+
+        // Drop invalid containers and preserve permitted siblings.
+        const auto diagnostics =
+            FilterRuntimeConfig(staticConfig, staticConfig, requested);
+        UNIT_ASSERT(!requested.HasOptionalParameters());
+        UNIT_ASSERT(!requested.HasOptionalEnvelope());
+        UNIT_ASSERT(!requested.HasOptionalNestedEnvelope());
+        UNIT_ASSERT(requested.HasOptionalChild());
+        UNIT_ASSERT_VALUES_EQUAL(20, requested.GetOptionalChild().GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(42, requested.GetNumber());
+        UNIT_ASSERT(requested.HasOptionalNestedContainer());
+        UNIT_ASSERT(requested.GetOptionalNestedContainer().HasChild());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10, requested.GetOptionalNestedContainer().GetChild().GetValue());
+        UNIT_ASSERT(
+            !requested.GetOptionalNestedContainer().HasOptionalEnvelope());
+        UNIT_ASSERT(requested.IsInitialized());
+        for (const auto* path:
+             {"OptionalParameters",
+              "OptionalEnvelope",
+              "OptionalNestedEnvelope",
+              "OptionalNestedContainer.OptionalEnvelope"})
+        {
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at(path) ==
+                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+        }
+    }
+
+    // Verify that required message chains survive filtering, while removed
+    // optional parents are not recreated by their required children.
+    Y_UNIT_TEST(ShouldPreserveRequiredMessageChains)
+    {
+        // Add valid messages with one and two required message fields in a row.
+        const NProto::NTest::TRequiredConfig staticConfig;
+        auto requested = staticConfig;
+        auto* container = requested.MutableOptionalContainer();
+        container->SetValue(10);
+        container->MutableChild()->SetFrozen(20);
+        requested.MutableOptionalNestedContainer()->MutableChild()->CopyFrom(
+            *container);
+        UNIT_ASSERT(requested.IsInitialized());
+
+        // Remove the optional frozen leaf and keep both required message
+        // chains.
+        FilterRuntimeConfig(staticConfig, staticConfig, requested);
+        UNIT_ASSERT(requested.HasOptionalContainer());
+        UNIT_ASSERT(requested.HasOptionalNestedContainer());
+        UNIT_ASSERT(requested.GetOptionalNestedContainer().HasChild());
+        for (const auto* retained:
+             {&requested.GetOptionalContainer(),
+              &requested.GetOptionalNestedContainer().GetChild()})
+        {
+            UNIT_ASSERT_VALUES_EQUAL(10, retained->GetValue());
+            UNIT_ASSERT(retained->HasChild());
+            UNIT_ASSERT_VALUES_EQUAL(0, retained->GetChild().ByteSizeLong());
+        }
+        UNIT_ASSERT(requested.IsInitialized());
+
+        // Remove optional parents after their frozen leaves are already absent.
+        const auto startup = requested;
+        requested.Clear();
+        FilterRuntimeConfig(staticConfig, startup, requested);
+        UNIT_ASSERT(!requested.HasOptionalContainer());
+        UNIT_ASSERT(!requested.HasOptionalNestedContainer());
+        UNIT_ASSERT(requested.IsInitialized());
+    }
+
     // Verify that a switchable message grants permission to its known contents,
     // including nested choices and annotations that are ignored in compound
     // values.
