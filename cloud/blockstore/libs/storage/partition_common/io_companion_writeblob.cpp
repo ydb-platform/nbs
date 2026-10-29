@@ -1,5 +1,7 @@
 #include "io_companion.h"
 
+#include "blobs_compressor.h"
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -7,7 +9,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
-#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
@@ -15,8 +16,6 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
-
-#include <library/cpp/blockcodecs/codecs.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -27,31 +26,6 @@ using namespace NKikimr;
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui64 EstimateCompressedSize(
-    const NBlockCodecs::ICodec& codec,
-    TStringBuf blobContent,
-    ui64 chunkSize)
-{
-    const ui64 uncompressedSize = blobContent.size();
-    if (!chunkSize) {
-        chunkSize = blobContent.size();
-    }
-
-    TString out;
-    ui64 compressedSize = 0;
-    while (blobContent) {
-        const auto chunk = blobContent.SubStr(
-            0,
-            Min<ui64>(chunkSize, blobContent.size()));
-        out.ReserveAndResize(codec.MaxCompressedLength(chunk));
-        compressedSize += codec.Compress(chunk, out.begin());
-        blobContent.Skip(chunk.size());
-    }
-    return Min(compressedSize, uncompressedSize);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -76,10 +50,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    const NBlockCodecs::ICodec* BlobCodec;
-    const ui32 BlobCompressionRate;
-    const TVector<ui64> BlobCompressionChunkSizes;
-    const TThreadSafePartCountersPtr PartCounters;
+    const std::shared_ptr<TBlobsCompressor> BlobsCompressor;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -100,16 +71,11 @@ public:
         TChildLogTitle logTitle,
         ui64 bsGroupOperationId,
         bool shouldSendTraceIdToBlobstorage,
-        const NBlockCodecs::ICodec* blobCodec,
-        ui32 blobCompressionRate,
-        TVector<ui64> blobCompressionChunkSizes,
-        TThreadSafePartCountersPtr partCounters);
+        std::shared_ptr<TBlobsCompressor> blobsCompressor);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void CalculateCompressionMetrics(TStringBuf blobContent);
-
     void SendPutRequest(const TActorContext& ctx);
 
     void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
@@ -149,10 +115,7 @@ TWriteBlobActor::TWriteBlobActor(
         TChildLogTitle logTitle,
         ui64 bsGroupOperationId,
         bool shouldSendTraceIdToBlobstorage,
-        const NBlockCodecs::ICodec* blobCodec,
-        ui32 blobCompressionRate,
-        TVector<ui64> blobCompressionChunkSizes,
-        TThreadSafePartCountersPtr partCounters)
+        std::shared_ptr<TBlobsCompressor> blobsCompressor)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -168,10 +131,7 @@ TWriteBlobActor::TWriteBlobActor(
     , LogTitle(std::move(logTitle))
     , BSGroupOperationId(bsGroupOperationId)
     , PassTraceIdToBlobstorage(shouldSendTraceIdToBlobstorage)
-    , BlobCodec(blobCodec)
-    , BlobCompressionRate(blobCompressionRate)
-    , BlobCompressionChunkSizes(std::move(blobCompressionChunkSizes))
-    , PartCounters(std::move(partCounters))
+    , BlobsCompressor(std::move(blobsCompressor))
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -189,45 +149,6 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
 
     SendPutRequest(ctx);
     TLongRunningOperationCompanion::RequestStarted(ctx);
-}
-
-void TWriteBlobActor::CalculateCompressionMetrics(TStringBuf blobContent)
-{
-    if (!Request->CompressedSizeEstimationCandidate || !BlobCodec ||
-        !BlobCompressionRate ||
-        Request->BlobId.GetHash() % BlobCompressionRate != 0)
-    {
-        return;
-    }
-
-    const auto size = EstimateCompressedSize(*BlobCodec, blobContent, 0);
-    PartCounters->Access(
-        [&](auto& counters)
-        {
-            counters->Cumulative.UncompressedBytesWritten.Increment(
-                blobContent.size());
-            counters->Cumulative.CompressedBytesWritten.Increment(size);
-        });
-    for (const ui64 chunkSize: BlobCompressionChunkSizes) {
-        const auto size =
-            EstimateCompressedSize(*BlobCodec, blobContent, chunkSize);
-        PartCounters->Access(
-            [&](auto& counters)
-            {
-                auto* compression =
-                    counters->BlobCompression.FindPtr(chunkSize);
-                if (!compression) {
-                    ReportCompressionChunkNotFound(
-                        TStringBuilder() << "Compression counters not "
-                                            "found for chunk size "
-                                         << FormatByteSize(chunkSize));
-                    return;
-                }
-                compression->UncompressedBytesWritten.Increment(
-                    blobContent.size());
-                compression->CompressedBytesWritten.Increment(size);
-            });
-    }
 }
 
 void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
@@ -255,7 +176,11 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    CalculateCompressionMetrics(blobContent);
+    if (BlobsCompressor && Request->CompressedSizeEstimationCandidate) {
+        BlobsCompressor->CalculateCompressionMetrics(
+            Request->BlobId,
+            blobContent);
+    }
 
     if (Request->BlockSizeForChecksums) {
         STORAGE_VERIFY(
@@ -465,10 +390,7 @@ void TIOCompanion::HandleWriteBlob(
             LogTitle.GetChild(GetCycleCount()),
             bsGroupOperationId,
             DiagnosticsConfig->GetPassTraceIdToBlobstorage(),
-            BlobCodec,
-            Config->GetBlobCompressionRate(),
-            BlobCompressionChunkSizes,
-            PartCounters),
+            BlobsCompressor),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,

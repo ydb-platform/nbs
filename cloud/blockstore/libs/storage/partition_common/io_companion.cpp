@@ -2,24 +2,11 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 
-#include <util/generic/algorithm.h>
-
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-namespace {
-
-TVector<ui64> GetCompressionChunkSizes(const TDiagnosticsConfig& config)
-{
-    auto sizes = config.GetBlobCompressionChunkSizes();
-    SortUnique(sizes);
-    return sizes;
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,7 +15,7 @@ TIOCompanion::TIOCompanion(
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
-        const NBlockCodecs::ICodec* blobCodec,
+        std::shared_ptr<TBlobsCompressor> blobsCompressor,
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigConstPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
@@ -44,10 +31,9 @@ TIOCompanion::TIOCompanion(
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))
     , TabletID(tabletID)
-    , BlobCodec(blobCodec)
+    , BlobsCompressor(std::move(blobsCompressor))
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , BlobCompressionChunkSizes(GetCompressionChunkSizes(*DiagnosticsConfig))
     , StorageAccessMode(storageAccessMode)
     , BSGroupOperationTimeTracker(bsGroupOperationTimeTracker)
     , BSGroupOperationId(bsGroupOperationId)

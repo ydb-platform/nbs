@@ -19,6 +19,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+class TBlobsCompressor;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class IIOCompanionClient: public IMortalActor
@@ -41,10 +43,9 @@ private:
     const NProto::TPartitionConfig& PartitionConfig;
     const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
     const ui64 TabletID;
-    const NBlockCodecs::ICodec* BlobCodec;
+    const std::shared_ptr<TBlobsCompressor> BlobsCompressor;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
-    const TVector<ui64> BlobCompressionChunkSizes;
     const EStorageAccessMode StorageAccessMode;
 
     TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
@@ -73,7 +74,7 @@ public:
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
-        const NBlockCodecs::ICodec* blobCodec,
+        std::shared_ptr<TBlobsCompressor> blobsCompressor,
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigConstPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
