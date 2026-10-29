@@ -13,10 +13,13 @@ namespace NCloud::NJournalled {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+// The on-device format of TDeviceKeyBufferStore.
 
 constexpr ui64 SuperblockMagic = 0x4B4253'53555042ULL;   // KBS'SUPB
 constexpr ui64 PageMagic = 0x4B4253'50414745ULL;         // KBS'PAGE
 constexpr ui32 StoreFormatVersion = 1;
+
+////////////////////////////////////////////////////////////////////////////////
 
 // A page holds EntryCount entries, each behind a TEntryHeader, and carries a
 // checksum over everything but the Crc field.
@@ -95,9 +98,9 @@ ui32 SuperblockCrc(TStringBuf page)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidatePageSize(ui32 pageSize)
+NProto::TError ValidatePageSize(ui32 pageSize, ui32 minKeyBufferSize)
 {
-    if (pageSize < PageHeaderSize + EntryHeaderSize ||
+    if (pageSize < PageHeaderSize + EntryHeaderSize + minKeyBufferSize ||
         pageSize < SuperblockHeaderSize)
     {
         return MakeError(
@@ -119,9 +122,7 @@ ui32 GetSerializedEntrySize(ui32 entryBufferSize)
     return EntryHeaderSize + entryBufferSize;
 }
 
-TResultOrError<TBuffer> MakePageBuffer(
-    ui32 pageSize,
-    const TVector<TEntry>& entries)
+TResultOrError<TBuffer> MakePageBuffer(ui32 pageSize, TVector<TEntry>& entries)
 {
     TPageHeader header = {
         .Magic = PageMagic,
@@ -158,6 +159,17 @@ TResultOrError<TBuffer> MakePageBuffer(
 
     const ui32 crc = PageCrc({page.Data(), page.Size()});
     memcpy(page.Data() + offsetof(TPageHeader, Crc), &crc, sizeof(crc));
+
+    // the page holds a copy of every entry now - the entries point there
+    // from now on, the buffers they came from may go away. The page is
+    // complete, so no append moves the data any more, and the move below
+    // hands over the allocation as it is
+    ui64 offset = PageHeaderSize;
+    for (auto& entry: entries) {
+        offset += EntryHeaderSize;
+        entry.Data = TStringBuf(page.Data() + offset, entry.Data.size());
+        offset += entry.Data.size();
+    }
 
     return page;
 }

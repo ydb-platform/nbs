@@ -55,4 +55,6 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer);
 TBuffer SerializeMetadata(const TJournalMetadata& metadata);
 std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer);
 
+ui32 CalculateMinRecordBufferSize();
+
 }   // namespace NCloud::NJournalled
