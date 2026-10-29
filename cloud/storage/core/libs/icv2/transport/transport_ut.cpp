@@ -12,16 +12,17 @@
 #include <util/generic/vector.h>
 #include <util/network/pair.h>
 #include <util/network/socket.h>
+#include <util/system/event.h>
+#include <util/system/guard.h>
+#include <util/system/mutex.h>
 
 #include <poll.h>
 
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <future>
-#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -39,22 +40,17 @@ const TActorId ActorId(1, 0, 1, 1);
 
 class TSignal
 {
-    std::mutex Mutex;
-    std::condition_variable Changed;
-    bool Signaled = false;
+    TManualEvent Event;
 
 public:
     void Set()
     {
-        std::lock_guard guard(Mutex);
-        Signaled = true;
-        Changed.notify_all();
+        Event.Signal();
     }
 
     void Wait()
     {
-        std::unique_lock lock(Mutex);
-        UNIT_ASSERT(Changed.wait_for(lock, 10s, [&] { return Signaled; }));
+        UNIT_ASSERT(Event.WaitT(TDuration::Seconds(10)));
     }
 };
 
@@ -86,7 +82,7 @@ struct THandler final: IConnectionHandler
 
 struct TTestEngine final: IUringEngine
 {
-    std::mutex Mutex;
+    TMutex Mutex;
 
     struct TRegistration
     {
@@ -135,7 +131,7 @@ struct TTestEngine final: IUringEngine
         UNIT_ASSERT(!xdcSocket);
         ui64 handle = 0;
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TMutex> guard(Mutex);
             Registrations.push_back({sessionId, RegisterResult != 0});
             handle = RegisterResult ? Registrations.size() : 0;
         }
@@ -154,7 +150,7 @@ struct TTestEngine final: IUringEngine
         Y_UNUSED(callback);
 
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TMutex> guard(Mutex);
             UNIT_ASSERT(Registrations.at(handle - 1).Active);
             ++Sends;
             if (HoldEvents) {
@@ -169,7 +165,7 @@ struct TTestEngine final: IUringEngine
     void Unregister(ui64 handle) override
     {
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TMutex> guard(Mutex);
             UNIT_ASSERT(
                 std::exchange(Registrations.at(handle - 1).Active, false));
             Unregistered = true;
@@ -223,7 +219,7 @@ struct TTestEngine final: IUringEngine
 
     std::unique_ptr<IEventHandle> TakePendingEvent(size_t index)
     {
-        std::lock_guard guard(Mutex);
+        TGuard<TMutex> guard(Mutex);
         auto& pending = PendingEvents.at(index);
         UNIT_ASSERT(pending);
         return std::move(pending);
@@ -245,7 +241,7 @@ struct TTestEngine final: IUringEngine
     {
         TActorId sessionId;
         {
-            std::lock_guard guard(Mutex);
+            TGuard<TMutex> guard(Mutex);
             sessionId = Registrations.at(registration).SessionId;
         }
         Client->Send(
@@ -1146,7 +1142,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         firstClosed.Wait();
         bool firstActive;
         {
-            std::lock_guard guard(f.Engine->Mutex);
+            TGuard<TMutex> guard(f.Engine->Mutex);
             firstActive = f.Engine->Registrations[0].Active;
         }
         const auto open = firstActive ? f.Connection : second;
