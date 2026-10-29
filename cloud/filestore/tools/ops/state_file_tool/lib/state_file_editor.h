@@ -25,9 +25,13 @@ public:
         TFileRingBufferAccessor& accessor,
         NProto::EStateFileType fileType);
 
+    // Retained live WriteBackCache entries must have valid request size, tag
+    // and offset. Entries being freed or discarded are exempt from these checks.
+    // Free entries cannot be made live.
     static NCloud::NProto::TError PatchStateFile(
         TFileRingBufferAccessor& accessor,
-        const NProto::TStateFileDump& newState);
+        const NProto::TStateFileDump& newState,
+        NProto::EStateFileType fileType);
 };
 
 }   // namespace NCloud::NFileStore::NStateFileTool
