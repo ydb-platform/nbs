@@ -60,14 +60,17 @@ JSON fields are rejected so misspelled field names cannot be silently ignored.
 Allowed changes:
 
 - Header: `ReadPos`, `WritePos`, and `MetadataChecksum`.
-- Entry header: `DataChecksum`, `Tag`, and `FreeFlag`.
+- Entry header: `DataChecksum`, `Tag`, and setting `FreeFlag` to `true`.
 - Decoded write request: `NodeId`, `Handle`, and `Offset`.
 
 `ReadPos` and `WritePos` must be aligned, within `DataCapacity`, and select a
 contiguous range of entries present in the dump. Setting both to zero clears
 the ring buffer. `MetadataChecksum` and `DataChecksum` can only be changed to
 their corresponding calculated checksum. Entry sizes, entry identity/order,
-request size, request-info presence, and payload contents cannot be changed.
+request size, request metadata presence/type, and payload contents cannot be
+changed. Free entries cannot be made live. Retained live requests must have valid
+payload size, tag, and offset; invalid requests must be repaired, freed, or
+excluded from the selected range.
 
 Example recovery scenarios:
 
