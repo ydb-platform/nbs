@@ -159,6 +159,9 @@ func (t *deleteDiskTask) Run(
 
 	err := t.deleteDisk(ctx, execCtx)
 	if err != nil {
+		if errors.Is(err, resources.ErrDiskOperationInProgress) {
+			return errors.NewNonCancellableError(err)
+		}
 		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 	}
 

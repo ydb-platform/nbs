@@ -54,6 +54,11 @@ type Service interface {
 		req *disk_manager.MigrateDiskRequest,
 	) (string, error)
 
+	TransferVolumeViaLink(
+		ctx context.Context,
+		req *disk_manager.TransferVolumeViaLinkRequest,
+	) (string, error)
+
 	SendMigrationSignal(
 		ctx context.Context,
 		req *disk_manager.SendMigrationSignalRequest,

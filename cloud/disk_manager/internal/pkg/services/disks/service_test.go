@@ -2,6 +2,7 @@ package disks
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -529,4 +530,55 @@ func TestCreateDiskSsdDirectMirror3Of5GroupRejectsEncryption(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "don't support encryption")
+}
+
+func TestTransferVolumeViaLinkSchedulesNonCancellableTask(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		zoneID    string
+		dstCellID string
+	}{
+		{name: "source-only"},
+		{name: "zone-and-destination", zoneID: "zone-a", dstCellID: "target-cell"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			scheduler := tasks_mocks.NewSchedulerMock()
+			scheduler.On("ScheduleNonCancellableTask", ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+				LogicalDiskId: "leader", ZoneId: test.zoneID, DstCellId: test.dstCellID,
+			}).Return("task-id", nil).Once()
+			diskService := &service{taskScheduler: scheduler}
+			id, err := diskService.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{
+				SrcDiskId: "leader", ZoneId: test.zoneID, DstCellId: test.dstCellID,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "task-id", id)
+			scheduler.AssertExpectations(t)
+		})
+	}
+}
+
+func TestTransferVolumeViaLinkRejectsMissingSource(t *testing.T) {
+	for _, request := range []*disk_manager.TransferVolumeViaLinkRequest{nil, {ZoneId: "zone-a", DstCellId: "target-cell"}} {
+		scheduler := tasks_mocks.NewSchedulerMock()
+		diskService := &service{taskScheduler: scheduler}
+		id, err := diskService.TransferVolumeViaLink(context.Background(), request)
+		require.ErrorContains(t, err, "source disk ID is required")
+		require.Empty(t, id)
+		scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	}
+}
+
+func TestTransferVolumeViaLinkReturnsSchedulingError(t *testing.T) {
+	ctx := context.Background()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	failure := fmt.Errorf("task storage unavailable")
+	scheduler.On("ScheduleNonCancellableTask", ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+		LogicalDiskId: "leader",
+	}).Return("", failure).Once()
+	diskService := &service{taskScheduler: scheduler}
+	id, err := diskService.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{SrcDiskId: "leader"})
+	require.ErrorIs(t, err, failure)
+	require.Empty(t, id)
+	scheduler.AssertExpectations(t)
 }

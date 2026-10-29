@@ -13,6 +13,7 @@ SRCS(
     run.go
     snapshots.go
     tasks.go
+    transfer_volume_via_link.go
 )
 
 END()

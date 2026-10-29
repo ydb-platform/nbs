@@ -12,6 +12,11 @@ SRCS(
     multi_zone_client.go
     session.go
     testing_client.go
+    volume_link.go
+)
+
+GO_TEST_SRCS(
+    volume_link_test.go
 )
 
 END()
