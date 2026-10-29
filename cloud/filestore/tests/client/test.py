@@ -7,6 +7,8 @@ import tempfile
 import time
 import uuid
 
+import pytest
+
 import yatest.common as common
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -1142,3 +1144,39 @@ def test_should_destroy_with_confirmation():
     # client.destroy does the confirmation under the hood, and the filesystem
     # should actually be destroyed
     assert "fs0" not in client.list_filestores()
+
+
+def test_acquire_lock_should_not_steal_existing_session():
+    client, _ = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.touch("fs0", "/locked")
+    client.create_session("fs0", "session0", "client0")
+
+    sessions = json.loads(
+        client.execute_action("describesessions", {"FileSystemId": "fs0"}))
+    assert sessions["Sessions"] == [{
+        "SessionId": "session0",
+        "ClientId": "client0",
+    }]
+
+    with pytest.raises(
+        common.ExecutionError,
+        match="Using existing session id without restore flag",
+    ):
+        client.acquire_lock("fs0", "/locked", 1, "--client-id", "client0")
+
+    # The original session must be preserved.
+    assert json.loads(
+        client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    ) == sessions
+
+    # Without an explicit client id, the command creates its own session.
+    client.acquire_lock("fs0", "/locked", 1)
+
+    # Explicit restoration reuses the session and destroys it on command exit.
+    client.acquire_lock(
+        "fs0", "/locked", 1, "--client-id", "client0", "--restore-session")
+    assert not json.loads(
+        client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    ).get("Sessions", [])
+    client.destroy("fs0")

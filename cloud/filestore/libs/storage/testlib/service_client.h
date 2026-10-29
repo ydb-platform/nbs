@@ -103,36 +103,38 @@ public:
         const TString& fileSystemId,
         const TString& clientId,
         const TString& checkpointId = {},
-        bool restoreClientSession = false,
+        bool restoreClientSession = true,
         ui64 sessionSeqNo = 0,
         bool readOnly = false)
     {
         THeaders headers = {
             .FileSystemId = fileSystemId,
             .ClientId = clientId,
-            .SessionId = "",
             .SessionSeqNo = sessionSeqNo};
 
-        auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
+        auto response = CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
-        headers.SessionSeqNo = sessionSeqNo;
+        headers.SessionSeqNo = response->Record.GetSession().GetSessionSeqNo();
         return headers;
     }
 
     std::unique_ptr<TEvService::TEvCreateSessionResponse> InitSession(
         THeaders& headers,
-        const TString& fileSystemId,
-        const TString& clientId,
         const TString& checkpointId = {},
-        bool restoreClientSession = false,
-        ui64 sessionSeqNo = 0,
+        bool restoreClientSession = true,
         bool readOnly = false)
     {
-        headers = {fileSystemId, clientId, "", sessionSeqNo};
-
-        auto response = CreateSession(headers, checkpointId, restoreClientSession, sessionSeqNo, readOnly);
+        auto response = CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            readOnly);
         headers.SessionId = response->Record.GetSession().GetSessionId();
-        headers.SessionSeqNo = sessionSeqNo;
+        headers.SessionSeqNo = response->Record.GetSession().GetSessionSeqNo();
         return response;
     }
 
@@ -228,15 +230,14 @@ public:
     auto CreateCreateSessionRequest(
         const THeaders& headers,
         const TString& checkpointId = {},
-        bool restoreClientSession = false,
-        ui64 sessionSeqNo = 0,
+        bool restoreClientSession = true,
         bool readOnly = false)
     {
         auto request = std::make_unique<TEvService::TEvCreateSessionRequest>();
         request->Record.SetFileSystemId(headers.FileSystemId);
         request->Record.SetCheckpointId(checkpointId);
         request->Record.SetRestoreClientSession(restoreClientSession);
-        request->Record.SetMountSeqNumber(sessionSeqNo);
+        request->Record.SetMountSeqNumber(headers.SessionSeqNo);
         request->Record.SetReadOnly(readOnly);
         headers.Fill(request->Record);
         return request;
