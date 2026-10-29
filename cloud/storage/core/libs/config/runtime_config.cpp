@@ -140,6 +140,12 @@ void ValidateMessageSchema(
     if (!visited.insert(descriptor).second) {
         return;
     }
+    // Reject messages that allow extensions: the filter skips extension fields.
+    Y_THROW_UNLESS(
+        descriptor->extension_range_count() == 0,
+        "Runtime config extensions are not supported: "
+            << descriptor->full_name());
+
     for (int i = 0; i < descriptor->field_count(); ++i) {
         const auto* field = descriptor->field(i);
         if (const auto* oneof = field->real_containing_oneof();

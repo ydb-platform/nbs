@@ -106,6 +106,8 @@ struct TRuntimeConfigDiagnostics
 };
 
 // Reject inconsistent oneof markers outside compound parameter values.
+// Reject messages that allow extensions, except inside repeated/map fields
+// and oneofs with AllowRuntimeSwitch=true.
 // Call this function in a test for every configuration type used with
 // FilterRuntimeConfig(), passing the root descriptor. Throw for an invalid
 // schema; FilterRuntimeConfig() does not perform this check.
