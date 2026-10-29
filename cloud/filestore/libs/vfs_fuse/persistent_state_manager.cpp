@@ -38,8 +38,8 @@ struct TComponentConfig
     // Whether the caller must supply a positive stateFileSize in
     // AcquireStateFile.
     const bool StateFileSizeRequired;
-    // Lower bound for the requested state file size. Existing files are not
-    // resized during acquisition. Zero leaves the requested size unchanged.
+    // Minimum size for new state files. Smaller requests preserve the current
+    // size of existing files. Zero disables the minimum-size check.
     const ui64 MinStateFileSize;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
@@ -87,20 +87,40 @@ public:
         return file && file->Acquired;
     }
 
-    // Registers the state file, adding it with the given size if unknown.
-    // Successful acquisition also reserves any growth to the target size.
+    // Registers a listed or newly created file as not acquired. A known file
+    // keeps its previous size reservation.
     void Register(
         const TString& dir,
         const TString& fileName,
-        ui64 size,
-        bool fileAcquired)
+        ui64 size)
     {
         const TStateFile unknownFile{.Size = size, .Acquired = false};
         auto it = StateFiles[dir].insert({fileName, unknownFile}).first;
-        if (fileAcquired) {
-            it->second.Size = Max(it->second.Size, size);
-        }
-        it->second.Acquired = fileAcquired;
+        it->second.Acquired = false;
+    }
+
+    // Marks a registered file acquired and reserves its target size.
+    void MarkAcquired(
+        const TString& dir,
+        const TString& fileName,
+        ui64 targetSize)
+    {
+        auto* dirFiles = StateFiles.FindPtr(dir);
+        Y_ABORT_UNLESS(dirFiles, "Session directory is not registered");
+        auto* file = dirFiles->FindPtr(fileName);
+        Y_ABORT_UNLESS(file, "State file is not registered");
+
+        // targetSize is the target requested for this acquisition. Reserve any
+        // growth now so other sessions cannot consume the quota needed
+        // when the component resizes the file. The resize itself may wait
+        // until buffered entries have drained.
+        //
+        // A smaller target must not reduce the reservation while the file
+        // may still be larger. Releasing the guard keeps the reservation;
+        // deletion removes it, and a new listing rebuilds it from disk.
+        // Only a successful lock acquisition may grow a known reservation.
+        file->Size = Max(file->Size, targetSize);
+        file->Acquired = true;
     }
 
     // Unregisters the state file, forgetting it altogether if it has been
@@ -480,8 +500,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
                 Registry.Register(
                     sessionDir.GetPath(),
                     fileName,
-                    stat.Size,
-                    false /* fileAcquired */);
+                    stat.Size);
             }
         }
     }
@@ -630,8 +649,6 @@ TPersistentStateManager::AcquireStateFile(
                              << " must be positive");
     }
 
-    stateFileSize = Max(stateFileSize, component.MinStateFileSize);
-
     if (!component.BasePath) {
         return MakeError(
             E_INVALID_STATE,
@@ -661,6 +678,20 @@ TPersistentStateManager::AcquireStateFile(
     // is created only if it fits into the limit, otherwise the component is not
     // used by the session, which is what an empty guard means.
     const bool isNew = !Registry.IsRegistered(dir.GetPath(), fileName);
+    const bool sizeBelowMinimum = stateFileSize < component.MinStateFileSize;
+    if (sizeBelowMinimum) {
+        const TString message = TStringBuilder()
+                                << "Requested size " << stateFileSize
+                                << " for state file " << filePath
+                                << " is below the minimum "
+                                << component.MinStateFileSize;
+        ReportPersistentStateFileRequestedSizeTooSmall(message);
+
+        if (isNew) {
+            return MakeError(E_ARGUMENT, message);
+        }
+    }
+
     if (isNew && component.TotalSizeLimit &&
         Registry.GetTotalSize(fileName) + stateFileSize >
             component.TotalSizeLimit)
@@ -709,8 +740,7 @@ TPersistentStateManager::AcquireStateFile(
     Registry.Register(
         dir.GetPath(),
         fileName,
-        stateFileSize,
-        false /* fileAcquired */);
+        stateFileSize);
 
     THolder<TFileLock> lock;
     try {
@@ -720,6 +750,18 @@ TPersistentStateManager::AcquireStateFile(
                 E_INVALID_STATE,
                 TStringBuilder() << "State file " << filePath
                                  << " is locked by another owner");
+        }
+
+        if (sizeBelowMinimum) {
+            // Ignore the requested size
+            const i64 currentSize = lock->GetLength();
+            if (currentSize <= 0) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Invalid current size of state file "
+                                     << filePath << ": " << currentSize);
+            }
+            stateFileSize = static_cast<ui64>(currentSize);
         }
     } catch (const yexception& e) {
         return MakeError(
@@ -745,11 +787,10 @@ TPersistentStateManager::AcquireStateFile(
     // Marking the file acquired is the last step and cannot fail (the
     // registry entry exists already), so a file never ends up marked
     // acquired without a guard actually holding it.
-    Registry.Register(
+    Registry.MarkAcquired(
         impl->Dir.GetPath(),
         impl->FileName,
-        stateFileSize,
-        true /* fileAcquired */);
+        stateFileSize);
 
     return TAcquireStateFileGuard(std::move(impl));
 }

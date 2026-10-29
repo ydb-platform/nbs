@@ -1000,7 +1000,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto first = manager->AcquireWriteBackCacheStateFile(
             "fs-1",
             SessionId,
-            1);
+            4_KB);
         UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
         auto firstGuard = first.ExtractResult();
         UNIT_ASSERT(firstGuard);
@@ -1023,10 +1023,67 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto third = manager->AcquireWriteBackCacheStateFile(
             "fs-3",
             SessionId,
-            1_KB);
+            4_KB);
         UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
         UNIT_ASSERT(!third.GetResult());
         UNIT_ASSERT(!SessionDir("fs-3", SessionId).Exists());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectUndersizedNewFileAndPreserveExistingSize, TFixture)
+    {
+        {
+            auto manager = CreateManager();
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId,
+                WriteBackCacheStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        auto manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackMinStateFileSize = 2 * WriteBackCacheStateFileSize,
+        });
+        auto counter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateFileRequestedSizeTooSmall(),
+            true);
+
+        auto result = manager->AcquireWriteBackCacheStateFile(
+            "new-fs",
+            SessionId,
+            1);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
+        UNIT_ASSERT(!SessionDir("new-fs", SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            SessionId,
+            1);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto guard = result.ExtractResult();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBackCacheStateFileSize,
+            guard.GetTargetStateFileSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBackCacheStateFileSize,
+            TFileStat(guard.GetFilePath().GetPath()).Size);
+        UNIT_ASSERT_VALUES_EQUAL(2, counter->Val());
+
+        const auto filePath = guard.GetFilePath();
+        guard = {};
+        TFile(filePath, OpenExisting | RdWr).Resize(0);
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            SessionId,
+            1);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT(!IsLocked(filePath));
+        UNIT_ASSERT_VALUES_EQUAL(0, TFileStat(filePath.GetPath()).Size);
     }
 
     Y_UNIT_TEST_F(ShouldReserveExistingStateFileTargetSize, TFixture)
@@ -1054,7 +1111,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             auto result = manager->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 sessionId,
-                StateFileSize);
+                MinStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
             auto guard = result.ExtractResult();
             UNIT_ASSERT(guard);
@@ -1070,14 +1127,14 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto third = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             "s-3",
-            StateFileSize);
+            MinStateFileSize);
         UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
         UNIT_ASSERT(third.GetResult());
 
         auto fourth = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             "s-4",
-            StateFileSize);
+            MinStateFileSize);
         UNIT_ASSERT_C(!HasError(fourth), fourth.GetError().GetMessage());
         UNIT_ASSERT(!fourth.GetResult());
         UNIT_ASSERT(!SessionDir(FileSystemId, "s-4").Exists());
