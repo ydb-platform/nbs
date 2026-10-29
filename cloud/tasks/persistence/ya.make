@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     s3.go
+    s3_attempt_limiter.go
     s3_metrics.go
     ydb.go
     ydb_logger.go
