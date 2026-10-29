@@ -9,7 +9,19 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError GetChildXattrAcl(TString& xattrAcl, ui32& mode);
+enum class EXattrAclType {
+    Extended,
+    Minimal,
+    // A header-only value is equivalent to the absence of an ACL.
+    HeaderOnly,
+    Malformed,
+};
+
+NProto::TError GetChildXattrAcl(
+    TString& xattrAcl,
+    ui32& mode,
+    EXattrAclType& xattrAclType
+);
 
 constexpr TStringBuf PosixAclAccessXAttr = "system.posix_acl_access";
 constexpr TStringBuf PosixAclDefaultXAttr = "system.posix_acl_default";

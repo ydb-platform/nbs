@@ -74,14 +74,30 @@ void AssertEntry(
 
 Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
 {
+    Y_UNIT_TEST(ShouldIgnoreHeaderOnlyAcl)
+    {
+        TString acl = SerializeAcl({});
+        ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
+
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
+
+        UNIT_ASSERT_C(!NCloud::HasError(error), error.GetMessage());
+        UNIT_ASSERT(aclType == EXattrAclType::HeaderOnly);
+        UNIT_ASSERT(acl.empty());
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(S_IFREG | 0666), mode);
+    }
+
     Y_UNIT_TEST(ShouldRejectMalformedAcl)
     {
         // A POSIX ACL xattr must contain at least a complete version header.
         TString acl = "bad";
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             error.GetMessage(),
@@ -94,9 +110,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             {MakeEntry(ACL_USER_OBJ, 7)},
             POSIX_ACL_XATTR_VERSION + 1);
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOTSUPP, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             error.GetMessage(),
@@ -108,9 +126,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
         constexpr ui16 invalidAclTag = 0xffff;
         TString acl = SerializeAcl({MakeEntry(invalidAclTag, 7)});
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Unknown ACL tag");
     }
@@ -125,9 +145,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 7),
         });
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Invalid ACL user ID");
     }
@@ -142,9 +164,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 7),
         });
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Invalid ACL group ID");
     }
@@ -158,9 +182,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 7),
         });
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             error.GetMessage(),
@@ -177,9 +203,11 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 7),
         });
         ui32 mode = S_IFREG | 0666;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
+        UNIT_ASSERT(aclType == EXattrAclType::Malformed);
         UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             error.GetMessage(),
@@ -197,10 +225,12 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 6),
         });
         ui32 mode = S_IFREG | S_ISUID | S_ISGID | S_ISVTX | 0555;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
         UNIT_ASSERT_C(!NCloud::HasError(error), error.GetMessage());
+        UNIT_ASSERT(aclType == EXattrAclType::Extended);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(S_IFREG | S_ISUID | S_ISGID | S_ISVTX | 0444),
             mode);
@@ -223,17 +253,14 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             MakeEntry(ACL_OTHER, 0),
         });
         ui32 mode = S_IFDIR | 0750;
+        EXattrAclType aclType;
 
-        const auto error = GetChildXattrAcl(acl, mode);
+        NProto::TError error = GetChildXattrAcl(acl, mode, aclType);
 
         UNIT_ASSERT_C(!NCloud::HasError(error), error.GetMessage());
+        UNIT_ASSERT(aclType == EXattrAclType::Minimal);
         UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(S_IFDIR | 0740), mode);
-
-        const auto entries = DeserializeAcl(acl);
-        UNIT_ASSERT_VALUES_EQUAL(3, entries.size());
-        AssertEntry(entries[0], ACL_USER_OBJ, 7);
-        AssertEntry(entries[1], ACL_GROUP_OBJ, 4);
-        AssertEntry(entries[2], ACL_OTHER, 0);
+        UNIT_ASSERT(acl.empty());
     }
 }
 
