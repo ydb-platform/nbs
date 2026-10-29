@@ -91,3 +91,62 @@ message TConfigWithExtensibleChild
 {
     optional TExtensibleConfig Child = 1;
 }
+
+// A message with a required runtime value and a startup-only sibling.
+message TRequiredChild
+{
+    required uint32 Value = 1 [default = 17, (NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A message with required scalar, nested, and empty message fields.
+message TRequiredParameters
+{
+    required uint32 Value = 1 [default = 7, (NMarkers.AllowRuntimeUpdate) = true];
+    required TRequiredChild Child = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+    required TParameters EmptyChild = 3 [(NMarkers.AllowRuntimeUpdate) = true];
+    required uint32 Frozen = 4;
+}
+
+// A message whose required child needs a startup-only value.
+message TRequiredEnvelope
+{
+    required TRequiredParameters Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A message with an allowed value and a required child that may become empty.
+message TRequiredContainer
+{
+    optional uint32 Value = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    required TParameters Child = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A required message chain with an optional sibling that can be rejected alone.
+message TNestedRequiredContainer
+{
+    required TRequiredContainer Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredEnvelope OptionalEnvelope = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A required message chain ending in a startup-only required field.
+message TNestedRequiredEnvelope
+{
+    required TRequiredEnvelope Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A configuration with required fields inside a fixed oneof and optional fields.
+message TRequiredConfig
+{
+    oneof FixedChoice
+    {
+        uint32 Number = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+        TRequiredParameters Message = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+    }
+
+    optional TRequiredChild OptionalChild = 3 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredParameters OptionalParameters = 4 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredEnvelope OptionalEnvelope = 5 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredContainer OptionalContainer = 6 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TNestedRequiredContainer OptionalNestedContainer = 7 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TNestedRequiredEnvelope OptionalNestedEnvelope = 8 [(NMarkers.AllowRuntimeUpdate) = true];
+}

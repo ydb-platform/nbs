@@ -1,11 +1,92 @@
 /*******************************************************************************
 
-Marker-based filtering of protobuf runtime configurations. The filter keeps
-permitted changes, restores forbidden values from startup, and uses static
-values when recovering a fixed oneof member. The caller supplies a complete
-runtime configuration after merging inputs according to its own rules.
-Schema paths identify rejected changes for lookup during a caller's traversal.
-Validation errors throw yexception, derived from std::exception.
+Filtering of runtime protobuf configurations.
+
+1. Filtering
+
+   - Require AllowRuntimeUpdate=true along the whole field path. Restore
+     forbidden values and presence from startup.
+   - Treat repeated/map fields and oneofs with AllowRuntimeSwitch=true as
+     whole values; ignore their inner markers.
+   - For other oneofs (except proto3 optional fields), keep the startup
+     selection, including unset. After a rejected switch, use matching static
+     values or defaults for allowed fields.
+   - Remove unknown fields without diagnostics.
+   - Return an TRuntimeConfigDiagnostics report with rejected fields and
+     rejection reasons.
+
+2. Default values and required fields
+
+   - Keep a field set even when its explicitly assigned value equals the
+     protobuf default.
+   - Keep the selected oneof message even when all its fields are unset.
+   - Fill missing allowed required fields, including child messages, with
+     protobuf defaults. Do not recreate removed optional messages.
+   - Reject adding a message absent at startup if it or its required children
+     have a required field without runtime update permission. Apply other
+     permitted changes.
+     Example:
+
+         syntax = "proto2";
+
+         message TParent
+         {
+             required uint32 Value = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+             required uint32 Frozen = 2 [(NMarkers.AllowRuntimeUpdate) = false];
+         }
+
+         message TConfig
+         {
+             optional TParent Parent = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+         }
+
+         startup: {}
+         runtime: { Parent: { Value: 10, Frozen: 20 } }
+         result:  {}  (Parent rejected)
+
+3. Usage (pseudocode)
+
+    1. At startup; keep staticConfig and startupConfig unchanged afterwards.
+
+        staticConfig = ReadStaticConfig();
+        startupDynamicOverrides = RecvDynamicOverrides();
+
+        // MergeStaticAndDynamic() returns a fresh static-config copy
+        // with dynamic overrides applied using the caller's merge rules.
+        startupConfig = MergeStaticAndDynamic(
+            staticConfig, startupDynamicOverrides);
+
+        // Use startup configuration
+        Publish(startupConfig);
+
+    2. At runtime
+
+        // Receive the full current dynamic overrides (or {} on removal).
+        runtimeDynamicOverrides = RecvDynamicOverrides();
+
+        // Merge sources - static configuration and new dynamic overrides -
+        // before filtering. Keep runtime separate from the unchanged static
+        // and startup sources.
+        runtimeCandidate = MergeStaticAndDynamic(
+            staticConfig, runtimeDynamicOverrides);
+
+        try:
+            // Filter
+            diagnostics = FilterRuntimeConfig(
+                staticConfig, startupConfig, runtimeCandidate);
+        catch:
+            // Discard runtime on exceptions: it may be partly modified.
+            // Keep the previous published configuration.
+            ... (log, critical event, etc)
+            return;
+
+        // Use new runtime configuration
+        Publish(runtimeCandidate, diagnostics);
+
+    3. Add a schema validation unit test for every new configuration type
+       used with this module.
+
+        ValidateRuntimeConfigSchema(*TConfig::descriptor());
 
 *******************************************************************************/
 
@@ -129,6 +210,8 @@ void ValidateRuntimeConfigSchema(
 //   in a recovered member use its matching static value or protobuf defaults.
 //   Unknown fields are removed recursively, without diagnostics. Unknown data
 //   in staticConfig and startupConfig is ignored; both sources stay unchanged.
+//   Missing required fields in retained messages get defaults if updates are
+//   allowed. Reject new messages if filtering removes a required field.
 // - The return value maps rejected paths to reasons in IgnoredPaths.
 //
 // Pass runtimeConfig as a separate message from staticConfig and startupConfig
