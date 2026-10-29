@@ -764,6 +764,13 @@ queue, job queue, job, and step spans in `workflow-trace.*`. Each job row links
 to its separate build/test execution reports. The workflow report never reads
 ya OTLP or rewrites ya trace IDs.
 
+Only the triggering run attempt's jobs determine whether to render: no jobs
+or all jobs skipped means no report. A failed or cancelled job still qualifies.
+The renderer does not inspect PR stack metadata, so manually rechecked upper
+PRs remain eligible even when `workflow_run.pull_requests` omits `stack`.
+The CLI sets the GitHub step output `rendered`; uploads run only when it is
+`true`.
+
 Build and test actions pass `${{ job.check_run_id }}` as `GITHUB_JOB_ID`.
 Ya manifests record it as `github.job.id`, along with the repository, run ID,
 and run attempt. A link is attached only when these match a workflow job, even
