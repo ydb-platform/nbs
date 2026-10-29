@@ -142,7 +142,9 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                 return MakeError(S_ALREADY, "Block count is already calculated");
             }
 
-            State->StartRebuildBlockCount();
+            if (State->GetCleanupState().Status == EOperationStatus::Started) {
+                return MakeError(E_REJECTED, "Cleanup is running");
+            }
 
             StartMetadataRebuildBlockCount(ctx, batchSize);
 
@@ -166,6 +168,8 @@ void TPartitionActor::StartMetadataRebuildBlockCount(
         return;
     }
 
+    // Block cleanup while waiting for commits, before capturing the counters.
+    State->StartRebuildBlockCount();
     State->StartMetadataRebuildCounterTracking(commitId);
     State->AccessCommitQueue()->AcquireBarrier(commitId);
     SharedState->WaitCommit(
@@ -206,7 +210,7 @@ void TPartitionActor::CompleteStartMetadataRebuild(
     // Exclude their delta from the baseline, since their blobs are outside
     // the scan and must be preserved by the final counter adjustment.
     const auto delta = State->FinishMetadataRebuildCounterTracking();
-    State->StartRebuildBlockCount(
+    State->SetRebuildBlockCountTotal(
         State->ShouldUseBlobChannelDataKindForCounters()
             ? delta.GetMixedIndexBlobsCount() + delta.GetMergedIndexBlobsCount()
             : delta.GetMixedBlobsCount() + delta.GetMergedBlobsCount());

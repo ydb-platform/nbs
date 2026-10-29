@@ -894,10 +894,14 @@ public:
             GetBlocksCount());
     }
 
-    void StartRebuildBlockCount(ui64 blobsOutsideScan = 0)
+    void StartRebuildBlockCount()
     {
-        RebuildState.StartRebuildBlockCount(
-            GetTotalBlobsCount() - blobsOutsideScan);
+        RebuildState.StartRebuildBlockCount(0);
+    }
+
+    void SetRebuildBlockCountTotal(ui64 blobsOutsideScan = 0)
+    {
+        RebuildState.Total = GetTotalBlobsCount() - blobsOutsideScan;
     }
 
     void StartMetadataRebuildCounterTracking(ui64 commitId)

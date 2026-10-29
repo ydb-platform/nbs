@@ -10131,7 +10131,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         for (ui32 testCase = 0; testCase < 4; ++testCase) {
             const bool useChannelCounters = testCase & 1;
-            const bool completeNewerWriteFirst = testCase & 2;
             auto config = DefaultConfig();
             config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
             auto runtime = PrepareTestActorRuntime(config, 4096);
@@ -10172,6 +10171,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT(!partition.GetRebuildMetadataStatus()
                              ->Record.GetProgress().GetIsCompleted());
 
+            partition.SendCleanupRequest();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TRY_AGAIN,
+                partition.RecvCleanupResponse()->GetStatus());
+
             // This newer write is outside the fixed rebuild boundary.
             TAutoPtr<IEventHandle> firstWrite = savedWrite.Release();
             partition.SendWriteBlocksRequest(
@@ -10198,12 +10202,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 });
-            if (completeNewerWriteFirst) {
-                runtime->Send(savedWrite.Release());
-                partition.RecvWriteBlocksResponse();
-                runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-                UNIT_ASSERT(!rebuildStarted);
-            }
 
             runtime->Send(firstWrite.Release());
             partition.RecvWriteBlocksResponse();
@@ -10465,6 +10463,79 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             true,
             progress->Record.GetProgress().GetIsCompleted()
         );
+    }
+
+    Y_UNIT_TEST(ShouldRejectMetadataRebuildDuringCleanup)
+    {
+        auto runtime = PrepareTestActorRuntime(DefaultConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+        partition.Compaction();
+
+        // Keep cleanup active until its transaction has been committed.
+        std::unique_ptr<IEventHandle> putEvent;
+        bool interceptPut = true;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (interceptPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    event->Get<TEvBlobStorage::TEvPut>()->Id.Channel() == 0)
+                {
+                    putEvent.reset(event.Release());
+                    interceptPut = false;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendCleanupRequest();
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(putEvent);
+
+        partition.SendRebuildMetadataRequest(NProto::BLOCK_COUNT, 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            partition.RecvRebuildMetadataResponse()->GetStatus());
+
+        partition.SendGetRebuildMetadataStatusRequest();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_FOUND,
+            partition.RecvGetRebuildMetadataStatusResponse()->GetStatus());
+
+        bool completed = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                {
+                    completed = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        runtime->Send(putEvent.release());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.RecvCleanupResponse()->GetStatus());
+
+        partition.RebuildMetadata(NProto::BLOCK_COUNT, 10);
+        if (!completed) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&] { return completed; };
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                        ->Record.GetProgress().GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
+
+        partition.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
     }
 
     Y_UNIT_TEST(ShouldBlockCleanupDuringMetadataRebuild)
