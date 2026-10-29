@@ -17,6 +17,7 @@ SRCS(
     migrate_snapshot_database_task.go
     register.go
     replicate_disk_task.go
+    transfer_from_backup_to_disk_task.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
 )
@@ -24,6 +25,7 @@ SRCS(
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
     replicate_disk_task_test.go
+    transfer_from_backup_to_disk_task_test.go
 )
 
 END()
