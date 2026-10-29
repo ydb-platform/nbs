@@ -383,6 +383,112 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT(!html.Contains("endpoint-token-secret"));
     }
 
+    // Show an empty message and retain its section after a deferred removal.
+    Y_UNIT_TEST(ShouldRenderEmptyMessageAfterDeferredRemoval)
+    {
+        // Enable lockdown through an explicitly empty startup message.
+        const auto staticConfig = MakeConfig(100);
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableLocalNVMe()->MutableLockdownConfig();
+        startupDynamicConfig.MutableSpdkEnv();
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startupConfig =
+            MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
+        auto config = MakeStartupBlockstoreConfig(
+            staticConfig, startupDynamicConfig, controls);
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .DynamicConfigPresent = true,
+                },
+        };
+
+        // Show explicit empty messages and omit automatically created sections.
+        const auto startupHtml = renderer.RenderHtml(
+            *config, staticConfig, startupDynamicConfig, *controls);
+        UNIT_ASSERT_STRING_CONTAINS(
+            startupHtml,
+            "LocalNVMe.LockdownConfig</td>"
+            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            startupHtml,
+            ">LocalNVMe</a></td><td>"
+            "<span class='config-dynamic-total'>1</span>");
+        UNIT_ASSERT(!startupHtml.Contains(">RootKms</a>"));
+        UNIT_ASSERT_STRING_CONTAINS(
+            startupHtml,
+            "<td>SpdkEnv</td>"
+            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+
+        // Request removal at runtime while the frozen startup value remains.
+        const auto dynamicConfig = MakeConfig(300);
+        config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startupConfig,
+            dynamicConfig, controls, renderer.Data.RuntimeDiagnostics);
+        renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
+        const auto html = renderer.RenderHtml(
+            *config, staticConfig, dynamicConfig, *controls);
+
+        // Preserve the empty effective message and its deferred section count.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td class='config-dynamic-deferred'>"
+            "LocalNVMe.LockdownConfig</td>"
+            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            ">LocalNVMe</a></td><td><span class='config-zero'>&mdash;</span>"
+            " / <span class='config-dynamic-deferred'>deferred: 1</span>");
+    }
+
+    // Distinguish an empty selected oneof branch from absent and filled
+    // sources.
+    Y_UNIT_TEST(ShouldRenderEmptyOneofMessageAlongsidePopulatedSource)
+    {
+        // Select an empty metadata branch instead of the static JWT branch.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableLogbroker()->MutableIamJwtFile()->SetJwtFilename(
+            "/auth/jwt");
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableLogbroker()->MutableIamMetadataServer();
+        auto dynamicConfig = MakeConfig(300);
+        dynamicConfig.MutableLogbroker()
+            ->MutableIamMetadataServer()
+            ->SetEndpoint("runtime-endpoint");
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startupConfig =
+            MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .UpdateStatus = EConfigUpdateStatus::Runtime,
+                    .DynamicConfigPresent = true,
+                },
+        };
+
+        // Keep the frozen empty branch while displaying the requested fields.
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startupConfig,
+            dynamicConfig, controls, renderer.Data.RuntimeDiagnostics);
+        const auto html = renderer.RenderHtml(
+            *config, staticConfig, dynamicConfig, *controls);
+
+        // Mark only empty messages; populated values remain in child rows.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "Logbroker.IamMetadataServer</td>"
+            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "Logbroker.IamMetadataServer.Endpoint</td>"
+            "<td>&mdash;</td><td>&mdash;</td>"
+            "<td>&quot;runtime-endpoint&quot;</td><td>&mdash;</td>");
+    }
+
     // Count explicit parameters, deferred changes and ICB overrides separately.
     Y_UNIT_TEST(ShouldRenderDynamicDeferredAndIcbCounters)
     {
