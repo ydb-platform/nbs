@@ -79,3 +79,15 @@ message TRuntimeConfig
     map<string, TParameters> FrozenMessageMap = 22;
     repeated TParameters FrozenRecords = 23;
 }
+
+// A message that allows extensions but has none defined.
+message TExtensibleConfig
+{
+    extensions 100 to max;
+}
+
+// A configuration with a nested message that allows extensions.
+message TConfigWithExtensibleChild
+{
+    optional TExtensibleConfig Child = 1;
+}
