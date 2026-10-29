@@ -98,6 +98,70 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	))
 }
 
+func TestIsCreationFromBaseDiskSupportedForDiskKind(t *testing.T) {
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	// Disabled by default.
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+
+	diskService.config.DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList =
+		[]string{"folder-id"}
+
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "folder-id",
+		},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "another-folder-id",
+		},
+	))
+	// Only Disk Registry based disks.
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD,
+			FolderId: "folder-id",
+		},
+	))
+
+	diskService.config.EnableDiskRegistryBasedDisksCreationFromBaseDisks = proto.Bool(true)
+
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR2},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR3},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_NONREPLICATED},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_LOCAL},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
+	))
+}
+
 func TestDiskServicegetZoneIDForExistingDisk(
 	t *testing.T,
 ) {

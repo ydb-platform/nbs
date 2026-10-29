@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package disks;
+
+import "cloud/disk_manager/internal/pkg/services/disks/protos/create_disk_params.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Creates a disk (currently only Disk Registry based disk kinds are routed
+// here) from an image, using a base disk from the pool as a data source
+// instead of reading image data from the snapshot storage (S3/YDB).
+message CreateDiskFromBaseDiskRequest {
+    string SrcImageId = 1;
+    CreateDiskParams Params = 2;
+}
+
+message CreateDiskFromBaseDiskTaskState {
+    string SelectedCellId = 1;
+    string DataplaneTaskId = 2;
+    // Set when the transfer is finished and the base disk slot can be
+    // released, so retries don't touch the (possibly already deleted) base
+    // disk again.
+    bool DataTransferred = 3;
+    bool ProxyOverlayDiskCreated = 4;
+}

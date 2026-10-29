@@ -92,6 +92,7 @@ func initDataplane(
 		ctx,
 		dataplaneConfig,
 		performanceConfig,
+		config.GetProxyOverlayDiskIdPrefix(),
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,

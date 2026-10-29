@@ -114,7 +114,8 @@ func newDiskSourceFull(
 		ctx,
 		client,
 		disk.DiskId,
-		"",
+		"",    // proxyDiskID
+		false, // mountLocally
 		baseCheckpointID,
 		checkpointID,
 		nil, // encryption
@@ -122,6 +123,7 @@ func newDiskSourceFull(
 		duplicateChunkIndices,
 		ignoreBaseDisk,
 		dontReadFromCheckpoint,
+		0, // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 

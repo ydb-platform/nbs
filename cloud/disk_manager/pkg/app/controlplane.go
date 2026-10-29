@@ -187,6 +187,7 @@ func registerControlplaneTasks(
 		ctx,
 		config.GetDisksConfig(),
 		performanceConfig,
+		config.GetProxyOverlayDiskIdPrefix(),
 		resourceStorage,
 		poolStorage,
 		taskRegistry,

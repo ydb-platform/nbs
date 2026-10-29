@@ -55,6 +55,7 @@ func (t *acquireBaseDiskTask) Run(
 			OverlayDisk:     t.request.OverlayDisk,
 			OverlayDiskKind: t.request.OverlayDiskKind,
 			OverlayDiskSize: t.request.OverlayDiskSize,
+			UseBaseDiskSize: t.request.UseBaseDiskSize,
 		},
 	)
 	if err != nil {

@@ -22,4 +22,10 @@ message DisksConfig {
     repeated string DiskRegistryBasedDisksFolderIdAllowList = 13;
     optional bool DeleteNonExistentDisks = 14;
     repeated string OverlayDiskRegistryBasedDisksFolderIdAllowList = 15;
+    // When enabled, Disk Registry based disks (nrd, mirror2, mirror3, ...)
+    // created from an image with a configured pool are filled from a base
+    // disk (via a proxy overlay disk) instead of from the snapshot storage.
+    // Has lower priority than overlay Disk Registry based disks.
+    optional bool EnableDiskRegistryBasedDisksCreationFromBaseDisks = 16;
+    repeated string DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList = 17;
 }
