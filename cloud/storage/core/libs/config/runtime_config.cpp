@@ -181,9 +181,9 @@ void RestoreFields(
     destination.GetReflection()->SwapFields(&destination, copy.get(), fields);
 }
 
-// Select the startup member with its protobuf default when the static
-// configuration has no matching branch. Preserve zero or empty selections.
-void SelectDefaultMember(Message& message, const FieldDescriptor* field)
+// Set a field to its protobuf default and make it present.
+// Clear message contents without creating child fields.
+void SetFieldDefault(Message& message, const FieldDescriptor* field)
 {
     const auto* reflection = message.GetReflection();
     switch (field->cpp_type()) {
@@ -229,6 +229,43 @@ void SelectDefaultMember(Message& message, const FieldDescriptor* field)
         case FieldDescriptor::CPPTYPE_MESSAGE:
             reflection->MutableMessage(&message, field)->Clear();
             break;
+    }
+}
+
+// Fill missing required fields in messages retained by the filter.
+// Set allowed defaults and throw if a missing required field forbids updates.
+// Do not inspect collections or switchable oneof values.
+void CompleteRequiredFields(Message& message)
+{
+    const auto* descriptor = message.GetDescriptor();
+    const auto* reflection = message.GetReflection();
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+        const auto* field = descriptor->field(i);
+
+        // Preserve values that the filter accepts or restores as a whole.
+        if (field->is_repeated() ||
+            (field->real_containing_oneof() &&
+             AllowsSwitch(field->real_containing_oneof())))
+        {
+            continue;
+        }
+
+        // Restore required presence without adding forbidden startup values.
+        if (field->is_required() && !reflection->HasField(message, field)) {
+            Y_THROW_UNLESS(
+                AllowsUpdate(field),
+                "Cannot restore required runtime config field: "
+                    << field->full_name());
+            SetFieldDefault(message, field);
+        }
+
+        // Visit only present, allowed messages; frozen messages were restored.
+        if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE &&
+            AllowsUpdate(field) && reflection->HasField(message, field))
+        {
+            CompleteRequiredFields(
+                *reflection->MutableMessage(&message, field));
+        }
     }
 }
 
@@ -290,8 +327,21 @@ void FilterSingularMessageField(
     };
     FilterMessage(childContext, mode);
 
+    // Reject a new container if filtering removed one of its required fields.
+    if (mode == EUpdateMode::Fields && !initialPresent &&
+        !nested->IsInitialized())
+    {
+        RecordChange(
+            context.Diagnostics,
+            context.Path.GetPath(),
+            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+        reflection->ClearField(&runtime, &field);
+        return;
+    }
+
     // Preserve forbidden presence; remove containers that existed only to
-    // carry rejected fields, but retain a selected oneof message even if empty.
+    // carry rejected fields, but retain explicitly requested required messages
+    // and selected oneof messages even if empty.
     if (mode == EUpdateMode::Frozen) {
         if (initialPresent != requestedPresent &&
             context.Diagnostics.IgnoredPaths.size() == previousCount)
@@ -304,11 +354,16 @@ void FilterSingularMessageField(
         if (!initialPresent) {
             reflection->ClearField(&runtime, &field);
         }
-    } else if (
-        !field.real_containing_oneof() && nested->ByteSizeLong() == 0 &&
-        (!requestedPresent || (!requestedEmpty && !initialPresent)))
-    {
-        reflection->ClearField(&runtime, &field);
+    } else {
+        const bool fieldCanBeCleared =
+            !field.real_containing_oneof() &&
+            (!field.is_required() || !requestedPresent) &&
+            nested->ByteSizeLong() == 0 &&
+            (!requestedPresent || (!requestedEmpty && !initialPresent));
+
+        if (fieldCanBeCleared) {
+            reflection->ClearField(&runtime, &field);
+        }
     }
 }
 
@@ -378,7 +433,7 @@ void RestoreFixedOneofMember(
     {
         RestoreFields(staticConfig, runtime, {initial});
     } else {
-        SelectDefaultMember(runtime, initial);
+        SetFieldDefault(runtime, initial);
     }
 }
 
@@ -581,6 +636,11 @@ TRuntimeConfigDiagnostics FilterRuntimeConfig(
         .Diagnostics = diagnostics,
     };
     FilterMessage(context, EUpdateMode::Fields);
+
+    // Complete retained messages after optional containers have been removed.
+    if (!runtimeConfig.IsInitialized()) {
+        CompleteRequiredFields(runtimeConfig);
+    }
     return diagnostics;
 }
 
