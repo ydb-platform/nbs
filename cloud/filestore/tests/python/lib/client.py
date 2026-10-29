@@ -134,7 +134,7 @@ class FilestoreCliClient:
                 raise mount.failure(
                     "failed to mount {} at {}: mount was not ready in {} seconds".format(
                         fs, path, self.__timeout))
-            return pid
+            return mount.detach().process.pid
 
     def resize(
         self,

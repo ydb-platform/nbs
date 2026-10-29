@@ -68,7 +68,7 @@ def test_mount_timeout_stops_client(launch_client, tmp_path):
 
 
 @pytest.mark.parametrize("finish_before_return", [False, True])
-def test_mount_error_limits_diagnostic_block_to_100_lines(launch_client, tmp_path, finish_before_return):
+def test_mount_error_limits_stderr_to_100_log_lines(launch_client, tmp_path, finish_before_return):
     launch, processes, streams = launch_client
     client = launch(
         "import sys; sys.stderr.write('startup log\\n' * 150 + 'mount failed\\n'); sys.exit(1)",
@@ -79,7 +79,7 @@ def test_mount_error_limits_diagnostic_block_to_100_lines(launch_client, tmp_pat
 
     assert "Stderr tail:" in str(error.value)
     assert "mount failed" in str(error.value)
-    assert str(error.value).count("startup log") == 97
+    assert str(error.value).splitlines().count("startup log") == 99
     assert processes[0].returncode == 1
     assert all(stream.closed for stream in streams)
 
