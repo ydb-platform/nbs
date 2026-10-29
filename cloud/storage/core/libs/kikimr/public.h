@@ -43,4 +43,7 @@ using TLoggingProxyPtr = std::shared_ptr<TLoggingProxy>;
 class TMonitoringProxy;
 using TMonitoringProxyPtr = std::shared_ptr<TMonitoringProxy>;
 
+class TKikimrMonitoring;
+using TKikimrMonitoringPtr = std::shared_ptr<TKikimrMonitoring>;
+
 }   // namespace NCloud::NStorage

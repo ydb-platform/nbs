@@ -27,6 +27,7 @@ struct TActorSystemArgs
     ui32 NodeId;
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
+    NMonitoring::TDynamicCountersPtr Counters;
     IAsyncLoggerPtr AsyncLogger;
     std::function<void(
         NKikimr::TKikimrRunConfig&,

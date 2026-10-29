@@ -7,22 +7,30 @@
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/core/mind/lease_holder.h>
-#include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 #include <contrib/ydb/public/api/grpc/ydb_discovery_v1.grpc.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_discovery.pb.h>
 
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpcpp/security/server_credentials.h>
 
+#include <library/cpp/http/simple/http_client.h>
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/common/network.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/folder/tempdir.h>
 #include <util/generic/cast.h>
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
+#include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/stream/str.h>
 #include <util/string/printf.h>
 
+#include <chrono>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace NCloud::NFileStore::NDaemon {
@@ -31,6 +39,19 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+i64 GetSensorValue(const NJson::TJsonValue& json, TStringBuf sensorName)
+{
+    for (const auto& sensor: json["sensors"].GetArray()) {
+        if (sensor["labels"]["sensor"].GetString() == sensorName) {
+            return sensor["value"].GetIntegerRobust();
+        }
+    }
+    UNIT_FAIL("Missing sensor " << sensorName);
+    return 0;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -198,11 +219,16 @@ class TFakeYdbDiscoveryService final
 private:
     ui64 StaticNodeIcPort;
     ui64 DynamicNodeIcPort;
+    const std::function<void()> OnRegistration;
+    std::once_flag RegistrationObserved;
 
 public:
-    TFakeYdbDiscoveryService(ui64 staticNodeIcPort, ui64 dynamicNodeIcPort)
+    TFakeYdbDiscoveryService(
+        ui64 staticNodeIcPort,
+        ui64 dynamicNodeIcPort, std::function<void()> onRegistration = {})
         : StaticNodeIcPort(staticNodeIcPort)
         , DynamicNodeIcPort(dynamicNodeIcPort)
+        , OnRegistration(std::move(onRegistration))
     {}
 
     grpc::Status NodeRegistration(
@@ -212,6 +238,10 @@ public:
     {
         Y_UNUSED(ctx);
         Y_UNUSED(req);
+
+        if (OnRegistration) {
+            std::call_once(RegistrationObserved, OnRegistration);
+        }
 
         auto* operation = resp->mutable_operation();
         operation->set_ready(true);
@@ -257,8 +287,11 @@ private:
     ui16 Port = 0;
 
 public:
-    TestYdbDiscoveryServer(ui64 staticNodeIcPort, ui64 dynamicNodeIcPort)
-        : Service(staticNodeIcPort, dynamicNodeIcPort)
+    TestYdbDiscoveryServer(
+        ui64 staticNodeIcPort,
+        ui64 dynamicNodeIcPort, std::function<void()> onRegistration = {})
+        : Service(
+              staticNodeIcPort, dynamicNodeIcPort, std::move(onRegistration))
     {}
 
     ~TestYdbDiscoveryServer()
@@ -304,8 +337,41 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         TPortManager PortManager;
         const auto staticNodeIcPort = PortManager.GetPort();
         const auto dynamicNodeIcPort = PortManager.GetPort();
+        const auto monPort = PortManager.GetPort();
 
-        TestYdbDiscoveryServer ydbDiscoveryServer(staticNodeIcPort, dynamicNodeIcPort);
+        std::promise<TString> registrationMetrics;
+        auto metricsBeforeRegistration = registrationMetrics.get_future();
+        auto scrape = [&]
+        {
+            TKeepAliveHttpClient client(
+                "127.0.0.1",
+                monPort, TDuration::Seconds(5), TDuration::Seconds(5));
+            TStringStream response;
+            const auto status = client.DoGet(
+                "/counters/counters=filestore/component=bootstrap/json",
+                &response);
+            // This helper also runs on the broker's worker thread, where a
+            // unit-test assertion would abort the whole test binary.
+            Y_ENSURE(
+                status == 200,
+                "Initialization metrics request returned HTTP "
+                    << status << ": " << response.Str());
+            return response.Str();
+        };
+
+        TestYdbDiscoveryServer ydbDiscoveryServer(
+            staticNodeIcPort,
+            dynamicNodeIcPort,
+            [&]
+            {
+                // Scrape before the broker sends its response: monitoring
+                // must work while bootstrap is still waiting for a node ID.
+                try {
+                    registrationMetrics.set_value(scrape());
+                } catch (...) {
+                    registrationMetrics.set_exception(std::current_exception());
+                }
+            });
         ydbDiscoveryServer.Start();
 
         auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
@@ -319,6 +385,9 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
             std::move(vhostFactories));
 
         TTempDir dir;
+
+        const auto restartsCountPath = dir.Path() / "restarts_count";
+        TOFStream(restartsCountPath.GetPath()).Write("7");
 
         auto sysConfigPath = dir.Path() / "nfs-sys.txt";
         TOFStream(sysConfigPath.GetPath()).Write(SysConfigStr);
@@ -345,6 +414,9 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
             "./program",
 
             "--service", "kikimr",
+            "--mon-address", "127.0.0.1",
+            "--mon-port", ToString(monPort),
+            "--restarts-count-file", restartsCountPath,
 
             "--sys-file", sysConfigPath,
             "--storage-file", storageConfigPath,
@@ -371,7 +443,47 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         bootstrap.ParseOptions(argv.size(), argv.data());
 
         bootstrap.Init();
+        Y_DEFER
+        {
+            bootstrap.GetShouldContinue().ShouldStop(0);
+            bootstrap.Stop();
+        };
+        // The broker callback has already stored the scrape result or its
+        // exception before returning registration. Check the contract without
+        // waiting again after Init().
+        UNIT_ASSERT_C(
+            metricsBeforeRegistration.wait_for(std::chrono::seconds(0)) ==
+                std::future_status::ready,
+            "Node registration did not produce initialization metrics");
+        NJson::TJsonValue before;
+        UNIT_ASSERT(
+            NJson::ReadJsonTree(metricsBeforeRegistration.get(), &before));
+        UNIT_ASSERT_VALUES_EQUAL(1, GetSensorValue(before, "Initializing"));
         bootstrap.Start();
+
+        // The early server releases the port just before KikimrStart(). Normal
+        // TMon binds asynchronously, so a scrape overlapping the handover may
+        // fail; it must become available again once normal monitoring starts.
+        TString afterResponse;
+        TString lastError;
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        for (;;) {
+            try {
+                afterResponse = scrape();
+                break;
+            } catch (const yexception& error) {
+                lastError = error.what();
+            }
+            UNIT_ASSERT_C(
+                TInstant::Now() < deadline,
+                "Normal monitoring did not recover after handover: "
+                    << lastError);
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        NJson::TJsonValue after;
+        UNIT_ASSERT(NJson::ReadJsonTree(afterResponse, &after));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSensorValue(after, "Initializing"));
+        UNIT_ASSERT_VALUES_EQUAL("8", ReadFile(restartsCountPath));
 
         // Emulate NodeBroker lease expiration - it is simpler than creating real
         // conditions for it
@@ -393,7 +505,6 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         // receives TAppShouldExitWithoutShutdownException, it calls _exit and
         // terminates the process immediately
         bootstrap.GetShouldContinue().ShouldStop(0);
-        bootstrap.Stop();
     }
 
     // This test asserts that |NodeLeaseExpirationExitCode| has the expected

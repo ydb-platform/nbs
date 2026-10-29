@@ -1013,6 +1013,15 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
     }
 }
 
+void TBootstrapBase::StartActorSystem()
+{
+    if (auto* actorSystem = GetActorSystem()) {
+        STORAGE_INFO("Starting ActorSystem ...");
+        actorSystem->Start();
+        STORAGE_INFO("Started ActorSystem");
+    }
+}
+
 void TBootstrapBase::Start()
 {
 #define START_COMMON_COMPONENT(c)                                              \
@@ -1051,7 +1060,7 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(StatsUploader);
     START_COMMON_COMPONENT(Spdk);
     START_COMMON_COMPONENT(FileIOServiceProvider);
-    START_KIKIMR_COMPONENT(ActorSystem);
+    StartActorSystem();
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
@@ -1167,6 +1176,9 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(DiscoveryService);
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
+    // A preceding component can fail before StartActorSystem releases the
+    // early listener. Keep this cleanup even after a successful handover.
+    STOP_KIKIMR_COMPONENT(KikimrMonitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);
     STOP_COMMON_COMPONENT(NvmeManager);
     STOP_COMMON_COMPONENT(Logging);

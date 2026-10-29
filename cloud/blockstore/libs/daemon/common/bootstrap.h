@@ -112,6 +112,17 @@ protected:
     virtual TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) = 0;
 
     virtual IStartable* GetActorSystem() = 0;
+
+    // The YDB bootstrap releases its early monitoring listener immediately
+    // before this component starts; earlier components can still take time.
+    virtual void StartActorSystem();
+
+    // Stop early monitoring after partial Init/Start failures too, without
+    // adding YDB-backed components to common/local dependencies.
+    virtual IStartable* GetKikimrMonitoring()
+    {
+        return nullptr;
+    }
     virtual IStartable* GetAsyncLogger() = 0;
     virtual IStartable* GetStatsAggregator() = 0;
     virtual IStartable* GetClientPercentiles() = 0;

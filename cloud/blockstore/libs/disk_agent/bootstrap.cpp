@@ -53,6 +53,7 @@
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/monitoring/monitoring.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/rdma/iface/probes.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
@@ -478,6 +479,12 @@ bool TBootstrap::InitKikimrService()
         }
     }
 
+    // Expose counters before registration and CMS fetch, so either
+    // operation can stall without preventing metrics scrapes.
+    KikimrMonitoring = NCloud::NStorage::CreateKikimrMonitoring(
+        Configs->KikimrConfig->GetMonitoringConfig(), "blockstore", Log);
+    KikimrMonitoring->Start();
+
     auto registrant =
         CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
 
@@ -557,6 +564,7 @@ bool TBootstrap::InitKikimrService()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.Counters = KikimrMonitoring->GetCounters();
     args.StorageConfig = Configs->StorageConfig;
     args.DiskAgentConfig = Configs->DiskAgentConfig;
     args.RdmaConfig = Configs->RdmaConfig;
@@ -689,7 +697,15 @@ void TBootstrap::Start()
     START_COMPONENT(RdmaServer);
     START_COMPONENT(FileIOServiceProvider);
     START_COMPONENT(LocalNVMeService);
+    if (KikimrMonitoring) {
+        // Preserve early scraping until the main actor system is ready to
+        // start, then release the port before normal monitoring binds.
+        KikimrMonitoring->Stop();
+    }
     START_COMPONENT(ActorSystem);
+    if (KikimrMonitoring) {
+        KikimrMonitoring->CompleteInitialization();
+    }
     START_COMPONENT(CriticalEventsStatsUpdater);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -710,6 +726,11 @@ void TBootstrap::Start()
 void TBootstrap::Stop()
 {
     if (!Initialized) {
+        // InitKikimrService() can throw after early monitoring starts but
+        // before Initialized is set, so this path must stop its transport too.
+        if (KikimrMonitoring) {
+            KikimrMonitoring->Stop();
+        }
         if (StubMonPageServer) {
             StubMonPageServer->Stop();
         }
@@ -738,6 +759,8 @@ void TBootstrap::Stop()
     STOP_COMPONENT(TraceProcessor);
     STOP_COMPONENT(ProfileLog);
     STOP_COMPONENT(Monitoring);
+    // Also covers a Start() failure in a component preceding the handover.
+    STOP_COMPONENT(KikimrMonitoring);
     STOP_COMPONENT(NvmeManager);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);

@@ -31,6 +31,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
+#include <cloud/storage/core/libs/kikimr/monitoring/monitoring.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
 
@@ -88,7 +89,15 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(Metrics);
     FILESTORE_LOG_START_COMPONENT(TraceProcessor);
     FILESTORE_LOG_START_COMPONENT(TraceSerializer);
+    if (KikimrMonitoring) {
+        // Keep early scrapes working through all of Init() and release the port
+        // only when the main actor system is about to start normal monitoring.
+        KikimrMonitoring->Stop();
+    }
     FILESTORE_LOG_START_COMPONENT(ActorSystem);
+    if (KikimrMonitoring) {
+        KikimrMonitoring->CompleteInitialization();
+    }
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
@@ -131,6 +140,8 @@ void TBootstrapCommon::Stop()
     FILESTORE_LOG_STOP_COMPONENT(Metrics);
     FILESTORE_LOG_STOP_COMPONENT(FileIOService);
     FILESTORE_LOG_STOP_COMPONENT(Monitoring);
+    // Init() or an earlier Start() component can fail before the handover.
+    FILESTORE_LOG_STOP_COMPONENT(KikimrMonitoring);
     FILESTORE_LOG_STOP_COMPONENT(Logging);
 }
 
@@ -153,6 +164,22 @@ void TBootstrapCommon::Init()
 {
     InitCommonConfigs();
     InitLogs();
+
+    if (Configs->Options->Service == EServiceKind::Kikimr) {
+        // Registration and CMS fetch are synchronous and may block for a long
+        // time. Expose counters using local monitoring settings before either;
+        // the normal monitor will take over after the actor system is ready.
+        KikimrMonitoring = CreateKikimrMonitoring(
+            Configs->KikimrConfig->GetMonitoringConfig(), "filestore", Log);
+        if (Configs->Options->RestartsCountFile) {
+            // Publish once per process before registration so crash loops
+            // during registration contribute to the restart count as well.
+            PublishRestartsCount(
+                Configs->Options->RestartsCountFile,
+                KikimrMonitoring->GetCounters());
+        }
+        KikimrMonitoring->Start();
+    }
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
@@ -234,7 +261,9 @@ void TBootstrapCommon::InitDiagnostics()
         Metrics->SetupCounters(Monitoring->GetCounters());
     }
 
-    if (Configs->Options->RestartsCountFile) {
+    // YDB mode publishes this before registration. Publishing it again here
+    // would count one process start twice in the persistent restarts file.
+    if (Configs->Options->RestartsCountFile && !KikimrMonitoring) {
         PublishRestartsCount(
             Configs->Options->RestartsCountFile,
             Monitoring->GetCounters());
@@ -315,6 +344,7 @@ void TBootstrapCommon::InitActorSystem()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.Counters = KikimrMonitoring->GetCounters();
     args.StorageConfig = Configs->StorageConfig;
     args.StorageConfig->SetFeaturesConfig(*Configs->FeaturesConfig);
     args.ProfileLog = ProfileLog;
