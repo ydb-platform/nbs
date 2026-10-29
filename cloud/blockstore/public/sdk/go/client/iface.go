@@ -37,6 +37,16 @@ type ClientIface interface {
 		req *protos.TDestroyVolumeRequest,
 	) (*protos.TDestroyVolumeResponse, error)
 
+	CreateVolumeLink(
+		ctx context.Context,
+		req *protos.TCreateVolumeLinkRequest,
+	) (*protos.TCreateVolumeLinkResponse, error)
+
+	DestroyVolumeLink(
+		ctx context.Context,
+		req *protos.TDestroyVolumeLinkRequest,
+	) (*protos.TDestroyVolumeLinkResponse, error)
+
 	ResizeVolume(
 		ctx context.Context,
 		req *protos.TResizeVolumeRequest,

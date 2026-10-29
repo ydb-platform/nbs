@@ -57,6 +57,13 @@ service DiskService {
     // response: google.protobuf.Empty
     rpc Migrate(MigrateDiskRequest) returns (Operation);
 
+    // Transfers a managed disk within its public zone via an NBS link.
+    // Omitted destination cell means the source's current cell.
+    // NBS removes the source after copying. Cancellation is not supported.
+    // metadata: TransferVolumeViaLinkMetadata
+    // response: google.protobuf.Empty
+    rpc TransferVolumeViaLink(TransferVolumeViaLinkRequest) returns (Operation);
+
     // Sends a signal to the migration operation, advancing migration process forward.
     rpc SendMigrationSignal(SendMigrationSignalRequest) returns (google.protobuf.Empty);
 
@@ -195,4 +202,24 @@ message ListDiskStatesResponse {
     }
 
     repeated Item items = 1;
+}
+
+message TransferVolumeViaLinkRequest {
+    string src_disk_id = 1;
+    // Optional exact destination cell; defaults to the source's current cell.
+    string dst_cell_id = 2;
+    // Optional expected public zone. Empty means the source disk's zone.
+    // If nonempty, both cells must belong to it; checked before target creation.
+    string zone_id = 3;
+}
+
+message TransferVolumeViaLinkMetadata {
+    string link_uuid = 1;
+    string status = 2;
+    string logical_disk_id = 4;
+    // Physical volume addresses; zone_id contains the exact cell ID.
+    DiskId src_disk = 5;
+    DiskId dst_disk = 6;
+    string error_message = 7;
+    bool recovery_required = 8;
 }

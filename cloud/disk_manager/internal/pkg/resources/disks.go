@@ -77,7 +77,9 @@ type diskState struct {
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
 
-	fillGeneration uint64
+	fillGeneration  uint64
+	operationTaskID string
+	operationKind   string
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
@@ -104,7 +106,9 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		ScannedAt:            s.scannedAt,
 		ScanFoundBrokenBlobs: s.scanFoundBrokenBlobs,
 
-		FillGeneration: s.fillGeneration,
+		FillGeneration:  s.fillGeneration,
+		OperationTaskID: s.operationTaskID,
+		OperationKind:   s.operationKind,
 	}
 }
 
@@ -139,6 +143,8 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
 
 		persistence.StructFieldValue("fill_generation", persistence.Uint64Value(s.fillGeneration)),
+		persistence.StructFieldValue("operation_task_id", persistence.UTF8Value(s.operationTaskID)),
+		persistence.StructFieldValue("operation_kind", persistence.UTF8Value(s.operationKind)),
 	)
 }
 
@@ -168,6 +174,8 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
+		persistence.OptionalWithDefault("operation_task_id", &state.operationTaskID),
+		persistence.OptionalWithDefault("operation_kind", &state.operationKind),
 	)
 	return
 }
@@ -221,7 +229,9 @@ func diskStateStructTypeString() string {
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
 
-		fill_generation: Uint64>`
+		fill_generation: Uint64,
+		operation_task_id: Utf8,
+		operation_kind: Utf8>`
 }
 
 func diskStateTableDescription() persistence.CreateTableDescription {
@@ -255,6 +265,8 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("fill_generation", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("operation_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("operation_kind", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -531,6 +543,9 @@ func (s *storageYDB) deleteDisk(
 			return state.toDiskMeta(), nil
 		}
 
+		if state.operationTaskID != "" {
+			return nil, errors.NewRetriableError(fmt.Errorf("%w: disk %q is owned by %q", ErrDiskOperationInProgress, diskID, state.operationTaskID))
+		}
 		state.status = diskStatusDeleting
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
@@ -778,6 +793,9 @@ func (s *storageYDB) incrementFillGeneration(
 
 	state := states[0]
 
+	if state.operationTaskID != "" && state.operationKind != DiskOperationMigrate {
+		return 0, errors.NewNonRetriableError(fmt.Errorf("%w: fill generation of disk %q is locked", ErrDiskOperationInProgress, diskID))
+	}
 	state.fillGeneration++
 
 	err = s.updateDiskState(ctx, tx, state)
@@ -866,11 +884,11 @@ func (s *storageYDB) diskScanned(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) getDiskState(
+func (s *storageYDB) findDiskState(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-) (state diskState, err error) {
+) (state *diskState, err error) {
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -894,17 +912,20 @@ func (s *storageYDB) getDiskState(
 	}
 
 	if len(states) == 0 {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return state, err
-		}
-
-		return state, errors.NewSilentNonRetriableErrorf(
-			"unable to find disk %q",
-			diskID,
-		)
+		return nil, nil
 	}
-	return states[0], nil
+	return &states[0], nil
+}
+
+func (s *storageYDB) getDiskState(ctx context.Context, tx *persistence.Transaction, diskID string) (diskState, error) {
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return diskState{}, err
+	}
+	if state == nil {
+		return diskState{}, errors.NewSilentNonRetriableErrorf("unable to find disk %q", diskID)
+	}
+	return *state, nil
 }
 
 func (s *storageYDB) updateDiskState(
@@ -1098,6 +1119,9 @@ func (s *storageYDB) DiskRelocated(
 		return err
 	}
 
+	if state.operationTaskID != "" && state.operationKind != DiskOperationMigrate {
+		return errors.NewNonRetriableError(fmt.Errorf("%w: relocation of disk %q is blocked", ErrDiskOperationInProgress, diskID))
+	}
 	oldZoneID := state.zoneID
 	if oldZoneID != srcZoneID {
 		return errors.NewNonRetriableErrorf(
@@ -1154,6 +1178,34 @@ func createDisksYDBTables(
 	return nil
 }
 
+// FinishDiskTransfer participates in the transaction that finishes the task.
+// The creation task guards against relocating a deleted and recreated disk.
+func (s *storageYDB) FinishDiskTransfer(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	sourceCellID string,
+	targetCellID string,
+	createTaskID string,
+	transferTaskID string,
+) error {
+	if diskID == "" || sourceCellID == "" || targetCellID == "" || createTaskID == "" || transferTaskID == "" {
+		return errors.NewNonRetriableErrorf("disk transfer identity must be specified")
+	}
+	state, err := s.getDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+	if state.status != diskStatusReady || state.createTaskID != createTaskID || state.zoneID != sourceCellID ||
+		state.operationTaskID != transferTaskID || state.operationKind != DiskOperationTransfer {
+		return errors.NewNonRetriableErrorf("disk %q changed while its volume was transferred", diskID)
+	}
+	state.zoneID = targetCellID
+	state.operationTaskID = ""
+	state.operationKind = ""
+	return s.updateDiskState(ctx, tx, state)
+}
+
 func dropDisksYDBTables(
 	ctx context.Context,
 	folder string,
@@ -1177,4 +1229,58 @@ func dropDisksYDBTables(
 	logging.Info(ctx, "Dropped tables for disks")
 
 	return nil
+}
+
+var ErrDiskOperationInProgress = fmt.Errorf("disk operation is in progress")
+
+// ReserveDiskOperation must run in the task's SaveStateWithPreparation transaction.
+func (s *storageYDB) ReserveDiskOperation(ctx context.Context, tx *persistence.Transaction, operation DiskOperation) (*DiskMeta, error) {
+	if operation.DiskID == "" || operation.TaskID == "" || operation.Kind == "" {
+		return nil, errors.NewNonRetriableErrorf("disk operation identity must be specified")
+	}
+	state, err := s.getDiskState(ctx, tx, operation.DiskID)
+	if err != nil {
+		return nil, err
+	}
+	if state.status != diskStatusReady {
+		return nil, errors.NewNonRetriableErrorf("disk %q is not ready for %s", operation.DiskID, operation.Kind)
+	}
+	if state.operationTaskID != "" && state.operationTaskID != operation.TaskID {
+		return nil, errors.NewNonRetriableError(fmt.Errorf("%w: disk %q is owned by %q", ErrDiskOperationInProgress, operation.DiskID, state.operationTaskID))
+	}
+	if operation.Resume && state.operationTaskID != operation.TaskID {
+		return nil, errors.NewNonRetriableErrorf("disk operation reservation was lost")
+	}
+	if (operation.CellID != "" && state.zoneID != operation.CellID) ||
+		(operation.CreateTaskID != "" && state.createTaskID != operation.CreateTaskID) {
+		return nil, errors.NewNonRetriableErrorf("disk %q changed before operation resume", operation.DiskID)
+	}
+	if state.operationTaskID == operation.TaskID && state.operationKind != operation.Kind {
+		return nil, errors.NewNonRetriableErrorf("disk operation kind changed")
+	}
+	if state.operationTaskID != operation.TaskID {
+		state.operationTaskID = operation.TaskID
+		state.operationKind = operation.Kind
+		if err := s.updateDiskState(ctx, tx, state); err != nil {
+			return nil, err
+		}
+	}
+	return state.toDiskMeta(), nil
+}
+
+// Release is idempotent and never releases another task's reservation.
+func (s *storageYDB) ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error {
+	if diskID == "" || taskID == "" {
+		return errors.NewNonRetriableErrorf("disk operation identity must be specified")
+	}
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+	if state == nil || state.operationTaskID != taskID {
+		return nil
+	}
+	state.operationTaskID = ""
+	state.operationKind = ""
+	return s.updateDiskState(ctx, tx, *state)
 }

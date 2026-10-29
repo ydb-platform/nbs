@@ -867,6 +867,18 @@ func (s *service) MigrateDisk(
 	)
 }
 
+func (s *service) TransferVolumeViaLink(
+	ctx context.Context,
+	req *disk_manager.TransferVolumeViaLinkRequest,
+) (string, error) {
+	if req.GetSrcDiskId() == "" {
+		return "", common.NewInvalidArgumentError("source disk ID is required")
+	}
+	return s.taskScheduler.ScheduleNonCancellableTask(ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+		LogicalDiskId: req.GetSrcDiskId(), DstCellId: req.GetDstCellId(), ZoneId: req.GetZoneId(),
+	})
+}
+
 func (s *service) SendMigrationSignal(
 	ctx context.Context,
 	req *disk_manager.SendMigrationSignalRequest,

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package disks;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos";
+
+message DiskOperationTaskState {
+    bool Acquired = 1;
+    bool Released = 2;
+    string ErrorMessage = 3;
+    string CreateTaskId = 4;
+    // Preserves cleanup for saved tasks that had no Operation field.
+    bool CleanupRequired = 5;
+}

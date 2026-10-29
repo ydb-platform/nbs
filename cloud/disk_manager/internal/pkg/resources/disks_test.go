@@ -8,8 +8,12 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	task_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -401,4 +405,190 @@ func TestDiskRelocated(t *testing.T) {
 	actual, err = storage.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
 	require.Equal(t, dstZoneID, actual.ZoneID)
+}
+
+func TestFinishDiskTransferValidatesCatalogIdentity(t *testing.T) {
+	for _, name := range []string{"same-cell", "cross-cell", "creating", "deleting", "wrong-generation", "wrong-source"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, db, storage := setupTest(t)
+			defer db.Close(ctx)
+			disk := DiskMeta{
+				ID: t.Name(), ZoneID: "source-cell", CreateTaskID: "create-task",
+				CreateRequest: &wrappers.UInt64Value{Value: 1}, CreatingAt: time.Now(),
+			}
+			_, err := storage.CreateDisk(ctx, disk)
+			require.NoError(t, err)
+			if name != "creating" {
+				disk.CreatedAt = time.Now()
+				require.NoError(t, storage.DiskCreated(ctx, disk))
+			}
+			if name == "deleting" {
+				_, err := storage.DeleteDisk(ctx, disk.ID, "delete-task", time.Now())
+				require.NoError(t, err)
+			}
+			if name != "creating" && name != "deleting" {
+				_, err := reserveDiskOperation(t, ctx, db, storage, DiskOperation{DiskID: disk.ID, TaskID: "transfer-task", Kind: DiskOperationTransfer, CellID: "source-cell", CreateTaskID: "create-task"})
+				require.NoError(t, err)
+			}
+			sourceCell, targetCell, createTask := "source-cell", "target-cell", "create-task"
+			if name == "same-cell" {
+				targetCell = "source-cell"
+			}
+			if name == "wrong-generation" {
+				createTask = "another-create-task"
+			}
+			if name == "wrong-source" {
+				sourceCell = "another-cell"
+			}
+			err = db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+				tx, err := session.BeginRWTransaction(ctx)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback(ctx)
+				if err := storage.FinishDiskTransfer(ctx, tx, disk.ID, sourceCell, targetCell, createTask, "transfer-task"); err != nil {
+					return err
+				}
+				return tx.Commit(ctx)
+			})
+			if name == "same-cell" || name == "cross-cell" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				targetCell = "source-cell"
+			}
+			actual, err := storage.GetDiskMeta(ctx, disk.ID)
+			require.NoError(t, err)
+			require.Equal(t, targetCell, actual.ZoneID)
+		})
+	}
+}
+
+func TestDiskOperationReservationBlocksConflictingChanges(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	disk := DiskMeta{ID: t.Name(), ZoneID: "cell", CreateTaskID: "create-task", CreatingAt: time.Now(),
+		CreateRequest: &wrappers.UInt64Value{Value: 1}}
+	_, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	disk.CreatedAt = time.Now()
+	require.NoError(t, storage.DiskCreated(ctx, disk))
+	operation := DiskOperation{DiskID: disk.ID, CellID: "cell", CreateTaskID: "create-task", TaskID: "transfer-task", Kind: DiskOperationTransfer}
+	meta, err := reserveDiskOperation(t, ctx, db, storage, operation)
+	require.NoError(t, err)
+	require.Equal(t, "transfer-task", meta.OperationTaskID)
+	operation.Resume = true
+	_, err = reserveDiskOperation(t, ctx, db, storage, operation)
+	require.NoError(t, err)
+	for _, kind := range []string{DiskOperationTransfer, DiskOperationResize, DiskOperationAlter, DiskOperationMigrate} {
+		_, err := reserveDiskOperation(t, ctx, db, storage, DiskOperation{DiskID: disk.ID, TaskID: "another-task", Kind: kind})
+		require.ErrorIs(t, err, ErrDiskOperationInProgress)
+	}
+	changedGeneration := operation
+	changedGeneration.CreateTaskID = "another-create-task"
+	_, err = reserveDiskOperation(t, ctx, db, storage, changedGeneration)
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+	_, err = storage.IncrementFillGeneration(ctx, disk.ID)
+	require.ErrorIs(t, err, ErrDiskOperationInProgress)
+	_, err = storage.DeleteDisk(ctx, disk.ID, "delete-task", time.Now())
+	require.ErrorIs(t, err, ErrDiskOperationInProgress)
+	meta, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Empty(t, meta.DeleteTaskID)
+	release := func(taskID string) error {
+		return db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+			tx, err := session.BeginRWTransaction(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+			if err := storage.ReleaseDiskOperation(ctx, tx, disk.ID, taskID); err != nil {
+				return err
+			}
+			return tx.Commit(ctx)
+		})
+	}
+	require.NoError(t, release("another-task"))
+	meta, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Equal(t, "transfer-task", meta.OperationTaskID)
+	require.NoError(t, release("transfer-task"))
+	_, err = reserveDiskOperation(t, ctx, db, storage, operation)
+	require.ErrorContains(t, err, "reservation was lost")
+	_, err = storage.DeleteDisk(ctx, disk.ID, "delete-task", time.Now())
+	require.NoError(t, err)
+	_, err = reserveDiskOperation(t, ctx, db, storage, DiskOperation{DiskID: disk.ID, TaskID: "new-task", Kind: DiskOperationTransfer})
+	require.Error(t, err)
+}
+
+func reserveDiskOperation(t *testing.T, ctx context.Context, db *persistence.YDBClient, storage Storage, operation DiskOperation) (*DiskMeta, error) {
+	t.Helper()
+	var meta *DiskMeta
+	err := db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		tx, err := session.BeginRWTransaction(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		meta, err = storage.ReserveDiskOperation(ctx, tx, operation)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	})
+	return meta, err
+}
+
+func TestDiskOperationReservationRollsBackAfterTaskCancellation(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+	disk := DiskMeta{ID: t.Name(), ZoneID: "cell", CreateTaskID: "create-task", CreatingAt: time.Now(),
+		CreateRequest: &wrappers.UInt64Value{Value: 1}}
+	_, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	disk.CreatedAt = time.Now()
+	require.NoError(t, storage.DiskCreated(ctx, disk))
+	folder := "tasks/" + t.Name()
+	config := &tasks_config.TasksConfig{StorageFolder: &folder}
+	require.NoError(t, task_storage.CreateYDBTables(ctx, config, db, false))
+	tasks, err := task_storage.NewStorage(config, empty.NewRegistry(), db)
+	require.NoError(t, err)
+	now := time.Now()
+	taskID, err := tasks.CreateTask(ctx, task_storage.TaskState{
+		IdempotencyKey: t.Name(), TaskType: "disks.ResizeDisk", CreatedAt: now, ModifiedAt: now,
+		Status: task_storage.TaskStatusReadyToRun, Dependencies: common.NewStringSet(),
+	})
+	require.NoError(t, err)
+	stale, err := tasks.LockTaskToRun(ctx, task_storage.TaskInfo{ID: taskID}, now, "worker-a", "run")
+	require.NoError(t, err)
+	_, err = tasks.MarkForCancellation(ctx, taskID, now)
+	require.NoError(t, err)
+	current, err := tasks.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	cancel, err := tasks.LockTaskToCancel(ctx, task_storage.TaskInfo{
+		ID: taskID, GenerationID: current.GenerationID,
+	}, now, "worker-b", "cancel")
+	require.NoError(t, err)
+	cancel.Status = task_storage.TaskStatusCancelled
+	_, err = tasks.UpdateTaskWithPreparation(ctx, cancel, func(ctx context.Context, tx *persistence.Transaction) error {
+		return storage.ReleaseDiskOperation(ctx, tx, disk.ID, taskID)
+	})
+	require.NoError(t, err)
+	prepared := false
+	_, err = tasks.UpdateTaskWithPreparation(ctx, stale, func(ctx context.Context, tx *persistence.Transaction) error {
+		_, err := storage.ReserveDiskOperation(ctx, tx, DiskOperation{
+			DiskID: disk.ID, TaskID: taskID, Kind: DiskOperationResize, CellID: "cell", CreateTaskID: "create-task",
+		})
+		prepared = err == nil
+		return err
+	})
+	require.True(t, prepared)
+	require.ErrorIs(t, err, errors.NewWrongGenerationError())
+	meta, err := storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Empty(t, meta.OperationTaskID)
+	require.Empty(t, meta.OperationKind)
+	current, err = tasks.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, task_storage.TaskStatusCancelled, current.Status)
 }

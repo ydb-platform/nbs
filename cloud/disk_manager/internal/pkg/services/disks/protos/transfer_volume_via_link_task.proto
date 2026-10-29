@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package disks;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TransferVolumeViaLinkRequest {
+    string LogicalDiskId = 3;
+    // Optional expected public zone. Empty means the source disk's zone.
+    // If nonempty, both cells must belong to it; checked before target creation.
+    string ZoneId = 4;
+    // Empty means the source's current cell, resolved while holding reservation.
+    string DstCellId = 5;
+}
+
+message TransferVolumeViaLinkTaskState {
+    bool TargetCreated = 1;
+    bool LinkCreated = 2;
+    string LinkUUID = 3;
+    string Status = 4;
+    // Selected once, before any target is created, and preserved on retries.
+    types.Disk SrcDisk = 6;
+    types.Disk DstDisk = 7;
+    string SourceCreateTaskId = 8;
+    bool LinkCreationStarted = 9;
+    bool TargetFinalized = 10;
+    string IncrementalCleanupTaskId = 11;
+    string ErrorMessage = 12;
+    bool ReservationAcquired = 14;
+    bool ReservationReleased = 15;
+    bool FailurePending = 16;
+    bool CleanupDone = 17;
+    bool RecoveryRequired = 19;
+    uint64 IncrementalCleanupAttempt = 20;
+}
