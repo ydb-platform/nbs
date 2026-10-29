@@ -500,6 +500,12 @@ private:
         ui64 parentNodeId,
         const TString& name);
 
+    void AddFileSystemEventNodeXAttrSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 nodeId,
+        const TString& name);
+
     void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
 
     TDuration GetFileSystemEventsCacheTTL(

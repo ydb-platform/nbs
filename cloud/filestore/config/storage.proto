@@ -946,10 +946,11 @@ message TStorageConfig
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
-    // InvalidateNodeRef) to its clients upon Node and NodeRef changes and
-    // returns NodeCacheTTL and NodeRefCacheTTL values in GetNodeAttrResponses
-    // which tell the client for how long caching of the corresponding Node
-    // and NodeRef is allowed.
+    // InvalidateNodeRef, InvalidateNodeXAttr) to its clients upon Node,
+    // NodeRef and NodeXAttr changes and returns NodeCacheTTL and
+    // NodeRefCacheTTL values in GetNodeAttrResponses and XAttrCacheTTL in
+    // GetNodeXAttrResponses which tell the client for how long caching of the
+    // corresponding Node, NodeRef and NodeXAttr is allowed.
     optional bool FileSystemEventsEnabled = 553;
 
     // If set to true, the tablet counts the FileSystemEvents generated due to
@@ -986,9 +987,10 @@ message TStorageConfig
     // directory, so the directory must not be shared with other processes.
     optional string SystemTabletBackupDirPath = 559;
 
-    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes and
-    // ListNodesInternal (see FileSystemListingEventsEnabled) allow the client
-    // to cache the returned Nodes and NodeRefs for
+    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes,
+    // ListNodesInternal (see FileSystemListingEventsEnabled) and GetNodeXAttr
+    // allow the client to cache the returned Nodes, NodeRefs and NodeXAttrs
+    // for
     // FileSystemEventSubscriptionsSealPeriod minus this margin (in
     // milliseconds): a subscription lives at least one seal period, the margin
     // covers the delivery and processing delays.

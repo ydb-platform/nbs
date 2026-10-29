@@ -17,12 +17,13 @@ TActorId TIndexTabletActor::RegisterFileSystemEventClient(
 {
     //
     // Called only by the requests whose responses the client is allowed to
-    // cache (see NodeCacheTTL and NodeRefCacheTTL in their responses):
-    // GetNodeAttr, GetNodeAttrBatch (attrs of shard-resident nodes upon
-    // ListNodes), ListNodes and ListNodesInternal. Upon completion these
-    // requests subscribe the client to the returned Nodes and NodeRefs (see
-    // FileSystemEventSubscriptions); GetNodeAttrBatch, ListNodes and
-    // ListNodesInternal do this only if FileSystemListingEventsEnabled is set.
+    // cache (see NodeCacheTTL, NodeRefCacheTTL and XAttrCacheTTL in their
+    // responses): GetNodeAttr, GetNodeAttrBatch (attrs of shard-resident
+    // nodes upon ListNodes), ListNodes, ListNodesInternal and GetNodeXAttr.
+    // Upon completion these requests subscribe the client to the returned
+    // Nodes, NodeRefs and NodeXAttrs (see FileSystemEventSubscriptions);
+    // GetNodeAttrBatch, ListNodes and ListNodesInternal do this only if
+    // FileSystemListingEventsEnabled is set.
     // The other responses (e.g. CreateNode, CreateHandle) must not be cached.
     //
     // Requests received via a pipe have the pipe server as their recipient.
@@ -88,6 +89,25 @@ void TIndexTabletActor::AddFileSystemEventNodeRefSubscriber(
         ctx.Now());
 }
 
+void TIndexTabletActor::AddFileSystemEventNodeXAttrSubscriber(
+    const TActorContext& ctx,
+    const TActorId& pipeServerId,
+    ui64 nodeId,
+    const TString& name)
+{
+    if (!IsFileSystemEventsEnabled() ||
+        !FileSystemEventClients.contains(pipeServerId))
+    {
+        return;
+    }
+
+    FileSystemEventSubscriptions.AddNodeXAttrSubscriber(
+        nodeId,
+        name,
+        pipeServerId,
+        ctx.Now());
+}
+
 void TIndexTabletActor::RemoveFileSystemEventClient(
     const TActorId& pipeServerId)
 {
@@ -142,9 +162,8 @@ ui32 TIndexTabletActor::SendFileSystemEvents(
     ui32 sendCount = 0;
     for (const auto& event: events) {
         //
-        // Only the clients that have read the Node or the NodeRef get the
-        // event (or all the clients of a generation if the Node or the
-        // NodeRef is marked for broadcast there). The registrations are
+        // Only the clients that have read the Node, the NodeRef or the
+        // NodeXAttr get the event. The registrations are
         // removed - the clients register again upon the next read. This
         // applies to the dry run mode as well, so that the counters reflect
         // the real number of sends.
@@ -159,6 +178,13 @@ ui32 TIndexTabletActor::SendFileSystemEvents(
             const auto& invalidate = event.GetInvalidateNodeRef();
             pipeServerIds =
                 FileSystemEventSubscriptions.ExtractNodeRefSubscribers(
+                    invalidate.GetNodeId(),
+                    invalidate.GetName(),
+                    ctx.Now());
+        } else if (event.HasInvalidateNodeXAttr()) {
+            const auto& invalidate = event.GetInvalidateNodeXAttr();
+            pipeServerIds =
+                FileSystemEventSubscriptions.ExtractNodeXAttrSubscribers(
                     invalidate.GetNodeId(),
                     invalidate.GetName(),
                     ctx.Now());
@@ -180,7 +206,9 @@ ui32 TIndexTabletActor::SendFileSystemEvents(
         sendCount += clients.size();
         auto& counter = event.HasInvalidateNode()
             ? Metrics->InvalidateNodeEventSendCount
-            : Metrics->InvalidateNodeRefEventSendCount;
+            : event.HasInvalidateNodeRef()
+                ? Metrics->InvalidateNodeRefEventSendCount
+                : Metrics->InvalidateNodeXAttrEventSendCount;
         counter.fetch_add(clients.size(), std::memory_order_relaxed);
 
         if (dryRun) {
@@ -225,7 +253,10 @@ void TIndexTabletActor::HandleGenerateFileSystemEvent(
         record.ShortUtf8DebugString().Quote().c_str());
 
     const auto& event = record.GetEvent();
-    if (event.HasInvalidateNode() == event.HasInvalidateNodeRef()) {
+    const ui32 invalidationCount = event.HasInvalidateNode() +
+                                   event.HasInvalidateNodeRef() +
+                                   event.HasInvalidateNodeXAttr();
+    if (invalidationCount != 1) {
         NCloud::Reply(
             ctx,
             *ev,
