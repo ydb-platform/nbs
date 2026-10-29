@@ -164,6 +164,10 @@ func Create(
 				"stored_in_s3",
 				persistence.Optional(persistence.TypeBool),
 			),
+			persistence.WithColumn(
+				"encrypted_dek",
+				persistence.Optional(persistence.TypeString),
+			),
 			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
 		),
 		dropUnusedColumns,

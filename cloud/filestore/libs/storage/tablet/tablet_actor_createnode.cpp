@@ -444,8 +444,6 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 
@@ -972,16 +970,6 @@ void TIndexTabletActor::CompleteTx_CreateNode(
                 MakeError(E_INVALID_STATE, std::move(message));
         }
         response->Record = std::move(args.Response);
-
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* linked = sessionEvent.AddNodeLinked();
-            linked->SetParentNodeId(args.ParentNodeId);
-            linked->SetChildNodeId(args.ChildNodeId);
-            linked->SetName(args.Name);
-        }
-
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     CompleteResponse<TEvService::TCreateNodeMethod>(

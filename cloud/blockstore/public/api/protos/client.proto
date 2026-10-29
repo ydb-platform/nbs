@@ -40,6 +40,9 @@ message TClientPerformanceProfile
     // Performance profile used to throttle requests to
     // network-hdd-nonreplicated volumes.
     optional TClientMediaKindPerformanceProfile HddNonreplProfile = 7;
+    // Performance profile used to throttle requests to
+    // network-ssd-direct-mirror3of5-group volumes.
+    optional TClientMediaKindPerformanceProfile DirectMirror3Of5Profile = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

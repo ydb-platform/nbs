@@ -14,15 +14,8 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// FastShard stub for test purposes
-struct TTestFastShard: NFastShard::IFileSystemShard
+struct TNotImplementedFastShard: NFastShard::IFileSystemShard
 {
-    NThreading::TPromise<NCloud::NProto::TError> InitResult =
-        NThreading::NewPromise<NCloud::NProto::TError>();
-    bool TornDown = false;
-    ui64 Generation = 0;
-    NProtoPrivate::TFastShardConfig Config;
-
 #define FAST_SHARD_NOT_IMPLEMENTED(name, ns, ...)                              \
     NThreading::TFuture<ns::T##name##Response> name(                           \
         ns::T##name##Request request) override                                 \
@@ -34,17 +27,7 @@ struct TTestFastShard: NFastShard::IFileSystemShard
     FAST_SHARD_PRIVATE_METHODS(FAST_SHARD_NOT_IMPLEMENTED, NProtoPrivate)
     FAST_SHARD_PUBLIC_METHODS(FAST_SHARD_NOT_IMPLEMENTED, NProto)
 
-#undef FAST_SHARD_NOT_IMPLEMENTED
-
-    NThreading::TFuture<NCloud::NProto::TError> Init() override;
-    NThreading::TFuture<NCloud::NProto::TError> Format() override;
-    void TearDown() override;
-    NThreading::TFuture<NCloud::NProto::TError> CollectStats(
-        NFastShard::TFileSystemShardStats* stats) const override;
-    void DumpLayoutHtml(IOutputStream& out) const override;
-    void DumpLayoutJson(IOutputStream& out) const override;
-
-private:
+protected:
     template <typename TResponse, typename TRequest>
     static NThreading::TFuture<TResponse> Serve(TRequest request)
     {
@@ -63,6 +46,33 @@ private:
         response.SetBuffer(TString(request.GetLength(), 'x'));
         return NThreading::MakeFuture(std::move(response));
     }
+
+#undef FAST_SHARD_NOT_IMPLEMENTED
+};
+
+// FastShard stub for test purposes
+struct TTestFastShard: TNotImplementedFastShard
+{
+    NThreading::TPromise<NCloud::NProto::TError> InitResult =
+        NThreading::NewPromise<NCloud::NProto::TError>();
+    bool TornDown = false;
+    ui64 Generation = 0;
+    NProtoPrivate::TFastShardConfig Config;
+
+    NThreading::TFuture<NProtoPrivate::TCreateSessionResponse> CreateSession(
+        NProtoPrivate::TCreateSessionRequest request) override;
+    NThreading::TFuture<NProto::TResetSessionResponse> ResetSession(
+        NProto::TResetSessionRequest request) override;
+    NThreading::TFuture<NProtoPrivate::TDestroySessionResponse> DestroySession(
+        NProtoPrivate::TDestroySessionRequest request) override;
+
+    NThreading::TFuture<NCloud::NProto::TError> Init() override;
+    NThreading::TFuture<NCloud::NProto::TError> Format() override;
+    void TearDown() override;
+    NThreading::TFuture<NCloud::NProto::TError> CollectStats(
+        NFastShard::TFileSystemShardStats* stats) const override;
+    void DumpLayoutHtml(IOutputStream& out) const override;
+    void DumpLayoutJson(IOutputStream& out) const override;
 };
 
 inline NProtoPrivate::TFastShardConfig MemConfig()

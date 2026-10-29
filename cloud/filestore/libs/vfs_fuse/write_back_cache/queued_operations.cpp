@@ -1,4 +1,5 @@
 #include "queued_operations.h"
+#include "write_data_request.h"
 
 #include <variant>
 
@@ -105,8 +106,11 @@ struct TQueuedOperations::TEvent: public TEventVariant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TQueuedOperations::TQueuedOperations(IQueuedOperationsProcessor& processor)
+TQueuedOperations::TQueuedOperations(
+    IQueuedOperationsProcessor& processor,
+    std::function<void()> requestsSerializedCallback)
     : Processor(processor)
+    , RequestsSerializedCallback(std::move(requestsSerializedCallback))
 {}
 
 TQueuedOperations::~TQueuedOperations() = default;
@@ -118,10 +122,34 @@ void TQueuedOperations::Acquire()
 
 void TQueuedOperations::Release()
 {
-    auto events = std::exchange(Events, {});
-    Lock.Release();
-    for (auto& event: events) {
-        std::visit([](auto& ev) { ev.Invoke(); }, event);
+    while (true) {
+        auto events = std::exchange(Events, {});
+        auto requestsToSerialize = std::exchange(RequestsToSerialize, {});
+
+        Lock.Release();
+
+        for (auto& event: events) {
+            std::visit([](auto& ev) { ev.Invoke(); }, event);
+        }
+
+        if (requestsToSerialize.empty()) {
+            break;
+        }
+
+        // Process events first because they may complete futures and unblock
+        // requests. Serialization is CPU-intensive, so postponing it minimizes
+        // completion latency and lets us respond quickly.
+        //
+        // Serialization failures are fatal: requests have already been
+        // validated, so any failure indicates an invariant violation.
+        for (auto& request: requestsToSerialize) {
+            request->SerializeToAllocation();
+        }
+
+        Lock.Acquire();
+
+        // This call may enqueue new events
+        RequestsSerializedCallback();
     }
 }
 
@@ -171,6 +199,12 @@ void TQueuedOperations::FailAcquireBarrierPromise(
 {
     Events.push_back(
         TAcquireBarrierPromiseFailedEvent{std::move(promise), error});
+}
+
+void TQueuedOperations::SerializeWriteDataRequest(
+    TPendingWriteDataRequest* request)
+{
+    RequestsToSerialize.push_back(request);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

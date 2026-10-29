@@ -1,5 +1,9 @@
 LIBRARY()
 
+PROVIDES(
+    ydb_cli_dump_view_query
+)
+
 SRCS(
     query_utils.cpp
     util.cpp
@@ -8,6 +12,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/public/lib/ydb_cli/common
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_iface
     contrib/ydb/public/sdk/cpp/src/client/scheme
     contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/public/sdk/cpp/src/client/types/status
@@ -20,3 +25,8 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    view_query_dummy
+    view_query_iface
+)

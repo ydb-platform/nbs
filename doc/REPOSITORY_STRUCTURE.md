@@ -179,11 +179,14 @@
 
 ## FastShard
 * [cloud/fastshard](/cloud/fastshard) - storage node side of the Filestore fastshard: used by Filestore and hosted by blockstore-disk-agent
-* [bootstrap](/cloud/fastshard/bootstrap) - silk runtime initialization and teardown
-* [ipc](/cloud/fastshard/ipc) - async TCP helpers over silk's non-blocking poll
-* [journal](/cloud/fastshard/journal) - journalled device - interface, implementations and TCP server
-* [sn](/cloud/fastshard/sn) - storage node - interface, TCP client and server and in-process implementation
-* [testlib](/cloud/fastshard/testlib) - fake storage node and silk test environment
+* [apps/client](/cloud/fastshard/apps/client) - CLI client for the journalled device TCP protocol
+* [public/api/protos](/cloud/fastshard/public/api/protos) - journalled device TCP protocol
+* [libs/bootstrap](/cloud/fastshard/libs/bootstrap) - silk runtime initialization and teardown
+* [libs/common](/cloud/fastshard/libs/common) - error helpers
+* [libs/ipc](/cloud/fastshard/libs/ipc) - async TCP helpers over silk's non-blocking poll
+* [libs/journal](/cloud/fastshard/libs/journal) - journalled device - interface, implementations and TCP server
+* [libs/sn](/cloud/fastshard/libs/sn) - storage node - interface, TCP client and server and in-process implementation
+* [libs/sn/testlib](/cloud/fastshard/libs/sn/testlib) - fake storage node and silk test environment
 
 ## Disk Manager
 

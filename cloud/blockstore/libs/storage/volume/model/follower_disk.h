@@ -42,9 +42,9 @@ struct TLeaderFollowerLink
 {
     TString LinkUUID;   // It can be empty if the exact uuid is not known.
     TString LeaderDiskId;
-    TString LeaderShardId;
+    TString LeaderCellId;
     TString FollowerDiskId;
-    TString FollowerShardId;
+    TString FollowerCellId;
 
     ui64 GetHash() const;
     TString LeaderDiskIdForPrint() const;

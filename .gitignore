@@ -149,6 +149,7 @@ test-results
 
 # IDE files
 *.swp
+/.clangd
 /.vscode/*
 /*.code-workspace
 /*.code-workspace.bak

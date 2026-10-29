@@ -23,6 +23,72 @@ TVector<EFileRingBufferVersion> GetVersionsForTest()
 
 Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
 {
+    Y_UNIT_TEST(ShouldCreateLayoutFromCapacities)
+    {
+        using TLayout = TFileRingBufferLayout;
+
+        struct TTestCase
+        {
+            ui64 DataCapacity;
+            ui64 MetadataCapacity;
+            std::optional<TLayout> Expected;
+        };
+
+        const ui64 reserveSize = TFileRingBufferHeader::ReserveSize;
+        const ui64 maxSize = Max<i64>();
+        const TVector<TTestCase> testCases = {
+            {0, 0, TLayout{reserveSize, reserveSize, reserveSize}},
+            {17, 1, TLayout{reserveSize + 8, reserveSize, reserveSize + 25}},
+            {17, 8, TLayout{reserveSize + 8, reserveSize, reserveSize + 25}},
+            {17, 9, TLayout{reserveSize + 16, reserveSize, reserveSize + 33}},
+            {maxSize - reserveSize, 0, TLayout{reserveSize, reserveSize, maxSize}},
+            {7, maxSize - reserveSize - 7, TLayout{maxSize - 7, reserveSize, maxSize}},
+            {0, maxSize - reserveSize - 7, TLayout{maxSize - 7, reserveSize, maxSize - 7}},
+            {maxSize - reserveSize + 1, 0, std::nullopt},
+            {8, maxSize - reserveSize - 7, std::nullopt},
+            {0, maxSize - reserveSize - 6, std::nullopt},
+            {maxSize, 0, std::nullopt},
+            {0, maxSize, std::nullopt},
+            {0, maxSize - reserveSize, std::nullopt},
+            {Max<ui64>() - reserveSize, 0, std::nullopt},
+            {7, Max<ui64>() - reserveSize - 7, std::nullopt},
+            {Max<ui64>(), 0, std::nullopt},
+            {0, Max<ui64>(), std::nullopt},
+        };
+
+        for (const auto& testCase: testCases) {
+            const auto layout = TFileRingBufferLayout::FromCapacity(
+                testCase.DataCapacity,
+                testCase.MetadataCapacity);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected.has_value(),
+                layout.has_value());
+            if (!layout) {
+                continue;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected->DataOffset,
+                layout->DataOffset);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected->MetadataOffset,
+                layout->MetadataOffset);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected->StateFileSize,
+                layout->StateFileSize);
+            const auto stateFileLayout = TFileRingBufferLayout::FromStateFileSize(
+                layout->StateFileSize,
+                testCase.MetadataCapacity);
+            UNIT_ASSERT(stateFileLayout);
+            UNIT_ASSERT_VALUES_EQUAL(
+                layout->StateFileSize,
+                stateFileLayout->StateFileSize);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.DataCapacity,
+                stateFileLayout->StateFileSize - stateFileLayout->DataOffset);
+        }
+    }
+
     Y_UNIT_TEST(ShouldStoreAndReadHeaders)
     {
         for (const auto& version : GetVersionsForTest()) {

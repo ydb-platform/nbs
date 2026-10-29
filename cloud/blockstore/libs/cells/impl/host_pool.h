@@ -11,6 +11,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
@@ -45,6 +47,28 @@ struct ICellHostWatcher
 };
 
 using ICellHostWatcherPtr = std::shared_ptr<ICellHostWatcher>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The cell's sensors, under counters=blockstore/component=cells/cell=<id>.
+// HostsUnavailable counts the hosts found dead, not the ones never asked: a
+// host is only pinged while its channel is open, and only with migration on.
+struct TCellCounters
+{
+    NMonitoring::TDynamicCounters::TCounterPtr HostsConfigured;
+    NMonitoring::TDynamicCounters::TCounterPtr HostsUnavailable;
+    NMonitoring::TDynamicCounters::TCounterPtr Connections;
+
+    NMonitoring::TDynamicCounters::TCounterPtr HostBecameUnavailable;
+    NMonitoring::TDynamicCounters::TCounterPtr HostBecameAvailable;
+    NMonitoring::TDynamicCounters::TCounterPtr ChannelWarmupErrors;
+    NMonitoring::TDynamicCounters::TCounterPtr DescribeEndpointErrors;
+    NMonitoring::TDynamicCounters::TCounterPtr PingSweepErrors;
+
+    NMonitoring::TDynamicCounters::TCounterPtr Migrations;
+    NMonitoring::TDynamicCounters::TCounterPtr MigrationFailures;
+    NMonitoring::TDynamicCounters::TCounterPtr NoMigrationTarget;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -87,6 +111,7 @@ private:
 
     const TCellConfigPtr Config;
     const TBootstrap Bootstrap;
+    const TCellCounters Counters;
 
     TLog Log;
 
@@ -160,6 +185,8 @@ public:
 
     [[nodiscard]] TString GetCellId() const;
 
+    [[nodiscard]] const TCellCounters& GetCounters() const;
+
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
         AcquireControlChannel(const TString& fqdn);
     void ReleaseControlChannel(const TString& fqdn);
@@ -171,6 +198,7 @@ private:
     // Warms configured hosts until MinCellConnections channels are live.
     void TopUpWarmChannelsLocked();
     void PruneRetainedDiscoveredLocked();
+    void UpdateHostsUnavailableLocked();
     [[nodiscard]] size_t CountLiveChannelsLocked(
         const TString& except) const;
 

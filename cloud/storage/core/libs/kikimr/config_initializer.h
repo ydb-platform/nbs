@@ -6,6 +6,8 @@
 
 #include <contrib/ydb/core/protos/config.pb.h>
 
+#include <util/generic/maybe.h>
+
 namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,9 +47,21 @@ struct TConfigInitializerYdbBase
     void ApplyMonitoringConfig(const TString& text);
 
 protected:
+    // Backups are enabled only with a nonempty path. The other settings come
+    // from TAppConfig.SystemTabletBackupConfig in CMS, its path is ignored.
+    void ApplySystemTabletBackupPath(const TString& path, bool enabled = true);
+
     NKikimrConfig::TLogConfig GetLogConfig() const;
     NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;
     TString GetFullSchemeShardDir() const;
+
+private:
+    TString SystemTabletBackupPath;
+    bool SystemTabletBackupEnabled = true;
+    TMaybe<NKikimrConfig::TSystemTabletBackupConfig>
+        CmsSystemTabletBackupConfig;
+
+    void UpdateSystemTabletBackupConfig();
 };
 
 }   // namespace NCloud::NServer

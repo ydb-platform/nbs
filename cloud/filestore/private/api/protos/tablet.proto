@@ -1,3 +1,12 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
 import "cloud/storage/core/protos/error.proto";
@@ -686,9 +695,15 @@ message TForcedOperationRequest
 {
     enum EForcedOperationType
     {
+        // Range operations
         E_COMPACTION = 0;
         E_CLEANUP = 1;
         E_DELETE_EMPTY_RANGES = 2;
+
+        // Tablet operations
+        E_FLUSH = 3;
+        E_FLUSH_BYTES = 4; // Only use when no concurrent writes are possible
+        E_COLLECT_GARBAGE = 5;
     };
 
     // Optional request headers.
@@ -701,10 +716,11 @@ message TForcedOperationRequest
     EForcedOperationType OpType = 3;
 
     // Enables processing of all ranges - even the ranges whose compaction
-    // stats are zero.
+    // stats are zero. Used for range operations
     bool ProcessAllRanges = 4;
 
     // Starts from the min RangeId whose value is >= MinRangeId.
+    // Used for range operations
     uint32 MinRangeId = 5;
 }
 
@@ -714,6 +730,7 @@ message TForcedOperationResponse
     NCloud.NProto.TError Error = 1;
 
     // Affected range count.
+    // Set for range operations.
     uint64 RangeCount = 2;
 
     // Can be used to query operation status.
@@ -738,13 +755,16 @@ message TForcedOperationStatusResponse
     NCloud.NProto.TError Error = 1;
 
     // Affected range count.
+    // Set for range operations
     uint64 RangeCount = 2;
 
     // Processed range count.
+    // Set for range operations
     uint64 ProcessedRangeCount = 3;
 
     // Last processed range id. Can be used to skip processed range ids upon
     // operation restart via the MinRangeId parameter.
+    // Set for range operations
     uint32 LastProcessedRangeId = 4;
 
     // Operation status summary
@@ -756,7 +776,10 @@ message TForcedOperationStatusResponse
         E_COMPLETED = 3;
         E_FAILED = 4;
     }
-    EStatus Status = 5;
+    EStatus OperationStatus = 5;
+
+    // Operation error. Unlike Error contains issue that happened in the op
+    NCloud.NProto.TError OperationError = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -938,6 +961,11 @@ message TGetNodeAttrBatchResponse
 
     // Individual node responses.
     repeated NProto.TGetNodeAttrResponse Responses = 2;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed. The NodeRefs
+    // looked up by GetNodeAttrBatch are shard-internal and are never cached.
+    uint32 NodeCacheTTL = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1181,7 +1209,7 @@ message TRenameNodeInDestinationRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // New parent Node
     uint64 NewParentId = 3;
@@ -1193,8 +1221,8 @@ message TRenameNodeInDestinationRequest
     uint32 Flags = 5;
 
     // Source node info.
-    string SourceNodeShardId = 6;
-    string SourceNodeShardNodeName = 7;
+    bytes SourceNodeShardId = 6;
+    bytes SourceNodeShardNodeName = 7;
 
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
@@ -1250,7 +1278,7 @@ message TAbortUnlinkDirectoryNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // The node.
     uint64 NodeId = 3;
@@ -1368,7 +1396,7 @@ message TUnlinkNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Parent node.
     uint64 NodeId = 3;
@@ -1538,6 +1566,14 @@ message TListNodesInternalResponse
 
     bytes Cookie = 9;
 
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 10;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned NodeRefs. Zero means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 11;
+
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
@@ -1642,6 +1678,7 @@ message TGenerateFileSystemEventResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Number of clients the event was sent to.
+    // Number of clients the event was sent to (would have been sent to in
+    // FileSystemEventsDryRunModeEnabled mode).
     uint32 ClientCount = 2;
 }

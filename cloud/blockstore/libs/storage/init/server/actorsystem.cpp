@@ -268,7 +268,8 @@ public:
             Args.VolumeStats,
             Args.PreemptedVolumes,
             Args.RootKmsKeyProvider,
-            Args.TemporaryServer);
+            Args.TemporaryServer,
+            Args.CellId);
 
         setup->LocalServices.emplace_back(
             MakeStorageServiceId(),

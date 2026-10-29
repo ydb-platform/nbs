@@ -21,14 +21,18 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigConstPtr Config;
     const TString LeaderDiskId;
+    const TString LeaderCellId;
     const TString FollowerDiskId;
+    const TString FollowerCellId;
 
 public:
     TDestroyVolumeLinkActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
         TString leaderDiskId,
-        TString followerDiskId);
+        TString leaderCellId,
+        TString followerDiskId,
+        TString followerCellId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -58,11 +62,15 @@ TDestroyVolumeLinkActor::TDestroyVolumeLinkActor(
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
         TString leaderDiskId,
-        TString followerDiskId)
+        TString leaderCellId,
+        TString followerDiskId,
+        TString followerCellId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , LeaderDiskId(std::move(leaderDiskId))
+    , LeaderCellId(std::move(leaderCellId))
     , FollowerDiskId(std::move(followerDiskId))
+    , FollowerCellId(std::move(followerCellId))
 {}
 
 void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -79,7 +87,9 @@ void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>(
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetLeaderCellId(LeaderCellId);
     request->Record.SetFollowerDiskId(FollowerDiskId);
+    request->Record.SetFollowerCellId(FollowerCellId);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
@@ -91,9 +101,9 @@ void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetDiskId(FollowerDiskId);
-    request->Record.SetFollowerShardId({});
+    request->Record.SetFollowerCellId(FollowerCellId);
     request->Record.SetLeaderDiskId(LeaderDiskId);
-    request->Record.SetLeaderShardId({});
+    request->Record.SetLeaderCellId(LeaderCellId);
     request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
@@ -224,11 +234,16 @@ void TServiceActor::HandleDestroyVolumeLink(
         return;
     }
 
+    const auto& followerCellId =
+        request.GetFollowerCellId() ? request.GetFollowerCellId() : CellId;
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "DestroyVolumeLink leader: %s, follower: %s",
+        "DestroyVolumeLink leader: %s/%s, follower: %s/%s",
+        CellId.Quote().data(),
         request.GetLeaderDiskId().Quote().data(),
+        followerCellId.Quote().data(),
         request.GetFollowerDiskId().Quote().data());
 
     NCloud::Register<TDestroyVolumeLinkActor>(
@@ -236,7 +251,9 @@ void TServiceActor::HandleDestroyVolumeLink(
         std::move(requestInfo),
         Config,
         request.GetLeaderDiskId(),
-        request.GetFollowerDiskId());
+        CellId,
+        request.GetFollowerDiskId(),
+        followerCellId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

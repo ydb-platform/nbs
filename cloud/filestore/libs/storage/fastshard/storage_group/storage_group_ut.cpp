@@ -3,25 +3,36 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/protos/device.pb.h>
-#include <cloud/fastshard/sn/iface/storage_node.h>
-#include <cloud/fastshard/testlib/fake_storage_node.h>
-#include <cloud/fastshard/testlib/fiber_test.h>
-#include <cloud/fastshard/testlib/silk_env.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fake_storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
+#include <cloud/fastshard/libs/sn/testlib/silk_env.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/timer_test.h>
 
-#include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/fibers/sequencer.h>
 
+#include <util/datetime/base.h>
+#include <util/generic/deque.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/strbuf.h>
 #include <util/generic/string.h>
+#include <util/generic/utility.h>
+#include <util/generic/vector.h>
 #include <util/string/builder.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 #include <gtest/gtest.h>
+
+#include <atomic>
+#include <cstring>
+#include <initializer_list>
+#include <memory>
+#include <utility>
 
 using namespace NCloud;
 using namespace NFileStore::NStorage::NFastShard;
@@ -44,51 +55,105 @@ const NProto::TDeviceRequestHeaders NoHeaders;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/**
- * A storage node that keeps nothing: it answers every request with the canned
- * reply it inherits, blank pages for a read, and parks a write while the gate
- * is shut, which lets a test hold one replica back and watch what the group
- * does with the others. A test sets it up by scripting the replies and checks
- * what it has been asked. What the devices end up holding is the journalled
- * node's business.
- */
-struct TFakeDevice: TFakeStorageNode
+template <typename TRequest, typename TResponse>
+struct TCall
 {
-    silk::FiberEvent Gate;
+    TAdaptiveLock Lock;
+    TVector<TRequest> Requests;
+    TResponse Response;
+    TDeque<TResponse> ResponseQueue;
+
+    // While paused, a call is held until the test lets it through, one per
+    // Step, or all the parked ones with Unpause; it is logged once through.
     std::atomic<bool> Paused = false;
-    std::atomic<ui64> HoldLsn = 0;
     std::atomic<ui32> Parked = 0;
+    silk::FiberSequencer Allowed;
+
+    TResponse Call(TRequest request)
+    {
+        ui64 ticket = 0;
+        with_lock (Lock) {
+            if (Paused) {
+                ticket = ++Parked;
+            }
+        }
+        if (ticket) {
+            Y_UNUSED(Allowed.wait(ticket));
+        }
+
+        with_lock (Lock) {
+            Requests.push_back(std::move(request));
+            if (ResponseQueue.empty()) {
+                return Response;
+            }
+
+            TResponse response = std::move(ResponseQueue.front());
+            ResponseQueue.pop_front();
+            return response;
+        }
+    }
+
+    ui32 Count()
+    {
+        with_lock (Lock) {
+            return Requests.size();
+        }
+    }
+
+    TRequest Last()
+    {
+        with_lock (Lock) {
+            return Requests.back();
+        }
+    }
+
+    void Reply(const NProto::TError& error)
+    {
+        with_lock (Lock) {
+            Response = {};
+            *Response.MutableError() = error;
+        }
+    }
+
+    void Step()
+    {
+        Allowed.increment();
+    }
 
     void Unpause()
     {
-        Paused = false;
-        HoldLsn = 0;
-        Gate.set();
-    }
-
-    ui32 WriteCount()
-    {
         with_lock (Lock) {
-            return WriteCalls.size();
+            Paused = false;
+            Allowed.advance(Parked);
         }
     }
+};
 
-    TVector<ui64> Lsns()
-    {
-        TVector<ui64> lsns;
-        with_lock (Lock) {
-            for (const auto& write: WriteCalls) {
-                lsns.push_back(write.GetLogSequenceNumber());
-            }
-        }
-        return lsns;
-    }
+/**
+ * A storage node that keeps nothing: it answers every request with its canned
+ * reply, blank pages for a read, and parks a write while its gate is paused.
+ * A test sets it up by scripting the replies and checks what it has been
+ * asked. What the devices end up holding is the journalled node's business.
+ */
+struct TFakeDevice: TFakeStorageNode
+{
+    TCall<NProto::TWriteLogRecordRequest, NProto::TWriteLogRecordResponse>
+        Writes;
+    TCall<NProto::TReadPagesRequest, NProto::TReadPagesResponse> Reads;
+    TCall<NProto::TAcquireDevicesRequest, NProto::TAcquireDevicesResponse>
+        Acquires;
+
+    TCall<
+        NProto::TAdvanceLsnLowWatermarkRequest,
+        NProto::TAdvanceLsnLowWatermarkResponse>
+        Watermarks;
+
 
     NProto::TReadPagesResponse ReadPages(
         NProto::TReadPagesRequest request) override
     {
         const auto refs = request.GetPageGroupRefs();
-        auto response = TFakeStorageNode::ReadPages(std::move(request));
+        auto response = Reads.Call(std::move(request));
         if (HasError(response.GetError()) || response.PageGroupsSize()) {
             return response;
         }
@@ -107,12 +172,19 @@ struct TFakeDevice: TFakeStorageNode
     NProto::TWriteLogRecordResponse WriteLogRecord(
         NProto::TWriteLogRecordRequest request) override
     {
-        if (Paused || HoldLsn == request.GetLogSequenceNumber()) {
-            ++Parked;
-            Gate.wait();
-        }
+        return Writes.Call(std::move(request));
+    }
 
-        return TFakeStorageNode::WriteLogRecord(std::move(request));
+    NProto::TAcquireDevicesResponse AcquireDevices(
+        NProto::TAcquireDevicesRequest request) override
+    {
+        return Acquires.Call(std::move(request));
+    }
+
+    NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        NProto::TAdvanceLsnLowWatermarkRequest request) override
+    {
+        return Watermarks.Call(std::move(request));
     }
 };
 
@@ -129,95 +201,18 @@ NProto::TReadPagesResponse PageResponse(ui64 pageNo, TString content)
     return response;
 }
 
-// The reply of a claimed device whose journal reaches @p lsn.
-NProto::TReadPagesResponse ClaimedAt(const TString& claim, ui64 lsn)
-{
-    auto response = PageResponse(0, claim);
-    response.SetLastAckedLogSequenceNumber(lsn);
-    return response;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-// The watermark loop is off unless a test asks for it.
 TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
 {
     TStorageGroupConfig config;
     config.ClientId = "test-client";
     config.AcquireGeneration = 42;
-    config.LowWatermarkPeriod = TDuration::Zero();
     config.PageSize = pageSize;
+    // Retries are instant: a test counts the attempts.
+    config.RetryPolicy.BackoffIncrement = TDuration::Zero();
     return config;
 }
-
-TStorageGroupConfig MakeConfigWithWaterMarksLoop()
-{
-    auto config = MakeConfig();
-    config.LowWatermarkPeriod = TDuration::MilliSeconds(1);
-    // Retries are off for everything the group does, not just the push: a
-    // retry sleeps on the tick timer, which a test cannot tell apart from the
-    // loop parking at the top of its own iteration.
-    config.RetryPolicy.TotalTimeout = TDuration::Zero();
-    return config;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * A timer whose Sleep waits for the test to call TickOnce, which lets the
- * watermark loop run exactly one iteration and returns once it is parked in
- * Sleep again. Sleep announces itself before waiting, so the loop is parked
- * exactly when Sleeps == Ticks + 1.
- */
-struct TTickTimer: ITimer
-{
-    silk::FiberSequencer Ticks;    // test to loop
-    silk::FiberSequencer Sleeps;   // loop to test
-
-    TInstant Now() override
-    {
-        return TInstant::Now();
-    }
-
-    void Sleep(TDuration duration) override
-    {
-        Y_UNUSED(duration);
-        Y_UNUSED(Ticks.wait(Sleeps.increment()));
-    }
-
-    void TickOnce()
-    {
-        Y_UNUSED(Sleeps.wait(Ticks.get() + 1));
-        Y_UNUSED(Sleeps.wait(Ticks.increment() + 1));
-    }
-
-    // One full iteration per tick. A tick right after a write may find the
-    // last ack not yet counted, hence more than one.
-    template <typename TPredicate>
-    [[nodiscard]] bool TickUntil(TPredicate predicate)
-    {
-        for (ui32 i = 0; i < 100; ++i) {
-            TickOnce();
-            if (predicate()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Lets the loop out of Sleep for good, so TearDown can join it.
-    void Stop()
-    {
-        Ticks.stop();
-    }
-};
-
-using TTickTimerPtr = std::shared_ptr<TTickTimer>;
-
-using TGroupFactory = IStorageGroupPtr (*)(
-    TStorageGroupConfig,
-    TVector<TStorageDevice>,
-    ITimerPtr);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Fixtures: a group over a set of fake devices.
@@ -227,29 +222,22 @@ struct TGroupFixture
     TVector<TFakeDevicePtr> Nodes;
     TVector<TString> DeviceUUIDs;
     TStorageGroupConfig Config;
-    ITimerPtr Timer;
     IStorageGroupPtr Group;
 
-    TGroupFixture(
-            TGroupFactory createGroup,
-            TStorageGroupConfig config,
-            ITimerPtr timer,
-            ui32 deviceCount)
+    TGroupFixture(TStorageGroupConfig config, ui32 deviceCount)
         : Config(std::move(config))
-        , Timer(std::move(timer))
     {
         for (ui32 i = 0; i < deviceCount; ++i) {
             Nodes.push_back(std::make_shared<TFakeDevice>());
             DeviceUUIDs.push_back(TStringBuilder() << "dev-" << char('a' + i));
         }
-
-        Group = createGroup(Config, StorageDevices(), Timer);
     }
 
     ~TGroupFixture()
     {
         for (auto& device: Nodes) {
-            device->Unpause();
+            device->Writes.Unpause();
+            device->Acquires.Unpause();
         }
 
         Group->TearDown();
@@ -274,21 +262,13 @@ struct TGroupFixture
         return devices;
     }
 
-    // The sleeps the group asked for, when it runs on a TTestTimer.
-    TTestTimer& TestTimer()
-    {
-        auto* timer = dynamic_cast<TTestTimer*>(Timer.get());
-        Y_ABORT_UNLESS(timer, "the group runs on another timer");
-        return *timer;
-    }
-
     // Forgets what the devices have been asked so far, so a test that follows
     // Init starts from a clean request log.
     void ForgetRequests()
     {
         for (auto& device: Nodes) {
-            device->WriteCalls.clear();
-            device->ReadCalls.clear();
+            device->Writes.Requests.clear();
+            device->Reads.Requests.clear();
             device->ReadJournalTailCalls.clear();
         }
     }
@@ -297,29 +277,28 @@ struct TGroupFixture
 struct TNaiveFixture: TGroupFixture
 {
     TNaiveFixture(TStorageGroupConfig config = MakeConfig())
-        : TGroupFixture(
-              CreateNaiveMirroredStorageGroup,
-              std::move(config),
-              std::make_shared<TTestTimer>(),
-              DeviceCount)
-    {}
+        : TGroupFixture(std::move(config), DeviceCount)
+    {
+        Group = CreateNaiveMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
+    }
 };
 
 // init = false leaves Init to the test, so it can set the devices up first.
 struct TQuorumFixture: TGroupFixture
 {
-    TTickTimerPtr TickTimer;
-
     TQuorumFixture(
             bool init = true,
             TStorageGroupConfig config = MakeConfig(),
             ui32 deviceCount = DeviceCount)
-        : TGroupFixture(
-              CreateQuorumMirroredStorageGroup,
-              std::move(config),
-              std::make_shared<TTestTimer>(),
-              deviceCount)
+        : TGroupFixture(std::move(config), deviceCount)
     {
+        Group = CreateQuorumMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
         if (init) {
             auto error = Group->Init().GetError();
             Y_ABORT_UNLESS(
@@ -332,39 +311,10 @@ struct TQuorumFixture: TGroupFixture
     TQuorumFixture(ui32 deviceCount)
         : TQuorumFixture(true, MakeConfig(), deviceCount)
     {}
-
-    // On a tick timer, for the watermark loop; the loop is let out of Sleep
-    // before TearDown joins it.
-    TQuorumFixture(TTickTimerPtr tickTimer, TStorageGroupConfig config)
-        : TGroupFixture(
-              CreateQuorumMirroredStorageGroup,
-              std::move(config),
-              tickTimer,
-              DeviceCount)
-        , TickTimer(std::move(tickTimer))
-    {
-        auto error = Group->Init().GetError();
-        Y_ABORT_UNLESS(
-            !HasError(error),
-            "failed to initialize: %s",
-            FormatError(error).c_str());
-    }
-
-    ~TQuorumFixture()
-    {
-        if (TickTimer) {
-            TickTimer->Stop();
-        }
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Driving the group.
-
-NProto::TError InitFails(TGroupFixture& fx)
-{
-    return fx.Group->Init().GetError();
-}
 
 // A record of one page group, linked to the record before it.
 NProto::TError WritePages(
@@ -446,7 +396,29 @@ void StartWrite(TGroupFixture& fx, ui64 lsn, silk::FiberFuture* future)
         WriteFiberMain,
         TWriteParams{.Fixture = &fx, .Lsn = lsn},
         future);
-    Y_ABORT_UNLESS(r == 0, "failed to spawn a writer: %s", ::strerror(r));
+    Y_ABORT_UNLESS(
+        r == 0,
+        "failed to spawn a writer: %s",
+        SystemErrorText(r).c_str());
+}
+
+struct TInitParams
+{
+    TGroupFixture* Fixture;
+    NProto::TError* Error;
+};
+
+// Init on its own fiber, its error left for the test.
+int InitFiberMain(TInitParams* params) noexcept
+{
+    *params->Error = params->Fixture->Group->Init().GetError();
+    return 0;
+}
+
+int TearDownFiberMain(TGroupFixture** fx) noexcept
+{
+    (*fx)->Group->TearDown();
+    return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -464,13 +436,10 @@ template <typename TPredicate>
     return predicate();
 }
 
-// True if the fiber is still blocked after the scheduler has had a good chance
-// to run everything else that is runnable.
+// Naive check if fut is still unset after letting fibers do the active round.
 bool StillRunning(silk::FiberFuture& future)
 {
-    for (ui32 i = 0; i < 2000; ++i) {
-        FiberScheduler::yield();
-    }
+    FiberScheduler::yield();
     int error = 0;
     return !future.isSet(&error);
 }
@@ -479,16 +448,7 @@ ui32 TotalWrites(TGroupFixture& fx)
 {
     ui32 total = 0;
     for (ui32 i = 0; i < fx.Size(); ++i) {
-        total += fx[i].WriteCount();
-    }
-    return total;
-}
-
-ui32 TotalParked(TGroupFixture& fx)
-{
-    ui32 total = 0;
-    for (auto& device: fx.Nodes) {
-        total += device->Parked;
+        total += fx[i].Writes.Count();
     }
     return total;
 }
@@ -497,7 +457,7 @@ TVector<ui32> WriteCounts(TGroupFixture& fx)
 {
     TVector<ui32> counts;
     for (ui32 i = 0; i < fx.Size(); ++i) {
-        counts.push_back(fx[i].WriteCount());
+        counts.push_back(fx[i].Writes.Count());
     }
     return counts;
 }
@@ -506,43 +466,38 @@ TVector<ui32> ReadCounts(TGroupFixture& fx)
 {
     TVector<ui32> counts;
     for (ui32 i = 0; i < fx.Size(); ++i) {
-        counts.push_back(fx[i].ReadCalls.size());
+        counts.push_back(fx[i].Reads.Count());
     }
     return counts;
 }
 
-// The sleeps the group asked for, in microseconds so a mismatch reads well.
-TVector<ui64> Sleeps(TGroupFixture& fx)
+// The page the device was last written at @p pageNo.
+TString PageWritten(TFakeDevice& device, ui64 pageNo)
 {
-    TVector<ui64> sleeps;
-    for (TDuration sleep: fx.TestTimer().GetSleepDurations()) {
-        sleeps.push_back(sleep.MicroSeconds());
+    TString page;
+    for (const auto& write: device.Writes.Requests) {
+        for (const auto& pg: write.GetPageGroups()) {
+            const ui64 first = pg.GetFirstPageNo();
+            if (pageNo >= first && pageNo < first + pg.ContentSize()) {
+                page = pg.GetContent(pageNo - first);
+            }
+        }
     }
-    return sleeps;
+    return page;
 }
 
-// The sleeps a request that fails @p count times in a row asks for: the k-th
-// backoff is k increments.
-TVector<ui64> Backoffs(ui32 count)
+// The header pages a quorum group writes to its devices, by device number.
+const TVector<TString>& HeaderPages()
 {
-    const TDuration increment = MakeConfig().RetryPolicy.BackoffIncrement;
-    TVector<ui64> backoffs;
-    for (ui32 k = 1; k <= count; ++k) {
-        backoffs.push_back((increment * k).MicroSeconds());
-    }
-    return backoffs;
-}
-
-bool Mentions(const NProto::TError& error, TStringBuf what)
-{
-    return error.GetMessage().find(what) != TString::npos;
-}
-
-// The claim a quorum group wrote to the device, as the device was asked to
-// take it.
-TString Claim(TFakeDevice& device)
-{
-    return device.WriteCalls.at(0).GetPageGroups(0).GetContent(0);
+    static const TVector<TString> pages = [] {
+        TQuorumFixture fx;
+        TVector<TString> pages;
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            pages.push_back(PageWritten(fx[i], 0));
+        }
+        return pages;
+    }();
+    return pages;
 }
 
 // Forgets the read log and reads once per device. With every replica eligible
@@ -551,7 +506,7 @@ TString Claim(TFakeDevice& device)
 NProto::TError ReadFromEachReplica(TGroupFixture& fx)
 {
     for (auto& device: fx.Nodes) {
-        device->ReadCalls.clear();
+        device->Reads.Requests.clear();
     }
 
     NProto::TError first;
@@ -568,11 +523,9 @@ NProto::TError ReadFromEachReplica(TGroupFixture& fx)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
 // MirrorGroup
 
-FIBER_TEST(NaiveGroupTest, MirrorsEveryRequestToEveryDevice)
+FIBER_TEST(NaiveGroupTest, ShouldInitializeDevices)
 {
     TNaiveFixture fx;
     const auto init = fx.Group->Init();
@@ -580,37 +533,47 @@ FIBER_TEST(NaiveGroupTest, MirrorsEveryRequestToEveryDevice)
         << init.GetError().GetMessage();
 
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].AcquireCalls.size()) << "dev " << i;
-        ASSERT_EQ(1U, fx[i].AcquireCalls[0].DeviceUUIDsSize());
-        ASSERT_EQ(fx.DeviceUUIDs[i], fx[i].AcquireCalls[0].GetDeviceUUIDs(0));
-    }
-
-    auto error = WritePages(*fx.Group, 1, PageNo, {"page1", "page2"});
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].WriteCount()) << "dev " << i;
-        const auto& write = fx[i].WriteCalls[0];
-        ASSERT_EQ(1U, write.GetLogSequenceNumber()) << "dev " << i;
-        // The naive group keeps nothing of its own on the device, so the
-        // caller's page numbers are the device's page numbers.
-        ASSERT_EQ(PageNo, write.GetPageGroups(0).GetFirstPageNo()) << "dev " << i;
-        ASSERT_EQ("page1", write.GetPageGroups(0).GetContent(0)) << "dev " << i;
-        ASSERT_EQ("page2", write.GetPageGroups(0).GetContent(1)) << "dev " << i;
-        ASSERT_EQ(fx.DeviceUUIDs[i], write.GetDeviceUUID());
-        ASSERT_EQ("test-client", write.GetHeaders().GetClientId());
+        ASSERT_EQ(1U, fx[i].Acquires.Requests.size());
+        ASSERT_EQ(1U, fx[i].Acquires.Requests[0].DeviceUUIDsSize());
+        ASSERT_EQ(
+            fx.DeviceUUIDs[i],
+            fx[i].Acquires.Requests[0].GetDeviceUUIDs(0));
     }
 
     fx.Group->TearDown();
 
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].ReleaseCalls.size()) << "dev " << i;
+        ASSERT_EQ(1U, fx[i].ReleaseCalls.size());
         ASSERT_EQ(1U, fx[i].ReleaseCalls[0].DeviceUUIDsSize());
         ASSERT_EQ(fx.DeviceUUIDs[i], fx[i].ReleaseCalls[0].GetDeviceUUIDs(0));
     }
 }
 
-FIBER_TEST(NaiveGroupTest, InitReportsTheHighestAckedLsnAndChainsFromIt)
+FIBER_TEST(NaiveGroupTest, ShouldMirrorWrites)
+{
+    TNaiveFixture fx;
+    const auto init = fx.Group->Init();
+    ASSERT_EQ(S_OK, init.GetError().GetCode())
+        << init.GetError().GetMessage();
+
+    auto error = WritePages(*fx.Group, 1, PageNo, {"page1", "page2"});
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        ASSERT_EQ(1U, fx[i].Writes.Count());
+        const auto& write = fx[i].Writes.Requests[0];
+        ASSERT_EQ(1U, write.GetLogSequenceNumber());
+        // The naive group keeps nothing of its own on the device, so the
+        // caller's page numbers are the device's page numbers.
+        ASSERT_EQ(PageNo, write.GetPageGroups(0).GetFirstPageNo());
+        ASSERT_EQ("page1", write.GetPageGroups(0).GetContent(0));
+        ASSERT_EQ("page2", write.GetPageGroups(0).GetContent(1));
+        ASSERT_EQ(fx.DeviceUUIDs[i], write.GetDeviceUUID());
+        ASSERT_EQ("test-client", write.GetHeaders().GetClientId());
+    }
+}
+
+FIBER_TEST(NaiveGroupTest, ShouldInitFromTheHighestAckedLsn)
 {
     TNaiveFixture fx;
 
@@ -630,13 +593,13 @@ FIBER_TEST(NaiveGroupTest, InitReportsTheHighestAckedLsnAndChainsFromIt)
     auto error = Write(*fx.Group, 8);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        const auto& write = fx[i].WriteCalls.back();
-        ASSERT_EQ(8U, write.GetLogSequenceNumber()) << "dev " << i;
-        ASSERT_EQ(7U, write.GetPrevLogSequenceNumber()) << "dev " << i;
+        const auto& write = fx[i].Writes.Requests.back();
+        ASSERT_EQ(8U, write.GetLogSequenceNumber());
+        ASSERT_EQ(7U, write.GetPrevLogSequenceNumber());
     }
 }
 
-FIBER_TEST(NaiveGroupTest, RoundRobinsReadsAcrossDevices)
+FIBER_TEST(NaiveGroupTest, ShouldRoundRobinReads)
 {
     TNaiveFixture fx;
     const auto init = fx.Group->Init();
@@ -645,7 +608,8 @@ FIBER_TEST(NaiveGroupTest, RoundRobinsReadsAcrossDevices)
 
     // Devices that disagree, so every answer names the one that gave it.
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        fx[i].ReadResp = PageResponse(PageNo, TStringBuilder() << "dev" << i);
+        fx[i].Reads.Response =
+            PageResponse(PageNo, TStringBuilder() << "dev" << i);
     }
 
     for (ui32 round = 0; round < 2; ++round) {
@@ -658,11 +622,11 @@ FIBER_TEST(NaiveGroupTest, RoundRobinsReadsAcrossDevices)
     }
 
     for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(2U, fx[i].ReadCalls.size()) << "dev " << i;
+        ASSERT_EQ(2U, fx[i].Reads.Requests.size());
     }
 }
 
-FIBER_TEST(NaiveGroupTest, RetriesRetriableErrors)
+FIBER_TEST(NaiveGroupTest, ShouldRetryErrors)
 {
     TNaiveFixture fx;
     const auto init = fx.Group->Init();
@@ -670,66 +634,60 @@ FIBER_TEST(NaiveGroupTest, RetriesRetriableErrors)
         << init.GetError().GetMessage();
 
     auto& flaky = fx[1];
-    flaky.WriteRespQueue.emplace_back();
-    *flaky.WriteRespQueue.back().MutableError() =
+    flaky.Writes.ResponseQueue.emplace_back();
+    *flaky.Writes.ResponseQueue.back().MutableError() =
         MakeError(E_REJECTED, "busy");
-    flaky.WriteRespQueue.emplace_back();
-    *flaky.WriteRespQueue.back().MutableError() =
+
+    flaky.Writes.ResponseQueue.emplace_back();
+    *flaky.Writes.ResponseQueue.back().MutableError() =
         MakeError(E_TIMEOUT, "slow");
 
     auto error = Write(*fx.Group, 1);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     ASSERT_EQ((TVector<ui32>{1, 3, 1}), WriteCounts(fx));
-    ASSERT_EQ(Backoffs(2), Sleeps(fx));
 
-    fx[1].ReadResp = PageResponse(PageNo, "payload");
-    fx[0].ReadRespQueue.emplace_back();
-    *fx[0].ReadRespQueue.back().MutableError() =
+    fx[1].Reads.Response = PageResponse(PageNo, "payload");
+    fx[0].Reads.ResponseQueue.emplace_back();
+    *fx[0].Reads.ResponseQueue.back().MutableError() =
         MakeError(E_REJECTED, "busy");
 
     ASSERT_EQ("payload", ReadOnePage(*fx.Group));
     ASSERT_EQ((TVector<ui32>{1, 1, 0}), ReadCounts(fx));
-
-    // The read starts a backoff sequence of its own; it does not continue the
-    // write's.
-    auto sleeps = Backoffs(2);
-    sleeps.push_back(Backoffs(1)[0]);
-    ASSERT_EQ(sleeps, Sleeps(fx));
 }
 
-FIBER_TEST(NaiveGroupTest, DoesNotRetryNonRetriableErrors)
+FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
 {
-    TNaiveFixture fx;
-    const auto init = fx.Group->Init();
-    ASSERT_EQ(S_OK, init.GetError().GetCode())
-        << init.GetError().GetMessage();
+    {
+        TNaiveFixture fx;
+        const auto init = fx.Group->Init();
+        ASSERT_EQ(S_OK, init.GetError().GetCode())
+            << init.GetError().GetMessage();
 
-    *fx[1].WriteResp.MutableError() = MakeError(E_ARGUMENT, "bad record");
-    auto error = Write(*fx.Group, 1);
-    ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(TVector<ui32>(DeviceCount, 1), WriteCounts(fx));
+        *fx[1].Writes.Response.MutableError() =
+            MakeError(E_ARGUMENT, "bad record");
+        auto error = Write(*fx.Group, 1);
+        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+        ASSERT_EQ(TVector<ui32>(DeviceCount, 1), WriteCounts(fx));
 
-    *fx[0].ReadResp.MutableError() = MakeError(E_ARGUMENT, "bad range");
-    TVector<TPageGroup> pageGroups;
-    error = Read(*fx.Group, &pageGroups);
-    ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-    ASSERT_TRUE(pageGroups.empty());
+        *fx[0].Reads.Response.MutableError() =
+            MakeError(E_ARGUMENT, "bad range");
+        TVector<TPageGroup> pageGroups;
+        error = Read(*fx.Group, &pageGroups);
+        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+        ASSERT_TRUE(pageGroups.empty());
 
-    // One attempt, and no failover either: a device that rejects the request
-    // outright means the request is wrong, not the device.
-    ASSERT_EQ((TVector<ui32>{1, 0, 0}), ReadCounts(fx));
+        // One attempt, and no failover either: a device that rejects the
+        // request outright means the request is wrong, not the device.
+        ASSERT_EQ((TVector<ui32>{1, 0, 0}), ReadCounts(fx));
+    }
 
-    ASSERT_TRUE(fx.TestTimer().GetSleepDurations().empty());
-}
-
-FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
-{
-    // A one second budget over the default half second increment. The test
-    // timer advances by every sleep, so a dead device fails at 0s, 0.5s and
-    // 1.5s: the third error is past the budget and ends the attempts.
+    // The retries stop at the deadline.
+    // A 250ms budget over 100ms increments: a dead device fails at 0, 100 and
+    // 300ms, so the third error is past the budget and ends the attempts.
     auto config = MakeConfig();
-    config.RetryPolicy.TotalTimeout = TDuration::Seconds(1);
+    config.RetryPolicy.BackoffIncrement = TDuration::MilliSeconds(100);
+    config.RetryPolicy.TotalTimeout = TDuration::MilliSeconds(250);
     constexpr ui32 attempts = 3;
 
     {
@@ -737,13 +695,13 @@ FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
         const auto init = fx.Group->Init();
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
-        *fx[1].WriteResp.MutableError() = MakeError(E_REJECTED, "busy");
+        *fx[1].Writes.Response.MutableError() =
+            MakeError(E_REJECTED, "busy");
 
         auto error = Write(*fx.Group, 1);
         ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
 
         ASSERT_EQ((TVector<ui32>{1, attempts, 1}), WriteCounts(fx));
-        ASSERT_EQ(Backoffs(attempts - 1), Sleeps(fx));
     }
 
     {
@@ -752,7 +710,8 @@ FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
         for (ui32 i = 0; i < DeviceCount; ++i) {
-            *fx[i].ReadResp.MutableError() = MakeError(E_UNAVAILABLE, "down");
+            *fx[i].Reads.Response.MutableError() =
+                MakeError(E_UNAVAILABLE, "down");
         }
 
         TVector<TPageGroup> pageGroups;
@@ -760,72 +719,112 @@ FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
         ASSERT_EQ(E_UNAVAILABLE, error.GetCode()) << error.GetMessage();
         ASSERT_TRUE(pageGroups.empty());
 
-        // The rotation keeps moving while retrying, so each device gets one.
+        // The rotation keeps moving while retrying, so each device gets
+        // one.
         ASSERT_EQ(TVector<ui32>(DeviceCount, 1), ReadCounts(fx));
-        ASSERT_EQ(Backoffs(attempts - 1), Sleeps(fx));
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// The quorum group: Init acquires every device, claims it by writing a first
-// page of its own, and levels the journals. Writes go to all and return on a
-// majority, reads go to a replica that has reached the acked lsn, and any
-// device failure breaks the group for good.
+// QuorumGroup
 
-FIBER_TEST(QuorumGroupTest, InitAcquiresEveryDeviceThenClaimsIt)
+FIBER_TEST(QuorumGroupTest, ShouldInit)
 {
-    TQuorumFixture fx(false /* init */);
-    const auto init = fx.Group->Init();
-    ASSERT_EQ(S_OK, init.GetError().GetCode())
-        << init.GetError().GetMessage();
+    // No errors: every device is acquired, a blank one gets the header page as
+    // record 1, and TearDown releases every device.
+    {
+        TQuorumFixture fx(false /* init */);
+        const auto init = fx.Group->Init();
+        ASSERT_EQ(S_OK, init.GetError().GetCode())
+            << init.GetError().GetMessage();
 
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].AcquireCalls.size()) << "dev " << i;
-        const auto& acquire = fx[i].AcquireCalls[0];
-        ASSERT_EQ(1U, acquire.DeviceUUIDsSize());
-        ASSERT_EQ(fx.DeviceUUIDs[i], acquire.GetDeviceUUIDs(0));
-        ASSERT_EQ(42U, acquire.GetGeneration());
-        ASSERT_EQ("test-client", acquire.GetHeaders().GetClientId());
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_EQ(1U, fx[i].Acquires.Requests.size());
 
-        // A blank device is claimed with a first page, and the claim is the
-        // first record it takes, because a device refuses lsn zero.
-        ASSERT_EQ(1U, fx[i].WriteCount()) << "dev " << i;
-        const auto& claim = fx[i].WriteCalls[0];
-        ASSERT_EQ(1U, claim.GetLogSequenceNumber()) << "dev " << i;
-        ASSERT_EQ(0U, claim.GetPageGroups(0).GetFirstPageNo()) << "dev " << i;
-        ASSERT_EQ(DefaultBlockSize, Claim(fx[i]).size()) << "dev " << i;
-    }
+            const auto& acquire = fx[i].Acquires.Requests[0];
+            ASSERT_EQ(1U, acquire.DeviceUUIDsSize());
+            ASSERT_EQ(42U, acquire.GetGeneration());
+            ASSERT_EQ("test-client", acquire.GetHeaders().GetClientId());
+            ASSERT_EQ(fx.DeviceUUIDs[i], acquire.GetDeviceUUIDs(0));
 
-    fx.Group->TearDown();
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].ReleaseCalls.size()) << "dev " << i;
-        ASSERT_EQ(fx.DeviceUUIDs[i], fx[i].ReleaseCalls[0].GetDeviceUUIDs(0));
+            ASSERT_EQ(1U, fx[i].Writes.Count());
+
+            const auto& headerWrite = fx[i].Writes.Requests[0];
+            ASSERT_EQ(1U, headerWrite.GetLogSequenceNumber());
+            ASSERT_EQ(0U, headerWrite.GetPageGroups(0).GetFirstPageNo());
+            ASSERT_EQ(DefaultBlockSize, PageWritten(fx[i], 0).size());
+        }
+
+        fx.Group->TearDown();
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_EQ(1U, fx[i].ReleaseCalls.size());
+            ASSERT_EQ(
+                fx.DeviceUUIDs[i],
+                fx[i].ReleaseCalls[0].GetDeviceUUIDs(0));
+        }
     }
 }
 
-FIBER_TEST(QuorumGroupTest, InitNeedsEveryDeviceAndStopsAtTheFirstPhaseThatFails)
+FIBER_TEST(QuorumGroupTest, ShouldNotRewriteExistingHeaderOnInit)
 {
-    // Acquire is n of n, and nothing is touched before it succeeds everywhere.
-    {
-        TQuorumFixture fx(false /* init */);
-        *fx[1].AcquireResp.MutableError() = MakeError(E_ARGUMENT, "no session");
-
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-        ASSERT_EQ(TVector<ui32>(fx.Size(), 0), ReadCounts(fx));
-        ASSERT_EQ(TVector<ui32>(fx.Size(), 0), WriteCounts(fx));
+    TQuorumFixture fx(false /* init */);
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        fx[i].Reads.Response = PageResponse(0, HeaderPages()[i]);
+        fx[i].Reads.Response.SetLastAckedLogSequenceNumber(Lsn);
     }
 
-    // So is the replay: a device ahead of the others whose journal cannot be
-    // read stops it.
+    const auto init = fx.Group->Init();
+    ASSERT_EQ(S_OK, init.GetError().GetCode())
+        << init.GetError().GetMessage();
+    ASSERT_EQ(Lsn, init.GetResult());
+    ASSERT_EQ(TVector<ui32>(fx.Size(), 0), WriteCounts(fx));
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldFailInitOnErrors)
+{
+    // The acquire is refused.
     {
-        TQuorumFixture first;
         TQuorumFixture fx(false /* init */);
-        fx[0].ReadRespQueue.push_back(ClaimedAt(Claim(first[0]), 4));
+        *fx[1].Acquires.Response.MutableError() =
+            MakeError(E_ARGUMENT, "no session");
+
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+    }
+
+    // The header page cannot be read.
+    {
+        TQuorumFixture fx(false /* init */);
+        *fx[0].Reads.Response.MutableError() = MakeError(E_IO, "media error");
+
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(E_IO, error.GetCode()) << error.GetMessage();
+        ASSERT_EQ(0U, fx[0].Writes.Count())
+            << "header written despite the error";
+    }
+
+    // The header page cannot be written.
+    {
+        TQuorumFixture fx(false /* init */);
+        fx[1].Writes.ResponseQueue.emplace_back();
+        *fx[1].Writes.ResponseQueue.back().MutableError() =
+            MakeError(E_ARGUMENT, "read only");
+
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+        ASSERT_EQ(1U, fx[1].Writes.Count());
+    }
+
+    // The journal tail cannot be read.
+    {
+        TQuorumFixture fx(false /* init */);
+        auto response = PageResponse(0, HeaderPages()[0]);
+        response.SetLastAckedLogSequenceNumber(4);
+        fx[0].Reads.ResponseQueue.push_back(response);
         *fx[0].ReadJournalTailResp.MutableError() =
             MakeError(E_ARGUMENT, "no journal");
 
-        auto error = InitFails(fx);
+        auto error = fx.Group->Init().GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
         // An uninitialised group serves nobody.
@@ -835,181 +834,91 @@ FIBER_TEST(QuorumGroupTest, InitNeedsEveryDeviceAndStopsAtTheFirstPhaseThatFails
     }
 }
 
-FIBER_TEST(QuorumGroupTest, FirstRecordAfterInitIsNotConfusedWithTheClaim)
+FIBER_TEST(QuorumGroupTest, ShouldAllowTearDownBeforeInit)
 {
-    TQuorumFixture fx(false /* init */);
-    const auto init = fx.Group->Init();
-    ASSERT_EQ(S_OK, init.GetError().GetCode())
-        << init.GetError().GetMessage();
-    fx.ForgetRequests();
+    // TearDown before Init releases the devices and returns.
+    {
+        TQuorumFixture fx(false /* init */);
+        fx.Group->TearDown();
 
-    fx[2].Paused = true;
-    auto error = WritePages(*fx.Group, init.GetResult() + 1, PageNo, {"fresh"});
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-
-    TVector<TPageGroup> pageGroups;
-    for (ui32 i = 0; i < 2 * DeviceCount; ++i) {
-        error = Read(*fx.Group, &pageGroups);
-        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_EQ(1U, fx[i].ReleaseCalls.size());
+            ASSERT_EQ(
+                fx.DeviceUUIDs[i],
+                fx[i].ReleaseCalls[0].GetDeviceUUIDs(0));
+        }
     }
-    ASSERT_EQ(0U, fx[2].ReadCalls.size()) << "served by the replica behind";
-
-    fx[2].Unpause();
-    ASSERT_TRUE(WaitFor([&] { return fx[2].WriteCount() == 1; }));
 }
 
-FIBER_TEST(QuorumGroupTest, InitRejectsADeviceClaimedByAnotherGroup)
+FIBER_TEST(QuorumGroupTest, ShouldValidateGroupHeader)
 {
-    TQuorumFixture first;
-    const TString claim = Claim(first[0]);
+    // The header page is short.
+    {
+        TQuorumFixture fx(false /* init */);
+        fx[2].Reads.Response = PageResponse(0, TString(1, 'x'));
 
-    // A device claimed as dev-a, offered to a group that calls it dev-b.
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+        ASSERT_EQ(0U, fx[2].Writes.Count())
+            << "header written despite the error";
+    }
+
+    const TString headerPage = HeaderPages()[0];
+
+    // A device written up as dev-a, offered to a group that calls it dev-b.
     {
         TQuorumFixture other(false /* init */);
-        other[1].ReadResp = PageResponse(0, claim);
+        other[1].Reads.Response = PageResponse(0, headerPage);
 
-        auto error = InitFails(other);
+        auto error = other.Group->Init().GetError();
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, other.DeviceUUIDs[1])) << error.GetMessage();
-        ASSERT_EQ(0U, other[1].WriteCount());
+        ASSERT_EQ(0U, other[1].Writes.Count());
     }
 
-    // The same claim, offered to a group that uses a different page size.
+    // A header page this build cannot understand.
     {
-        TQuorumFixture other(false /* init */, MakeConfig(8_KB));
-        TString wide = claim;
-        wide.resize(8_KB, '\0');
-        other[0].ReadResp = PageResponse(0, wide);
+        const TString good = HeaderPages()[2];
+        ASSERT_GE(good.size(), sizeof(TStorageGroupHeader));
 
-        auto error = InitFails(other);
-        ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, other.DeviceUUIDs[0])) << error.GetMessage();
-        ASSERT_EQ(0U, other[0].WriteCount());
-    }
+        for (TStringBuf field:
+             {"magic", "version", "group type", "page size", "device"})
+        {
+            TStorageGroupHeader header;
+            memcpy(&header, good.data(), sizeof(header));
+            if (field == "magic") {
+                header.MagicNumber = header.MagicNumber + 1;
+            } else if (field == "version") {
+                header.Version = TStorageGroupHeader::CurrentVersion + 1;
+            } else if (field == "group type") {
+                header.GroupType = header.GroupType + 1;
+            } else if (field == "page size") {
+                header.PageSize = header.PageSize * 2;
+            } else {
+                header.DeviceUUIDHash = header.DeviceUUIDHash + 1;
+            }
 
-    // A first page holding something nobody here wrote is left alone too,
-    // rather than being taken for a blank device and claimed.
-    {
-        TQuorumFixture fx(false /* init */);
-        fx[0].ReadResp = PageResponse(0, TString(DefaultBlockSize, 'x'));
+            TString headerPage = good;
+            memcpy(headerPage.begin(), &header, sizeof(header));
 
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[0])) << error.GetMessage();
-        ASSERT_EQ(0U, fx[0].WriteCount());
-    }
-}
+            TQuorumFixture fx(false /* init */);
+            fx[2].Reads.Response = PageResponse(0, headerPage);
 
-FIBER_TEST(QuorumGroupTest, InitRejectsAClaimItCannotUnderstand)
-{
-    //
-    // The only case that needs the on-disk layout. A claim written by a newer
-    // version, or by a kind of group this build does not have, cannot be
-    // produced through the interface, so both are made by taking a claim this
-    // build did write and moving one field out of range.
-    //
-    // The baseline is the claim dev-c wrote for itself, so the only thing
-    // wrong with it afterwards is the field under test.
-    TQuorumFixture first;
-    const TString good = Claim(first[2]);
-    ASSERT_GE(good.size(), sizeof(TStorageGroupHeader));
-
-    for (TStringBuf field: {"version", "group type"}) {
-        TStorageGroupHeader header;
-        memcpy(&header, good.data(), sizeof(header));
-        if (field == "version") {
-            header.Version = TStorageGroupHeader::CurrentVersion + 1;
-        } else {
-            header.GroupType = header.GroupType + 1;
+            auto error = fx.Group->Init().GetError();
+            ASSERT_EQ(E_INVALID_STATE, error.GetCode())
+                << field << ": " << error.GetMessage();
+            ASSERT_EQ(0U, fx[2].Writes.Count())
+                << field << ": header written anyway";
         }
-
-        TString claim = good;
-        memcpy(claim.begin(), &header, sizeof(header));
-
-        TQuorumFixture fx(false /* init */);
-        fx[2].ReadResp = PageResponse(0, claim);
-
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_INVALID_STATE, error.GetCode())
-            << field << ": " << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
-        ASSERT_EQ(0U, fx[2].WriteCount()) << field << ": claimed anyway";
     }
 }
 
-FIBER_TEST(QuorumGroupTest, InitFailsWhenTheFirstPageCannotBeReadOrWritten)
-{
-    // The read itself fails.
-    {
-        TQuorumFixture fx(false /* init */);
-        *fx[0].ReadResp.MutableError() = MakeError(E_IO, "media error");
-
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_IO, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[0])) << error.GetMessage();
-        ASSERT_EQ(0U, fx[0].WriteCount()) << "claimed despite the error";
-    }
-
-    // The device answers with less than a page.
-    {
-        TQuorumFixture fx(false /* init */);
-        fx[2].ReadResp = PageResponse(0, TString(100, 'x'));
-
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
-        ASSERT_EQ(0U, fx[2].WriteCount()) << "claimed despite the error";
-    }
-
-    // Claiming a blank device is refused outright.
-    {
-        TQuorumFixture fx(false /* init */);
-        fx[1].WriteRespQueue.emplace_back();
-        *fx[1].WriteRespQueue.back().MutableError() =
-            MakeError(E_ARGUMENT, "read only");
-
-        auto error = InitFails(fx);
-        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[1])) << error.GetMessage();
-        ASSERT_EQ(1U, fx[1].WriteCount());
-    }
-
-    // A retriable refusal is retried and the device ends up claimed.
-    {
-        TQuorumFixture fx(false /* init */);
-        fx[1].WriteRespQueue.emplace_back();
-        *fx[1].WriteRespQueue.back().MutableError() =
-            MakeError(E_REJECTED, "busy");
-
-        const auto init = fx.Group->Init();
-        ASSERT_EQ(S_OK, init.GetError().GetCode())
-            << init.GetError().GetMessage();
-        ASSERT_EQ(2U, fx[1].WriteCount());
-        ASSERT_EQ(Backoffs(1), Sleeps(fx));
-    }
-}
-
-FIBER_TEST(QuorumGroupTest, InitValidatesEveryDeviceEvenIfOneFails)
+FIBER_TEST(QuorumGroupTest, ShouldReplayTheJournalTailOnInit)
 {
     TQuorumFixture fx(false /* init */);
-    fx[0].ReadResp = PageResponse(0, TString(DefaultBlockSize, 'x'));
+    auto response = PageResponse(0, HeaderPages()[0]);
+    response.SetLastAckedLogSequenceNumber(4);
+    fx[0].Reads.ResponseQueue.push_back(response);
 
-    auto error = InitFails(fx);
-    ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-    ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[0])) << error.GetMessage();
-
-    // The others are still looked at, and the blank ones are still claimed:
-    // validation fans out and joins rather than stopping at the first answer.
-    ASSERT_EQ(TVector<ui32>(fx.Size(), 1), ReadCounts(fx));
-    ASSERT_EQ((TVector<ui32>{0, 1, 1}), WriteCounts(fx));
-}
-
-FIBER_TEST(QuorumGroupTest, InitReplaysTheTailOntoDevicesBehind)
-{
-    // A claimed device that kept three records the blank ones never took.
-    TQuorumFixture first;
-    TQuorumFixture fx(false /* init */);
-    fx[0].ReadRespQueue.push_back(ClaimedAt(Claim(first[0]), 4));
     for (ui64 lsn = 2; lsn <= 4; ++lsn) {
         auto* record = fx[0].ReadJournalTailResp.AddRecords();
         record->SetLogSequenceNumber(lsn);
@@ -1024,282 +933,204 @@ FIBER_TEST(QuorumGroupTest, InitReplaysTheTailOntoDevicesBehind)
         << init.GetError().GetMessage();
     ASSERT_EQ(4U, init.GetResult());
 
-    // The devices behind take the claim and then the three records, each
-    // going back exactly as the device that kept it holds it, rather than
-    // being placed past the group's own pages a second time.
+    // The devices behind take the header page and then the three records,
+    // each as the device that kept it holds it, and every device serves once
+    // it is level.
     ASSERT_EQ((TVector<ui32>{0, 4, 4}), WriteCounts(fx));
     for (ui32 i = 1; i < DeviceCount; ++i) {
-        ASSERT_EQ((TVector<ui64>{1, 2, 3, 4}), fx[i].Lsns()) << "dev " << i;
+        ASSERT_EQ(1U, fx[i].Writes.Requests.at(0).GetLogSequenceNumber());
         for (ui64 lsn = 2; lsn <= 4; ++lsn) {
-            const auto& write = fx[i].WriteCalls.at(lsn - 1);
-            ASSERT_EQ(lsn - 1, write.GetPrevLogSequenceNumber())
-                << "dev " << i << " lsn " << lsn;
-            ASSERT_EQ(100 + lsn, write.GetPageGroups(0).GetFirstPageNo())
-                << "dev " << i << " lsn " << lsn;
+            const auto& write = fx[i].Writes.Requests.at(lsn - 1);
+            ASSERT_EQ(lsn, write.GetLogSequenceNumber());
+            ASSERT_EQ(lsn - 1, write.GetPrevLogSequenceNumber());
+            ASSERT_EQ(100 + lsn, write.GetPageGroups(0).GetFirstPageNo());
             ASSERT_EQ(
                 TString(TStringBuilder() << "record" << lsn),
-                write.GetPageGroups(0).GetContent(0))
-                << "dev " << i << " lsn " << lsn;
+                write.GetPageGroups(0).GetContent(0));
         }
     }
 
-    // And every device serves once it is level.
     ASSERT_EQ(S_OK, ReadFromEachReplica(fx).GetCode());
     ASSERT_EQ(TVector<ui32>(fx.Size(), 1), ReadCounts(fx));
 }
 
-FIBER_TEST(QuorumGroupTest, InitFailsIfTheJournalCannotBridgeTheGap)
+FIBER_TEST(QuorumGroupTest, ShouldFailIfReplayImpossible)
 {
-    TQuorumFixture first;
-    const TString claim = Claim(first[0]);
+    // TODO(#6957): a tail that does not continue from where a device is, e.g.
+    // devices at 10, 15, 15 and a tail after 10 that starts at 13, is replayed
+    // as it comes; ReadRecordsAbove should check the chain and fail Init.
 
-    // A device that is ahead but keeps no record past the claim, as after
-    // being told the record is safe everywhere and then losing it: it has
-    // nothing to bring the others up with.
+    const TString headerPage = HeaderPages()[0];
+
+    // empty read tail response
     {
         TQuorumFixture fx(false /* init */);
-        fx[0].ReadRespQueue.push_back(ClaimedAt(claim, Lsn));
+        auto response = PageResponse(0, headerPage);
+        response.SetLastAckedLogSequenceNumber(Lsn);
+        fx[0].Reads.ResponseQueue.push_back(response);
 
-        auto error = InitFails(fx);
+        auto error = fx.Group->Init().GetError();
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_EQ((TVector<ui32>{0, 1, 1}), WriteCounts(fx))
-            << "a replay was attempted";
     }
 
-    // A refused replay fails Init, but every other replay still runs to
-    // completion first: the fan-out is joined, not abandoned.
+    // A device behind takes the header page but fails write.
     {
         TQuorumFixture fx(false /* init */);
-        fx[0].ReadRespQueue.push_back(ClaimedAt(claim, 4));
+        auto response = PageResponse(0, headerPage);
+        response.SetLastAckedLogSequenceNumber(4);
+        fx[0].Reads.ResponseQueue.push_back(response);
         for (ui64 lsn = 2; lsn <= 4; ++lsn) {
             auto* record = fx[0].ReadJournalTailResp.AddRecords();
             record->SetLogSequenceNumber(lsn);
             record->SetPrevLogSequenceNumber(lsn - 1);
         }
-        // The claim goes through, the replay does not.
-        fx[2].WriteRespQueue.emplace_back();
-        *fx[2].WriteResp.MutableError() = MakeError(E_ARGUMENT, "read only");
 
-        auto error = InitFails(fx);
+        fx[2].Writes.ResponseQueue.emplace_back();
+        *fx[2].Writes.Response.MutableError() =
+            MakeError(E_ARGUMENT, "read only");
+
+        auto error = fx.Group->Init().GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
-
-        ASSERT_EQ((TVector<ui32>{0, 4, 2}), WriteCounts(fx))
-            << "the healthy replay was abandoned";
-
-        TVector<TPageGroup> pageGroups;
-        error = Read(*fx.Group, &pageGroups);
-        ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
     }
 }
 
-FIBER_TEST(QuorumGroupTest, TearDownBeforeInitReleasesAndReturns)
+FIBER_TEST(QuorumGroupTest, ShouldAckWritesOnMajority)
 {
-    TQuorumFixture fx(false /* init */);
-    fx.Group->TearDown();
+    // Two of three ack the write; the laggard stays out of reads until it
+    // catches up.
+    {
+        TQuorumFixture fx;
+        fx.ForgetRequests();
 
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].ReleaseCalls.size()) << "dev " << i;
-        ASSERT_EQ(fx.DeviceUUIDs[i], fx[i].ReleaseCalls[0].GetDeviceUUIDs(0));
-    }
-}
-
-FIBER_TEST(QuorumGroupTest, WriteReturnsOnMajorityAndKeepsLaggardsOutOfReads)
-{
-    TQuorumFixture fx;
-    fx.ForgetRequests();
-
-    fx[2].Paused = true;
-    auto error = WritePages(*fx.Group, Lsn, PageNo, {"fresh"});
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-
-    // Two acks are enough to return; the third record is still in flight.
-    ASSERT_EQ((TVector<ui32>{1, 1, 0}), WriteCounts(fx));
-
-    // The record goes out with the link the caller built.
-    for (ui32 i = 0; i < 2; ++i) {
-        ASSERT_EQ(Lsn - 1, fx[i].WriteCalls.back().GetPrevLogSequenceNumber())
-            << "dev " << i;
-    }
-
-    // The replica that has not taken the record must not answer with the page
-    // as it was before. The cursor still advances over it, so the eligible two
-    // do not get an even share, only a share each.
-    TVector<TPageGroup> pageGroups;
-    for (ui32 i = 0; i < 2 * DeviceCount; ++i) {
-        error = Read(*fx.Group, &pageGroups);
+        fx[2].Writes.Paused = true;
+        TPageGroup pageGroup{.FirstPageNo = PageNo};
+        pageGroup.Content.emplace_back("fresh", 5U /* len */);
+        TVector<TPageGroup> record;
+        record.push_back(std::move(pageGroup));
+        auto error = fx.Group->WriteLogRecord(
+            NoHeaders,
+            std::move(record),
+            {.Lsn = Lsn + 1, .PrevLsn = Lsn - 1});
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+        // Two acks are enough to return; the third record is still in flight.
+        ASSERT_EQ((TVector<ui32>{1, 1, 0}), WriteCounts(fx));
+
+        // The record goes out with the link the caller built, even one that
+        // skips a number.
+        for (ui32 i = 0; i < 2; ++i) {
+            const auto& write = fx[i].Writes.Requests.back();
+            ASSERT_EQ(Lsn + 1, write.GetLogSequenceNumber());
+            ASSERT_EQ(Lsn - 1, write.GetPrevLogSequenceNumber());
+        }
+
+        // Once the laggard catches up, every replica serves.
+        fx[2].Writes.Unpause();
+        ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Count() == 1; }));
+        ASSERT_EQ(S_OK, ReadFromEachReplica(fx).GetCode());
+        ASSERT_EQ(TVector<ui32>(fx.Size(), 1), ReadCounts(fx));
     }
-    ASSERT_EQ(0U, fx[2].ReadCalls.size());
-    ASSERT_GT(fx[0].ReadCalls.size(), 0U);
-    ASSERT_GT(fx[1].ReadCalls.size(), 0U);
 
-    // Once it catches up it is back in the rotation.
-    fx[2].Unpause();
-    ASSERT_TRUE(WaitFor(
-        [&]
-        {
-            error = Read(*fx.Group, &pageGroups);
-            return HasError(error) || !fx[2].ReadCalls.empty();
-        }));
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(S_OK, ReadFromEachReplica(fx).GetCode());
-    ASSERT_EQ(TVector<ui32>(fx.Size(), 1), ReadCounts(fx));
-}
-
-FIBER_TEST(QuorumGroupTest, MajorityIsMoreThanHalfOfTheDevices)
-{
+    // A majority is more than half of the devices.
     // Two devices leave no room for a straggler: the majority is both.
     {
         TQuorumFixture fx(2U /* devices */);
-        fx[1].Paused = true;
+        fx[1].Writes.Paused = true;
 
         silk::FiberFuture write;
         StartWrite(fx, Lsn, &write);
-        ASSERT_TRUE(StillRunning(write)) << "acked without the second device";
+        ASSERT_TRUE(StillRunning(write))
+            << "acked without the second device";
 
-        fx[1].Unpause();
+        fx[1].Writes.Unpause();
         ASSERT_EQ(0, write.wait());
     }
 
     // Four tolerate one straggler.
     {
         TQuorumFixture fx(4U /* devices */);
-        fx[3].Paused = true;
+        fx[3].Writes.Paused = true;
 
         auto error = Write(*fx.Group);
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-        fx[3].Unpause();
-        ASSERT_TRUE(WaitFor([&] { return fx[3].WriteCount() == 2; }));
+        fx[3].Writes.Unpause();
+        ASSERT_TRUE(WaitFor([&] { return fx[3].Writes.Count() == 2; }));
     }
 
     // But not two: half the devices is not a majority.
     {
         TQuorumFixture fx(4U /* devices */);
-        fx[2].Paused = true;
-        fx[3].Paused = true;
+        fx[2].Writes.Paused = true;
+        fx[3].Writes.Paused = true;
 
         silk::FiberFuture write;
         StartWrite(fx, Lsn, &write);
         ASSERT_TRUE(StillRunning(write)) << "acked on half the devices";
 
-        fx[2].Unpause();
+        fx[2].Writes.Unpause();
         ASSERT_EQ(0, write.wait());
 
-        fx[3].Unpause();
-        ASSERT_TRUE(WaitFor([&] { return fx[3].WriteCount() == 2; }));
+        fx[3].Writes.Unpause();
+        ASSERT_TRUE(WaitFor([&] { return fx[3].Writes.Count() == 2; }));
     }
 }
 
-FIBER_TEST(QuorumGroupTest, ReadRetriesThenFailsOverWithinEligibleReplicas)
+FIBER_TEST(QuorumGroupTest, ShouldReadFromReplicasAtTheAckedLsn)
 {
     TQuorumFixture fx;
     fx.ForgetRequests();
 
     // A retriable error is the same replica's problem to fix: it is retried
     // there rather than handed to the next one.
-    fx[0].ReadRespQueue.emplace_back();
-    *fx[0].ReadRespQueue.back().MutableError() = MakeError(E_REJECTED, "busy");
+    fx[0].Reads.ResponseQueue.emplace_back();
+    *fx[0].Reads.ResponseQueue.back().MutableError() =
+        MakeError(E_REJECTED, "busy");
 
     TVector<TPageGroup> pageGroups;
     auto error = Read(*fx.Group, &pageGroups);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     ASSERT_EQ((TVector<ui32>{2, 0, 0}), ReadCounts(fx));
-    ASSERT_EQ(Backoffs(1), Sleeps(fx));
 
     for (auto& device: fx.Nodes) {
-        device->ReadCalls.clear();
+        device->Reads.Requests.clear();
     }
 
     // A replica that is behind is not a fallback: answering with the page as
     // it was before the last record is worse than failing the read.
-    fx[2].Paused = true;
+    fx[2].Writes.Paused = true;
     error = Write(*fx.Group);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-    *fx[0].ReadResp.MutableError() = MakeError(E_ARGUMENT, "bad range");
-    *fx[1].ReadResp.MutableError() = MakeError(E_ARGUMENT, "bad range");
+    *fx[0].Reads.Response.MutableError() = MakeError(E_ARGUMENT, "bad range");
+    *fx[1].Reads.Response.MutableError() = MakeError(E_ARGUMENT, "bad range");
 
     error = Read(*fx.Group, &pageGroups);
     ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-    ASSERT_EQ(0U, fx[2].ReadCalls.size());
-    ASSERT_GT(fx[0].ReadCalls.size(), 0U);
-    ASSERT_GT(fx[1].ReadCalls.size(), 0U);
+    ASSERT_EQ(0U, fx[2].Reads.Requests.size());
+    ASSERT_GT(fx[0].Reads.Requests.size(), 0U);
+    ASSERT_GT(fx[1].Reads.Requests.size(), 0U);
 
     // A failed read is not a failed device, so the group stays usable.
     error = Write(*fx.Group, Lsn + 1);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-    fx[2].Unpause();
-    ASSERT_TRUE(WaitFor([&] { return fx[2].WriteCount() == 2; }));
+    fx[2].Writes.Unpause();
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Count() == 2; }));
 }
 
-FIBER_TEST(QuorumGroupTest, ConcurrentWritesAckIndependently)
-{
-    // Records landing in any order all get their own majority.
-    {
-        TQuorumFixture fx;
-        fx.ForgetRequests();
-        for (ui32 i = 0; i < DeviceCount; ++i) {
-            fx[i].Paused = true;
-        }
-
-        TVector<silk::FiberFuture> futures(3);
-        StartWrite(fx, Lsn + 2, &futures[0]);
-        StartWrite(fx, Lsn, &futures[1]);
-        StartWrite(fx, Lsn + 1, &futures[2]);
-
-        ASSERT_TRUE(WaitFor([&] { return TotalParked(fx) == 3 * DeviceCount; }));
-
-        for (ui32 i = 0; i < DeviceCount; ++i) {
-            fx[i].Unpause();
-        }
-        for (auto& future: futures) {
-            ASSERT_EQ(0, future.wait());
-        }
-
-        ASSERT_TRUE(
-            WaitFor([&] { return TotalWrites(fx) == 3 * DeviceCount; }));
-    }
-
-    // An ack for a later record is not an ack for an earlier one.
-    {
-        TQuorumFixture fx;
-        fx.ForgetRequests();
-        for (ui32 i = 0; i < DeviceCount; ++i) {
-            fx[i].HoldLsn = Lsn;
-        }
-
-        silk::FiberFuture held;
-        silk::FiberFuture free;
-        StartWrite(fx, Lsn, &held);
-        StartWrite(fx, Lsn + 1, &free);
-
-        ASSERT_EQ(0, free.wait());
-        ASSERT_TRUE(StillRunning(held)) << "held write acked on foreign acks";
-
-        for (ui32 i = 0; i < DeviceCount; ++i) {
-            fx[i].Unpause();
-        }
-        ASSERT_EQ(0, held.wait());
-        ASSERT_TRUE(
-            WaitFor([&] { return TotalWrites(fx) == 2 * DeviceCount; }));
-    }
-}
-
-FIBER_TEST(QuorumGroupTest, AnyDeviceWriteFailureBreaksTheGroup)
+FIBER_TEST(QuorumGroupTest, ShouldBreakOnAnyDeviceWriteFailure)
 {
     // A failure that arrives before the majority fails the write itself.
     {
         TQuorumFixture fx;
         fx.ForgetRequests();
-        fx[1].Paused = true;
-        *fx[2].WriteResp.MutableError() = MakeError(E_ARGUMENT, "read only");
+        fx[1].Writes.Paused = true;
+        *fx[2].Writes.Response.MutableError() =
+            MakeError(E_ARGUMENT, "read only");
 
         auto error = Write(*fx.Group);
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
 
         // And the group stays broken for everything that follows.
         error = Write(*fx.Group, Lsn + 1);
@@ -1309,21 +1140,22 @@ FIBER_TEST(QuorumGroupTest, AnyDeviceWriteFailureBreaksTheGroup)
         error = Read(*fx.Group, &pageGroups);
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
 
-        fx[1].Unpause();
-        ASSERT_TRUE(WaitFor([&] { return fx[1].WriteCount() == 1; }));
+        fx[1].Writes.Unpause();
+        ASSERT_TRUE(WaitFor([&] { return fx[1].Writes.Count() == 1; }));
     }
 
     // A failure that arrives after it does not un-ack the caller, but still
     // breaks the group: the devices have diverged.
     {
         TQuorumFixture fx;
-        fx[2].Paused = true;
-        *fx[2].WriteResp.MutableError() = MakeError(E_ARGUMENT, "read only");
+        fx[2].Writes.Paused = true;
+        *fx[2].Writes.Response.MutableError() =
+            MakeError(E_ARGUMENT, "read only");
 
         auto error = Write(*fx.Group);
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-        fx[2].Unpause();
+        fx[2].Writes.Unpause();
         ASSERT_TRUE(WaitFor(
             [&]
             {
@@ -1333,175 +1165,252 @@ FIBER_TEST(QuorumGroupTest, AnyDeviceWriteFailureBreaksTheGroup)
 
         error = Write(*fx.Group, Lsn + 1);
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-        ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
     }
 }
 
-FIBER_TEST(QuorumGroupTest, RejectsRequestsItCannotAddress)
+FIBER_TEST(QuorumGroupTest, ShouldHandleInvalidPageRanges)
 {
     TQuorumFixture fx;
     fx.ForgetRequests();
 
-    // Lsn zero is what an unwritten record looks like, so it is refused.
-    auto error = WritePages(*fx.Group, 0, PageNo, {"page1"});
-    ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+    constexpr ui64 reserved = TStorageGroupHeader::StorageGroupReservedPages;
 
-    // So is a page range the group cannot place on a device without wrapping
-    // around.
-    error = WritePages(*fx.Group, Lsn, Max<ui64>(), {"page1"});
+    // cannot technically write all the pages in range
+    auto error = WritePages(*fx.Group, Lsn, Max<ui64>(), {"page1"});
     ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
     TVector<TPageGroup> pageGroups;
-    error = ReadRange(*fx.Group, Max<ui64>() - 1, 2, &pageGroups);
+    error = ReadRange(*fx.Group, Max<ui64>(), 1, &pageGroups);
+    ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+    error = ReadRange(*fx.Group, Max<ui64>() - reserved, 1, &pageGroups);
+    ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+    error = ReadRange(*fx.Group, Max<ui64>() - reserved - 1, 2, &pageGroups);
     ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
-    ASSERT_EQ(TVector<ui32>(fx.Size(), 0), WriteCounts(fx));
-    ASSERT_EQ(TVector<ui32>(fx.Size(), 0), ReadCounts(fx));
-}
+    // The last page that fits comes back under the caller's number.
+    error = ReadRange(*fx.Group, Max<ui64>() - reserved - 1, 1, &pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(1U, pageGroups.size());
+    ASSERT_EQ(Max<ui64>() - reserved - 1, pageGroups[0].FirstPageNo);
 
-FIBER_TEST(QuorumGroupTest, ForwardsTheCallersLinkAndRefusesABrokenOne)
-{
-    TQuorumFixture fx;
-    fx.ForgetRequests();
-
-    // Which record this one follows is the caller's business, and a link
-    // that skips a number goes out exactly as given.
-    {
-        TPageGroup pageGroup{.FirstPageNo = PageNo};
-        pageGroup.Content.emplace_back("page1", 5U /* len */);
-        TVector<TPageGroup> pageGroups;
-        pageGroups.push_back(std::move(pageGroup));
-
-        auto error = fx.Group->WriteLogRecord(
-            NoHeaders,
-            std::move(pageGroups),
-            {.Lsn = Lsn + 1, .PrevLsn = Lsn - 1});
-        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    }
-    ASSERT_TRUE(WaitFor([&] { return TotalWrites(fx) == DeviceCount; }));
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(Lsn + 1, fx[i].WriteCalls.back().GetLogSequenceNumber());
-        ASSERT_EQ(Lsn - 1, fx[i].WriteCalls.back().GetPrevLogSequenceNumber());
-    }
-
-    // A link that does not move forward is refused before any device sees it.
-    {
-        TPageGroup pageGroup{.FirstPageNo = PageNo};
-        pageGroup.Content.emplace_back("page1", 5U /* len */);
-        TVector<TPageGroup> pageGroups;
-        pageGroups.push_back(std::move(pageGroup));
-
-        auto error = fx.Group->WriteLogRecord(
-            NoHeaders,
-            std::move(pageGroups),
-            {.Lsn = Lsn, .PrevLsn = Lsn});
-        ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
-    }
-    ASSERT_EQ(TVector<ui32>(DeviceCount, 1), WriteCounts(fx));
-}
-
-FIBER_TEST(QuorumGroupTest, RefusesAReservedPageFromADevice)
-{
-    TQuorumFixture fx;
-
-    // A device answering with a page group the caller never asked for would
-    // come back as a page number that does not exist, so it is dropped.
+    // A device answering with a page from below the caller's would come back
+    // as a number that does not exist, so it is dropped.
     for (auto& device: fx.Nodes) {
-        device->ReadResp = PageResponse(0, "the claim");
+        device->Reads.Response = PageResponse(0, "the header");
     }
 
-    TVector<TPageGroup> pageGroups;
-    auto error = ReadRange(*fx.Group, 0, 1, &pageGroups);
+    error = ReadRange(*fx.Group, 0, 1, &pageGroups);
     ASSERT_EQ(E_FAIL, error.GetCode()) << error.GetMessage();
     ASSERT_TRUE(pageGroups.empty());
 }
 
-FIBER_TEST(QuorumGroupTest, LowWatermarkFollowsTheSlowestDevice)
+FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
 {
-    auto timer = std::make_shared<TTickTimer>();
-    TQuorumFixture fx(timer, MakeConfigWithWaterMarksLoop());
+    // The watermark follows the slowest device, one push per move.
+    {
+        auto config = MakeConfig();
+        config.LowWatermarkPeriod = TDuration::MilliSeconds(1);
+        TQuorumFixture fx(true, config);
 
-    // Everything every device already holds may be trimmed from the start.
-    ASSERT_TRUE(timer->TickUntil(
-        [&] { return !fx[0].AdvanceLsnLowWatermarkCalls.empty(); }));
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].AdvanceLsnLowWatermarkCalls.size()) << "dev " << i;
-        ASSERT_EQ(
-            1U,
-            fx[i].AdvanceLsnLowWatermarkCalls[0].GetLsnLowWatermark())
-            << "dev " << i;
+        // Everything every device already holds may be trimmed from the start.
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_TRUE(WaitFor([&] { return fx[i].Watermarks.Count() == 1; }));
+            ASSERT_EQ(1U, fx[i].Watermarks.Last().GetLsnLowWatermark());
+        }
+
+        fx[2].Writes.Paused = true;
+        auto error = Write(*fx.Group);
+        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        FiberScheduler::yield();
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_EQ(1U, fx[i].Watermarks.Count());
+        }
+
+        fx[2].Writes.Unpause();
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_TRUE(WaitFor([&] { return fx[i].Watermarks.Count() == 2; }));
+            ASSERT_EQ(Lsn, fx[i].Watermarks.Last().GetLsnLowWatermark());
+        }
+
+        // One push per move: the next record brings the third and no other.
+        error = Write(*fx.Group, Lsn + 5);
+        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            ASSERT_TRUE(WaitFor([&] { return fx[i].Watermarks.Count() == 3; }));
+            ASSERT_EQ(Lsn + 5, fx[i].Watermarks.Last().GetLsnLowWatermark());
+        }
     }
 
-    // A record one device is still missing may not be trimmed anywhere: a
-    // trimmed peer could never replay it to that device.
-    fx[2].Paused = true;
-    auto error = Write(*fx.Group);
-    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    // A watermark a device missed is superseded by the next one, not retried.
+    {
+        auto config = MakeConfig();
+        config.LowWatermarkPeriod = TDuration::MilliSeconds(1);
+        config.RetryPolicy.TotalTimeout = TDuration::Zero();   // one request
 
-    timer->TickOnce();
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(1U, fx[i].AdvanceLsnLowWatermarkCalls.size()) << "dev " << i;
+        TQuorumFixture fx(false /* init */, config);
+        *fx[2].Watermarks.Response.MutableError() =
+            MakeError(E_REJECTED, "busy");
+
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        ASSERT_TRUE(WaitFor([&] { return fx[2].Watermarks.Count() == 1; }));
+
+        // The refusal was retriable, so the group does not break, and the
+        // missed watermark is not resent on its own.
+        fx[2].Watermarks.Reply({});
+        FiberScheduler::yield();
+        ASSERT_EQ(1U, fx[2].Watermarks.Count());
+
+        // The next one carries the device forward anyway.
+        error = Write(*fx.Group);
+        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+        ASSERT_TRUE(WaitFor([&] { return fx[2].Watermarks.Count() == 2; }));
+        ASSERT_EQ(Lsn, fx[2].Watermarks.Last().GetLsnLowWatermark());
     }
 
-    fx[2].Unpause();
-    ASSERT_TRUE(timer->TickUntil(
-        [&] { return fx[0].AdvanceLsnLowWatermarkCalls.size() == 2; }));
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(2U, fx[i].AdvanceLsnLowWatermarkCalls.size()) << "dev " << i;
-        ASSERT_EQ(
-            Lsn,
-            fx[i].AdvanceLsnLowWatermarkCalls[1].GetLsnLowWatermark())
-            << "dev " << i;
-    }
+    // A watermark non-retriable error stops the group so far.
+    {
+        auto config = MakeConfig();
+        config.LowWatermarkPeriod = TDuration::MicroSeconds(1);
+        TQuorumFixture fx(false /* init */, config);
+        *fx[2].Watermarks.Response.MutableError() =
+            MakeError(E_ARGUMENT, "unknown device");
+        auto error = fx.Group->Init().GetError();
+        ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
-    // Nothing moved, so nothing is pushed again.
-    timer->TickOnce();
-    for (ui32 i = 0; i < DeviceCount; ++i) {
-        ASSERT_EQ(2U, fx[i].AdvanceLsnLowWatermarkCalls.size()) << "dev " << i;
+        TVector<TPageGroup> pageGroups;
+        ASSERT_TRUE(
+            WaitFor([&] { return HasError(Read(*fx.Group, &pageGroups)); }));
+        const ui32 writes = TotalWrites(fx);
+        error = Write(*fx.Group);
+        ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+        ASSERT_EQ(writes, TotalWrites(fx));
     }
 }
 
-FIBER_TEST(QuorumGroupTest, LowWatermarkMissedByADeviceIsSupersededNotRetried)
+FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
 {
-    auto timer = std::make_shared<TTickTimer>();
-    TQuorumFixture fx(timer, MakeConfigWithWaterMarksLoop());
-    *fx[2].AdvanceLsnLowWatermarkResp.MutableError() =
-        MakeError(E_REJECTED, "busy");
+    auto config = MakeConfig();
+    config.ReacquirePeriod = TDuration::MicroSeconds(1);
+    config.RetryPolicy.TotalTimeout = TDuration::Zero();   // one request
+    TQuorumFixture fx(false /* init */, config);
 
-    ASSERT_TRUE(timer->TickUntil(
-        [&] { return !fx[2].AdvanceLsnLowWatermarkCalls.empty(); }));
-    ASSERT_EQ(1U, fx[2].AdvanceLsnLowWatermarkCalls.size());
-
-    // The refusal was retriable, so the group does not break, and the missed
-    // watermark is not resent on its own.
-    fx[2].AdvanceLsnLowWatermarkResp = {};
-    timer->TickOnce();
-    ASSERT_EQ(1U, fx[2].AdvanceLsnLowWatermarkCalls.size());
-
-    // The next one carries the device forward anyway.
-    auto error = Write(*fx.Group);
+    // Every acquire is held at the devices and let through by the test: the
+    // one of Init at once, then a renewal round at a time.
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        fx[i].Acquires.Paused = true;
+        fx[i].Acquires.Step();
+    }
+    auto error = fx.Group->Init().GetError();
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-    ASSERT_TRUE(timer->TickUntil(
-        [&] { return fx[2].AdvanceLsnLowWatermarkCalls.size() == 2; }));
-    ASSERT_EQ(
-        Lsn,
-        fx[2].AdvanceLsnLowWatermarkCalls[1].GetLsnLowWatermark());
-}
 
-FIBER_TEST(QuorumGroupTest, LowWatermarkRefusedOutrightBreaksTheGroup)
-{
-    auto timer = std::make_shared<TTickTimer>();
-    TQuorumFixture fx(timer, MakeConfigWithWaterMarksLoop());
-    *fx[2].AdvanceLsnLowWatermarkResp.MutableError() =
-        MakeError(E_ARGUMENT, "unknown device");
+    // Init's acquire is the one before step 1.
+    auto reacquireStep = [&](ui32 round)
+    {
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            if (!WaitFor([&] { return fx[i].Acquires.Parked == round + 1; })) {
+                return false;
+            }
+            fx[i].Acquires.Step();
+        }
+        for (ui32 i = 0; i < DeviceCount; ++i) {
+            if (!WaitFor([&] { return fx[i].Acquires.Count() == round + 1; })) {
+                return false;
+            }
+        }
+        return true;
+    };
 
-    ASSERT_TRUE(timer->TickUntil(
-        [&] { return !fx[2].AdvanceLsnLowWatermarkCalls.empty(); }));
+    // A storage node lets go of a session that stops being renewed, so Init's
+    // acquire is repeated on every device for as long as the group lives.
+    ASSERT_TRUE(reacquireStep(1));
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        const auto renewal = fx[i].Acquires.Last();
+        ASSERT_EQ(1U, renewal.DeviceUUIDsSize());
+        ASSERT_EQ(fx.DeviceUUIDs[i], renewal.GetDeviceUUIDs(0));
+        ASSERT_EQ(42U, renewal.GetGeneration());
+        ASSERT_EQ("test-client", renewal.GetHeaders().GetClientId());
+    }
 
-    // A device that refuses to trim is a device we can no longer reason about.
-    const ui32 writes = TotalWrites(fx);
-    auto error = Write(*fx.Group);
+    // A retriable or aborted refusal is no verdict on the session: the group
+    // carries on, and the next round is the retry.
+    fx[2].Acquires.Reply(MakeError(E_REJECTED, "busy"));
+    ASSERT_TRUE(reacquireStep(2));
+    error = Write(*fx.Group);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    fx[2].Acquires.Reply(MakeError(E_ABORTED, "shutting down"));
+    ASSERT_TRUE(reacquireStep(3));
+    error = Write(*fx.Group, Lsn + 1);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    // The device belongs to someone else now, which is not a device this
+    // group can go on writing to.
+    fx[2].Acquires.Reply(MakeError(E_BS_MOUNT_CONFLICT, "another writer"));
+    ASSERT_TRUE(reacquireStep(4));
+    TVector<TPageGroup> pageGroups;
+    ASSERT_TRUE(
+        WaitFor([&] { return HasError(Read(*fx.Group, &pageGroups)); }));
+    error = Write(*fx.Group, Lsn + 2);
     ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
-    ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
-    ASSERT_EQ(writes, TotalWrites(fx));
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
+{
+    // Init held at the header read of the third device, with nothing left to
+    // ask the devices once it is through.
+    TQuorumFixture fx(false /* init */);
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        fx[i].Reads.Response = PageResponse(0, HeaderPages()[i]);
+        fx[i].Reads.Response.SetLastAckedLogSequenceNumber(Lsn);
+    }
+    fx[2].Reads.Paused = true;
+
+    NProto::TError error;
+    silk::FiberFuture init;
+    ASSERT_EQ(
+        0,
+        silk::FiberScheduler::run(
+            InitFiberMain,
+            TInitParams{.Fixture = &fx, .Error = &error},
+            &init));
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Reads.Parked == 1; }));
+
+    // TearDown waits for Init, which then fails instead of starting a loop
+    // that nothing would stop.
+    silk::FiberFuture tearDown;
+    ASSERT_EQ(
+        0,
+        silk::FiberScheduler::run<TGroupFixture*>(
+            TearDownFiberMain,
+            &fx,
+            &tearDown));
+    ASSERT_TRUE(StillRunning(tearDown));
+
+    fx[2].Reads.Unpause();
+    Y_UNUSED(tearDown.wait());
+    Y_UNUSED(init.wait());
+    ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
+{
+    // Loops asleep for an hour, a write acked by the quorum and stuck in an
+    // hour-long backoff on the third device.
+    auto config = MakeConfig();
+    config.ReacquirePeriod = TDuration::Hours(1);
+    config.LowWatermarkPeriod = TDuration::Hours(1);
+    config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
+    config.RetryPolicy.TotalTimeout = TDuration::Hours(2);
+    TQuorumFixture fx(true, config);
+    fx.ForgetRequests();
+    fx[2].Writes.Reply(MakeError(E_REJECTED, "busy"));
+    ASSERT_FALSE(HasError(Write(*fx.Group)));
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Count() == 1; }));
+
+    // TearDown cancels it: no retry, and no hour.
+    const TInstant start = TInstant::Now();
+    fx.Group->TearDown();
+    ASSERT_LT(TInstant::Now() - start, TDuration::Seconds(5));
+    ASSERT_EQ(1U, fx[2].Writes.Count());
 }

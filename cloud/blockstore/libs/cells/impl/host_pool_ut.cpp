@@ -1031,6 +1031,26 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         env.AdvanceTime(TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(2, service.Pings);
     }
+
+    Y_UNIT_TEST(ShouldCountHostsFoundDead)
+    {
+        TCellHostPool pool(MakeCellConfig(), TBootstrap{});
+        const auto& counters = pool.GetCounters();
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.HostsConfigured->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostsUnavailable->Val());
+
+        pool.SetHostAlive("host-a", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostsUnavailable->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameUnavailable->Val());
+
+        // the pinger says it on every sweep; only the change is an event
+        pool.SetHostAlive("host-a", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameUnavailable->Val());
+
+        pool.SetHostAlive("host-a", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostsUnavailable->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameAvailable->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

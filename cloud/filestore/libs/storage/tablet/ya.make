@@ -27,7 +27,6 @@ SRCS(
     tablet_actor_cluster.cpp
     tablet_actor_collectgarbage.cpp
     tablet_actor_compaction.cpp
-    tablet_actor_compactionforced.cpp
     tablet_actor_confirmadddata.cpp
     tablet_actor_confirmblobs.cpp
     tablet_actor_counters.cpp
@@ -47,6 +46,8 @@ SRCS(
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp
+    tablet_actor_forced_range_operation.cpp
+    tablet_actor_forced_tablet_operation.cpp
     tablet_actor_generatecommitid.cpp
     tablet_actor_getnodeattr.cpp
     tablet_actor_getnodexattr.cpp
@@ -82,7 +83,6 @@ SRCS(
     tablet_actor_set_has_xattrs.cpp
     tablet_actor_setnodeattr.cpp
     tablet_actor_setnodexattr.cpp
-    tablet_actor_subscribesession.cpp
     tablet_actor_testlock.cpp
     tablet_actor_throttling.cpp
     tablet_actor_truncate.cpp
@@ -156,6 +156,7 @@ END()
 RECURSE(
     model
     protos
+    query
 )
 
 RECURSE_FOR_TESTS(

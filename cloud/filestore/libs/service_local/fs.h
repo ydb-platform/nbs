@@ -34,8 +34,6 @@ namespace NCloud::NFileStore {
 #define FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx, ...)                            \
     xxx(StatFileStore,                      __VA_ARGS__)                       \
                                                                                \
-    xxx(SubscribeSession,                   __VA_ARGS__)                       \
-    xxx(GetSessionEvents,                   __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \

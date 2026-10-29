@@ -671,8 +671,10 @@ private:
     const IPersistentStateManagerPtr PersistentState;
     const IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
 
-    // Registered in MultiFileSystemEventHandler for the loop's lifetime.
+    // Registered in MultiFileSystemEventHandler for the loop's lifetime under
+    // FileSystemEventHandlerFileSystemId.
     IFileSystemEventHandlerPtr FileSystemEventHandler;
+    TString FileSystemEventHandlerFileSystemId;
 
     // Hold the locks on the state files for as long as the loop lives: if the
     // loop goes away without being stopped (e.g. its start has failed and the
@@ -734,22 +736,13 @@ public:
     {
         if (FileSystemEventHandler) {
             MultiFileSystemEventHandler->Unregister(
-                Config->GetFileSystemId(),
+                FileSystemEventHandlerFileSystemId,
                 FileSystemEventHandler);
         }
     }
 
     TFuture<NProto::TError> StartAsync() override
     {
-        if (MultiFileSystemEventHandler && !FileSystemEventHandler) {
-            FileSystemEventHandler = CreateFileSystemEventHandler(
-                Log,
-                Config->GetFileSystemId());
-            MultiFileSystemEventHandler->Register(
-                Config->GetFileSystemId(),
-                FileSystemEventHandler);
-        }
-
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
             Config->GetClientId(),
@@ -926,6 +919,30 @@ public:
     }
 
 private:
+    void RegisterFileSystemEventHandler()
+    {
+        if (!MultiFileSystemEventHandler || FileSystemEventHandler) {
+            return;
+        }
+
+        //
+        // The handler is registered under the filesystem id returned by
+        // CreateSession rather than the requested one: the latter may be an
+        // alias. Aliases are resolved by the storage service and the tablet
+        // proxy, the tablets know only the actual id and send
+        // FileSystemEvents with it.
+        //
+
+        FileSystemEventHandler = CreateFileSystemEventHandler(
+            Log,
+            Config->GetFileSystemId());
+        FileSystemEventHandlerFileSystemId =
+            FileSystemConfig->GetFileSystemId();
+        MultiFileSystemEventHandler->Register(
+            FileSystemEventHandlerFileSystemId,
+            FileSystemEventHandler);
+    }
+
     NProto::TError StartWithSessionState(
         const TFuture<NProto::TCreateSessionResponse>& future)
     {
@@ -976,6 +993,7 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
+            RegisterFileSystemEventHandler();
             if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
                 RequestStats->EnableAvailabilityTracking(
                     FileSystemConfig->GetAvailabilityTrackingInterval());
@@ -984,8 +1002,9 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             // The state files are kept under the filesystem id returned by
-            // the server rather than the requested one: the latter may be an
-            // alias, which the server resolves upon session creation.
+            // CreateSession rather than the requested one: the latter may be
+            // an alias, which the storage service resolves upon session
+            // creation.
             THandleOpsQueuePtr handleOpsQueue;
             if (Config->GetHandleOpsQueuePath()) {
                 auto hasState = PersistentState->HasHandleOpsQueueState(
@@ -1006,7 +1025,8 @@ private:
                     auto result =
                         PersistentState->AcquireHandleOpsQueueStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetHandleOpsQueueSize());
 
                     if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1064,7 +1084,8 @@ private:
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1109,7 +1130,7 @@ private:
                      .FileSystemId = Config->GetFileSystemId(),
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                     .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                     .StateFileSize = Config->GetWriteBackCacheStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =
@@ -1344,6 +1365,9 @@ private:
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
         }
+        if (features.GetXAttrCacheLimit()) {
+            config.SetXAttrCacheLimit(features.GetXAttrCacheLimit());
+        }
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
@@ -1471,6 +1495,10 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
+        // Stopping the completion queue first guarantees that no
+        // request-driven WriteBackCache call is in flight. Cache callbacks
+        // retain TImpl while accessing its state, so destruction cannot race
+        // a TQueuedOperations::Release() serialization pass.
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "

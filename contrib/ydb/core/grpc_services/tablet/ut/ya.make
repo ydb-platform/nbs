@@ -11,6 +11,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/grpc_services/local_rpc
+    yql/essentials/sql/v1_dummy
 )
 
 YQL_LAST_ABI_VERSION()

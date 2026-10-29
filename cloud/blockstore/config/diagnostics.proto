@@ -299,9 +299,15 @@ message TDiagnosticsConfig
     optional EVolumeCriticalEventsReportingMode
         VolumeCriticalEventsReportingMode = 60;
 
+    // Chunk sizes, in bytes, for the blob compression experiment.
+    // Fixed for the process lifetime; changing the list requires a restart.
+    // Each size has separate compression_chunk_size counters. Zero means
+    // compressing the whole blob.
+    repeated uint64 BlobCompressionChunkSizes = 61;
+
     // Shadow metrics only: no effect on request execution or throttling.
     // Latency includes all waits in the original request, including throttling.
-    optional bool EnableLatencySli = 61 [default = false];
+    optional bool EnableLatencySli = 63 [default = false];
 
     message TLatencySliThreshold
     {

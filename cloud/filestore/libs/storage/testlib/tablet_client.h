@@ -324,6 +324,15 @@ public:
         return std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
     }
 
+    auto CreateGenerateFileSystemEventRequest(
+        const NProto::TFileSystemEvent& event)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvGenerateFileSystemEventRequest>();
+        *request->Record.MutableEvent() = event;
+        return request;
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
@@ -584,7 +593,10 @@ public:
 
     auto CreateCompactionRequest(ui32 rangeId, bool filter = false)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
+            rangeId,
+            filter,
+            false /* forced */);
     }
 
     auto CreateForcedRangeOperationRequest(
@@ -833,6 +845,16 @@ public:
         request->Record.SetNodeId(node);
         request->Record.SetMaxBytes(bytes);
         request->Record.SetCookie(std::move(cookie));
+        return request;
+    }
+
+    auto CreateListNodesInternalRequest(ui64 node)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvListNodesInternalRequest>();
+        auto* originalRequest = request->Record.MutableOriginalRequest();
+        Headers.Fill(*originalRequest);
+        originalRequest->SetNodeId(node);
         return request;
     }
 
@@ -1156,12 +1178,6 @@ public:
     {
         auto request = CreateSessionRequest<TEvService::TEvDestroyCheckpointRequest>();
         request->Record.SetCheckpointId(checkpointId);
-        return request;
-    }
-
-    auto CreateSubscribeSessionRequest()
-    {
-        auto request = CreateSessionRequest<TEvService::TEvSubscribeSessionRequest>();
         return request;
     }
 

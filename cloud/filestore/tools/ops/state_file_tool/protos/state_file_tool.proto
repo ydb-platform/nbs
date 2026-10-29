@@ -1,0 +1,94 @@
+syntax = "proto2";
+
+import "cloud/filestore/libs/vfs_fuse/protos/queue_entry.proto";
+import "cloud/filestore/public/api/protos/data.proto";
+
+package NCloud.NFileStore.NStateFileTool.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EStateFileType
+{
+    Unknown = 0;
+    WriteBackCache = 1;
+    DirectoryHandles = 2;
+    HandleOpsQueue = 3;
+}
+
+message TStateFileInfo
+{
+    required string FilePath = 1;
+    required string FileSystemId = 2;
+    required string SessionId = 3;
+    required EStateFileType FileType = 4;
+    required uint64 FileSize = 5;
+    required bool IsLocked = 6;
+}
+
+message TStateFileList
+{
+    required string StateDirectory = 1;
+    repeated TStateFileInfo FileInfos = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// WriteBackCache state files contain only write-data requests as entry payloads
+message TWriteDataRequestMetadata
+{
+    required uint64 NodeId = 1;
+    required uint64 Handle = 2;
+    required uint64 Offset = 3;
+    required uint32 Size = 4;
+}
+
+message TStateFileHeader
+{
+    required uint32 Version = 1;
+    required uint32 HeaderSize = 2;
+    required uint64 MetadataOffset = 3;
+    required uint64 MetadataCapacity = 4;
+    required uint32 MetadataSize = 5;
+    required uint32 MetadataChecksum = 6;
+    required uint64 DataOffset = 7;
+    required uint64 DataCapacity = 8;
+    required uint64 ReadPos = 9;
+    required uint64 WritePos = 10;
+}
+
+message TStateFileEntry
+{
+    required uint32 DataSize = 1;
+    required uint32 DataChecksum = 2;
+    required uint32 Tag = 3;
+    required bool FreeFlag = 4;
+    optional uint32 ActualDataChecksum = 5;
+    required uint64 EntryPos = 6;
+
+    // Decoded request information; the format depends on the state file type.
+    // Unset when the payload cannot be decoded.
+    oneof Request
+    {
+        // WriteBackCache
+        TWriteDataRequestMetadata WriteDataRequestMetadata = 7;
+
+        // HandleOpsQueue
+        .NCloud.NFileStore.NProto.TQueuedCreateHandleRequest QueuedCreateHandleRequest = 8;
+        .NCloud.NFileStore.NProto.TDestroyHandleRequest DestroyHandleRequest = 9;
+    }
+}
+
+message TStateFileDump
+{
+    // Detects changes between dumping and patching to reject stale snapshots.
+    // CRC32C covers the fixed header (or its available prefix), used metadata,
+    // and raw data: [ReadPos, WritePos) when ReadPos <= WritePos, otherwise
+    // [0, DataCapacity). Raw data is omitted if the layout or cursor bounds
+    // are invalid.
+    required uint32 Checksum = 1;
+    required bool IsCorrupted = 2;
+    optional uint32 ActualMetadataChecksum = 3;
+    optional TStateFileHeader Header = 4;
+    repeated TStateFileEntry Entries = 5;
+    optional string ValidationErrorMessage = 6;
+}

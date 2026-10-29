@@ -1,14 +1,5 @@
 RECURSE(
-    bootstrap
-    ipc
-    journal
-    protos
-    sn
-    testlib
+    apps
+    libs
+    public
 )
-
-IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
-    RECURSE(
-        client
-    )
-ENDIF()

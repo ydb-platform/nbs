@@ -104,6 +104,11 @@ public:
                 break;
             }
 
+            case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
+                mediaKindProfile = &Profile.GetDirectMirror3Of5Profile();
+                break;
+            }
+
             case NCloud::NProto::STORAGE_MEDIA_SSD: {
                 mediaKindProfile = &Profile.GetSSDProfile();
                 break;
@@ -515,13 +520,16 @@ private:
         const NProto::TClientPerformanceProfile& lft,
         const NProto::TClientPerformanceProfile& rgt)
     {
-        Y_DEBUG_ABORT_UNLESS(7 == GetFieldCount<NProto::TClientPerformanceProfile>());
+        Y_DEBUG_ABORT_UNLESS(8 == GetFieldCount<NProto::TClientPerformanceProfile>());
         return ProfilesEqual(lft.GetHDDProfile(), rgt.GetHDDProfile())
             && ProfilesEqual(lft.GetSSDProfile(), rgt.GetSSDProfile())
             && ProfilesEqual(lft.GetNonreplProfile(), rgt.GetNonreplProfile())
             && ProfilesEqual(lft.GetHddNonreplProfile(), rgt.GetHddNonreplProfile())
             && ProfilesEqual(lft.GetMirror2Profile(), rgt.GetMirror2Profile())
             && ProfilesEqual(lft.GetMirror3Profile(), rgt.GetMirror3Profile())
+            && ProfilesEqual(
+                lft.GetDirectMirror3Of5Profile(),
+                rgt.GetDirectMirror3Of5Profile())
             && lft.GetBurstTime() == rgt.GetBurstTime();
     }
 
@@ -740,6 +748,15 @@ bool PreparePerformanceProfile(
             maxBandwidthPerGuest,
             false,
             *performanceProfile.MutableMirror3Profile()
+        ),
+        PrepareMediaKindPerformanceProfile(
+            tc,
+            tc.GetDirectMirror3Of5ThrottlingConfig(),
+            profile,
+            maxIopsPerGuest,
+            maxBandwidthPerGuest,
+            false,
+            *performanceProfile.MutableDirectMirror3Of5Profile()
         ),
     };
 

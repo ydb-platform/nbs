@@ -68,9 +68,25 @@ func (t *backupImageTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
+	generated := len(t.state.EncryptedDek) == 0
+	t.state.EncryptedDek, err = t.backupS3.EnsureEncryptedDEK(
+		t.state.EncryptedDek,
+	)
+	if err != nil {
+		return err
+	}
+
+	if generated && len(t.state.EncryptedDek) != 0 {
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.ImageMetaKey(imageID),
+		t.state.EncryptedDek,
 		persistence.S3Object{Data: data},
 	)
 	if err != nil {
@@ -84,7 +100,8 @@ func (t *backupImageTask) Run(
 		"dataplane.BackupSnapshotData",
 		"",
 		&dataplane_protos.BackupSnapshotDataRequest{
-			SnapshotId: imageID,
+			SnapshotId:   imageID,
+			EncryptedDek: t.state.EncryptedDek,
 		},
 	)
 	if err != nil {

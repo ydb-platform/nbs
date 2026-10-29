@@ -126,9 +126,6 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
-    void SetVolumePreemptionType(
-        NProto::EVolumePreemptionType volumePreemptionType);
-
     void Register(NKikimr::TControlBoard& controlBoard) const;
 
     static TStorageConfigConstPtr Merge(
@@ -168,6 +165,8 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
+    TDuration GetFreshBlobAgeFlushThresholdSSD() const;
+    TDuration GetFreshBlobAgeFlushThresholdHDD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 
@@ -722,6 +721,7 @@ public:
 
     TDuration GetDiskRegistryBackupPeriod() const;
     TString GetDiskRegistryBackupDirPath() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxNonReplicatedDiskDeallocationRequests() const;
 
@@ -1008,6 +1008,8 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesSSD() const;
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
+
+    [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 };
 
 ui64 GetAllocationUnit(

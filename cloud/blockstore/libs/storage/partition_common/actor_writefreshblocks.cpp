@@ -21,6 +21,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
         const NActors::TActorId& owner,
         const NActors::TActorId& actorToAddFreshBlocks,
         ui64 commitId,
+        TInstant timestamp,
         ui32 channel,
         ui32 blockCount,
         TVector<TRequest> requests,
@@ -34,6 +35,7 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     : Owner(owner)
     , ActorToAddFreshBlocks(actorToAddFreshBlocks)
     , CommitId(commitId)
+    , Timestamp(timestamp)
     , Channel(channel)
     , BlockCount(blockCount)
     , Requests(std::move(requests))
@@ -103,7 +105,8 @@ void TWriteFreshBlocksActor::Bootstrap(const NActors::TActorContext& ctx)
 NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
 {
     if (IsZeroRequest) {
-        BlobContent = BuildZeroFreshBlocksBlobContent(BlockRanges.front());
+        BlobContent =
+            BuildZeroFreshBlocksBlobContent(BlockRanges.front(), Timestamp);
         BlobSize = BlobContent.size();
 
         return {};
@@ -142,7 +145,8 @@ NProto::TError TWriteFreshBlocksActor::BuildBlobContentAndComputeDigest()
         ++writeHandler;
     }
 
-    BlobContent = BuildWriteFreshBlocksBlobContent(BlockRanges, holders);
+    BlobContent =
+        BuildWriteFreshBlocksBlobContent(BlockRanges, holders, Timestamp);
     BlobSize = BlobContent.size();
 
     return {};
@@ -196,6 +200,7 @@ void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
             CommitId,
             BlobSize,
             BlobId,
+            Timestamp,
             std::move(BlockRanges),
             std::move(WriteHandlers));
 

@@ -110,11 +110,13 @@ struct TConfigInitializerYdb final
     void ApplyLocalNVMeConfig(const TString& text);
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
-    void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
     void ApplyAllowedKikimrFeatureFlags(
         const NKikimrConfig::TAppConfig& config);
 
 private:
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
+
     // Build TBlockstoreConfig with current configuration sections.
     NProto::TBlockstoreConfig BuildCurrentBlockstoreConfig() const;
 

@@ -28,9 +28,11 @@ message TRequestPerformanceProfile
 {
     // Requests per second.
     optional uint64 RPS = 1;
-    // Throughput in any kind of units - for Read/Write it should be bytes per
-    // second, for ListNodes it can be entries per second, for other requests
-    // it can be 0 until we come up with something more useful.
+    // Request size units per second. Expected latency of an average request is
+    // (1 / RPS + AverageRequestSize / Throughput) multiplied by the expected
+    // access parallelism. Size units: bytes for Read/Write, node refs
+    // (directory entries) for ListNodes. Other requests don't track their
+    // size, so Throughput is ignored for them.
     optional uint64 Throughput = 2;
 };
 

@@ -7,6 +7,7 @@ SRCS(
     channels_ut.cpp
     compaction_map_ut.cpp
     deletion_markers_ut.cpp
+    filesystem_event_subscriptions_ut.cpp
     fresh_blocks_ut.cpp
     fresh_bytes_ut.cpp
     fresh_bytes_ut_randomized.cpp

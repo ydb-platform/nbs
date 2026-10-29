@@ -432,22 +432,6 @@ TVector<TSession*> TIndexTabletState::GetTimedOutSessions(TInstant now) const
     return result;
 }
 
-TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
-    const NProto::TSessionEvent& event) const
-{
-    // TODO
-    Y_UNUSED(event);
-
-    TVector<TSession*> result;
-    for (auto& session: Impl->Sessions) {
-        if (session.NotifyEvents) {
-            result.push_back(&session);
-        }
-    }
-
-    return result;
-}
-
 auto TIndexTabletState::DescribeSessions() const
     -> TVector<NProtoPrivate::TTabletSessionInfo>
 {

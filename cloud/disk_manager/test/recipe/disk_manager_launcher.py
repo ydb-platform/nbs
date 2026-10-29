@@ -223,6 +223,7 @@ PoolsConfig: <
     BaseDiskIdleTTL: "1m"
     # TODO: remove after deployment of this version is finished.
     HoldBaseDisksWithInflightDependents: true
+    UseReadyBaseDiskAsSrc: true
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"

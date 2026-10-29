@@ -35,8 +35,7 @@ void MergeQuotaUsages(
 // TAggregateStatsCompleted to a TIndexTabletActor that created the actor.
 // 1. IsBackgroundRequest. It means the actor was created in
 //    TIndexTabletActor::HandleUpdateCounters.
-//    If MainFileSystemId is not empty and
-//    FanoutStatsCollectionInShardsDisabled, the actor requests cached
+//    If MainFileSystemId is not empty, the actor requests cached
 //    aggregated statistics from the main tablet. Otherwise it sends requests to
 //    all shards.
 // 2. !IsBackgroundRequest. It means that TAggregateStatsActor is created in
@@ -57,7 +56,6 @@ private:
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
     ui64 RemainingResponses = 0;
     const bool IsBackgroundRequest;
-    const bool FanoutStatsCollectionInShardsDisabled;
 
 public:
     TAggregateStatsActor(
@@ -68,8 +66,7 @@ public:
         TString mainFileSystemId,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
-        bool isBackgroundRequest,
-        bool fanoutStatsCollectionInShardsDisabled);
+        bool isBackgroundRequest);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -98,8 +95,7 @@ private:
 
     bool ShouldOnlyGetStatsFromMainTablet() const
     {
-        return IsBackgroundRequest && MainFileSystemId &&
-               FanoutStatsCollectionInShardsDisabled;
+        return IsBackgroundRequest && MainFileSystemId;
     }
 };
 
@@ -113,8 +109,7 @@ TAggregateStatsActor::TAggregateStatsActor(
     TString mainFileSystemId,
     google::protobuf::RepeatedPtrField<TString> shardIds,
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
-    bool isBackgroundRequest,
-    bool fanoutStatsCollectionInShardsDisabled)
+    bool isBackgroundRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -123,8 +118,6 @@ TAggregateStatsActor::TAggregateStatsActor(
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
     , IsBackgroundRequest(isBackgroundRequest)
-    , FanoutStatsCollectionInShardsDisabled(
-          fanoutStatsCollectionInShardsDisabled)
 {
     auto& dst = *Response->Record.MutableStats();
     auto& shardStats = *dst.MutableShardStats();
@@ -361,7 +354,8 @@ void TIndexTabletActor::UpdateMetrics(
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
     const TIndexTabletState::TBackpressureValues& backpressureValues,
-    const THandlesStats& handlesStats)
+    const THandlesStats& handlesStats,
+    const TFileSystemEventSubscriptions::TStats& subscriptionsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -561,6 +555,22 @@ void TIndexTabletActor::UpdateMetrics(
         Metrics->DeferredNodeDestructionCount,
         miscNodeStats.DeferredNodeDestructionCount);
 
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeCount,
+        subscriptionsStats.NodeCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeRefCount,
+        subscriptionsStats.NodeRefCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryClientCount,
+        subscriptionsStats.ClientCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryExtraPageCount,
+        subscriptionsStats.ExtraPageCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeXAttrCount,
+        subscriptionsStats.NodeXAttrCount);
+
     Metrics->BusyIdleCalc.OnUpdateStats();
     Metrics->UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
@@ -571,6 +581,8 @@ void TIndexTabletActor::UpdateMetrics(
     FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_UPDATE_REQUEST_METRICS)
 
 #undef FILESTORE_TABLET_UPDATE_REQUEST_METRICS
+
+    Metrics->ListNodesExtra.UpdatePrev();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -624,7 +636,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
 
     // TabletStartTimestamp should be set only once
     i64 expected = 0;
@@ -710,7 +723,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
@@ -764,8 +778,7 @@ void TIndexTabletActor::HandleUpdateCounters(
             !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
             shardIds,
             std::move(response),
-            true, /* isBackgroundRequest */
-            Config->GetFanoutStatsCollectionInShardsDisabled());
+            true /* isBackgroundRequest */);
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
@@ -925,8 +938,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
         shardIds,
         std::move(response),
-        false, /* isBackgroundRequest */
-        Config->GetFanoutStatsCollectionInShardsDisabled());
+        false /* isBackgroundRequest */);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

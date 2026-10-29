@@ -154,7 +154,7 @@ coordinated by the shard.
 | `TIndexTabletActor` bootstrap, sessions, config pipeline | reused |
 | Interconnect between shards | reused |
 | blockstore-disk-agent | reused, extended with the journalled device layer |
-| journalled device TCP server (`cloud/fastshard/journal/server`) | new |
+| journalled device TCP server (`cloud/fastshard/libs/journal/server`) | new |
 | `IFileSystemShard` and its data structures | new |
 | `IPageStore` | new |
 | `IStorageGroup` | new |
@@ -186,6 +186,7 @@ coordinated by the shard.
 ## Literature
 * [original Aurora whitepaper](https://homepages.cwi.nl/~boncz/lsde/papers/aurora.pdf) - describes how you can define the boundary between compute and storage and how you can design LSN advancement and checkpointing
 * [ext4 layout and design](https://metebalci.com/blog/a-minimum-complete-tutorial-of-linux-ext4-file-system/) - a good source of information about the data structures that can be used for filesystem implementation
+* [HashFS whitepaper](https://www.usenix.org/system/files/fast21-neal.pdf) - although this paper talks about filesystems that use persistent memory as the underlying storage medium, it has some interesting ideas about file mapping structure design (based on hash tables)
 * [pNFS Flexible File Layout](https://datatracker.ietf.org/doc/html/rfc8435) - contains some useful ideas regarding the design of the direct client <-> storage-group communication (but the NFS protocol specifics are not relevant for us)
 * [original ZFS whitepaper](https://users.soe.ucsc.edu/~scott/courses/Fall04/221/zfs_overview.pdf) - a bit less relevant but still a nice source of ideas regarding the separation of concerns among the layers
 

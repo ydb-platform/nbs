@@ -126,6 +126,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
     if (args.Attr) {
         args.Version = UpdateNodeAttr(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.Attr->MinCommitId,
             args.CommitId,
@@ -134,6 +135,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
     } else {
         args.Version = CreateNodeAttr(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.CommitId,
             args.Name,
@@ -146,16 +148,6 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     TTxIndexTablet::TSetNodeXAttr& args)
 {
     RemoveInFlightRequest(*args.RequestInfo);
-
-    if (SUCCEEDED(args.Error.GetCode())) {
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* changed = sessionEvent.AddNodeChanged();
-            changed->SetNodeId(args.NodeId);
-            changed->SetKind(NProto::TSessionEvent::NODE_XATTR_CHANGED);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
-    }
 
     auto response = std::make_unique<TEvService::TEvSetNodeXAttrResponse>(
         std::move(args.Error));

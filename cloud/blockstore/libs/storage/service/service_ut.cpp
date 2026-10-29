@@ -44,6 +44,19 @@ ui32 SetupTestEnv(
         CreateTestDiagnosticsConfig());
 }
 
+ui32 SetupTestEnvWithCellId(TTestEnv& env, TString cellId)
+{
+    env.CreateSubDomain("nbs");
+
+    return env.CreateBlockStoreNode(
+        "nbs",
+        CreateTestStorageConfig({}),
+        CreateTestDiagnosticsConfig(),
+        NYdbStats::CreateVolumesStatsUploaderStub(),
+        CreateManuallyPreemptedVolumes(),
+        std::move(cellId));
+}
+
 ui32 SetupTestEnvWithYdbStats(
     TTestEnv& env,
     ui32 diskCnt,

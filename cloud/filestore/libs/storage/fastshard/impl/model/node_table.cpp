@@ -3,7 +3,6 @@
 #include "helpers.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
-#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <util/random/random.h>
 
@@ -91,24 +90,6 @@ ui64 TNodeTable::Init(
     Description = debuilder.Build();
 
     return totalPageCount;
-}
-
-NProto::TError TNodeTable::AllocateNodeId(ui64* nodeId) const
-{
-    while (true) {
-        *nodeId = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
-        NProto::TNodeAttr attr;
-        auto error = GetNode(*nodeId, &attr);
-        if (!HasError(error)) {
-            continue;
-        }
-
-        if (error.GetCode() == E_FS_NOENT) {
-            return {};
-        }
-
-        return error;
-    }
 }
 
 NProto::TError TNodeTable::ResizeNode(

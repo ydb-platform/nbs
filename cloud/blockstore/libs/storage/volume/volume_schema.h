@@ -289,6 +289,8 @@ struct TVolumeSchema
         {
         };
 
+        // the column keeps its original name; the field it stores is
+        // TLeaderFollowerLink::FollowerCellId
         struct FollowerShardId
             : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {

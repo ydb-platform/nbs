@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -95,8 +95,11 @@ struct TStorageGroupConfig
 
     TStorageGroupRetryPolicy RetryPolicy;
 
-    // How often the low watermark is pushed to the devices; zero never.
+    // How often the low watermark is pushed to the devices.
     TDuration LowWatermarkPeriod = TDuration::Seconds(1);
+
+    // How often the device sessions are renewed.
+    TDuration ReacquirePeriod = TDuration::Seconds(4);
 
     ui32 PageSize = DefaultBlockSize;
 };
@@ -111,10 +114,8 @@ struct TStorageGroupConfig
  *
  * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
- * @param timer - Time source for the retry deadline checks and backoff
- *                sleeps. Production callers should pass the timer returned
- *                by CreateFiberTimer(). Tests can pass TTestTimer to make
- *                retries deterministic.
+ * @param timer - Time source for the retry deadline checks. Production
+ *                callers should pass the timer returned by CreateFiberTimer().
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
@@ -123,8 +124,8 @@ IStorageGroupPtr CreateNaiveMirroredStorageGroup(
     ITimerPtr timer);
 
 /**
- * Returns an ITimer which sleeps by suspending the calling silk fiber, so
- * backoffs do not block the fiber scheduler threads.
+ * Returns an ITimer which sleeps by suspending the calling silk fiber, so a
+ * sleep never blocks a fiber scheduler thread.
  *
  * @return - The constructed timer.
  */

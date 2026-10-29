@@ -26,6 +26,8 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    bool externalPayload = false;
+    TRcBuf payload;
     if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
         if (!msg->Record.GetBuffer().empty()) {
             TStringStream error;
@@ -38,34 +40,43 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            auto& payload = msg->GetPayload(0);
-            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
-            TRopeUtils::Memcpy(
-                msg->Record.MutableBuffer()->begin(),
-                payload.begin(),
-                payload.size());
-            msg->StripPayload();
+            // Copy payload to buffer only when it is not contiguous otherwise
+            // rope can be flattened several times when request is throttled.
+            const TRope& rope = msg->GetPayload(0);
+            if (rope.IsContiguous()) {
+                payload = rope.Begin().GetChunk();
+                externalPayload = true;
+            } else {
+                msg->Record.SetBuffer(rope.ConvertToString());
+                msg->StripPayload();
+            }
         }
     }
+
+    TString& buffer = *msg->Record.MutableBuffer();
+    const TByteRange range(
+        msg->Record.GetOffset(),
+        externalPayload ? payload.size() : buffer.size(),
+        GetBlockSize()
+    );
 
     NProto::TProfileLogRequestInfo profileLogRequest;
     InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::WriteData,
-        msg->Record,
         ctx.Now(),
         BehaveAsShard(msg->Record.GetHeaders()));
-
-    TString& buffer = *msg->Record.MutableBuffer();
-    const TByteRange range(
-        msg->Record.GetOffset(),
-        buffer.size(),
-        GetBlockSize()
-    );
+    AddRange(
+        msg->Record.GetNodeId(),
+        msg->Record.GetHandle(),
+        range.Offset,
+        range.Length,
+        profileLogRequest);
 
     if (Config->GetBlockChecksumsInProfileLogEnabled()) {
         CalculateChecksums(
-            buffer,
+            externalPayload ? TStringBuf(payload.data(), payload.size())
+                            : buffer,
             GetBlockSize(),
             false /* ignoreBufferOverflow */,
             GetFileSystemId(),
@@ -91,66 +102,19 @@ void TIndexTabletActor::HandleWriteData(
             ProfileLog);
     };
 
-    const ui64 nodeId = msg->Record.GetNodeId();
-
-    if (!UnconfirmedRecoveryReady) {
-        if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
-            replyError(MakeError(
-                E_REJECTED,
-                "write overlaps with unconfirmed recovery data"));
-            return;
-        }
+    if (auto error =
+            CheckUnconfirmedDataOverlap(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
+        replyError(error);
+        return;
     }
 
-    if (!CompactionStateLoadStatus.Finished) {
-        const ui32 limitInQueue =
-            Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
-        auto& s = CompactionStateLoadStatus;
-
-        bool reject = false;
-
-        for (ui64 b = range.FirstBlock();
-                b < range.FirstBlock() + range.BlockCount();
-                ++b)
-        {
-            const auto rangeId = GetMixedRangeIndex(nodeId, b);
-
-            if (rangeId > s.MaxLoadedInOrderRangeId
-                    && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
-            {
-                reject = true;
-
-                bool shouldEnqueue = true;
-                ui32 oooRequestsInQueue = 0;
-                for (const auto& req: s.LoadQueue) {
-                    if (!req.OutOfOrder) {
-                        continue;
-                    }
-
-                    if (req.FirstRangeId == rangeId) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-
-                    if (++oooRequestsInQueue == limitInQueue) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-                }
-
-                if (shouldEnqueue) {
-                    s.LoadQueue.push_back({rangeId, 1, true});
-                }
-            }
-        }
-
-        if (reject) {
-            replyError(MakeError(
-                E_REJECTED,
-                "compaction state not loaded yet"));
-
-            return;
-        }
+    if (auto error = ForceLoadRangeIfNeeded(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
+        replyError(error);
+        return;
     }
 
     auto validator = [&](const NProto::TWriteDataRequest& request)
@@ -189,7 +153,9 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
+    auto blockBuffer = externalPayload
+                           ? CreateBlockBuffer(range, std::move(payload))
+                           : CreateBlockBuffer(range, std::move(buffer));
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 

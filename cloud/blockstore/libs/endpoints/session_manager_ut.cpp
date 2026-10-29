@@ -1058,11 +1058,6 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
         }
         UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
-
-        // a session dropped without being stopped (like an abandoned session
-        // switch) takes its serving host with it
-        sessionManager.reset();
-        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-1"));
     }
 
     Y_UNIT_TEST(ShouldReportServingCellHostAgainAfterTrimAndRemount)

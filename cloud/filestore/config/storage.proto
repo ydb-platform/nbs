@@ -855,9 +855,9 @@ message TStorageConfig
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
     optional double FakeTxPageFaultsProbability = 527;
 
-    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
-    // Instead, it requests aggregate statistics only from the main tablet.
-    optional bool FanoutStatsCollectionInShardsDisabled = 528;
+    // Deprecated.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528
+        [deprecated = true];
 
     // Enable silk regardless of other config parameters. Required for
     // persistent fastshard to work.
@@ -946,6 +946,60 @@ message TStorageConfig
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
-    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    // InvalidateNodeRef, InvalidateNodeXAttr) to its clients upon Node,
+    // NodeRef and NodeXAttr changes and returns NodeCacheTTL and
+    // NodeRefCacheTTL values in GetNodeAttrResponses and XAttrCacheTTL in
+    // GetNodeXAttrResponses which tell the client for how long caching of the
+    // corresponding Node, NodeRef and NodeXAttr is allowed.
     optional bool FileSystemEventsEnabled = 553;
+
+    // If set to true, the tablet counts the FileSystemEvents generated due to
+    // FileSystemEventsEnabled but doesn't send them to its clients.
+    optional bool FileSystemEventsDryRunModeEnabled = 554;
+
+    // XAttr cache timeout. Passed to filestore-vhost via
+    // TCreateSessionResponse via TFilestore::Features, similarly to
+    // EntryTimeout and AttrTimeout. Doesn't have any effect on the tablet
+    // itself.
+    optional uint32 XAttrCacheTimeout = 555;
+
+    // XAttr cache size limit (number of entries). Passed to filestore-vhost
+    // the same way as XAttrCacheTimeout.
+    optional uint32 XAttrCacheLimit = 556;
+
+    // Enable RDMA transport between filestore-vhost and YDB storage for write
+    // operations independently of read operations.
+    // Requires RDMA to be enabled in the IC config.
+    optional bool EnableRdmaForWrites = 557;
+
+    // How often (in milliseconds) the tablet seals the active generation of
+    // the FileSystemEvent subscriptions (the clients that have read Nodes and
+    // NodeRefs) and drops the sealed one. A subscription lives between one
+    // and two periods, so the period should exceed the client-side cache
+    // timeouts.
+    optional uint32 FileSystemEventSubscriptionsSealPeriod = 558;
+
+    // Directory for backups of tenant system tablets. Empty disables backups.
+    // The other backup settings come from TAppConfig.SystemTabletBackupConfig
+    // in CMS, its own path is ignored. A nonempty value in the local storage
+    // file overrides the named storage config from CMS until the file is
+    // changed and the service is restarted. YDB cleans up old backups per
+    // directory, so the directory must not be shared with other processes.
+    optional string SystemTabletBackupDirPath = 559;
+
+    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes,
+    // ListNodesInternal (see FileSystemListingEventsEnabled) and GetNodeXAttr
+    // allow the client to cache the returned Nodes, NodeRefs and NodeXAttrs
+    // for
+    // FileSystemEventSubscriptionsSealPeriod minus this margin (in
+    // milliseconds): a subscription lives at least one seal period, the margin
+    // covers the delivery and processing delays.
+    optional uint32 FileSystemEventSubscriptionsCacheTTLMargin = 560;
+
+    // If set to true together with FileSystemEventsEnabled, GetNodeAttrBatch,
+    // ListNodes and ListNodesInternal subscribe the client to the returned
+    // Nodes (and NodeRefs for ListNodes and ListNodesInternal) and return
+    // nonzero NodeCacheTTL (and NodeRefCacheTTL). FileSystemEventsEnabled
+    // alone enables this for GetNodeAttr only.
+    optional bool FileSystemListingEventsEnabled = 561;
 }

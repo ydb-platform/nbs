@@ -76,20 +76,6 @@ ICertificateProviderPtr CreateClientCertificateProvider(
         std::move(certPathList));
 }
 
-template <typename F>
-bool WaitFor(F&& event)
-{
-    TInstant deadline = WaitTimeout.ToDeadLine();
-    while (TInstant::Now() < deadline) {
-        if (event()) {
-            return true;
-        }
-        Sleep(TDuration::MilliSeconds(100));
-    }
-    return false;
-}
-
-
 TString GetTestFilePath(const TString& fileName)
 {
     return JoinFsPaths(
@@ -97,38 +83,6 @@ TString GetTestFilePath(const TString& fileName)
         "cloud/filestore/tests",
         fileName);
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
-class TAtomicStorage
-{
-private:
-    TMaybe<T> Value;
-    TMutex Lock;
-
-public:
-    void Set(T value)
-    {
-        with_lock (Lock) {
-            Value = std::move(value);
-        }
-    }
-
-    T Get() const
-    {
-        with_lock (Lock) {
-            return Value.GetRef();
-        }
-    }
-
-    bool Empty() const
-    {
-        with_lock (Lock) {
-            return Value.Empty();
-        }
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -529,57 +483,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         UNIT_ASSERT(logBackend->CheckExistCommand("CreateFileStore"));
         UNIT_ASSERT(!logBackend->CheckExistCommand("Ping"));
-    }
-
-    Y_UNIT_TEST(ShouldGetSessionEventsStream)
-    {
-        TAtomicStorage<IResponseHandlerPtr<NProto::TGetSessionEventsResponse>>
-            storage;
-
-        TBootstrap<TServerSetup> bootstrap;
-        bootstrap.Service->GetSessionEventsStreamHandler =
-            [&](auto callContext, auto request, auto responseHandler)
-        {
-            Y_UNUSED(callContext, request);
-            storage.Set(responseHandler);
-        };
-
-        bootstrap.Service->PingHandler = [](auto, auto)
-        {
-            return MakeFuture<NProto::TPingResponse>();
-        };
-
-        bootstrap.CreateClient();
-        bootstrap.Start();
-
-        auto pingFuture = bootstrap.Clients[0]->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>());
-
-        const auto& response = pingFuture.GetValue(WaitTimeout);
-        UNIT_ASSERT_C(!HasError(response), response.GetError());
-
-        auto context = MakeIntrusive<TCallContext>("fs");
-        auto request = std::make_shared<NProto::TGetSessionEventsRequest>();
-        auto responseHandler = std::make_shared<TResponseHandler>();
-
-        bootstrap.Clients[0]->GetSessionEventsStream(
-            std::move(context),
-            std::move(request),
-            responseHandler);
-        UNIT_ASSERT(WaitFor([&] { return !storage.Empty(); }));
-
-        auto serverHandler = storage.Get();
-
-        NProto::TGetSessionEventsResponse respose;
-        auto* event = respose.AddEvents();
-        event->SetSeqNo(1);
-
-        serverHandler->HandleResponse(respose);
-        UNIT_ASSERT(WaitFor([=] { return responseHandler->GotResponse(); }));
-
-        serverHandler->HandleCompletion({});
-        UNIT_ASSERT(WaitFor([=] { return responseHandler->GotCompletion(); }));
     }
 
     Y_UNIT_TEST(ShouldHitErrorMetricOnFailure)

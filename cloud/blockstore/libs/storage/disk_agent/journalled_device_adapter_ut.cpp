@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
-#include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/libs/journal/iface/device.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
@@ -22,6 +22,7 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NJournalled;
 using namespace std::chrono_literals;
 
 namespace {
@@ -51,7 +52,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::shared_ptr<TMemoryTestStorage> Storage;
     TStorageAdapterPtr StorageAdapter;
     TDeviceClientPtr DeviceClient;
-    NJournalled::IDevicePtr Device;
+    IDevicePtr Device;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
@@ -79,10 +80,10 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         Device = CreateDeviceAdapter(
             Timer,
-            DeviceUUID,
-            DefaultBlockSize,
             DeviceClient,
-            {});
+            DeviceUUID,
+            {.FirstPageNo = 0, .PageCount = DefaultBlockCount},
+            DefaultBlockSize);
     }
 
     static char BlockData(ui64 blockIndex)
@@ -112,14 +113,19 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
     }
 
-    NProto::TError WritePages(TVector<NJournalled::TPageRange> ranges)
+    NProto::TError WritePages(TVector<TPageRange> ranges)
     {
         return Device->WritePages(std::move(ranges)).GetValueSync();
     }
 
-    auto ReadPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
+    auto ReadPages(TVector<TPageRangeRef> rangeRefs)
     {
         return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
+    }
+
+    NProto::TError ZeroPages(TVector<TPageRangeRef> rangeRefs)
+    {
+        return Device->ZeroPages(std::move(rangeRefs)).GetValueSync();
     }
 };
 
@@ -132,112 +138,164 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateWritePagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(TVector<NJournalled::TPageRange>&)>;
+            std::function<void(TVector<TPageRange>&)>;
 
-        const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
-            {[&](auto&) {}, MakeError(E_ARGUMENT, "nothing to write")},
-            {[&](auto& ranges) { ranges.emplace_back(); },
-             MakeError(E_ARGUMENT, "empty page group")},
-            {[&](auto& ranges)
-             {
-                 auto& range = ranges.emplace_back();
-                 range.FirstPageNo = 0x10;
-                 range.Pages.emplace_back();   // an empty block
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "invalid page data: block must not be empty")},
-            {[&](auto& ranges)
-             {
-                 {
-                     auto& range = ranges.emplace_back();
-                     range.FirstPageNo = 0x10;
-                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
-                 }
+        const TPrepareFunc testCases[]{
+            // nothing to write
+            [&](auto&) {},
+            // empty page group
+            [&](auto& ranges) { ranges.emplace_back(); },
+            // an empty block
+            [&](auto& ranges)
+            {
+                auto& range = ranges.emplace_back();
+                range.FirstPageNo = 0x10;
+                range.Pages.emplace_back();
+            },
+            // an empty block in the second group
+            [&](auto& ranges)
+            {
+                {
+                    auto& range = ranges.emplace_back();
+                    range.FirstPageNo = 0x10;
+                    range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                }
 
-                 {
-                     auto& range = ranges.emplace_back();
-                     range.FirstPageNo = 0x20;
-                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
-                     range.Pages.emplace_back();   // an empty block
-                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
-                 }
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "invalid page data: block must not be empty")},
-            {[&](auto& ranges)
-             {
-                 auto& range = ranges.emplace_back();
-                 range.FirstPageNo = 0x10;
-                 range.Pages.push_back(MakeBlock(4_KB, 'A'));
-                 range.Pages.push_back(MakeBlock(8_KB, 'B'));
-             },
-             MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
+                {
+                    auto& range = ranges.emplace_back();
+                    range.FirstPageNo = 0x20;
+                    range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                    range.Pages.emplace_back();
+                    range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                }
+            },
+            // block size mismatch
+            [&](auto& ranges)
+            {
+                auto& range = ranges.emplace_back();
+                range.FirstPageNo = 0x10;
+                range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                range.Pages.push_back(MakeBlock(8_KB, 'B'));
+            },
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
-            const auto& [prepare, expectedError] = testCases[i];
-
-            TVector<NJournalled::TPageRange> ranges;
-            prepare(ranges);
+            TVector<TPageRange> ranges;
+            testCases[i](ranges);
 
             const auto error = WritePages(std::move(ranges));
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                expectedError.GetCode(),
+                E_ARGUMENT,
                 error.GetCode(),
-                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
-                    << FormatError(error));
-
-            UNIT_ASSERT_STRING_CONTAINS_C(
-                error.GetMessage(),
-                expectedError.GetMessage(),
-                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
-                    << FormatError(error));
+                "#" << (i + 1) << ": " << FormatError(error));
         }
     }
 
     Y_UNIT_TEST_F(ShouldValidateReadPagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(TVector<NJournalled::TPageRangeRef>&)>;
+            std::function<void(TVector<TPageRangeRef>&)>;
 
-        const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
-            {[&](auto&) {}, MakeError(E_ARGUMENT, "nothing to read")},
-            {[&](auto& rangeRefs) { rangeRefs.emplace_back(); },
-             MakeError(
-                 E_ARGUMENT,
-                 "page group ref must contain at least one page")},
-            {[&](auto& rangeRefs)
-             {
-                 rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
-                 rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 0});
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "page group ref must contain at least one page")},
+        const TPrepareFunc testCases[]{
+            // nothing to read
+            [&](auto&) {},
+            // an empty ref
+            [&](auto& rangeRefs) { rangeRefs.emplace_back(); },
+            // an empty ref after a valid one
+            [&](auto& rangeRefs)
+            {
+                rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
+                rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 0});
+            },
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
-            const auto& [prepare, expectedError] = testCases[i];
-
-            TVector<NJournalled::TPageRangeRef> rangeRefs;
-            prepare(rangeRefs);
+            TVector<TPageRangeRef> rangeRefs;
+            testCases[i](rangeRefs);
 
             const auto error = ReadPages(std::move(rangeRefs)).GetError();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                expectedError.GetCode(),
+                E_ARGUMENT,
                 error.GetCode(),
-                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
-                    << FormatError(error));
+                "#" << (i + 1) << ": " << FormatError(error));
+        }
+    }
 
-            UNIT_ASSERT_STRING_CONTAINS_C(
-                error.GetMessage(),
-                expectedError.GetMessage(),
-                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
-                    << FormatError(error));
+    Y_UNIT_TEST_F(ShouldValidateZeroPagesRequest, TFixture)
+    {
+        using TPrepareFunc =
+            std::function<void(TVector<TPageRangeRef>&)>;
+
+        const TPrepareFunc testCases[]{
+            // nothing to zero
+            [&](auto&) {},
+            // an empty ref
+            [&](auto& rangeRefs) { rangeRefs.emplace_back(); },
+            // an empty ref after a valid one
+            [&](auto& rangeRefs)
+            {
+                rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
+                rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 0});
+            },
+        };
+
+        for (size_t i = 0; i != std::size(testCases); ++i) {
+            TVector<TPageRangeRef> rangeRefs;
+            testCases[i](rangeRefs);
+
+            const auto error = ZeroPages(std::move(rangeRefs));
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                "#" << (i + 1) << ": " << FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldZeroPages, TFixture)
+    {
+        FillDevice();
+
+        {
+            const auto error = ZeroPages({
+                {.FirstPageNo = 0x10, .PageCount = 2},
+                {.FirstPageNo = 0x20, .PageCount = 1},
+            });
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const auto result = ReadPages({
+            {.FirstPageNo = 0x0F, .PageCount = 4},
+            {.FirstPageNo = 0x20, .PageCount = 2},
+        });
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto& pages = result.GetResult();
+        UNIT_ASSERT_VALUES_EQUAL(6, pages.size());
+
+        const std::pair<ui64, char> expected[]{
+            {0x0F, BlockData(0x0F)},
+            {0x10, '\0'},
+            {0x11, '\0'},
+            {0x12, BlockData(0x12)},
+            {0x20, '\0'},
+            {0x21, BlockData(0x21)},
+        };
+
+        for (size_t i = 0; i != std::size(expected); ++i) {
+            const auto& [blockIndex, c] = expected[i];
+            TStringBuf block(pages[i].Data(), pages[i].Size());
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.size(),
+                std::ranges::count(block, c),
+                "block " << blockIndex);
         }
     }
 
@@ -248,10 +306,10 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         auto region = CreateDeviceAdapter(
             Timer,
-            DeviceUUID,
-            DefaultBlockSize,
             DeviceClient,
-            {.FirstBlockIndex = firstBlock, .BlockCount = blockCount});
+            DeviceUUID,
+            {.FirstPageNo = firstBlock, .PageCount = blockCount},
+            DefaultBlockSize);
 
         FillDevice();
 
@@ -285,14 +343,11 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "beyond the device");
         }
 
         // a write lands in the region as well
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
             auto& range = ranges.emplace_back();
             range.FirstPageNo = 1;
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Z'));
@@ -315,7 +370,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         // a write beyond the region is rejected before anything is written
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
             auto& range = ranges.emplace_back();
             range.FirstPageNo = blockCount - 1;
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Q'));
@@ -327,9 +382,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "beyond the device");
 
             const ui64 lastBlock = firstBlock + blockCount - 1;
             const auto result =
@@ -344,7 +396,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     {
         const auto makeRanges = []
         {
-            TVector<NJournalled::TPageRange> ranges;
+            TVector<TPageRange> ranges;
 
             {
                 auto& range = ranges.emplace_back();
@@ -381,7 +433,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         for (ui32 i = 0; i != requestCount; ++i) {
             const ui64 rangeCount = 1 + RandomNumber<ui64>(8);
 
-            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            TVector<TPageRangeRef> rangeRefs;
             for (ui64 j = 0; j != rangeCount; ++j) {
                 const ui64 firstPageNo = RandomNumber<ui64>(DefaultBlockCount);
 

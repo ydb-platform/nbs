@@ -227,6 +227,10 @@ void TIndexTabletState::LoadState(
 
     CompressNodeRef = config.GetEnableNodeRefCompression();
     FileSystemEventsEnabled = config.GetFileSystemEventsEnabled();
+    FileSystemEventsDryRunModeEnabled =
+        config.GetFileSystemEventsDryRunModeEnabled();
+    FileSystemListingEventsEnabled =
+        config.GetFileSystemListingEventsEnabled();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

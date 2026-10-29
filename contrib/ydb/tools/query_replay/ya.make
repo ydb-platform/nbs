@@ -7,6 +7,10 @@ INCLUDE(${ARCADIA_ROOT}/contrib/ydb/tools/query_replay/common_deps.inc)
 
 SRCS(${YDB_REPLAY_SRCS})
 
-PEERDIR(${YDB_REPLAY_PEERDIRS})
+PEERDIR(
+    ${YDB_REPLAY_PEERDIRS}
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
+    yql/essentials/sql/v1
+)
 
 END()

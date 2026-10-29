@@ -201,8 +201,6 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 UNIT_ASSERT_VALUES_EQUAL(200, copy->GetWriteBlobThreshold());
                 UNIT_ASSERT(copy->GetStorageConfigControls() == controls);
 
-                source->SetVolumePreemptionType(
-                    NProto::PREEMPTION_MOVE_MOST_HEAVY);
                 UNIT_ASSERT(
                     copy->GetVolumePreemptionType() == NProto::PREEMPTION_NONE);
             }

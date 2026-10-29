@@ -23,8 +23,9 @@ import (
 const backupTestBucket = "chunks-backup"
 
 type testFollower struct {
-	s3       *persistence.S3Client
-	backupS3 *backup.S3
+	s3           *persistence.S3Client
+	backupS3     *backup.S3
+	encryptedDEK []byte
 }
 
 func newTestFollower(t *testing.T, ctx context.Context) testFollower {
@@ -38,13 +39,34 @@ func newTestFollower(t *testing.T, ctx context.Context) testFollower {
 		require.NoError(t, err)
 	}
 
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+	)
+	require.NoError(t, err)
+
+	encryptedDEK, err := backupS3.NewEncryptedDEK()
+	require.NoError(t, err)
+
 	return testFollower{
-		s3:       s3,
-		backupS3: backup.NewS3(s3, backupTestBucket, t.Name()),
+		s3:           s3,
+		backupS3:     backupS3,
+		encryptedDEK: encryptedDEK,
 	}
 }
 
 func (f testFollower) getObject(
+	ctx context.Context,
+	key string,
+) (persistence.S3Object, error) {
+
+	return f.backupS3.GetObject(ctx, key)
+}
+
+func (f testFollower) getRawObject(
 	ctx context.Context,
 	key string,
 ) (persistence.S3Object, error) {
@@ -63,7 +85,8 @@ func newBackupSnapshotDataTask(
 		backupS3:  follower.backupS3,
 		batchSize: 1000,
 		request: &protos.BackupSnapshotDataRequest{
-			SnapshotId: snapshotID,
+			SnapshotId:   snapshotID,
+			EncryptedDek: follower.encryptedDEK,
 		},
 		state: &protos.BackupSnapshotDataTaskState{},
 	}
@@ -147,6 +170,11 @@ func readBackupChunkMap(
 	err = proto.Unmarshal(object.Data, chunkMap)
 	require.NoError(t, err)
 
+	raw, err := follower.getRawObject(ctx, backup.ChunkMapKey(snapshotID))
+	require.NoError(t, err)
+	require.NotEqual(t, object.Data, raw.Data)
+	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
+
 	return chunkMap
 }
 
@@ -209,7 +237,12 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk0,
+				StoredInS3:   true,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -227,7 +260,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
 
-	cleared, err := storage.ClearCompletedBackupChunkQueueEntries(ctx, "snap1", 10)
+	cleared, err := storage.ClearCompletedBackupChunks(ctx, "snap1", 10)
 	require.NoError(t, err)
 	require.Zero(t, cleared)
 
@@ -325,7 +358,12 @@ func TestBackupSnapshotDataTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap2", ChunkID: chunk1, StoredInS3: true},
+			{
+				SnapshotID:   "snap2",
+				ChunkID:      chunk1,
+				StoredInS3:   true,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -396,8 +434,18 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	require.ElementsMatch(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
-			{SnapshotID: "snap1", ChunkID: chunk1, StoredInS3: true},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk0,
+				StoredInS3:   true,
+				EncryptedDEK: follower.encryptedDEK,
+			},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk1,
+				StoredInS3:   true,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -473,7 +521,11 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunkID},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunkID,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -619,6 +671,28 @@ func TestBackupSnapshotDataTaskFailsOnDeletedSnapshot(t *testing.T) {
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, queue)
+}
+
+func TestBackupSnapshotDataTaskRejectsBadDEK(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	createSnapshotWithChunk(t, ctx, storage, "snap1")
+
+	execCtx := newBackupExecutionContext(ctx)
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
+	task.request.EncryptedDek = []byte("bad")
+
+	err := task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Zero(t, task.state.EnqueuedChunkCount)
 
 	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)

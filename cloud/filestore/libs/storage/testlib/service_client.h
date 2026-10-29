@@ -258,23 +258,6 @@ public:
         return request;
     }
 
-    auto CreateSubscribeSessionRequest(const THeaders& headers)
-    {
-        auto request = std::make_unique<TEvService::TEvSubscribeSessionRequest>();
-        request->Record.SetFileSystemId(headers.FileSystemId);
-        headers.Fill(request->Record);
-        return request;
-    }
-
-    auto CreateGetSessionEventsRequest(const THeaders& headers, ui64 seqNo = 0)
-    {
-        auto request = std::make_unique<TEvService::TEvGetSessionEventsRequest>();
-        request->Record.SetFileSystemId(headers.FileSystemId);
-        request->Record.SetSeqNo(seqNo);
-        headers.Fill(request->Record);
-        return request;
-    }
-
     auto CreateCreateNodeRequest(
         const THeaders& headers,
         const TCreateNodeArgs& args,
@@ -783,19 +766,6 @@ public:
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_METHOD, TEvService)
 
 #undef FILESTORE_DECLARE_METHOD
-
-    template <typename... Args>
-    std::unique_ptr<TEvService::TEvGetSessionEventsResponse> GetSessionEventsStream(Args&&... args)
-    {
-        auto request = CreateGetSessionEventsRequest(std::forward<Args>(args)...);
-        SendRequest(MakeStorageServiceId(), std::move(request), TEvService::StreamCookie);
-
-        auto response = RecvResponse<TEvService::TEvGetSessionEventsResponse>();
-        UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason());
-        return response;
-    }
 };
 
 }   // namespace NCloud::NFileStore::NStorage

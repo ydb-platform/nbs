@@ -10,6 +10,10 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
+#include <cloud/storage/core/libs/tablet/model/commit.h>
+
+#include <contrib/ydb/library/actors/core/monotonic.h>
+
 #include <util/system/spinlock.h>
 
 #include <atomic>
@@ -72,6 +76,12 @@ class TPartitionThreadSafeState
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 
 public:
+    struct TFreshWriteInfo
+    {
+        ui64 CommitId = InvalidCommitId;
+        TInstant Timestamp;
+    };
+
     TResourceMetricsQueue ResourceMetricsQueue;
     TThreadSafePartCounters PartCounters;
     TThreadSafePartStats PartStats;
@@ -95,6 +105,11 @@ private:
 
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
+
+    // Fresh write timestamps are Unix time advanced with the monotonic clock
+    // from this anchor.
+    TInstant FreshWriteTimeAnchor;
+    NActors::TMonotonic FreshWriteMonotonicAnchor;
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
@@ -121,7 +136,9 @@ public:
     void Init(
         NActors::TActorId partitionActorId,
         ui32 generation,
-        ui32 lastCommitId);
+        ui32 lastCommitId,
+        TInstant now,
+        NActors::TMonotonic monotonic);
 
     TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
@@ -146,7 +163,13 @@ public:
     ui64 GenerateCommitId();
     ui64 GetLastCommitId() const;
 
-    ui64 StartFreshWrite(ui64 blockCount);
+    TFreshWriteInfo StartFreshWrite(
+        const NActors::TActorContext& ctx,
+        ui64 blockCount);
+
+    // Read the same clock without allocating a commit id.
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx) const;
+
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 commitId,
