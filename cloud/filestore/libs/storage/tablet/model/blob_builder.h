@@ -28,7 +28,7 @@ class TMixedBlobBuilder final
     struct TRange
     {
         TVector<TBlock> Blocks;
-        TString BlobContent;
+        TVector<TBlockDataHolder> BlobContent;
     };
 
 private:
@@ -52,7 +52,9 @@ public:
         , MaxBlocksInBlob(maxBlocksCount)
     {}
 
-    void Accept(const TBlock& block, TStringBuf blockData) override;
+    void Accept(
+        const TBlock& block,
+        const TBlockDataHolder& blockData) override;
 
     TVector<TMixedBlob> Finish();
 
@@ -67,7 +69,10 @@ public:
     }
 
 private:
-    void AddBlock(TRange& range, const TBlock& block, TStringBuf blockData);
+    void AddBlock(
+        TRange& range,
+        const TBlock& block,
+        const TBlockDataHolder& blockData);
     void CompleteBlob(TRange& range);
 };
 
@@ -92,7 +97,7 @@ public:
         const TBlock& block,
         ui32 blocksCount,
         ui32 blockOffset,
-        IBlockBuffer& buffer);
+        const IBlockBuffer& buffer);
 
     TVector<TMergedBlob> Finish();
 

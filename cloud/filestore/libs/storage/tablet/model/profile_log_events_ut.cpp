@@ -236,20 +236,33 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
 
     Y_UNIT_TEST(ShouldAddBlobsInfoForMixedBlob)
     {
-        const ui32 blockSize = 4096;
+        const ui32 blockSize = 8;
+        auto buffer1 = CreateBlockBuffer(
+            TByteRange{0, blockSize, blockSize},
+            TString("content1"));
+        auto buffer2 = CreateBlockBuffer(
+            TByteRange{0, blockSize, blockSize},
+            TString("content2"));
+        auto buffer3 = CreateBlockBuffer(
+            TByteRange{0, blockSize, blockSize},
+            TString("content3"));
         const auto oldBlobFirst = TMixedBlob(
             MakePartialBlobId(1, 1),
             {TBlock(1, 3, 0, 0), TBlock(1, 5, 0, 0), TBlock(3, 6, 0, 0)},
-            "content_1");
+            {TBlockDataHolder{0, buffer1},
+             TBlockDataHolder{0, buffer2},
+             TBlockDataHolder{0, buffer3}});
         const auto oldBlobSecond = TMixedBlob(
             MakePartialBlobId(1, 3),
             {TBlock(3, 10, 0, 0), TBlock(7, 5, 0, 0), TBlock(7, 6, 0, 0)},
-            "content_2");
-        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, "");
+            {TBlockDataHolder{0, buffer2},
+             TBlockDataHolder{0, buffer3},
+             TBlockDataHolder{0, buffer1}});
+        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, {});
         const auto newBlob = TMixedBlob(
             MakePartialBlobId(2, 1),
             {TBlock(1, 10, 0, 0)},
-            "content_3");
+            {TBlockDataHolder{0, buffer3}});
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(

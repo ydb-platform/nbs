@@ -100,7 +100,6 @@ struct TIndexTabletState::TImpl
 
     explicit TImpl(const TFileStoreAllocRegistry& registry)
         : FreshBytes(registry.GetAllocator(EAllocatorTag::FreshBytes))
-        , FreshBlocks(registry.GetAllocator(EAllocatorTag::FreshBlocks))
         , MixedBlocks(registry.GetAllocator(EAllocatorTag::BlobMetaMap))
         , LargeBlocks(registry.GetAllocator(EAllocatorTag::LargeBlocks))
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))

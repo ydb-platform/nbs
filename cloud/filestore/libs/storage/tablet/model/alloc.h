@@ -12,7 +12,6 @@ enum class EAllocatorTag
     BlockList,
     CompactionMap,
     DeletionMarkers,
-    FreshBlocks,
     FreshBytes,
     GarbageQueue,
     ReadAheadCache,
