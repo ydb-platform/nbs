@@ -34,6 +34,22 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             *NProto::NTest::TRuntimeConfig::descriptor());
     }
 
+    // Verify that messages allowing extensions fail validation both at the root
+    // and in a nested field, even when no extensions are defined.
+    Y_UNIT_TEST(ShouldRejectExtensibleConfigSchema)
+    {
+        for (const auto* descriptor:
+             {NProto::NTest::TExtensibleConfig::descriptor(),
+              NProto::NTest::TConfigWithExtensibleChild::descriptor()})
+        {
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                ValidateRuntimeConfigSchema(*descriptor),
+                std::exception,
+                "Runtime config extensions are not supported: "
+                "NCloud.NConfig.NProto.NTest.TExtensibleConfig");
+        }
+    }
+
     // Verify that both descriptor mismatches throw before modifying runtime,
     // including unknown fields, and a subsequent valid call still succeeds.
     Y_UNIT_TEST(ShouldRejectMismatchedConfigTypes)
