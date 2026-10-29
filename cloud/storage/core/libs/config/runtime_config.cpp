@@ -15,6 +15,7 @@ path and reason for each rejected change to the runtime configuration.
 #include <util/generic/scope.h>
 #include <util/generic/yexception.h>
 
+#include <google/protobuf/util/field_comparator.h>
 #include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NConfig {
@@ -135,7 +136,10 @@ bool EqualField(
     {
         return false;
     }
+    google::protobuf::util::DefaultFieldComparator comparator;
+    comparator.set_treat_nan_as_equal(true);
     MessageDifferencer differencer;
+    differencer.set_field_comparator(&comparator);
     differencer.AddIgnoreCriteria(std::make_unique<TIgnoreUnknownFields>());
     return differencer.CompareWithFields(lhs, rhs, {field}, {field});
 }
