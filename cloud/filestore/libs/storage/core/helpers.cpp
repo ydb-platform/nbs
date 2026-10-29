@@ -111,6 +111,8 @@ void Convert(
     }
 
     response.SetCookie(internalResponse.GetCookie());
+    response.SetNodeCacheTTL(internalResponse.GetNodeCacheTTL());
+    response.SetNodeRefCacheTTL(internalResponse.GetNodeRefCacheTTL());
     *response.MutableHeaders() = std::move(*internalResponse.MutableHeaders());
 
     const ui32 nameCount = internalResponse.NameSizesSize();

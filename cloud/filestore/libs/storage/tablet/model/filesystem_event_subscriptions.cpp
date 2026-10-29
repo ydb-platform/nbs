@@ -211,6 +211,11 @@ TVector<TActorId> TFileSystemEventSubscriptions::ExtractNodeRefSubscribers(
     return {clients.begin(), clients.end()};
 }
 
+TDuration TFileSystemEventSubscriptions::GetSealPeriod() const
+{
+    return SealPeriod;
+}
+
 auto TFileSystemEventSubscriptions::GetStats() const -> TStats
 {
     const auto aStats = Active.GetStats();

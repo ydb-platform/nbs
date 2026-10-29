@@ -484,9 +484,10 @@ private:
         }
     }
 
-    void RegisterFileSystemEventClient(
+    NActors::TActorId RegisterFileSystemEventClient(
         const NActors::TActorId& recipient,
-        const NActors::TActorId& clientId);
+        const NActors::TActorId& clientId,
+        const NProto::THeaders& headers);
 
     void AddFileSystemEventNodeSubscriber(
         const NActors::TActorContext& ctx,
@@ -500,6 +501,12 @@ private:
         const TString& name);
 
     void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
+
+    TDuration GetFileSystemEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
+    TDuration GetFileSystemListingEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
 
     ui32 SendFileSystemEvents(
         const NActors::TActorContext& ctx,

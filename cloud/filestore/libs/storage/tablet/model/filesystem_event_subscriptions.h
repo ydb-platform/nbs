@@ -185,6 +185,11 @@ public:
         TInstant now);
 
     /**
+     * @return - The seal period the registry was created with.
+     */
+    [[nodiscard]] TDuration GetSealPeriod() const;
+
+    /**
      * @return - TStats describing this subscription registry.
      */
     [[nodiscard]] TStats GetStats() const;

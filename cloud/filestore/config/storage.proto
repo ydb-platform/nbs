@@ -946,7 +946,10 @@ message TStorageConfig
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
-    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    // InvalidateNodeRef) to its clients upon Node and NodeRef changes and
+    // returns NodeCacheTTL and NodeRefCacheTTL values in GetNodeAttrResponses
+    // which tell the client for how long caching of the corresponding Node
+    // and NodeRef is allowed.
     optional bool FileSystemEventsEnabled = 553;
 
     // If set to true, the tablet counts the FileSystemEvents generated due to
@@ -982,4 +985,19 @@ message TStorageConfig
     // changed and the service is restarted. YDB cleans up old backups per
     // directory, so the directory must not be shared with other processes.
     optional string SystemTabletBackupDirPath = 559;
+
+    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes and
+    // ListNodesInternal (see FileSystemListingEventsEnabled) allow the client
+    // to cache the returned Nodes and NodeRefs for
+    // FileSystemEventSubscriptionsSealPeriod minus this margin (in
+    // milliseconds): a subscription lives at least one seal period, the margin
+    // covers the delivery and processing delays.
+    optional uint32 FileSystemEventSubscriptionsCacheTTLMargin = 560;
+
+    // If set to true together with FileSystemEventsEnabled, GetNodeAttrBatch,
+    // ListNodes and ListNodesInternal subscribe the client to the returned
+    // Nodes (and NodeRefs for ListNodes and ListNodesInternal) and return
+    // nonzero NodeCacheTTL (and NodeRefCacheTTL). FileSystemEventsEnabled
+    // alone enables this for GetNodeAttr only.
+    optional bool FileSystemListingEventsEnabled = 561;
 }

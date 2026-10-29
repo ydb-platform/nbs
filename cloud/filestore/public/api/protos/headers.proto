@@ -92,6 +92,10 @@ message THeaders
     // Behave as directory tablet (main tablet) - allows work delegation to
     // shards if directory handling is allowed for shards.
     bool BehaveAsDirectoryTablet = 13;
+
+    // The sender doesn't cache the response: the tablet doesn't subscribe it
+    // to FileSystemEvents and returns zero NodeCacheTTL and NodeRefCacheTTL.
+    bool FileSystemEventSubscriptionDisabled = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

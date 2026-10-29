@@ -10,28 +10,40 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::RegisterFileSystemEventClient(
+TActorId TIndexTabletActor::RegisterFileSystemEventClient(
     const TActorId& recipient,
-    const TActorId& clientId)
+    const TActorId& clientId,
+    const NProto::THeaders& headers)
 {
     //
-    // Called by the requests whose responses the client may cache: GetNodeAttr,
-    // GetNodeAttrBatch (attrs of shard-resident nodes upon ListNodes),
-    // ListNodes, ListNodesInternal, CreateNode, CreateHandle. ReadNodeRefs
-    // doesn't register its sender - it's used by the private API only. Upon
-    // completion these requests subscribe the client to the returned Nodes
-    // and NodeRefs (see FileSystemEventSubscriptions).
+    // Called only by the requests whose responses the client is allowed to
+    // cache (see NodeCacheTTL and NodeRefCacheTTL in their responses):
+    // GetNodeAttr, GetNodeAttrBatch (attrs of shard-resident nodes upon
+    // ListNodes), ListNodes and ListNodesInternal. Upon completion these
+    // requests subscribe the client to the returned Nodes and NodeRefs (see
+    // FileSystemEventSubscriptions); GetNodeAttrBatch, ListNodes and
+    // ListNodesInternal do this only if FileSystemListingEventsEnabled is set.
+    // The other responses (e.g. CreateNode, CreateHandle) must not be cached.
     //
     // Requests received via a pipe have the pipe server as their recipient.
     // Requests sent directly to the tablet have no pipe and therefore no
     // disconnect notification - such senders are not registered.
     //
+    // The senders which don't cache the responses (e.g. the directory viewer)
+    // disable the subscription explicitly. The pipe itself may be shared with
+    // the senders which do cache the responses (e.g. via the tablet proxy),
+    // so the returned pipe server id is used by the request instead of
+    // checking the registration of the pipe.
+    //
 
-    if (recipient == SelfId()) {
-        return;
+    if (recipient == SelfId() ||
+        headers.GetFileSystemEventSubscriptionDisabled())
+    {
+        return {};
     }
 
     FileSystemEventClients[recipient] = clientId;
+    return recipient;
 }
 
 void TIndexTabletActor::AddFileSystemEventNodeSubscriber(
@@ -80,6 +92,44 @@ void TIndexTabletActor::RemoveFileSystemEventClient(
     const TActorId& pipeServerId)
 {
     FileSystemEventClients.erase(pipeServerId);
+}
+
+TDuration TIndexTabletActor::GetFileSystemEventsCacheTTL(
+    const TActorId& pipeServerId) const
+{
+    //
+    // The client may cache the returned Nodes and NodeRefs only if it gets
+    // the invalidations for them: the events have to be generated and sent
+    // and the client has to be reachable via the pipe it has sent the request
+    // through. A subscription lives at least one seal period, the margin
+    // covers the delivery and processing delays.
+    //
+
+    if (!IsFileSystemEventsEnabled() ||
+        IsFileSystemEventsDryRunModeEnabled() ||
+        !FileSystemEventClients.contains(pipeServerId))
+    {
+        return TDuration::Zero();
+    }
+
+    const auto sealPeriod = FileSystemEventSubscriptions.GetSealPeriod();
+    const auto margin = Config->GetFileSystemEventSubscriptionsCacheTTLMargin();
+    return sealPeriod > margin ? sealPeriod - margin : TDuration::Zero();
+}
+
+TDuration TIndexTabletActor::GetFileSystemListingEventsCacheTTL(
+    const TActorId& pipeServerId) const
+{
+    //
+    // GetNodeAttrBatch, ListNodes and ListNodesInternal subscribe the client
+    // only if FileSystemListingEventsEnabled is set.
+    //
+
+    if (!IsFileSystemListingEventsEnabled()) {
+        return TDuration::Zero();
+    }
+
+    return GetFileSystemEventsCacheTTL(pipeServerId);
 }
 
 ui32 TIndexTabletActor::SendFileSystemEvents(
