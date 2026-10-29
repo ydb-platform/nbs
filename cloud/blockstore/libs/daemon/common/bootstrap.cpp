@@ -1108,6 +1108,9 @@ void TBootstrapBase::Start()
 
 void TBootstrapBase::Stop()
 {
+    if (BootstrapMonitoring) {
+        BootstrapMonitoring->Stop();
+    }
 #define STOP_COMMON_COMPONENT(c)                                               \
     if (c) {                                                                   \
         STORAGE_INFO("Stopping " << #c << "...");                              \

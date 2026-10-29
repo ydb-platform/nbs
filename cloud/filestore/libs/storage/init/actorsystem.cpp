@@ -354,7 +354,11 @@ public:
     TActorSystem(const TActorSystemArgs& args)
         : TKikimrRunner(args.ModuleFactories)
         , Args(args)
-    {}
+    {
+        if (Args.BootstrapMonitoring) {
+            Counters = Args.BootstrapMonitoring->GetCounters();
+        }
+    }
 
     void Init();
 
@@ -477,6 +481,9 @@ void TActorSystem::Init()
 
 void TActorSystem::Start()
 {
+    if (Args.BootstrapMonitoring) {
+        Args.BootstrapMonitoring->Stop();
+    }
     KikimrStart();
 }
 

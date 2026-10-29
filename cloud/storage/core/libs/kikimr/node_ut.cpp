@@ -3,9 +3,15 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/bootstrap_monitoring/bootstrap_monitoring.h>
+
+#include <library/cpp/http/simple/http_client.h>
+#include <library/cpp/testing/common/network.h>
 
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/stream/str.h>
 
 #include <chrono>
 
@@ -78,6 +84,53 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
 {
+    Y_UNIT_TEST_F(ShouldServeMetricsDuringRegistrationAndConfigRetries, TFixture)
+    {
+        const auto port = NTesting::GetFreePort();
+        NKikimrConfig::TMonitoringConfig config;
+        config.SetMonitoringAddress("127.0.0.1");
+        config.SetMonitoringPort(port);
+        auto monitoring = CreateBootstrapMonitoring(config, "blockstore");
+        monitoring->Start();
+
+        auto scrape = [&] {
+            TKeepAliveHttpClient client("127.0.0.1", port);
+            TStringStream response;
+            UNIT_ASSERT_VALUES_EQUAL(200, client.DoGet(
+                "/counters/counters=blockstore/json", &response));
+            UNIT_ASSERT(response.Str().Contains("Initializing"));
+        };
+
+        auto registrant = std::make_unique<TMockRegistrant>();
+        ui32 registrations = 0;
+        ui32 configurations = 0;
+        EXPECT_CALL(*registrant, RegisterNode(_)).Times(2).WillRepeatedly(
+            [&] (const TString&) -> TResultOrError<TRegistrationResult> {
+                scrape();
+                if (++registrations == 1) {
+                    return MakeError(E_FAIL, "Node broker unavailable");
+                }
+                return TRegistrationResult{DefaultNodeId, DefaultScopeId};
+            });
+        EXPECT_CALL(*registrant, GetConfigs(_, DefaultNodeId))
+            .Times(2).WillRepeatedly(
+                [&] (const TString&, ui32) -> TResultOrError<NKikimrConfig::TAppConfig> {
+                    scrape();
+                    if (++configurations == 1) {
+                        return MakeError(E_FAIL, "CMS unavailable");
+                    }
+                    return NKikimrConfig::TAppConfig{};
+                });
+
+        RegisterDynamicNode(
+            AppConfig,
+            CreateRegisterOptions(true),
+            std::move(registrant),
+            Log,
+            Timer);
+        monitoring->Stop();
+    }
+
     Y_UNIT_TEST_F(ShouldSucceedOnFirstAttempt, TFixture)
     {
         auto registrant = std::make_unique<TMockRegistrant>();

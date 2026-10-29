@@ -27,6 +27,7 @@ struct TActorSystemArgs
     ui32 NodeId = 0;
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
+    IMonitoringServicePtr BootstrapMonitoring;
 
     TStorageConfigPtr StorageConfig;
     IAsyncLoggerPtr AsyncLogger;

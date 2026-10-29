@@ -42,6 +42,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/diagnostics/bootstrap_monitoring
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/iam/iface
     cloud/storage/core/libs/io_uring

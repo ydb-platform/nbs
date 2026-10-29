@@ -3,6 +3,8 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <cloud/storage/core/libs/diagnostics/bootstrap_monitoring/bootstrap_monitoring.h>
+
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
@@ -514,6 +516,11 @@ void TBootstrapYdb::InitKikimrService()
 {
     InitConfigs();
 
+    BootstrapMonitoring = CreateBootstrapMonitoring(
+        Configs->KikimrConfig->GetMonitoringConfig(),
+        "blockstore");
+    BootstrapMonitoring->Start();
+
     auto preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
         Configs->StorageConfig,
         Log,
@@ -864,6 +871,7 @@ void TBootstrapYdb::InitKikimrService()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.BootstrapMonitoring = BootstrapMonitoring;
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;

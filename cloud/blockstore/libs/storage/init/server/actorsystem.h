@@ -40,6 +40,7 @@ struct TServerActorSystemArgs
     ui32 NodeId;
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
+    IMonitoringServicePtr BootstrapMonitoring;
 
     // Local settings with CLI overrides, captured before CMS. RDMA is present
     // only when loaded from its own file.

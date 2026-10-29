@@ -56,6 +56,7 @@ private:
 
     TConfigInitializerCommonPtr Configs;
     ILoggingServicePtr BootstrapLogging;
+    IMonitoringServicePtr BootstrapMonitoring;
     TProgramShouldContinue ProgramShouldContinue;
     std::shared_ptr<IUserCounterSupplier> UserCounters;
 
