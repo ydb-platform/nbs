@@ -44,8 +44,9 @@ struct ITransport
     // finish.
     virtual void RequestStop() = 0;
 
-    // Waits for all callbacks. Call outside callbacks and before releasing
-    // the transport's last reference.
+    // Waits for handler callbacks and WhenClosed() subscribers invoked during
+    // closure. Call outside these callbacks and before releasing the
+    // transport's last reference.
     virtual void Stop() = 0;
 };
 

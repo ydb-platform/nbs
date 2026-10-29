@@ -353,9 +353,10 @@ struct TTransportState
     const std::shared_ptr<TEngineClient> Client;
     bool Stopping = false;
     bool EngineStopping = false;
-    // The initial reference is released by Stop() after activation is disabled.
-    std::atomic<size_t> ActiveRegistrations = 1;
-    NThreading::TPromise<void> RegistrationsDrained =
+    // Includes closure subscribers; Stop() releases the initial reference after
+    // connection creation is disabled.
+    std::atomic<size_t> PendingConnections = 1;
+    NThreading::TPromise<void> ConnectionsDrained =
         NThreading::NewPromise<void>();
 
     TTransportState(
@@ -366,14 +367,14 @@ struct TTransportState
         , Client(std::make_shared<TEngineClient>(std::move(eventDestructor)))
     {}
 
-    void ReleaseRegistration()
+    void ReleaseConnection()
     {
         const size_t previous =
-            ActiveRegistrations.fetch_sub(1, std::memory_order_acq_rel);
+            PendingConnections.fetch_sub(1, std::memory_order_acq_rel);
         Y_DEBUG_ABORT_UNLESS(previous);
 
         if (previous == 1) {
-            RegistrationsDrained.SetValue();
+            ConnectionsDrained.SetValue();
         }
     }
 };
@@ -401,9 +402,7 @@ public:
         , Engine(State->Engine)
         , Handler(std::move(handler))
         , Closed(std::move(closed))
-    {
-        State->ActiveRegistrations.fetch_add(1, std::memory_order_relaxed);
-    }
+    {}
 
     ~TActiveConnectionState()
     {
@@ -412,8 +411,8 @@ public:
         }
         Engine.Reset();
         Handler.reset();
-        State->ReleaseRegistration();
         Closed.SetValue();
+        State->ReleaseConnection();
     }
 
     bool Register(
@@ -501,7 +500,9 @@ public:
         , SessionId(sessionId)
         , SendPings(sendPings)
         , Handler(std::move(handler))
-    {}
+    {
+        State->PendingConnections.fetch_add(1, std::memory_order_relaxed);
+    }
 
     ~TConnection() override
     {
@@ -665,6 +666,7 @@ private:
         handler.reset();
         if (complete) {
             Closed.SetValue();
+            State->ReleaseConnection();
         }
         return active;
     }
@@ -769,9 +771,9 @@ public:
                 return;
             }
             State->EngineStopping = true;
-            State->ReleaseRegistration();
+            State->ReleaseConnection();
         }
-        State->RegistrationsDrained.GetFuture().GetValueSync();
+        State->ConnectionsDrained.GetFuture().GetValueSync();
         {
             TGuard<TMutex> admission(State->Mutex);
             engine = std::move(State->Engine);

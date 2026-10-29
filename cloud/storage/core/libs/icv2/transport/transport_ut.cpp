@@ -8,6 +8,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/network/pair.h>
 #include <util/network/socket.h>
@@ -987,6 +988,140 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT(rejected);
         UNIT_ASSERT(stoppedAfterSend);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Stops.load(), 1u);
+    }
+
+    Y_UNIT_TEST(StopWaitsForWhenClosedSubscriberOnSendingThread)
+    {
+        TSignal sendEntered;
+        TSignal releaseSend;
+        TSignal subscriberEntered;
+        TSignal releaseSubscriber;
+        TSignal stopStarted;
+        std::atomic<bool> subscriberFinished = false;
+        TFixture f;
+        std::future<bool> sending;
+        std::future<void> stopping;
+
+        // Release blocked operations before future and fixture destruction on
+        // failure.
+        Y_DEFER
+        {
+            releaseSend.Set();
+            releaseSubscriber.Set();
+            if (sending.valid()) {
+                sending.wait();
+            }
+            if (stopping.valid()) {
+                stopping.wait();
+            }
+        };
+
+        f.Engine->OnSend = [&]
+        {
+            sendEntered.Set();
+            releaseSend.Wait();
+        };
+        UNIT_ASSERT(f.Connection->Activate());
+        const auto closed = f.Connection->WhenClosed();
+        closed.Subscribe(
+            [&](const NThreading::TFuture<void>& future)
+            {
+                Y_UNUSED(future);
+
+                subscriberEntered.Set();
+                releaseSubscriber.Wait();
+                subscriberFinished = true;
+            });
+
+        // An application thread must release the last active-state reference:
+        // engine Stop() would join an engine worker and mask the race.
+        sending = std::async(
+            std::launch::async,
+            [&] { return f.Connection->Send(MakeEvent()); });
+        sendEntered.Wait();
+        f.Connection->Close();
+        UNIT_ASSERT(!closed.HasValue());
+        releaseSend.Set();
+        subscriberEntered.Wait();
+        UNIT_ASSERT(closed.HasValue());
+
+        stopping = std::async(
+            std::launch::async,
+            [&]
+            {
+                stopStarted.Set();
+                f.Transport->Stop();
+            });
+        stopStarted.Wait();
+        const bool stoppedWhileSubscriberBlocked =
+            stopping.wait_for(1s) == std::future_status::ready;
+
+        releaseSubscriber.Set();
+        const bool sent = sending.get();
+        stopping.get();
+        UNIT_ASSERT(sent);
+        UNIT_ASSERT_C(
+            !stoppedWhileSubscriberBlocked,
+            "Stop returned while a WhenClosed subscriber was still running");
+        UNIT_ASSERT(subscriberFinished.load());
+    }
+
+    Y_UNIT_TEST(StopWaitsForWhenClosedSubscriberBeforeActivation)
+    {
+        TSignal subscriberEntered;
+        TSignal releaseSubscriber;
+        TSignal stopStarted;
+        std::atomic<bool> subscriberFinished = false;
+        TFixture f;
+        std::future<void> closing;
+        std::future<void> stopping;
+
+        Y_DEFER
+        {
+            releaseSubscriber.Set();
+            if (closing.valid()) {
+                closing.wait();
+            }
+            if (stopping.valid()) {
+                stopping.wait();
+            }
+        };
+
+        const auto closed = f.Connection->WhenClosed();
+        closed.Subscribe(
+            [&](const NThreading::TFuture<void>& future)
+            {
+                Y_UNUSED(future);
+
+                subscriberEntered.Set();
+                releaseSubscriber.Wait();
+                subscriberFinished = true;
+            });
+        closing =
+            std::async(std::launch::async, [&] { f.Connection->Close(); });
+        subscriberEntered.Wait();
+        UNIT_ASSERT(closed.HasValue());
+
+        stopping = std::async(
+            std::launch::async,
+            [&]
+            {
+                stopStarted.Set();
+                f.Transport->Stop();
+            });
+        stopStarted.Wait();
+        const bool stoppedWhileSubscriberBlocked =
+            stopping.wait_for(1s) == std::future_status::ready;
+
+        releaseSubscriber.Set();
+        closing.get();
+        stopping.get();
+        UNIT_ASSERT_C(
+            !stoppedWhileSubscriberBlocked,
+            "Stop returned while a pre-activation closure subscriber was "
+            "running");
+        UNIT_ASSERT(subscriberFinished.load());
+        UNIT_ASSERT_VALUES_EQUAL(f.Engine->Unregisters.load(), 0u);
     }
 
     Y_UNIT_TEST(RequestStopClosesConnectionsSequentially)
