@@ -1,4 +1,5 @@
 import datetime
+import contextlib
 import logging
 import os
 import requests
@@ -11,6 +12,53 @@ import yatest.common as common
 
 
 logger = logging.getLogger(__name__)
+
+_MAX_LOG_TAIL_BYTES = 64 * 1024
+
+
+def extract_log_tail(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines, excluding the label line from the limit."""
+    if max_lines <= 0 or log_file is None:
+        return []
+
+    blocks = []
+    newline_count = 0
+    bytes_left = _MAX_LOG_TAIL_BYTES
+    try:
+        with open(log_file, 'rb') as log:
+            log.seek(0, os.SEEK_END)
+            position = log.tell()
+            while position > 0 and newline_count <= max_lines and bytes_left > 0:
+                size = min(position, 8192, bytes_left)
+                position -= size
+                bytes_left -= size
+                log.seek(position)
+                block = log.read(size)
+                blocks.append(block)
+                newline_count += block.count(b'\n')
+    except OSError as error:
+        return ["{} tail unavailable: {}".format(label, error)]
+
+    lines = b''.join(reversed(blocks)).splitlines()[-max_lines:]
+    header = ["{} tail:".format(label), ""]
+    if position > 0 and bytes_left == 0 and newline_count <= max_lines:
+        header.append("[truncated to the last {} KiB; first line may be incomplete]".format(
+            _MAX_LOG_TAIL_BYTES // 1024))
+    return header + [line.decode('utf-8', errors='replace') for line in lines]
+
+
+def extract_log_head(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines from the start of a file."""
+    if max_lines <= 0 or log_file is None:
+        return []
+
+    details = ["{} content:".format(label), ""]
+    try:
+        with open(log_file, 'r', errors='replace') as log:
+            details.extend(line.strip() for _, line in zip(range(max_lines), log))
+    except OSError as error:
+        return ["{} unavailable: {}".format(label, error)]
+    return details
 
 
 def _log_process_threads(pid):
@@ -80,10 +128,35 @@ def _wait_process(ex):
 
 class DaemonError(RuntimeError):
 
-    def __init__(self, message, exit_code=None):
+    def __init__(self, message, exit_code=None, stdout=None, stderr=None,
+                 max_stderr_lines=0, stderr_tail=False):
+        """Describe a daemon failure with optional process and log details.
+
+        Args:
+            message: Reason for the failure.
+            exit_code: Process exit status, if known.
+            stdout: Path to the stdout log, if available.
+            stderr: Path to the stderr log, if available.
+            max_stderr_lines: Limit for stderr diagnostics; zero omits them.
+            stderr_tail: Include the last stderr lines instead of the first.
+        """
         message = "Daemon failed with message: {}.".format(message)
         if exit_code is not None:
             message += " Process exit_code = {}.".format(exit_code)
+        if stdout is not None:
+            message += "\nStdout file name: \n{}".format(stdout)
+        if stderr is not None:
+            message += "\nStderr file name: \n{}".format(stderr)
+        if max_stderr_lines and stderr is not None:
+            label = "Stderr tail:" if stderr_tail else "Stderr content:"
+            if max_stderr_lines <= 2:
+                details = [label, ""][:max_stderr_lines]
+            elif stderr_tail:
+                details = extract_log_tail(stderr, max_stderr_lines - 2)
+            else:
+                details = extract_log_head(stderr, max_stderr_lines - 2)
+            if details:
+                message += "\n" + "\n".join(details)
         super(DaemonError, self).__init__(message)
 
 
@@ -92,7 +165,10 @@ class Daemon(object):
     def __init__(self, commands, cwd, restart_allowed=False,
                  restart_interval=None, ping_port=None, ping_path=None,
                  ping_success_codes=None, ping_timeout=2,
-                 ping_attempts=0, core_pattern=None, service_name=None):
+                 ping_attempts=0, core_pattern=None, service_name=None,
+                 stdout_file=None, stderr_file=None,
+                 stderr_on_error_lines=0, stderr_tail=False,
+                 cleanup_timeout=10):
 
         self.__commands = commands
         self.__cwd = cwd
@@ -104,6 +180,9 @@ class Daemon(object):
         self.__ping_timeout = ping_timeout
         self.__ping_attempts = ping_attempts
         self.__core_pattern = core_pattern
+        self.__stderr_on_error_lines = stderr_on_error_lines
+        self.__stderr_tail = stderr_tail
+        self.__cleanup_timeout = cleanup_timeout
 
         stdin_prefix = "stdin_"
         stdout_prefix = "stdout_"
@@ -113,14 +192,81 @@ class Daemon(object):
             stdout_prefix = "{}_{}".format(service_name, stdout_prefix)
             stderr_prefix = "{}_{}".format(service_name, stderr_prefix)
 
-        self.__stdin_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdin_prefix, delete=False)
-        self.__stdout_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False)
-        self.__stderr_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False)
+        with contextlib.ExitStack() as files:
+            self.__stdin_file = files.enter_context(tempfile.NamedTemporaryFile(
+                dir=self.__cwd, prefix=stdin_prefix, delete=False))
+            self.__stdout_file = files.enter_context(
+                open(stdout_file, 'wb') if stdout_file is not None else
+                tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False))
+            self.__stderr_file = files.enter_context(
+                open(stderr_file, 'wb') if stderr_file is not None else
+                tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False))
+            self.__files = files.pop_all()
 
         self.__lock = threading.Lock()
         self.__process = None
         self.__timer = None
         self.__step = 0
+        self.__diagnostics_checked = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            if exc_type is not None:
+                try:
+                    self.__cleanup_after_failure()
+                except Exception:
+                    logger.exception("Daemon cleanup or diagnostics failed")
+                if not isinstance(exc_value, DaemonError):
+                    try:
+                        logger.error("%s", self.failure(str(exc_value)))
+                    except Exception:
+                        logger.exception("Could not read daemon failure details")
+        finally:
+            self.__files.close()
+        return False
+
+    def __cleanup_after_failure(self):
+        with self.__lock:
+            if self.__timer is not None:
+                self.__timer.cancel()
+                self.__timer = None
+            execution = self.__process
+            if execution is None:
+                return
+
+            child = execution.process
+            for send_signal in (child.terminate, child.kill):
+                if child.poll() is not None:
+                    break
+                try:
+                    send_signal()
+                except OSError:
+                    if child.poll() is None:
+                        logger.exception("Could not signal daemon pid %s", child.pid)
+                deadline = time.monotonic() + self.__cleanup_timeout
+                while child.poll() is None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.1, remaining))
+
+            if child.poll() is None:
+                logger.error("Daemon pid %s is still running after SIGKILL; skipping wait", child.pid)
+            elif not self.__diagnostics_checked:
+                self.__diagnostics_checked = True
+                execution.wait(check_exit_code=False)
+
+    def failure(self, message):
+        return DaemonError(
+            message,
+            exit_code=self.returncode,
+            stdout=self.stdout_file_name,
+            stderr=self.stderr_file_name,
+            max_stderr_lines=self.__stderr_on_error_lines,
+            stderr_tail=self.__stderr_tail)
 
     # Should be guarded by self.__lock.
     def __poll(self):
@@ -131,13 +277,20 @@ class Daemon(object):
         res = self.__poll()
         if res is not None:
             logger.error("unexpected exit code {}".format(res))
+            self.__diagnostics_checked = True
             self.__process.verify_no_coredumps()
             self.__process.verify_sanitize_errors()
-            raise DaemonError("unexpected exit code", res)
+            raise DaemonError(
+                "unexpected exit code", res,
+                stdout=self.stdout_file_name,
+                stderr=self.stderr_file_name,
+                max_stderr_lines=self.__stderr_on_error_lines,
+                stderr_tail=self.__stderr_tail)
 
     # Should be guarded by self.__lock.
     def __start_process(self, command):
         logger.info("starting process {}".format(command))
+        self.__diagnostics_checked = False
         self.__process = common.execute(
             command=command,
             cwd=self.__cwd,
@@ -307,11 +460,11 @@ class Daemon(object):
     def is_alive(self):
         with self.__lock:
             if self.__process is None:
-                logger.warn("process is empty")
+                logger.warning("process is empty")
                 return False
 
             if not self.__process.running:
-                logger.warn("process (pid={}) is not running".format(
+                logger.warning("process (pid={}) is not running".format(
                     self.__process.process.pid))
                 return False
         return True

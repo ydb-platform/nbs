@@ -53,3 +53,286 @@ def test_kill_logs_threads_when_process_is_still_not_reapable(tmp_path):
     execution.process.wait.assert_called_once_with(timeout=5)
     log_threads.assert_called_once_with(42)
     execution.wait.assert_not_called()
+    daemon._Daemon__files.close()
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n"])
+@pytest.mark.parametrize("trailing_newline", [False, True])
+def test_stderr_tail_contains_last_lines(tmp_path, separator, trailing_newline):
+    log = tmp_path / "stderr"
+    lines = ["  log line {}".format(index) for index in range(150)]
+    log.write_bytes((separator.join(lines) + (separator if trailing_newline else "")).encode("utf-8"))
+
+    assert daemon_module.extract_log_tail(str(log), 100) == ["Stderr tail:", ""] + lines[-100:]
+
+
+def test_stderr_tail_limits_read_size(tmp_path):
+    log = tmp_path / "stderr"
+    log.write_bytes(b"startup\n" * 100000 + b"failure\n" * 100)
+    bytes_read = []
+    original_open = open
+
+    class TrackedFile:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def read(self, size):
+            bytes_read.append(size)
+            return self.stream.read(size)
+
+    with mock.patch.object(daemon_module, "open", side_effect=lambda *args, **kwargs: TrackedFile(
+            original_open(*args, **kwargs)), create=True):
+        tail = daemon_module.extract_log_tail(str(log), 100)
+
+    assert tail == ["Stderr tail:", ""] + ["failure"] * 100
+    assert sum(bytes_read) <= 64 * 1024
+
+
+@pytest.mark.parametrize("content", [
+    b"", b"only line", b"only line\n", b"\n", b"invalid utf-8: \xff\n",
+])
+def test_stderr_tail_handles_short_logs(tmp_path, content):
+    log = tmp_path / "stderr"
+    log.write_bytes(content)
+    assert daemon_module.extract_log_tail(str(log), 100) == (
+        ["Stderr tail:", ""] + content.decode("utf-8", errors="replace").splitlines())
+
+
+def test_stderr_tail_handles_long_line(tmp_path):
+    log = tmp_path / "stderr"
+    last_line = "ошибка " * 5000
+    log.write_bytes(("old line\n" + last_line + "\n").encode("utf-8"))
+    assert daemon_module.extract_log_tail(str(log), 1) == ["Stderr tail:", "", last_line]
+
+
+def test_stderr_tail_marks_truncated_line(tmp_path):
+    log = tmp_path / "stderr"
+    log.write_bytes(b"x" * 1000000)
+
+    assert daemon_module.extract_log_tail(str(log), 1) == [
+        "Stderr tail:",
+        "",
+        "[truncated to the last 64 KiB; first line may be incomplete]",
+        "x" * (64 * 1024),
+    ]
+
+
+def test_stderr_tail_disabled_without_opening_file():
+    assert daemon_module.extract_log_tail("missing-file", 0) == []
+    assert daemon_module.extract_log_tail(None, 100) == []
+
+
+def test_log_tail_uses_requested_label(tmp_path):
+    log = tmp_path / "listing"
+    log.write_text("entry\n")
+
+    assert daemon_module.extract_log_tail(str(log), 1, label="Mount listing") == [
+        "Mount listing tail:", "", "entry"]
+    assert daemon_module.extract_log_tail(str(tmp_path / "missing"), 1, label="Mount listing")[0].startswith(
+        "Mount listing tail unavailable:")
+
+
+def test_context_closes_logs_and_keeps_successful_process(tmp_path):
+    stdout = tmp_path / "stdout"
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c", "import time; time.sleep(60)"]],
+        cwd=str(tmp_path), stdout_file=str(stdout), stderr_file=str(stderr))
+    try:
+        with daemon:
+            daemon.start()
+            pid = daemon.pid
+        assert daemon.is_alive()
+        assert daemon.pid == pid
+        assert daemon._Daemon__stdout_file.closed
+        assert daemon._Daemon__stderr_file.closed
+    finally:
+        process = daemon._Daemon__process
+        if process is not None and process.process.poll() is None:
+            process.process.kill()
+        if process is not None:
+            process.process.wait()
+
+
+def test_context_without_start_closes_files_and_preserves_error(tmp_path):
+    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path))
+    error = RuntimeError("startup failed")
+
+    with pytest.raises(RuntimeError) as caught:
+        with daemon:
+            raise error
+
+    assert caught.value is error
+    assert daemon._Daemon__process is None
+    assert daemon._Daemon__stdin_file.closed
+    assert daemon._Daemon__stdout_file.closed
+    assert daemon._Daemon__stderr_file.closed
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_context_failure_stops_process_and_preserves_error(tmp_path, error_type):
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c", "import time; time.sleep(60)"]],
+        cwd=str(tmp_path), cleanup_timeout=1)
+    error = error_type("original error")
+    try:
+        with pytest.raises(error_type) as caught:
+            with daemon:
+                daemon.start()
+                raise error
+        assert caught.value is error
+        assert not daemon.is_alive()
+        assert daemon._Daemon__stdout_file.closed
+        assert daemon._Daemon__stderr_file.closed
+    finally:
+        process = daemon._Daemon__process
+        if process is not None and process.process.poll() is None:
+            process.process.kill()
+        if process is not None:
+            process.process.wait()
+
+
+def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog):
+    clock = [0.0]
+    signals = []
+    child = mock.Mock()
+    child.pid = 123
+    child.poll.return_value = None
+    child.terminate.side_effect = lambda: signals.append("TERM")
+    child.kill.side_effect = lambda: signals.append("KILL")
+    execution = mock.Mock()
+    execution.process = child
+    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path), cleanup_timeout=1)
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    with mock.patch.object(daemon_module.time, "monotonic", side_effect=lambda: clock[0]), \
+            mock.patch.object(daemon_module.time, "sleep", side_effect=sleep):
+        daemon._Daemon__process = execution
+        with pytest.raises(RuntimeError, match="original error"):
+            with daemon:
+                raise RuntimeError("original error")
+
+    assert signals == ["TERM", "KILL"]
+    assert clock[0] == pytest.approx(2)
+    execution.wait.assert_not_called()
+    assert "still running after SIGKILL" in caplog.text
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_cleanup_diagnostics_do_not_replace_original_error(tmp_path, error_type):
+    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path))
+    execution = mock.Mock()
+    execution.process.poll.return_value = 1
+    execution.wait.side_effect = ValueError("diagnostics failed")
+    daemon._Daemon__process = execution
+    original_error = error_type("original error")
+
+    with pytest.raises(error_type) as caught:
+        with daemon:
+            raise original_error
+
+    assert caught.value is original_error
+    assert daemon._Daemon__stdout_file.closed
+    execution.wait.assert_called_once_with(check_exit_code=False)
+
+
+def test_failure_includes_stderr_tail_and_exit_code(tmp_path):
+    stdout = tmp_path / "stdout"
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[["unused"]], cwd=str(tmp_path),
+        stdout_file=str(stdout), stderr_file=str(stderr),
+        stderr_on_error_lines=100, stderr_tail=True)
+    daemon._Daemon__process = mock.Mock(returncode=1)
+    try:
+        stderr.write_text("old\n" * 150 + "last error\n")
+        error = daemon.failure("mount failed")
+        assert "Process exit_code = 1" in str(error)
+        assert str(stdout) in str(error)
+        assert str(stderr) in str(error)
+        assert "last error" in str(error)
+        assert str(error).count("old") == 97
+    finally:
+        daemon._Daemon__files.close()
+
+
+@pytest.mark.parametrize("stderr_tail", [False, True])
+def test_failure_handles_missing_stderr(tmp_path, stderr_tail):
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
+        stderr_on_error_lines=10, stderr_tail=stderr_tail)
+    daemon._Daemon__process = mock.Mock(returncode=1)
+    try:
+        stderr.unlink()
+        error = daemon.failure("client exited")
+        assert "client exited" in str(error)
+        assert "Process exit_code = 1" in str(error)
+        assert str(stderr) in str(error)
+        assert "unavailable" in str(error)
+    finally:
+        daemon._Daemon__files.close()
+
+
+def test_failure_uses_head_of_stderr_by_default(tmp_path):
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
+        stderr_on_error_lines=4)
+    try:
+        stderr.write_text("first\nsecond\nlast\n")
+        error = daemon.failure("failed")
+        assert "Stderr content:\n\nfirst\nsecond" in str(error)
+        assert "\nlast" not in str(error)
+    finally:
+        daemon._Daemon__files.close()
+
+
+@pytest.mark.parametrize("stderr_tail", [False, True])
+@pytest.mark.parametrize("max_stderr_lines", [1, 2, 3])
+def test_failure_limits_entire_stderr_block(tmp_path, stderr_tail, max_stderr_lines):
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
+        stderr_on_error_lines=max_stderr_lines, stderr_tail=stderr_tail)
+    try:
+        stderr.write_text("first\nsecond\nlast\n")
+        error = daemon.failure("failed")
+        label = "Stderr tail:" if stderr_tail else "Stderr content:"
+        details = str(error).split(label, 1)[1]
+        assert len((label + details).split("\n")) == max_stderr_lines
+        if max_stderr_lines == 3:
+            assert ("last" if stderr_tail else "first") in details
+    finally:
+        daemon._Daemon__files.close()
+
+
+def test_constructor_closes_opened_files_on_failure(tmp_path):
+    stdout = tmp_path / "stdout"
+    streams = []
+    original_open = open
+
+    def open_log(*args, **kwargs):
+        stream = original_open(*args, **kwargs)
+        streams.append(stream)
+        return stream
+
+    with mock.patch.object(daemon_module, "open", side_effect=open_log, create=True):
+        with pytest.raises(IsADirectoryError):
+            Daemon(
+                commands=[["unused"]], cwd=str(tmp_path),
+                stdout_file=str(stdout), stderr_file=str(tmp_path))
+    assert stdout.exists()
+    assert len(streams) == 1
+    assert streams[0].closed
