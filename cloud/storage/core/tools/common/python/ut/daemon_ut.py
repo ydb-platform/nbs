@@ -128,6 +128,24 @@ def test_stderr_tail_marks_truncated_line(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("trailing_newline", [False, True])
+def test_stderr_tail_omits_marker_when_fragment_is_discarded(tmp_path, trailing_newline):
+    log = tmp_path / "stderr"
+    log.write_bytes(
+        b"x" * daemon_module._MAX_LOG_TAIL_BYTES + b"\nA\nB" +
+        (b"\n" if trailing_newline else b""))
+
+    assert daemon_module.extract_log_tail(str(log), 2) == ["Stderr tail:", "", "A", "B"]
+
+
+def test_log_head_preserves_whitespace(tmp_path):
+    log = tmp_path / "stderr"
+    log.write_bytes(b"  indented  \n\ttabbed\t\r\n  \n")
+
+    assert daemon_module.extract_log_head(str(log), 3) == [
+        "Stderr content:", "", "  indented  ", "\ttabbed\t", "  "]
+
+
 def test_stderr_tail_disabled_without_opening_file():
     assert daemon_module.extract_log_tail("missing-file", 0) == []
     assert daemon_module.extract_log_tail(None, 100) == []
