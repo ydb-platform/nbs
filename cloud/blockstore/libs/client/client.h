@@ -36,11 +36,6 @@ struct IMultiHostClient
         ui32 port,
         bool isSecure) = 0;
 
-    virtual IBlockStorePtr CreateDataEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) = 0;
-
     virtual IBlockStorePtr CreateIOEndpoint(
         const TString& host,
         ui32 port,

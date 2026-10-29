@@ -243,15 +243,6 @@ struct TTestGrpcClient: public NClient::IMultiHostClient
     }
 
     IBlockStorePtr
-    CreateDataEndpoint(const TString& host, ui32 port, bool isSecure) override
-    {
-        Y_UNUSED(host);
-        Y_UNUSED(port);
-        Y_UNUSED(isSecure);
-        return {};
-    }
-
-    IBlockStorePtr
     CreateIOEndpoint(const TString& host, ui32 port, bool isSecure) override
     {
         Y_UNUSED(host);

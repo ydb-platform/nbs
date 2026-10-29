@@ -1563,10 +1563,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
             .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder().BuildMultiHostClient();
+        // a data client pointed at the control port
+        auto dataClient =
+            testFactory.CreateClientBuilder().SetDataPort(port).BuildClient();
 
         server->Start();
         client->Start();
+        dataClient->Start();
         Y_DEFER {
+            dataClient->Stop();
             client->Stop();
             server->Stop();
         };
@@ -1579,20 +1584,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         };
 
         // the data service is refused on a control port
-        auto error =
-            zeroBlocks(client->CreateDataEndpoint("localhost", port, false));
+        auto error = zeroBlocks(dataClient->CreateDataEndpoint());
         UNIT_ASSERT_VALUES_EQUAL_C(E_GRPC_UNIMPLEMENTED, error.GetCode(), error);
 
         auto ioEndpoint = client->CreateIOEndpoint("localhost", port, false);
         error = zeroBlocks(ioEndpoint);
         UNIT_ASSERT_C(!HasError(error), error);
 
-        // shared by everyone using the host, but apart from the control one
-        UNIT_ASSERT_EQUAL(
-            ioEndpoint,
-            client->CreateIOEndpoint("localhost", port, false));
-
-        // and on a TCP connection of its own
+        // the I/O endpoint is on a TCP connection of its own
         auto controlEndpoint = client->CreateEndpoint("localhost", port, false);
         auto ping = controlEndpoint
                         ->Ping(

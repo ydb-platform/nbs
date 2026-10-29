@@ -260,7 +260,7 @@ class TRequestHandler final
 private:
     TAppContext& AppCtx;
     TExecutorContext& ExecCtx;
-    TService& Service;
+    std::shared_ptr<TService> Service;
 
     grpc::ClientContext Context;
     std::unique_ptr<grpc::ClientAsyncResponseReader<TResponse>> Reader;
@@ -276,14 +276,14 @@ public:
     TRequestHandler(
             TAppContext& appCtx,
             TExecutorContext& execCtx,
-            TService& service,
+            std::shared_ptr<TService> service,
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
             const TPromise<TResponse>& promise)
         : TClientRequestHandlerBase(TMethod::Request)
         , AppCtx(appCtx)
         , ExecCtx(execCtx)
-        , Service(service)
+        , Service(std::move(service))
         , CallContext(std::move(callContext))
         , Request(std::move(request))
         , Promise(promise)
@@ -294,7 +294,7 @@ public:
     static void Start(
         TAppContext& appCtx,
         TExecutorContext& execCtx,
-        TService& service,
+        std::shared_ptr<TService> service,
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request,
         TPromise<TResponse>& promise)
@@ -302,7 +302,7 @@ public:
         auto handler = std::make_unique<TRequestHandler<TService, TMethod>>(
             appCtx,
             execCtx,
-            service,
+            std::move(service),
             std::move(callContext),
             std::move(request),
             promise);
@@ -399,7 +399,7 @@ private:
     void SendRequest()
     {
         Reader = TMethod::Prepare(
-            Service,
+            *Service,
             &Context,
             *Request,
             ExecCtx.CompletionQueue.get());
@@ -521,7 +521,7 @@ public:
 
     template <typename TMethod, typename TService>
     TFuture<typename TMethod::TResponse> ExecuteRequest(
-        TService& service,
+        std::shared_ptr<TService> service,
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request);
 
@@ -588,12 +588,6 @@ class TMultiHostClient final
     , public IMultiHostClient
     , public std::enable_shared_from_this<TMultiHostClient>
 {
-private:
-    TAdaptiveLock EndpointLock;
-
-    THashMap<std::pair<TString, bool>, IBlockStorePtr> Cache;
-    THashMap<TString, IBlockStorePtr> IOEndpoints;
-
 public:
     using TClientBase::TClientBase;
 
@@ -602,28 +596,17 @@ public:
         Stop();
     }
 
-    void Start() override {
-       TClientBase::Start();
-    };
+    void Start() override
+    {
+        TClientBase::Start();
+    }
 
-    void Stop() override {
+    void Stop() override
+    {
         TClientBase::Stop();
-        with_lock (EndpointLock) {
-            for (auto& [key, endpoint]: Cache) {
-                endpoint.reset();
-            }
-            for (auto& [address, endpoint]: IOEndpoints) {
-                endpoint.reset();
-            }
-        }
-    };
+    }
 
     IBlockStorePtr CreateEndpoint(
-        const TString& host,
-        ui32 port,
-        bool isSecure) override;
-
-    IBlockStorePtr CreateDataEndpoint(
         const TString& host,
         ui32 port,
         bool isSecure) override;
@@ -739,7 +722,7 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
 
 template <typename TMethod, typename TService>
 TFuture<typename TMethod::TResponse> TClientBase::ExecuteRequest(
-    TService& service,
+    std::shared_ptr<TService> service,
     TCallContextPtr callContext,
     std::shared_ptr<typename TMethod::TRequest> request)
 {
@@ -754,7 +737,7 @@ TFuture<typename TMethod::TResponse> TClientBase::ExecuteRequest(
     TRequestHandler<TService, TMethod>::Start(
         *this,
         *Executors[index],
-        service,
+        std::move(service),
         std::move(callContext),
         std::move(request),
         promise);
@@ -871,7 +854,7 @@ protected:
         std::shared_ptr<typename TMethod::TRequest> request)
     {
         return Client->template ExecuteRequest<TMethod>(
-            *Service,
+            Service,
             std::move(callContext),
             std::move(request));
     }
@@ -889,7 +872,7 @@ protected:
         auto request = requestOrError.ExtractResult();
 
         return Client->template ExecuteRequest<TWriteBlocksMethod>(
-            *Service,
+            Service,
             std::move(callContext),
             std::move(request));
     }
@@ -900,7 +883,7 @@ protected:
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
     {
         auto future = Client->template ExecuteRequest<TReadBlocksMethod>(
-            *Service,
+            Service,
             std::move(callContext),
             request);
 
@@ -1178,54 +1161,15 @@ IBlockStorePtr TMultiHostClient::CreateEndpoint(
     ui32 port,
     bool isSecure)
 {
-    with_lock (EndpointLock) {
-        Y_ENSURE(port);
-        auto address = Join(":", host, port);
-
-        if (auto it = Cache.find(make_pair(address, false)); it != Cache.end()) {
-            return it->second;
-        }
-
-        auto channel = CreateTcpSocketChannel(address, isSecure);
-        if (!channel) {
-            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
-                << "could not start gRPC client";
-        }
-
-        auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
-            shared_from_this(),
-            NProto::TBlockStoreService::NewStub(std::move(channel)));
-        Cache.emplace(make_pair(address, false), endpoint);
-        return endpoint;
+    Y_ENSURE(port);
+    auto channel = CreateTcpSocketChannel(Join(":", host, port), isSecure);
+    if (!channel) {
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "could not start gRPC client";
     }
-}
 
-IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
-    const TString& host,
-    ui32 port,
-    bool isSecure)
-{
-    with_lock (EndpointLock) {
-        Y_ENSURE(port);
-        auto address = Join(":", host, port);
-
-        if (auto it = Cache.find(make_pair(address, true)); it != Cache.end()) {
-            return it->second;
-        }
-
-        auto channel = CreateTcpSocketChannel(address, isSecure);
-        if (!channel) {
-            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
-                << "could not start gRPC client";
-        }
-
-        auto endpoint = std::make_shared<TDataEndpoint<TMultiHostClient>>(
-            shared_from_this(),
-            NProto::TBlockStoreDataService::NewStub(std::move(channel)));
-
-        Cache.emplace(make_pair(address, true), endpoint);
-        return endpoint;
-    }
+    return std::make_shared<TEndpoint<TMultiHostClient>>(
+        shared_from_this(),
+        NProto::TBlockStoreService::NewStub(std::move(channel)));
 }
 
 IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
@@ -1233,32 +1177,22 @@ IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
     ui32 port,
     bool isSecure)
 {
-    with_lock (EndpointLock) {
-        Y_ENSURE(port);
-        auto address = Join(":", host, port);
+    Y_ENSURE(port);
 
-        if (auto it = IOEndpoints.find(address); it != IOEndpoints.end()) {
-            return it->second;
-        }
+    // otherwise gRPC may hand this channel the connection it already keeps
+    // to the same address for the control endpoint
+    auto args = CreateChannelArguments();
+    args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
 
-        // otherwise gRPC may hand this channel the connection it already
-        // keeps to the same address for the control endpoint
-        auto args = CreateChannelArguments();
-        args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
-
-        auto channel = CreateTcpSocketChannel(address, isSecure, args);
-        if (!channel) {
-            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
-                << "could not start gRPC client";
-        }
-
-        auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
-            shared_from_this(),
-            NProto::TBlockStoreService::NewStub(std::move(channel)));
-
-        IOEndpoints.emplace(address, endpoint);
-        return endpoint;
+    auto channel =
+        CreateTcpSocketChannel(Join(":", host, port), isSecure, args);
+    if (!channel) {
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "could not start gRPC client";
     }
+
+    return std::make_shared<TEndpoint<TMultiHostClient>>(
+        shared_from_this(),
+        NProto::TBlockStoreService::NewStub(std::move(channel)));
 }
 
 }   // namespace
