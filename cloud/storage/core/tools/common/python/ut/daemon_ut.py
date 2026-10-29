@@ -1,13 +1,14 @@
 import logging
 import subprocess
 from io import StringIO
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
 import yatest.common as common
 
 import cloud.storage.core.tools.common.python.daemon as daemon_module
-from cloud.storage.core.tools.common.python.daemon import Daemon
+from cloud.storage.core.tools.common.python.daemon import Daemon, DaemonError
 
 
 def test_log_process_threads(caplog):
@@ -215,11 +216,64 @@ def test_context_without_start_closes_files_and_preserves_error(tmp_path):
     assert daemon._Daemon__stderr_file.closed
 
 
+def test_start_failure_includes_stderr_and_exit_code(tmp_path, monkeypatch):
+    execute_process = daemon_module.common.execute
+    execution = None
+
+    def execute(*args, **kwargs):
+        nonlocal execution
+        execution = execute_process(*args, **kwargs)
+        execution.process.wait()
+        return execution
+
+    monkeypatch.setattr(daemon_module.common, "execute", execute)
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c",
+                   "import sys; sys.stderr.write('startup failed\\n'); sys.exit(1)"]],
+        cwd=str(tmp_path), stderr_on_error_lines=5, stderr_tail=True)
+
+    with pytest.raises(DaemonError) as caught:
+        with daemon:
+            daemon.start()
+
+    message = str(caught.value)
+    assert "Process exit_code = 1" in message
+    assert daemon.stderr_file_name in message
+    assert "startup failed" in message
+    assert execution.process.poll() == 1
+    assert daemon._Daemon__stderr_file.closed
+
+
+def test_ping_failure_includes_stderr(tmp_path, monkeypatch):
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
+        ping_port=12345, ping_path="/ping", ping_success_codes=[200],
+        ping_attempts=1, ping_timeout=0,
+        stderr_on_error_lines=5, stderr_tail=True)
+    execution = mock.Mock(returncode=None)
+    execution.process.poll.return_value = None
+    monkeypatch.setattr(daemon_module.common, "execute", lambda **kwargs: execution)
+    monkeypatch.setattr(daemon_module.requests, "get", lambda endpoint: mock.Mock(status_code=503))
+
+    try:
+        stderr.write_text("service not ready\n")
+        with pytest.raises(DaemonError) as caught:
+            daemon.start()
+
+        message = str(caught.value)
+        assert "all ping attempts have failed" in message
+        assert daemon.stderr_file_name in message
+        assert "Stderr tail:\n\nservice not ready" in message
+    finally:
+        daemon._Daemon__files.close()
+
+
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_context_failure_stops_process_and_preserves_error(tmp_path, error_type):
     daemon = Daemon(
         commands=[[common.python_path(), "-c", "import time; time.sleep(60)"]],
-        cwd=str(tmp_path), cleanup_timeout=1)
+        cwd=str(tmp_path))
     error = error_type("original error")
     try:
         with pytest.raises(error_type) as caught:
@@ -238,7 +292,7 @@ def test_context_failure_stops_process_and_preserves_error(tmp_path, error_type)
             process.process.wait()
 
 
-def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog):
+def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog, monkeypatch):
     clock = [0.0]
     signals = []
     child = mock.Mock()
@@ -253,12 +307,12 @@ def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog):
     def sleep(seconds):
         clock[0] += seconds
 
-    with mock.patch.object(daemon_module.time, "monotonic", side_effect=lambda: clock[0]), \
-            mock.patch.object(daemon_module.time, "sleep", side_effect=sleep):
-        daemon._Daemon__process = execution
-        with pytest.raises(RuntimeError, match="original error"):
-            with daemon:
-                raise RuntimeError("original error")
+    monkeypatch.setattr(daemon_module, "time", SimpleNamespace(
+        monotonic=lambda: clock[0], sleep=sleep))
+    daemon._Daemon__process = execution
+    with pytest.raises(RuntimeError, match="original error"):
+        with daemon:
+            raise RuntimeError("original error")
 
     assert signals == ["TERM", "KILL"]
     assert clock[0] == pytest.approx(2)
@@ -282,6 +336,20 @@ def test_cleanup_diagnostics_do_not_replace_original_error(tmp_path, error_type)
     assert caught.value is original_error
     assert daemon._Daemon__stdout_file.closed
     execution.wait.assert_called_once_with(check_exit_code=False)
+
+
+def test_cleanup_skips_repeated_diagnostics(tmp_path):
+    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path))
+    execution = mock.Mock()
+    execution.process.poll.return_value = 1
+    daemon._Daemon__process = execution
+    daemon._Daemon__diagnostics_checked = True
+
+    with pytest.raises(RuntimeError, match="original error"):
+        with daemon:
+            raise RuntimeError("original error")
+
+    execution.wait.assert_not_called()
 
 
 def test_failure_includes_stderr_tail_and_exit_code(tmp_path):

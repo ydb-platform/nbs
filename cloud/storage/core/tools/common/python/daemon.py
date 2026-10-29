@@ -263,9 +263,16 @@ class Daemon(object):
                 execution.wait(check_exit_code=False)
 
     def failure(self, message):
+        with self.__lock:
+            return self.__make_error(message)
+
+    # Should be guarded by self.__lock.
+    def __make_error(self, message, exit_code=None):
+        if exit_code is None and self.__process is not None:
+            exit_code = self.__process.returncode
         return DaemonError(
             message,
-            exit_code=self.returncode,
+            exit_code=exit_code,
             stdout=self.stdout_file_name,
             stderr=self.stderr_file_name,
             max_stderr_lines=self.__stderr_on_error_lines,
@@ -283,12 +290,7 @@ class Daemon(object):
             self.__diagnostics_checked = True
             self.__process.verify_no_coredumps()
             self.__process.verify_sanitize_errors()
-            raise DaemonError(
-                "unexpected exit code", res,
-                stdout=self.stdout_file_name,
-                stderr=self.stderr_file_name,
-                max_stderr_lines=self.__stderr_on_error_lines,
-                stderr_tail=self.__stderr_tail)
+            raise self.__make_error("unexpected exit code", res)
 
     # Should be guarded by self.__lock.
     def __start_process(self, command):
@@ -369,14 +371,13 @@ class Daemon(object):
                 else:
                     logger.fatal("unexpected exit code {}".format(res))
                     self.__verify_process()
-                    raise DaemonError("unexpected exit code", res)
 
             time.sleep(self.__ping_timeout)
             attempts += 1
 
         if not success:
             logger.fatal("all ping attempts have failed")
-            raise DaemonError("all ping attempts have failed")
+            raise self.__make_error("all ping attempts have failed")
 
         self.__step += 1
         start_ts = datetime.datetime.now()
