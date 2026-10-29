@@ -153,6 +153,17 @@ const TString DomainsConfigStr = R"(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+i64 GetSensorValue(const NJson::TJsonValue& json, const TString& name)
+{
+    for (const auto& sensor: json["sensors"].GetArray()) {
+        if (sensor["labels"]["sensor"].GetString() == name) {
+            return sensor["value"].GetIntegerRobust();
+        }
+    }
+    UNIT_FAIL("Missing bootstrap sensor: " + name);
+    return 0;
+}
+
 TString GetTestFilePath(const TString& fileName)
 {
     return JoinFsPaths(ArcadiaSourceRoot(), "cloud/filestore/tests", fileName);
@@ -422,7 +433,11 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         };
         NJson::TJsonValue before;
         UNIT_ASSERT(NJson::ReadJsonTree(metricsBeforeRegistration.get(), &before));
-        UNIT_ASSERT_VALUES_EQUAL(1, before["sensors"][0]["value"].GetIntegerRobust());
+        UNIT_ASSERT_VALUES_EQUAL(1, GetSensorValue(before, "Initializing"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, GetSensorValue(before, "NodeRegistrationFailures"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, GetSensorValue(before, "ConfigFetchFailures"));
         bootstrap.Start();
 
         // The full listener takes over asynchronously after the bootstrap
@@ -442,7 +457,9 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
         }
         NJson::TJsonValue after;
         UNIT_ASSERT(NJson::ReadJsonTree(afterResponse, &after));
-        UNIT_ASSERT_VALUES_EQUAL(0, after["sensors"][0]["value"].GetIntegerRobust());
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSensorValue(after, "Initializing"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, GetSensorValue(after, "InitializationTimeSeconds"));
         UNIT_ASSERT_VALUES_EQUAL("8", ReadFile(restartsCountPath));
 
         // Emulate NodeBroker lease expiration - it is simpler than creating real

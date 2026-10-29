@@ -1,4 +1,5 @@
 #include "node.h"
+
 #include "node_registration_helpers.h"
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
@@ -12,20 +13,21 @@
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
-#include <contrib/ydb/library/yaml_config/yaml_config.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 #include <util/network/socket.h>
 #include <util/random/shuffle.h>
-#include <util/string/join.h>
 #include <util/stream/file.h>
+#include <util/string/join.h>
 #include <util/system/hostname.h>
 
 #include <optional>
@@ -478,7 +480,7 @@ INodeRegistrantPtr CreateNodeRegistrant(
  * Registers a dynamic node with retry policies:
  *
  * 1. **Registration Phase**:
- *    - Retries up to `Settings.MaxAttempts` times.
+ *    - Retries up to `Settings.MaxAttempts` times (zero means unlimited).
  *    - Fixed delay (`Settings.ErrorTimeout`) between attempts.
  *
  * 2. **Configuration Phase** (if `LoadCmsConfigs` is true):
@@ -531,15 +533,48 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     TScopeId scopeId;
     TString registeredNodeBrokerAddress;
 
-    ui32 attempts = 0;
+    const auto registrationFailures =
+        options.InitializationCounters
+            ? options.InitializationCounters->GetCounter(
+                  "NodeRegistrationFailures", true)
+            : NMonitoring::TDynamicCounters::TCounterPtr();
+    const auto configFetchFailures =
+        options.InitializationCounters
+            ? options.InitializationCounters->GetCounter(
+                  "ConfigFetchFailures", true)
+            : NMonitoring::TDynamicCounters::TCounterPtr();
+
+    // Count both returned failures and exceptions without changing retry
+    // policy.
+    auto recordFailure = [](const auto& counter, auto&& operation)
+    {
+        try {
+            auto result = operation();
+            if (counter && HasError(result.GetError())) {
+                ++*counter;
+            }
+            return result;
+        } catch (...) {
+            if (counter) {
+                ++*counter;
+            }
+            throw;
+        }
+    };
+
+    ui64 attempts = 0;
     for (;;) {
         const auto& nodeBrokerAddress = addrs[attempts++ % addrs.size()];
 
-        auto [result, error] = registrant->RegisterNode(nodeBrokerAddress);
+        auto [result, error] = recordFailure(
+            registrationFailures,
+            [&] { return registrant->RegisterNode(nodeBrokerAddress); });
 
         if (HasError(error)) {
             const auto& msg = error.GetMessage();
-            if (attempts == options.Settings.MaxAttempts) {
+            if (options.Settings.MaxAttempts &&
+                attempts >= options.Settings.MaxAttempts)
+            {
                 STORAGE_THROW_SERVICE_ERROR(E_FAIL)
                     << "Cannot register dynamic node: " << msg;
             }
@@ -575,8 +610,12 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
     const auto deadline =
         timer->Now() + options.Settings.LoadConfigsFromCmsTotalTimeout;
     for (;;) {
-        auto [config, error] =
-            registrant->GetConfigs(registeredNodeBrokerAddress, nodeId);
+        auto [config, error] = recordFailure(
+            configFetchFailures,
+            [&] {
+                return registrant->GetConfigs(
+                    registeredNodeBrokerAddress, nodeId);
+            });
 
         if (HasError(error)) {
             const auto& msg = error.GetMessage();

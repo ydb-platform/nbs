@@ -401,7 +401,7 @@ message TStorageConfig
     optional uint32 AsyncHandleOperationIdlePeriod = 380;
 
     // Dynamic node registration params.
-    optional uint32 NodeRegistrationMaxAttempts = 381;
+    optional uint32 NodeRegistrationMaxAttempts = 381; // 0 means unlimited (default)
     optional uint32 NodeRegistrationTimeout = 382;   // in ms
     optional uint32 NodeRegistrationErrorTimeout = 383;  // in ms
 

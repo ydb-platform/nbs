@@ -1,5 +1,7 @@
 #include "bootstrap_monitoring.h"
 
+#include <cloud/storage/core/libs/common/timer_test.h>
+
 #include <contrib/ydb/core/protos/config.pb.h>
 
 #include <library/cpp/http/simple/http_client.h>
@@ -37,17 +39,27 @@ TString Scrape(ui16 port, const TString& path, bool secure = false)
     return response.Str();
 }
 
+i64 GetSensorValue(const NJson::TJsonValue& json, const TString& name)
+{
+    for (const auto& sensor: json["sensors"].GetArray()) {
+        if (sensor["labels"]["sensor"].GetString() == name) {
+            return sensor["value"].GetIntegerRobust();
+        }
+    }
+    UNIT_FAIL("Missing bootstrap sensor: " + name);
+    return 0;
+}
+
 void CheckInitializing(ui16 port, const TString& service)
 {
     const auto response =
         Scrape(port, "/counters/counters=" + service + "/json");
     NJson::TJsonValue json;
     UNIT_ASSERT(NJson::ReadJsonTree(response, &json));
-    const auto& sensors = json["sensors"].GetArray();
-    UNIT_ASSERT_VALUES_EQUAL(1, sensors.size());
+    UNIT_ASSERT_VALUES_EQUAL(1, GetSensorValue(json, "Initializing"));
     UNIT_ASSERT_VALUES_EQUAL(
-        "Initializing", sensors[0]["labels"]["sensor"].GetString());
-    UNIT_ASSERT_VALUES_EQUAL(1, sensors[0]["value"].GetIntegerRobust());
+        0, GetSensorValue(json, "NodeRegistrationFailures"));
+    UNIT_ASSERT_VALUES_EQUAL(0, GetSensorValue(json, "ConfigFetchFailures"));
 }
 
 }   // namespace
@@ -80,6 +92,11 @@ Y_UNIT_TEST_SUITE(TBootstrapMonitoringTest)
         UNIT_ASSERT(
             Scrape(port, "/counters/prometheus").Contains("Initializing"));
 
+        const auto bootstrap = counters->GetSubgroup("counters", "blockstore")
+                                   ->GetSubgroup("component", "bootstrap");
+        *bootstrap->GetCounter("NodeRegistrationFailures", true) = 2;
+        *bootstrap->GetCounter("ConfigFetchFailures", true) = 3;
+
         monitoring->Stop();
         monitoring->Stop();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -97,9 +114,47 @@ Y_UNIT_TEST_SUITE(TBootstrapMonitoringTest)
         const auto response = Scrape(port, "/startup/counters=blockstore/json");
         NJson::TJsonValue json;
         UNIT_ASSERT(NJson::ReadJsonTree(response, &json));
+        UNIT_ASSERT_VALUES_EQUAL(0, GetSensorValue(json, "Initializing"));
         UNIT_ASSERT_VALUES_EQUAL(
-            0, json["sensors"][0]["value"].GetIntegerRobust());
+            0, GetSensorValue(json, "InitializationTimeSeconds"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, GetSensorValue(json, "NodeRegistrationFailures"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3, GetSensorValue(json, "ConfigFetchFailures"));
         mainMonitoring->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldUpdateInitializationTimeOnScrapeAndResetOnStop)
+    {
+        const auto port = NTesting::GetFreePort();
+        auto timer = std::make_shared<TTestTimer>();
+        timer->AdvanceTime(TDuration::Seconds(100));
+        auto monitoring =
+            CreateBootstrapMonitoring(MakeConfig(port), "filestore", timer);
+        monitoring->Start();
+
+        auto elapsed = [&]
+        {
+            NJson::TJsonValue json;
+            UNIT_ASSERT(NJson::ReadJsonTree(
+                Scrape(port, "/counters/counters=filestore/json"), &json));
+            return GetSensorValue(json, "InitializationTimeSeconds");
+        };
+        UNIT_ASSERT_VALUES_EQUAL(0, elapsed());
+        timer->AdvanceTime(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(5, elapsed());
+        timer->AdvanceTime(TDuration::Seconds(12));
+        UNIT_ASSERT_VALUES_EQUAL(17, elapsed());
+
+        monitoring->Stop();
+        timer->AdvanceTime(TDuration::Seconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "filestore")
+                ->GetSubgroup("component", "bootstrap")
+                ->GetCounter("InitializationTimeSeconds", false)
+                ->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldServeMetricsOverHttps)

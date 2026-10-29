@@ -13,7 +13,7 @@ namespace NCloud::NStorage {
 // TODO: https://github.com/ydb-platform/nbs/issues/1656
 struct TNodeRegistrationSettings
 {
-    ui32 MaxAttempts = 0;
+    ui32 MaxAttempts = 0;   // zero means unlimited attempts
     TDuration ErrorTimeout;
     TDuration NodeRegistrationTimeout;
 
