@@ -216,6 +216,37 @@ void CheckCacheTTL(
     UNIT_ASSERT_VALUES_EQUAL(expected, cacheTTLs);
 }
 
+void CheckXAttrCacheTTL(
+    NProto::TStorageConfig config,
+    ui32 expectedCacheTTL)
+{
+    config.SetFileSystemEventSubscriptionsSealPeriod(
+        TDuration::Minutes(10).MilliSeconds());
+    config.SetFileSystemEventSubscriptionsCacheTTLMargin(
+        TDuration::Minutes(1).MilliSeconds());
+    TFileSystemEventsEnv env(std::move(config));
+
+    auto tablet = env.CreateClient("client", "session");
+    const auto nodeId =
+        tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+            ->Record.GetNode()
+            .GetId();
+    tablet->SetNodeXAttr(nodeId, "user.a", "1");
+
+    //
+    // Both the value and the absence of an attribute may be cached.
+    //
+
+    const TVector<ui32> cacheTTLs = {
+        tablet->GetNodeXAttr(nodeId, "user.a")->Record.GetXAttrCacheTTL(),
+        tablet->AssertGetNodeXAttrFailed(nodeId, "user.b")
+            ->Record.GetXAttrCacheTTL(),
+    };
+
+    const TVector<ui32> expected(cacheTTLs.size(), expectedCacheTTL);
+    UNIT_ASSERT_VALUES_EQUAL(expected, cacheTTLs);
+}
+
 void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
 {
     NProto::TStorageConfig config;
@@ -812,12 +843,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
 
     Y_UNIT_TEST(ShouldNotSubscribeUponGetNodeXAttrOfMissingNode)
     {
-        TFileSystemEventsEnv env({});
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
 
         const ui64 nodeId = RootNodeId + 100;
 
         auto tablet = env.CreateClient("client", "session");
-        tablet->AssertGetNodeXAttrFailed(nodeId, "user.a");
+        const auto response =
+            tablet->AssertGetNodeXAttrFailed(nodeId, "user.a");
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetXAttrCacheTTL());
 
         NProto::TFileSystemEvent event;
         auto* invalidate = event.MutableInvalidateNodeXAttr();
@@ -847,6 +882,66 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
             0,
             env.GetCounter(*tablet, "InvalidateNodeXAttrEventSendCount"));
         UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
+    }
+
+    Y_UNIT_TEST(ShouldReturnXAttrCacheTTL)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        CheckXAttrCacheTTL(
+            std::move(config),
+            TDuration::Minutes(9).MilliSeconds());
+    }
+
+    Y_UNIT_TEST(ShouldReturnZeroXAttrCacheTTLIfDisabled)
+    {
+        CheckXAttrCacheTTL({}, 0 /* expectedCacheTTL */);
+    }
+
+    Y_UNIT_TEST(ShouldReturnZeroXAttrCacheTTLInDryRunMode)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        config.SetFileSystemEventsDryRunModeEnabled(true);
+        CheckXAttrCacheTTL(std::move(config), 0 /* expectedCacheTTL */);
+    }
+
+    Y_UNIT_TEST(ShouldNotSubscribeUponGetNodeXAttrIfSubscriptionDisabled)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet = env.CreateClient("client", "session");
+        const auto nodeId =
+            tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
+
+        //
+        // The pipe gets registered by a regular request, but the request with
+        // the disabled subscription still doesn't subscribe the client.
+        //
+
+        tablet->GetNodeAttr(RootNodeId);
+
+        auto request = tablet->CreateGetNodeXAttrRequest(nodeId, "user.a");
+        request->Record.MutableHeaders()
+            ->SetFileSystemEventSubscriptionDisabled(true);
+        tablet->SendRequest(std::move(request));
+        const auto response = tablet->RecvGetNodeXAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR)),
+            response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetXAttrCacheTTL());
+
+        NProto::TFileSystemEvent event;
+        auto* invalidate = event.MutableInvalidateNodeXAttr();
+        invalidate->SetNodeId(nodeId);
+        invalidate->SetName("user.a");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet->GenerateFileSystemEvent(event)->Record.GetClientCount());
     }
 }
 
