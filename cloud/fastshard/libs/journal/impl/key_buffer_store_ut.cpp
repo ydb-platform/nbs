@@ -276,7 +276,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=one|2=two", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldOverwriteAnExistingKey)
+    Y_UNIT_TEST(ShouldOverwriteExistingKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -287,7 +287,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldKeepTheMetadata)
+    Y_UNIT_TEST(ShouldKeepMetadata)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -304,7 +304,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("b", RestoreMeta(store));
     }
 
-    Y_UNIT_TEST(ShouldEraseASingleKey)
+    Y_UNIT_TEST(ShouldEraseSingleKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -321,7 +321,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
     }
 
-    Y_UNIT_TEST(ShouldEraseEveryKeyBelowTheGivenOne)
+    Y_UNIT_TEST(ShouldEraseEveryKeyBelowGivenOne)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -342,7 +342,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("7=x", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldEraseNothingBelowTheLowestKey)
+    Y_UNIT_TEST(ShouldEraseNothingBelowLowestKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -382,7 +382,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT(buffers.empty());
     }
 
-    Y_UNIT_TEST(ShouldRefuseToWriteAnErasedKey)
+    Y_UNIT_TEST(ShouldRefuseToWriteErasedKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -412,7 +412,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=x|3=x|5=x", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldKeepAnIndependentCopyOfTheBuffer)
+    Y_UNIT_TEST(ShouldKeepIndependentCopyOfBuffer)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
@@ -431,7 +431,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
 
 Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 {
-    Y_UNIT_TEST(ShouldStartEmptyOnAFreshDevice)
+    Y_UNIT_TEST(ShouldStartEmptyOnFreshDevice)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = CreateTestStore(device);
@@ -454,7 +454,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
     }
 
-    Y_UNIT_TEST(ShouldKeepTheBuffersAcrossRestores)
+    Y_UNIT_TEST(ShouldKeepBuffersAcrossRestores)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -469,7 +469,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=one|2=two|3=", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldSplitABufferAcrossPages)
+    Y_UNIT_TEST(ShouldSplitBufferAcrossPages)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -489,7 +489,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("0123456789abcdef", Get(buffers, 2));
     }
 
-    Y_UNIT_TEST(ShouldNotTouchThePagesBeyondTheDevice)
+    Y_UNIT_TEST(ShouldNotTouchPagesBeyondDevice)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -503,7 +503,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT(isZero);
     }
 
-    Y_UNIT_TEST(ShouldRejectABufferThatDoesNotFit)
+    Y_UNIT_TEST(ShouldRejectBufferThatDoesNotFit)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
@@ -522,7 +522,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=" + TString(96, 'x'), Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldReuseThePagesOfErasedBuffers)
+    Y_UNIT_TEST(ShouldReusePagesOfErasedBuffers)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
@@ -548,7 +548,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldPersistTheErasedBound)
+    Y_UNIT_TEST(ShouldPersistErasedBound)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -594,7 +594,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("11=x", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldKeepTheNewestCopyOfARewrittenKey)
+    Y_UNIT_TEST(ShouldKeepNewestCopyOfRewrittenKey)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -617,7 +617,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=third", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldFreeThePagesOfTheOverwrittenCopy)
+    Y_UNIT_TEST(ShouldFreePagesOfOverwrittenCopy)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
@@ -631,7 +631,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=" + TString(40, 't'), Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldDropATornBuffer)
+    Y_UNIT_TEST(ShouldDropTornBuffer)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -649,7 +649,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=one|3=three", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldKeepTheOldCopyWhenTheRewriteIsTorn)
+    Y_UNIT_TEST(ShouldKeepOldCopyWhenRewriteIsTorn)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -666,7 +666,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=first", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldSurviveATornSuperblock)
+    Y_UNIT_TEST(ShouldSurviveTornSuperblock)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -688,7 +688,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("2=two|3=three", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldKeepTheMetadataAcrossRestores)
+    Y_UNIT_TEST(ShouldKeepMetadataAcrossRestores)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -729,7 +729,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("", RestoreMeta(CreateTestStore(device)));
     }
 
-    Y_UNIT_TEST(ShouldRejectMetadataThatDoesNotFitTheSuperblock)
+    Y_UNIT_TEST(ShouldRejectMetadataThatDoesNotFitSuperblock)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
@@ -743,7 +743,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(largest, RestoreMeta(CreateTestStore(device)));
     }
 
-    Y_UNIT_TEST(ShouldKeepThePreviousMetadataWhenTheWriteIsTorn)
+    Y_UNIT_TEST(ShouldKeepPreviousMetadataWhenWriteIsTorn)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -759,7 +759,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("alpha", RestoreMeta(CreateTestStore(device)));
     }
 
-    Y_UNIT_TEST(ShouldIgnoreGarbageOnTheDevice)
+    Y_UNIT_TEST(ShouldIgnoreGarbageOnDevice)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
 
@@ -804,7 +804,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             FormatError(response.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldRestoreALargeRangeInSeveralReads)
+    Y_UNIT_TEST(ShouldRestoreLargeRangeInSeveralReads)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         constexpr ui64 pageCount = 3000;
@@ -824,7 +824,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("last", Get(buffers, 2501));
     }
 
-    Y_UNIT_TEST(ShouldRejectAnOverlappingErase)
+    Y_UNIT_TEST(ShouldRejectOverlappingErase)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);
@@ -882,7 +882,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT(buffers.empty());
     }
 
-    Y_UNIT_TEST(ShouldEraseAKeyWrittenBeforeAnOverlappingEraseLands)
+    Y_UNIT_TEST(ShouldEraseKeyWrittenBeforeOverlappingEraseLands)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);
@@ -924,7 +924,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldNotRejectANoOpEraseDuringAMetadataWrite)
+    Y_UNIT_TEST(ShouldNotRejectNoOpEraseDuringMetadataWrite)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);
@@ -963,7 +963,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("3=three", Describe(restored.KeyBuffers));
     }
 
-    Y_UNIT_TEST(ShouldReportTheDeviceWriteError)
+    Y_UNIT_TEST(ShouldReportDeviceWriteError)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);

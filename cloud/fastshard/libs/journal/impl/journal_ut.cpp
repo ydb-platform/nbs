@@ -643,7 +643,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     // Restoring
     //
 
-    Y_UNIT_TEST_F(ShouldRestoreAnEmptyJournal, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreEmptyJournal, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -651,14 +651,14 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreWhenTheMetaStoreFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreWhenMetaStoreFails, TFixture)
     {
         MetaStore->FailRestore.store(true);
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreTheRecordsAndTheirContents, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreRecordsAndTheirContents, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -677,7 +677,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreTheLsnLowWatermark, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreLsnLowWatermark, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -696,7 +696,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(2));
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreALogThatDoesNotStartAtTheFirstLsn, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreLogThatDoesNotStartAtFirstLsn, TFixture)
     {
         // what is left after the head of the log has been flushed away
         PutMetadata(6);
@@ -731,7 +731,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "6<-5 20:[");
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreAPendingRecordBehindAGap, TFixture)
+    Y_UNIT_TEST_F(ShouldRestorePendingRecordBehindGap, TFixture)
     {
         // everything acked has been flushed and cleaned up, lsn 5 <- 4 was
         // written before lsns 3 and 4 made it: the chain still starts at 2
@@ -749,7 +749,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeRecords(ReadTail(2)));
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreTheAllocationStateOfTheRecords, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreAllocationStateOfRecords, TFixture)
     {
         PageCount = 4;
         RecreateJournal();
@@ -779,7 +779,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreACorruptedRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreCorruptedRecord, TFixture)
     {
         PutRecord(1, 0);
         PutGarbage(2, "not a log record");
@@ -789,7 +789,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordStoredUnderAnotherKey, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordStoredUnderAnotherKey, TFixture)
     {
         PutRecordUnderKey(1, 7, 0);
 
@@ -798,7 +798,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithABrokenChain, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordWithBrokenChain, TFixture)
     {
         // a record cannot follow itself
         PutRecord(5, 5);
@@ -808,7 +808,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordChainingFromAboveItself, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordChainingFromAboveItself, TFixture)
     {
         // the watermark points at the record, so the walk back from it would
         // never end
@@ -822,7 +822,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "log record with key 5 has lsn 5, not above its prevLsn");
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreAJournalHoldingAStrandedRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreJournalHoldingStrandedRecord, TFixture)
     {
         // a journal of three pages, all of them taken before the restart
         PageCount = 3;
@@ -866,7 +866,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             CriticalEventCount("JournalStrandedRecordDetectedError"));
     }
 
-    Y_UNIT_TEST_F(ShouldDropTheStrandedRecordsAroundTheWatermark, TFixture)
+    Y_UNIT_TEST_F(ShouldDropStrandedRecordsAroundWatermark, TFixture)
     {
         // the chain 0 -> 1 -> 4 -> 6 is acked up to 4; lsn 3 <- 2 sits below
         // the watermark with a gap before it, lsn 5 <- 3 chains from below
@@ -888,7 +888,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(7, 6, 'G', {{70, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreRecordsSharingTheSamePages, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordsSharingSamePages, TFixture)
     {
         PutRecord(1, 0, {{.PageNo = 10, .Location = Range(0, 2)}});
         PutRecord(2, 1, {{.PageNo = 20, .Location = Range(1, 2)}});
@@ -898,7 +898,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithSelfIntersectingPages, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordWithSelfIntersectingPages, TFixture)
     {
         // a single record whose own mappings share a journal page - there is
         // no telling which of the two the page belongs to
@@ -911,7 +911,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithAnEmptyPageRange, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordWithEmptyPageRange, TFixture)
     {
         // a write never produces an empty mapping, and the page index would
         // choke on it at the next write of the page
@@ -942,7 +942,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "log record with key 1: page ranges 10x4 and 12x4 intersect");
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordStartingPastTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordStartingPastDevice, TFixture)
     {
         PutRecord(
             1,
@@ -954,7 +954,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreARecordRunningPastTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordRunningPastDevice, TFixture)
     {
         PutRecord(1, 0, {{.PageNo = 10, .Location = Range(0, 1)}});
         PutRecord(
@@ -970,7 +970,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "1024 pages");
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreAnOverflowingRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToRestoreOverflowingRecord, TFixture)
     {
         // a record left behind by a writer that did not bound page numbers;
         // indexing it would wrap around and abort
@@ -986,7 +986,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreARecordEndingAtTheLastDevicePage, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreRecordEndingAtLastDevicePage, TFixture)
     {
         PutRecord(
             1,
@@ -1000,7 +1000,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     // Writing
     //
 
-    Y_UNIT_TEST_F(ShouldWriteAndReadBackAPageGroup, TFixture)
+    Y_UNIT_TEST_F(ShouldWriteAndReadBackPageGroup, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1013,7 +1013,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldAnswerARetryOfAnIndexedRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldAnswerRetryOfIndexedRecord, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1029,7 +1029,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{10, 1}, {30, 1}})));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARecordThatFollowsItself, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRecordThatFollowsItself, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1037,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 6, 'A', {{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARecordThatContradictsTheChain, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRecordThatContradictsChain, TFixture)
     {
         // held until lsn 2 shows up
         auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
@@ -1068,7 +1068,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{30, 1}})));
     }
 
-    Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceTheGapIsFilled, TFixture)
+    Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceGapIsFilled, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1100,7 +1100,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(3, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldDeduplicateARepeatedRecord, TFixture)
+    Y_UNIT_TEST_F(ShouldDeduplicateRepeatedRecord, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1126,7 +1126,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeRecords(ReadTail(0)));
     }
 
-    Y_UNIT_TEST_F(ShouldWriteARecordWithoutPages, TFixture)
+    Y_UNIT_TEST_F(ShouldWriteRecordWithoutPages, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1141,7 +1141,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAWriteThatDoesNotFitTheJournal, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectWriteThatDoesNotFitJournal, TFixture)
     {
         PageCount = 4;
         RecreateJournal();
@@ -1154,7 +1154,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
     }
 
-    Y_UNIT_TEST_F(ShouldReleaseThePagesOfAFailedDataWrite, TFixture)
+    Y_UNIT_TEST_F(ShouldReleasePagesOfFailedDataWrite, TFixture)
     {
         PageCount = 4;
         RecreateJournal();
@@ -1173,7 +1173,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{10, 4}})));
     }
 
-    Y_UNIT_TEST_F(ShouldReleaseThePagesOfAFailedMetaWrite, TFixture)
+    Y_UNIT_TEST_F(ShouldReleasePagesOfFailedMetaWrite, TFixture)
     {
         PageCount = 4;
         RecreateJournal();
@@ -1189,7 +1189,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("1", StoredKeys());
     }
 
-    Y_UNIT_TEST_F(ShouldSpreadARecordOverFragmentedPages, TFixture)
+    Y_UNIT_TEST_F(ShouldSpreadRecordOverFragmentedPages, TFixture)
     {
         PageCount = 5;
         RecreateJournal();
@@ -1222,7 +1222,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{10, 1}, {20, 2}})));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARecordWithIntersectingPageGroups, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRecordWithIntersectingPageGroups, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1250,7 +1250,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     // Reading
     //
 
-    Y_UNIT_TEST_F(ShouldReturnOnlyTheJournalledPages, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnOnlyJournalledPages, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1262,7 +1262,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{5, 2}, {10, 2}, {20, 1}})));
     }
 
-    Y_UNIT_TEST_F(ShouldClipTheMappingsToTheRequestedRange, TFixture)
+    Y_UNIT_TEST_F(ShouldClipMappingsToRequestedRange, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1273,7 +1273,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{11, 2}})));
     }
 
-    Y_UNIT_TEST_F(ShouldReturnTheNewestContentOfAPage, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnNewestContentOfPage, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1285,7 +1285,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{10, 3}})));
     }
 
-    Y_UNIT_TEST_F(ShouldStopReturningTheFlushedPages, TFixture)
+    Y_UNIT_TEST_F(ShouldStopReturningFlushedPages, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
@@ -1298,7 +1298,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldFailAReadWhenTheDeviceFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailReadWhenDeviceFails, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1317,7 +1317,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             ReadPages({{50, 1}}).GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARecordOutsideTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRecordOutsideDevice, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1352,7 +1352,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldWriteAndReadBackTheLastDevicePages, TFixture)
+    Y_UNIT_TEST_F(ShouldWriteAndReadBackLastDevicePages, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1372,7 +1372,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "page range at page 1024 is empty");
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAReadOutsideTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectReadOutsideDevice, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1396,7 +1396,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "page range 1023x2 is outside the device of 1024 pages");
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAReadWithIntersectingPageGroupRefs, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectReadWithIntersectingPageGroupRefs, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1416,7 +1416,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     // Reading the tail
 
-    Y_UNIT_TEST_F(ShouldReadTheWholeTail, TFixture)
+    Y_UNIT_TEST_F(ShouldReadWholeTail, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1429,7 +1429,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(0, response.GetLsnLowWatermark());
     }
 
-    Y_UNIT_TEST_F(ShouldReadTheTailAfterTheGivenLsn, TFixture)
+    Y_UNIT_TEST_F(ShouldReadTailAfterGivenLsn, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1441,7 +1441,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(3)));
     }
 
-    Y_UNIT_TEST_F(ShouldLimitTheNumberOfTailRecords, TFixture)
+    Y_UNIT_TEST_F(ShouldLimitNumberOfTailRecords, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1452,7 +1452,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeRecords(ReadTail(0, 2)));
     }
 
-    Y_UNIT_TEST_F(ShouldStopTheTailAtAGap, TFixture)
+    Y_UNIT_TEST_F(ShouldStopTailAtGap, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1475,7 +1475,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeRecords(ReadTail(0)));
     }
 
-    Y_UNIT_TEST_F(ShouldNotReturnAckedRecordsInTheTail, TFixture)
+    Y_UNIT_TEST_F(ShouldNotReturnAckedRecordsInTail, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1489,7 +1489,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLsnLowWatermark());
     }
 
-    Y_UNIT_TEST_F(ShouldFailATailReadWhenTheDeviceFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailTailReadWhenDeviceFails, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1502,7 +1502,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     // Advancing the lsn low watermark
 
-    Y_UNIT_TEST_F(ShouldAdvanceTheLsnLowWatermark, TFixture)
+    Y_UNIT_TEST_F(ShouldAdvanceLsnLowWatermark, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1522,7 +1522,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             ReadTail(0).GetLsnLowWatermark());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAnUnindexedLsnLowWatermark, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectUnindexedLsnLowWatermark, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1554,7 +1554,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAConcurrentAdvanceOfTheLsnLowWatermark, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectConcurrentAdvanceOfLsnLowWatermark, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1581,7 +1581,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     // Flushing
 
-    Y_UNIT_TEST_F(ShouldNotOfferUnackedRecordsToTheFlusher, TFixture)
+    Y_UNIT_TEST_F(ShouldNotOfferUnackedRecordsToFlusher, TFixture)
     {
         WriteThreeRecords();
 
@@ -1597,7 +1597,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription(0));
     }
 
-    Y_UNIT_TEST_F(ShouldWalkTheRecordsToFlushInOrder, TFixture)
+    Y_UNIT_TEST_F(ShouldWalkRecordsToFlushInOrder, TFixture)
     {
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
@@ -1620,7 +1620,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             GetRecordToFlushDescription());
     }
 
-    Y_UNIT_TEST_F(ShouldNotOfferAnUnwrittenRecordToTheFlusher, TFixture)
+    Y_UNIT_TEST_F(ShouldNotOfferUnwrittenRecordToFlusher, TFixture)
     {
         auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
 
@@ -1638,7 +1638,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             GetRecordToFlushDescription());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToFetchARecordToFlushWhenTheDeviceFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToFetchRecordToFlushWhenDeviceFails, TFixture)
     {
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
@@ -1648,7 +1648,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_IO, GetRecordToFlush().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldCleanupTheFlushedRecords, TFixture)
+    Y_UNIT_TEST_F(ShouldCleanupFlushedRecords, TFixture)
     {
         PageCount = 4;
         RecreateJournal();
@@ -1680,7 +1680,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("1,2,3", StoredKeys());
     }
 
-    Y_UNIT_TEST_F(ShouldRestoreAJournalThatHasBeenCleanedUp, TFixture)
+    Y_UNIT_TEST_F(ShouldRestoreJournalThatHasBeenCleanedUp, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
@@ -1699,7 +1699,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeGroups(ReadPages({{10, 1}, {20, 1}, {30, 1}})));
     }
 
-    Y_UNIT_TEST_F(ShouldNotCleanupWhatAReaderIsStillLookingAt, TFixture)
+    Y_UNIT_TEST_F(ShouldNotCleanupWhatReaderIsStillLookingAt, TFixture)
     {
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
