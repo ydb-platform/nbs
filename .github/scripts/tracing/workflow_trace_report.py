@@ -13,7 +13,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from ..helpers import get_jobs, github_client
+from ..helpers import get_jobs, github_client, github_output
 from .trace_io import MAX_SPANS
 from .trace_report import write_trace_bundle
 from .workflow_trace import build_workflow_trace
@@ -62,6 +62,10 @@ def main() -> None:
     )
     if len(jobs) > MAX_SPANS:
         raise ValueError(f"Workflow has more than {MAX_SPANS} jobs")
+    if all(job.conclusion == "skipped" for job in jobs):
+        logger.info("Skipping workflow trace: this attempt has no non-skipped jobs")
+        github_output(logger, "rendered", "false")
+        return
 
     report_links = {}
     if args.s3_bucket or args.s3_prefix:
@@ -95,6 +99,7 @@ def main() -> None:
         metadata=metadata,
         file_prefix="workflow-trace",
     )
+    github_output(logger, "rendered", "true")
     print(f"Wrote {manifest['span_count']} workflow spans to {args.output_dir}")
 
 
