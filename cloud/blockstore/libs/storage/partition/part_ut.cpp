@@ -1671,11 +1671,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto value =
                 NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
             const auto& state = value["State"];
-            if (!state.Has("FirstUntrimmedFreshBlobTimestamp")) {
+            if (!state.Has("FirstUnflushedFreshBlobTimestamp")) {
                 return TInstant::Max();
             }
             return TInstant::MicroSeconds(
-                state["FirstUntrimmedFreshBlobTimestamp"].GetUInteger());
+                state["FirstUnflushedFreshBlobTimestamp"].GetUInteger());
         };
 
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(), getLowestCommitIdTimestamp());
@@ -2604,6 +2604,64 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldExcludeFlushedBlobsAboveTrimBoundaryFromAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool intercept = true;
+        std::unique_ptr<IEventHandle> addFreshBlocks;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest &&
+                    intercept)
+                {
+                    intercept = false;
+                    addFreshBlocks.reset(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        // The in-flight write holds the trim boundary below the next blobs.
+        partition.SendWriteBlocksRequest(1, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(addFreshBlocks);
+
+        partition.WriteBlocks(2, 2);
+        partition.Flush();
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.WriteBlocks(3, 3);
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        // The completed write is the oldest unflushed blob.
+        runtime->Send(addFreshBlocks.release());
+        partition.RecvWriteBlocksResponse();
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1),
+                                 GetBlockContent(partition.ReadBlocks(1)));
     }
 
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
