@@ -546,6 +546,18 @@ private:
             return MakeError(E_ARGUMENT);
         }
 
+        if (Y_UNLIKELY(
+                out.size() < static_cast<size_t>(request.GetBlocksCount()) *
+                                 request.GetBlockSize()))
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "out buffer is too small: " << out.size() << " < "
+                    << static_cast<size_t>(request.GetBlocksCount()) *
+                           request.GetBlockSize());
+        }
+
         auto device = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
