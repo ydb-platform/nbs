@@ -75,6 +75,21 @@ function spanRow(item) {
   if (criticalPath) nameCell.append(critical);
   if (durationRank !== null) nameCell.append(longest);
   nameCell.append(metadata);
+  const reports = reportLinksForSpan(span);
+  if (reports.length) {
+    const links = document.createElement("nav");
+    links.className = "trace-report-links";
+    links.setAttribute("aria-label", "Execution traces");
+    for (const report of reports) {
+      const link = document.createElement("a");
+      link.textContent = report.name;
+      link.href = report.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      links.append(link);
+    }
+    nameCell.append(links);
+  }
 
   const duration = document.createElement("span");
   duration.className = "duration";

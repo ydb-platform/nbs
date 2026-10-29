@@ -1,10 +1,9 @@
-"""Project GitHub workflow timing and imported traces into one OTLP trace."""
+"""Project GitHub workflow timing with links to separate execution reports."""
 
 from __future__ import annotations
 
 import os
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,11 +14,7 @@ from .otlp import (
     Ns,
     ResourceAttributes,
     SECOND,
-    Span,
     Trace,
-    decode_attributes,
-    encode_attributes,
-    span_duration_ns,
     stable_trace_id,
 )
 
@@ -74,7 +69,6 @@ def _interval(
 def _workflow_start(
     workflow_run: Mapping[str, Any],
     jobs: Sequence[WorkflowJob],
-    imported: Trace,
     *,
     created_ns: Ns | None,
     started_ns: Ns | None,
@@ -89,7 +83,6 @@ def _workflow_start(
             return created_ns, "workflow_run.created_at"
         if started_ns is not None:
             return started_ns, "workflow_run.run_started_at"
-        return Ns(0), "unix_epoch"
 
     candidates: list[tuple[Ns, str]] = []
 
@@ -101,12 +94,6 @@ def _workflow_start(
     for job in jobs:
         add_candidate(timestamp_ns(job.created_at), "job.created_at")
         add_candidate(timestamp_ns(job.started_at), "job.started_at")
-    if candidates:
-        return min(candidates, key=lambda item: item[0])
-
-    for span in imported:
-        start_ns = Ns(span.start_time_unix_nano or 0)
-        add_candidate(start_ns, "imported_span.start_time_unix_nano")
     return min(
         candidates,
         key=lambda item: item[0],
@@ -118,8 +105,8 @@ def _job_spans(
     jobs: Sequence[WorkflowJob],
     workflow: SpanProjector,
     workflow_interval: Interval,
-) -> list[Span]:
-    spans = []
+    report_links: Mapping[int, Sequence[tuple[str, str]]],
+) -> None:
     for job_index, job in enumerate(jobs):
         created_ns = timestamp_ns(job.created_at)
         started_ns = timestamp_ns(job.started_at)
@@ -131,6 +118,10 @@ def _job_spans(
         job_id = job.id if job.id is not None else job_index
         conclusion = str(job.conclusion or "")
         status_code, status_message = _status(conclusion)
+        link_attributes = {}
+        for index, (label, url) in enumerate(report_links.get(job_id, ())):
+            link_attributes[f"ci.trace.report.{index}.name"] = label
+            link_attributes[f"ci.trace.report.{index}.url"] = url
         span = workflow.emit(
             "job",
             job_id,
@@ -145,11 +136,11 @@ def _job_spans(
                 "github.job.runner.group": job.runner_group_name or "",
                 "github.job.labels": job.labels or [],
                 "github.job.url": job.html_url or "",
+                **link_attributes,
             },
             status_code=status_code,
             status_message=status_message,
         )
-        spans.append(span)
         job_context = workflow.under(span)
 
         if started_ns is not None and job_interval.start < started_ns:
@@ -162,11 +153,7 @@ def _job_spans(
                 ),
                 attributes={
                     "ci.queue.scope": "job",
-                    "ci.queue.timing_source": (
-                        "job.created_at"
-                        if created_ns is not None
-                        else "workflow.run_started_at"
-                    ),
+                    "ci.queue.timing_source": "job.created_at",
                 },
             )
 
@@ -198,94 +185,13 @@ def _job_spans(
                 status_code=step_status_code,
                 status_message=step_status_message,
             )
-    return spans
-
-
-def _parent_job(imported: Span, jobs: Sequence[Span]) -> Span | None:
-    imported_interval = Interval(
-        Ns(imported.start_time_unix_nano or 0),
-        Ns(imported.end_time_unix_nano or 0),
-    )
-    candidates = [
-        (
-            job,
-            Interval(
-                Ns(job.start_time_unix_nano or 0),
-                Ns(job.end_time_unix_nano or 0),
-            ),
-        )
-        for job in jobs
-    ]
-    matches = [
-        job
-        for job, interval in candidates
-        if interval.start <= imported_interval.start
-        and imported_interval.end <= interval.end
-    ] or [
-        job
-        for job, interval in candidates
-        if interval.overlap(imported_interval).value > 0
-    ]
-    return min(matches, key=span_duration_ns, default=None)
-
-
-def _merge_imported(
-    imported: Trace,
-    workflow: SpanProjector,
-    job_spans: Sequence[Span],
-) -> None:
-    imported_ids = {(span.trace_id, span.span_id) for span in imported}
-    if len(imported_ids) != len(imported):
-        raise ValueError("Imported OTLP contains duplicate span IDs")
-
-    roots = [
-        span
-        for span in imported
-        if not span.parent_span_id
-        or (span.trace_id, span.parent_span_id) not in imported_ids
-    ]
-    root_parents = {
-        (span.trace_id, span.span_id): (
-            parent.span_id
-            if (parent := _parent_job(span, job_spans))
-            else workflow.parent_span_id
-        )
-        for span in roots
-    }
-    id_map = {
-        (span.trace_id, span.span_id): workflow.span_id(
-            "import", span.trace_id, span.span_id
-        )
-        for span in imported
-    }
-
-    for resource_spans, scope_spans, span in imported.walk_groups():
-        key = span.trace_id, span.span_id
-        parent_key = span.trace_id, span.parent_span_id
-        attributes = decode_attributes(span.attributes)
-        attributes["ci.trace.source"] = "ya-otlp"
-        workflow.trace.add_span(
-            replace(
-                span,
-                trace_id=workflow.trace_id,
-                span_id=id_map[key],
-                parent_span_id=id_map.get(
-                    parent_key,
-                    root_parents.get(key, workflow.parent_span_id),
-                ),
-                attributes=encode_attributes(attributes),
-            ),
-            resource=resource_spans.resource or ResourceAttributes(),
-            scope=scope_spans.scope,
-            resource_schema_url=str(resource_spans.schema_url or ""),
-            scope_schema_url=str(scope_spans.schema_url or ""),
-        )
 
 
 def build_workflow_trace(
     workflow_run: Mapping[str, Any],
     jobs: Sequence[WorkflowJob],
-    imported: Trace,
+    *,
+    report_links: Mapping[int, Sequence[tuple[str, str]]] | None = None,
 ) -> tuple[Trace, ResourceAttributes]:
     metadata = ResourceAttributes.from_github(
         environment=os.environ,
@@ -299,7 +205,6 @@ def build_workflow_trace(
     start_ns, start_source = _workflow_start(
         workflow_run,
         jobs,
-        imported,
         created_ns=created_ns,
         started_ns=started_ns,
         updated_ns=updated_ns,
@@ -330,7 +235,6 @@ def build_workflow_trace(
         attributes={
             "github.run.status": workflow_run.get("status", ""),
             "github.run.conclusion": conclusion,
-            "ci.imported_ya_span_count": len(imported),
             "ci.workflow.timing_source": start_source,
         },
         status_code=status_code,
@@ -349,6 +253,5 @@ def build_workflow_trace(
             },
         )
 
-    job_spans = _job_spans(jobs, workflow, interval)
-    _merge_imported(imported, workflow, job_spans)
+    _job_spans(jobs, workflow, interval, report_links or {})
     return trace, metadata

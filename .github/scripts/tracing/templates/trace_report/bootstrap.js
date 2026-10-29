@@ -152,6 +152,7 @@ const traceReportApi = {
   safeArtifactPath,
   artifactLinksForSpan,
   artifactLinkForAttribute,
+  reportLinksForSpan,
   linkableHttpUrl,
   nextSelectedSpan,
 };
