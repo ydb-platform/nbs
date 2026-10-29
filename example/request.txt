@@ -1,0 +1,5 @@
+DiskId: "system-disk"
+BlockSize: 4096
+BlocksCount: 1048576
+StorageMediaKind: STORAGE_MEDIA_SSD
+IsSystem: true
