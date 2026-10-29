@@ -132,7 +132,7 @@ struct TPersistentStateManagerConfig
     ui64 HandleOpsQueueTotalSizeLimit = 0;
 
     TString WriteBackCacheBasePath;
-    ui64 WriteBackMinStateFileSize = 0;
+    ui64 WriteBackCacheMinStateFileSize = 0;
     ui64 WriteBackCacheTotalSizeLimit = 0;
 
     TString DirectoryHandlesStorageBasePath;

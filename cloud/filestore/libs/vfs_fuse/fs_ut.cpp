@@ -6543,7 +6543,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const TString statePath = TempDir.Path() / "MinimumWriteBackCacheState";
         auto persistentStateManager = CreatePersistentStateManager({
             .WriteBackCacheBasePath = statePath,
-            .WriteBackMinStateFileSize = MinStateFileSize,
+            .WriteBackCacheMinStateFileSize = MinStateFileSize,
         });
 
         {

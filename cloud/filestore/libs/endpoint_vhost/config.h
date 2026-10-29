@@ -37,7 +37,7 @@ public:
 
     TString GetWriteBackCachePath() const;
     ui64 GetWriteBackCacheStateFileSize() const;
-    ui64 GetServerWriteBackMinStateFileSize() const;
+    ui64 GetWriteBackCacheMinStateFileSize() const;
     ui64 GetWriteBackCacheTotalSizeLimit() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
     TDuration GetWriteBackCacheFlushRetryPeriod() const;

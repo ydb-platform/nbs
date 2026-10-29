@@ -353,7 +353,7 @@ TPersistentStateManager::TPersistentStateManager(
           .BasePath = std::move(config.WriteBackCacheBasePath),
           .FileName = TString(WriteBackCacheFileName),
           .StateFileSizeRequired = true,
-          .MinStateFileSize = config.WriteBackMinStateFileSize,
+          .MinStateFileSize = config.WriteBackCacheMinStateFileSize,
           .TotalSizeLimit = config.WriteBackCacheTotalSizeLimit}
     , DirectoryHandleStorage{
           .BasePath = std::move(config.DirectoryHandlesStorageBasePath),
