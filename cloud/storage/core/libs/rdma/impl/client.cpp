@@ -412,9 +412,9 @@ struct TEndpointCounters
         QueuedInvalidations->Inc();
     }
 
-    void InvalidationDequeued()
+    void InvalidationDequeued(ui64 count = 1)
     {
-        QueuedInvalidations->Dec();
+        QueuedInvalidations->Sub(count);
     }
 
     void InvalidationStarted()
@@ -709,7 +709,7 @@ public:
 private:
     // called from CQ thread
     void HandleQueuedRequests() noexcept;
-    bool HandleInvalidations() noexcept;
+    void HandleInvalidations() noexcept;
     void StartRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequest(TRequest* req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
@@ -1076,19 +1076,13 @@ bool TClientEndpoint::HandleInputRequests() noexcept
         RequestEvent.Clear();
     }
 
-    bool hasWork = false;
-
     if (auto requests = InputRequests.DequeueAll()) {
         QueuedRequests.Append(std::move(requests));
         HandleQueuedRequests();
-        hasWork = true;
+        return true;
     }
 
-    if (HandleInvalidations()) {
-        hasWork = true;
-    }
-
-    return hasWork;
+    return false;
 }
 
 void TClientEndpoint::HandleQueuedRequests() noexcept
@@ -1103,6 +1097,9 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
         }
         return;
     }
+
+    // prioritize invalidations over new requests
+    HandleInvalidations();
 
     while (QueuedRequests) {
         auto* send = SendQueue.Pop();
@@ -1147,40 +1144,40 @@ void TClientEndpoint::HandleQueuedRequests() noexcept
     }
 }
 
-bool TClientEndpoint::HandleInvalidations() noexcept
+void TClientEndpoint::HandleInvalidations() noexcept
 {
-    bool hasWork = InvalidationQueue.size();
-
     while (InvalidationQueue.size()) {
+        auto* req = ActiveRequests.Get(InvalidationQueue.front());
+        if (!req) {
+            // request has been cancelled or timed out
+            InvalidationQueue.pop_front();
+            Counters->InvalidationDequeued();
+            continue;
+        }
+
         auto* send = SendQueue.Pop();
         if (!send) {
             // no more WRs available
             break;
         }
 
-        auto reqId = InvalidationQueue.front();
         InvalidationQueue.pop_front();
         Counters->InvalidationDequeued();
 
-        if (auto* req = ActiveRequests.Get(reqId)) {
-            if (req->State != ERequestState::InvalidateBuffers) {
-                RDMA_ERROR(
-                    "request " << req->ReqId << " has unexpected state "
-                               << req->State);
+        if (req->State != ERequestState::InvalidateBuffers) {
+            RDMA_ERROR(
+                "request " << req->ReqId << " has unexpected state "
+                           << req->State);
 
-                SendQueue.Push(send);
-                Counters->Error();
-                Disconnect();
-                return true;
-            }
-
-            Counters->InvalidationStarted();
-            InvalidateInBuffer(req, send);
+            SendQueue.Push(send);
+            Counters->Error();
+            Disconnect();
+            return;
         }
-        // request has been cancelled or timed out
-    }
 
-    return hasWork;
+        Counters->InvalidationStarted();
+        InvalidateInBuffer(req, send);
+    }
 }
 
 void TClientEndpoint::CancelRequest(ui64 clientRequestId) noexcept
@@ -1286,6 +1283,7 @@ void TClientEndpoint::AbortRequests() noexcept
     }
 
     // drop all invalidations
+    Counters->InvalidationDequeued(InvalidationQueue.size());
     InvalidationQueue.clear();
 }
 
@@ -1324,11 +1322,7 @@ void TClientEndpoint::AbortRequest(
 
         case ERequestState::Started:
         case ERequestState::SendRequest:
-            Counters->RequestAborted();
-            break;
-
         case ERequestState::InvalidateBuffers:
-            Counters->InvalidationDequeued();
             Counters->RequestAborted();
             break;
 
@@ -1795,10 +1789,6 @@ void TClientEndpoint::InvalidateBuffers(TRequest* req) noexcept
 
     InvalidationQueue.push_back(req->ReqId);
     Counters->InvalidationEnqueued();
-
-    if (WaitMode == EWaitMode::Poll) {
-        RequestEvent.Set();
-    }
 }
 
 void TClientEndpoint::CompleteRequest(ui32 reqId) noexcept

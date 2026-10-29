@@ -1425,24 +1425,20 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
 
     auto verbs = NVerbs::CreateTestVerbs(testContext);
     auto monitoring = CreateMonitoringServiceStub();
+    auto counters = GetClientCounters(monitoring);
     auto clientConfig = std::make_shared<TClientConfig>();
-    clientConfig->UseMemoryWindows = true;
-    clientConfig->MaxReconnectDelay = 5s;
-    clientConfig->MaxResponseDelay = 4s;
-
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
-
-    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
-
-    client->Start();
-    Y_DEFER {
-        client->Stop();
-    };
+    clientConfig->UseMemoryWindows = true;
+    clientConfig->SendQueueSize = 1;
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 4s;
 
     std::atomic<int> bound = 0;
     std::atomic<int> invalidated = 0;
     std::atomic<int> destroyed = 0;
+    bool holdSendCompletion = false;
+    std::unique_ptr<ibv_send_wr> heldSend;
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -1463,6 +1459,10 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
                 testContext->ReqIds.push_back(
                     reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr)
                         ->ReqId);
+                if (holdSendCompletion) {
+                    heldSend = std::make_unique<ibv_send_wr>(*wr);
+                    return;
+                }
         }
 
         testContext->SendEvents.push_back(new ibv_send_wr(*wr));
@@ -1475,25 +1475,14 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
         destroyed++;
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
 
-    struct TResponse: IClientRequestHandler
-    {
-        ui32 Status = 0;
-        TManualEvent Received;
-
-        void HandleResponse(
-            TClientRequestPtr req,
-            ui32 status,
-            size_t responseBytes) override
-        {
-            Y_UNUSED(req);
-            Y_UNUSED(responseBytes);
-
-            Status = status;
-            Received.Signal();
-        }
+    client->Start();
+    Y_DEFER {
+        client->Stop();
     };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
 
     auto handleRequest = [&]()
     {
@@ -1515,6 +1504,24 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
                     break;
                 }
             }
+        }
+    };
+
+    struct TResponse: IClientRequestHandler
+    {
+        ui32 Status = 0;
+        TManualEvent Received;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(req);
+            Y_UNUSED(responseBytes);
+
+            Status = status;
+            Received.Signal();
         }
     };
 
@@ -1573,7 +1580,10 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
     invalidated = 0;
     destroyed = 0;
 
-    // cancellation will also result in memory windows destruction
+    // hold the only send WR, so the response waits for invalidation
+    with_lock (testContext->CompletionLock) {
+        holdSendCompletion = true;
+    }
     auto response3 = std::make_shared<TResponse>();
     auto request3 = endpoint->AllocateRequest(
         response3,
@@ -1586,20 +1596,50 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
         request3.ExtractResult(),
         MakeIntrusive<TCallContextBase>(0u));
 
+    handleRequest();
+    while (counters->GetCounter("QueuedInvalidations")->Val() == 0) {
+        SpinLockPause();
+    }
     endpoint->CancelRequest(requestId3);
 
     ASSERT_TRUE(response3->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
     ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response3->Status);
 
-    // request can get cancelled at any stage, so `bound` can be anything
-    // between 0 and 2
-    ASSERT_GE(2, bound);
+    ASSERT_EQ(2, bound);
     ASSERT_EQ(0, invalidated);
     ASSERT_EQ(2, destroyed);
 
-    // validate relevant counters
-    auto counters = GetClientCounters(monitoring);
+    // request must be able to complete after stale invalidation gets discarded
+    with_lock (testContext->CompletionLock) {
+        ASSERT_TRUE(heldSend);
+        holdSendCompletion = false;
+        testContext->SendEvents.push_back(heldSend.release());
+        testContext->CompletionHandle.Set();
+    }
 
+    bound = 0;
+    invalidated = 0;
+    destroyed = 0;
+
+    auto response4 = std::make_shared<TResponse>();
+    auto request4 = endpoint->AllocateRequest(
+        response4,
+        std::make_unique<TNullContext>(),
+        4096,
+        4096);
+    ASSERT_FALSE(HasError(request4.GetError()));
+    endpoint->SendRequest(
+        request4.ExtractResult(),
+        MakeIntrusive<TCallContextBase>(0u));
+    handleRequest();
+    ASSERT_TRUE(response4->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+    ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_OK), response4->Status);
+
+    ASSERT_EQ(2, bound);
+    ASSERT_EQ(2, invalidated);
+    ASSERT_EQ(0, destroyed);
+
+    // validate relevant counters
     while (counters->GetCounter("ActiveBinds")->Val() != 0 ||
            counters->GetCounter("QueuedInvalidations")->Val() != 0 ||
            counters->GetCounter("ActiveInvalidations")->Val() != 0 ||
