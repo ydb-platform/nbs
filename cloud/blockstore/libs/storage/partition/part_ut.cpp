@@ -10127,6 +10127,129 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldWaitForCommitsBeforeTakingMetadataRebuildSnapshot)
+    {
+        for (ui32 testCase = 0; testCase < 4; ++testCase) {
+            const bool useChannelCounters = testCase & 1;
+            const bool completeNewerWriteFirst = testCase & 2;
+            auto config = DefaultConfig();
+            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            TAutoPtr<IEventHandle> savedWrite;
+            TBlockCountRebuildState initialCounters;
+            bool rebuildStarted = false;
+            bool completed = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvPartitionPrivate::EvAddBlobsRequest:
+                            savedWrite = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        case TEvPartitionPrivate::
+                            EvMetadataRebuildBlockCountRequest:
+                            rebuildStarted = true;
+                            break;
+                        case TEvPartitionPrivate::EvMetadataRebuildCompleted:
+                            completed = true;
+                            break;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1024),
+                1);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(savedWrite);
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(!rebuildStarted);
+            UNIT_ASSERT(!partition.GetRebuildMetadataStatus()
+                             ->Record.GetProgress().GetIsCompleted());
+
+            // This newer write is outside the fixed rebuild boundary.
+            TAutoPtr<IEventHandle> firstWrite = savedWrite.Release();
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(1024, 1024),
+                2);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(savedWrite);
+
+            // Replay the writes without intercepting them again.
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                    {
+                        completed = true;
+                    } else if (
+                        event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
+                    {
+                        rebuildStarted = true;
+                        initialCounters = event->Get<TEvPartitionPrivate::
+                            TEvMetadataRebuildBlockCountRequest>()->RebuildState;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+            if (completeNewerWriteFirst) {
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+                runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+                UNIT_ASSERT(!rebuildStarted);
+            }
+
+            runtime->Send(firstWrite.Release());
+            partition.RecvWriteBlocksResponse();
+            if (!completed) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&] { return completed; };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(completed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024,
+                initialCounters.InitialMergedChannelBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                initialCounters.InitialMergedChannelBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1024 : 0,
+                initialCounters.InitialMergedIndexBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1 : 0,
+                initialCounters.InitialMergedIndexBlobs);
+
+            if (savedWrite) {
+                // Rebuild must finish without waiting for the newer write.
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+            }
+
+            const auto assertCounters = [&]
+            {
+                const auto stats = partition.StatPartition()->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(2048, stats.GetMergedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2048 : 0,
+                    stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2 : 0,
+                    stats.GetMergedIndexBlobsCount());
+            };
+            assertCounters();
+            partition.RebootTablet();
+            assertCounters();
+        }
+    }
+
     Y_UNIT_TEST(ShouldRebuildBlockCountSensors)
     {
         for (bool useChannelCounters: {false, true}) {

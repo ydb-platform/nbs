@@ -144,23 +144,7 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
 
             State->StartRebuildBlockCount();
 
-            auto actorId = NCloud::Register(
-                ctx,
-                CreateMetadataRebuildBlockCountActor(
-                    SelfId(),
-                    batchSize,
-                    State->GetLastCommitId(),
-                    State->GetMixedIndexBlocksCount(),
-                    State->GetMergedIndexBlocksCount(),
-                    State->GetMixedBlocksCount(),
-                    State->GetMergedBlocksCount(),
-                    State->GetMixedIndexBlobsCount(),
-                    State->GetMergedIndexBlobsCount(),
-                    State->GetMixedBlobsCount(),
-                    State->GetMergedBlobsCount(),
-                    Config->GetCompactionRetryTimeout()));
-
-            Actors.Insert(actorId);
+            StartMetadataRebuildBlockCount(ctx, batchSize);
 
             return MakeError(S_OK, "Metadata rebuild has been started");
         }
@@ -170,6 +154,79 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                 TStringBuilder() << "Unknown metadata type: " << static_cast<ui32>(type));
         }
     }
+}
+
+void TPartitionActor::StartMetadataRebuildBlockCount(
+    const TActorContext& ctx,
+    ui32 batchSize)
+{
+    const ui64 commitId = State->GenerateCommitId();
+    if (commitId == InvalidCommitId) {
+        RebootPartitionOnCommitIdOverflow(ctx, "MetadataRebuild");
+        return;
+    }
+
+    State->StartMetadataRebuildCounterTracking(commitId);
+    State->AccessCommitQueue()->AcquireBarrier(commitId);
+    SharedState->WaitCommit(
+        ctx,
+        CreateTx<TStartMetadataRebuild>(commitId, batchSize),
+        commitId);
+}
+
+bool TPartitionActor::PrepareStartMetadataRebuild(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TStartMetadataRebuild& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+    return true;
+}
+
+void TPartitionActor::ExecuteStartMetadataRebuild(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxPartition::TStartMetadataRebuild& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+}
+
+void TPartitionActor::CompleteStartMetadataRebuild(
+    const TActorContext& ctx,
+    TTxPartition::TStartMetadataRebuild& args)
+{
+    State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);
+    ProcessCommitQueue(ctx);
+
+    // Newer commits may already have changed the counters while we waited.
+    // Exclude their delta from the baseline, since their blobs are outside
+    // the scan and must be preserved by the final counter adjustment.
+    const auto delta = State->FinishMetadataRebuildCounterTracking();
+    State->StartRebuildBlockCount(
+        State->ShouldUseBlobChannelDataKindForCounters()
+            ? delta.GetMixedIndexBlobsCount() + delta.GetMergedIndexBlobsCount()
+            : delta.GetMixedBlobsCount() + delta.GetMergedBlobsCount());
+
+    auto actorId = NCloud::Register(
+        ctx,
+        CreateMetadataRebuildBlockCountActor(
+            SelfId(),
+            args.BatchSize,
+            args.CommitId - 1,
+            State->GetMixedIndexBlocksCount() - delta.GetMixedIndexBlocksCount(),
+            State->GetMergedIndexBlocksCount() - delta.GetMergedIndexBlocksCount(),
+            State->GetMixedBlocksCount() - delta.GetMixedBlocksCount(),
+            State->GetMergedBlocksCount() - delta.GetMergedBlocksCount(),
+            State->GetMixedIndexBlobsCount() - delta.GetMixedIndexBlobsCount(),
+            State->GetMergedIndexBlobsCount() - delta.GetMergedIndexBlobsCount(),
+            State->GetMixedBlobsCount() - delta.GetMixedBlobsCount(),
+            State->GetMergedBlobsCount() - delta.GetMergedBlobsCount(),
+            Config->GetCompactionRetryTimeout()));
+    Actors.Insert(actorId);
 }
 
 void TPartitionActor::HandleMetadataRebuildCompleted(

@@ -767,6 +767,10 @@ private:
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
 
+    void StartMetadataRebuildBlockCount(
+        const NActors::TActorContext& ctx,
+        ui32 batchSize);
+
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,
         ui32 blobsPerBatch);

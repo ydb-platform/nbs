@@ -874,6 +874,8 @@ public:
 
 private:
     TMetadataRebuildState RebuildState;
+    ui64 MetadataRebuildCommitId = InvalidCommitId;
+    NProto::TPartitionStats MetadataRebuildCounterDelta;
 
 public:
     bool IsMetadataRebuildStarted() const
@@ -892,9 +894,56 @@ public:
             GetBlocksCount());
     }
 
-    void StartRebuildBlockCount()
+    void StartRebuildBlockCount(ui64 blobsOutsideScan = 0)
     {
-        RebuildState.StartRebuildBlockCount(GetTotalBlobsCount());
+        RebuildState.StartRebuildBlockCount(
+            GetTotalBlobsCount() - blobsOutsideScan);
+    }
+
+    void StartMetadataRebuildCounterTracking(ui64 commitId)
+    {
+        MetadataRebuildCommitId = commitId;
+        MetadataRebuildCounterDelta.Clear();
+    }
+
+    bool ShouldTrackMetadataRebuildCounters(ui64 commitId) const
+    {
+        return MetadataRebuildCommitId != InvalidCommitId &&
+               commitId > MetadataRebuildCommitId;
+    }
+
+    void TrackMetadataRebuildCounters(const NProto::TPartitionStats& before)
+    {
+        MetadataRebuildCounterDelta.SetMixedIndexBlocksCount(
+            MetadataRebuildCounterDelta.GetMixedIndexBlocksCount() +
+            GetMixedIndexBlocksCount() - before.GetMixedIndexBlocksCount());
+        MetadataRebuildCounterDelta.SetMergedIndexBlocksCount(
+            MetadataRebuildCounterDelta.GetMergedIndexBlocksCount() +
+            GetMergedIndexBlocksCount() - before.GetMergedIndexBlocksCount());
+        MetadataRebuildCounterDelta.SetMixedBlocksCount(
+            MetadataRebuildCounterDelta.GetMixedBlocksCount() +
+            GetMixedBlocksCount() - before.GetMixedBlocksCount());
+        MetadataRebuildCounterDelta.SetMergedBlocksCount(
+            MetadataRebuildCounterDelta.GetMergedBlocksCount() +
+            GetMergedBlocksCount() - before.GetMergedBlocksCount());
+        MetadataRebuildCounterDelta.SetMixedIndexBlobsCount(
+            MetadataRebuildCounterDelta.GetMixedIndexBlobsCount() +
+            GetMixedIndexBlobsCount() - before.GetMixedIndexBlobsCount());
+        MetadataRebuildCounterDelta.SetMergedIndexBlobsCount(
+            MetadataRebuildCounterDelta.GetMergedIndexBlobsCount() +
+            GetMergedIndexBlobsCount() - before.GetMergedIndexBlobsCount());
+        MetadataRebuildCounterDelta.SetMixedBlobsCount(
+            MetadataRebuildCounterDelta.GetMixedBlobsCount() +
+            GetMixedBlobsCount() - before.GetMixedBlobsCount());
+        MetadataRebuildCounterDelta.SetMergedBlobsCount(
+            MetadataRebuildCounterDelta.GetMergedBlobsCount() +
+            GetMergedBlobsCount() - before.GetMergedBlobsCount());
+    }
+
+    NProto::TPartitionStats FinishMetadataRebuildCounterTracking()
+    {
+        MetadataRebuildCommitId = InvalidCommitId;
+        return std::move(MetadataRebuildCounterDelta);
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const
