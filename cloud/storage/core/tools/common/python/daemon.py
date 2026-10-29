@@ -203,6 +203,8 @@ class Daemon(object):
         self.__process = None
         self.__timer = None
         self.__step = 0
+        self.__closed = False
+        self.__last_returncode = None
         # Avoid repeating core and sanitizer checks during cleanup after __verify_process.
         self.__diagnostics_checked = False
 
@@ -210,51 +212,90 @@ class Daemon(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            if exc_type is not None:
+        if exc_type is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except BaseException:
+                logger.exception("Daemon cleanup or diagnostics failed")
+            if not isinstance(exc_value, DaemonError):
                 try:
-                    self.__cleanup_after_failure()
+                    logger.error("%s", self.failure(str(exc_value)))
                 except Exception:
-                    logger.exception("Daemon cleanup or diagnostics failed")
-                if not isinstance(exc_value, DaemonError):
-                    try:
-                        logger.error("%s", self.failure(str(exc_value)))
-                    except Exception:
-                        logger.exception("Could not read daemon failure details")
-        finally:
-            self.__files.close()
+                    logger.exception("Could not read daemon failure details")
         return False
 
-    def __cleanup_after_failure(self):
+    def close(self):
+        """Stop the owned process and close streams, preserving log files.
+
+        Disable further starts and restarts. Repeated calls are safe and retry
+        cleanup if the process survived a previous attempt. Cleanup errors are
+        raised to the caller; context exit preserves an existing exception.
+        Signal waits are bounded; lock acquisition and diagnostics are not.
+        """
         with self.__lock:
+            self.__closed = True
+            if self.__timer is not None:
+                self.__timer.cancel()
+                self.__timer = None
+            try:
+                self.__cleanup_process()
+            finally:
+                self.__files.close()
+
+    def detach(self):
+        """Return the yatest execution object, transferring ownership to the caller.
+
+        Requires a started, owned process, which may already have exited.
+        Disable restarts and close parent streams, preserving log files.
+        The caller assumes responsibility for stopping and waiting for the
+        execution. This Daemon can no longer start or manage a process.
+        """
+        with self.__lock:
+            if self.__closed or self.__process is None:
+                raise RuntimeError("Cannot detach a closed or unstarted daemon")
+            self.__closed = True
             if self.__timer is not None:
                 self.__timer.cancel()
                 self.__timer = None
             execution = self.__process
-            if execution is None:
-                return
+            self.__files.close()
+            self.__process = None
+            return execution
 
-            child = execution.process
-            for send_signal in (child.terminate, child.kill):
-                if child.poll() is not None:
+    # Should be guarded by self.__lock.
+    def __cleanup_process(self):
+        execution = self.__process
+        if execution is None:
+            return
+
+        child = execution.process
+        for send_signal in (child.terminate, child.kill):
+            if child.poll() is not None:
+                break
+            try:
+                send_signal()
+            except OSError:
+                if child.poll() is None:
+                    logger.exception("Could not signal daemon pid %s", child.pid)
+            deadline = time.monotonic() + self.__cleanup_timeout
+            while child.poll() is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     break
-                try:
-                    send_signal()
-                except OSError:
-                    if child.poll() is None:
-                        logger.exception("Could not signal daemon pid %s", child.pid)
-                deadline = time.monotonic() + self.__cleanup_timeout
-                while child.poll() is None:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break
-                    time.sleep(min(0.1, remaining))
+                time.sleep(min(0.1, remaining))
 
-            if child.poll() is None:
-                logger.error("Daemon pid %s is still running after SIGKILL; skipping wait", child.pid)
-            elif not self.__diagnostics_checked:
+        if child.poll() is None:
+            raise self.__make_error(
+                "Daemon pid {} is still running after SIGKILL; skipping wait".format(child.pid))
+        self.__last_returncode = child.returncode
+        try:
+            if not self.__diagnostics_checked:
                 self.__diagnostics_checked = True
                 execution.wait(check_exit_code=False)
+        finally:
+            self.__process = None
 
     def failure(self, message):
         with self.__lock:
@@ -262,8 +303,8 @@ class Daemon(object):
 
     # Should be guarded by self.__lock.
     def __make_error(self, message, exit_code=None):
-        if exit_code is None and self.__process is not None:
-            exit_code = self.__process.returncode
+        if exit_code is None:
+            exit_code = self.__process.returncode if self.__process is not None else self.__last_returncode
         return DaemonError(
             message,
             exit_code=exit_code,
@@ -289,6 +330,7 @@ class Daemon(object):
     # Should be guarded by self.__lock.
     def __start_process(self, command):
         logger.info("starting process {}".format(command))
+        self.__last_returncode = None
         self.__diagnostics_checked = False
         self.__process = common.execute(
             command=command,
@@ -386,7 +428,7 @@ class Daemon(object):
 
     def __restart(self):
         with self.__lock:
-            if self.__process is not None:
+            if not self.__closed and self.__process is not None:
                 logger.info("restart the process")
                 self.__kill_process()
                 self.__start()
@@ -395,11 +437,15 @@ class Daemon(object):
     def allow_restart(self):
         logger.info("allow restart")
         with self.__lock:
+            if self.__closed:
+                raise RuntimeError("Cannot restart a closed or detached daemon")
             self.__restart_allowed = True
             self.__schedule_restart()
 
     def start(self):
         with self.__lock:
+            if self.__closed:
+                raise RuntimeError("Cannot start a closed or detached daemon")
             if self.__process is not None:
                 return
 
@@ -407,6 +453,11 @@ class Daemon(object):
             self.__schedule_restart()
 
     def stop(self):
+        """Send SIGTERM to the child and wait for exit; allow a later start.
+
+        Waiting has no overall timeout. An already exited child is reported
+        as a DaemonError. Log streams remain open.
+        """
         with self.__lock:
             if self.__process is not None:
                 if self.__timer is not None:
@@ -416,6 +467,11 @@ class Daemon(object):
                 self.__terminate_process()
 
     def kill(self):
+        """Kill the process tree via yatest and collect exit diagnostics.
+
+        An already exited child is reported as a DaemonError. Log streams
+        remain open and a later start is allowed.
+        """
         with self.__lock:
             if self.__process is not None:
                 if self.__timer is not None:
@@ -436,7 +492,7 @@ class Daemon(object):
         with self.__lock:
             if self.__process:
                 return self.__process.returncode
-        return None
+            return self.__last_returncode
 
     @property
     def pid(self):

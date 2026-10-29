@@ -217,7 +217,7 @@ def test_shared_stdout_and_stderr_preserve_both_streams(tmp_path, monkeypatch, r
     assert daemon._Daemon__stderr_file.closed
 
 
-def test_context_closes_logs_and_keeps_successful_process(tmp_path):
+def test_context_closes_logs_and_stops_successful_process(tmp_path):
     stdout = tmp_path / "stdout"
     stderr = tmp_path / "stderr"
     daemon = Daemon(
@@ -226,9 +226,14 @@ def test_context_closes_logs_and_keeps_successful_process(tmp_path):
     try:
         with daemon:
             daemon.start()
-            pid = daemon.pid
-        assert daemon.is_alive()
-        assert daemon.pid == pid
+            process = daemon._Daemon__process
+        assert not daemon.is_alive()
+        assert process.process.poll() is not None
+        assert daemon.returncode == process.process.returncode
+        assert daemon._Daemon__process is None
+        daemon.stop()
+        daemon.kill()
+        daemon.close()
         assert daemon._Daemon__stdout_file.closed
         assert daemon._Daemon__stderr_file.closed
     finally:
@@ -237,6 +242,97 @@ def test_context_closes_logs_and_keeps_successful_process(tmp_path):
             process.process.kill()
         if process is not None:
             process.process.wait()
+
+
+def test_detach_transfers_execution_and_preserves_logs(tmp_path):
+    gate = tmp_path / "continue"
+    stdout = tmp_path / "stdout"
+    stderr = tmp_path / "stderr"
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c",
+                   "import os, sys, time\n"
+                   "while not os.path.exists(sys.argv[1]): time.sleep(0.01)\n"
+                   "os.write(1, b'output after detach\\n')\n"
+                   "os.write(2, b'error after detach\\n')\n", str(gate)]],
+        cwd=str(tmp_path), stdout_file=str(stdout), stderr_file=str(stderr))
+    execution = None
+    try:
+        with daemon:
+            daemon.start()
+            execution = daemon.detach()
+        assert execution.running
+        assert daemon._Daemon__stdout_file.closed
+        assert daemon._Daemon__stderr_file.closed
+        daemon.stop()
+        daemon.kill()
+        daemon.close()
+        gate.touch()
+        execution.wait(timeout=10)
+        assert execution.returncode == 0
+        assert stdout.read_text() == "output after detach\n"
+        assert stderr.read_text() == "error after detach\n"
+    finally:
+        if execution is not None:
+            if execution.running:
+                execution.process.kill()
+            execution.process.wait()
+        daemon.close()
+
+
+@pytest.mark.parametrize("action", ["close", "detach"])
+def test_terminal_state_blocks_pending_restart(tmp_path, monkeypatch, action):
+    timer_factory = mock.Mock()
+    monkeypatch.setattr(daemon_module.threading, "Timer", timer_factory)
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c", "import time; time.sleep(60)"]],
+        cwd=str(tmp_path), restart_allowed=True, restart_interval=1)
+    execution = None
+    try:
+        daemon.start()
+        execution = daemon._Daemon__process
+        callback = timer_factory.call_args.args[1]
+        getattr(daemon, action)()
+        timer_factory.return_value.cancel.assert_called_once_with()
+        timer_factory.return_value.join.assert_not_called()
+        start = mock.Mock(side_effect=AssertionError("unexpected restart"))
+        monkeypatch.setattr(daemon, "_Daemon__start", start)
+        callback()
+        start.assert_not_called()
+        with pytest.raises(RuntimeError, match="closed or detached"):
+            daemon.start()
+        with pytest.raises(RuntimeError, match="closed or detached"):
+            daemon.allow_restart()
+        with pytest.raises(RuntimeError, match="Cannot detach"):
+            daemon.detach()
+    finally:
+        if execution is not None:
+            if execution.running:
+                execution.process.kill()
+            execution.process.wait()
+        daemon.close()
+
+
+def test_detach_requires_started_process(tmp_path):
+    with Daemon(commands=[["unused"]], cwd=str(tmp_path)) as daemon:
+        with pytest.raises(RuntimeError, match="Cannot detach"):
+            daemon.detach()
+
+
+@pytest.mark.parametrize("method", ["stop", "kill"])
+def test_stop_and_kill_allow_starting_again(tmp_path, method):
+    daemon = Daemon(
+        commands=[[common.python_path(), "-c", "import time; time.sleep(60)"]],
+        cwd=str(tmp_path))
+    try:
+        daemon.start()
+        execution = daemon._Daemon__process
+        getattr(daemon, method)()
+        assert execution.process.poll() is not None
+        daemon.start()
+        assert daemon.is_alive()
+        assert daemon._Daemon__process is not execution
+    finally:
+        daemon.close()
 
 
 def test_context_without_start_closes_files_and_preserves_error(tmp_path):
@@ -330,7 +426,8 @@ def test_context_failure_stops_process_and_preserves_error(tmp_path, error_type)
             process.process.wait()
 
 
-def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog, monkeypatch):
+@pytest.mark.parametrize("context_error", [False, True])
+def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog, monkeypatch, context_error):
     clock = [0.0]
     signals = []
     child = mock.Mock()
@@ -348,14 +445,19 @@ def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog, monke
     monkeypatch.setattr(daemon_module, "time", SimpleNamespace(
         monotonic=lambda: clock[0], sleep=sleep))
     daemon._Daemon__process = execution
-    with pytest.raises(RuntimeError, match="original error"):
+    expected_error = RuntimeError if context_error else DaemonError
+    expected_message = "original error" if context_error else "still running after SIGKILL"
+    with pytest.raises(expected_error, match=expected_message):
         with daemon:
-            raise RuntimeError("original error")
+            if context_error:
+                raise RuntimeError("original error")
 
     assert signals == ["TERM", "KILL"]
     assert clock[0] == pytest.approx(2)
     execution.wait.assert_not_called()
-    assert "still running after SIGKILL" in caplog.text
+    assert daemon._Daemon__process is execution
+    if context_error:
+        assert "still running after SIGKILL" in caplog.text
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
