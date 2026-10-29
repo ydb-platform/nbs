@@ -339,26 +339,28 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
         {
             return promise.GetFuture();
         };
-        ui32 responses = 0;
+        env.ExecuteAction("cell-b", "action", TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT,
+                                 env.RecvAction()->Get()->GetStatus());
+        // Observe only replies arriving after the timeout was consumed.
+        ui32 lateResponses = 0;
         env.SetObserverFunc(
             [&](auto& event)
             {
                 if (event->GetTypeRewrite() ==
                     TEvCellProxy::EvExecuteActionResponse)
                 {
-                    ++responses;
+                    ++lateResponses;
+                    return TTestActorRuntimeBase::EEventAction::DROP;
                 }
                 return TTestActorRuntimeBase::DefaultObserverFunc(event);
             });
-        env.ExecuteAction("cell-b", "action", TDuration::MilliSeconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT,
-                                 env.RecvAction()->Get()->GetStatus());
         promise.SetValue(NProto::TExecuteActionResponse());
         env.Schedule(
             new IEventHandle(env.Sender, env.Sender, new TEvents::TEvWakeup()),
             TDuration::MilliSeconds(1));
         UNIT_ASSERT(env.GrabEdgeEventRethrow<TEvents::TEvWakeup>(env.Sender));
-        UNIT_ASSERT_VALUES_EQUAL(1, responses);
+        UNIT_ASSERT_VALUES_EQUAL(0, lateResponses);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsUntilInitialized)
@@ -553,17 +555,6 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             UNIT_ASSERT(request->GetHeaders().GetRequestTimeout() <= 5);
             return describePromise.GetFuture();
         };
-        ui32 responses = 0;
-        env.SetObserverFunc(
-            [&](auto& event)
-            {
-                if (event->GetTypeRewrite() ==
-                    TEvCellProxy::EvDescribeVolumeResponse)
-                {
-                    ++responses;
-                }
-                return TTestActorRuntimeBase::DefaultObserverFunc(event);
-            });
         env.Describe(1, "cell-b", "follower", TDuration::MilliSeconds(10));
         TDispatchOptions options;
         options.CustomFinalCondition = [&]
@@ -577,12 +568,25 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             std::make_shared<TConnection>(env.Service)));
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, env.Recv()->Get()->GetStatus());
         UNIT_ASSERT(described);
+        // Observe only replies arriving after the timeout was consumed.
+        ui32 lateResponses = 0;
+        env.SetObserverFunc(
+            [&](auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvCellProxy::EvDescribeVolumeResponse)
+                {
+                    ++lateResponses;
+                    return TTestActorRuntimeBase::EEventAction::DROP;
+                }
+                return TTestActorRuntimeBase::DefaultObserverFunc(event);
+            });
         describePromise.SetValue(NProto::TDescribeVolumeResponse());
         env.Schedule(
             new IEventHandle(env.Sender, env.Sender, new TEvents::TEvWakeup()),
             TDuration::MilliSeconds(1));
         UNIT_ASSERT(env.GrabEdgeEventRethrow<TEvents::TEvWakeup>(env.Sender));
-        UNIT_ASSERT_VALUES_EQUAL(1, responses);
+        UNIT_ASSERT_VALUES_EQUAL(0, lateResponses);
     }
 
     Y_UNIT_TEST(ShouldCorrelateConcurrentRequests)
