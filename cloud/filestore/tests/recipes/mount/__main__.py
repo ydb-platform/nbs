@@ -130,19 +130,17 @@ def collect_listings(listings):
                            listing.process.pid, log_path)
         else:
             logger.info("Mount listing exit code: %s; output: %s", exit_code, log_path)
-        try:
-            tail = extract_log_tail(log_path, max_lines=100, label="Mount listing")
-            logger.info("Mount listing (%s):\n%s", log_path,
-                        "\n".join(tail))
-        except OSError:
-            logger.exception("could not read mount listing output: %s", log_path)
+        tail = extract_log_tail(log_path, max_lines=100, label="Mount listing")
+        logger.info("Mount listing (%s):\n%s", log_path, "\n".join(tail))
 
 
 def stop_clients():
     if os.path.exists(PID_FILE_NAME):
         with open(PID_FILE_NAME) as f:
             for pid in f:
-                shutdown(int(pid.strip()))
+                pid = pid.strip()
+                if pid:
+                    shutdown(int(pid))
 
 
 if __name__ == "__main__":
