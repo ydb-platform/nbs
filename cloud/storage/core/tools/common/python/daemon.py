@@ -16,57 +16,47 @@ logger = logging.getLogger(__name__)
 _MAX_LOG_TAIL_BYTES = 64 * 1024
 
 
-def extract_log_tail(log_file, max_lines=0, label="Stderr"):
-    """Return at most max_lines log lines, excluding the label line from the limit."""
-    if max_lines <= 0 or log_file is None:
-        return []
+def extract_log(log_file, max_lines=0, label="Stderr", *, tail=False):
+    """Extract bounded log content with a label and optional truncation marker.
 
-    blocks = []
-    newline_count = 0
-    bytes_left = _MAX_LOG_TAIL_BYTES
-    try:
-        with open(log_file, 'rb') as log:
-            log.seek(0, os.SEEK_END)
-            position = log.tell()
-            while position > 0 and newline_count <= max_lines and bytes_left > 0:
-                size = min(position, 8192, bytes_left)
-                position -= size
-                bytes_left -= size
-                log.seek(position)
-                block = log.read(size)
-                blocks.append(block)
-                newline_count += block.count(b'\n')
-    except OSError as error:
-        return ["{} tail unavailable: {}".format(label, error)]
-
-    lines = b''.join(reversed(blocks)).splitlines()[-max_lines:]
-    header = ["{} tail:".format(label), ""]
-    if position > 0 and bytes_left == 0 and newline_count <= max_lines:
-        header.append("[truncated to the last {} KiB; first line may be incomplete]".format(
-            _MAX_LOG_TAIL_BYTES // 1024))
-    return header + [line.decode('utf-8', errors='replace') for line in lines]
-
-
-def extract_log_head(log_file, max_lines=0, label="Stderr"):
-    """Return at most max_lines log lines from the first 64 KiB of a file."""
+    Args:
+        log_file: Path to the log file; None disables extraction.
+        max_lines: Maximum number of log lines; nonpositive values disable extraction.
+        label: Name used in the header and read error messages.
+        tail: Read the last 64 KiB and lines instead of the first.
+    """
     if max_lines <= 0 or log_file is None:
         return []
 
     try:
         with open(log_file, 'rb') as log:
             file_size = log.seek(0, os.SEEK_END)
-            log.seek(0)
+            start = max(0, file_size - _MAX_LOG_TAIL_BYTES) if tail else 0
+            log.seek(start)
             data = log.read(_MAX_LOG_TAIL_BYTES)
     except OSError as error:
-        return ["{} unavailable: {}".format(label, error)]
+        return ["{}{} unavailable: {}".format(label, " tail" if tail else "", error)]
 
     lines = data.splitlines()
-    details = ["{} content:".format(label), ""]
-    details.extend(line.decode('utf-8', errors='replace').strip() for line in lines[:max_lines])
-    if file_size > len(data) and len(lines) <= max_lines:
-        details.append("[truncated to the first {} KiB; last line may be incomplete]".format(
-            _MAX_LOG_TAIL_BYTES // 1024))
-    return details
+    selected = lines[-max_lines:] if tail else lines[:max_lines]
+    content = [line.decode('utf-8', errors='replace') for line in selected]
+    truncated = start > 0 if tail else file_size > len(data)
+    if truncated and len(lines) <= max_lines:
+        marker = "[truncated to the {} {} KiB; {} line may be incomplete]".format(
+            "last" if tail else "first", _MAX_LOG_TAIL_BYTES // 1024,
+            "first" if tail else "last")
+        content.insert(0 if tail else len(content), marker)
+    return ["{} {}:".format(label, "tail" if tail else "content"), ""] + content
+
+
+def extract_log_tail(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines from the last 64 KiB of a file."""
+    return extract_log(log_file, max_lines, label, tail=True)
+
+
+def extract_log_head(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines from the first 64 KiB of a file."""
+    return extract_log(log_file, max_lines, label, tail=False)
 
 
 def _log_process_threads(pid):
@@ -156,8 +146,7 @@ class DaemonError(RuntimeError):
         if stderr is not None:
             message += "\nStderr file name: \n{}".format(stderr)
         if max_stderr_lines > 0 and stderr is not None:
-            details = (extract_log_tail if stderr_tail else extract_log_head)(
-                stderr, max_stderr_lines)
+            details = extract_log(stderr, max_stderr_lines, tail=stderr_tail)
             if details:
                 message += "\n" + "\n".join(details)
         super(DaemonError, self).__init__(message)
@@ -214,6 +203,7 @@ class Daemon(object):
         self.__process = None
         self.__timer = None
         self.__step = 0
+        # Avoid repeating core and sanitizer checks during cleanup after __verify_process.
         self.__diagnostics_checked = False
 
     def __enter__(self):
