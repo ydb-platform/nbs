@@ -457,6 +457,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             const ui64 expectedTotal = 8;
             UNIT_ASSERT_VALUES_EQUAL(expectedTotal, state.GetTotalBlobsCount());
             state.StartRebuildBlockCount();
+            UNIT_ASSERT(state.IsMetadataRebuildStarted());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMetadataRebuildProgress().Total);
+            state.SetRebuildBlockCountTotal();
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedTotal,
                 state.GetMetadataRebuildProgress().Total);
