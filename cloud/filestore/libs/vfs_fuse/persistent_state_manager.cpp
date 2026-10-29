@@ -96,7 +96,7 @@ public:
     {
         const TStateFile unknownFile{.Size = size, .Acquired = false};
         auto it = StateFiles[dir].insert({fileName, unknownFile}).first;
-        it->second.Acquired = false;
+        Y_DEBUG_ABORT_UNLESS(!it->second.Acquired);
     }
 
     // Marks a registered file acquired and reserves its target size.
@@ -151,16 +151,27 @@ public:
         return true;
     }
 
-    // The total size of the state files of the component.
-    ui64 GetTotalSize(const TString& fileName) const
+    // Whether another state file fits within the component's total size limit.
+    bool FitsInTotalSizeLimit(
+        const TString& fileName,
+        ui64 stateFileSize,
+        ui64 totalSizeLimit) const
     {
-        ui64 totalSize = 0;
+        if (stateFileSize > totalSizeLimit) {
+            return false;
+        }
+
+        // Subtract from the remaining budget to avoid overflowing a size sum.
+        ui64 remainingSize = totalSizeLimit - stateFileSize;
         for (const auto& [dir, dirFiles]: StateFiles) {
             if (const auto* file = dirFiles.FindPtr(fileName)) {
-                totalSize += file->Size;
+                if (file->Size > remainingSize) {
+                    return false;
+                }
+                remainingSize -= file->Size;
             }
         }
-        return totalSize;
+        return true;
     }
 };
 
@@ -688,13 +699,17 @@ TPersistentStateManager::AcquireStateFile(
         ReportPersistentStateFileRequestedSizeTooSmall(message);
 
         if (isNew) {
-            return MakeError(E_ARGUMENT, message);
+            // State file is not created because of invalid size
+            // Reporting a critical event but not returning an error is enough
+            return TAcquireStateFileGuard();
         }
     }
 
     if (isNew && component.TotalSizeLimit &&
-        Registry.GetTotalSize(fileName) + stateFileSize >
-            component.TotalSizeLimit)
+        !Registry.FitsInTotalSizeLimit(
+            fileName,
+            stateFileSize,
+            component.TotalSizeLimit))
     {
         // State file is not created: the total file size limit has been
         // reached.
@@ -755,7 +770,7 @@ TPersistentStateManager::AcquireStateFile(
         if (sizeBelowMinimum) {
             // Ignore the requested size
             const i64 currentSize = lock->GetLength();
-            if (currentSize <= 0) {
+            if (currentSize < 0) {
                 return MakeError(
                     E_INVALID_STATE,
                     TStringBuilder() << "Invalid current size of state file "

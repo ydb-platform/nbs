@@ -12,6 +12,7 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/ylimits.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
 #include <util/system/fstat.h>
@@ -987,6 +988,45 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             StateFileSize);
         UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
         UNIT_ASSERT(third.GetResult());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotOverflowTotalSizeLimit, TFixture)
+    {
+        auto manager = CreateManager(2 * WriteBackCacheStateFileSize);
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                WriteBackCacheStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        // Adding the requested size to the total must not wrap.
+        auto result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            Max<ui64>());
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-3").Exists());
+
+        // Existing files reserve their target without resizing the file.
+        // Summing these reservations must not wrap either.
+        auto existing = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-1",
+            Max<ui64>());
+        UNIT_ASSERT_C(!HasError(existing), existing.GetError().GetMessage());
+        UNIT_ASSERT(existing.GetResult());
+
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            WriteBackCacheStateFileSize);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-3").Exists());
     }
 
     Y_UNIT_TEST_F(ShouldAccountExplicitWriteBackCacheStateFileSize, TFixture)
