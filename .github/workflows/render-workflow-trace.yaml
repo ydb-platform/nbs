@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   render:
-    name: Render workflow and ya traces
+    name: Render workflow trace
     runs-on: [self-hosted, runner_light]
     timeout-minutes: 15
     env:
@@ -101,7 +101,7 @@ jobs:
           {
               echo "### Workflow execution trace"
               echo
-              echo "[Open the workflow/job/step/ya trace]($TRACE_REPORT_URL)"
+              echo "[Open the workflow trace]($TRACE_REPORT_URL)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep trace as a GitHub artifact

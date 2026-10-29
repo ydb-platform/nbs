@@ -755,20 +755,33 @@ bash .github/scripts/tracing/render_ya_trace_bundle.sh \
   --operation tests
 ```
 
-## Workflow-level merging
+## Workflow overview and execution links
 
 Ya conversion produces one trace bundle per build/test invocation.
 [`workflow_trace_report.py`](workflow_trace_report.py) can later fetch the
-completed GitHub run's jobs and raw ya OTLP bundles. It creates workflow queue,
-job queue, job, and step spans, rewrites imported ya span IDs into the workflow
-trace ID, and attaches each imported root to the smallest containing/overlapping
-job. This step consumes OTLP; it does not reparse ya trace files.
+completed GitHub run's jobs and small ya bundle manifests. It creates workflow
+queue, job queue, job, and step spans in `workflow-trace.*`. Each job row links
+to its separate build/test execution reports. The workflow report never reads
+ya OTLP or rewrites ya trace IDs.
+
+Ya manifests record `github.runner.name` from `RUNNER_NAME`, along with the
+repository, run ID, and run attempt. A link is attached only when these match
+and the runner identifies exactly one job; missing or ambiguous identities are
+skipped, without guessing from timestamps. URLs point to `trace.html` beside
+each manifest. `ci.trace.report.<index>.name` and `.url` job attributes preserve
+these links in the workflow OTLP as well as the HTML.
+
+Manifest discovery is optional and bounded. Missing, malformed, or oversized
+manifests are skipped, and S3 failures leave the GitHub workflow report usable.
+Build presets and architectures have separate `variants/<variant>/` directories
+under the run's report prefix, preventing matrix jobs from overwriting reports.
 
 For the first attempt, the workflow root retains GitHub's creation-to-update
 interval and its queue span. For reruns, `created_at` still refers to the
 original attempt and is ignored. The root instead begins at the earliest usable
-current `run_started_at` or job timestamp, then an imported-span timestamp; if
-none is usable, it deterministically falls back to `updated_at`.
+current `run_started_at` or job timestamp. A first attempt missing both workflow
+start timestamps also uses job timing. If no start evidence is usable, either
+attempt deterministically falls back to `updated_at`.
 
 GitHub `success` conclusions map to OTLP `OK`. Failure-like conclusions,
 including `stale`, map to `ERROR`; neutral and skipped conclusions remain
@@ -799,6 +812,7 @@ including `stale`, map to `ERROR`; neutral and skipped conclusions remain
 | [`trace_report.py`](trace_report.py) | Static HTML model/rendering and bundle output |
 | [`render_ya_trace_bundle.sh`](render_ya_trace_bundle.sh) | Shared nonblocking CI wrapper |
 | [`pack_ya_trace_inputs.sh`](pack_ya_trace_inputs.sh) | Literal-path raw-input tar archive |
-| [`workflow_trace.py`](workflow_trace.py) | Workflow, queue, job, step, and imported-span projection |
-| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub/S3 input loading and combined workflow bundle CLI |
+| [`workflow_trace.py`](workflow_trace.py) | Workflow, queue, job, and step projection with report links |
+| [`workflow_trace_links.py`](workflow_trace_links.py) | Bounded manifest discovery and explicit runner matching |
+| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub workflow bundle CLI with optional execution links |
 | [`render-workflow-trace.yaml`](../../workflows/render-workflow-trace.yaml) | Trusted post-workflow rendering and upload |

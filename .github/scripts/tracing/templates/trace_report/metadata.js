@@ -14,6 +14,20 @@ function linkableHttpUrl(value) {
   }
 }
 
+function reportLinksForSpan(span) {
+  const attributes = span[ATTRS];
+  return Object.keys(attributes)
+    .filter((key) => /^ci\.trace\.report\.\d+\.url$/.test(key))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+    .flatMap((key) => {
+      const url = linkableHttpUrl(attributes[key]);
+      const name = attributes[key.replace(/\.url$/, ".name")];
+      return url && typeof name === "string" && name
+        ? [{ name, url }]
+        : [];
+    });
+}
+
 function safeHttpUrlPrefix(value) {
   const link = linkableHttpUrl(value);
   if (link === null) return null;

@@ -2,6 +2,32 @@
 
 require("../trace_report_js_testing.js");
 
+function testWorkflowReportLinksAreNamedOrderedAndSafe() {
+  const span = makeSpan({
+    id: "job",
+    name: "job: tests",
+    attributes: {
+      "ci.trace.report.10.name": "Tests — attempt 10",
+      "ci.trace.report.10.url": "https://reports.example/10/trace.html",
+      "ci.trace.report.2.name": "Tests — attempt 2",
+      "ci.trace.report.2.url": "https://reports.example/2/trace.html",
+      "ci.trace.report.0.name": "Build trace",
+      "ci.trace.report.0.url": "https://reports.example/build/trace.html",
+      "ci.trace.report.3.name": "Invalid link",
+      "ci.trace.report.3.url": "javascript:alert(1)",
+      "ci.trace.report.4.url": "https://reports.example/unnamed",
+    },
+  });
+  assert.deepStrictEqual(reportLinksForSpan(span), [
+    { name: "Build trace", url: "https://reports.example/build/trace.html" },
+    { name: "Tests — attempt 2", url: "https://reports.example/2/trace.html" },
+    { name: "Tests — attempt 10", url: "https://reports.example/10/trace.html" },
+  ]);
+  assert.deepStrictEqual(reportLinksForSpan(makeSpan({ id: "test", name: "test" })), []);
+}
+
+testWorkflowReportLinksAreNamedOrderedAndSafe();
+
 function testMetadataDetailsAreInsertedLocallyAndToggleExclusively() {
   const rows = [
     { kind: "span", index: 10, depth: 1 },
