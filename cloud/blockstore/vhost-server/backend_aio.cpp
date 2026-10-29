@@ -36,13 +36,17 @@ void CompleteRequestImpl(
     TAtomicStats& stats)
 {
     auto* bio = vhd_get_bdev_io(req->Io);
-    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+    const ui64 bytes = static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
 
     auto& requestStat = stats.Requests[bio->type];
     requestStat.Errors += status != VHD_BDEV_SUCCESS;
     requestStat.Count += status == VHD_BDEV_SUCCESS;
     requestStat.Bytes += bytes;
     requestStat.Unaligned += req->Unaligned;
+
+    if (status == VHD_BDEV_SUCCESS) {
+        requestStat.AddIoSize(bytes);
+    }
 
     if (req->BufferAllocated || encryptor) {
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {

@@ -73,7 +73,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ui64 responseSent) override
+        ui64 responseSent,
+        std::optional<ui64> logicalRequestBytes = std::nullopt) override
     {
         Y_UNUSED(requestType);
         Y_UNUSED(requestStarted);
@@ -85,6 +86,7 @@ public:
         Y_UNUSED(errorFlags);
         Y_UNUSED(unaligned);
         Y_UNUSED(responseSent);
+        Y_UNUSED(logicalRequestBytes);
         return TDuration::Zero();
     }
 
