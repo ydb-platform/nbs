@@ -75,4 +75,7 @@ message TSessionConfig
     optional string ClientId = 2;
 
     optional uint32 SessionPingTimeout = 3;
+
+    // Restore an existing session by client id on initial creation.
+    optional bool RestoreSession = 4;
 }

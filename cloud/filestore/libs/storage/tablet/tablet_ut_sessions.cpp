@@ -1184,7 +1184,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.DestroySession(1);
         tablet.RebootTablet();
 
-        tablet.InitSession("client", "session2");
+        tablet.InitSession("client2", "session2");
         handle1 = CreateHandle(tablet, id1);
         auto response = tablet.AssertAcquireLockFailed(handle1, 2, 0, 4_KB);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
@@ -1192,7 +1192,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.InitSession("client", "session", {}, 2);
         tablet.DestroySession(2);
 
-        tablet.InitSession("client", "session2");
+        tablet.InitSession("client2", "session2");
         handle1 = CreateHandle(tablet, id1);
         tablet.AcquireLock(handle1, 2, 0, 4_KB);
     }
@@ -1221,7 +1221,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.ResetSession("client", "session", 1, "");
         tablet.RebootTablet();
 
-        tablet.InitSession("client", "session2");
+        tablet.InitSession("client2", "session2");
         handle1 = CreateHandle(tablet, id1);
         auto response = tablet.AssertAcquireLockFailed(handle1, 2, 0, 4_KB);
         UNIT_ASSERT_VALUES_EQUAL(response->GetError().GetCode(), E_FS_WOULDBLOCK);
@@ -1229,7 +1229,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.InitSession("client", "session", {}, 2);
         tablet.ResetSession("client", "session", 2, "");
 
-        tablet.InitSession("client", "session2");
+        tablet.InitSession("client2", "session2");
         tablet.AcquireLock(handle1, 2, 0, 4_KB);
     }
 

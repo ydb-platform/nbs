@@ -406,6 +406,11 @@ TFileStoreCommand::TFileStoreCommand(bool isClientIdRequired)
         opt.DefaultValue(CreateGuidAsString());
     }
 
+    Opts.AddLongOption("restore-session")
+        .Help("restore an existing session for the specified client id")
+        .NoArgument()
+        .SetFlag(&RestoreSession);
+
     Opts.AddLongOption("disable-multitablet-forwarding")
         .NoArgument()
         .SetFlag(&DisableMultiTabletForwarding);
@@ -430,6 +435,7 @@ TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateCustomSession(
     NProto::TSessionConfig protoConfig;
     protoConfig.SetFileSystemId(std::move(fsId));
     protoConfig.SetClientId(std::move(clientId));
+    protoConfig.SetRestoreSession(RestoreSession);
     auto config = std::make_shared<TSessionConfig>(protoConfig);
     auto session =
         NClient::CreateSession(Logging, Timer, Scheduler, Client, config);
