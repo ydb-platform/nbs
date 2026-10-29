@@ -129,11 +129,11 @@ class FilestoreCliClient:
                 self.__timeout)
             if not mount.is_alive():
                 raise mount.failure(
-                    "failed to mount {} at {}: client exited while waiting for mount".format(fs, path))
+                    "failed to mount {} at {}: client pid {} exited while waiting for mount".format(fs, path, pid))
             if not ready:
                 raise mount.failure(
-                    "failed to mount {} at {}: mount was not ready in {} seconds".format(
-                        fs, path, self.__timeout))
+                    "failed to mount {} at {}: mount was not ready in {} seconds (client pid {})".format(
+                        fs, path, self.__timeout, pid))
             return mount.detach().process.pid
 
     def resize(
