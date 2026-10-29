@@ -67,6 +67,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
     xxx(LoadMixedBlocksFilterChunk, __VA_ARGS__)                               \
+    xxx(StartMetadataRebuild,       __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -564,6 +565,20 @@ struct TTxPartition
             std::fill(BlockInfos.begin(), BlockInfos.end(), TBlockInfo());
             FilledBlockCount = 0;
         }
+    };
+
+    struct TStartMetadataRebuild
+    {
+        const ui64 CommitId;
+        const ui32 BatchSize;
+
+        TStartMetadataRebuild(ui64 commitId, ui32 batchSize)
+            : CommitId(commitId)
+            , BatchSize(batchSize)
+        {}
+
+        void Clear()
+        {}
     };
 
     //
