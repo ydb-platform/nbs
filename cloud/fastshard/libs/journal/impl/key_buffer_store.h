@@ -57,6 +57,7 @@ IKeyBufferStorePtr CreateDeviceKeyBufferStore(
     ILoggingServicePtr logging,
     IDevicePtr device,
     ui64 pageCount,
-    ui32 pageSize);
+    ui32 pageSize,
+    ui32 minKeyBufferSize);
 
 }   // namespace NCloud::NJournalled

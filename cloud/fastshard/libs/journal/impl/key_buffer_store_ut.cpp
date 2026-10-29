@@ -23,6 +23,13 @@ constexpr ui32 TestPageSize = 72;
 constexpr ui32 TestEntryCapacity = 24;
 constexpr ui32 TestMetaCapacity = 32;
 constexpr ui64 TestPageCount = 8;   // 2 superblock slots and 6 entry pages
+constexpr ui32 TestMinBufferSize = 16;
+
+// a page several entries share: 24 bytes of page header and 27 bytes per entry
+// of a 3-byte payload, the 7th entry leaves less than the 40 bytes of the
+// smallest entry
+constexpr ui32 TestWidePageSize = 200;
+constexpr ui64 TestWidePageEntryCount = 6;
 
 TBuffer MakeBuffer(TStringBuf data)
 {
@@ -116,21 +123,24 @@ ILoggingServicePtr TestLogging()
 
 IKeyBufferStorePtr CreateTestStore(
     const IDevicePtr& device,
-    ui64 pageCount = TestPageCount)
+    ui64 pageCount = TestPageCount,
+    ui32 pageSize = TestPageSize)
 {
     return CreateDeviceKeyBufferStore(
         TestLogging(),
         device,
         pageCount,
-        TestPageSize);
+        pageSize,
+        TestMinBufferSize);
 }
 
 // a store instance restored from the device
 IKeyBufferStorePtr OpenTestStore(
     const IDevicePtr& device,
-    ui64 pageCount = TestPageCount)
+    ui64 pageCount = TestPageCount,
+    ui32 pageSize = TestPageSize)
 {
-    auto store = CreateTestStore(device, pageCount);
+    auto store = CreateTestStore(device, pageCount, pageSize);
     Restore(store);
     return store;
 }
@@ -138,9 +148,10 @@ IKeyBufferStorePtr OpenTestStore(
 // what a fresh store instance restores from the device
 TKeyBuffers Reopen(
     const IDevicePtr& device,
-    ui64 pageCount = TestPageCount)
+    ui64 pageCount = TestPageCount,
+    ui32 pageSize = TestPageSize)
 {
-    return Restore(CreateTestStore(device, pageCount));
+    return Restore(CreateTestStore(device, pageCount, pageSize));
 }
 
 TString ReadFromDevice(const IDevicePtr& device, ui64 pageNo)
@@ -169,15 +180,18 @@ void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
 }
 
 // the entry page holding |payload|, which the store picks on its own
-ui64 FindDevicePage(const IDevicePtr& device, TStringBuf payload)
+ui64 FindDevicePage(
+    const IDevicePtr& device,
+    TStringBuf payload,
+    ui64 pageCount = TestPageCount)
 {
-    for (ui64 pageNo = 0; pageNo < TestPageCount; ++pageNo) {
+    for (ui64 pageNo = 0; pageNo < pageCount; ++pageNo) {
         if (ReadFromDevice(device, pageNo).Contains(payload)) {
             return pageNo;
         }
     }
     UNIT_FAIL("no page holds " << payload);
-    return TestPageCount;
+    return pageCount;
 }
 
 // flips a byte of the page - by default the first payload byte of an entry
@@ -621,21 +635,117 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1=third", Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldFreePagesOfOverwrittenCopy)
+    Y_UNIT_TEST(ShouldHoldPagesOfOverwrittenCopiesUntilErased)
     {
         auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
 
-        for (int i = 0; i < 20; ++i) {
-            // a page each time, 6 in the store - the old copy must go
+        // a page each time, 6 in the store - the old copies stay behind
+        for (int i = 0; i < 6; ++i) {
             const auto fill = static_cast<char>('a' + i);
             Write(store, 1, TString(TestEntryCapacity, fill));
         }
 
+        auto error = store->Write(1, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+
         auto buffers = Reopen(device);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1=" + TString(TestEntryCapacity, 't'),
+            "1=" + TString(TestEntryCapacity, 'f'),
             Describe(buffers));
+
+        // the erase releases every copy
+        auto code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+
+        for (ui64 key = 2; key <= 7; ++key) {
+            Write(store, key, "x");
+        }
+
+        buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("2=x|3=x|4=x|5=x|6=x|7=x", Describe(buffers));
+    }
+
+    Y_UNIT_TEST(ShouldPackSeveralEntriesIntoPage)
+    {
+        // 2 superblock slots and 3 entry pages - an append copies the page
+        // into a free one, so the store needs a free page beside the two in
+        // use
+        constexpr ui64 pageCount = 5;
+
+        auto device = CreateInMemoryDevice(TestWidePageSize);
+        auto store = OpenTestStore(device, pageCount, TestWidePageSize);
+
+        // 6 entries fill the first page, 6 more the second, the 13th starts
+        // the third - every append copies the entries written so far, which
+        // must come out intact
+        TStringBuilder expected;
+        for (ui64 key = 1; key <= 2 * TestWidePageEntryCount + 1; ++key) {
+            const TString payload(3, static_cast<char>('a' + key));
+            Write(store, key, payload);
+
+            if (expected) {
+                expected << "|";
+            }
+            expected << key << "=" << payload;
+        }
+
+        // the third page has room, but no free page is left to append into
+        auto error = store->Write(100, MakeBuffer("xyz")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+
+        auto buffers = Reopen(device, pageCount, TestWidePageSize);
+        UNIT_ASSERT_VALUES_EQUAL(expected, Describe(buffers));
+    }
+
+    Y_UNIT_TEST(ShouldDropErasedEntriesFromAppendablePage)
+    {
+        constexpr ui64 pageCount = 5;
+
+        auto device = CreateInMemoryDevice(TestWidePageSize);
+        auto store = OpenTestStore(device, pageCount, TestWidePageSize);
+
+        Write(store, 1, "aaa");
+        Write(store, 2, "bbb");
+        Write(store, 3, "ccc");
+
+        auto code = EraseBelow(store, 3);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+
+        // the page straddles the bound, so it stays - the next append leaves
+        // the erased entries behind
+        Write(store, 4, "ddd");
+
+        const auto page =
+            ReadFromDevice(device, FindDevicePage(device, "ddd", pageCount));
+        UNIT_ASSERT(page.Contains("ccc"));
+        UNIT_ASSERT(!page.Contains("aaa"));
+        UNIT_ASSERT(!page.Contains("bbb"));
+
+        auto buffers = Reopen(device, pageCount, TestWidePageSize);
+        UNIT_ASSERT_VALUES_EQUAL("3=ccc|4=ddd", Describe(buffers));
+    }
+
+    Y_UNIT_TEST(ShouldKeepNewestCopyOfKeyRewrittenWithinPage)
+    {
+        constexpr ui64 pageCount = 5;
+
+        auto device = CreateInMemoryDevice(TestWidePageSize);
+        auto store = OpenTestStore(device, pageCount, TestWidePageSize);
+
+        Write(store, 1, "aaa");
+        Write(store, 2, "bbb");
+        Write(store, 1, "AAA");
+
+        // the rewrite appends to the page - the old copy stays in it until
+        // an erase takes it out
+        const auto page =
+            ReadFromDevice(device, FindDevicePage(device, "AAA", pageCount));
+        UNIT_ASSERT(page.Contains("aaa"));
+        UNIT_ASSERT(page.Contains("bbb"));
+
+        auto buffers = Reopen(device, pageCount, TestWidePageSize);
+        UNIT_ASSERT_VALUES_EQUAL("1=AAA|2=bbb", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldDropTornBuffer)

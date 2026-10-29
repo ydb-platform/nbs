@@ -1,6 +1,5 @@
 #include "key_buffer_store.h"
 
-#include "device_page_store.h"
 #include "key_buffer_store_format.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
@@ -8,11 +7,13 @@
 #include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
 
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -24,6 +25,16 @@ namespace NCloud::NJournalled {
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 InvalidPageNo = Max<ui64>();
+constexpr ui64 SuperblockSlotCount = 2;
+
+TStringBuf AsStringBuf(const TBuffer& buffer)
+{
+    return {buffer.Data(), buffer.Size()};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -94,7 +105,340 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 SuperblockSlotCount = 2;
+struct TAppendablePage
+{
+    ui64 PageNo = InvalidPageNo;
+    TVector<TEntry> Entries;
+    TBuffer PageBuffer;
+
+    ui32 DataSize = 0;  // useful data size
+    ui64 MaxKey = 0;
+    ui64 MinKey = Max<ui64>();
+};
+
+using TAppendablePagePtr = std::shared_ptr<TAppendablePage>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IPageManager
+{
+    virtual ~IPageManager() = default;
+
+    virtual void AddEmptyPage(ui64 pageNo) = 0;
+    virtual ui64 PopEmptyPage() = 0;
+
+    virtual void AddAppendablePage(TAppendablePagePtr page) = 0;
+    virtual TAppendablePagePtr PopAppendablePage(ui64 size) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteController
+{
+private:
+    IPageManager& PageManager;
+    const TEntry NewEntry;
+    const TBuffer Buffer;
+    const ui32 PageSize;
+
+    TAppendablePagePtr OldPage;
+    TAppendablePage NewPage;
+
+    bool Written = false;
+
+public:
+    TWriteController(
+        IPageManager& pageManager,
+        TEntry entry,
+        TBuffer buffer,
+        ui32 pageSize)
+        : PageManager(pageManager)
+        , NewEntry(std::move(entry))
+        , Buffer(std::move(buffer))
+        , PageSize(pageSize)
+    {}
+
+    ~TWriteController()
+    {
+        if (Written) {
+            if (OldPage) {
+                PageManager.AddEmptyPage(OldPage->PageNo);
+            }
+
+            PageManager.AddAppendablePage(
+                std::make_shared<TAppendablePage>(std::move(NewPage)));
+        } else {
+            PageManager.AddEmptyPage(NewPage.PageNo);
+            PageManager.AddAppendablePage(std::move(OldPage));
+        }
+    }
+
+    TResultOrError<TPageRange> GeneratePageRange()
+    {
+        NewPage.PageNo = PageManager.PopEmptyPage();
+        if (NewPage.PageNo == InvalidPageNo) {
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Not enough free pages to store " << NewEntry.Data.size()
+                    << " bytes under key " << NewEntry.Key);
+        }
+
+        NewPage.Entries.clear();
+        NewPage.MaxKey = NewEntry.Key;
+        NewPage.MinKey = NewEntry.Key;
+
+        OldPage = PageManager.PopAppendablePage(NewEntry.Data.size());
+        if (OldPage) {
+            NewPage.Entries = OldPage->Entries;
+            NewPage.MaxKey = Max(NewPage.MaxKey, OldPage->MaxKey);
+            NewPage.MinKey = Min(NewPage.MinKey, OldPage->MinKey);
+        }
+
+        NewPage.Entries.push_back(NewEntry);
+
+        auto error = MakePageBuffer(
+            PageSize,
+            NewPage.Entries,
+            &NewPage.PageBuffer,
+            &NewPage.DataSize);
+
+        if (HasError(error)) {
+            return error;
+        }
+
+        TPageRange pageRange;
+        pageRange.FirstPageNo = NewPage.PageNo;
+        pageRange.Pages.push_back(NewPage.PageBuffer);
+        return pageRange;
+    }
+
+    ui64 Key() const
+    {
+        return NewEntry.Key;
+    }
+
+    void SetAsWritten()
+    {
+        Written = true;
+    }
+};
+
+using TWriteControllerPtr = std::shared_ptr<TWriteController>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPageManager: private IPageManager
+{
+private:
+    static constexpr size_t MaxAppendablePageCount = 128;
+
+    const ui32 PageSize;
+    const ui32 MinEntrySize;
+
+    std::mutex Lock;
+
+    // everything below is guarded by Lock
+    ui64 ErasedBelowKey = 0;
+    TDeque<ui64 /* pageNo */> EmptyPages;
+    TMultiMap<ui64 /* availableSize */, TAppendablePagePtr> AppendablePages;
+    TMultiMap<ui64 /* maxKey */, ui64 /* pageNo */> FullPages;
+
+public:
+    TPageManager(ui32 pageSize, ui32 minKeyBufferSize)
+        : PageSize(pageSize)
+        , MinEntrySize(GetSerializedEntrySize(minKeyBufferSize))
+    {}
+
+    void Init(
+        ui64 firstPage,
+        ui64 pageCount,
+        ui64 erasedBelowKey,
+        THashMap<ui64 /* pageNo */, TVector<TEntry>> pageEntries,
+        TVector<TBuffer> pages)
+    {
+        {
+            std::lock_guard lock(Lock);
+            ErasedBelowKey = erasedBelowKey;
+        }
+
+        for (ui64 i = 0; i < pageCount; ++i) {
+            ui64 pageNo = firstPage + i;
+            if (pageEntries.contains(pageNo)) {
+                continue;
+            }
+
+            AddEmptyPage(pageNo);
+        }
+
+        for (auto& [pageNo, entries]: pageEntries) {
+            auto appendablePage = std::make_shared<TAppendablePage>();
+            appendablePage->PageNo = pageNo;
+            appendablePage->Entries = std::move(entries);
+            appendablePage->PageBuffer = std::move(pages[pageNo]);
+
+            RefreshPage(*appendablePage, erasedBelowKey);
+            AddAppendablePage(std::move(appendablePage));
+        }
+    }
+
+    TWriteControllerPtr CreateWriteController(TEntry entry, TBuffer buffer)
+    {
+        return std::make_shared<TWriteController>(
+            static_cast<IPageManager&>(*this),
+            std::move(entry),
+            std::move(buffer),
+            PageSize);
+    }
+
+    void EraseBelowKey(ui64 key)
+    {
+        // Drop the entries below the bound from the appendable pages that
+        // straddle it - a walk over their entries, which frees their room.
+        static constexpr bool FilterPages = true;
+
+        TVector<TAppendablePagePtr> dirtyPages;
+        DoEraseBelowKey(key, FilterPages ? &dirtyPages : nullptr);
+
+        for (auto& page: dirtyPages) {
+            RefreshPage(*page, key);
+            AddAppendablePage(std::move(page));
+        }
+    }
+
+protected:
+    // Frees the pages below |key| and takes out the appendable pages that
+    // straddle it, for the caller to put back refreshed.
+    void DoEraseBelowKey(ui64 key, TVector<TAppendablePagePtr>* outDirtyPages)
+    {
+        std::lock_guard lock(Lock);
+
+        ErasedBelowKey = key;
+
+        for (auto it = AppendablePages.begin(); it != AppendablePages.end();) {
+            auto& page = it->second;
+            if (page->MaxKey < key) {
+                EmptyPages.push_back(page->PageNo);
+                it = AppendablePages.erase(it);
+                continue;
+            }
+
+            if (outDirtyPages && page->MinKey < key) {
+                outDirtyPages->push_back(std::move(page));
+                it = AppendablePages.erase(it);
+                continue;
+            }
+
+            ++it;
+        }
+
+        auto end = FullPages.lower_bound(key);
+        for (auto it = FullPages.begin(); it != end;) {
+            EmptyPages.push_back(it->second);
+            it = FullPages.erase(it);
+        }
+    }
+
+    void AddEmptyPage(ui64 pageNo) override
+    {
+        if (pageNo == InvalidPageNo) {
+            return;
+        }
+
+        std::lock_guard lock(Lock);
+        EmptyPages.push_back(pageNo);
+    }
+
+    ui64 PopEmptyPage() override
+    {
+        std::lock_guard lock(Lock);
+
+        if (EmptyPages.empty()) {
+            return InvalidPageNo;
+        }
+
+        ui64 page = EmptyPages.back();
+        EmptyPages.pop_back();
+        return page;
+    }
+
+    void AddAppendablePage(TAppendablePagePtr page) override
+    {
+        if (!page || page->PageNo == InvalidPageNo) {
+            return;
+        }
+
+        std::lock_guard lock(Lock);
+
+        if (page->Entries.empty()) {
+            EmptyPages.push_back(page->PageNo);
+            return;
+        }
+
+        if (PageSize <= page->DataSize ||
+            PageSize - page->DataSize < MinEntrySize)
+        {
+            FullPages.emplace(page->MaxKey, page->PageNo);
+            return;
+        }
+
+        const ui64 availableSize = PageSize - page->DataSize;
+
+        if (AppendablePages.size() >= MaxAppendablePageCount) {
+            if (availableSize < AppendablePages.begin()->first) {
+                FullPages.emplace(page->MaxKey, page->PageNo);
+                return;
+            }
+
+            const auto& firstPage = *AppendablePages.begin()->second;
+            FullPages.emplace(firstPage.MaxKey, firstPage.PageNo);
+            AppendablePages.erase(AppendablePages.begin());
+        }
+
+        AppendablePages.emplace(availableSize, std::move(page));
+    }
+
+    TAppendablePagePtr PopAppendablePage(ui64 entryBufferSize) override
+    {
+        std::lock_guard lock(Lock);
+
+        auto it = AppendablePages.lower_bound(
+            GetSerializedEntrySize(entryBufferSize));
+
+        if (it == AppendablePages.end()) {
+            return nullptr;
+        }
+
+        auto page = std::move(it->second);
+        AppendablePages.erase(it);
+        return page;
+    }
+
+private:
+    // Drops the erased entries of the page and recomputes the bounds and the
+    // data size - the entries left keep pointing into the page buffer, which
+    // stays as it is until the page is rewritten.
+    static void RefreshPage(TAppendablePage& page, ui64 erasedBelowKey)
+    {
+        page.MaxKey = 0;
+        page.MinKey = Max<ui64>();
+        page.DataSize = GetPageHeaderSize();
+
+        for (auto it = page.Entries.begin(); it != page.Entries.end();) {
+            const auto& entry = *it;
+            if (entry.Key < erasedBelowKey) {
+                it = page.Entries.erase(it);
+                continue;
+            }
+            ++it;
+
+            page.MaxKey = Max(page.MaxKey, entry.Key);
+            page.MinKey = Min(page.MinKey, entry.Key);
+            page.DataSize += GetSerializedEntrySize(entry.Data.Size());
+        }
+    }
+};
+
 constexpr ui64 MaxPagesPerReadRequest = 1024;
 
 bool IsEmptyPage(TStringBuf page, ui32 pageSize)
@@ -109,45 +453,21 @@ bool IsEmptyPage(TStringBuf page, ui32 pageSize)
 //
 // The first SuperblockSlotCount pages are the superblock slots, the rest hold
 // entries. A page holds a TPageHeader, then EntryCount entries, each a
-// TEntryHeader with the key, the seq of the write and the payload size
-// followed by the payload. Every page carries a checksum. A buffer never
-// spans pages, so it has to fit a page together with the headers. The store
-// writes a single entry per page, a page that holds several of them is
-// restored all the same.
-//
-// Each write and erase takes the next seq from a counter that only grows,
-// also across restores. A write goes to a free page and the previous copy
-// of the key is released after the new one has landed, so a torn rewrite
-// keeps the old copy. Freed pages are not wiped, stale entries are told apart
-// by their seq.
-//
-// The superblock holds the erased bound and the metadata buffer. EraseBelow
-// and WriteMeta each write the whole superblock to the slot next to the
-// current one, so a torn superblock write keeps the previous contents. Only
-// one superblock write may be in flight at a time. The erased keys are
-// refused right away, the pages are released once the superblock has landed.
-//
-// Restore reads the whole device, drops the keys below the bound of the
-// newest superblock and keeps the highest seq of every key found in the valid
-// pages. The pages of the winners are marked allocated, the seq counter
-// resumes past the highest seq seen.
+// TEntryHeader with the key, the seq of the write and the payload size followed
+// by the payload. A write appends the entry to a copy of a page with enough
+// room (or to a fresh page), writes the copy to an empty page and releases the
+// original. Every page carries a checksum.
 
 class TDeviceKeyBufferStore final
     : public IKeyBufferStore
     , public std::enable_shared_from_this<TDeviceKeyBufferStore>
 {
 private:
-    // Where the live copy of a key is.
-    struct TStoredKey
-    {
-        ui64 Seq = 0;
-        ui64 PageNo = 0;
-    };
-
     const IDevicePtr Device;
+    TPageManager PageManager;
     const ui64 PageCount;
     const ui32 PageSize;
-    const IDevicePageStorePtr Pages;
+    const ui32 MinKeyBufferSize;
 
     TLog Log;
 
@@ -156,7 +476,6 @@ private:
     bool RestoreStarted = false;
     bool Restored = false;
     ui64 NextSeq = 1;
-    TMap<ui64, TStoredKey> Keys;
 
     // The superblock the device holds.
     TSuperblock Superblock;
@@ -171,7 +490,8 @@ public:
         ILoggingServicePtr logging,
         IDevicePtr device,
         ui64 pageCount,
-        ui32 pageSize);
+        ui32 pageSize,
+        ui32 minKeyBufferSize);
 
     TFuture<TRestoreResult> Restore() override;
 
@@ -182,7 +502,7 @@ public:
     TFuture<NProto::TError> EraseBelow(ui64 key) override;
 
 private:
-    TRestoreResult RestoreFromPages(const TVector<TStringBuf>& pages);
+    TRestoreResult RestoreFromPages(TVector<TBuffer> pages);
 
     // Applies |update| to a copy of the superblock and writes it to the next
     // slot.
@@ -190,9 +510,7 @@ private:
         const std::function<NProto::TError(TSuperblock&)>& update);
 
     NProto::TError OnEntryWritten(
-        ui64 key,
-        ui64 seq,
-        ui64 pageNo,
+        TWriteControllerPtr writeController,
         const TFuture<NProto::TError>& future);
 
     NProto::TError OnSuperblockWritten(
@@ -206,11 +524,13 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
     ILoggingServicePtr logging,
     IDevicePtr device,
     ui64 pageCount,
-    ui32 pageSize)
+    ui32 pageSize,
+    ui32 minKeyBufferSize)
     : Device(std::move(device))
+    , PageManager(pageSize, minKeyBufferSize)
     , PageCount(pageCount)
     , PageSize(pageSize)
-    , Pages(CreateDevicePageStore(Device, PageCount, PageSize))
+    , MinKeyBufferSize(minKeyBufferSize)
     , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
@@ -223,7 +543,7 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                              << SuperblockSlotCount << " pages"));
     }
 
-    auto error = ValidatePageSize(PageSize);
+    auto error = ValidatePageSize(PageSize, MinKeyBufferSize);
     if (HasError(error)) {
         return MakeFuture<TRestoreResult>(std::move(error));
     }
@@ -256,10 +576,7 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
         [self = shared_from_this(),
          futures = std::move(futures)](const TFuture<void>&)
         {
-            TVector<TVector<TBuffer>> reads;
-            reads.reserve(futures.size());
-
-            TVector<TStringBuf> pages;
+            TVector<TBuffer> pages;
             pages.reserve(self->PageCount);
 
             for (auto& future: futures) {
@@ -268,9 +585,9 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                     return TRestoreResult(result.GetError());
                 }
 
-                const auto& read = reads.emplace_back(result.ExtractResult());
-                for (const auto& page: read) {
-                    pages.emplace_back(page.Data(), page.Size());
+                auto readPages = result.ExtractResult();
+                for (auto& readPage: readPages) {
+                    pages.emplace_back(std::move(readPage));
                 }
             }
 
@@ -282,7 +599,7 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                         << " pages, expected " << self->PageCount));
             }
 
-            return self->RestoreFromPages(pages);
+            return self->RestoreFromPages(std::move(pages));
         });
 }
 
@@ -325,35 +642,30 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
         seq = NextSeq++;
     }
 
-    TVector<TEntry> entries;
-    entries.push_back({
-        .Key = key,
-        .Seq = seq,
-        .Data = TStringBuf(buffer.Data(), buffer.Size()),
-    });
+    TStringBuf bufferRef(buffer.Data(), buffer.Size());
+    auto writeController = PageManager.CreateWriteController(
+        TEntry{
+            .Key = key,
+            .Seq = seq,
+            .Data = bufferRef,
+        },
+        std::move(buffer));
 
-    auto result = MakePageBuffer(PageSize, entries);
+    auto result = writeController->GeneratePageRange();
     if (HasError(result)) {
         return MakeFuture(result.GetError());
     }
+    auto pageRange = result.ExtractResult();
 
-    TVector<TBuffer> pages;
-    pages.push_back(result.ExtractResult());
+    TVector<TPageRange> ranges;
+    ranges.push_back(std::move(pageRange));
 
-    auto locations = Pages->Allocate(1);
-    if (locations.empty()) {
-        return MakeFuture(MakeError(
-            E_REJECTED,
-            TStringBuilder() << "not enough free pages to store "
-                             << buffer.Size() << " bytes under key " << key));
-    }
+    auto future = Device->WritePages(std::move(ranges));
 
-    const ui64 pageNo = locations[0].FirstPageNo;
-
-    return Pages->Write(locations, pages)
-        .Apply([self = shared_from_this(), key, seq, pageNo](
-                   const TFuture<NProto::TError>& future)
-               { return self->OnEntryWritten(key, seq, pageNo, future); });
+    return future.Apply(
+        [self = shared_from_this(),
+         controller = std::move(writeController)](const auto& future)
+        { return self->OnEntryWritten(std::move(controller), future); });
 }
 
 TFuture<NProto::TError> TDeviceKeyBufferStore::WriteMeta(TBuffer buffer)
@@ -425,40 +737,39 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
 
     auto result = MakeSuperblockPage(superblock, PageSize);
     if (HasError(result)) {
-        std::lock_guard lock(Lock);
-        SuperblockWriteInFlight = false;
-        return MakeFuture(result.GetError());
+        return MakeFuture(OnSuperblockWritten(
+            std::move(superblock),
+            MakeFuture(result.GetError())));
     }
 
-    TVector<TBuffer> pages;
-    pages.push_back(result.ExtractResult());
+    auto superblockPage = result.ExtractResult();
 
-    return Pages->Write({{.FirstPageNo = slot, .PageCount = 1}}, pages)
-        .Apply(
-            [self = shared_from_this(), superblock = std::move(superblock)](
-                const TFuture<NProto::TError>& future) mutable
-            {
-                return self->OnSuperblockWritten(std::move(superblock), future);
-            });
+    TVector<TPageRange> ranges;
+    ranges.push_back({
+        .FirstPageNo = slot,
+        .Pages = {std::move(superblockPage)},
+    });
+
+    return Device->WritePages(std::move(ranges))
+        .Apply([self = shared_from_this(), superblock = std::move(superblock)](
+                   const TFuture<NProto::TError>& future) mutable
+               {
+                   return self->OnSuperblockWritten(
+                       std::move(superblock),
+                       future);
+               });
 }
 
 IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
-    const TVector<TStringBuf>& pages)
+    TVector<TBuffer> pages)
 {
-    // the superblock slots are never given to an entry
-    auto error = Pages->AllocateAt(
-        {{.FirstPageNo = 0, .PageCount = SuperblockSlotCount}});
-    if (HasError(error)) {
-        return error;
-    }
-
     ui64 maxSeq = 0;
 
     std::optional<TSuperblock> superblock;
     ui64 superblockSlot = SuperblockSlotCount;
 
     for (ui64 slot = 0; slot < SuperblockSlotCount; ++slot) {
-        auto parsed = ParseSuperblockPage(pages[slot], PageSize);
+        auto parsed = ParseSuperblockPage(AsStringBuf(pages[slot]), PageSize);
         if (!parsed) {
             continue;
         }
@@ -475,7 +786,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         // from a store that has lost its superblocks, a dirty one holds a
         // torn superblock and takes the next write
         for (ui64 slot = 0; slot < SuperblockSlotCount; ++slot) {
-            if (IsEmptyPage(pages[slot], PageSize)) {
+            if (IsEmptyPage(AsStringBuf(pages[slot]), PageSize)) {
                 superblockSlot = slot;
             }
         }
@@ -485,68 +796,81 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         return MakeError(E_INVALID_STATE, "all superblock slots are dirty");
     }
 
-    // the newest copy of a key wins
-    struct TWinner
+    struct TCandidate
     {
         ui64 PageNo = 0;
+        ui64 PageSeq = 0;
         TEntry Entry;
     };
 
-    THashMap<ui64, TWinner> winners;
+    THashMap<ui64 /*key*/, TCandidate> winners;
 
     for (ui64 i = SuperblockSlotCount; i < pages.size(); ++i) {
-        for (const auto& entry: ParsePageBuffer(pages[i], PageSize)) {
+        auto entries = ParsePageBuffer(AsStringBuf(pages[i]), PageSize);
+        if (entries.empty()) {
+            continue;
+        }
+
+        ui64 pageSeq = entries.back().Seq;
+
+        for (ui64 j = 0; j < entries.size(); ++j) {
+            const auto& entry = entries[j];
             maxSeq = Max(maxSeq, entry.Seq);
 
             if (superblock && entry.Key < superblock->ErasedBelowKey) {
                 continue;
             }
 
-            auto [it, inserted] = winners.try_emplace(
-                entry.Key,
-                TWinner{.PageNo = i, .Entry = entry});
+            TCandidate candidate = {
+                .PageNo = i,
+                .PageSeq = pageSeq,
+                .Entry = entry,
+            };
 
-            if (!inserted && it->second.Entry.Seq < entry.Seq) {
-                it->second = {.PageNo = i, .Entry = entry};
+            auto [it, inserted] = winners.emplace(entry.Key, candidate);
+
+            if (!inserted && (it->second.Entry.Seq < candidate.Entry.Seq ||
+                              (it->second.Entry.Seq == candidate.Entry.Seq &&
+                               it->second.PageSeq < candidate.PageSeq)))
+            {
+                it->second = candidate;
             }
         }
     }
 
+    THashMap<ui64 /* pageNo */, TVector<TEntry>> pageEntries;
     TVector<TKeyBuffer> buffers;
     buffers.reserve(winners.size());
-    TMap<ui64, TStoredKey> keys;
-    TVector<TPageRangeRef> pagesToAllocate;
 
     for (const auto& [key, winner]: winners) {
-        const auto& data = winner.Entry.Data;
+        pageEntries[winner.PageNo].push_back(winner.Entry);
+
+        const auto& buffer = winner.Entry.Data;
         buffers.push_back({
             .Key = key,
-            .Buffer = TBuffer(data.data(), data.size()),
+            .Buffer = TBuffer(buffer.data(), buffer.size()),
         });
-
-        keys[key] = {.Seq = winner.Entry.Seq, .PageNo = winner.PageNo};
-        pagesToAllocate.push_back(
-            {.FirstPageNo = winner.PageNo, .PageCount = 1});
     }
 
-    error = Pages->AllocateAt(pagesToAllocate);
-    if (HasError(error)) {
-        return error;
-    }
+    PageManager.Init(
+        SuperblockSlotCount,
+        pages.size() - SuperblockSlotCount,
+        superblock ? superblock->ErasedBelowKey : 0,
+        std::move(pageEntries),
+        std::move(pages));
 
     TBuffer metaBuffer;
 
     {
         std::lock_guard lock(Lock);
 
-        Restored = true;
-        NextSeq = maxSeq + 1;
-        Keys = std::move(keys);
-
         if (superblock) {
             Superblock = std::move(*superblock);
         }
         NextSuperblockSlot = (superblockSlot + 1) % SuperblockSlotCount;
+
+        Restored = true;
+        NextSeq = maxSeq + 1;
 
         metaBuffer = Superblock.MetaBuffer;
     }
@@ -558,61 +882,30 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 }
 
 NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
-    ui64 key,
-    ui64 seq,
-    ui64 pageNo,
+    TWriteControllerPtr writeController,
     const TFuture<NProto::TError>& future)
 {
     auto error = future.GetValue();
-    if (HasError(error)) {
-        auto freeError = Pages->Free({{.FirstPageNo = pageNo, .PageCount = 1}});
-        if (HasError(freeError)) {
-            ReadOnly.store(true);
-            STORAGE_ERROR(
-                "failed to free the page of the failed write of key "
-                << key << ": " << FormatError(freeError));
-        }
-        return error;
-    }
-
-    TVector<TPageRangeRef> stalePages;
 
     {
         std::lock_guard lock(Lock);
 
-        if (key < Superblock.ErasedBelowKey) {
-            // erased while being written - a restore would drop it
-            stalePages.push_back({.FirstPageNo = pageNo, .PageCount = 1});
-            error = MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "key " << key << " was erased while being written");
-        } else {
-            auto [it, inserted] = Keys.try_emplace(key);
-            auto& stored = it->second;
-
-            if (inserted || stored.Seq < seq) {
-                if (!inserted) {
-                    stalePages.push_back(
-                        {.FirstPageNo = stored.PageNo, .PageCount = 1});
-                }
-
-                stored = {.Seq = seq, .PageNo = pageNo};
+        if (!HasError(error)) {
+            const ui64 key = writeController->Key();
+            if (key < Superblock.ErasedBelowKey) {
+                // erased while being written - a restore would drop it
+                error = MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Key " << key << " was erased while being written");
             } else {
-                // a newer write of the key has landed already
-                stalePages.push_back({.FirstPageNo = pageNo, .PageCount = 1});
+                writeController->SetAsWritten();
             }
         }
-    }
 
-    if (!stalePages.empty()) {
-        auto freeError = Pages->Free(stalePages);
-        if (HasError(freeError)) {
-            ReadOnly.store(true);
-            STORAGE_ERROR(
-                "failed to free the stale pages of key "
-                << key << ": " << FormatError(freeError));
-        }
+        // hands the pages back to the manager, under the lock so that an
+        // erase landing at the same time sees them
+        writeController.reset();
     }
 
     return error;
@@ -622,39 +915,18 @@ NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     TSuperblock superblock,
     const TFuture<NProto::TError>& future)
 {
-    auto error = future.GetValue();
-    TVector<TPageRangeRef> pagesToFree;
+    std::lock_guard lock(Lock);
 
-    {
-        std::lock_guard lock(Lock);
+    SuperblockWriteInFlight = false;
 
-        SuperblockWriteInFlight = false;
-
-        if (HasError(error)) {
-            return error;
-        }
-
-        Superblock = std::move(superblock);
-        NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
-
-        auto end = Keys.lower_bound(Superblock.ErasedBelowKey);
-        for (auto it = Keys.begin(); it != end; ++it) {
-            pagesToFree.push_back(
-                {.FirstPageNo = it->second.PageNo, .PageCount = 1});
-        }
-        Keys.erase(Keys.begin(), end);
+    if (auto error = future.GetValue(); HasError(error)) {
+        return error;
     }
 
-    if (!pagesToFree.empty()) {
-        auto freeError = Pages->Free(pagesToFree);
-        if (HasError(freeError)) {
-            ReadOnly.store(true);
-            STORAGE_ERROR(
-                "failed to free the pages erased below key "
-                << superblock.ErasedBelowKey << ": " << FormatError(freeError));
-        }
-    }
+    Superblock = std::move(superblock);
+    NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
 
+    PageManager.EraseBelowKey(Superblock.ErasedBelowKey);
     return MakeError(S_OK);
 }
 
@@ -671,13 +943,15 @@ IKeyBufferStorePtr CreateDeviceKeyBufferStore(
     ILoggingServicePtr logging,
     IDevicePtr device,
     ui64 pageCount,
-    ui32 pageSize)
+    ui32 pageSize,
+    ui32 minKeyBufferSize)
 {
     return std::make_shared<TDeviceKeyBufferStore>(
         std::move(logging),
         std::move(device),
         pageCount,
-        pageSize);
+        pageSize,
+        minKeyBufferSize);
 }
 
 }   // namespace NCloud::NJournalled

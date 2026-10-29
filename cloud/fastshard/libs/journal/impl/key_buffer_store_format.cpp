@@ -13,10 +13,13 @@ namespace NCloud::NJournalled {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+// The on-device format of TDeviceKeyBufferStore.
 
 constexpr ui64 SuperblockMagic = 0x4B4253'53555042ULL;   // KBS'SUPB
 constexpr ui64 PageMagic = 0x4B4253'50414745ULL;         // KBS'PAGE
 constexpr ui32 StoreFormatVersion = 1;
+
+////////////////////////////////////////////////////////////////////////////////
 
 // A page holds EntryCount entries, each behind a TEntryHeader, and carries a
 // checksum over everything but the Crc field.
@@ -95,10 +98,10 @@ ui32 SuperblockCrc(TStringBuf page)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidatePageSize(ui32 pageSize)
+NProto::TError ValidatePageSize(ui32 pageSize, ui32 minKeyBufferSize)
 {
-    if (pageSize < PageHeaderSize + EntryHeaderSize ||
-        pageSize < SuperblockHeaderSize)
+    if (pageSize < PageHeaderSize + EntryHeaderSize + minKeyBufferSize ||
+            pageSize < SuperblockHeaderSize)
     {
         return MakeError(
             E_ARGUMENT,
@@ -119,9 +122,11 @@ ui32 GetSerializedEntrySize(ui32 entryBufferSize)
     return EntryHeaderSize + entryBufferSize;
 }
 
-TResultOrError<TBuffer> MakePageBuffer(
+NProto::TError MakePageBuffer(
     ui32 pageSize,
-    const TVector<TEntry>& entries)
+    TVector<TEntry>& entries,
+    TBuffer* outPageBuffer,
+    ui32* outDataSize)
 {
     TPageHeader header = {
         .Magic = PageMagic,
@@ -154,12 +159,27 @@ TResultOrError<TBuffer> MakePageBuffer(
         page.Append(entry.Data.data(), entry.Data.size());
     }
 
+    const ui32 dataSize = static_cast<ui32>(page.Size());
+
     page.Fill('\0', pageSize - page.Size());
 
     const ui32 crc = PageCrc({page.Data(), page.Size()});
     memcpy(page.Data() + offsetof(TPageHeader, Crc), &crc, sizeof(crc));
 
-    return page;
+    // the page holds a copy of every entry now - the entries point there
+    // from now on, the buffers they came from may go away. The page is
+    // complete, so no append moves the data any more, and the move below
+    // hands over the allocation as it is
+    ui64 offset = PageHeaderSize;
+    for (auto& entry: entries) {
+        offset += EntryHeaderSize;
+        entry.Data = TStringBuf(page.Data() + offset, entry.Data.size());
+        offset += entry.Data.size();
+    }
+
+    *outPageBuffer = std::move(page);
+    *outDataSize = dataSize;
+    return MakeError(S_OK);
 }
 
 TVector<TEntry> ParsePageBuffer(TStringBuf page, ui32 pageSize)

@@ -121,4 +121,14 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer)
     return record;
 }
 
+ui32 CalculateMinRecordBufferSize()
+{
+    auto logRecordBuffer = SerializeRecord(
+        TLogRecord{
+            .PageMappings = {TPageMapping()},
+        });
+
+    return static_cast<ui32>(logRecordBuffer.size());
+}
+
 }   // namespace NCloud::NJournalled
