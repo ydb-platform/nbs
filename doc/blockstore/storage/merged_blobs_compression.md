@@ -2,6 +2,12 @@
 
 Data on our disks is very compressible. We already have some metrics in the partition that show significant potential for data compression. They show that we can save up to 60% of disk space.
 
+![Compressed bytes written relative to uncompressed bytes written on SSD](media/compressed_bytes_written_relative_to_uncompressed_bytes_written.png)
+
+*Compressed bytes written relative to uncompressed bytes written on SSD. The ratio stays near 0.30–0.40.*
+
+
+
 ## Goal
 
 Save a significant amount of SSD disk space.
@@ -9,6 +15,38 @@ Save a significant amount of SSD disk space.
 ## Solution
 
 Compress blobs in chunks of K consecutive blob bytes. After compression, we can store the offset of each chunk and the chunk size in a compression metadata struct.
+
+```
+message TCompressionMetadata
+{
+    enum ECodec
+    {
+        // library/cpp/blockcodecs: lz4-fast14-safe.
+        LZ4 = 0;
+        // library/cpp/blockcodecs: zstd08_1 (compression level 1).
+        ZSTD = 1;
+    }
+
+    ECodec Codec = 1;
+
+    // Uncompressed chunk size in bytes used when writing this blob.
+    uint32 ChunkSize = 2;
+
+    message TPlainChuncks
+    {
+        // Offsets of each compressed chunk in blob in bytes,
+        // starting from the second one.
+        repeated uint32 ChunkOffsets = 1;
+    }
+
+    oneof Chuncks
+    {
+        TPlainChuncks PlainChuncks = 1;
+    }
+}
+```
+
+![image](media/plain_and_compressed_blob.png)
 
 Candidates are new merged blobs from direct merged writes and ordinary compaction.
 Fresh logs, fresh/mixed blobs, and deletion markers retain their existing formats.
@@ -24,6 +62,18 @@ For the initial approach, we will use the LZ4 codec and will not experiment with
 
 This compression metadata struct can be placed in the MergedIndex table alongside other fields and in blobmeta in the BlobIndex table.
 
+`MergedBlocksIndex` (`part_schema.h`). Key: `RangeEnd`, `CommitId`.
+
+| Column | Id | Type | Notes |
+| --- | --- | --- | --- |
+| RangeStart | 1 | Uint32 | |
+| RangeEnd | 2 | Uint32 | key |
+| CommitId | 3 | Uint64 | key |
+| BlobId | 4 | Uint64 | |
+| HoleMask | 5 | String (`THoleMask`) | deprecated |
+| SkipMask | 6 | String (`TBlockMask`) | |
+| CompressionMetadata | 7 | protobuf `NProto::TCompressionMetadata` | **new** |
+
 We use the merged table to serve user reads, so getting compression metadata from it should be cheap. The only downside is that storing compression metadata will decrease the number of blobs that can fit in the blob cache, so using a chunk size of one block may not be very effective. Looking up every required blob in BlobIndex is very expensive, which is why we duplicate the information in two tables.
 
 BlobIndex is used for metadata rebuilding and other operations and contains complete information about blobs, so let's keep compression metadata there too.
@@ -38,13 +88,17 @@ For data integrity, we already have a mechanism that works on top of this readin
 
 First, we must fully roll out a binary that supports the new compression metadata fields in BlobIndex and MergedIndex and can read compressed blobs, while keeping compressed blob writes disabled. Only after this rollout is complete can we enable writing compressed blobs. Once compressed blobs have been written, rolling back two versions to a binary that lacks these fields and cannot read compressed data is not supported, as it will lead to data corruption. Disabling compressed blob writes does not remove this restriction, because existing compressed blobs still need to be read. The only way to roll back to a binary that cannot read compressed blobs is to perform full compaction across the cluster using a version that supports compressed reads, with compressed writes disabled, and delete all checkpoints with data in NBS (or just wait for them to be deleted automatically, since checkpoints are short-lived). After these operations, we can safely downgrade to a version without support for compressed reads.
 
+Before enabling nbs with new feature wich start to write new compressed blobs we need to update minumum supported version to the one that supports reading compressed blobs to prevent start of old binaries in cluster as it can leed to corruption. It can be done by updating this files:
+```contrib/ydb/apps/version/version_definition.cpp```
+```cloud/storage/core/libs/version_ydb/version.cpp```
+
 ### Chunk sizes
 
 For the initial approach, we will use chunks of a constant size per blob, for example, 32 KiB. To find the most effective chunk size, we will add new CompressedBytesWritten metrics for each size. We will compress a blob using different chunk sizes and, for each size, report the number of compressed bytes written.
 
 The chunk size can't be too small, because this will increase the index size and fewer blobs will fit in the blob cache. But increasing the chunk size also increases read amplification. After deploying in preproduction, we should carefully examine BlobStorage performance and tune the chunk size. Greater read amplification will increase CPU usage on the BlobStorage side because of erasure coding and encryption. SSD time should increase by only 4% for each requested chunk with a maximum size of 32 KB relative to 4 KB requests, according to the following model with latency = 100 µs and Bandwidth = 7 GB/s:
 
-T = latency + RequestSize / Bandwidth
+```T = latency + RequestSize / Bandwidth```
 
 ### Incompressible data
 
