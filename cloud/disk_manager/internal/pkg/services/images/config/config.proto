@@ -13,6 +13,10 @@ message DiskPoolConfig {
     optional uint32 Capacity = 2;
 }
 
+message DiskPoolConfigs {
+    repeated DiskPoolConfig Configs = 1;
+}
+
 message ImagesConfig {
     optional string DeletedImageExpirationTimeout = 1 [default = "30m"];
     optional string ClearDeletedImagesTaskScheduleInterval = 2 [default = "1m"];
@@ -29,4 +33,7 @@ message ImagesConfig {
     optional string S3DefaultStorageClass = 10;
     optional string ScheduleBackupImageTasksScheduleInterval = 11 [default = "1m"];
     optional uint32 ScheduleBackupImageTasksLimit = 12 [default = 1000];
+    // Merges with DefaultDiskPoolConfigs for the specified folder: overrides
+    // matching zones, adds new zones, and preserves unmatched default zones.
+    map<string, DiskPoolConfigs> OverriddenDiskPoolConfigsByFolder = 13;
 }

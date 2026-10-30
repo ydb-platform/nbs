@@ -32,7 +32,7 @@ func (s *service) CreateImage(
 
 	pools := make([]*types.DiskPool, 0)
 	if req.Pooled || s.config.GetConfigurePoolsByDefault() {
-		for _, c := range s.config.GetDefaultDiskPoolConfigs() {
+		for _, c := range getDiskPoolConfigs(s.config, req.FolderId) {
 			pools = append(pools, &types.DiskPool{
 				ZoneId:   c.GetZoneId(),
 				Capacity: c.GetCapacity(),

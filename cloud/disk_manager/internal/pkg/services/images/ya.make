@@ -18,6 +18,7 @@ SRCS(
 GO_TEST_SRCS(
     delete_image_task_test.go
     schedule_backup_image_tasks_test.go
+    service_test.go
 )
 
 END()
