@@ -32,7 +32,6 @@ private:
     const TStorageConfigConstPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
-    const IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
     const NActors::TActorId ServiceActorId;
 
     NMonitoring::TDynamicCounters::TCounterPtr PushCount;
@@ -63,8 +62,6 @@ public:
 private:
     void RegisterPages(const NActors::TActorContext& ctx);
     void RegisterCounters(const NActors::TActorContext& ctx);
-
-    bool IsBalancerEnabled() const;
 
     void PullVolumeFromHive(
         const NActors::TActorContext& ctx,

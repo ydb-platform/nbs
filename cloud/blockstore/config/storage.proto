@@ -1757,4 +1757,7 @@ message TStorageServiceConfig
     // flushing in partition v1 for HDD/hybrid volumes. Zero disables age-based
     // flushing.
     optional uint32 FreshBlobAgeFlushThresholdHDD = 545;
+
+    // Enables volume balancer preemption mechanism.
+    optional bool VolumeBalancerEnabled = 546;
 }
