@@ -189,6 +189,29 @@ message TPartitionMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TCompressionMetadata
+{
+    // Resolved library/cpp/blockcodecs codec name.
+    string Codec = 1;
+
+    // Uncompressed chunk size in bytes used when writing this blob.
+    uint32 ChunkSize = 2;
+
+    message TPlainChuncks
+    {
+        // Cumulative compressed end offsets of all chunks except the last.
+        // N chunks have N-1 offsets; the last chunk ends at the blob size.
+        repeated uint32 ChunkOffset = 1;
+    }
+
+    oneof Chuncks
+    {
+        TPlainChuncks PlainChuncks = 3;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TBlobMeta
 {
     message TMixedBlocks
