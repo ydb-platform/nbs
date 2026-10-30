@@ -12,6 +12,7 @@
 #include <util/folder/tempdir.h>
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/ylimits.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
 #include <util/system/fstat.h>
@@ -989,9 +990,52 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(third.GetResult());
     }
 
+    Y_UNIT_TEST_F(ShouldNotOverflowTotalSizeLimit, TFixture)
+    {
+        auto manager = CreateManager(2 * WriteBackCacheStateFileSize);
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                WriteBackCacheStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        // Adding the requested size to the total must not wrap.
+        auto result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            Max<ui64>());
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-3").Exists());
+
+        // Existing files reserve their target without resizing the file.
+        // Summing these reservations must not wrap either.
+        auto existing = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-1",
+            Max<ui64>());
+        UNIT_ASSERT_C(!HasError(existing), existing.GetError().GetMessage());
+        UNIT_ASSERT(existing.GetResult());
+
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            WriteBackCacheStateFileSize);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-3").Exists());
+    }
+
     Y_UNIT_TEST_F(ShouldAccountExplicitWriteBackCacheStateFileSize, TFixture)
     {
-        auto manager = CreateManager(12_KB);
+        auto manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackCacheMinStateFileSize = 4_KB,
+            .WriteBackCacheTotalSizeLimit = 12_KB,
+        });
 
         auto first = manager->AcquireWriteBackCacheStateFile(
             "fs-1",
@@ -1000,6 +1044,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
         auto firstGuard = first.ExtractResult();
         UNIT_ASSERT(firstGuard);
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, firstGuard.GetTargetStateFileSize());
         UNIT_ASSERT_VALUES_EQUAL(
             4_KB,
             TFileStat(firstGuard.GetFilePath().GetPath()).Size);
@@ -1018,10 +1063,124 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto third = manager->AcquireWriteBackCacheStateFile(
             "fs-3",
             SessionId,
-            1_KB);
+            4_KB);
         UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
         UNIT_ASSERT(!third.GetResult());
         UNIT_ASSERT(!SessionDir("fs-3", SessionId).Exists());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectUndersizedNewFileAndPreserveExistingSize, TFixture)
+    {
+        {
+            auto manager = CreateManager();
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId,
+                WriteBackCacheStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        auto manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackCacheMinStateFileSize = 2 * WriteBackCacheStateFileSize,
+        });
+        auto counter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateFileRequestedSizeTooSmall(),
+            true);
+
+        auto result = manager->AcquireWriteBackCacheStateFile(
+            "new-fs",
+            SessionId,
+            1);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
+        UNIT_ASSERT(!SessionDir("new-fs", SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            SessionId,
+            1);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto guard = result.ExtractResult();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBackCacheStateFileSize,
+            guard.GetTargetStateFileSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBackCacheStateFileSize,
+            TFileStat(guard.GetFilePath().GetPath()).Size);
+        UNIT_ASSERT_VALUES_EQUAL(2, counter->Val());
+
+        const auto filePath = guard.GetFilePath();
+        guard = {};
+        TFile(filePath, OpenExisting | RdWr).Resize(0);
+        result = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            SessionId,
+            1);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        guard = result.ExtractResult();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(0, guard.GetTargetStateFileSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, TFileStat(filePath.GetPath()).Size);
+        guard = {};
+        UNIT_ASSERT(!IsLocked(filePath));
+    }
+
+    Y_UNIT_TEST_F(ShouldReserveExistingStateFileTargetSize, TFixture)
+    {
+        constexpr ui64 StateFileSize = 8_KB;
+        constexpr ui64 MinStateFileSize = 2 * StateFileSize;
+
+        auto manager = CreateManager();
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                StateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
+        manager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackCacheMinStateFileSize = MinStateFileSize,
+            .WriteBackCacheTotalSizeLimit = 3 * MinStateFileSize,
+        });
+
+        for (const TString sessionId: {"s-1", "s-2"}) {
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                sessionId,
+                MinStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            auto guard = result.ExtractResult();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT_VALUES_EQUAL(
+                MinStateFileSize,
+                guard.GetTargetStateFileSize());
+            // Reserve the target even before the component grows the file.
+            UNIT_ASSERT_VALUES_EQUAL(
+                StateFileSize,
+                TFileStat(guard.GetFilePath().GetPath()).Size);
+        }
+
+        auto third = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-3",
+            MinStateFileSize);
+        UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
+        UNIT_ASSERT(third.GetResult());
+
+        auto fourth = manager->AcquireWriteBackCacheStateFile(
+            FileSystemId,
+            "s-4",
+            MinStateFileSize);
+        UNIT_ASSERT_C(!HasError(fourth), fourth.GetError().GetMessage());
+        UNIT_ASSERT(!fourth.GetResult());
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-4").Exists());
     }
 
     Y_UNIT_TEST_F(ShouldAccountStateFilesOfAllFileSystemsAndSessions, TFixture)
