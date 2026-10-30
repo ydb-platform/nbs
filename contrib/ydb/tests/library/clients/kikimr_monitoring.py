@@ -2,7 +2,12 @@
 import time
 import json
 import collections
+import logging
+from contextlib import closing
 from six.moves.urllib import request
+
+
+logger = logging.getLogger(__name__)
 
 
 class KikimrMonitor(object):
@@ -38,12 +43,10 @@ class KikimrMonitor(object):
             return
 
         try:
-            url = request.urlopen(self.__url)
+            with closing(request.urlopen(self.__url, timeout=10)) as response:
+                raw = json.load(response)
         except Exception:
-            return False
-        try:
-            raw = json.load(url)
-        except ValueError:
+            logger.warning("Failed to fetch monitoring counters from %s", self.__url, exc_info=True)
             return False
 
         self.__data = {}
