@@ -17,12 +17,15 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
         TString ParamName;
         TAtomicBase PrevValue;
         TAtomicBase NewValue;
+        // Operator action label owned by this history record for its lifetime.
+        TString Action;
 
-        TLogRecord(TInstant timestamp, TString paramName, TAtomicBase prevValue, TAtomicBase newValue)
+        TLogRecord(TInstant timestamp, TString paramName, TAtomicBase prevValue, TAtomicBase newValue, TString action)
             : Timestamp(timestamp)
             , ParamName(paramName)
             , PrevValue(prevValue)
             , NewValue(newValue)
+            , Action(action)
         {}
 
         TString TimestampToStr() {
@@ -65,26 +68,33 @@ public:
     }
 
 private:
+    // Record an operator action only when it changes a control value.
+    void RecordChange(const TString& name, TAtomicBase prevValue, TAtomicBase newValue, const TString& action) {
+        if (prevValue != newValue) {
+            HistoryLog.emplace_back(TInstant::Now(), name, prevValue, newValue, action);
+        }
+    }
+
     void HandlePostParams(const TCgiParameters &cgi) {
+        if (cgi.Has("restoreDefault")) {
+            const TString& controlName = cgi.Get("restoreDefault");
+            TAtomicBase prevValue;
+            TAtomicBase newValue;
+            if (Board->RestoreDefault(controlName, prevValue, newValue)) {
+                RecordChange(controlName, prevValue, newValue, "Restore default");
+            }
+            return;
+        }
         if (cgi.Has("restoreDefaults")) {
             Board->RestoreDefaults();
-            HistoryLog.emplace_back(TInstant::Now(), "RestoreDefaults", 0, 0);
-            *HasChanged = 0;
-            *ChangedCount = 0;
+            HistoryLog.emplace_back(TInstant::Now(), "RestoreDefaults", 0, 0, "Restore defaults");
+            return;
         }
         for (const auto &param : cgi) {
             TAtomicBase newValue = strtoull(param.second.data(), nullptr, 10);
             TAtomicBase prevValue = newValue;
-            bool isDefault = Board->SetValue(param.first, newValue, prevValue);
-            if (prevValue != newValue) {
-                HistoryLog.emplace_back(TInstant::Now(), param.first, prevValue, newValue);
-                if (isDefault) {
-                    ChangedCount->Dec();
-                } else {
-                    ChangedCount->Inc();
-                }
-                *HasChanged = (ui64)ChangedCount->Val() > 0;
-            }
+            Board->SetValue(param.first, newValue, prevValue);
+            RecordChange(param.first, prevValue, newValue, "Set value");
         }
     }
 
@@ -94,7 +104,10 @@ private:
             HandlePostParams(ev->Get()->Request.GetPostParams());
         }
         TStringStream str;
-        str << Board->RenderAsHtml();
+        ui64 changedCount;
+        str << Board->RenderAsHtml(&changedCount);
+        *ChangedCount = changedCount;
+        *HasChanged = changedCount > 0;
         HTML(str) {
             str << "<h3>History</h3>";
             TABLE_SORTABLE_CLASS("historyLogTable") {
@@ -104,6 +117,7 @@ private:
                         TABLEH() {str << "Parameter"; }
                         TABLEH() {str << "PrevValue"; }
                         TABLEH() {str << "NewValue"; }
+                        TABLEH() {str << "Action"; }
                     }
                 }
                 TABLEBODY() {
@@ -113,6 +127,7 @@ private:
                             TABLED() { str << record.ParamName; }
                             TABLED() { str << record.PrevValue; }
                             TABLED() { str << record.NewValue; }
+                            TABLED() { str << record.Action; }
                         }
                     }
                 }
