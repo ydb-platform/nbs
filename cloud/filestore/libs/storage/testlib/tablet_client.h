@@ -209,6 +209,11 @@ public:
         Headers = { "test", clientId, sessionId, sessionSeqNo};
     }
 
+    const THeaders& GetHeaders() const
+    {
+        return Headers;
+    }
+
     template <typename T>
     auto CreateSessionRequest()
     {
