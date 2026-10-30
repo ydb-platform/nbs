@@ -15,6 +15,19 @@ message TransferFromDiskToDiskRequest {
     string SrcDiskBaseCheckpointId = 4;
     uint64 FillGeneration = 5;
     uint64 FillSeqNumber = 6;
+    // Mount SrcDisk locally (VOLUME_MOUNT_LOCAL) instead of remotely. Local
+    // mount moves the SrcDisk tablet to the NBS node that serves the dataplane
+    // session, so it is meant for one-shot disks only (e.g. proxy overlay
+    // disks), not for user disks.
+    bool MountSrcDiskLocally = 7;
+    // Transfer the first MaxSizeBytes of SrcDisk only (rounded up to the
+    // block size of SrcDisk), zero means the whole disk. Should be set when
+    // DstDisk is smaller than SrcDisk and the data is known to fit into
+    // DstDisk (e.g. image sized base disks created from default sized ones):
+    // the transfer enumerates changed blocks of the whole source on every
+    // run, including the runs after a restart, before making any persistent
+    // progress, and a default sized base disk is 4 TB.
+    uint64 MaxSizeBytes = 8;
 }
 
 message TransferFromDiskToDiskTaskState {
