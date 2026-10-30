@@ -28,3 +28,4 @@ tabulate
 numpy
 jsonschema==4.23.0
 referencing==0.35.1
+opentelemetry-proto-json==0.65b0
