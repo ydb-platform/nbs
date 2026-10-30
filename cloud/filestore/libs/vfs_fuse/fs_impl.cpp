@@ -289,7 +289,7 @@ bool TFileSystem::TryReplyEntryFromCache(
     AdjustNodeSize(*attrs);
     ReplyEntryWithCache(
         callContext,
-        {},
+        {} /* error */,
         req,
         *attrs,
         version,
@@ -317,7 +317,7 @@ bool TFileSystem::TryReplyAttrFromCache(
     ConvertAttr(Config->GetPreferredBlockSize(), *attrs, attr);
     ReplyAttr(
         callContext,
-        {},
+        {} /* error */,
         req,
         &attr,
         Config->GetAttrTimeout().SecondsFloat());

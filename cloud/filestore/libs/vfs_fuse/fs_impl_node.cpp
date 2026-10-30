@@ -132,7 +132,7 @@ void TFileSystem::MkDir(
     }
 
     auto request = StartRequest<NProto::TCreateNodeRequest>(parent);
-    request->SetName(name);
+    request->SetName(std::move(name));
     SetUserNGroup(*request, fuse_req_ctx(req));
 
     auto* dir = request->MutableDirectory();
@@ -153,7 +153,7 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedEntry(parent, name);
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -218,7 +218,7 @@ void TFileSystem::MkNode(
     }
 
     auto request = StartRequest<NProto::TCreateNodeRequest>(parent);
-    request->SetName(name);
+    request->SetName(std::move(name));
     SetUserNGroup(*request, fuse_req_ctx(req));
 
     if (S_ISREG(mode)) {
@@ -260,7 +260,7 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedEntry(parent, name);
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -370,7 +370,7 @@ void TFileSystem::SymLink(
     }
 
     auto request = StartRequest<NProto::TCreateNodeRequest>(parent);
-    request->SetName(name);
+    request->SetName(std::move(name));
     SetUserNGroup(*request, fuse_req_ctx(req));
 
     auto* link = request->MutableSymLink();
@@ -391,7 +391,7 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedEntry(parent, name);
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -417,7 +417,7 @@ void TFileSystem::Link(
     }
 
     auto request = StartRequest<NProto::TCreateNodeRequest>(newparent);
-    request->SetName(newname);
+    request->SetName(std::move(newname));
 
     auto* link = request->MutableLink();
     link->SetTargetNode(ino);
@@ -437,7 +437,7 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedEntry(newparent, newname);
+                self->InvalidateCachedNode(newparent);
                 self->InvalidateCachedNode(ino);
                 self->ReplyEntryWithCache(
                     *callContext,

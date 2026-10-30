@@ -599,6 +599,28 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
     }
 
+    Y_UNIT_TEST(ShouldKeepNewerTombstonesUponInvalidateAll)
+    {
+        TNodeRefCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
+        const auto t0 = TInstant::Seconds(100);
+
+        //
+        // An invalidation with version 6 is applied before InvalidateAll with
+        // version 5 - the requests started at version 5 must not cache
+        // anything for the invalidated NodeRef.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidNodeId,
+            cache.Invalidate(1, "a", 6 /* version */));
+        cache.InvalidateAll(5 /* version */);
+
+        cache.Add(1, "a", 10, 5 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
+        cache.Add(1, "a", 10, 6 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT_VALUES_EQUAL(10, cache.Get(1, "a", t0));
+    }
+
     Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodeRefs)
     {
         TNodeRefCache cache(2 /* maxEntryCount */, 1 /* shardCount */);
