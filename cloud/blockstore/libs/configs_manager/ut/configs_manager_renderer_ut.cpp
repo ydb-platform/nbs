@@ -210,8 +210,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             UNIT_ASSERT_STRING_CONTAINS(
                 html,
                 "StorageService.WriteBlobThreshold</td>"
-                "<td>100</td><td>200</td><td>" + ToString(value) +
-                    "</td><td>&mdash;</td><td>" + ToString(value) + "</td>");
+                "<td>100</td><td>200</td><td>" +
+                    ToString(value) + "</td><td>&mdash;</td><td>" +
+                    ToString(value) + "</td>");
             UNIT_ASSERT_STRING_CONTAINS(
                 html,
                 "class='config-dynamic-total'>1</span>");
@@ -290,7 +291,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         NConfig::TRuntimeConfigDiagnostics diagnostics;
         const auto config = MakeRuntimeBlockstoreConfig(
-            staticConfig, startupConfig, dynamicConfig, controls, diagnostics);
+            staticConfig,
+            startupConfig,
+            dynamicConfig,
+            controls,
+            diagnostics);
         controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
         NKikimr::TControlBoard board;
         controls->Register(board);
@@ -308,7 +313,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 },
         };
         const auto html = renderer.RenderHtml(
-            *config, staticConfig, dynamicConfig, *controls);
+            *config,
+            staticConfig,
+            dynamicConfig,
+            *controls);
 
         // Use the same format for raw values, ICB and Effective.
         UNIT_ASSERT_STRING_CONTAINS(
@@ -460,7 +468,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto startupConfig =
             MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
         auto config = MakeStartupBlockstoreConfig(
-            staticConfig, startupDynamicConfig, controls);
+            staticConfig,
+            startupDynamicConfig,
+            controls);
         TBlockstoreConfigRenderer renderer{
             .Data =
                 {
@@ -471,7 +481,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Show explicit empty messages and omit automatically created sections.
         const auto startupHtml = renderer.RenderHtml(
-            *config, staticConfig, startupDynamicConfig, *controls);
+            *config,
+            staticConfig,
+            startupDynamicConfig,
+            *controls);
         UNIT_ASSERT_STRING_CONTAINS(
             startupHtml,
             "LocalNVMe.LockdownConfig</td>"
@@ -491,10 +504,15 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
-            dynamicConfig, controls, renderer.Data.RuntimeDiagnostics);
+            dynamicConfig,
+            controls,
+            renderer.Data.RuntimeDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
         const auto html = renderer.RenderHtml(
-            *config, staticConfig, dynamicConfig, *controls);
+            *config,
+            staticConfig,
+            dynamicConfig,
+            *controls);
 
         // Preserve the empty effective message and its deferred section count.
         UNIT_ASSERT_STRING_CONTAINS(
@@ -539,9 +557,14 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
-            dynamicConfig, controls, renderer.Data.RuntimeDiagnostics);
+            dynamicConfig,
+            controls,
+            renderer.Data.RuntimeDiagnostics);
         const auto html = renderer.RenderHtml(
-            *config, staticConfig, dynamicConfig, *controls);
+            *config,
+            staticConfig,
+            dynamicConfig,
+            *controls);
 
         // Mark only empty messages; populated values remain in child rows.
         UNIT_ASSERT_STRING_CONTAINS(
@@ -594,7 +617,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         // Mark the retained and rejected branches as one deferred group change.
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<td class='config-dynamic-deferred'>Logbroker.IamMetadataServer</td>"
+            "<td "
+            "class='config-dynamic-deferred'>Logbroker.IamMetadataServer</td>"
             "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
@@ -832,9 +856,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 1);
             WaitForAck(1);
             const auto html = GetMonitoringPage();
-            UNIT_ASSERT_STRING_CONTAINS(
-                html,
-                startupTime + ", startup</td>");
+            UNIT_ASSERT_STRING_CONTAINS(html, startupTime + ", startup</td>");
             UNIT_ASSERT_STRING_CONTAINS(
                 html,
                 "StorageService.WriteBlobThreshold</td>"
