@@ -31,6 +31,7 @@ Repeated values are aligned by index and map values by key across sources.
 
 #include <array>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace NCloud::NBlockStore {
@@ -186,6 +187,28 @@ bool IsMessageEmpty(const Message* message)
     return fields.empty();
 }
 
+// Format declared enum values with both their name and number.
+TString FormatEnumValue(
+    const google::protobuf::EnumDescriptor& enumType,
+    i64 value)
+{
+    const auto* enumValue = std::in_range<int>(value)
+                               ? enumType.FindValueByNumber(
+                                     static_cast<int>(value))
+                               : nullptr;
+    return enumValue ? TStringBuilder() << enumValue->name() << " (" << value
+                                       << ')'
+                     : ToString(value);
+}
+
+// Format enum overrides by their schema and other ICB values as integers.
+TString FormatIcbValue(const FieldDescriptor& field, i64 value)
+{
+    return field.cpp_type() == FieldDescriptor::CPPTYPE_ENUM
+               ? FormatEnumValue(*field.enum_type(), value)
+               : ToString(value);
+}
+
 // Format scalars, mark empty messages and redact explicitly named secrets.
 std::optional<TString>
 GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
@@ -202,6 +225,15 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
         return IsMessageEmpty(GetMessage(message, field, index))
                    ? std::optional<TString>("{}")
                    : std::nullopt;
+    }
+
+    if (field->cpp_type() == FieldDescriptor::CPPTYPE_ENUM) {
+        const auto* reflection = message->GetReflection();
+        const auto value = field->is_repeated()
+                               ? reflection->GetRepeatedEnumValue(
+                                     *message, field, index)
+                               : reflection->GetEnumValue(*message, field);
+        return FormatEnumValue(*field->enum_type(), value);
     }
 
     TString value;
@@ -279,7 +311,8 @@ void RenderField(
                         out,
                         icb ? std::optional<TString>(
                                   IsSensitive(*field) ? TString("[redacted]")
-                                                      : ToString(*icb))
+                                                      : FormatIcbValue(
+                                                            *field, *icb))
                             : std::nullopt);
                 } else {
                     out << "<td class='config-icb-unavailable'></td>";

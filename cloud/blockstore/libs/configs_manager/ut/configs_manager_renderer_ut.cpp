@@ -265,6 +265,71 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "<span class='config-zero'>&mdash;</span></td>");
     }
 
+    // Show enum names and numbers in every source and ICB column.
+    Y_UNIT_TEST(ShouldRenderEnumNamesAndNumbers)
+    {
+        // Give each source an explicit enum value and apply an ICB override.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetSSDCompactionType(
+            NProto::CT_DEFAULT);
+        auto* checksumFlags = staticConfig.MutableServer()
+                                  ->MutableServerConfig()
+                                  ->MutableChecksumFlags();
+        checksumFlags->AddMediaKindsToValidateDataIntegrity(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        checksumFlags->AddMediaKindsToValidateDataIntegrity(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableStorageService()->SetSSDCompactionType(
+            NProto::CT_LOAD);
+        auto dynamicConfig = MakeConfig(300);
+        dynamicConfig.MutableStorageService()->SetSSDCompactionType(
+            NProto::CT_DEFAULT);
+        const auto startupConfig =
+            MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig, startupConfig, dynamicConfig, controls, diagnostics);
+        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        TAtomic previous = 0;
+        UNIT_ASSERT(
+            !board.SetValue("BlockStore_SSDCompactionType", 1, previous));
+
+        // Render startup and runtime sources alongside the effective override.
+        const TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .UpdateStatus = EConfigUpdateStatus::Runtime,
+                    .DynamicConfigPresent = true,
+                },
+        };
+        const auto html = renderer.RenderHtml(
+            *config, staticConfig, dynamicConfig, *controls);
+
+        // Use the same format for raw values, ICB and Effective.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.SSDCompactionType</td>"
+            "<td>CT_DEFAULT (0)</td><td>CT_LOAD (1)</td>"
+            "<td>CT_DEFAULT (0)</td><td>CT_LOAD (1)</td><td>CT_LOAD (1)</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "Server.ServerConfig.ChecksumFlags."
+            "MediaKindsToValidateDataIntegrity[0]</td>"
+            "<td>STORAGE_MEDIA_SSD (1)</td><td>&mdash;</td>"
+            "<td>&mdash;</td><td>STORAGE_MEDIA_SSD (1)</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "Server.ServerConfig.ChecksumFlags."
+            "MediaKindsToValidateDataIntegrity[1]</td>"
+            "<td>STORAGE_MEDIA_HDD (3)</td><td>&mdash;</td>"
+            "<td>&mdash;</td><td>STORAGE_MEDIA_HDD (3)</td>");
+    }
+
     // Check source columns, live ICB values, secret redaction and HTML
     // escaping.
     Y_UNIT_TEST(ShouldRenderConfigSourcesWithLiveIcbOverridesAndRedactedSecrets)
