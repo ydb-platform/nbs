@@ -7,6 +7,7 @@
 #include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "node_attrs_cache.h"
 #include "node_cache.h"
 #include "node_ref_cache.h"
 
@@ -90,6 +91,7 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
+    TNodeAttrsCache NodeAttrsCache;
     TNodeRefCache NodeRefCache;
 
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
@@ -454,13 +456,15 @@ private:
     bool UpdateNodeAttrsInCache(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry,
-        ui64 version,
-        TInstant cacheDeadline);
+        ui64 version);
 
     TInstant GetCacheDeadline(ui32 cacheTTL) const;
     void UpdateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name,
+        const NProto::TGetNodeAttrResponse& response,
+        ui64 version);
+    void UpdateCachedNodeAttrs(
         const NProto::TGetNodeAttrResponse& response,
         ui64 version);
     bool TryReplyEntryFromCache(
@@ -501,8 +505,7 @@ private:
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
         ui64 version,
-        bool newNodeCreated,
-        TInstant cacheDeadline);
+        bool newNodeCreated);
     void ReplyXAttrInt(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
@@ -514,8 +517,7 @@ private:
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version,
-        TInstant cacheDeadline);
+        ui64 version);
 
     void ProcessAsyncCreateHandleResponse(
         TCallContextPtr callContext,

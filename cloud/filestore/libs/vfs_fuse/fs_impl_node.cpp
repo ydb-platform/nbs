@@ -64,9 +64,9 @@ void TFileSystem::Lookup(
                     const ui64 nodeId = response.GetNode().GetId();
                     const bool hasCachedData = self->WriteBackCache &&
                         self->WriteBackCache.GetMaxWrittenOffset(nodeId);
-                    const auto cacheDeadline = hasCachedData
-                        ? TInstant::Zero()
-                        : self->GetCacheDeadline(response.GetNodeCacheTTL());
+                    if (!hasCachedData) {
+                        self->UpdateCachedNodeAttrs(response, version);
+                    }
 
                     self->AdjustNodeSize(*response.MutableNode());
                     self->ReplyEntryWithCache(
@@ -75,8 +75,7 @@ void TFileSystem::Lookup(
                         req,
                         response.GetNode(),
                         version,
-                        false /* newNodeCreated */,
-                        cacheDeadline);
+                        false /* newNodeCreated */);
                 } else if (error.GetCode() == E_FS_NAMETOOLONG) {
                     self->ReplyError(*callContext, error, req, ENAMETOOLONG);
                 } else {
@@ -161,8 +160,7 @@ void TFileSystem::MkDir(
                     req,
                     response.GetNode(),
                     1 /* version */,
-                    true /* newNodeCreated */,
-                    TInstant::Zero() /* cacheDeadline */);
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -269,8 +267,7 @@ void TFileSystem::MkNode(
                     req,
                     response.GetNode(),
                     1 /* version */,
-                    true /* newNodeCreated */,
-                    TInstant::Zero() /* cacheDeadline */);
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -401,8 +398,7 @@ void TFileSystem::SymLink(
                     req,
                     response.GetNode(),
                     1 /* version */,
-                    true /* newNodeCreated */,
-                    TInstant::Zero() /* cacheDeadline */);
+                    true /* newNodeCreated */);
             }
         });
 }
@@ -449,8 +445,7 @@ void TFileSystem::Link(
                     req,
                     response.GetNode(),
                     1 /* version */,
-                    false /* newNodeCreated */,
-                    TInstant::Zero() /* cacheDeadline */);
+                    false /* newNodeCreated */);
             }
         });
 }

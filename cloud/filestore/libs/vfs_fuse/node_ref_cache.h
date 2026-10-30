@@ -2,17 +2,15 @@
 
 #include "public.h"
 
-#include <cloud/filestore/libs/service/filestore.h>
+#include "ttl_cache.h"
 
-#include <library/cpp/cache/cache.h>
+#include <cloud/filestore/libs/service/filestore.h>
 
 #include <util/datetime/base.h>
 #include <util/digest/multi.h>
-#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <util/system/spinlock.h>
 
 #include <memory>
 
@@ -46,61 +44,15 @@ namespace NCloud::NFileStore::NFuse {
 
 /*
  * Caches the NodeRefs (ParentNodeId, Name) -> NodeId returned by the backend
- * along with a TTL (NodeRefCacheTTL in the GetNodeAttr responses). The backend
- * sends an invalidation event upon a change of a NodeRef, the local changes
- * invalidate the NodeRefs directly.
- *
- * The NodeRefs fetched by the requests started before an invalidation of the
- * same NodeRef are not cached - the invalidations are remembered as
- * tombstones with the cache version of the invalidation. The number of the
- * tombstones is limited: upon eviction of a tombstone its version raises the
- * watermark below which nothing is cached.
+ * along with a TTL (NodeRefCacheTTL in the GetNodeAttr responses), see
+ * TTTLCacheShard.
  */
-class TNodeRefCacheShard
-{
-private:
-    struct TEntry
-    {
-        ui64 NodeId = 0;
-        TInstant Deadline;
-    };
-
-    struct TTombstone
-    {
-        TNodeRefCacheKey Key;
-        ui64 Version = 0;
-    };
-
-    TLRUCache<TNodeRefCacheKey, TEntry> Entries;
-    THashMap<TNodeRefCacheKey, ui64> Tombstones;
-    TDeque<TTombstone> TombstoneQueue;
-    const ui32 MaxTombstoneCount;
-    ui64 Watermark = 0;
-    TAdaptiveLock Lock;
-
-public:
-    explicit TNodeRefCacheShard(ui32 maxEntryCount);
-
-    void Add(
-        const TNodeRefCacheKey& key,
-        ui64 nodeId,
-        ui64 version,
-        TInstant deadline);
-    ui64 Get(const TNodeRefCacheKey& key, TInstant now);
-    ui64 Invalidate(const TNodeRefCacheKey& key, ui64 version);
-    void InvalidateAll(ui64 version);
-    size_t GetEntryCount();
-
-private:
-    void AddTombstone(const TNodeRefCacheKey& key, ui64 version);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TNodeRefCache
 {
 private:
-    TVector<std::unique_ptr<TNodeRefCacheShard>> Shards;
+    using TShard = TTTLCacheShard<TNodeRefCacheKey, ui64>;
+
+    TVector<std::unique_ptr<TShard>> Shards;
 
 public:
     /**
@@ -167,7 +119,7 @@ public:
     size_t GetEntryCount();
 
 private:
-    TNodeRefCacheShard& GetShard(ui64 parentNodeId);
+    TShard& GetShard(ui64 parentNodeId);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

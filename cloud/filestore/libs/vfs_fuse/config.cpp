@@ -25,6 +25,7 @@ namespace {
     xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
     xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
     xxx(NodeRefCacheLimit,      ui32,           64 * 1024                     )\
+    xxx(NodeAttrsCacheLimit,    ui32,           64 * 1024                     )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \

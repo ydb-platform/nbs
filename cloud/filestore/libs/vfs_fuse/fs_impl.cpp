@@ -58,6 +58,7 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , NodeAttrsCache(Config->GetNodeAttrsCacheLimit(), CACHE_SHARD_COUNT)
     , NodeRefCache(Config->GetNodeRefCacheLimit(), CACHE_SHARD_COUNT)
     , DirectoryEntryVersionCache(
           std::make_shared<TDirectoryEntryVersionCache>(
@@ -185,8 +186,7 @@ void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 bool TFileSystem::UpdateNodeAttrsInCache(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry,
-    ui64 version,
-    TInstant cacheDeadline)
+    ui64 version)
 {
     STORAGE_TRACE("updating node attrs: "
         << ProtoMessagePrinter.ToString(attrs)
@@ -195,7 +195,7 @@ bool TFileSystem::UpdateNodeAttrsInCache(
     entry.ino = attrs.GetId();
     entry.generation = 0; // TODO
 
-    const bool updated = NodeCache.UpdateNode(attrs, version, cacheDeadline);
+    const bool updated = NodeCache.UpdateNode(attrs, version);
     if (updated) {
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
         entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
@@ -246,6 +246,18 @@ void TFileSystem::UpdateCachedNodeRef(
         deadline);
 }
 
+void TFileSystem::UpdateCachedNodeAttrs(
+    const NProto::TGetNodeAttrResponse& response,
+    ui64 version)
+{
+    const auto deadline = GetCacheDeadline(response.GetNodeCacheTTL());
+    if (!deadline || response.GetNode().GetId() == InvalidNodeId) {
+        return;
+    }
+
+    NodeAttrsCache.Add(response.GetNode(), version, deadline);
+}
+
 bool TFileSystem::TryReplyEntryFromCache(
     TCallContext& callContext,
     fuse_req_t req,
@@ -258,12 +270,7 @@ bool TFileSystem::TryReplyEntryFromCache(
         return false;
     }
 
-    //
-    // Increments the node ref count - the reply increments the guest's lookup
-    // count.
-    //
-
-    auto attrs = NodeCache.RefCachedNode(nodeId, now);
+    auto attrs = NodeAttrsCache.Get(nodeId, now);
     if (!attrs) {
         return false;
     }
@@ -271,20 +278,22 @@ bool TFileSystem::TryReplyEntryFromCache(
     STORAGE_TRACE("replying entry from cache: "
         << ProtoMessagePrinter.ToString(*attrs));
 
+    //
+    // The reply increments the guest's lookup count, so NodeCache is updated
+    // the same way as upon a Lookup response. The cached attrs have not been
+    // invalidated since they were fetched, so they are as fresh as a
+    // response to a request started now.
+    //
+
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
     AdjustNodeSize(*attrs);
-
-    fuse_entry_param entry = {};
-    entry.ino = attrs->GetId();
-    entry.generation = 0; // TODO
-    entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-    entry.entry_timeout = GetEntryCacheTimeout(*attrs).SecondsFloat();
-    ConvertAttr(Config->GetPreferredBlockSize(), *attrs, entry.attr);
-
-    const int res = ReplyEntry(callContext, {}, req, &entry);
-    if (res == -ENOENT) {
-        // syscall was interrupted
-        NodeCache.ForgetNode(entry.ino, 1);
-    }
+    ReplyEntryWithCache(
+        callContext,
+        {},
+        req,
+        *attrs,
+        version,
+        false /* newNodeCreated */);
 
     return true;
 }
@@ -294,7 +303,7 @@ bool TFileSystem::TryReplyAttrFromCache(
     fuse_req_t req,
     ui64 nodeId)
 {
-    auto attrs = NodeCache.GetCachedAttrs(nodeId, Timer->Now());
+    auto attrs = NodeAttrsCache.Get(nodeId, Timer->Now());
     if (!attrs) {
         return false;
     }
@@ -323,7 +332,7 @@ void TFileSystem::InvalidateCachedNode(ui64 nodeId)
     STORAGE_TRACE("invalidating cached node: " << nodeId
         << ", version: " << version);
 
-    NodeCache.InvalidateCachedAttrs(nodeId, version);
+    NodeAttrsCache.Invalidate(nodeId, version);
 }
 
 void TFileSystem::InvalidateCachedNodeRef(
@@ -345,7 +354,7 @@ void TFileSystem::InvalidateAllCachedMetadata()
 
     STORAGE_INFO("invalidating all cached metadata, version: " << version);
 
-    NodeCache.InvalidateAllCachedAttrs(version);
+    NodeAttrsCache.InvalidateAll(version);
     NodeRefCache.InvalidateAll(version);
 }
 
@@ -367,9 +376,9 @@ void TFileSystem::InvalidateCachedEntry(
 
     const ui64 nodeId = NodeRefCache.Invalidate(parentNodeId, name, version);
     if (nodeId != InvalidNodeId) {
-        NodeCache.InvalidateCachedAttrs(nodeId, version);
+        NodeAttrsCache.Invalidate(nodeId, version);
     }
-    NodeCache.InvalidateCachedAttrs(parentNodeId, version);
+    NodeAttrsCache.Invalidate(parentNodeId, version);
 }
 
 void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
@@ -380,6 +389,7 @@ void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
         << ", version: " << newVersion);
 
     NodeCache.InvalidateNode(nodeId, newVersion);
+    NodeAttrsCache.Invalidate(nodeId, newVersion);
 }
 
 void TFileSystem::InvalidateDirectoryEntryInCache(
@@ -446,11 +456,7 @@ void TFileSystem::ReplyCreateWithCache(
     }
 
     fuse_entry_param entry = {};
-    UpdateNodeAttrsInCache(
-        attrs,
-        entry,
-        version,
-        TInstant::Zero() /* cacheDeadline */);
+    UpdateNodeAttrsInCache(attrs, entry, version);
 
     fuse_file_info fi = {};
     fi.fh = handle;
@@ -468,8 +474,7 @@ void TFileSystem::ReplyEntryWithCache(
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
     ui64 version,
-    bool newNodeCreated,
-    TInstant cacheDeadline)
+    bool newNodeCreated)
 {
     STORAGE_TRACE("inserting node: "
         << ProtoMessagePrinter.ToString(attrs)
@@ -487,7 +492,7 @@ void TFileSystem::ReplyEntryWithCache(
     }
 
     fuse_entry_param entry = {};
-    UpdateNodeAttrsInCache(attrs, entry, version, cacheDeadline);
+    UpdateNodeAttrsInCache(attrs, entry, version);
 
     const int res = ReplyEntry(callContext, error, req, &entry);
     if (res == -ENOENT) {
@@ -521,8 +526,7 @@ void TFileSystem::ReplyAttrWithCache(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
-    ui64 version,
-    TInstant cacheDeadline)
+    ui64 version)
 {
     STORAGE_TRACE("returning node: "
         << ProtoMessagePrinter.ToString(attrs)
@@ -536,7 +540,6 @@ void TFileSystem::ReplyAttrWithCache(
     // NodeCache ref count mirrors the guest's lookup count. attr replies do
     // not change it, so only check the version.
     const bool updated = NodeCache.GetNodeVersion(attrs.GetId()) <= version;
-    NodeCache.UpdateCachedAttrs(attrs, version, cacheDeadline);
 
     struct stat attr = {};
     ConvertAttr(Config->GetPreferredBlockSize(), attrs, attr);

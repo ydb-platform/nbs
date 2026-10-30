@@ -1,5 +1,5 @@
 #include "fs_ut_bootstrap.h"
-#include "node_cache.h"
+#include "node_attrs_cache.h"
 #include "node_ref_cache.h"
 
 #include <cloud/filestore/libs/service/filesystem_event.h>
@@ -293,6 +293,93 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
     }
 
+    Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidationAndForget)
+    {
+        TMetadataCachingEnv env;
+
+        //
+        // The node is cached and looked up by the guest. Then the NodeRef is
+        // invalidated, so the next Lookup goes to the backend. While it is in
+        // flight, the node is invalidated and forgotten by the guest - the
+        // invalidation must not be lost along with the forgotten node.
+        //
+
+        env.Lookup("f");
+
+        NProto::TFileSystemEvent event;
+        auto* invalidate = event.MutableInvalidateNodeRef();
+        invalidate->SetNodeId(RootNodeId);
+        invalidate->SetName("f");
+        env.SendEvent(event);
+
+        auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
+        env.Bootstrap.Service->SetHandlerGetNodeAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                auto response = env.HandleGetNodeAttr(*request);
+                if (env.LookupCount == 2) {
+                    return promise.GetFuture().Apply(
+                        [response] (const auto&) { return response; });
+                }
+                return MakeFuture(response);
+            });
+
+        auto lookup =
+            env.Bootstrap.Fuse->SendRequest<TLookupRequest>("f", RootNodeId);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return env.LookupCount == 2; }));
+
+        event.Clear();
+        event.MutableInvalidateNode()->SetNodeId(FileNodeId);
+        env.SendEvent(event);
+
+        auto forget = env.Bootstrap.Fuse->SendRequest<TForgetRequest>(
+            FileNodeId,
+            1 /* nlookup */);
+        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
+
+        promise.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(FileNodeId, lookup.GetValue(WaitTimeout));
+
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+    }
+
+    Y_UNIT_TEST(ShouldKeepCachedAttrsAfterForget)
+    {
+        TMetadataCachingEnv env;
+
+        //
+        // The cached attrs don't depend on the guest's lookup count.
+        //
+
+        env.Lookup("f");
+        auto forget = env.Bootstrap.Fuse->SendRequest<TForgetRequest>(
+            FileNodeId,
+            1 /* nlookup */);
+        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
+
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetAttrCount.load());
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
+    }
+
+    Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
+    {
+        TMetadataCachingEnv env;
+
+        //
+        // The guest never looks the root up.
+        //
+
+        env.GetAttr(RootNodeId);
+        env.GetAttr(RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+    }
+
     Y_UNIT_TEST(ShouldInvalidateCachesUponLocalChanges)
     {
         TMetadataCachingEnv env;
@@ -367,101 +454,76 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TNodeCacheTTLTest)
+Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
 {
-    Y_UNIT_TEST(ShouldKeepNodeAfterTTL)
+    Y_UNIT_TEST(ShouldCacheNodeAttrsUntilDeadline)
     {
-        TNodeCache cache("fs");
+        TNodeAttrsCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
-        UNIT_ASSERT(cache.UpdateNode(
-            MakeFileAttr(1),
-            1 /* version */,
-            t0 + CacheTTL));
-        UNIT_ASSERT(cache.GetCachedAttrs(1, t0));
+        cache.Add(MakeFileAttr(1), 1 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT_VALUES_EQUAL(1, cache.Get(1, t0)->GetId());
+        UNIT_ASSERT(!cache.Get(2, t0));
 
-        //
-        // The node is retained for the race detection.
-        //
-
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0 + CacheTTL));
-        UNIT_ASSERT_VALUES_EQUAL(1, cache.GetNodeVersion(1));
+        UNIT_ASSERT(!cache.Get(1, t0 + CacheTTL));
+        UNIT_ASSERT_VALUES_EQUAL(0, cache.GetEntryCount());
     }
 
-    Y_UNIT_TEST(ShouldRefCachedNode)
+    Y_UNIT_TEST(ShouldNotCacheNodeAttrsFetchedBeforeInvalidation)
     {
-        TNodeCache cache("fs");
-        const auto t0 = TInstant::Seconds(100);
-
-        UNIT_ASSERT(cache.UpdateNode(
-            MakeFileAttr(1),
-            1 /* version */,
-            t0 + CacheTTL));
-        UNIT_ASSERT(cache.RefCachedNode(1, t0));
-
-        //
-        // 2 references - the node is erased by the second forget only.
-        //
-
-        cache.ForgetNode(1, 1);
-        UNIT_ASSERT(cache.GetCachedAttrs(1, t0));
-        cache.ForgetNode(1, 1);
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0));
-        UNIT_ASSERT_VALUES_EQUAL(0, cache.GetNodeVersion(1));
-    }
-
-    Y_UNIT_TEST(ShouldNotCacheAttrsFetchedBeforeInvalidation)
-    {
-        TNodeCache cache("fs");
+        TNodeAttrsCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
         //
-        // The node is absent upon invalidation and is inserted by a request
-        // started before the invalidation.
+        // The node is not cached upon invalidation.
         //
 
-        cache.InvalidateCachedAttrs(1, 5 /* version */);
-        UNIT_ASSERT(cache.UpdateNode(
-            MakeFileAttr(1),
-            4 /* version */,
-            t0 + CacheTTL));
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0));
+        cache.Invalidate(1, 5 /* version */);
+        cache.Add(MakeFileAttr(1), 4 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(1, t0));
+
+        cache.Add(MakeFileAttr(1), 6 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(cache.Get(1, t0));
 
         //
-        // The race detection state is not affected by InvalidateCachedAttrs.
+        // The node is cached upon invalidation.
         //
 
-        UNIT_ASSERT_VALUES_EQUAL(4, cache.GetNodeVersion(1));
-
-        cache.UpdateCachedAttrs(
-            MakeFileAttr(1),
-            6 /* version */,
-            t0 + CacheTTL);
-        UNIT_ASSERT(cache.GetCachedAttrs(1, t0));
-
-        //
-        // The node is present upon invalidation.
-        //
-
-        cache.InvalidateCachedAttrs(1, 8 /* version */);
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0));
-        cache.UpdateCachedAttrs(
-            MakeFileAttr(1),
-            7 /* version */,
-            t0 + CacheTTL);
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0));
+        cache.Invalidate(1, 8 /* version */);
+        UNIT_ASSERT(!cache.Get(1, t0));
+        cache.Add(MakeFileAttr(1), 7 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(1, t0));
 
         //
         // All the nodes are invalidated.
         //
 
-        cache.UpdateCachedAttrs(
-            MakeFileAttr(1),
-            9 /* version */,
-            t0 + CacheTTL);
-        UNIT_ASSERT(cache.GetCachedAttrs(1, t0));
-        cache.InvalidateAllCachedAttrs(10 /* version */);
-        UNIT_ASSERT(!cache.GetCachedAttrs(1, t0));
+        cache.Add(MakeFileAttr(1), 9 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(cache.Get(1, t0));
+        cache.InvalidateAll(10 /* version */);
+        UNIT_ASSERT(!cache.Get(1, t0));
+        cache.Add(MakeFileAttr(2), 9 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(2, t0));
+    }
+
+    Y_UNIT_TEST(ShouldRaiseWatermarkUponTombstoneEviction)
+    {
+        TNodeAttrsCache cache(2 /* maxEntryCount */, 1 /* shardCount */);
+        const auto t0 = TInstant::Seconds(100);
+
+        cache.Invalidate(1, 5 /* version */);
+        cache.Invalidate(2, 6 /* version */);
+        cache.Invalidate(3, 7 /* version */);
+
+        cache.Add(MakeFileAttr(1), 4 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(1, t0));
+        cache.Add(MakeFileAttr(4), 4 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(4, t0));
+
+        cache.Add(MakeFileAttr(4), 5 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(cache.Get(4, t0));
+        cache.Add(MakeFileAttr(2), 5 /* version */, t0 + CacheTTL);
+        UNIT_ASSERT(!cache.Get(2, t0));
     }
 }
 
