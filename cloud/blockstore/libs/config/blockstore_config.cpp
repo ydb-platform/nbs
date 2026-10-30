@@ -324,6 +324,19 @@ NProto::TBlockstoreConfig MergeBlockstoreConfig(
     return result;
 }
 
+// Preserve non-protobuf parameters when rebuilding the configuration.
+TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
+    const IBlockstoreConfig& currentConfig)
+{
+    const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
+    return {
+        .DiskAgent = {
+            .Rack = diskAgentConfig->GetRack(),
+            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
+        },
+    };
+}
+
 IBlockstoreConfigPtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,

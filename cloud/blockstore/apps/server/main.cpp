@@ -36,7 +36,7 @@ int main(int argc, char** argv)
     auto serverModuleFactories =
         std::make_shared<NServer::TServerModuleFactories>();
     serverModuleFactories->LogbrokerServiceFactory = [] (
-        NLogbroker::TLogbrokerConfigPtr config,
+        NLogbroker::TLogbrokerConfigConstPtr config,
         NCloud::ILoggingServicePtr logging)
     {
         Y_UNUSED(config);
@@ -44,7 +44,7 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->IamClientFactory = [] (
-        NCloud::NIamClient::TIamClientConfigPtr config,
+        NCloud::NIamClient::TIamClientConfigConstPtr config,
         NCloud::ILoggingServicePtr logging,
         NCloud::ISchedulerPtr scheduler,
         NCloud::ITimerPtr timer)
@@ -114,7 +114,7 @@ int main(int argc, char** argv)
     };
 
     serverModuleFactories->SpdkFactory = [] (
-        NSpdk::TSpdkEnvConfigPtr config)
+        NSpdk::TSpdkEnvConfigConstPtr config)
     {
         Y_UNUSED(config);
         return NServer::TSpdkParts {
@@ -131,7 +131,7 @@ int main(int argc, char** argv)
         NCloud::NBlockStore::NRdma::CreateRdmaServer;
 
     serverModuleFactories->NotifyServiceFactory =
-        [](NNotify::TNotifyConfigPtr config,
+        [](NNotify::TNotifyConfigConstPtr config,
            NCloud::NIamClient::IIamTokenClientPtr iamTokenClient,
            NCloud::ILoggingServicePtr logging) -> NNotify::IServicePtr
     {
