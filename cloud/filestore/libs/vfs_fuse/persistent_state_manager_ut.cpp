@@ -1093,8 +1093,8 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             "new-fs",
             SessionId,
             1);
-        UNIT_ASSERT(HasError(result));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(!result.GetResult());
         UNIT_ASSERT(!SessionDir("new-fs", SessionId).Exists());
         UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
 
@@ -1120,10 +1120,13 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             FileSystemId,
             SessionId,
             1);
-        UNIT_ASSERT(HasError(result));
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT(!IsLocked(filePath));
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        guard = result.ExtractResult();
+        UNIT_ASSERT(guard);
+        UNIT_ASSERT_VALUES_EQUAL(0, guard.GetTargetStateFileSize());
         UNIT_ASSERT_VALUES_EQUAL(0, TFileStat(filePath.GetPath()).Size);
+        guard = {};
+        UNIT_ASSERT(!IsLocked(filePath));
     }
 
     Y_UNIT_TEST_F(ShouldReserveExistingStateFileTargetSize, TFixture)
