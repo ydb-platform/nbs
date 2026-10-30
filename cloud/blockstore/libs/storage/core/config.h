@@ -46,6 +46,17 @@ using TPoolKindToMediaKindMapping =
 class TStorageConfigControls
 {
 public:
+    // An ICB override copied with its validation result. Obtain it through
+    // GetOverrideInfo(); later control changes do not alter this value.
+    struct TOverrideInfo
+    {
+        // Integer captured from the control, including invalid enum numbers.
+        i64 Value;
+
+        // Enum validation result; always true for non-enum parameters.
+        bool IsValid;
+    };
+
     // Initialize controls from raw values with compiled fallbacks and no ICB
     // overrides.
     explicit TStorageConfigControls(
@@ -68,10 +79,14 @@ public:
     // Register().
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
-    // Return an explicit ICB override for a known read-write field. An empty
-    // result means "no override" - the caller must use its configuration proto
-    // value.
+    // Return a valid ICB override for a known read-write field. An empty result
+    // means no usable override; use the configuration proto or compiled
+    // default.
     std::optional<i64> GetOverride(TStringBuf name) const;
+
+    // Return an explicit override with its validation result, including invalid
+    // enum values; return empty for an unknown field or no override.
+    std::optional<TOverrideInfo> GetOverrideInfo(TStringBuf name) const;
 
 private:
     friend class TStorageConfig;
