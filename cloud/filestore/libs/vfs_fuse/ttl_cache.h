@@ -64,7 +64,7 @@ public:
             return;
         }
 
-        if (const auto* tombstone = Tombstones.FindPtr(key);
+        if (const ui64* tombstone = Tombstones.FindPtr(key);
             tombstone && version < *tombstone)
         {
             return;
@@ -103,7 +103,7 @@ public:
             return Nothing();
         }
 
-        auto value = std::move(it.Value().Value);
+        TValue value = std::move(it.Value().Value);
         Entries.Erase(it);
         return value;
     }
@@ -139,7 +139,7 @@ public:
 private:
     void AddTombstone(const TKey& key, ui64 version)
     {
-        auto& tombstoneVersion = Tombstones[key];
+        ui64& tombstoneVersion = Tombstones[key];
         tombstoneVersion = Max(tombstoneVersion, version);
         TombstoneQueue.push_back({.Key = key, .Version = version});
 

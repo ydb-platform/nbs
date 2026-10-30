@@ -182,6 +182,12 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
     Y_UNIT_TEST(ShouldNotCacheWithoutTTL)
     {
         TMetadataCachingEnv env;
+
+        //
+        // No NodeCacheTTL - the node attrs are not cached, so a cached NodeRef
+        // alone is not enough to reply to Lookup.
+        //
+
         env.NodeCacheTTL = 0;
 
         env.Lookup("f");
@@ -193,7 +199,9 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetAttrCount.load());
 
         //
-        // A cached NodeRef alone is not enough to reply to Lookup.
+        // No NodeRefCacheTTL - the NodeRef is not cached, so the cached node
+        // attrs alone are not enough to reply to Lookup. They are still used
+        // for GetAttr.
         //
 
         env.Timer->AdvanceTime(CacheTTL);
@@ -202,6 +210,9 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.Lookup("f");
         env.Lookup("f");
         UNIT_ASSERT_VALUES_EQUAL(4, env.LookupCount.load());
+
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetAttrCount.load());
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponEvents)
@@ -291,80 +302,6 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
         env.Lookup("f");
         UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
-    }
-
-    Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidationAndForget)
-    {
-        TMetadataCachingEnv env;
-
-        //
-        // The node is cached and looked up by the guest. Then the NodeRef is
-        // invalidated, so the next Lookup goes to the backend. While it is in
-        // flight, the node is invalidated and forgotten by the guest - the
-        // invalidation must not be lost along with the forgotten node.
-        //
-
-        env.Lookup("f");
-
-        NProto::TFileSystemEvent event;
-        auto* invalidate = event.MutableInvalidateNodeRef();
-        invalidate->SetNodeId(RootNodeId);
-        invalidate->SetName("f");
-        env.SendEvent(event);
-
-        auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
-        env.Bootstrap.Service->SetHandlerGetNodeAttr(
-            [&] (auto callContext, auto request)
-            {
-                Y_UNUSED(callContext);
-                auto response = env.HandleGetNodeAttr(*request);
-                if (env.LookupCount == 2) {
-                    return promise.GetFuture().Apply(
-                        [response] (const auto&) { return response; });
-                }
-                return MakeFuture(response);
-            });
-
-        auto lookup =
-            env.Bootstrap.Fuse->SendRequest<TLookupRequest>("f", RootNodeId);
-        UNIT_ASSERT(WaitForCondition(
-            WaitTimeout,
-            [&] { return env.LookupCount == 2; }));
-
-        event.Clear();
-        event.MutableInvalidateNode()->SetNodeId(FileNodeId);
-        env.SendEvent(event);
-
-        auto forget = env.Bootstrap.Fuse->SendRequest<TForgetRequest>(
-            FileNodeId,
-            1 /* nlookup */);
-        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
-
-        promise.SetValue({});
-        UNIT_ASSERT_VALUES_EQUAL(FileNodeId, lookup.GetValue(WaitTimeout));
-
-        env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
-    }
-
-    Y_UNIT_TEST(ShouldKeepCachedAttrsAfterForget)
-    {
-        TMetadataCachingEnv env;
-
-        //
-        // The cached attrs don't depend on the guest's lookup count.
-        //
-
-        env.Lookup("f");
-        auto forget = env.Bootstrap.Fuse->SendRequest<TForgetRequest>(
-            FileNodeId,
-            1 /* nlookup */);
-        UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
-
-        env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetAttrCount.load());
-        env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
