@@ -18,6 +18,7 @@ auto GetDeviceDesc(const NProto::TNVMeDevice& device)
 
     desc.SetSerialNumber(device.GetSerialNumber());
     desc.SetPCIAddress(device.GetPCIAddress());
+    desc.SetDeviceState(device.GetDeviceState());
     if (device.HasIOMMUGroup()) {
         desc.SetIOMMUGroup(device.GetIOMMUGroup());
     }
