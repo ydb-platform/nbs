@@ -352,9 +352,10 @@ public:
         }
     }
 
+    // Only the executor thread may touch Response and Promise, so cancelling
+    // just interrupts the call; Process() sees ShouldStop and reports it
     void Cancel() override
     {
-        ReportError(grpc::Status::CANCELLED);
         Context.TryCancel();
     }
 

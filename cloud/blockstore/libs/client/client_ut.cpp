@@ -67,6 +67,51 @@ Y_UNIT_TEST_SUITE(TClientTest)
             E_NOT_IMPLEMENTED,
             futurePing.GetValue().GetError().GetCode());
     }
+
+    Y_UNIT_TEST(ShouldStopWithRequestsInFlight)
+    {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort(9001);   // nobody listens
+
+        NProto::TClientAppConfig clientAppConfig;
+        auto& clientConfig = *clientAppConfig.MutableClientConfig();
+        clientConfig.SetHost("localhost");
+        clientConfig.SetInsecurePort(port);
+        clientConfig.SetClientId(CreateGuidAsString());
+        clientConfig.SetRequestTimeout(5000);
+
+        auto result = CreateClient(
+            std::make_shared<TClientAppConfig>(clientAppConfig),
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateServerStatsStub(),
+            CreateCertificateProviderStub());
+
+        auto client = result.ExtractResult();
+        UNIT_ASSERT_C(client, FormatError(result.GetError()));
+        client->Start();
+
+        auto endpoint = client->CreateEndpoint();
+
+        // enough requests that some are still queued unsent when Stop() runs
+        TVector<TFuture<NProto::TPingResponse>> futures;
+        for (int i = 0; i < 100; ++i) {
+            futures.push_back(endpoint->Ping(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TPingRequest>()));
+        }
+
+        client->Stop();
+
+        for (const auto& future: futures) {
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT_C(
+                HasError(future.GetValue()),
+                future.GetValue().ShortDebugString());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient
