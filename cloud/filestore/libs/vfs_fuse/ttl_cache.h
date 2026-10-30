@@ -112,10 +112,21 @@ public:
     {
         auto g = Guard(Lock);
 
+        //
+        // The cleared tombstones may have versions greater than version: the
+        // versions are generated before taking the lock, so a concurrent
+        // invalidation with a greater version may be applied first. Their
+        // versions are kept in the watermark.
+        //
+
+        Watermark = Max(Watermark, version);
+        for (const auto& [key, tombstoneVersion]: Tombstones) {
+            Watermark = Max(Watermark, tombstoneVersion);
+        }
+
         Entries.Clear();
         Tombstones.clear();
         TombstoneQueue.clear();
-        Watermark = Max(Watermark, version);
     }
 
     size_t GetEntryCount()

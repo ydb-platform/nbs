@@ -2,12 +2,21 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui32 MinShardEntryCount = 1;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TNodeAttrsCache::TNodeAttrsCache(ui32 maxEntryCount, ui32 shardCount)
 {
     Y_ABORT_UNLESS(shardCount);
-    const ui32 maxShardEntryCount = Max(maxEntryCount / shardCount, 1U);
+    const ui32 maxShardEntryCount =
+        Max(maxEntryCount / shardCount, MinShardEntryCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         Shards.push_back(std::make_unique<TShard>(maxShardEntryCount));
     }
