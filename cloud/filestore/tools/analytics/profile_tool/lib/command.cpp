@@ -1,6 +1,11 @@
 #include "command.h"
 
+#include "time_range.h"
+
+#include <library/cpp/eventlog/iterator.h>
+
 #include <util/folder/dirut.h>
+#include <util/generic/algorithm.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -11,7 +16,63 @@ namespace {
 
 constexpr TStringBuf ProfileLogLabel = "profile-log";
 
+TProfileLogFile MakeProfileLogFile(TString path, bool readRecords)
+{
+    path = RealPath(path);
+    return GetProfileLogFile(path, readRecords);
+}
+
+int ProcessProfileLog(
+    const TString& path,
+    IEventProcessor& processor,
+    bool ignoreErrors)
+{
+    const auto handleReadError = [&path, ignoreErrors](const yexception& error)
+    {
+        Cerr << "Error reading profile log " << path << ": " << error.what()
+             << Endl;
+        if (ignoreErrors) {
+            Cerr << "Skipping unreadable remainder of profile log: " << path
+                 << Endl;
+            return 0;
+        }
+        return 1;
+    };
+
+    NEventLog::TOptions options;
+    options.FileName = path;
+    THolder<NEventLog::IIterator> iterator;
+    try {
+        iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
+    } catch (const yexception& error) {
+        return handleReadError(error);
+    }
+
+    for (;;) {
+        TConstEventPtr event;
+        try {
+            event = iterator->Next();
+        } catch (const yexception& error) {
+            return handleReadError(error);
+        }
+        // Processing and output failures must propagate even with
+        // ignore-errors.
+        if (!event || !processor.CheckedProcessEvent(event.Get())) {
+            return 0;
+        }
+    }
+}
+
 }   // namespace
+
+void PrintProfileLogProgress(const TProfileLogFile& file)
+{
+    Cerr << "Reading " << file.Path;
+    if (file.EndTime) {
+        Cerr << " " << *file.EndTime;
+    }
+    Cerr << Endl;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,10 +80,16 @@ TCommand::TCommand()
 {
     Opts.AddLongOption(
             ProfileLogLabel.data(),
-            "Path to profile log")
-        .Required()
+            "Path to profile log (repeat for multiple files; "
+            "processed oldest first by known end time)")
         .RequiredArgument("STR")
-        .StoreResult(&PathToProfileLog);
+        .AppendTo(&ProfileLogPaths);
+
+    Opts.AddLongOption(
+            "ignore-errors",
+            "Report log read errors and continue with the next file")
+        .NoArgument()
+        .StoreTrue(&IgnoreErrors);
 }
 
 int TCommand::Run(int argc, const char** argv)
@@ -47,12 +114,49 @@ const NLastGetopt::TOpts& TCommand::GetOpts() const
     return Opts;
 }
 
+int TCommand::ProcessProfileLogs(IEventProcessor& processor)
+{
+    for (const auto& file: ProfileLogFiles) {
+        if (ProfileLogFiles.size() > 1) {
+            PrintProfileLogProgress(file);
+        }
+        const auto result =
+            ProcessProfileLog(file.Path, processor, IgnoreErrors);
+        if (result) {
+            return result;
+        }
+    }
+    return 0;
+}
+
 bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
 {
-    Y_UNUSED(parseResult);
-
     try {
-        PathToProfileLog = RealPath(PathToProfileLog);
+        for (const auto& path: parseResult.GetFreeArgs()) {
+            ProfileLogPaths.push_back(path);
+        }
+
+        if (ProfileLogPaths.empty()) {
+            ythrow NLastGetopt::TUsageException()
+                << "At least one profile log is required; use --profile-log "
+                   "or a positional path";
+        }
+
+        const bool readRecords = Opts.FindLongOption("prune-by-time") &&
+                                 parseResult.Has("prune-by-time");
+        for (const auto& path: ProfileLogPaths) {
+            ProfileLogFiles.push_back(MakeProfileLogFile(path, readRecords));
+        }
+
+        StableSort(
+            ProfileLogFiles,
+            [](const auto& lhs, const auto& rhs)
+            {
+                if (lhs.EndTime.Defined() != rhs.EndTime.Defined()) {
+                    return lhs.EndTime.Defined();
+                }
+                return lhs.EndTime < rhs.EndTime;
+            });
     } catch (const TFileError& error) {
         Cerr << error.what() << Endl;
         return false;
