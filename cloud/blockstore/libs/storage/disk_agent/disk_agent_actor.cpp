@@ -199,17 +199,6 @@ TDuration TDiskAgentActor::GetMaxRequestTimeout() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
-    const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::TPtr&
-        ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    const auto* msg = ev->Get();
-    ReportDiskAgentConfigMismatch(
-        TStringBuilder() << "[duplicate] " << msg->ErrorText);
-}
-
 void TDiskAgentActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -310,10 +299,6 @@ STFUNC(TDiskAgentActor::StateInit)
 
         HFunc(TEvDiskAgentPrivate::TEvInitAgentCompleted, HandleInitAgentCompleted);
 
-        HFunc(
-            TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
-            HandleReportDelayedDiskAgentConfigMismatch);
-
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskAgent)
 
         default:
@@ -379,10 +364,6 @@ STFUNC(TDiskAgentActor::StateWork)
         HFunc(TEvDiskRegistryProxy::TEvConnectionLost, HandleConnectionLost);
 
         HFunc(TEvDiskAgentPrivate::TEvWriteOrZeroCompleted, HandleWriteOrZeroCompleted);
-
-        HFunc(
-            TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
-            HandleReportDelayedDiskAgentConfigMismatch);
 
         HFunc(
             TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse,

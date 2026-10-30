@@ -47,13 +47,11 @@ struct TManuallyPreemptedVolumes
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     const TString& filePath,
-    TLog& log,
-    TVector<TString>& criticalEventsStorage);
+    TLog& log);
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     const TStorageConfigPtr& storageConfig,
-    TLog& log,
-    TVector<TString>& criticalEventsStorage);
+    TLog& log);
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes();
 
