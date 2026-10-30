@@ -1,0 +1,154 @@
+syntax = "proto2";
+
+package NCloud.NConfig.NProto.NTest;
+
+import "cloud/storage/core/config/markers.proto";
+
+// A message with both runtime and startup-only parameters for path tests.
+message TParameters
+{
+    optional uint32 Mutable = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A message with independently classified fields inside a fixed oneof.
+message TMutableParameters
+{
+    optional uint32 Value = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A compound value whose inner annotations must not constrain its owner.
+message TCompoundValue
+{
+    optional uint32 Value = 1;
+    optional TParameters Nested = 2;
+
+    oneof InnerChoice
+    {
+        uint32 First = 3;
+        string Second = 4;
+    }
+
+    oneof IgnoredAnnotations
+    {
+        option (NMarkers.AllowRuntimeSwitch) = true;
+        uint32 Unmarked = 5;
+        uint32 ExplicitFalse = 6 [(NMarkers.AllowRuntimeUpdate) = false];
+    }
+}
+
+// A schema covering ancestor permissions, compound collections, and oneofs.
+message TRuntimeConfig
+{
+    optional TParameters Allowed = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TParameters Frozen = 2;
+    optional TParameters ExplicitFalse = 3 [(NMarkers.AllowRuntimeUpdate) = false];
+    repeated TParameters Records = 4 [(NMarkers.AllowRuntimeUpdate) = true];
+    repeated string FrozenValues = 5;
+    repeated uint32 Values = 6 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, uint32> MutableMap = 7 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, uint32> FrozenMap = 8;
+    optional bool Flag = 9 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional string Text = 10 [(NMarkers.AllowRuntimeUpdate) = true];
+
+    oneof MutableChoice
+    {
+        option (NMarkers.AllowRuntimeSwitch) = true;
+        uint32 MutableNumber = 11 [(NMarkers.AllowRuntimeUpdate) = true];
+        TCompoundValue MutableMessage = 12 [(NMarkers.AllowRuntimeUpdate) = true];
+    }
+
+    oneof FrozenChoice
+    {
+        uint32 FrozenNumber = 13;
+        TMutableParameters FrozenMessage = 14;
+    }
+
+    oneof FixedChoice
+    {
+        uint32 FixedNumber = 15 [(NMarkers.AllowRuntimeUpdate) = true];
+        TMutableParameters FixedMessage = 16 [(NMarkers.AllowRuntimeUpdate) = true];
+        TMutableParameters ReadOnlyMessage = 17;
+    }
+
+    optional TRuntimeConfig AllowedChild = 18 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRuntimeConfig FrozenChild = 19;
+    repeated TCompoundValue AtomicRecords = 20 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, TParameters> MessageMap = 21 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, TParameters> FrozenMessageMap = 22;
+    repeated TParameters FrozenRecords = 23;
+    optional double FrozenDouble = 24;
+    repeated double FrozenDoubles = 25;
+}
+
+// A message that allows extensions but has none defined.
+message TExtensibleConfig
+{
+    extensions 100 to max;
+}
+
+// A configuration with a nested message that allows extensions.
+message TConfigWithExtensibleChild
+{
+    optional TExtensibleConfig Child = 1;
+}
+
+// A message with a required runtime value and a startup-only sibling.
+message TRequiredChild
+{
+    required uint32 Value = 1 [default = 17, (NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A message with required scalar, nested, and empty message fields.
+message TRequiredParameters
+{
+    required uint32 Value = 1 [default = 7, (NMarkers.AllowRuntimeUpdate) = true];
+    required TRequiredChild Child = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+    required TParameters EmptyChild = 3 [(NMarkers.AllowRuntimeUpdate) = true];
+    required uint32 Frozen = 4;
+}
+
+// A message whose required child needs a startup-only value.
+message TRequiredEnvelope
+{
+    required TRequiredParameters Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A message with an allowed value and a required child that may become empty.
+message TRequiredContainer
+{
+    optional uint32 Value = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    required TParameters Child = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A required message chain with an optional sibling that can be rejected alone.
+message TNestedRequiredContainer
+{
+    required TRequiredContainer Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredEnvelope OptionalEnvelope = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A required message chain ending in a startup-only required field.
+message TNestedRequiredEnvelope
+{
+    required TRequiredEnvelope Child = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+}
+
+// A configuration with required fields inside a fixed oneof and optional fields.
+message TRequiredConfig
+{
+    oneof FixedChoice
+    {
+        uint32 Number = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+        TRequiredParameters Message = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+    }
+
+    optional TRequiredChild OptionalChild = 3 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredParameters OptionalParameters = 4 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredEnvelope OptionalEnvelope = 5 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRequiredContainer OptionalContainer = 6 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TNestedRequiredContainer OptionalNestedContainer = 7 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TNestedRequiredEnvelope OptionalNestedEnvelope = 8 [(NMarkers.AllowRuntimeUpdate) = true];
+}
