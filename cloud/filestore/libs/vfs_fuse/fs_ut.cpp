@@ -2703,7 +2703,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldWaitToAcquireLock)
     {
-        TBootstrap bootstrap;
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap(timer);
         bootstrap.Start();
         Y_DEFER {
             bootstrap.Stop();
@@ -2726,6 +2727,74 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto result = bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
         UNIT_ASSERT_NO_EXCEPTION(result.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(called.load(), 3);
+    }
+
+    Y_UNIT_TEST(ShouldInterruptContendedBlockingLocks)
+    {
+        for (ui64 flags: {ui64{0}, ui64{FUSE_LK_FLOCK}}) {
+            for (ui64 type: {F_RDLCK, F_WRLCK}) {
+                auto timer = std::make_shared<TTestTimer>();
+                TBootstrap bootstrap(timer);
+                bootstrap.Start();
+                Y_DEFER {
+                    bootstrap.Stop();
+                };
+
+                std::atomic<ui32> called = 0;
+                bootstrap.Service->SetHandlerAcquireLock(
+                    [&](auto, auto)
+                    {
+                        ++called;
+                        timer->AdvanceTime(TDuration::MilliSeconds(250));
+                        NProto::TAcquireLockResponse response =
+                            TErrorResponse(E_FS_WOULDBLOCK, "contended");
+                        return MakeFuture(response);
+                    });
+
+                // A restarted syscall sends a new request with a fresh deadline.
+                for (ui32 attempt = 1; attempt <= 2; ++attempt) {
+                    auto result =
+                        bootstrap.Fuse->SendRequest<TAcquireLockRequest>(
+                            flags,
+                            type);
+                    UNIT_ASSERT_EXCEPTION_SATISFIES(
+                        result.GetValue(WaitTimeout),
+                        TSystemError,
+                        [](const TSystemError& e)
+                        { return e.Status() == EINTR; });
+                    UNIT_ASSERT_VALUES_EQUAL(called.load(), 4 * attempt);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepSuccessfulLockAfterDeadline)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        TBootstrap bootstrap(timer);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        std::atomic<ui32> called = 0;
+        bootstrap.Service->SetHandlerAcquireLock(
+            [&](auto, auto)
+            {
+                NProto::TAcquireLockResponse response;
+                if (++called == 1) {
+                    response = TErrorResponse(E_FS_WOULDBLOCK, "contended");
+                } else {
+                    timer->AdvanceTime(TDuration::Seconds(2));
+                }
+                return MakeFuture(response);
+            });
+
+        auto result = bootstrap.Fuse->SendRequest<TAcquireLockRequest>(
+            FUSE_LK_FLOCK,
+            F_WRLCK);
+        UNIT_ASSERT_NO_EXCEPTION(result.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(called.load(), 2);
     }
 
     Y_UNIT_TEST(ShouldNotWaitToAcquireLock)
