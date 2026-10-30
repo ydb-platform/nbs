@@ -18,6 +18,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,7 +259,14 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		// DeleteIfNonExistent option is on. Therefore, should proceed deleting
 		// even though the disk is missing from the database.
 
-		storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+		cleanupID := legacyDiskCleanupPrefix + "toplevel_task_id"
+		storage.On("PrepareDiskCleanup", ctx, "disk", cleanupID).Return(true, nil).Once()
+		tx := &persistence.Transaction{}
+		storage.On("CompleteDiskCleanup", ctx, tx, "disk", cleanupID).Return(nil).Once()
+		execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+			prepare := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+			require.NoError(t, prepare(ctx, tx))
+		}).Return(nil).Once()
 
 		nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
