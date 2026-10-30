@@ -557,6 +557,36 @@ func areOverlayDisksSupported(mediaKind core_protos.EStorageMediaKind) bool {
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD
 }
 
+// Returns the blocks count of the first min(|maxSizeBytes|, volume size) bytes
+// of the volume, rounded up to the block size. Zero |maxSizeBytes| means the
+// whole volume.
+func boundedBlocksCount(
+	volume *protos.TVolume,
+	maxSizeBytes uint64,
+) (uint64, error) {
+
+	if maxSizeBytes == 0 {
+		return volume.BlocksCount, nil
+	}
+
+	if volume.BlockSize == 0 {
+		return 0, errors.NewNonRetriableErrorf(
+			"disk %v has zero block size",
+			volume.DiskId,
+		)
+	}
+
+	blocksCount := common.DivideWithRoundingUp(
+		maxSizeBytes,
+		uint64(volume.BlockSize),
+	)
+	if blocksCount > volume.BlocksCount {
+		return volume.BlocksCount, nil
+	}
+
+	return blocksCount, nil
+}
+
 func canBeBaseDisk(volume *protos.TVolume) bool {
 	return areOverlayDisksSupported(volume.StorageMediaKind) &&
 		volume.EncryptionDesc.Mode == protos.EEncryptionMode_NO_ENCRYPTION && // NBS-3297
@@ -910,16 +940,9 @@ func (c *client) CreateProxyOverlayDisk(
 		return false, nil
 	}
 
-	blocksCount := volume.BlocksCount
-	if maxSizeBytes != 0 {
-		// Rounded up: the overlay disk should not be smaller than |maxSizeBytes|.
-		maxBlocksCount := common.DivideWithRoundingUp(
-			maxSizeBytes,
-			uint64(volume.BlockSize),
-		)
-		if maxBlocksCount < blocksCount {
-			blocksCount = maxBlocksCount
-		}
+	blocksCount, err := boundedBlocksCount(volume, maxSizeBytes)
+	if err != nil {
+		return false, err
 	}
 
 	err = c.createVolume(
@@ -932,10 +955,10 @@ func (c *client) CreateProxyOverlayDisk(
 			// The proxy overlay disk must have the same block size as the base
 			// disk. Otherwise, the underlying GetChangedBlocks operation cannot
 			// work correctly.
-			BlockSize:            volume.BlockSize,
-			StorageMediaKind:     core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
-			PartitionsCount:      1,
-			IsSystem:             true,
+			BlockSize:        volume.BlockSize,
+			StorageMediaKind: core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
+			PartitionsCount:  1,
+			IsSystem:         true,
 			EncryptionSpec: &protos.TEncryptionSpec{
 				Mode: volume.EncryptionDesc.Mode,
 				KeyParam: &protos.TEncryptionSpec_KeyHash{
@@ -1688,16 +1711,9 @@ func (c *client) GetChangedBytes(
 		return 0, err
 	}
 
-	totalBlockCount := volume.BlocksCount
-	if maxSizeBytes != 0 {
-		// Rounded up: at least |maxSizeBytes| are covered.
-		maxBlockCount := common.DivideWithRoundingUp(
-			maxSizeBytes,
-			uint64(volume.BlockSize),
-		)
-		if maxBlockCount < totalBlockCount {
-			totalBlockCount = maxBlockCount
-		}
+	totalBlockCount, err := boundedBlocksCount(volume, maxSizeBytes)
+	if err != nil {
+		return 0, err
 	}
 
 	for blockIndex := uint64(0); blockIndex < totalBlockCount; blockIndex += maxChangedBlockCountPerIteration {
