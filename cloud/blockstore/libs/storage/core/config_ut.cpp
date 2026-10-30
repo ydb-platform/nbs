@@ -164,6 +164,70 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     }
 
+    // Ignore invalid enum overrides while preserving raw values and presence.
+    Y_UNIT_TEST(ShouldIgnoreInvalidEnumOverrides)
+    {
+        for (const bool hasRawValue: {false, true}) {
+            // Exercise both an explicit raw value and the compiled fallback.
+            TStorageProto proto;
+            if (hasRawValue) {
+                proto.SetSSDCompactionType(NProto::CT_LOAD);
+            }
+            auto controls = std::make_shared<TStorageConfigControls>(proto);
+            const TStorageConfig config(proto, nullptr, controls);
+            NKikimr::TControlBoard board;
+            controls->Register(board);
+            const auto fallback =
+                hasRawValue ? NProto::CT_LOAD : NProto::CT_DEFAULT;
+            TAtomic previous = 0;
+
+            // Reject unknown enum numbers before any narrowing conversion.
+            for (const i64 value:
+                 {
+                     i64{-1},
+                     i64{2},
+                     i64{std::numeric_limits<int>::min()} - 1,
+                     i64{std::numeric_limits<int>::max()} + 1,
+                     (i64{1} << 32) + 1,
+                     std::numeric_limits<i64>::min(),
+                     std::numeric_limits<i64>::max(),
+                 })
+            {
+                board.SetValue("BlockStore_SSDCompactionType", value, previous);
+                const auto info =
+                    controls->GetOverrideInfo("SSDCompactionType");
+                UNIT_ASSERT(info);
+                UNIT_ASSERT_VALUES_EQUAL(value, info->Value);
+                UNIT_ASSERT(!info->IsValid);
+                UNIT_ASSERT(!controls->GetOverride("SSDCompactionType"));
+                UNIT_ASSERT_EQUAL(fallback, config.GetSSDCompactionType());
+                const auto effective = config.GetEffectiveStorageConfigProto();
+                UNIT_ASSERT_EQUAL(
+                    hasRawValue,
+                    effective.HasSSDCompactionType());
+                UNIT_ASSERT_EQUAL(
+                    proto.GetSSDCompactionType(),
+                    effective.GetSSDCompactionType());
+            }
+
+            // Apply a valid override and recover the fallback after a reset.
+            const auto valid =
+                hasRawValue ? NProto::CT_DEFAULT : NProto::CT_LOAD;
+            board.SetValue("BlockStore_SSDCompactionType", valid, previous);
+            const auto info = controls->GetOverrideInfo("SSDCompactionType");
+            UNIT_ASSERT(info && info->IsValid);
+            UNIT_ASSERT_VALUES_EQUAL(static_cast<i64>(valid), info->Value);
+            UNIT_ASSERT_EQUAL(valid, config.GetSSDCompactionType());
+            UNIT_ASSERT_EQUAL(
+                valid,
+                config.GetEffectiveStorageConfigProto().GetSSDCompactionType());
+            board.RestoreDefault("BlockStore_SSDCompactionType");
+            UNIT_ASSERT(!controls->GetOverrideInfo("SSDCompactionType"));
+            UNIT_ASSERT(!controls->GetOverride("SSDCompactionType"));
+            UNIT_ASSERT_EQUAL(fallback, config.GetSSDCompactionType());
+        }
+    }
+
     // Check selective override reset for raw double defaults, including
     // fractional changes, saturation, NaN and compiled fallback.
     Y_UNIT_TEST(ShouldUpdateDefaultsForDouble)
