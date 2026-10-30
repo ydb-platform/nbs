@@ -16,6 +16,7 @@
 #include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
+#include <cloud/storage/core/libs/kikimr/public.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/public.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
@@ -27,6 +28,10 @@ namespace NCloud::NBlockStore::NProto {
 }   // namespace NCloud::NBlockStore::NProto
 
 namespace NCloud::NBlockStore::NServer {
+
+namespace NTests {
+struct TBootstrapYdbTestAccess;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -98,10 +103,13 @@ struct TBootstrapYdb final
     : public TBootstrapBase
 {
 private:
+    friend struct NTests::TBootstrapYdbTestAccess;
+
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;
     std::shared_ptr<TServerModuleFactories> ServerModuleFactories;
 
     TConfigInitializerYdbPtr Configs;
+    NCloud::NStorage::TKikimrMonitoringPtr KikimrMonitoring;
 
     // Static configuration with CMS applied
     IBlockstoreConfigPtr StartupBlockstoreConfig;
@@ -138,6 +146,8 @@ protected:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
     IStartable* GetActorSystem() override;
+    void StartActorSystem() override;
+    IStartable* GetKikimrMonitoring() override;
     IStartable* GetAsyncLogger() override;
     IStartable* GetStatsAggregator() override;
     IStartable* GetClientPercentiles() override;

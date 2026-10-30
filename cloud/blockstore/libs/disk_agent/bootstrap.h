@@ -68,6 +68,7 @@ private:
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     IStatsUpdaterPtr CriticalEventsStatsUpdater;
     IMonitoringServicePtr Monitoring;
+    NCloud::NStorage::TKikimrMonitoringPtr KikimrMonitoring;
     TVector<ITraceReaderPtr> TraceReaders;
     ITraceProcessorPtr TraceProcessor;
     IProfileLogPtr ProfileLog;

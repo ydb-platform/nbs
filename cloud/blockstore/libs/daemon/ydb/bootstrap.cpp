@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
-#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
@@ -66,11 +65,13 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
+#include <cloud/storage/core/libs/kikimr/monitoring/monitoring.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -383,7 +384,23 @@ TProgramShouldContinue& TBootstrapYdb::GetShouldContinue()
         : ShouldContinue;
 }
 
+void TBootstrapYdb::StartActorSystem()
+{
+    if (KikimrMonitoring) {
+        // Keep early scraping available while other components start, then
+        // close its runtime and sockets before normal monitoring binds.
+        KikimrMonitoring->Stop();
+    }
+    TBootstrapBase::StartActorSystem();
+    if (KikimrMonitoring) {
+        // This marks the actor-system startup boundary, before endpoints and
+        // the remaining daemon components have finished starting.
+        KikimrMonitoring->CompleteInitialization();
+    }
+}
+
 IStartable* TBootstrapYdb::GetActorSystem()        { return ActorSystem.Get(); }
+IStartable* TBootstrapYdb::GetKikimrMonitoring()   { return KikimrMonitoring.get(); }
 IStartable* TBootstrapYdb::GetAsyncLogger()        { return AsyncLogger.get(); }
 IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(); }
 IStartable* TBootstrapYdb::GetClientPercentiles()  { return ClientPercentiles.get(); }
@@ -513,6 +530,12 @@ void TBootstrapYdb::InitDiskAgentBackend()
 void TBootstrapYdb::InitKikimrService()
 {
     InitConfigs();
+
+    // Expose counters before registration and CMS fetch, so either
+    // operation can stall without preventing metrics scrapes.
+    KikimrMonitoring = CreateKikimrMonitoring(
+        Configs->KikimrConfig->GetMonitoringConfig(), "blockstore", Log);
+    KikimrMonitoring->Start();
 
     auto preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
         Configs->StorageConfig,
@@ -864,6 +887,7 @@ void TBootstrapYdb::InitKikimrService()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
+    args.Counters = KikimrMonitoring->GetCounters();
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
