@@ -155,9 +155,9 @@ public:
      */
     [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
 
-    /* Cancels requests waiting inside a healthy cache before the frontend waits
-     * for its in-flight requests. Allocated writes and handle releases retain
-     * their buffers and handles until serialization and active flushes finish.
+    /* Cancels requests waiting inside the cache before the frontend waits for
+     * its in-flight requests. Allocated writes and handle releases retain their
+     * buffers and handles until serialization and active flushes finish.
      * Session requests already executing are allowed to complete normally.
      * This transition is irreversible and is only for final session shutdown.
      */

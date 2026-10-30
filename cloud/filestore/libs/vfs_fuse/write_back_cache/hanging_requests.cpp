@@ -1,8 +1,35 @@
 #include "hanging_requests.h"
 
+#include "queued_operations.h"
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void THangingRequests::Cancel(
+    TQueuedOperations& queuedOperations,
+    const NCloud::NProto::TError& error)
+{
+    for (auto& promise: AcquireBarrierPromises) {
+        queuedOperations.FailAcquireBarrierPromise(std::move(promise), error);
+    }
+    AcquireBarrierPromises.clear();
+
+    for (auto& promise: FlushOrReleaseHandlePromises) {
+        queuedOperations.FailFlushOrReleasePromise(std::move(promise), error);
+    }
+    FlushOrReleaseHandlePromises.clear();
+
+    for (auto& promise: ReadDataPromises) {
+        queuedOperations.FailReadDataPromise(std::move(promise), error);
+    }
+    ReadDataPromises.clear();
+
+    for (auto& promise: WriteDataPromises) {
+        queuedOperations.FailWriteDataPromise(std::move(promise), error);
+    }
+    WriteDataPromises.clear();
+}
 
 void THangingRequests::Add(
     NThreading::TPromise<NProto::TReadDataResponse> promise)

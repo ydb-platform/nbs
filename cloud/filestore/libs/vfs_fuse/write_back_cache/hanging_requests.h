@@ -10,6 +10,8 @@
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
+class TQueuedOperations;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Requests that are hanging due to WriteBackCache failed state
@@ -23,6 +25,10 @@ private:
     TVector<NThreading::TPromise<NProto::TWriteDataResponse>> WriteDataPromises;
 
 public:
+    void Cancel(
+        TQueuedOperations& queuedOperations,
+        const NCloud::NProto::TError& error);
+
     void Add(NThreading::TPromise<NProto::TReadDataResponse> promise);
     NThreading::TFuture<TResultOrError<ui64>> CreateAcquireBarrierResponse();
     NThreading::TFuture<NProto::TError> CreateFlushOrReleaseHandleResponse();

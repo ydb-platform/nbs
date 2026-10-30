@@ -3160,7 +3160,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
     }
 
-    void TestHangWhenFileRingBufferIsCorrupted(TBootstrap& b)
+    void TestHangWhenFileRingBufferIsCorrupted(
+        TBootstrap & b,
+        bool cancelPending = false)
     {
         auto writeFuture = b.WriteToCache(1, 0, "abc");
         auto readFuture = b.ReadFromCache(1, 0, 3);
@@ -3175,7 +3177,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequest->SetBuffer("abc");
 
         auto directWriteFuture =
-            b.Cache.WriteDataDirect(b.CallContext, std::move(writeRequest));
+            b.Cache.WriteDataDirect(b.CallContext, writeRequest);
 
         auto readRequest = std::make_shared<NProto::TReadDataRequest>();
         readRequest->SetNodeId(1);
@@ -3184,7 +3186,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         readRequest->SetLength(3);
 
         auto directReadFuture =
-            b.Cache.ReadDataDirect(b.CallContext, std::move(readRequest));
+            b.Cache.ReadDataDirect(b.CallContext, readRequest);
 
         auto setNodeAttrRequest =
             std::make_shared<NProto::TSetNodeAttrRequest>();
@@ -3193,7 +3195,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         setNodeAttrRequest->SetNodeId(1);
 
         auto setNodeAttrFuture =
-            b.Cache.SetNodeAttr(b.CallContext, std::move(setNodeAttrRequest));
+            b.Cache.SetNodeAttr(b.CallContext, setNodeAttrRequest);
 
         // All requests are processed synchronously - no need to wait here
 
@@ -3205,6 +3207,41 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(!directWriteFuture.HasValue());
         UNIT_ASSERT(!directReadFuture.HasValue());
         UNIT_ASSERT(!setNodeAttrFuture.HasValue());
+
+        if (!cancelPending) {
+            return;
+        }
+
+        b.Cache.CancelPendingRequests();
+
+        const auto assertCancelled = [](auto future)
+        {
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT(HasError(future.GetValue()));
+        };
+
+        assertCancelled(writeFuture);
+        assertCancelled(readFuture);
+        assertCancelled(flushFuture);
+        assertCancelled(flushAllFuture);
+        assertCancelled(releaseHandleFuture);
+        assertCancelled(directWriteFuture);
+        assertCancelled(directReadFuture);
+        assertCancelled(setNodeAttrFuture);
+
+        // Requests arriving after cancellation must not enter the hanging list.
+        assertCancelled(b.WriteToCache(1, 0, "late"));
+        assertCancelled(b.ReadFromCache(1, 0, 3));
+        assertCancelled(b.Cache.FlushNodeData(1));
+        assertCancelled(b.Cache.FlushAllData());
+        assertCancelled(b.Cache.ReleaseHandle(1, 101));
+        assertCancelled(b.Cache.WriteDataDirect(b.CallContext, writeRequest));
+        assertCancelled(b.Cache.ReadDataDirect(b.CallContext, readRequest));
+        assertCancelled(b.Cache.SetNodeAttr(b.CallContext, setNodeAttrRequest));
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(HasError(shutdown.GetValue()));
     }
 
     Y_UNIT_TEST(ShouldHangWhenFileRingBufferIsCorruptedAtInitialization)
@@ -3217,6 +3254,218 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RecreateCache();
 
         TestHangWhenFileRingBufferIsCorrupted(b);
+    }
+
+    Y_UNIT_TEST(ShouldCancelRequestsWhenFileRingBufferIsCorrupted)
+    {
+        TBootstrap b;
+
+        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
+        b.TempFileHandle.Flush();
+        b.RecreateCache();
+
+        TestHangWhenFileRingBufferIsCorrupted(b, true);
+    }
+
+    Y_UNIT_TEST(ShouldCancelReadCompletedAfterCorruptionAndCancellation)
+    {
+        TBootstrap b;
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
+
+        auto readPromise = NewPromise<NProto::TReadDataResponse>();
+        b.Session->ReadDataHandler = [&](auto, auto)
+        {
+            return readPromise.GetFuture();
+        };
+        auto read = b.ReadFromCache(2, 0, 10);
+        UNIT_ASSERT(!read.HasValue());
+
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto header = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            header.DataSize = accessor.GetCapabilities().MaxAllocationByteCount;
+            UNIT_ASSERT(
+                accessor.GetDataProcessor()->WriteEntryHeader(0, header));
+        }
+
+        // Evicting node 1 detects corruption while node 2's read remains
+        // active.
+        auto flush = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(flush.HasValue());
+        b.ModuleStats->UpdateStats(b.Timer->Now());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
+
+        b.Cache.CancelPendingRequests();
+        UNIT_ASSERT(!read.HasValue());
+
+        // The read callback discovers corruption after the hanging list has
+        // already been cancelled; adding its promise must complete it at once.
+        readPromise.SetValue({});
+
+        UNIT_ASSERT(read.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            read.GetValue().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(
+        ShouldCancelReleaseBlockedByBarrierWhenCorruptionFollowsCancellation)
+    {
+        TBootstrap b;
+        auto writePromise = NewPromise<NProto::TWriteDataResponse>();
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+            return writePromise.GetFuture();
+        };
+
+        b.WriteToCacheSync(1, 101, 0, "abc");
+        auto flush = b.Cache.FlushNodeData(1);
+        UNIT_ASSERT(!flush.HasValue());
+
+        auto attrPromise = NewPromise<NProto::TSetNodeAttrResponse>();
+        b.Session->SetNodeAttrHandler = [&](auto, auto)
+        {
+            return attrPromise.GetFuture();
+        };
+        auto request = std::make_shared<NProto::TSetNodeAttrRequest>();
+        request->SetNodeId(2);
+        request->SetFlags(
+            ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE));
+        auto attr = b.Cache.SetNodeAttr(b.CallContext, std::move(request));
+        UNIT_ASSERT(!attr.HasValue());
+
+        b.WriteToCacheSync(2, 202, 0, "def");
+        auto release = b.Cache.ReleaseHandle(2, 202);
+        UNIT_ASSERT(!release.HasValue());
+
+        b.Cache.CancelPendingRequests();
+        UNIT_ASSERT(!release.HasValue());
+
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto header = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            header.DataSize = accessor.GetCapabilities().MaxAllocationByteCount;
+            UNIT_ASSERT(
+                accessor.GetDataProcessor()->WriteEntryHeader(0, header));
+        }
+
+        // Node 2 has no flush callback to release its waiter: the active
+        // attribute operation's barrier prevented that flush from starting.
+        writePromise.SetValue({});
+        b.ModuleStats->UpdateStats(b.Timer->Now());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, release.GetValue().GetCode());
+        UNIT_ASSERT(!attr.HasValue());
+
+        // Acquired barriers remain valid for their eventual backend callbacks.
+        attrPromise.SetValue({});
+        UNIT_ASSERT(attr.HasValue());
+        UNIT_ASSERT(!HasError(attr.GetValue()));
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(HasError(shutdown.GetValue()));
+    }
+
+    void TestCancelReleaseHandleAfterCorruption(bool completeBeforeCancellation)
+    {
+        TBootstrap b;
+        THashMap<ui64, TPromise<NProto::TWriteDataResponse>> writes;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writes.emplace(request->GetNodeId(), promise);
+            return promise.GetFuture();
+        };
+
+        b.WriteToCacheSync(1, 101, 0, "abc");
+        b.WriteToCacheSync(2, 202, 0, "def");
+        auto flush = b.Cache.FlushAllData();
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
+
+        TFuture<NProto::TError> release;
+        if (completeBeforeCancellation) {
+            release = b.Cache.ReleaseHandle(2, 202);
+            UNIT_ASSERT(!release.HasValue());
+        }
+
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto header = accessor.GetDataProcessor()->ReadEntryHeader(0);
+            header.DataSize = accessor.GetCapabilities().MaxAllocationByteCount;
+            UNIT_ASSERT(
+                accessor.GetDataProcessor()->WriteEntryHeader(0, header));
+        }
+
+        // Node 1 discovers corruption while node 2's flush borrows its handle.
+        writes.at(1).SetValue({});
+        b.ModuleStats->UpdateStats(b.Timer->Now());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
+
+        if (completeBeforeCancellation) {
+            // A response in failed state must relinquish the borrowed handle,
+            // even before pending-request cancellation has been requested.
+            writes.at(2).SetValue({});
+            UNIT_ASSERT(!release.HasValue());
+            b.Cache.CancelPendingRequests();
+        } else {
+            // A release submitted after corruption must still respect the
+            // in-flight flush's ownership of the backend handle.
+            release = b.Cache.ReleaseHandle(2, 202);
+            UNIT_ASSERT(!release.HasValue());
+            b.Cache.CancelPendingRequests();
+            UNIT_ASSERT(!release.HasValue());
+            writes.at(2).SetValue({});
+        }
+
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, release.GetValue().GetCode());
+        UNIT_ASSERT(flush.HasValue());
+        UNIT_ASSERT(HasError(flush.GetValue()));
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(HasError(shutdown.GetValue()));
+    }
+
+    Y_UNIT_TEST(ShouldCancelCorruptReleaseAfterFlushCompletedBeforeCancellation)
+    {
+        TestCancelReleaseHandleAfterCorruption(true);
+    }
+
+    Y_UNIT_TEST(ShouldDeferCorruptReleaseWhileFlushUsesHandle)
+    {
+        TestCancelReleaseHandleAfterCorruption(false);
     }
 
     Y_UNIT_TEST(ShouldHangWhenFileRingBufferBecomesCorruptedAtFlush)
