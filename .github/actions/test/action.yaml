@@ -404,7 +404,7 @@ runs:
                     fi
                     ;;
                 # USAGE_ERROR, CONFIGURE_ERROR, NO_TESTS_COLLECTED, NOT_RETRIABLE_ERROR.
-                4|8|9|13)
+                4 | 8 | 9 | 13)
                     echo "ya make failed with non-retriable exit code $RC; stopping retries"
                     ;;
                 # GENERIC_ERROR (1), UNHANDLED_EXCEPTION (3), TEST_FAILED (10),
