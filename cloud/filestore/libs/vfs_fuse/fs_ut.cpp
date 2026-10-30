@@ -176,15 +176,6 @@ struct TTestFileMapMemoryLimiter final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TNodeAttr MakeNodeAttr(ui64 nodeId, ui32 nodeType)
-{
-    NProto::TNodeAttr attrs;
-    attrs.SetId(nodeId);
-    attrs.SetType(nodeType);
-    attrs.SetMode(0644);
-    return attrs;
-}
-
 template <typename TSetupCreateHandler, typename TSendCreateRequest>
 void DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
     TSetupCreateHandler setupCreateHandler,

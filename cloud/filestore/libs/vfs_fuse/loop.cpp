@@ -921,8 +921,22 @@ public:
 private:
     void RegisterFileSystemEventHandler()
     {
-        if (!MultiFileSystemEventHandler || FileSystemEventHandler) {
+        if (!MultiFileSystemEventHandler) {
             return;
+        }
+
+        //
+        // The handler is bound to the current FileSystem. If the FileSystem
+        // has been recreated, the handler bound to the previous one is
+        // replaced - otherwise the new FileSystem would not get the
+        // invalidations while caching the metadata.
+        //
+
+        if (FileSystemEventHandler) {
+            MultiFileSystemEventHandler->Unregister(
+                FileSystemEventHandlerFileSystemId,
+                FileSystemEventHandler);
+            FileSystemEventHandler.reset();
         }
 
         //

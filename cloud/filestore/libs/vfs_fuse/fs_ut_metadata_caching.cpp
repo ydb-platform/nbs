@@ -63,7 +63,6 @@ struct TMetadataCachingEnv
               {} /* featuresConfig */,
               1000 /* handleOpsQueueStateFileSize */,
               1000 /* writeBackCacheAutomaticFlushPeriodMs */,
-              WriteBackCacheStateFileSize,
               0 /* directoryHandlesInitialDataSize */,
               0 /* directoryHandlesMaxDataAreaStepSize */,
               CreateFileMapMemoryLimiterStub(),
