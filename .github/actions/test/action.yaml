@@ -402,6 +402,9 @@ runs:
                         fi
                     fi
                     ;;
+                8)
+                    echo "ya make configuration failed; stopping retries"
+                    ;;
                 *)
                     echo "ya test returned $RC"
                     ls -la "${JUNIT_REPORT_XML}.${i}" || true
@@ -494,10 +497,13 @@ runs:
                 if [ "$JUNIT_FAIL_CHECKER_RC" -eq 237 ]; then
                     BUILD_FAILED=1
                 fi
+                # JUnit mute rules may override success or ordinary test failures only.
                 if [ "$ATTEMPT_TIMED_OUT" -eq 1 ]; then
                     echo "Keeping ya make timeout exit code $RC instead of JUnit checker exit code $JUNIT_FAIL_CHECKER_RC"
-                else
+                elif [ "$RC" -eq 0 ] || [ "$RC" -eq 10 ]; then
                     FAIL_CHECKER_RC="$JUNIT_FAIL_CHECKER_RC"
+                else
+                    echo "Keeping ya make exit code $RC instead of JUnit checker exit code $JUNIT_FAIL_CHECKER_RC"
                 fi
             fi
             if [ "$NEED_COPYING" -ne "0" ]; then
@@ -548,41 +554,27 @@ runs:
 
             platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
             BUILD_ERROR_LOG_URL_FOR_ITERATION=""
+            SUMMARY_BUILD_FAILED_COUNT="${BUILD_FAILED_COUNT:-0}"
+            SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
+            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+                python3 -m scripts.tests.ya_build_errors \
+                --junit "${JUNIT_REPORT_XML}.${i}" \
+                --evlog "$RETRY_LOG_DIR/ya_evlog.jsonl" \
+                --log "$RETRY_LOG_DIR/ya_log.txt" \
+                --ya-make-output "$RETRY_LOG_DIR/ya_make_output.txt" \
+                --ya-make-output-url "$S3_WEBSITE_PREFIX/test_logs/${COMPONENT_DIR}${i}/ya_make_output.txt" \
+                --ya-log-url "$S3_WEBSITE_PREFIX/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
+                --evlog-url "$S3_WEBSITE_PREFIX/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
+                > "$SUMMARY_FILE"
 
-            if [ "$JUNIT_AVAILABLE" -eq 1 ]; then
-                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
+            if [ -s "$SUMMARY_FILE" ]; then
                 BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.html"
-                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
-                    python3 -m scripts.tests.ya_build_errors \
-                    --junit "${JUNIT_REPORT_XML}.${i}" \
-                    --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
-                    --log "$LOG_DIR/${i}/ya_log.txt" \
-                    --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
-                    --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
-                    --only-if-junit-failed-build \
-                    > "$SUMMARY_FILE"
-
-                if [ ! -s "$SUMMARY_FILE" ]; then
-                    BUILD_ERROR_LOG_URL_FOR_ITERATION=""
-                    rm -f "$SUMMARY_FILE"
+                if [ "$RC" -ne 0 ]; then
+                    FAIL_CHECKER_RC="$RC"
+                    SUMMARY_BUILD_FAILED_COUNT=$((SUMMARY_BUILD_FAILED_COUNT > 0 ? SUMMARY_BUILD_FAILED_COUNT : 1))
                 fi
-            elif [ "$RC" -ne 0 ]; then
-                SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
-                BUILD_ERROR_LOG_URL_FOR_ITERATION="$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/build_errors.html"
-                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
-                    python3 -m scripts.tests.ya_build_errors \
-                    --evlog "$LOG_DIR/${i}/ya_evlog.jsonl" \
-                    --log "$LOG_DIR/${i}/ya_log.txt" \
-                    --ya-make-output "$LOG_DIR/${i}/ya_make_output.txt" \
-                    --ya-make-output-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_make_output.txt" \
-                    --ya-log-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_log.txt" \
-                    --evlog-url "${S3_WEBSITE_PREFIX}/test_logs/${COMPONENT_DIR}${i}/ya_evlog.jsonl" \
-                    > "$SUMMARY_FILE"
-
-                if [ ! -s "$SUMMARY_FILE" ]; then
-                    BUILD_ERROR_LOG_URL_FOR_ITERATION=""
-                    rm -f "$SUMMARY_FILE"
-                fi
+            else
+                rm -f "$SUMMARY_FILE"
             fi
 
             export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
@@ -590,7 +582,8 @@ runs:
             GITHUB_TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
             export GITHUB_TOKEN
             set -x
-            PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
+            BUILD_FAILED_COUNT="$SUMMARY_BUILD_FAILED_COUNT" \
+                PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.generate_summary \
                 --summary-out-path "$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/" \
                 --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \

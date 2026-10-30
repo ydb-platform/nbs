@@ -16,7 +16,7 @@ def test_collect_configure_errors_deduplicates_and_strips_markup(
             "Where": "$B/contrib/libs/silk/src/fibers/libsilk-src-fibers.a",
             "Sub": "-WBadIncl",
             "Message": (
-                "could not resolve include file: [[imp]]fcontext.h[[rst]] "
+                "could not resolve include file: [[alt1]]fcontext.h[[rst]] "
                 "included from here: [[imp]]$S/contrib/libs/silk/src/fibers/fiber.cpp[[rst]]\n"
             ),
         }
@@ -40,7 +40,7 @@ def test_collect_configure_errors_deduplicates_and_strips_markup(
     )
 
     assert len(errors) == 1
-    assert "[[imp]]" not in html
+    assert "[[" not in html
     assert "fcontext.h" in html
     assert "$B/contrib/libs/silk/src/fibers/libsilk-src-fibers.a" in html
     assert '<a href="https://logs/ya_evlog.jsonl">ya_evlog.jsonl</a>' in html
