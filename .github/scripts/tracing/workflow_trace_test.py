@@ -341,20 +341,19 @@ def test_manifest_object_limit_preserves_discovered_links(monkeypatch) -> None:
     assert len(requests) == 1
 
 
-@pytest.mark.parametrize("failure", ["client", "listing", "download", "manifest"])
-def test_cli_writes_workflow_bundle_when_optional_s3_discovery_fails(
-    tmp_path, monkeypatch, failure
-) -> None:
+def _configure_cli(tmp_path, monkeypatch, workflow_run, jobs, extra_args=()):
     event = tmp_path / "event.json"
     event.write_text(
         json.dumps(
             {
-                "workflow_run": _workflow_run(),
+                "workflow_run": workflow_run,
                 "repository": {"full_name": "example/repo"},
             }
         )
     )
     output = tmp_path / "report"
+    github_output = tmp_path / "github-output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -365,16 +364,32 @@ def test_cli_writes_workflow_bundle_when_optional_s3_discovery_fails(
             str(output),
             "--github-token",
             "test-token",
+            *extra_args,
+        ],
+    )
+    monkeypatch.setattr(cli, "github_client", Mock(return_value=None))
+    monkeypatch.setattr(cli, "get_jobs", Mock(return_value=jobs))
+    return output, github_output
+
+
+@pytest.mark.parametrize("failure", ["client", "listing", "download", "manifest"])
+def test_cli_writes_workflow_bundle_when_optional_s3_discovery_fails(
+    tmp_path, monkeypatch, failure
+) -> None:
+    output, github_output = _configure_cli(
+        tmp_path,
+        monkeypatch,
+        _workflow_run(),
+        _jobs(),
+        extra_args=(
             "--s3-bucket",
             "reports",
             "--s3-prefix",
             PREFIX,
             "--s3-website-suffix",
             "example.test",
-        ],
+        ),
     )
-    monkeypatch.setattr(cli, "github_client", Mock(return_value=None))
-    monkeypatch.setattr(cli, "get_jobs", Mock(return_value=_jobs()))
     s3, _ = _s3({"bad/trace.manifest.json": b"invalid"})
 
     fail = Mock(
@@ -396,3 +411,66 @@ def test_cli_writes_workflow_bundle_when_optional_s3_discovery_fails(
     assert len(trace) == 5
     assert (output / "workflow-trace.html").is_file()
     assert (output / "workflow-trace.manifest.json").is_file()
+    assert github_output.read_text() == "rendered=true\n"
+
+
+@pytest.mark.parametrize("empty", [True, False], ids=["no-jobs", "all-skipped"])
+def test_cli_skips_attempts_without_work_before_accessing_s3(
+    tmp_path, monkeypatch, empty
+) -> None:
+    jobs = [] if empty else _jobs(conclusion="skipped", step_conclusion="skipped")
+    output, github_output = _configure_cli(
+        tmp_path,
+        monkeypatch,
+        _workflow_run(),
+        jobs,
+        extra_args=("--s3-bucket", "reports", "--s3-prefix", PREFIX),
+    )
+    s3 = Mock()
+    monkeypatch.setattr(cli.boto3, "client", s3)
+
+    cli.main()
+
+    assert github_output.read_text() == "rendered=false\n"
+    assert not output.exists()
+    s3.assert_not_called()
+
+
+@pytest.mark.parametrize("run_attempt", [1, 2])
+@pytest.mark.parametrize("conclusion", ["success", "failure", "cancelled"])
+@pytest.mark.parametrize("stack_metadata", ["missing", "upper-pr"])
+def test_cli_renders_executed_jobs_regardless_of_pr_stack_metadata(
+    tmp_path, monkeypatch, run_attempt, conclusion, stack_metadata
+) -> None:
+    workflow_run = _workflow_run()
+    workflow_run.update(run_attempt=run_attempt, conclusion=conclusion)
+    if stack_metadata == "upper-pr":
+        workflow_run["pull_requests"] = [
+            {
+                "number": 42,
+                "base": {"ref": "lower-pr"},
+                "stack": {"base": {"ref": "main"}},
+            }
+        ]
+    jobs = _jobs(conclusion=conclusion, step_conclusion=conclusion)
+    jobs.extend(_jobs(conclusion="skipped", step_conclusion="skipped"))
+    jobs[-1] = WorkflowJob(
+        SimpleNamespace(is_not_lazy=False),
+        attributes={**jobs[-1].raw_data, "id": 100, "name": "skipped job"},
+        completed=True,
+    )
+    output, github_output = _configure_cli(tmp_path, monkeypatch, workflow_run, jobs)
+
+    cli.main()
+
+    cli.get_jobs.assert_called_once_with(
+        None, "example/repo", 123, run_attempt=run_attempt
+    )
+    assert github_output.read_text() == "rendered=true\n"
+    assert {path.name for path in output.iterdir()} == {
+        "workflow-trace.html",
+        "workflow-trace.manifest.json",
+        "workflow-trace.otlp.jsonl.gz",
+    }
+    trace = read_otlp_jsonl([output / "workflow-trace.otlp.jsonl.gz"])
+    assert "job: tests" in {span.name for span in trace}

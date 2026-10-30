@@ -47,6 +47,12 @@ Links require matching repository, run, attempt, and a runner name that
 identifies exactly one job. Missing or ambiguous metadata omits the link.
 S3 failures and malformed manifests leave the workflow trace available.
 
+The renderer checks jobs from the triggering run attempt. Empty attempts and
+attempts containing only skipped jobs produce no report or uploads. Other
+attempts, including failed/cancelled runs and manually rechecked upper stack
+PRs, remain eligible. This decision does not depend on pull-request stack
+metadata in the `workflow_run` payload.
+
 Ya reports and test summaries live under
 `reports/<repository>/<workflow>/<run>/<attempt>/variants/<runner-prefix><architecture>-<preset>/<component>/<build-or-test-attempt>/`.
 This keeps matrix variants separate. The nightly summary collector accepts

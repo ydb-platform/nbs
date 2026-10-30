@@ -79,6 +79,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Render workflow trace
+        id: trace
         shell: bash --noprofile --norc -eo pipefail {0}
         run: |
           PYTHONPATH="$GITHUB_WORKSPACE/.github" \
@@ -89,6 +90,7 @@ jobs:
               --output-dir trace-output
 
       - name: Upload trace beside test summaries
+        if: steps.trace.outputs.rendered == 'true'
         shell: bash --noprofile --norc -eo pipefail {0}
         run: |
           aws s3 sync --acl public-read --no-progress \
@@ -105,6 +107,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep trace as a GitHub artifact
+        if: steps.trace.outputs.rendered == 'true'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: workflow-trace-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
