@@ -70,6 +70,9 @@ struct TRenderContext
 
     // ICB column applicability; true only for StorageService.
     bool ShowIcb;
+
+    // A rejected change to an enclosing oneof group.
+    bool DeferredByOneof = false;
 };
 
 // Secret field names whose values are hidden for every protobuf type.
@@ -258,7 +261,8 @@ void RenderField(
 {
     HTML (out) {
         TABLER () {
-            out << (IsDeferred(path, context.Diagnostics)
+            out << (context.DeferredByOneof ||
+                            IsDeferred(path, context.Diagnostics)
                         ? "<td class='config-dynamic-deferred'>"
                         : "<td>")
                 << EncodeHtmlPcdata(path) << "</td>";
@@ -517,25 +521,36 @@ bool RenderMessage(
         const auto* field = descriptor->field(i);
         const TString fieldPath = TStringBuilder()
                                   << path << '.' << field->name();
+
+        // Match oneof diagnostics by the group name, retaining member paths.
+        auto fieldContext = context;
+        if (const auto* oneof = field->real_containing_oneof()) {
+            const TString groupPath = TStringBuilder()
+                                      << path << '.' << oneof->name();
+            const auto it = context.Diagnostics.IgnoredPaths.find(groupPath);
+            fieldContext.DeferredByOneof |=
+                it != context.Diagnostics.IgnoredPaths.end();
+        }
+
         if (field->is_repeated()) {
             counts.Dynamic +=
                 HasValue(sources[context.CurrentDynamicSource], field);
             rendered |=
                 field->is_map()
-                    ? RenderMapField(out, sources, field, fieldPath, context)
+                    ? RenderMapField(out, sources, field, fieldPath, fieldContext)
                     : RenderRepeatedField(
                           out,
                           sources,
                           field,
                           fieldPath,
-                          context);
+                          fieldContext);
         } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
             rendered |= RenderNestedMessage(
                 out,
                 sources,
                 field,
                 fieldPath,
-                context,
+                fieldContext,
                 counts);
         } else {
             rendered |= RenderScalarField(
@@ -543,7 +558,7 @@ bool RenderMessage(
                 sources,
                 field,
                 fieldPath,
-                context,
+                fieldContext,
                 counts);
         }
     }
