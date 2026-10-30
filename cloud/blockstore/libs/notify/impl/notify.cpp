@@ -28,7 +28,7 @@ class TService final
     , public std::enable_shared_from_this<TService>
 {
 private:
-    const TNotifyConfigPtr Config;
+    const TNotifyConfigConstPtr Config;
     NCloud::NIamClient::IIamTokenClientPtr IamClient;
     THttpsClient HttpsClient;
     TLog Log;
@@ -36,7 +36,7 @@ private:
 
 public:
     TService(
-            TNotifyConfigPtr config,
+            TNotifyConfigConstPtr config,
             NCloud::NIamClient::IIamTokenClientPtr iamClient,
             IJsonGeneratorPtr jsonGenerator)
         : Config(std::move(config))
@@ -147,7 +147,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IServicePtr CreateService(
-    TNotifyConfigPtr config,
+    TNotifyConfigConstPtr config,
     NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr,
     IJsonGeneratorPtr jsonGenerator)
 {
@@ -158,7 +158,7 @@ IServicePtr CreateService(
 }
 
 IServicePtr CreateService(
-    TNotifyConfigPtr config,
+    TNotifyConfigConstPtr config,
     NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
     return CreateService(
