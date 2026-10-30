@@ -265,7 +265,7 @@ func (s *diskSource) Close(ctx context.Context) {
 // one-shot disks (e.g. proxy overlay disks) only, not for user disks.
 //
 // The source covers the first min(|maxSizeBytes|, disk size) bytes of the disk
-// (rounded up to the block size), zero |maxSizeBytes| means the whole disk.
+// (rounded up to |chunkSize|), zero |maxSizeBytes| means the whole disk.
 func NewDiskSource(
 	ctx context.Context,
 	client nbs.Client,
@@ -301,16 +301,6 @@ func NewDiskSource(
 
 	blockSize := session.BlockSize()
 	blockCount := session.BlockCount()
-	if maxSizeBytes != 0 {
-		// Rounded up: the source should cover at least |maxSizeBytes|.
-		maxBlockCount := common.DivideWithRoundingUp(
-			maxSizeBytes,
-			uint64(blockSize),
-		)
-		if maxBlockCount < blockCount {
-			blockCount = maxBlockCount
-		}
-	}
 
 	err = validate(blockCount, chunkSize, blockSize)
 	if err != nil {
@@ -326,6 +316,20 @@ func NewDiskSource(
 			"blocksInChunk should be multiple of 8, blocksInChunk=%v",
 			blocksInChunk,
 		)
+	}
+
+	if maxSizeBytes != 0 {
+		// Rounded up to the chunk size: the source reads whole chunks (and the
+		// target of a transfer is chunk aligned as well, see NewDiskTarget).
+		// Clamped to the disk, so the result stays valid (see validate).
+		maxChunkCount := common.DivideWithRoundingUp(
+			maxSizeBytes,
+			uint64(chunkSize),
+		)
+		maxBlockCount := maxChunkCount * blocksInChunk
+		if maxBlockCount < blockCount {
+			blockCount = maxBlockCount
+		}
 	}
 
 	maxChangedBlockCountPerIteration :=

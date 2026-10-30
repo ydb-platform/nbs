@@ -21,7 +21,7 @@ message TransferFromDiskToDiskRequest {
     // disks), not for user disks.
     bool MountSrcDiskLocally = 7;
     // Transfer the first MaxSizeBytes of SrcDisk only (rounded up to the
-    // block size of SrcDisk), zero means the whole disk.
+    // transfer chunk size), zero means the whole disk.
     //
     // An optimization that limits how much data is enumerated, and therefore
     // the number of |GetChangedBlocks| calls, before the task persists its

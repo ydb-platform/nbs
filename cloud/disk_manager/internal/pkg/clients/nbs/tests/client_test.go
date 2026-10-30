@@ -1699,7 +1699,7 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		baseDiskID,
 		"cp",
-		0, // maxBlocksCount, same as the base disk
+		0, // maxSizeBytes, same as the base disk
 	)
 	require.NoError(t, err)
 	require.True(t, created)
@@ -1722,7 +1722,7 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		baseDiskID,
 		"cp",
-		0, // maxBlocksCount
+		0, // maxSizeBytes
 	)
 	require.NoError(t, err)
 	require.True(t, created)
@@ -1732,8 +1732,8 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, newBaseDiskID, proxyOverlayDiskParams.BaseDiskID)
 
-	// Checkpoint is (re)created on the proxy overlay disk only, base disk
-	// checkpoints are not touched.
+	// Checkpoints are untouched, both on the proxy overlay disk and on the
+	// base disk.
 	checkpoints, err := client.GetCheckpoints(ctx, proxyOverlayDiskID)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cp"}, checkpoints)
@@ -1749,11 +1749,90 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		newBaseDiskID,
 		"other_cp",
-		0, // maxBlocksCount
+		0, // maxSizeBytes
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "already exists")
+
+	// A disk with the same id that is not an overlay disk at all is not a
+	// proxy overlay disk for this request either, and is left untouched.
+	_, err = client.CreateProxyOverlayDisk(
+		ctx,
+		newBaseDiskID,
+		newBaseDiskID,
+		"cp",
+		0, // maxSizeBytes
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.ErrorContains(t, err, "already exists")
+
+	newBaseDiskParams, err := client.Describe(ctx, newBaseDiskID)
+	require.NoError(t, err)
+	require.Empty(t, newBaseDiskParams.BaseDiskID)
+
+	checkpoints, err = client.GetCheckpoints(ctx, newBaseDiskID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cp"}, checkpoints)
+}
+
+// Scenario: the previous attempt was interrupted after the proxy overlay disk
+// had been created, but before its checkpoint had been created. The retry
+// should create the missing checkpoint.
+func TestCreateProxyOverlayDiskCreatesMissingCheckpoint(t *testing.T) {
+	ctx := newContext()
+	client := newTestingClient(t, ctx)
+
+	diskID := t.Name()
+	baseDiskID := diskID + "_base"
+	proxyOverlayDiskID := "proxy_" + diskID
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              baseDiskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 1,
+	})
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         baseDiskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	// Overlay disk without a checkpoint, as CreateProxyOverlayDisk leaves it
+	// if interrupted between the two steps.
+	err = client.Create(ctx, nbs.CreateDiskParams{
+		ID:                   proxyOverlayDiskID,
+		BaseDiskID:           baseDiskID,
+		BaseDiskCheckpointID: "cp",
+		BlocksCount:          1024,
+		BlockSize:            4096,
+		Kind:                 types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	checkpoints, err := client.GetCheckpoints(ctx, proxyOverlayDiskID)
+	require.NoError(t, err)
+	require.Empty(t, checkpoints)
+
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		baseDiskID,
+		"cp",
+		0, // maxSizeBytes
+	)
+	require.NoError(t, err)
+	require.True(t, created)
+
+	checkpoints, err = client.GetCheckpoints(ctx, proxyOverlayDiskID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cp"}, checkpoints)
 }
 
 func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
