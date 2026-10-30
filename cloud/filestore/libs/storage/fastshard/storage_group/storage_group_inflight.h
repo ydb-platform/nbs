@@ -2,6 +2,9 @@
 
 #include <cloud/fastshard/libs/common/context.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/public.h>
+
 #include <silk/fibers/event.h>
 #include <silk/fibers/mutex.h>
 
@@ -14,53 +17,87 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TInflightRequest: public TIntrusiveListItem<TInflightRequest>
+{
+    NCloud::NFastShard::TFastShardContext Ctx;
+
+    explicit TInflightRequest(ui64 requestId)
+        : Ctx(requestId)
+    {}
+};
+
 class TInflightTracker
 {
-public:
-    struct TInflight: public TIntrusiveListItem<TInflight>
-    {
-        TInflightTracker& Tracker;
-        NCloud::NFastShard::TFastShardContext& Context;
-
-        TInflight(
-                TInflightTracker& tracker,
-                NCloud::NFastShard::TFastShardContext& context)
-            : Tracker(tracker)
-            , Context(context)
-        {
-            Tracker.Add(this);
-        }
-
-        ~TInflight()
-        {
-            Tracker.Remove(this);
-        }
-    };
-
 private:
-    silk::FiberMutex Lock;
-    TIntrusiveList<TInflight> Requests;
+    const ui32 Limit = 0;
+
+    Y_CACHE_ALIGNED silk::FiberMutex Lock;
+    TIntrusiveList<TInflightRequest> Requests;
+    ui32 InflightCount = 0;
+
     silk::FiberEvent Empty;
     bool Stopped = false;
 
 public:
-    TInflightTracker()
+    explicit TInflightTracker(ui32 limit)
+        : Limit(limit)
     {
         Empty.set();
     }
 
-    TInflight Add(NCloud::NFastShard::TFastShardContext& ctx)
+    NProto::TError Add(TInflightRequest& op)
     {
-        return {*this, ctx};
+        std::lock_guard guard(Lock);
+        if (Stopped) {
+            return MakeError(E_REJECTED, "storage group is shutting down");
+        }
+        if (Limit && InflightCount >= Limit) {
+            return MakeError(E_REJECTED, "storage group is busy");
+        }
+
+        ++InflightCount;
+        Requests.PushBack(&op);
+        Empty.reset();
+
+        return {};
     }
 
-    // Cancels the requests in flight and every one added later.
+    NProto::TError AddUnlimited(TInflightRequest& op)
+    {
+        std::lock_guard guard(Lock);
+        if (Stopped) {
+            return MakeError(E_REJECTED, "storage group is shutting down");
+        }
+
+        Requests.PushBack(&op);
+        Empty.reset();
+
+        return {};
+    }
+
+    void Remove(TInflightRequest& op)
+    {
+        std::lock_guard guard(Lock);
+
+        --InflightCount;
+        Unlink(op);
+    }
+
+    void RemoveUnlimited(TInflightRequest& op)
+    {
+        std::lock_guard guard(Lock);
+
+        Unlink(op);
+    }
+
+    // Cancels the requests in flight and refuses every one added later.
     void Stop()
     {
         std::lock_guard guard(Lock);
+
         Stopped = true;
-        for (auto& request: Requests) {
-            request.Context.Cancel.set();
+        for (auto& op: Requests) {
+            op.Ctx.Cancel.set();
         }
     }
 
@@ -71,23 +108,9 @@ public:
     }
 
 private:
-    void Add(TInflight* request)
+    void Unlink(TInflightRequest& op)
     {
-        std::lock_guard guard(Lock);
-        if (Requests.Empty()) {
-            Empty.reset();
-        }
-
-        Requests.PushBack(request);
-        if (Stopped) {
-            request->Context.Cancel.set();
-        }
-    }
-
-    void Remove(TInflight* request)
-    {
-        std::lock_guard guard(Lock);
-        request->Unlink();
+        op.Unlink();
         if (Requests.Empty()) {
             Empty.set();
         }
