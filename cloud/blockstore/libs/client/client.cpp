@@ -583,15 +583,15 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMultiHostClient final
+class TEndpointFactory final
     : public TClientBase
-    , public IMultiHostClient
-    , public std::enable_shared_from_this<TMultiHostClient>
+    , public IEndpointFactory
+    , public std::enable_shared_from_this<TEndpointFactory>
 {
 public:
     using TClientBase::TClientBase;
 
-    ~TMultiHostClient() override
+    ~TEndpointFactory() override
     {
         Stop();
     }
@@ -1156,7 +1156,7 @@ IBlockStorePtr TClient::CreateDataEndpoint(const TString& socketPath)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr TMultiHostClient::CreateEndpoint(
+IBlockStorePtr TEndpointFactory::CreateEndpoint(
     const TString& host,
     ui32 port,
     bool isSecure)
@@ -1167,12 +1167,12 @@ IBlockStorePtr TMultiHostClient::CreateEndpoint(
         STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "could not start gRPC client";
     }
 
-    return std::make_shared<TEndpoint<TMultiHostClient>>(
+    return std::make_shared<TEndpoint<TEndpointFactory>>(
         shared_from_this(),
         NProto::TBlockStoreService::NewStub(std::move(channel)));
 }
 
-IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
+IBlockStorePtr TEndpointFactory::CreateIOEndpoint(
     const TString& host,
     ui32 port,
     bool isSecure)
@@ -1190,7 +1190,7 @@ IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
         STORAGE_THROW_SERVICE_ERROR(E_FAIL) << "could not start gRPC client";
     }
 
-    return std::make_shared<TEndpoint<TMultiHostClient>>(
+    return std::make_shared<TEndpoint<TEndpointFactory>>(
         shared_from_this(),
         NProto::TBlockStoreService::NewStub(std::move(channel)));
 }
@@ -1224,7 +1224,7 @@ TResultOrError<IClientPtr> CreateClient(
     return client;
 }
 
-TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
+TResultOrError<IEndpointFactoryPtr> CreateEndpointFactory(
     TClientAppConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -1233,7 +1233,7 @@ TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
     IServerStatsPtr clientStats,
     ICertificateProviderPtr certificateProvider)
 {
-    IMultiHostClientPtr client = std::make_shared<TMultiHostClient>(
+    IEndpointFactoryPtr factory = std::make_shared<TEndpointFactory>(
         std::move(config),
         std::move(timer),
         std::move(scheduler),
@@ -1242,7 +1242,7 @@ TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
         std::move(monitoring),
         std::move(clientStats));
 
-    return client;
+    return factory;
 }
 
 }   // namespace NCloud::NBlockStore::NClient

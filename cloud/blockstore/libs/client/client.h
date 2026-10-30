@@ -28,7 +28,7 @@ struct IClient
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IMultiHostClient
+struct IEndpointFactory
     : public IStartable
 {
     virtual IBlockStorePtr CreateEndpoint(
@@ -53,7 +53,7 @@ TResultOrError<IClientPtr> CreateClient(
     IServerStatsPtr clientStats,
     ICertificateProviderPtr certificateProvider);
 
-TResultOrError<IMultiHostClientPtr> CreateMultiHostClient(
+TResultOrError<IEndpointFactoryPtr> CreateEndpointFactory(
     TClientAppConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,

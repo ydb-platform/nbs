@@ -1562,7 +1562,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             .SetDataPort(dataPort)
             .BuildServer(service);
 
-        auto client = testFactory.CreateClientBuilder().BuildMultiHostClient();
+        auto client = testFactory.CreateClientBuilder().BuildEndpointFactory();
         // a data client pointed at the control port
         auto dataClient =
             testFactory.CreateClientBuilder().SetDataPort(port).BuildClient();
