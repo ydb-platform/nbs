@@ -1748,4 +1748,13 @@ message TStorageServiceConfig
     // temporary servers. YDB cleans up old backups per directory, so the
     // directory must not be shared with other processes.
     optional string SystemTabletBackupDirPath = 543;
+
+    // Age (in milliseconds) of an untrimmed, unflushed fresh blob that triggers
+    // flushing in partition v1 for SSD volumes. Zero disables age-based flushing.
+    optional uint32 FreshBlobAgeFlushThresholdSSD = 544;
+
+    // Age (in milliseconds) of an untrimmed, unflushed fresh blob that triggers
+    // flushing in partition v1 for HDD/hybrid volumes. Zero disables age-based
+    // flushing.
+    optional uint32 FreshBlobAgeFlushThresholdHDD = 545;
 }

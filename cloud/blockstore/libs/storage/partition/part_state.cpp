@@ -966,9 +966,11 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        if (GetUntrimmedFreshBlobByteCount() > 0) {
-            state["FirstUntrimmedFreshBlobTimestamp"] =
-                GetFirstUntrimmedFreshBlobTimestamp().MicroSeconds();
+        const auto firstUnflushedFreshBlobTimestamp =
+            GetFirstUnflushedFreshBlobTimestamp(GetTrimFreshLogToCommitId());
+        if (firstUnflushedFreshBlobTimestamp != TInstant::Max()) {
+            state["FirstUnflushedFreshBlobTimestamp"] =
+                firstUnflushedFreshBlobTimestamp.MicroSeconds();
         }
         state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);

@@ -848,6 +848,16 @@ public:
         return request;
     }
 
+    auto CreateListNodesInternalRequest(ui64 node)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvListNodesInternalRequest>();
+        auto* originalRequest = request->Record.MutableOriginalRequest();
+        Headers.Fill(*originalRequest);
+        originalRequest->SetNodeId(node);
+        return request;
+    }
+
     auto CreateReadNodeRefsRequest(ui64 node, TString cookie, ui32 limit){
         auto request = std::make_unique<TEvIndexTablet::TEvReadNodeRefsRequest>();
         request->Record.SetNodeId(node);

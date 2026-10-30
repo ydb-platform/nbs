@@ -165,6 +165,8 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetFreshBlobCountFlushThreshold() const;
     ui32 GetFreshBlobByteCountFlushThreshold() const;
+    TDuration GetFreshBlobAgeFlushThresholdSSD() const;
+    TDuration GetFreshBlobAgeFlushThresholdHDD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 

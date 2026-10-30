@@ -254,7 +254,8 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 std::move(guardedSglist),
                 0,        // blockSizeForChecksums
-                false);   // async
+                false,  // async
+                false); // compressedSizeEstimationCandidate
 
         ui64 requestId = 0;
 

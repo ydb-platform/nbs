@@ -407,11 +407,11 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
                     << " from " << buffer.Size() << " bytes");
         }
 
-        if (record->PrevLsn != key) {
+        if (record->Lsn != key) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder() << "log record with key " << key
-                                 << " has prevLsn " << record->PrevLsn);
+                                 << " has lsn " << record->Lsn);
         }
 
         if (record->PrevLsn >= record->Lsn) {
@@ -431,17 +431,8 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
                                  << rangeError.GetMessage());
         }
 
-        auto [it, inserted] = lsnToRecord.emplace(record->Lsn, record);
-        if (!inserted) {
-            const ui64 otherPrevLsn = it->second->PrevLsn;
-            return MakeError(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "records with prev lsn "
-                    << Min(record->PrevLsn, otherPrevLsn) << " and "
-                    << Max(record->PrevLsn, otherPrevLsn)
-                    << " both carry lsn " << record->Lsn);
-        }
+        // the store holds one buffer per key and the key is the lsn
+        lsnToRecord.emplace(record->Lsn, record);
     }
 
     //
@@ -684,7 +675,7 @@ NProto::TError TJournal::WriteLogRecord(
         return error;
     }
 
-    auto metaFuture = MetaStore->Write(record.PrevLsn, SerializeRecord(record));
+    auto metaFuture = MetaStore->Write(record.Lsn, SerializeRecord(record));
     if (auto error = Executor->WaitFor(metaFuture); HasError(error)) {
         return error;
     }
@@ -923,8 +914,8 @@ TFuture<NCloud::NProto::TError> TJournal::CleanupFlushedRecords()
 
     ui64 eraseUpToLsn = FlushedLsnBarrier.GetBarrierLsn();
 
-    // The meta store holds the records by their PrevLsn
-    auto future = MetaStore->EraseBelow(eraseUpToLsn);
+    // The meta store holds the records by their lsn
+    auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
     if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         return MakeFuture(error);
     }

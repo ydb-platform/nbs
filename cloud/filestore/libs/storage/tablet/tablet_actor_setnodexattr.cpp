@@ -126,6 +126,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
     if (args.Attr) {
         args.Version = UpdateNodeAttr(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.Attr->MinCommitId,
             args.CommitId,
@@ -134,6 +135,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
     } else {
         args.Version = CreateNodeAttr(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.CommitId,
             args.Name,

@@ -252,6 +252,7 @@ private:
 
     /*const*/ bool FileSystemEventsEnabled = false;
     /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
+    /*const*/ bool FileSystemListingEventsEnabled = false;
 
     bool StateLoaded = false;
 
@@ -366,6 +367,11 @@ private:
         ui64 nodeId,
         const TString& name);
 
+    void AddInvalidateNodeXAttrEvent(
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+        ui64 nodeId,
+        const TString& name);
+
 public:
 
     //
@@ -474,6 +480,19 @@ public:
     bool IsFileSystemEventsEnabled() const
     {
         return FileSystemEventsEnabled;
+    }
+
+    /**
+     * Checks whether GetNodeAttrBatch, ListNodes and ListNodesInternal
+     * subscribe the client to the returned Nodes and NodeRefs and allow it to
+     * cache them.
+     *
+     * @return - True if both FileSystemEventsEnabled and
+     *  FileSystemListingEventsEnabled are set.
+     */
+    bool IsFileSystemListingEventsEnabled() const
+    {
+        return FileSystemEventsEnabled && FileSystemListingEventsEnabled;
     }
 
     ui64 GetCurrentCommitId() const
@@ -738,6 +757,7 @@ private:
 public:
     ui64 CreateNodeAttr(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
@@ -745,6 +765,7 @@ public:
 
     ui64 UpdateNodeAttr(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -753,6 +774,7 @@ public:
 
     void RemoveNodeAttr(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,

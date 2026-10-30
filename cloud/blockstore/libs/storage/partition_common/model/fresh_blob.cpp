@@ -92,6 +92,15 @@ NProto::TError ParseFreshBlobContent(
     TVector<TOwningFreshBlock>& result,
     TInstant& timestamp)
 {
+    constexpr size_t HeaderSize =
+        sizeof(TFreshBlobFormatVersion) + sizeof(TProtobufSize);
+    if (buffer.size() < HeaderSize) {
+        return MakeError(
+            E_FAIL, TStringBuilder() <<
+                "fresh blob is too small; #buffer.size()=" << buffer.size());
+    }
+
+    // Load() can't throw: the header size is checked above.
     TStringInput si(buffer);
 
     TFreshBlobFormatVersion version = 0;
@@ -103,7 +112,14 @@ NProto::TError ParseFreshBlobContent(
     TProtobufSize protoSize = 0;
     Load(&si, protoSize);
 
-    size_t offset = sizeof(version) + sizeof(protoSize);
+    size_t offset = HeaderSize;
+    if (buffer.size() - offset < protoSize) {
+        return MakeError(
+            E_FAIL, TStringBuilder() <<
+                "fresh blob meta exceeds buffer; #offset=" << offset <<
+                " #protoSize=" << protoSize <<
+                " #buffer.size()=" << buffer.size());
+    }
 
     NProto::TFreshBlobMeta meta;
     if (!meta.ParseFromArray(buffer.data() + offset, protoSize)) {

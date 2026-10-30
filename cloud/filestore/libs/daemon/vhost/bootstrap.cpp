@@ -618,12 +618,9 @@ void TBootstrapVhost::InitEndpoints()
     const auto& vhostConfig = *Configs->VhostServiceConfig;
     auto persistentState = NFuse::CreatePersistentStateManager({
         .HandleOpsQueueBasePath = vhostConfig.GetHandleOpsQueuePath(),
-        .HandleOpsQueueStateFileSize = vhostConfig.GetHandleOpsQueueSize(),
         .HandleOpsQueueTotalSizeLimit =
             vhostConfig.GetHandleOpsQueueTotalSizeLimit(),
         .WriteBackCacheBasePath = vhostConfig.GetWriteBackCachePath(),
-        .WriteBackCacheStateFileSize =
-            vhostConfig.GetWriteBackCacheStateFileSize(),
         .WriteBackCacheTotalSizeLimit =
             vhostConfig.GetWriteBackCacheTotalSizeLimit(),
         .DirectoryHandlesStorageBasePath =

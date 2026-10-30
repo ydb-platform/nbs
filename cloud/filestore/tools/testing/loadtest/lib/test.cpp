@@ -36,6 +36,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <exception>
 #include <variant>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -124,10 +125,7 @@ struct TSetupSession
     TPromise<bool> Complete;
 };
 
-struct TTeardown
-{
-    TPromise<bool> Complete;
-};
+struct TTeardown {};
 struct TSuspendLoad {};
 struct TResumeLoad {};
 struct TProcessCompletedRequests {};
@@ -399,8 +397,9 @@ public:
 
     bool HandleTeardown(TTeardown& cmd)
     {
+        Y_UNUSED(cmd);
         STORAGE_INFO("%s got teardown", MakeTestTag().c_str())
-        TeardownTest(cmd);
+        TeardownTest();
         return false;
     }
 
@@ -473,8 +472,7 @@ public:
                     }
                 }
                 if (ShouldStop() && !ShutdownFlag) {
-                    TTeardown dummy;
-                    TeardownTest(dummy);
+                    TeardownTest();
 
                     TTestFinished cmd;
                     cmd.Id = TestInstanceId;
@@ -494,7 +492,11 @@ public:
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
 
-            Result.SetException(std::current_exception());
+            // ensure controller wakes up if it is waiting on the event queue
+            Controller.Enqueue(TTestFinished{TestInstanceId});
+
+            auto result = Result;
+            result.SetException(std::current_exception());
         }
 
         return nullptr;
@@ -772,12 +774,9 @@ private:
         return results;
     }
 
-    void TeardownTest(TTeardown& cmd)
+    void TeardownTest()
     {
         if (ShutdownFlag) {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
-            }
             return;
         }
 
@@ -800,14 +799,6 @@ private:
                     SeqNo,
                     response.GetError().GetMessage().c_str());
                 TestStats.Success = false;
-            }
-
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
-            }
-        } else {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
             }
         }
 
@@ -890,6 +881,8 @@ private:
 
     TLoadTestControllerCommandChannel Events;
 
+    std::exception_ptr Exception;
+
     TTestStats TestStats;
     TPromise<NProto::TTestStats> Result = NewPromise<NProto::TTestStats>();
 
@@ -940,16 +933,6 @@ public:
         cmd.SessionSeqNo = sessionSeqNo;
         cmd.Complete = complete;
         test->EnqueueCommand(std::move(cmd));
-
-        return complete.GetFuture();
-    }
-
-    TFuture<bool> SendTeardownTest(std::shared_ptr<TLoadTest>& test)
-    {
-        TPromise<bool> complete = NewPromise<bool>();
-        TTeardown teardown;
-        teardown.Complete = complete;
-        test->EnqueueCommand(teardown);
 
         return complete.GetFuture();
     }
@@ -1130,24 +1113,24 @@ public:
 
     void CleanupTest()
     {
-        if (SourceTest) {
-            auto result = SendTeardownTest(SourceTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+        const auto stopTest = [this](
+            const std::shared_ptr<TLoadTest>& test,
+            const TFuture<NProto::TTestStats>& future)
+        {
+            if (test) {
+                test->EnqueueCommand(TTeardown{});
             }
-        }
 
-        if (TargetTest) {
-            auto result = SendTeardownTest(TargetTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+            if (future.Initialized()) {
+                try {
+                    future.GetValueSync();
+                } catch (...) {
+                    SaveException();
+                }
             }
-            TargetFuture.GetValueSync();
-        }
+        };
+        stopTest(SourceTest, SourceFuture);
+        stopTest(TargetTest, TargetFuture);
 
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
@@ -1167,9 +1150,6 @@ public:
         }
 
         Client->Stop();
-
-        auto result = Result;
-        result.SetValue(SourceFuture.GetValueSync());
     }
 
     void* ThreadProc() override
@@ -1193,27 +1173,48 @@ public:
                 if (!cont) {
                     break;
                 }
-            } catch(...) {
-                STORAGE_ERROR("%s test has failed: %s",
-                    MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
-
-                Result.SetException(std::current_exception());
+            } catch (...) {
+                SaveException();
             }
         }
 
         STORAGE_INFO("test is going to finish");
 
-        CleanupTest();
+        try {
+            CleanupTest();
+        } catch (...) {
+            SaveException();
+        }
 
+        // This is a workaround for this object being destroyed by the main
+        // thread immediately after Set*() while the function is still running.
+        // Note that for the same reason we must only set Result after all other
+        // work in this method is complete (e.g. CleanupTest()).
+        auto result = Result;
+        if (Exception) {
+            result.SetException(Exception);
+        } else {
+            result.SetValue(SourceFuture.GetValueSync());
+        }
         return nullptr;
     }
 
 private:
+    void SaveException()
+    {
+        STORAGE_ERROR("%s test has failed: %s",
+            MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
+        if (!Exception) {
+            Exception = std::current_exception();
+        }
+    }
+
     bool ShouldStop() const
     {
         return AtomicGet(Ctx.ShouldStop) ||
-            (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
-            (TargetFuture.HasValue() || SourceFuture.HasValue());
+               (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
+               (TargetFuture.HasValue() || SourceFuture.HasValue()) ||
+               Exception;
     }
 
 

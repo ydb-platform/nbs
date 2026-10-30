@@ -32,16 +32,23 @@ void TIndexTabletActor::HandleGetNodeXAttr(
     const TEvService::TEvGetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
+    const auto pipeServerId = RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        msg->Record.GetHeaders());
+
     if (!AcceptRequest<TEvService::TGetNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
         return;
     }
 
-    auto* msg = ev->Get();
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+    requestInfo->PipeServerId = pipeServerId;
 
     AddInFlightRequest<TEvService::TGetNodeXAttrMethod>(*requestInfo);
 
@@ -118,8 +125,27 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvGetNodeXAttrResponse>(args.Error);
-    if (SUCCEEDED(args.Error.GetCode())) {
+    auto response =
+        std::make_unique<TEvService::TEvGetNodeXAttrResponse>(args.Error);
+
+    //
+    // The client may cache the attribute value as well as its absence.
+    //
+
+    if (!HasError(args.Error) ||
+        STATUS_FROM_CODE(args.Error.GetCode()) == NProto::E_FS_NOXATTR)
+    {
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        AddFileSystemEventNodeXAttrSubscriber(
+            ctx,
+            pipeServerId,
+            args.NodeId,
+            args.Name);
+        response->Record.SetXAttrCacheTTL(
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds());
+    }
+
+    if (!HasError(args.Error)) {
         TABLET_VERIFY(args.Attr);
         response->Record.SetValue(args.Attr->Value);
         response->Record.SetVersion(args.Attr->Version);
