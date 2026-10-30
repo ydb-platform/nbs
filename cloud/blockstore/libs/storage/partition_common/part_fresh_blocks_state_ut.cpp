@@ -182,6 +182,71 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
     }
+
+    Y_UNIT_TEST(ShouldPreserveFreshBlockVersionsForMultipleCheckpoints)
+    {
+        TCommitIdsState commitIdsState;
+        TPartitionFlushState flushState;
+        auto sharedState = std::make_shared<TPartitionThreadSafeState>();
+        TPartitionFreshBlocksState state(
+            commitIdsState,
+            flushState,
+            sharedState);
+
+        const auto range = TBlockRange32::MakeOneBlock(0);
+        ui64 removedBlocksCount = 0;
+
+        auto writeBlock = [&](ui64 commitId, char value)
+        {
+            TString content(4_KB, value);
+            sharedState->AccessTrimFreshLogBarriers()->AcquireBarrier(commitId);
+            state.WriteFreshBlocks(
+                range,
+                commitId,
+                {TBlockDataRef(content.data(), content.size())},
+                {},
+                removedBlocksCount);
+        };
+
+        auto checkRead = [&](ui64 maxCommitId, ui64 expectedCommitId, char value)
+        {
+            struct TVisitor final: IFreshBlocksIndexVisitor
+            {
+                ui64 CommitId = 0;
+                TString Content;
+
+                bool Visit(const TFreshBlock& block) override
+                {
+                    CommitId = block.Meta.CommitId;
+                    Content = TString(block.Content);
+                    return false;
+                }
+            } visitor;
+
+            state.FindFreshBlocks(visitor, range, maxCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(expectedCommitId, visitor.CommitId);
+            UNIT_ASSERT_VALUES_EQUAL(TString(4_KB, value), visitor.Content);
+        };
+
+        writeBlock(5, 'a');
+        UNIT_ASSERT(commitIdsState.AccessCheckpoints().Add(
+            TCheckpoint("c1", 10, {}, {}, {})));
+
+        writeBlock(15, 'b');
+        UNIT_ASSERT(commitIdsState.AccessCheckpoints().Add(
+            TCheckpoint("c2", 20, {}, {}, {})));
+
+        // Both older versions are still needed by their checkpoints.
+        writeBlock(25, 'c');
+
+        checkRead(10, 5, 'a');
+        checkRead(20, 15, 'b');
+        checkRead(25, 25, 'c');
+        UNIT_ASSERT_VALUES_EQUAL(0, removedBlocksCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            state.GetUnflushedFreshBlocksCountFromChannel());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
