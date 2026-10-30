@@ -126,8 +126,16 @@ message TVhostServiceConfig
     // Limit of the total size (in bytes) of the WriteBackCache state files of
     // all sessions under WriteBackCachePath. Once it is reached, a session
     // which has no state file yet is started without WriteBackCache.
+    // A nonzero limit below WriteBackCacheMinStateFileSize prevents new files
+    // from being created; existing files can still be restored.
     // 0 disables the limiting.
     optional uint64 WriteBackCacheTotalSizeLimit = 27;
+
+    // Minimum size in bytes for new server WriteBackCache state files.
+    // Defaults to 16 MiB. 0 disables the minimum check, but requested sizes must
+    // still be positive. Undersized requests reject new-file creation and
+    // preserve existing file sizes.
+    optional uint64 WriteBackCacheMinStateFileSize = 28;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
