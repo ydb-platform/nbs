@@ -105,22 +105,21 @@ void PosixAclToXattr(const TVector<posix_acl_xattr_entry>& acls, TString& value)
     }
 }
 
-NProto::TError PosixAclCreateMasq(
+TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
     const TString& xattrAcl,
     TVector<posix_acl_xattr_entry>& acls,
-    ui32& srcMode,
-    EXattrAclType& xattrAclType)
+    const ui32& srcMode)
 {
     posix_acl_xattr_entry* groupObj = nullptr;
     posix_acl_xattr_entry* maskObj = nullptr;
+
+    TChildXattrAcl result;
     ui32 mode = srcMode;
 
     constexpr __le16 s_irwxo_16 = S_IRWXO;
     constexpr ui32 s_irwxo_32 = S_IRWXO;
     constexpr ui32 s_irwxu_32 = S_IRWXU;
     constexpr ui32 s_irwxg_32 = S_IRWXG;
-
-    xattrAclType = EXattrAclType::Malformed;
 
     __le16 state = ACL_USER_OBJ;
     bool needsMask = false;
@@ -198,61 +197,52 @@ NProto::TError PosixAclCreateMasq(
 
     if (maskObj) {
         // Extended ACL: group mode bits come from ACL_MASK.
-        xattrAclType = EXattrAclType::Extended;
         maskObj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(maskObj->e_perm << 3) | ~s_irwxg_32;
+
+        result.Type = EXattrAclType::Extended;
+        PosixAclToXattr(acls, result.XAttraAcl);
     } else {
         // Minimal ACL: group mode bits come from ACL_GROUP_OBJ.
-        xattrAclType = EXattrAclType::Minimal;
         if (!groupObj) {
             return ReportMalformedPosixAcl(
                 xattrAcl,
                 "Minimal ACL requires ACL_GROUP_OBJ");
         }
+        result.Type = EXattrAclType::Minimal;
         groupObj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(groupObj->e_perm << 3) | ~s_irwxg_32;
     }
 
-    srcMode = (srcMode & ~(s_irwxo_32 | s_irwxu_32 | s_irwxg_32)) | mode;
-    return {};
+    result.Mode = (srcMode & ~(s_irwxo_32 | s_irwxu_32 | s_irwxg_32)) | mode;
+
+    return result;
 }
 
 }   // namespace
 
-NProto::TError GetChildXattrAcl(
-    TString& xattrAcl,
-    ui32& mode,
-    EXattrAclType& xattrAclType)
+TResultOrError<TChildXattrAcl> GetChildXattrAcl(
+    const TString& xattrAcl,
+    const ui32& mode)
 {
     TVector<posix_acl_xattr_entry> acls;
 
     NProto::TError error = PosixAclFromXattr(xattrAcl, acls);
     if (HasError(error)) {
-        xattrAclType = EXattrAclType::Malformed;
         return error;
     }
 
     // In case only header is passed to GetChildXattrAcl,
     // the kernel behaves as if no xattrAcl is present.
-    // We return an empty string, which means that there is nothing to inherit.
+    // This case should be explicitely taken into account by a caller.
     if (!acls) {
-        xattrAcl.clear();
-        xattrAclType = EXattrAclType::HeaderOnly;
-        return {};
+        return TChildXattrAcl{
+            .XAttraAcl = "",
+            .Mode = 0,
+            .Type = EXattrAclType::HeaderOnly};
     }
 
-    error = PosixAclCreateMasq(xattrAcl, acls, mode, xattrAclType);
-    if (HasError(error)) {
-        return error;
-    }
-
-    if (xattrAclType == EXattrAclType::Extended) {
-        PosixAclToXattr(acls, xattrAcl);
-    } else {
-        xattrAcl.clear();
-    }
-
-    return {};
+    return PosixAclCreateMasq(xattrAcl, acls, mode);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
