@@ -30,7 +30,7 @@ void TNodeRefCacheShard::Add(
     Entries.Update(key, TEntry{.NodeId = nodeId, .Deadline = deadline});
 }
 
-TMaybe<ui64> TNodeRefCacheShard::Get(
+ui64 TNodeRefCacheShard::Get(
     const TNodeRefCacheKey& key,
     TInstant now)
 {
@@ -38,18 +38,18 @@ TMaybe<ui64> TNodeRefCacheShard::Get(
 
     auto it = Entries.Find(key);
     if (it == Entries.End()) {
-        return Nothing();
+        return InvalidNodeId;
     }
 
     if (now >= it.Value().Deadline) {
         Entries.Erase(it);
-        return Nothing();
+        return InvalidNodeId;
     }
 
     return it.Value().NodeId;
 }
 
-TMaybe<ui64> TNodeRefCacheShard::Invalidate(
+ui64 TNodeRefCacheShard::Invalidate(
     const TNodeRefCacheKey& key,
     ui64 version)
 {
@@ -59,7 +59,7 @@ TMaybe<ui64> TNodeRefCacheShard::Invalidate(
 
     auto it = Entries.Find(key);
     if (it == Entries.End()) {
-        return Nothing();
+        return InvalidNodeId;
     }
 
     const ui64 nodeId = it.Value().NodeId;
@@ -136,7 +136,7 @@ void TNodeRefCache::Add(
         deadline);
 }
 
-TMaybe<ui64> TNodeRefCache::Get(
+ui64 TNodeRefCache::Get(
     ui64 parentNodeId,
     const TString& name,
     TInstant now)
@@ -146,7 +146,7 @@ TMaybe<ui64> TNodeRefCache::Get(
         now);
 }
 
-TMaybe<ui64> TNodeRefCache::Invalidate(
+ui64 TNodeRefCache::Invalidate(
     ui64 parentNodeId,
     const TString& name,
     ui64 version)

@@ -253,8 +253,8 @@ bool TFileSystem::TryReplyEntryFromCache(
     const TString& name)
 {
     const auto now = Timer->Now();
-    const auto nodeId = NodeRefCache.Get(parentNodeId, name, now);
-    if (!nodeId) {
+    const ui64 nodeId = NodeRefCache.Get(parentNodeId, name, now);
+    if (nodeId == InvalidNodeId) {
         return false;
     }
 
@@ -263,7 +263,7 @@ bool TFileSystem::TryReplyEntryFromCache(
     // count.
     //
 
-    auto attrs = NodeCache.RefCachedNode(*nodeId, now);
+    auto attrs = NodeCache.RefCachedNode(nodeId, now);
     if (!attrs) {
         return false;
     }
@@ -365,9 +365,9 @@ void TFileSystem::InvalidateCachedEntry(
     // unlink).
     //
 
-    const auto nodeId = NodeRefCache.Invalidate(parentNodeId, name, version);
-    if (nodeId) {
-        NodeCache.InvalidateCachedAttrs(*nodeId, version);
+    const ui64 nodeId = NodeRefCache.Invalidate(parentNodeId, name, version);
+    if (nodeId != InvalidNodeId) {
+        NodeCache.InvalidateCachedAttrs(nodeId, version);
     }
     NodeCache.InvalidateCachedAttrs(parentNodeId, version);
 }

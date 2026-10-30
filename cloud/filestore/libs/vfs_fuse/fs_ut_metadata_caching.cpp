@@ -475,13 +475,13 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         const auto t0 = TInstant::Seconds(100);
 
         cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            cache.Get(1, "a", t0).GetOrElse(0));
-        UNIT_ASSERT(!cache.Get(1, "b", t0));
-        UNIT_ASSERT(!cache.Get(2, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(10, cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(2, "a", t0));
 
-        UNIT_ASSERT(!cache.Get(1, "a", t0 + CacheTTL));
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidNodeId,
+            cache.Get(1, "a", t0 + CacheTTL));
         UNIT_ASSERT_VALUES_EQUAL(0, cache.GetEntryCount());
     }
 
@@ -491,23 +491,19 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         const auto t0 = TInstant::Seconds(100);
 
         cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            cache.Invalidate(1, "a", 5 /* version */).GetOrElse(0));
-        UNIT_ASSERT(!cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(10, cache.Invalidate(1, "a", 5 /* version */));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
 
         cache.Add(1, "a", 10, 4 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(!cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
 
         cache.Add(1, "a", 11, 6 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(
-            11,
-            cache.Get(1, "a", t0).GetOrElse(0));
+        UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "a", t0));
 
         cache.InvalidateAll(7 /* version */);
-        UNIT_ASSERT(!cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
         cache.Add(1, "b", 12, 6 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(!cache.Get(1, "b", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
     }
 
     Y_UNIT_TEST(ShouldRaiseWatermarkUponTombstoneEviction)
@@ -520,21 +516,25 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         // its invalidation are not cached anymore.
         //
 
-        UNIT_ASSERT(!cache.Invalidate(1, "a", 5 /* version */));
-        UNIT_ASSERT(!cache.Invalidate(1, "b", 6 /* version */));
-        UNIT_ASSERT(!cache.Invalidate(1, "c", 7 /* version */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidNodeId,
+            cache.Invalidate(1, "a", 5 /* version */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidNodeId,
+            cache.Invalidate(1, "b", 6 /* version */));
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidNodeId,
+            cache.Invalidate(1, "c", 7 /* version */));
 
         cache.Add(1, "a", 10, 4 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(!cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
         cache.Add(1, "d", 11, 4 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(!cache.Get(1, "d", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "d", t0));
 
         cache.Add(1, "d", 11, 5 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(
-            11,
-            cache.Get(1, "d", t0).GetOrElse(0));
+        UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "d", t0));
         cache.Add(1, "b", 12, 5 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(!cache.Get(1, "b", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
     }
 
     Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodeRefs)
@@ -544,13 +544,13 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
 
         cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
         cache.Add(1, "b", 11, 1 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT(cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, cache.Get(1, "a", t0));
         cache.Add(1, "c", 12, 1 /* version */, t0 + CacheTTL);
 
         UNIT_ASSERT_VALUES_EQUAL(2, cache.GetEntryCount());
-        UNIT_ASSERT(cache.Get(1, "a", t0));
-        UNIT_ASSERT(!cache.Get(1, "b", t0));
-        UNIT_ASSERT(cache.Get(1, "c", t0));
+        UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, cache.Get(1, "a", t0));
+        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
+        UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, cache.Get(1, "c", t0));
     }
 }
 

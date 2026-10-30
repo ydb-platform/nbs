@@ -2,13 +2,14 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
+
 #include <library/cpp/cache/cache.h>
 
 #include <util/datetime/base.h>
 #include <util/digest/multi.h>
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
-#include <util/generic/maybe.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
@@ -85,8 +86,8 @@ public:
         ui64 nodeId,
         ui64 version,
         TInstant deadline);
-    TMaybe<ui64> Get(const TNodeRefCacheKey& key, TInstant now);
-    TMaybe<ui64> Invalidate(const TNodeRefCacheKey& key, ui64 version);
+    ui64 Get(const TNodeRefCacheKey& key, TInstant now);
+    ui64 Invalidate(const TNodeRefCacheKey& key, ui64 version);
     void InvalidateAll(ui64 version);
     size_t GetEntryCount();
 
@@ -134,9 +135,9 @@ public:
      * @param parentNodeId - Parent node id.
      * @param name - Entry name.
      * @param now - Current time.
-     * @return - Target node id or Nothing.
+     * @return - Target node id or InvalidNodeId.
      */
-    TMaybe<ui64> Get(ui64 parentNodeId, const TString& name, TInstant now);
+    ui64 Get(ui64 parentNodeId, const TString& name, TInstant now);
 
     /**
      * Erases a NodeRef and prevents caching it by the requests started before
@@ -145,9 +146,9 @@ public:
      * @param parentNodeId - Parent node id.
      * @param name - Entry name.
      * @param version - Cache version of the invalidation.
-     * @return - Target node id of the erased NodeRef or Nothing.
+     * @return - Target node id of the erased NodeRef or InvalidNodeId.
      */
-    TMaybe<ui64> Invalidate(
+    ui64 Invalidate(
         ui64 parentNodeId,
         const TString& name,
         ui64 version);

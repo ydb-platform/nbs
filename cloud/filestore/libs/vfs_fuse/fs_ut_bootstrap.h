@@ -310,7 +310,7 @@ struct TBootstrap
         StopTriggered.TrySetValue();
 
         // Scheduled tasks are not run automatically when TTestScheduler is used
-        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        auto* testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
         if (testScheduler) {
             auto now = TInstant::Now();
             while (!stop.HasValue() && !stop.HasException()) {
