@@ -148,11 +148,10 @@ type Client interface {
 
 	// Creates an overlay disk on top of |baseDiskID|@|baseDiskCheckpointID|
 	// of min(|maxSizeBytes|, base disk size) bytes, zero |maxSizeBytes| means the base
-	// disk size. The overlay disk is never larger than the base disk and has
-	// the block size of the base disk (|maxSizeBytes| is rounded up to it).
-	// Idempotent: an already existing overlay disk is left as is, even if it
-	// has been rebased onto another base disk since its creation, so
-	// |baseDiskID| is not required to exist anymore in this case.
+	// disk size.
+	//
+	// !Be careful!: |maxSizeBytes| can truncate the proxy overlay disk if it is
+	// smaller than the highest offset of stored data on the base disk.
 	CreateProxyOverlayDisk(
 		ctx context.Context,
 		diskID string,
@@ -301,6 +300,9 @@ type Client interface {
 	// Returns changed bytes count between two checkpoints of a disk, within
 	// the first min(|maxSizeBytes|, disk size) bytes of the disk (rounded up to the
 	// block size), zero |maxSizeBytes| means the whole disk.
+	//
+	// !Be careful!: |maxSizeBytes| sets the upper byte offset used to calculate
+	// the amount of changed data. Data beyond this offset is ignored.
 	GetChangedBytes(
 		ctx context.Context,
 		diskID string,
