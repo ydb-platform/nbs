@@ -3,6 +3,5 @@ package pools
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	baseDiskBlockSize         = 4096
-	defaultBaseDiskBlockCount = 1 << 30
+	baseDiskBlockSize = 4096
 )

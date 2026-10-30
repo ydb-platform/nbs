@@ -7,6 +7,17 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func DivideWithRoundingUp(x uint64, divisor uint64) uint64 {
+	res := x / divisor
+
+	if x%divisor != 0 {
+		// Round up.
+		return res + 1
+	}
+
+	return res
+}
+
 func Find(slice []string, value string) bool {
 	for _, v := range slice {
 		if v == value {
