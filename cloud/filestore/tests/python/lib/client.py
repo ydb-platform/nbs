@@ -2,7 +2,6 @@ import base64
 import json
 import logging
 import os
-import signal
 import tempfile
 import uuid
 
@@ -10,7 +9,7 @@ import yatest.common as common
 
 from cloud.filestore.tests.python.lib.common import daemon_log_files, wait_for
 
-from contrib.ydb.tests.library.harness.daemon import Daemon
+from cloud.storage.core.tools.common.python.daemon import Daemon
 
 logger = logging.getLogger(__name__)
 
@@ -116,22 +115,25 @@ class FilestoreCliClient:
             cmd.append("--mount-readonly")
 
         logger.info("mounting filestore: " + " ".join(cmd))
-        mount = Daemon(
-            cmd,
-            cwd=self.__cwd,
-            timeout=self.__timeout,
-            **daemon_log_files(prefix="nfs-mnt-%s" % fs, cwd=self.__cwd))
-        mount.start()
-
-        pid = mount.daemon.process.pid
-        logger.info("mount for " + fs + " pid: " + str(pid))
-
-        if not wait_for(lambda: os.path.ismount(path), self.__timeout):
-            os.kill(pid, signal.SIGTERM)
-            raise RuntimeError("failed to mount {} at {} in {}".format(
-                fs, path, self.__timeout))
-
-        return pid
+        with Daemon(
+                commands=[cmd], cwd=self.__cwd,
+                stderr_on_error_lines=100,
+                stderr_tail=True,
+                **daemon_log_files(prefix="nfs-mnt-%s" % fs, cwd=self.__cwd)) as mount:
+            mount.start()
+            pid = mount.pid
+            logger.info("mount for %s pid: %s", fs, pid)
+            ready = wait_for(
+                lambda: not mount.is_alive() or os.path.ismount(path),
+                self.__timeout)
+            if not mount.is_alive():
+                raise mount.failure(
+                    "failed to mount {} at {}: client pid {} exited while waiting for mount".format(fs, path, pid))
+            if not ready:
+                raise mount.failure(
+                    "failed to mount {} at {}: mount was not ready in {} seconds (client pid {})".format(
+                        fs, path, self.__timeout, pid))
+            return mount.detach().process.pid
 
     def resize(
         self,
