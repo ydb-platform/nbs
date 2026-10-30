@@ -449,6 +449,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     {
         // Select an empty metadata branch instead of the static JWT branch.
         auto staticConfig = MakeConfig(100);
+        staticConfig.MutableLogbroker()->SetAddress("broker");
         staticConfig.MutableLogbroker()->MutableIamJwtFile()->SetJwtFilename(
             "/auth/jwt");
         auto startupDynamicConfig = MakeConfig(200);
@@ -480,13 +481,65 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         // Mark only empty messages; populated values remain in child rows.
         UNIT_ASSERT_STRING_CONTAINS(
             html,
+            "<td class='config-dynamic-deferred'>"
             "Logbroker.IamMetadataServer</td>"
             "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
+            "<td class='config-dynamic-deferred'>"
             "Logbroker.IamMetadataServer.Endpoint</td>"
             "<td>&mdash;</td><td>&mdash;</td>"
             "<td>&quot;runtime-endpoint&quot;</td><td>&mdash;</td>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "<td>Logbroker.Address</td>");
+    }
+
+    // Highlight both empty branches for one rejected switch, counting it once.
+    Y_UNIT_TEST(ShouldHighlightEmptyOneofBranchesForDeferredSwitch)
+    {
+        // Retain the startup branch while the runtime source requests another.
+        const NProto::TBlockstoreConfig staticConfig;
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableLogbroker()->MutableIamMetadataServer();
+        auto dynamicConfig = MakeConfig(300);
+        dynamicConfig.MutableLogbroker()->MutableIamJwtFile();
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto config = MakeStartupBlockstoreConfig(
+            staticConfig,
+            startupDynamicConfig,
+            controls);
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .UpdateStatus = EConfigUpdateStatus::Runtime,
+                    .DynamicConfigPresent = true,
+                },
+        };
+
+        // Supply a fixed-selection diagnostic directly to the renderer.
+        renderer.Data.RuntimeDiagnostics.IgnoredPaths.emplace(
+            "Logbroker.AuthConfig",
+            NConfig::ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+        const auto html = renderer.RenderHtml(
+            *config,
+            staticConfig,
+            dynamicConfig,
+            *controls);
+
+        // Mark the retained and rejected branches as one deferred group change.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td class='config-dynamic-deferred'>Logbroker.IamMetadataServer</td>"
+            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td class='config-dynamic-deferred'>Logbroker.IamJwtFile</td>"
+            "<td>&mdash;</td><td>&mdash;</td><td>{}</td><td>&mdash;</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            ">Logbroker</a></td><td>"
+            "<span class='config-dynamic-total'>1</span>"
+            " / <span class='config-dynamic-deferred'>deferred: 1</span>");
     }
 
     // Count explicit parameters, deferred changes and ICB overrides separately.
