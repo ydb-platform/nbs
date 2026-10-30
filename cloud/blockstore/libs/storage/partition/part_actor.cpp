@@ -20,8 +20,6 @@
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
 
-#include <library/cpp/blockcodecs/codecs.h>
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -101,10 +99,12 @@ TPartitionActor::TPartitionActor(
         PartitionConfig.GetDiskId(),
         TabletID());
     BlobsCompressor = std::make_shared<TBlobsCompressor>(
-        NBlockCodecs::Codec(Config->GetBlobCompressionCodec()),
-        Config->GetBlobCompressionRate(),
-        DiagnosticsConfig->GetBlobCompressionChunkSizes(),
-        SharedState->GetPartCounters());
+        PartitionConfig.GetBlockSize(),
+        Config->GetBlobCompressionCodec(),
+        TBlobsCompressor::TMetricsConfig{
+            .CompressionRate = Config->GetBlobCompressionRate(),
+            .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
+            .PartCounters = SharedState->GetPartCounters()});
 }
 
 TPartitionActor::~TPartitionActor()
