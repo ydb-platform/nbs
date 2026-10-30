@@ -12,8 +12,7 @@ namespace NCloud::NFileStore::NFuse {
 
 bool TNodeCacheShard::UpdateNode(
     const NProto::TNodeAttr& attrs,
-    ui64 version,
-    TInstant cacheDeadline)
+    ui64 version)
 {
     auto g = Guard(Lock);
 
@@ -22,7 +21,6 @@ bool TNodeCacheShard::UpdateNode(
     bool updated = false;
     if (inserted) {
         node.LastUpdateVersion = version;
-        node.CacheInvalidationVersion = AbsentNodeInvalidationVersion;
         updated = true;
     } else {
         if (version >= node.LastUpdateVersion) {
@@ -39,10 +37,6 @@ bool TNodeCacheShard::UpdateNode(
         }
 
         node.Ref();
-    }
-
-    if (updated) {
-        SetCachedAttrs(node, version, cacheDeadline);
     }
 
     return updated;
@@ -62,12 +56,6 @@ void TNodeCacheShard::InvalidateNode(ui64 ino, ui64 version)
 
         it->second.LastUpdateVersion = version;
     }
-
-    it->second.ResetCache();
-    it->second.CacheInvalidationVersion = Max(
-        it->second.CacheInvalidationVersion,
-        AbsentNodeInvalidationVersion,
-        version);
 }
 
 void TNodeCacheShard::ForgetNode(ui64 ino, size_t count)
@@ -96,121 +84,6 @@ ui64 TNodeCacheShard::GetNodeVersion(ui64 ino) const
 
     const auto* node = Id2Node.FindPtr(ino);
     return node ? node->LastUpdateVersion : 0;
-}
-
-void TNodeCacheShard::UpdateCachedAttrs(
-    const NProto::TNodeAttr& attrs,
-    ui64 version,
-    TInstant cacheDeadline)
-{
-    auto g = Guard(Lock);
-
-    //
-    // The absent nodes are not inserted: an entry is erased only when the
-    // guest forgets the node, and the guest doesn't hold a reference to the
-    // nodes it hasn't looked up.
-    //
-
-    auto* node = Id2Node.FindPtr(attrs.GetId());
-    if (!node || version < node->LastUpdateVersion) {
-        return;
-    }
-
-    node->UpdateAttrs(attrs, version);
-    SetCachedAttrs(*node, version, cacheDeadline);
-}
-
-TMaybe<NProto::TNodeAttr> TNodeCacheShard::GetCachedAttrs(
-    ui64 ino,
-    TInstant now)
-{
-    auto g = Guard(Lock);
-
-    auto* node = Id2Node.FindPtr(ino);
-    if (!node || !IsCached(*node, now)) {
-        return Nothing();
-    }
-
-    return node->Attrs;
-}
-
-TMaybe<NProto::TNodeAttr> TNodeCacheShard::RefCachedNode(
-    ui64 ino,
-    TInstant now)
-{
-    auto g = Guard(Lock);
-
-    auto* node = Id2Node.FindPtr(ino);
-    if (!node || !IsCached(*node, now)) {
-        return Nothing();
-    }
-
-    node->Ref();
-    return node->Attrs;
-}
-
-void TNodeCacheShard::InvalidateCachedAttrs(ui64 ino, ui64 version)
-{
-    auto g = Guard(Lock);
-
-    auto* node = Id2Node.FindPtr(ino);
-    if (!node) {
-        AbsentNodeInvalidationVersion =
-            Max(AbsentNodeInvalidationVersion, version);
-        return;
-    }
-
-    node->ResetCache();
-    node->CacheInvalidationVersion =
-        Max(node->CacheInvalidationVersion, version);
-}
-
-void TNodeCacheShard::InvalidateAllCachedAttrs(ui64 version)
-{
-    auto g = Guard(Lock);
-
-    AllNodesInvalidationVersion = Max(AllNodesInvalidationVersion, version);
-    AbsentNodeInvalidationVersion =
-        Max(AbsentNodeInvalidationVersion, version);
-}
-
-bool TNodeCacheShard::IsCacheable(const TNode& node, ui64 version) const
-{
-    return version >= node.CacheInvalidationVersion &&
-           version >= AllNodesInvalidationVersion;
-}
-
-void TNodeCacheShard::SetCachedAttrs(
-    TNode& node,
-    ui64 version,
-    TInstant cacheDeadline)
-{
-    //
-    // The attrs have been replaced - the previously cached ones are not
-    // usable anymore regardless of whether the new ones are cacheable.
-    //
-
-    node.ResetCache();
-    if (cacheDeadline && IsCacheable(node, version)) {
-        node.CacheDeadline = cacheDeadline;
-        node.CacheVersion = version;
-    }
-}
-
-bool TNodeCacheShard::IsCached(TNode& node, TInstant now)
-{
-    if (!node.CacheDeadline) {
-        return false;
-    }
-
-    if (now >= node.CacheDeadline ||
-        node.CacheVersion < AllNodesInvalidationVersion)
-    {
-        node.ResetCache();
-        return false;
-    }
-
-    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

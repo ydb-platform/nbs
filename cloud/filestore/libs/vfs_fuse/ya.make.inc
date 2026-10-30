@@ -20,6 +20,7 @@ SRCS(
     handle_ops_queue_stats.cpp
     log.cpp
     loop.cpp
+    node_attrs_cache.cpp
     node_cache.cpp
     node_ref_cache.cpp
     persistent_state_manager.cpp

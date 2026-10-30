@@ -96,8 +96,7 @@ void TFileSystem::SetAttr(
                 error,
                 req,
                 response.GetNode(),
-                version,
-                TInstant::Zero() /* cacheDeadline */);
+                version);
         }
     };
 
@@ -151,9 +150,9 @@ void TFileSystem::GetAttr(
                     // the timestamps.
                     //
 
-                    const auto cacheDeadline = maxWrittenOffset
-                        ? TInstant::Zero()
-                        : self->GetCacheDeadline(response.GetNodeCacheTTL());
+                    if (!maxWrittenOffset) {
+                        self->UpdateCachedNodeAttrs(response, version);
+                    }
 
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
@@ -162,8 +161,7 @@ void TFileSystem::GetAttr(
                         response.GetError(),
                         req,
                         response.GetNode(),
-                        version,
-                        cacheDeadline);
+                        version);
                 }
             });
 }
