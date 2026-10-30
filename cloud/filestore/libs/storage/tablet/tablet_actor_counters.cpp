@@ -930,7 +930,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         // TAggregateStatsActor
         #define FILESTORE_TABLET_CLEAR_COUNTER(name, ...)                      \
             stats->Clear##name();                                              \
-        // FILESTORE_TABLET_MERGE_COUNTER
+        // FILESTORE_TABLET_CLEAR_COUNTER
         FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
         FILESTORE_TABLET_CLEAR_COUNTER(FreshBytesItemCount)
         FILESTORE_TABLET_CLEAR_COUNTER(UnconfirmedDataCount)
