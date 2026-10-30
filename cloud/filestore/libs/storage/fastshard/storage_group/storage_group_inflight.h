@@ -21,7 +21,7 @@ struct TInflightRequest: public TIntrusiveListItem<TInflightRequest>
 {
     NCloud::NFastShard::TFastShardContext Ctx;
 
-    TInflightRequest(ui64 requestId)
+    explicit TInflightRequest(ui64 requestId)
         : Ctx(requestId)
     {}
 };
@@ -39,7 +39,7 @@ private:
     bool Stopped = false;
 
 public:
-    TInflightTracker(ui32 limit)
+    explicit TInflightTracker(ui32 limit)
         : Limit(limit)
     {
         Empty.set();
@@ -49,7 +49,7 @@ public:
     {
         std::lock_guard guard(Lock);
         if (Stopped) {
-            return MakeError(E_REJECTED, "storage group is shutdown");
+            return MakeError(E_REJECTED, "storage group is shutting down");
         }
         if (Limit && InflightCount >= Limit) {
             return MakeError(E_REJECTED, "storage group is busy");
@@ -66,7 +66,7 @@ public:
     {
         std::lock_guard guard(Lock);
         if (Stopped) {
-            return MakeError(E_REJECTED, "storage group is shutdown");
+            return MakeError(E_REJECTED, "storage group is shutting down");
         }
 
         Requests.PushBack(&op);

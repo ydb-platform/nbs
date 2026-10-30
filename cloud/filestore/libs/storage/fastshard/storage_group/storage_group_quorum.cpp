@@ -492,13 +492,13 @@ struct TWriteState: public TInflightRequest
 
     std::atomic<ui32> Done = 0;
 
-    TWriteState(ui64 requestId)
+    explicit TWriteState(ui64 requestId)
         : TInflightRequest(requestId)
     {}
 
     void Finish(TGroupState& state)
     {
-        if (++Done == state.Proxies.size() + 1) {
+        if (++Done == state.Proxies.size()) {
             state.InflightTracker.Remove(*this);
         }
     }
@@ -1003,9 +1003,7 @@ public:
             return error;
         }
 
-        auto error = DoWrite(op);
-        op->Finish(*State);
-        return error;
+        return DoWrite(op);
     }
 
     NProto::TError ReadPages(
@@ -1165,7 +1163,7 @@ private:
     NProto::TError CheckReady() const
     {
         if (!State->Initialized) {
-            return MakeError(E_REJECTED, "storage group is shutdown");
+            return MakeError(E_REJECTED, "storage group is shutting down");
         }
 
         if (State->Health.IsBroken()) {
