@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     configs_manager.cpp
+    configs_manager_renderer.cpp
 )
 
 PEERDIR(
@@ -13,9 +14,13 @@ PEERDIR(
     cloud/storage/core/libs/config
     cloud/storage/core/libs/diagnostics
 
+    contrib/ydb/core/base
     contrib/ydb/core/cms/console
+    contrib/ydb/core/mon
     contrib/ydb/core/protos
     contrib/ydb/library/actors/core
+
+    library/cpp/html/pcdata
 )
 
 END()
