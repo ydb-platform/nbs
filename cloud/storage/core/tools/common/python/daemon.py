@@ -1,4 +1,5 @@
 import datetime
+import contextlib
 import logging
 import os
 import requests
@@ -11,6 +12,51 @@ import yatest.common as common
 
 
 logger = logging.getLogger(__name__)
+
+_MAX_LOG_TAIL_BYTES = 64 * 1024
+
+
+def extract_log(log_file, max_lines=0, label="Stderr", *, tail=False):
+    """Extract bounded log content with a label and optional truncation marker.
+
+    Args:
+        log_file: Path to the log file; None disables extraction.
+        max_lines: Maximum number of log lines; nonpositive values disable extraction.
+        label: Name used in the header and read error messages.
+        tail: Read the last 64 KiB and lines instead of the first.
+    """
+    if max_lines <= 0 or log_file is None:
+        return []
+
+    try:
+        with open(log_file, 'rb') as log:
+            file_size = log.seek(0, os.SEEK_END)
+            start = max(0, file_size - _MAX_LOG_TAIL_BYTES) if tail else 0
+            log.seek(start)
+            data = log.read(_MAX_LOG_TAIL_BYTES)
+    except OSError as error:
+        return ["{}{} unavailable: {}".format(label, " tail" if tail else "", error)]
+
+    lines = data.splitlines()
+    selected = lines[-max_lines:] if tail else lines[:max_lines]
+    content = [line.decode('utf-8', errors='replace') for line in selected]
+    truncated = start > 0 if tail else file_size > len(data)
+    if truncated and len(lines) <= max_lines:
+        marker = "[truncated to the {} {} KiB; {} line may be incomplete]".format(
+            "last" if tail else "first", _MAX_LOG_TAIL_BYTES // 1024,
+            "first" if tail else "last")
+        content.insert(0 if tail else len(content), marker)
+    return ["{} {}:".format(label, "tail" if tail else "content"), ""] + content
+
+
+def extract_log_tail(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines from the last 64 KiB of a file."""
+    return extract_log(log_file, max_lines, label, tail=True)
+
+
+def extract_log_head(log_file, max_lines=0, label="Stderr"):
+    """Return at most max_lines log lines from the first 64 KiB of a file."""
+    return extract_log(log_file, max_lines, label, tail=False)
 
 
 def _log_process_threads(pid):
@@ -80,10 +126,29 @@ def _wait_process(ex):
 
 class DaemonError(RuntimeError):
 
-    def __init__(self, message, exit_code=None):
+    def __init__(self, message, exit_code=None, stdout=None, stderr=None,
+                 max_stderr_lines=0, stderr_tail=False):
+        """Describe a daemon failure with optional process and log details.
+
+        Args:
+            message: Reason for the failure.
+            exit_code: Process exit status, if known.
+            stdout: Path to the stdout log, if available.
+            stderr: Path to the stderr log, if available.
+            max_stderr_lines: Maximum number of stderr log lines; zero omits them.
+            stderr_tail: Include the last stderr lines instead of the first.
+        """
         message = "Daemon failed with message: {}.".format(message)
         if exit_code is not None:
             message += " Process exit_code = {}.".format(exit_code)
+        if stdout is not None:
+            message += "\nStdout file name: \n{}".format(stdout)
+        if stderr is not None:
+            message += "\nStderr file name: \n{}".format(stderr)
+        if max_stderr_lines > 0 and stderr is not None:
+            details = extract_log(stderr, max_stderr_lines, tail=stderr_tail)
+            if details:
+                message += "\n" + "\n".join(details)
         super(DaemonError, self).__init__(message)
 
 
@@ -92,7 +157,10 @@ class Daemon(object):
     def __init__(self, commands, cwd, restart_allowed=False,
                  restart_interval=None, ping_port=None, ping_path=None,
                  ping_success_codes=None, ping_timeout=2,
-                 ping_attempts=0, core_pattern=None, service_name=None):
+                 ping_attempts=0, core_pattern=None, service_name=None,
+                 stdout_file=None, stderr_file=None,
+                 stderr_on_error_lines=0, stderr_tail=False,
+                 cleanup_timeout=10):
 
         self.__commands = commands
         self.__cwd = cwd
@@ -104,6 +172,9 @@ class Daemon(object):
         self.__ping_timeout = ping_timeout
         self.__ping_attempts = ping_attempts
         self.__core_pattern = core_pattern
+        self.__stderr_on_error_lines = stderr_on_error_lines
+        self.__stderr_tail = stderr_tail
+        self.__cleanup_timeout = cleanup_timeout
 
         stdin_prefix = "stdin_"
         stdout_prefix = "stdout_"
@@ -113,14 +184,135 @@ class Daemon(object):
             stdout_prefix = "{}_{}".format(service_name, stdout_prefix)
             stderr_prefix = "{}_{}".format(service_name, stderr_prefix)
 
-        self.__stdin_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdin_prefix, delete=False)
-        self.__stdout_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False)
-        self.__stderr_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False)
+        with contextlib.ExitStack() as files:
+            self.__stdin_file = files.enter_context(tempfile.NamedTemporaryFile(
+                dir=self.__cwd, prefix=stdin_prefix, delete=False))
+            self.__stdout_file = files.enter_context(
+                open(stdout_file, 'wb') if stdout_file is not None else
+                tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False))
+            if (stdout_file is not None and stderr_file is not None
+                    and os.path.abspath(stdout_file) == os.path.abspath(stderr_file)):
+                self.__stderr_file = self.__stdout_file
+            else:
+                self.__stderr_file = files.enter_context(
+                    open(stderr_file, 'wb') if stderr_file is not None else
+                    tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False))
+            self.__files = files.pop_all()
 
         self.__lock = threading.Lock()
         self.__process = None
         self.__timer = None
         self.__step = 0
+        self.__closed = False
+        self.__last_returncode = None
+        # Avoid repeating core and sanitizer checks during cleanup after __verify_process.
+        self.__diagnostics_checked = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except BaseException:
+                logger.exception("Daemon cleanup or diagnostics failed")
+            if not isinstance(exc_value, DaemonError):
+                try:
+                    logger.error("Daemon diagnostics after cleanup (exit code may reflect cleanup signals): %s",
+                                 self.failure(str(exc_value)))
+                except Exception:
+                    logger.exception("Could not read daemon failure details")
+        return False
+
+    def close(self):
+        """Stop the owned process and close streams, preserving log files.
+
+        Disable further starts and restarts. Repeated calls are safe and retry
+        cleanup if the process survived a previous attempt. Cleanup errors are
+        raised to the caller; context exit preserves an existing exception.
+        Signal waits are bounded; lock acquisition and diagnostics are not.
+        """
+        with self.__lock:
+            self.__closed = True
+            if self.__timer is not None:
+                self.__timer.cancel()
+                self.__timer = None
+            try:
+                self.__cleanup_process()
+            finally:
+                self.__files.close()
+
+    def detach(self):
+        """Return the yatest execution object, transferring ownership to the caller.
+
+        Requires a started, owned process, which may already have exited.
+        Disable restarts and close parent streams, preserving log files.
+        The caller assumes responsibility for stopping and waiting for the
+        execution. This Daemon can no longer start or manage a process.
+        """
+        with self.__lock:
+            if self.__closed or self.__process is None:
+                raise RuntimeError("Cannot detach a closed or unstarted daemon")
+            self.__closed = True
+            if self.__timer is not None:
+                self.__timer.cancel()
+                self.__timer = None
+            execution = self.__process
+            self.__files.close()
+            self.__process = None
+            return execution
+
+    # Should be guarded by self.__lock.
+    def __cleanup_process(self):
+        execution = self.__process
+        if execution is None:
+            return
+
+        child = execution.process
+        for send_signal in (child.terminate, child.kill):
+            if child.poll() is not None:
+                break
+            try:
+                send_signal()
+            except OSError:
+                if child.poll() is None:
+                    logger.exception("Could not signal daemon pid %s", child.pid)
+            deadline = time.monotonic() + self.__cleanup_timeout
+            while child.poll() is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.1, remaining))
+
+        if child.poll() is None:
+            raise self.__make_error(
+                "Daemon pid {} is still running after SIGKILL; skipping wait".format(child.pid))
+        self.__last_returncode = child.returncode
+        try:
+            if not self.__diagnostics_checked:
+                self.__diagnostics_checked = True
+                execution.wait(check_exit_code=False)
+        finally:
+            self.__process = None
+
+    def failure(self, message):
+        with self.__lock:
+            return self.__make_error(message)
+
+    # Should be guarded by self.__lock.
+    def __make_error(self, message, exit_code=None):
+        if exit_code is None:
+            exit_code = self.__process.returncode if self.__process is not None else self.__last_returncode
+        return DaemonError(
+            message,
+            exit_code=exit_code,
+            stdout=self.stdout_file_name,
+            stderr=self.stderr_file_name,
+            max_stderr_lines=self.__stderr_on_error_lines,
+            stderr_tail=self.__stderr_tail)
 
     # Should be guarded by self.__lock.
     def __poll(self):
@@ -131,13 +323,16 @@ class Daemon(object):
         res = self.__poll()
         if res is not None:
             logger.error("unexpected exit code {}".format(res))
+            self.__diagnostics_checked = True
             self.__process.verify_no_coredumps()
             self.__process.verify_sanitize_errors()
-            raise DaemonError("unexpected exit code", res)
+            raise self.__make_error("unexpected exit code", res)
 
     # Should be guarded by self.__lock.
     def __start_process(self, command):
         logger.info("starting process {}".format(command))
+        self.__last_returncode = None
+        self.__diagnostics_checked = False
         self.__process = common.execute(
             command=command,
             cwd=self.__cwd,
@@ -213,14 +408,13 @@ class Daemon(object):
                 else:
                     logger.fatal("unexpected exit code {}".format(res))
                     self.__verify_process()
-                    raise DaemonError("unexpected exit code", res)
 
             time.sleep(self.__ping_timeout)
             attempts += 1
 
         if not success:
             logger.fatal("all ping attempts have failed")
-            raise DaemonError("all ping attempts have failed")
+            raise self.__make_error("all ping attempts have failed")
 
         self.__step += 1
         start_ts = datetime.datetime.now()
@@ -235,7 +429,7 @@ class Daemon(object):
 
     def __restart(self):
         with self.__lock:
-            if self.__process is not None:
+            if not self.__closed and self.__process is not None:
                 logger.info("restart the process")
                 self.__kill_process()
                 self.__start()
@@ -244,11 +438,15 @@ class Daemon(object):
     def allow_restart(self):
         logger.info("allow restart")
         with self.__lock:
+            if self.__closed:
+                raise RuntimeError("Cannot restart a closed or detached daemon")
             self.__restart_allowed = True
             self.__schedule_restart()
 
     def start(self):
         with self.__lock:
+            if self.__closed:
+                raise RuntimeError("Cannot start a closed or detached daemon")
             if self.__process is not None:
                 return
 
@@ -256,6 +454,11 @@ class Daemon(object):
             self.__schedule_restart()
 
     def stop(self):
+        """Send SIGTERM to the child and wait for exit; allow a later start.
+
+        Waiting has no overall timeout. An already exited child is reported
+        as a DaemonError. Log streams remain open.
+        """
         with self.__lock:
             if self.__process is not None:
                 if self.__timer is not None:
@@ -265,6 +468,11 @@ class Daemon(object):
                 self.__terminate_process()
 
     def kill(self):
+        """Kill the process tree via yatest and collect exit diagnostics.
+
+        An already exited child is reported as a DaemonError. Log streams
+        remain open and a later start is allowed.
+        """
         with self.__lock:
             if self.__process is not None:
                 if self.__timer is not None:
@@ -285,7 +493,7 @@ class Daemon(object):
         with self.__lock:
             if self.__process:
                 return self.__process.returncode
-        return None
+            return self.__last_returncode
 
     @property
     def pid(self):
@@ -307,11 +515,11 @@ class Daemon(object):
     def is_alive(self):
         with self.__lock:
             if self.__process is None:
-                logger.warn("process is empty")
+                logger.debug("process is empty")
                 return False
 
             if not self.__process.running:
-                logger.warn("process (pid={}) is not running".format(
+                logger.debug("process (pid={}) is not running".format(
                     self.__process.process.pid))
                 return False
         return True
