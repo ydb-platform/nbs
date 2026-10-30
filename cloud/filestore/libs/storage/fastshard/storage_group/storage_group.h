@@ -102,6 +102,9 @@ struct TStorageGroupConfig
     TDuration ReacquirePeriod = TDuration::Seconds(4);
 
     ui32 PageSize = DefaultBlockSize;
+
+    // Inflight threshold to restrict write quick path.
+    ui32 WriteBackpressureThreshold = 1024;
 };
 
 /**

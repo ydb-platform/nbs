@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <cstring>
 #include <initializer_list>
 #include <memory>
@@ -148,7 +149,6 @@ struct TFakeDevice: TFakeStorageNode
         NProto::TAdvanceLsnLowWatermarkResponse>
         Watermarks;
 
-
     NProto::TReadPagesResponse ReadPages(
         NProto::TReadPagesRequest request) override
     {
@@ -211,6 +211,8 @@ TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
     config.PageSize = pageSize;
     // Retries are instant: a test counts the attempts.
     config.RetryPolicy.BackoffIncrement = TDuration::Zero();
+    config.ReacquirePeriod = TDuration::Hours(1);
+    config.LowWatermarkPeriod = TDuration::Hours(1);
     return config;
 }
 
@@ -430,18 +432,24 @@ int TearDownFiberMain(TGroupFixture** fx) noexcept
 template <typename TPredicate>
 [[nodiscard]] bool WaitFor(TPredicate predicate)
 {
-    for (ui32 i = 0; i < 100000 && !predicate(); ++i) {
+    const TInstant deadline = TInstant::Now() + TDuration::Seconds(10);
+    while (!predicate()) {
+        if (TInstant::Now() >= deadline) {
+            return false;
+        }
         FiberScheduler::yield();
     }
-    return predicate();
+    return true;
 }
 
-// Naive check if fut is still unset after letting fibers do the active round.
-bool StillRunning(silk::FiberFuture& future)
+// Naive check if fut is still unset after letting fibers run for a while.
+bool StillRunning(
+    silk::FiberFuture& future,
+    TDuration timeout = TDuration::MilliSeconds(1))
 {
-    FiberScheduler::yield();
-    int error = 0;
-    return !future.isSet(&error);
+    return silk::FiberFuture::waitWithTimeout(
+        &future,
+        timeout.NanoSeconds()) == ETIMEDOUT;
 }
 
 ui32 TotalWrites(TGroupFixture& fx)
@@ -1376,8 +1384,7 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
             &init));
     ASSERT_TRUE(WaitFor([&] { return fx[2].Reads.Parked == 1; }));
 
-    // TearDown waits for Init, which then fails instead of starting a loop
-    // that nothing would stop.
+    // TearDown waits for Init, which then fails.
     silk::FiberFuture tearDown;
     ASSERT_EQ(
         0,
@@ -1390,7 +1397,10 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
     fx[2].Reads.Unpause();
     Y_UNUSED(tearDown.wait());
     Y_UNUSED(init.wait());
+
     ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(0U, fx[2].Writes.Count());
+    ASSERT_EQ(E_REJECTED, Write(*fx.Group).GetCode());
 }
 
 FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
@@ -1398,8 +1408,6 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
     // Loops asleep for an hour, a write acked by the quorum and stuck in an
     // hour-long backoff on the third device.
     auto config = MakeConfig();
-    config.ReacquirePeriod = TDuration::Hours(1);
-    config.LowWatermarkPeriod = TDuration::Hours(1);
     config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
     config.RetryPolicy.TotalTimeout = TDuration::Hours(2);
     TQuorumFixture fx(true, config);
@@ -1413,4 +1421,31 @@ FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
     fx.Group->TearDown();
     ASSERT_LT(TInstant::Now() - start, TDuration::Seconds(5));
     ASSERT_EQ(1U, fx[2].Writes.Count());
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldWaitForAllAcksOverWriteBackpressureThreshold)
+{
+    auto config = MakeConfig();
+    config.WriteBackpressureThreshold = 1;
+    TQuorumFixture fx(true, config);
+    fx.ForgetRequests();
+
+    // Alone in flight, the first write returns at the quorum.
+    fx[2].Writes.Paused = true;
+    silk::FiberFuture first;
+    StartWrite(fx, Lsn, &first);
+    ASSERT_EQ(0, first.wait());
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Parked == 1; }));
+
+    // Two in flight: the second needs every ack, the third device's included.
+    silk::FiberFuture second;
+    StartWrite(fx, Lsn + 1, &second);
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Parked == 2; }));
+    ASSERT_TRUE(WaitFor([&] {
+        return fx[0].Writes.Count() == 2 && fx[1].Writes.Count() == 2;
+    }));
+    ASSERT_TRUE(StillRunning(second));
+
+    fx[2].Writes.Unpause();
+    ASSERT_EQ(0, second.wait());
 }

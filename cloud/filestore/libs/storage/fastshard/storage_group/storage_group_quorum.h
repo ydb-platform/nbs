@@ -12,7 +12,8 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  * Returns an IStorageGroup which mirrors each write but acks it as soon
  * as a majority of them has it. Reads are served by any replica that has caught
  * up to the last quorum-acked state. Write error takes the whole group out
- * of service until it is recreated.
+ * of service until it is recreated. Beyond WriteBackpressureThreshold requests
+ * in flight, a write waits for every replica instead.
  *
  * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
