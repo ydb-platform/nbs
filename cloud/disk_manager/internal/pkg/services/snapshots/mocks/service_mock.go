@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 )
@@ -12,6 +13,16 @@ import (
 
 type ServiceMock struct {
 	mock.Mock
+}
+
+func (s *ServiceMock) ExportSnapshot(
+	ctx context.Context,
+	req *disk_manager.ExportSnapshotRequest) (string,
+	error,
+) {
+
+	args := s.Called(ctx, req)
+	return args.String(0), args.Error(1)
 }
 
 func (s *ServiceMock) CreateSnapshot(

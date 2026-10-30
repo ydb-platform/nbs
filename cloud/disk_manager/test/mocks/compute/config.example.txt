@@ -1,0 +1,22 @@
+ListenAddress: "127.0.0.1:9798"
+ExportCredentials {
+    SnapshotId: "replace-with-snapshot-id-1"
+    Credentials {
+        access_key_id: "replace-with-access-key-id-1"
+        secret_access_key: "replace-with-secret-access-key-1"
+    }
+}
+ExportCredentials {
+    SnapshotId: "replace-with-snapshot-id-2"
+    Credentials {
+        access_key_id: "replace-with-access-key-id-2"
+        secret_access_key: "replace-with-secret-access-key-2"
+    }
+}
+ExportCredentials {
+    ImageId: "replace-with-image-id"
+    Credentials {
+        access_key_id: "replace-with-image-access-key-id"
+        secret_access_key: "replace-with-image-secret-access-key"
+    }
+}

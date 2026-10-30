@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	placement_group_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -16,6 +17,7 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *placement_group_config.Config,
+	disabledZones *common.DisabledZones,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
@@ -36,9 +38,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("placement_group.DeletePlacementGroup", func() tasks.Task {
 		return &deletePlacementGroupTask{
-			storage:      storage,
-			nbsFactory:   nbsFactory,
-			cellSelector: cellSelector,
+			storage:       storage,
+			nbsFactory:    nbsFactory,
+			cellSelector:  cellSelector,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {

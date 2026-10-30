@@ -16,6 +16,8 @@ type storageCommon struct {
 	tablesPath      string
 	tableName       string
 	shadowTableName string
+	// Chunks copied to the follower bucket or queued for it.
+	followerChunksTableName string
 }
 
 func newStorageCommon(
@@ -23,13 +25,15 @@ func newStorageCommon(
 	tablesPath string,
 	tableName string,
 	shadowTableName string,
+	followerChunksTableName string,
 ) storageCommon {
 
 	return storageCommon{
-		db:              db,
-		tablesPath:      tablesPath,
-		tableName:       tableName,
-		shadowTableName: shadowTableName,
+		db:                      db,
+		tablesPath:              tablesPath,
+		tableName:               tableName,
+		shadowTableName:         shadowTableName,
+		followerChunksTableName: followerChunksTableName,
 	}
 }
 
@@ -212,6 +216,30 @@ func (s *storageCommon) unrefChunk(
 			chunk_id = $chunk_id and
 			referer = $referer;
 
+		-- The chunk dies with its last ref, and its follower object, queued
+		-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
+		-- reused, so a late write or delete of the object cannot hit a live
+		-- chunk. Goes before the changes of %[2]v so that it reads the table
+		-- before they are made.
+		$dead = (
+			select chunk_id
+			from $to_delete
+			where referer = ""
+		);
+
+		$dead_follower_chunks = (
+			select chunk_id
+			from %[4]v
+			where chunk_id = $chunk_id and
+				$chunk_id in $dead
+		);
+
+		upsert into backup_chunk_delete_queue
+		select chunk_id from $dead_follower_chunks;
+
+		delete from %[4]v
+		on select chunk_id from $dead_follower_chunks;
+
 		%[3]v
 	`, s.tablesPath, s.tableName, s.forEachTable(`
 		update %[1]v
@@ -219,7 +247,7 @@ func (s *storageCommon) unrefChunk(
 
 		delete from %[1]v
 		on select * from $to_delete;
-	`)),
+	`), s.followerChunksTableName),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),

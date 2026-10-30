@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/spf13/cobra"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
@@ -124,7 +125,12 @@ func newGetSnapshotCmd(
 		},
 	}
 
-	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to get; required")
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to get; required",
+	)
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
@@ -187,6 +193,72 @@ func newListSnapshotsCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type backupSnapshot struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *backupSnapshot) run() error {
+	if len(c.snapshotID) == 0 {
+		return fmt.Errorf("snapshot ID is required")
+	}
+	if c.serverConfig.GetSnapshotStorageBackupConfig() == nil {
+		return fmt.Errorf("snapshot backup is not configured")
+	}
+
+	ctx := newContext(c.clientConfig)
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	err = resourceStorage.EnqueueSnapshotBackup(ctx, c.snapshotID, generateID())
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("OK")
+	return nil
+}
+
+func newBackupSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &backupSnapshot{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Enqueue a snapshot backup; repeated requests are successful",
+		Long: "Enqueue a snapshot backup and return OK without waiting for completion. " +
+			"Use snapshots get --id <id> to check backup_completed: true means " +
+			"the backup task completed successfully; false means no recorded success " +
+			"and does not distinguish pending, failed, or never requested backups.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to back up; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type createSnapshot struct {
 	clientConfig  *client_config.ClientConfig
 	zoneID        string
@@ -223,7 +295,10 @@ func (c *createSnapshot) run() error {
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
-func newCreateSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
+func newCreateSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+) *cobra.Command {
+
 	c := &createSnapshot{
 		clientConfig: clientConfig,
 	}
@@ -235,22 +310,42 @@ func newCreateSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 		},
 	}
 
-	cmd.Flags().StringVar(&c.zoneID, "zone-id", "", "zone ID in which disk is located; required")
+	cmd.Flags().StringVar(
+		&c.zoneID,
+		"zone-id",
+		"",
+		"zone ID in which disk is located; required",
+	)
 	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
 		log.Fatalf("Error setting flag zone-id as required: %v", err)
 	}
 
-	cmd.Flags().StringVar(&c.srcDiskID, "src-disk-id", "", "ID of disk to create snapshot from; required")
+	cmd.Flags().StringVar(
+		&c.srcDiskID,
+		"src-disk-id",
+		"",
+		"ID of disk to create snapshot from; required",
+	)
 	if err := cmd.MarkFlagRequired("src-disk-id"); err != nil {
 		log.Fatalf("Error setting flag src-disk-id as required: %v", err)
 	}
 
-	cmd.Flags().StringVar(&c.dstSnapshotID, "id", "", "ID of snapshot to create; required")
+	cmd.Flags().StringVar(
+		&c.dstSnapshotID,
+		"id",
+		"",
+		"ID of snapshot to create; required",
+	)
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
 
-	cmd.Flags().StringVar(&c.folderID, "folder-id", "", "folder ID of the snapshot owner; required")
+	cmd.Flags().StringVar(
+		&c.folderID,
+		"folder-id",
+		"",
+		"folder ID of the snapshot owner; required",
+	)
 	if err := cmd.MarkFlagRequired("folder-id"); err != nil {
 		log.Fatalf("Error setting flag folder-id as required: %v", err)
 	}
@@ -293,7 +388,10 @@ func (c *deleteSnapshot) run() error {
 	return internal_client.WaitOperation(ctx, client, resp.Id)
 }
 
-func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
+func newDeleteSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+) *cobra.Command {
+
 	c := &deleteSnapshot{
 		clientConfig: clientConfig,
 	}
@@ -305,12 +403,86 @@ func newDeleteSnapshotCmd(clientConfig *client_config.ClientConfig) *cobra.Comma
 		},
 	}
 
-	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot to delete; required")
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to delete; required",
+	)
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		log.Fatalf("Error setting flag id as required: %v", err)
 	}
 
 	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const exportSnapshotLong = `Export a ready snapshot or image from dataplane
+snapshot storage, or a snapshot from backup S3, to stdout as a raw disk image
+stream or to a user-specified S3 destination.
+
+` + exportStorageLong + `--source=backup requires --src-disk-id and supports
+snapshot backups only.
+It reads SnapshotStorageBackupConfig.S3Config (Endpoint, CredentialsFilePath
+or UseIamToken, Region), S3Bucket, S3KeyPrefix, and optional KekFile and KekId
+from --server-config. Set KekFile and KekId together for encrypted backup
+objects. AuthConfig is used only when the source S3 config enables UseIamToken.
+Other required server-config fields must still parse; unused service endpoints
+are not contacted.
+This mode needs access to backup S3; no snapshot persistence config,
+NBS or task scheduler is required. Missing meta.json,
+missing or invalid chunk maps, and missing or corrupt chunks fail the export.
+The backup object envelope is removed using the configured backup key; this
+does not decrypt AES-XTS disk data.
+
+` + exportOutputLong
+
+const exportSnapshotExample = `  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> > image.raw
+
+  qemu-img info image.raw
+  qemu-img convert -f raw -O qcow2 image.raw image.qcow2
+
+  for p in 1 2 3 4; do
+      disk-manager-admin \
+          --server-config /etc/disk-manager/server-config.txt \
+          snapshots export --id <snapshot-or-image-id> \
+          --partition $p --partition-count 4 >> image.raw
+  done
+
+  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> \
+      --s3-endpoint https://s3.example.com --s3-bucket snapshot-backups \
+      --s3-credentials-file /path/to/credentials.json --s3-part-size 256MiB
+
+  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-id> \
+      --source backup --src-disk-id <original-disk-id> \
+      --s3-endpoint https://destination.example.com \
+      --s3-bucket exported-images \
+      --s3-credentials-file /path/to/destination-credentials.json
+
+  disk-manager-admin --config /path/to/client.txt \
+      snapshots export --async --id <snapshot-id> \
+      --folder-id <folder-id> --compute-task-id <compute-task-id> \
+      --s3-endpoint https://destination.example.com --s3-bucket exported-images`
+
+func newExportSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	return newExportCmd(
+		clientConfig,
+		serverConfig,
+		exportSnapshotKind,
+		exportSnapshotLong,
+		exportSnapshotExample,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -441,8 +613,10 @@ func newSnapshotsCmd(
 	cmd.AddCommand(
 		newGetSnapshotCmd(clientConfig, serverConfig),
 		newListSnapshotsCmd(clientConfig, serverConfig),
+		newBackupSnapshotCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		newExportSnapshotCmd(clientConfig, serverConfig),
 		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,

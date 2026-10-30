@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
@@ -19,7 +20,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -31,26 +31,6 @@ func makeChunkID(
 ) string {
 
 	return fmt.Sprintf("%v.%v.%v", uniqueID, snapshotID, chunk.Index)
-}
-
-func getSnapshotIDFromChunkID(chunkID string) string {
-	_, after, ok := strings.Cut(chunkID, ".")
-	if !ok {
-		return ""
-	}
-
-	index := strings.LastIndex(after, ".")
-	if index < 0 {
-		return ""
-	}
-
-	return after[:index]
-}
-
-// Zero chunks and the chunks shallow copied from another snapshot (the
-// snapshot only references them) are not created by the snapshot.
-func IsChunkCreatedBySnapshot(chunkID string, snapshotID string) bool {
-	return len(chunkID) != 0 && getSnapshotIDFromChunkID(chunkID) == snapshotID
 }
 
 func makeShardID(s string) uint64 {
@@ -180,6 +160,7 @@ func (s *storageYDB) createSnapshot(
 	}
 
 	state := snapshotState{
+		blockSize:    snapshotMeta.BlockSize,
 		id:           snapshotMeta.ID,
 		createTaskID: snapshotMeta.CreateTaskID,
 		creatingAt:   time.Now(),
@@ -461,6 +442,12 @@ func (s *storageYDB) deletingSnapshot(
 		return nil, err
 	}
 
+	// A backup copy holds the snapshot: deletion waits until it ends. Both
+	// change the same row, so the hold and the deletion serialize.
+	if len(states) != 0 && len(states[0].backupTaskID) != 0 {
+		return nil, task_errors.NewInterruptExecutionError()
+	}
+
 	var state snapshotState
 
 	if len(states) != 0 {
@@ -604,7 +591,7 @@ func (s *storageYDB) deleteSnapshotData(
 	snapshotID string,
 ) error {
 
-	entries, errors := s.readChunkMap(ctx, session, snapshotID, 0, nil)
+	entries, errors := s.readChunkMap(ctx, session, snapshotID, 0, ^uint32(0), nil)
 
 	err := s.processChunkMapEntries(
 		ctx,
@@ -780,6 +767,7 @@ func (s *storageYDB) shallowCopySnapshot(
 		session,
 		srcSnapshotID,
 		milestoneChunkIndex,
+		^uint32(0),
 		inflightQueue,
 	)
 
@@ -934,6 +922,7 @@ func (s *storageYDB) readChunkMap(
 	session *persistence.Session,
 	snapshotID string,
 	milestoneChunkIndex uint32,
+	lastChunkIndex uint32,
 	inflightQueue *common.InflightQueue,
 ) (<-chan ChunkMapEntry, <-chan error) {
 
@@ -957,7 +946,7 @@ func (s *storageYDB) readChunkMap(
 		persistence.ReadLessOrEqual(persistence.TupleValue(
 			persistence.OptionalValue(persistence.Uint64Value(shardID)),
 			persistence.OptionalValue(persistence.UTF8Value(snapshotID)),
-			persistence.OptionalValue(persistence.Uint32Value(^uint32(0))),
+			persistence.OptionalValue(persistence.Uint32Value(lastChunkIndex)),
 		)),
 	)
 	if err != nil {
@@ -1493,10 +1482,109 @@ func (s *storageYDB) listSnapshots(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) findBackupChunkIDsTx(
+func (s *storageYDB) holdSnapshotForBackup(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	taskID string,
+) (bool, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select * from snapshots where id = $id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+
+	states, err := scanSnapshotStates(ctx, res)
+	if err != nil {
+		return false, err
+	}
+	if err = res.Err(); err != nil {
+		return false, err
+	}
+
+	if len(states) == 0 || states[0].status != snapshotStatusReady {
+		return false, tx.Commit(ctx)
+	}
+
+	state := states[0]
+	if state.backupTaskID == taskID {
+		// Should be idempotent.
+		return true, tx.Commit(ctx)
+	}
+
+	if len(state.backupTaskID) != 0 {
+		// A snapshot has one backup copy at a time; wait for the previous one.
+		err = tx.Commit(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		return false, task_errors.NewInterruptExecutionError()
+	}
+
+	state.backupTaskID = taskID
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $states as List<%v>;
+
+		upsert into snapshots
+		select *
+		from AS_TABLE($states)
+	`, s.tablesPath, snapshotStateStructTypeString()),
+		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit(ctx)
+}
+
+func (s *storageYDB) ReleaseSnapshotForBackup(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+) (err error) {
+
+	defer s.metrics.StatOperation("ReleaseSnapshotForBackup")(&err)
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $task_id as Utf8;
+
+		update snapshots
+		set backup_task_id = ""
+		where id = $id and backup_task_id = $task_id
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
+	)
+	return err
+}
+
+// Returns the chunks of |entries| whose objects are in the follower.
+func (s *storageYDB) findCopiedBackupChunkIDsTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
-	snapshotID string,
 	entries []BackupChunkQueueEntry,
 ) (tasks_common.StringSet, error) {
 
@@ -1510,17 +1598,12 @@ func (s *storageYDB) findBackupChunkIDsTx(
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $snapshot_id as Utf8;
 		declare $chunk_ids as List<Utf8>;
 
 		select chunk_id
-		from backup_chunks
-		where snapshot_id = $snapshot_id and chunk_id in $chunk_ids
-	`, s.tablesPath),
-		persistence.ValueParam(
-			"$snapshot_id",
-			persistence.UTF8Value(snapshotID),
-		),
+		from %v
+		where chunk_id in $chunk_ids and copied
+	`, s.tablesPath, s.followerChunksTableName),
 		persistence.ValueParam("$chunk_ids", persistence.ListValue(values...)),
 	)
 	if err != nil {
@@ -1563,8 +1646,9 @@ func (s *storageYDB) enqueueBackupChunks(
 	}
 	defer tx.Rollback(ctx)
 
-	// Chunks that are found are either queued or backed up already.
-	found, err := s.findBackupChunkIDsTx(ctx, tx, snapshotID, entries)
+	// Chunks in the follower are skipped, whichever snapshot copied them.
+	// Enqueueing a queued chunk again writes the same rows.
+	found, err := s.findCopiedBackupChunkIDsTx(ctx, tx, entries)
 	if err != nil {
 		return err
 	}
@@ -1583,25 +1667,23 @@ func (s *storageYDB) enqueueBackupChunks(
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $chunks as List<%v>;
 		declare $entries as List<%v>;
-
-		upsert into backup_chunks
-		select *
-		from AS_TABLE($chunks);
 
 		upsert into backup_chunk_queue
 		select *
-		from AS_TABLE($entries)
+		from AS_TABLE($entries);
+
+		-- The row is written before the copy: the last unref of the chunk
+		-- queues its follower object for deletion even if the copy was
+		-- cancelled after the object was written.
+		upsert into %v
+		select distinct chunk_id, false as copied
+		from AS_TABLE($entries);
 	`,
 		s.tablesPath,
-		backupChunkStructTypeString(),
 		backupChunkQueueEntryStructTypeString(),
+		s.followerChunksTableName,
 	),
-		persistence.ValueParam(
-			"$chunks",
-			backupChunkListValue(toEnqueue, backupChunkStatusQueued),
-		),
 		persistence.ValueParam(
 			"$entries",
 			backupChunkQueueEntryListValue(toEnqueue),
@@ -1617,18 +1699,58 @@ func (s *storageYDB) enqueueBackupChunks(
 func (s *storageYDB) getQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
+	firstShardID uint64,
+	lastShardID uint64,
+	after *BackupChunkQueueEntry,
 	limit int,
 ) ([]BackupChunkQueueEntry, error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+	// The cursor is the key of the last entry read; an empty snapshot ID is
+	// before every row of its shard.
+	afterShardID := firstShardID
+	afterSnapshotID := ""
+	afterChunkID := ""
+	if after != nil {
+		afterShardID = makeShardID(after.ChunkID)
+		afterSnapshotID = after.SnapshotID
+		afterChunkID = after.ChunkID
+	}
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
+		declare $after_shard_id as Uint64;
+		declare $after_snapshot_id as Utf8;
+		declare $after_chunk_id as Utf8;
+		declare $last_shard_id as Uint64;
 		declare $limit as Uint64;
 
 		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
+		where shard_id >= $after_shard_id and shard_id <= $last_shard_id and (
+			shard_id > $after_shard_id or
+			snapshot_id > $after_snapshot_id or
+			(snapshot_id = $after_snapshot_id and chunk_id > $after_chunk_id)
+		)
+		order by shard_id, snapshot_id, chunk_id
 		limit $limit
 	`, s.tablesPath),
+		persistence.ValueParam(
+			"$after_shard_id",
+			persistence.Uint64Value(afterShardID),
+		),
+		persistence.ValueParam(
+			"$after_snapshot_id",
+			persistence.UTF8Value(afterSnapshotID),
+		),
+		persistence.ValueParam(
+			"$after_chunk_id",
+			persistence.UTF8Value(afterChunkID),
+		),
+		persistence.ValueParam(
+			"$last_shard_id",
+			persistence.Uint64Value(lastShardID),
+		),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
@@ -1664,52 +1786,44 @@ func (s *storageYDB) getQueuedChunksToBackup(
 	return entries, nil
 }
 
-func (s *storageYDB) GetBackedUpChunkCount(
+func (s *storageYDB) getFirstQueuedChunkShardID(
 	ctx context.Context,
-	snapshotID string,
-) (count uint64, err error) {
+	session *persistence.Session,
+	fromShardID uint64,
+) (uint64, bool, error) {
 
-	defer s.metrics.StatOperation("GetBackedUpChunkCount")(&err)
-
-	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $snapshot_id as Utf8;
-		declare $status as Int64;
+		declare $from_shard_id as Uint64;
 
-		select count(*)
-		from backup_chunks
-		where snapshot_id = $snapshot_id and status = $status
+		select shard_id
+		from backup_chunk_queue
+		where shard_id >= $from_shard_id
+		order by shard_id
+		limit 1
 	`, s.tablesPath),
 		persistence.ValueParam(
-			"$snapshot_id",
-			persistence.UTF8Value(snapshotID),
-		),
-		persistence.ValueParam(
-			"$status",
-			persistence.Int64Value(int64(backupChunkStatusCompleted)),
+			"$from_shard_id",
+			persistence.Uint64Value(fromShardID),
 		),
 	)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return 0, res.Err()
+		return 0, false, res.Err()
 	}
 
-	err = res.Scan(&count)
+	var shardID uint64
+	err = res.ScanNamed(persistence.OptionalWithDefault("shard_id", &shardID))
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	err = res.Err()
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
+	return shardID, true, res.Err()
 }
 
 func (s *storageYDB) ChunksBackupCompleted(
@@ -1719,67 +1833,86 @@ func (s *storageYDB) ChunksBackupCompleted(
 
 	defer s.metrics.StatOperation("ChunksBackupCompleted")(&err)
 
-	// Only existing chunks are updated: a chunk that is not found has already
-	// been backed up and cleared by the backup of its snapshot.
+	chunkIDs := tasks_common.NewStringSet()
+	for _, entry := range entries {
+		chunkIDs.Add(entry.ChunkID)
+	}
+
+	var chunkIDValues []persistence.Value
+	for _, chunkID := range chunkIDs.List() {
+		chunkIDValues = append(chunkIDValues, persistence.UTF8Value(chunkID))
+	}
+
+	// The object is in the follower now, so later copies of any snapshot skip
+	// the chunk. Only existing rows are marked: a missing row means the chunk
+	// was deleted from chunk_blobs and its object is queued for deletion.
+	//
+	// The rows are read by key: a join with the table scans it and locks it
+	// whole, so every concurrent write to the follower chunks table aborts the
+	// transaction.
 	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $chunks as List<%v>;
-		declare $keys as List<%v>;
+		pragma TablePathPrefix = "%[1]v";
+		declare $keys as List<%[2]v>;
+		declare $chunk_ids as List<Utf8>;
 
-		update backup_chunks
-		on select * from AS_TABLE($chunks);
+		$copied = (
+			select chunk_id, true as copied
+			from %[3]v
+			where chunk_id in $chunk_ids
+		);
 
 		delete from backup_chunk_queue
-		on select * from AS_TABLE($keys)
+		on select * from AS_TABLE($keys);
+
+		upsert into %[3]v
+		select * from $copied;
 	`,
 		s.tablesPath,
-		backupChunkStructTypeString(),
 		backupChunkKeyStructTypeString(),
+		s.followerChunksTableName,
 	),
-		persistence.ValueParam(
-			"$chunks",
-			backupChunkListValue(entries, backupChunkStatusCompleted),
-		),
 		persistence.ValueParam("$keys", backupChunkKeyListValue(entries)),
+		persistence.ValueParam(
+			"$chunk_ids",
+			persistence.ListValue(chunkIDValues...),
+		),
 	)
 	return err
 }
 
-func (s *storageYDB) ClearCompletedBackupChunks(
+func (s *storageYDB) ClearBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
 ) (cleared int, err error) {
 
-	defer s.metrics.StatOperation("ClearCompletedBackupChunks")(&err)
+	defer s.metrics.StatOperation("ClearBackupChunks")(&err)
 
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
-		declare $status as Int64;
 		declare $limit as Uint64;
 
 		$keys = (
-			select snapshot_id, chunk_id
-			from backup_chunks
-			where snapshot_id = $snapshot_id and status = $status
+			select shard_id, snapshot_id, chunk_id
+			from backup_chunk_queue view snapshot_id_index
+			where snapshot_id = $snapshot_id
 			limit $limit
 		);
 
 		select count(*) from $keys;
 
-		delete from backup_chunks
+		delete from backup_chunk_queue
 		on select * from $keys;
+
+		delete from backup_chunk_failures
+		where snapshot_id = $snapshot_id;
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$snapshot_id",
 			persistence.UTF8Value(snapshotID),
-		),
-		persistence.ValueParam(
-			"$status",
-			persistence.Int64Value(int64(backupChunkStatusCompleted)),
 		),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
@@ -1839,4 +1972,208 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 	}
 
 	return count, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) CheckBackupChunksCompleted(
+	ctx context.Context,
+	snapshotID string,
+) (err error) {
+
+	defer s.metrics.StatOperation("CheckBackupChunksCompleted")(&err)
+
+	// A worker removes a chunk from the queue once it is in the follower, or
+	// moves it to backup_chunk_failures if it cannot be copied.
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+
+		select chunk_id, error
+		from backup_chunk_failures
+		where snapshot_id = $snapshot_id
+		limit 1;
+
+		select chunk_id
+		from backup_chunk_queue view snapshot_id_index
+		where snapshot_id = $snapshot_id
+		limit 1;
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$snapshot_id",
+			persistence.UTF8Value(snapshotID),
+		),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	if res.NextResultSet(ctx) && res.NextRow() {
+		var chunkID string
+		var message string
+		err = res.ScanNamed(
+			persistence.OptionalWithDefault("chunk_id", &chunkID),
+			persistence.OptionalWithDefault("error", &message),
+		)
+		if err != nil {
+			return err
+		}
+
+		return task_errors.NewNonRetriableErrorf(
+			"chunk %v of snapshot %v could not be copied to the follower: %v",
+			chunkID,
+			snapshotID,
+			message,
+		)
+	}
+
+	if res.NextResultSet(ctx) && res.NextRow() {
+		return task_errors.NewInterruptExecutionError()
+	}
+
+	return res.Err()
+}
+
+func (s *storageYDB) BackupChunkFailed(
+	ctx context.Context,
+	entry BackupChunkQueueEntry,
+	message string,
+) (err error) {
+
+	defer s.metrics.StatOperation("BackupChunkFailed")(&err)
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $shard_id as Uint64;
+		declare $snapshot_id as Utf8;
+		declare $chunk_id as Utf8;
+		declare $error as Utf8;
+
+		delete from backup_chunk_queue
+		where shard_id = $shard_id and
+			snapshot_id = $snapshot_id and
+			chunk_id = $chunk_id;
+
+		upsert into backup_chunk_failures (snapshot_id, chunk_id, error)
+		values ($snapshot_id, $chunk_id, $error);
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$shard_id",
+			persistence.Uint64Value(makeShardID(entry.ChunkID)),
+		),
+		persistence.ValueParam(
+			"$snapshot_id",
+			persistence.UTF8Value(entry.SnapshotID),
+		),
+		persistence.ValueParam(
+			"$chunk_id",
+			persistence.UTF8Value(entry.ChunkID),
+		),
+		persistence.ValueParam("$error", persistence.UTF8Value(message)),
+	)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) GetBackupChunksToDelete(
+	ctx context.Context,
+	limit int,
+) (chunkIDs []string, err error) {
+
+	defer s.metrics.StatOperation("GetBackupChunksToDelete")(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select chunk_id
+		from backup_chunk_delete_queue
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var chunkID string
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("chunk_id", &chunkID),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			chunkIDs = append(chunkIDs, chunkID)
+		}
+	}
+
+	return chunkIDs, res.Err()
+}
+
+func (s *storageYDB) BackupChunksDeleted(
+	ctx context.Context,
+	chunkIDs []string,
+) (err error) {
+
+	defer s.metrics.StatOperation("BackupChunksDeleted")(&err)
+
+	if len(chunkIDs) == 0 {
+		return nil
+	}
+
+	var values []persistence.Value
+	for _, chunkID := range chunkIDs {
+		values = append(values, persistence.UTF8Value(chunkID))
+	}
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $chunk_ids as List<Utf8>;
+
+		delete from backup_chunk_delete_queue
+		where chunk_id in $chunk_ids
+	`, s.tablesPath),
+		persistence.ValueParam("$chunk_ids", persistence.ListValue(values...)),
+	)
+	return err
+}
+
+func (s *storageYDB) GetBackupChunkDeleteQueueLength(
+	ctx context.Context,
+) (count uint64, err error) {
+
+	defer s.metrics.StatOperation("GetBackupChunkDeleteQueueLength")(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select count(*)
+		from backup_chunk_delete_queue
+	`, s.tablesPath))
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, res.Err()
+	}
+
+	err = res.Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, res.Err()
 }

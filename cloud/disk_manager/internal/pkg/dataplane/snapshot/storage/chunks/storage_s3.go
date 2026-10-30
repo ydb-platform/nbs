@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strconv"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/compressor"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
-	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,12 +35,19 @@ func NewStorageS3(
 	tablesPath string,
 	tableName string,
 	shadowTableName string,
+	followerChunksTableName string,
 	metrics metrics.Metrics,
 	probeCompressionPercentage map[string]uint32,
 ) *StorageS3 {
 
 	return &StorageS3{
-		storageCommon:              newStorageCommon(db, tablesPath, tableName, shadowTableName),
+		storageCommon: newStorageCommon(
+			db,
+			tablesPath,
+			tableName,
+			shadowTableName,
+			followerChunksTableName,
+		),
 		s3:                         s3,
 		bucket:                     bucket,
 		keyPrefix:                  keyPrefix,
@@ -62,39 +70,7 @@ func (s *StorageS3) ReadChunk(
 		return err
 	}
 
-	metadata, err := newS3Metadata(object.Metadata)
-	if err != nil {
-		return err
-	}
-
-	logging.Debug(
-		ctx,
-		"read chunk from s3 {id: %q, checksum: %v, compression: %q}",
-		chunk.ID,
-		metadata.checksum,
-		metadata.compression,
-	)
-
-	err = compressor.Decompress(
-		metadata.compression,
-		object.Data,
-		chunk.Data,
-		s.metrics,
-	)
-	if err != nil {
-		return err
-	}
-
-	actualChecksum := chunk.Checksum()
-	if metadata.checksum != actualChecksum {
-		return task_errors.NewNonRetriableErrorf(
-			"ReadChunk: s3 chunk checksum mismatch: expected %v, actual %v",
-			metadata.checksum,
-			actualChecksum,
-		)
-	}
-
-	return nil
+	return DecodeS3Chunk(ctx, object, chunk, s.metrics)
 }
 
 func (s *StorageS3) ReadChunkBlob(
@@ -273,7 +249,7 @@ func newS3Metadata(metadataMap map[string]*string) (s3Metadata, error) {
 	metadata := s3Metadata{
 		checksum: uint32(checksumUint64),
 	}
-	if v, ok := metadataMap[s3MetadataKeyCompression]; ok {
+	if v := metadataMap[s3MetadataKeyCompression]; v != nil {
 		metadata.compression = *v
 	}
 

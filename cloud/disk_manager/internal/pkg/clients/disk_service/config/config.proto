@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package disk_service_client;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/disk_service/config";
+
+message ClientConfig {
+    required string Endpoint = 1;
+    optional string RootCertsFile = 2;
+    optional bool Insecure = 3 [default = false];
+    optional string CallTimeout = 4 [default = "30s"];
+}

@@ -7,19 +7,22 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteExternalFilesystemTask struct {
-	storage resources.Storage
-	factory nfs.Factory
-	request *protos.DeleteFilesystemRequest
-	state   *protos.DeleteFilesystemTaskState
+	storage       resources.Storage
+	factory       nfs.Factory
+	disabledZones *common.DisabledZones
+	request       *protos.DeleteFilesystemRequest
+	state         *protos.DeleteFilesystemTaskState
 }
 
 func (t *deleteExternalFilesystemTask) Save() ([]byte, error) {
@@ -41,6 +44,28 @@ func (t *deleteExternalFilesystemTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.disabledZones != nil {
+		filesystemID := t.request.Filesystem.FilesystemId
+		filesystemMeta, err := t.storage.GetFilesystemMeta(ctx, filesystemID)
+		if err != nil {
+			return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+		}
+
+		zoneID := t.request.Filesystem.ZoneId
+		if filesystemMeta != nil && len(filesystemMeta.ZoneID) != 0 {
+			zoneID = filesystemMeta.ZoneID
+		}
+		if t.disabledZones.IsDisabled(zoneID) {
+			logging.Warn(
+				ctx,
+				"Skipping manual deletion wait for external filesystem %v: zone %v is disabled",
+				filesystemID,
+				zoneID,
+			)
+			return nil
+		}
+	}
 
 	// External fs deletion is currently implemented with a hanging task.
 	return errors.NewInterruptExecutionError()

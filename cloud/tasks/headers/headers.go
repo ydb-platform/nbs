@@ -142,6 +142,7 @@ func GetFromOutgoingContext(
 
 func GetTracingHeaders(ctx context.Context) map[string]string {
 	allowedKeys := []string{
+		"x-task-id",
 		"x-operation-id",
 		"x-request-id",
 		"x-request-uid",
@@ -225,6 +226,30 @@ func SetOutgoingRequestID(ctx context.Context, id string) context.Context {
 	return appendToOutgoingContext(
 		ctx,
 		grpc_metadata.Pairs("x-request-id", id),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// GetTaskID returns the caller's task ID, not a local scheduler task ID.
+func GetTaskID(ctx context.Context) string {
+	metadata, ok := grpc_metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+
+	vals := metadata.Get("x-task-id")
+	if len(vals) == 0 {
+		return ""
+	}
+
+	return vals[0]
+}
+
+func SetIncomingTaskID(ctx context.Context, id string) context.Context {
+	return appendToIncomingContext(
+		ctx,
+		grpc_metadata.Pairs("x-task-id", id),
 	)
 }
 

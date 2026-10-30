@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
+
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
@@ -231,9 +232,36 @@ func (t *createSnapshotFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
+	// Older task requests and image creation do not carry BlockSize. Resolve it
+	// while the source disk still exists, never at export time.
+	blockSize := t.request.BlockSize
+	if blockSize == 0 {
+		existing, err := t.storage.GetSnapshotMeta(ctx, t.request.DstSnapshotId)
+		if err != nil {
+			return err
+		}
+
+		if existing != nil && existing.Ready {
+			return nil
+		}
+
+		client, err := t.getNbsClient(ctx)
+		if err != nil {
+			return err
+		}
+
+		params, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
+		if err != nil {
+			return err
+		}
+
+		blockSize = params.BlockSize
+	}
+
 	snapshotMeta, err := t.storage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
+			BlockSize:    blockSize,
 			ID:           t.request.DstSnapshotId,
 			Disk:         t.request.SrcDisk,
 			CheckpointID: t.request.SrcDiskCheckpointId,

@@ -5,12 +5,35 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const skipClientConfigParsingAnnotation = "skip-client-config-parsing"
+const skipServerConfigParsingAnnotation = "skip-server-config-parsing"
+const exportCommandAnnotation = "export-command"
+
+func isAsyncExportCommand(cmd *cobra.Command) bool {
+	if !hasCommandAnnotation(cmd, exportCommandAnnotation) {
+		return false
+	}
+	async, _ := cmd.Flags().GetBool("async")
+	return async
+}
+
+func needsClientConfig(cmd *cobra.Command) bool {
+	return !hasCommandAnnotation(cmd, skipClientConfigParsingAnnotation) ||
+		isAsyncExportCommand(cmd)
+}
+
+func needsServerConfig(cmd *cobra.Command) bool {
+	return !hasCommandAnnotation(cmd, skipServerConfigParsingAnnotation) &&
+		!isAsyncExportCommand(cmd)
+}
 
 func isHelperCommand(cmd *cobra.Command) bool {
 	// cmd.Name() would be the name of the most specific subcommand
@@ -28,6 +51,19 @@ func isHelperCommand(cmd *cobra.Command) bool {
 
 	_, ok := helperCommands[cmd.Name()]
 	return ok
+}
+
+func hasCommandAnnotation(cmd *cobra.Command, annotation string) bool {
+	for cmd != nil {
+		if cmd.Annotations != nil {
+			if _, ok := cmd.Annotations[annotation]; ok {
+				return true
+			}
+		}
+		cmd = cmd.Parent()
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,9 +87,11 @@ func Run(
 				return nil
 			}
 
-			err := util.ParseProto(clientConfigFilePath, clientConfig)
-			if err != nil {
-				return err
+			if needsClientConfig(cmd) {
+				err := util.ParseProto(clientConfigFilePath, clientConfig)
+				if err != nil {
+					return err
+				}
 			}
 
 			if idExtracted {
@@ -118,6 +156,10 @@ func Run(
 		err := rootCmd.PersistentPreRunE(cmd, args)
 		if err != nil {
 			return err
+		}
+
+		if !needsServerConfig(cmd) {
+			return nil
 		}
 
 		return util.ParseProto(serverConfigFilePath, serverConfig)

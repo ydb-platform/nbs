@@ -5,24 +5,37 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func newTestS3(keyPrefix string, kekID string, kek []byte) (*S3, error) {
+	return NewS3(
+		nil, // s3
+		"bucket",
+		keyPrefix,
+		kekID,
+		kek,
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
+	)
+}
+
 func TestNewS3FailsOnWrongKekSize(t *testing.T) {
-	_, err := NewS3(nil, "bucket", "", "kek1", make([]byte, 16))
+	_, err := newTestS3("", "kek1", make([]byte, 16))
 	require.Error(t, err)
 }
 
 func TestNewS3FailsOnEmptyKekID(t *testing.T) {
-	_, err := NewS3(nil, "bucket", "", "", make([]byte, keySize))
+	_, err := newTestS3("", "", make([]byte, keySize))
 	require.Error(t, err)
 }
 
 func TestNewS3WithoutKek(t *testing.T) {
-	backupS3, err := NewS3(nil, "bucket", "", "", nil)
+	backupS3, err := newTestS3("", "", nil)
 	require.NoError(t, err)
 
 	dek, err := backupS3.EnsureEncryptedDEK(nil)
@@ -49,7 +62,7 @@ func TestNewS3WithoutKek(t *testing.T) {
 }
 
 func TestNewS3FailsWhenOnlyKekIDIsSet(t *testing.T) {
-	_, err := NewS3(nil, "bucket", "", "kek1", nil)
+	_, err := newTestS3("", "kek1", nil)
 	require.Error(t, err)
 }
 
@@ -58,19 +71,19 @@ func TestNewS3TrimsKekWhitespace(t *testing.T) {
 	kek[0] = 1
 	kek[keySize-1] = '\n'
 
-	_, err := NewS3(nil, "bucket", "", "kek1", kek)
+	_, err := newTestS3("", "kek1", kek)
 	require.NoError(t, err)
 
 	clean := make([]byte, keySize)
 	clean[0] = 1
 	padded := append(append([]byte{'\n'}, clean...), '\n')
-	backupS3, err := NewS3(nil, "bucket", "", "kek1", padded)
+	backupS3, err := newTestS3("", "kek1", padded)
 	require.NoError(t, err)
 
 	encryptedDEK, err := backupS3.NewEncryptedDEK()
 	require.NoError(t, err)
 
-	expected, err := NewS3(nil, "bucket", "", "kek1", clean)
+	expected, err := newTestS3("", "kek1", clean)
 	require.NoError(t, err)
 
 	_, err = expected.decryptDEK(encryptedDEK)
@@ -110,7 +123,7 @@ func TestEncryptedDEK(t *testing.T) {
 	kek := make([]byte, keySize)
 	kek[0] = 1
 
-	backupS3, err := NewS3(nil, "bucket", "", "kek1", kek)
+	backupS3, err := newTestS3("", "kek1", kek)
 	require.NoError(t, err)
 
 	encryptedDEK, err := backupS3.NewEncryptedDEK()
@@ -128,13 +141,13 @@ func TestEncryptedDEK(t *testing.T) {
 	require.Equal(t, []byte("data"), opened)
 
 	otherKEK := make([]byte, keySize)
-	other, err := NewS3(nil, "bucket", "", "kek2", otherKEK)
+	other, err := newTestS3("", "kek2", otherKEK)
 	require.NoError(t, err)
 
 	_, err = other.decryptDEK(encryptedDEK)
 	require.Error(t, err)
 
-	sameKey, err := NewS3(nil, "bucket", "", "kek2", kek)
+	sameKey, err := newTestS3("", "kek2", kek)
 	require.NoError(t, err)
 
 	_, err = sameKey.decryptDEK(encryptedDEK)
@@ -145,7 +158,7 @@ func TestCheckEncryptedDEK(t *testing.T) {
 	kek := make([]byte, keySize)
 	kek[0] = 1
 
-	backupS3, err := NewS3(nil, "bucket", "", "kek1", kek)
+	backupS3, err := newTestS3("", "kek1", kek)
 	require.NoError(t, err)
 
 	encryptedDEK, err := backupS3.NewEncryptedDEK()

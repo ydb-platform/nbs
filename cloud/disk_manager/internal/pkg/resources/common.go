@@ -22,6 +22,21 @@ type storageYDB struct {
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
 	backupEnabled                   bool
+	backupFolderIDs                 map[string]bool
+}
+
+// A folder ID in SnapshotStorageBackupConfig.FolderIds that stands for all
+// folders.
+const backupAllFolders = "*"
+
+// Reports whether new snapshots and images of the folder are backed up: they
+// are queued for backup when they become ready.
+func (s *storageYDB) backupEnabledForFolder(folderID string) bool {
+	if !s.backupEnabled {
+		return false
+	}
+
+	return s.backupFolderIDs[backupAllFolders] || s.backupFolderIDs[folderID]
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,7 +51,13 @@ func NewStorage(
 	db *persistence.YDBClient,
 	endedMigrationExpirationTimeout time.Duration,
 	backupEnabled bool,
+	backupFolderIDs []string,
 ) (Storage, error) {
+
+	folderIDs := make(map[string]bool, len(backupFolderIDs))
+	for _, folderID := range backupFolderIDs {
+		folderIDs[folderID] = true
+	}
 
 	return &storageYDB{
 		db:              db,
@@ -50,6 +71,7 @@ func NewStorage(
 		placementGroupsPath:             db.AbsolutePath(placementGroupsPath),
 		endedMigrationExpirationTimeout: endedMigrationExpirationTimeout,
 		backupEnabled:                   backupEnabled,
+		backupFolderIDs:                 folderIDs,
 	}, nil
 }
 

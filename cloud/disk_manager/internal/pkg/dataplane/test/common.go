@@ -31,6 +31,7 @@ func NewS3Client() (*persistence.S3Client, error) {
 		100, // maxRetriableErrorCount
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
 	)
 }
 

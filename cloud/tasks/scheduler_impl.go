@@ -267,6 +267,32 @@ func (s *scheduler) WaitTask(
 	return s.getTaskResponse(ctx, taskID)
 }
 
+func (s *scheduler) GetEndedTasks(
+	ctx context.Context,
+	taskIDs []string,
+) ([]string, error) {
+
+	var ended []string
+	for _, taskID := range taskIDs {
+		state, err := s.storage.GetTask(ctx, taskID)
+		if errors.Is(err, errors.NewEmptyNotFoundError()) {
+			// Ended tasks are cleared from the storage after a while.
+			ended = append(ended, taskID)
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		if tasks_storage.IsEnded(state.Status) {
+			ended = append(ended, taskID)
+		}
+	}
+
+	return ended, nil
+}
+
 func (s *scheduler) WaitAnyTasks(
 	ctx context.Context,
 	taskIDs []string,

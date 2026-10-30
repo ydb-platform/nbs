@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/api/export.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+message ExportSnapshotRequest {
+    string SnapshotId = 1;
+    // Compute export task ID from the incoming x-task-id header.
+    string ComputeTaskId = 2;
+    string FolderId = 3;
+    string SourceDiskId = 4;
+    cloud.disk_manager.ExportDestination Destination = 5;
+    cloud.disk_manager.DecryptionInfo DecryptionInfo = 6;
+    uint32 BlockSize = 7;
+    // Image exports use the same dataplane snapshot ID in SnapshotId.
+    // This field selects image credentials and image backup metadata.
+    string ImageId = 8;
+}
+
+message ExportSnapshotTaskState {
+    // AUTO is resolved once; no source changes are allowed after checkpointing.
+    string Source = 1;
+    bytes BackupMetaSHA256 = 2;
+    bytes BackupChunkMapSHA256 = 3;
+    // JSON exporter.S3ExportState: immutable manifest plan and completed parts.
+    // Contains opaque decryption metadata, never S3 credentials.
+    bytes ExportState = 4;
+    double Progress = 5;
+    // First unresolved non-timeout transient source read failure.
+    // Unix nanoseconds; timeouts do not open this bounded window.
+    int64 SourceRetryStartedAt = 6;
+    // Successful reads of other objects must not reset this failure window.
+    string SourceRetryObject = 7;
+    // Learned upload concurrency survives retries and executor changes.
+    uint32 UploadWorkerLimit = 8;
+}
