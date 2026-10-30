@@ -348,6 +348,15 @@ void TFileSystem::Rename(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // Invalidates both NodeRefs, both parents' attrs and the
+                // attrs of the nodes the cached NodeRefs point to. The moved
+                // node itself doesn't need to be invalidated if its NodeRef
+                // isn't cached: the backend doesn't change its attrs upon
+                // rename. The replaced node (if any) is unlinked, its Links
+                // change produces an invalidation event.
+                //
+
                 self->InvalidateDirectoryEntryInCache(parent, name);
                 self->InvalidateDirectoryEntryInCache(newparent, newname);
                 // TODO: update tree
