@@ -1837,6 +1837,58 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionToServerVersionOnRejection)
     ASSERT_EQ(RDMA_PROTO_VERSION_2, secondConnectVersion.load());
 }
 
+TEST(TRdmaClientTest, ShouldNotDowngradeProtocolVersionOnV3Rejection)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    TMutex lock;
+    TVector<int> connectVersions;
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        with_lock (lock) {
+            connectVersions.push_back(ParseMessageHeader(param->private_data));
+        }
+
+        TRejectMessage rejectMsg{};
+        InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_3);
+        rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_INVALID_REQUEST);
+        NVerbs::EnqueueRejectEvent(
+            testContext,
+            id,
+            &rejectMsg,
+            sizeof(rejectMsg));
+    };
+
+    try {
+        client->StartEndpoint("::", 10020).ExtractValueSync();
+        FAIL() << "expected exception";
+    } catch (const TServiceError& e) {
+        ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
+    }
+
+    with_lock (lock) {
+        ASSERT_FALSE(connectVersions.empty());
+        for (int version: connectVersions) {
+            ASSERT_EQ(RDMA_PROTO_VERSION_3, version);
+        }
+    }
+}
+
 TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
 {
     constexpr ui16 ServerRecvQueueSize = 4;

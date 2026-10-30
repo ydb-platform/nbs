@@ -3131,13 +3131,11 @@ void TClient::HandleRejected(
     }
 
     const int version = ParseMessageHeader(param->private_data);
+    const auto* msg = static_cast<const TRejectMessage*>(param->private_data);
     switch (version) {
-        case RDMA_PROTO_VERSION_2:
-        case RDMA_PROTO_VERSION_3: {
-            const auto* msg =
-                static_cast<const TRejectMessage*>(param->private_data);
+        case RDMA_PROTO_VERSION_2: {
             if (msg->Status == RDMA_PROTO_INVALID_REQUEST &&
-                version < endpoint->GetNegotiatedProtocolVersion())
+                endpoint->GetNegotiatedProtocolVersion() != version)
             {
                 RDMA_WARN(
                     endpoint->Log,
@@ -3147,6 +3145,9 @@ void TClient::HandleRejected(
                 endpoint->TryForceReconnect();
                 return;
             }
+            [[fallthrough]];
+        }
+        case RDMA_PROTO_VERSION_3: {
             if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
                 bool changed = false;
                 if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {
