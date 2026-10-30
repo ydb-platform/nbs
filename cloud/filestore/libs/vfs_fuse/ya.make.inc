@@ -21,6 +21,7 @@ SRCS(
     log.cpp
     loop.cpp
     node_cache.cpp
+    node_ref_cache.cpp
     persistent_state_manager.cpp
 )
 

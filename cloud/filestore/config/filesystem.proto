@@ -139,4 +139,8 @@ message TFileSystemConfig
 
     // Maximum number of operations in one HandleOpsQueue batch.
     optional uint32 AsyncHandleOperationBatchSize = 41;
+
+    // Max number of the NodeRefs cached according to the NodeRefCacheTTL
+    // values returned by the backend.
+    optional uint32 NodeRefCacheLimit = 42;
 }

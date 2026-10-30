@@ -45,7 +45,8 @@ void RunUpdateNodeBench(ui64 iters, ui32 threads, ui32 shards)
                     attrs.SetType(NProto::E_REGULAR_NODE);
                     cache.UpdateNode(
                         attrs,
-                        version.fetch_add(1, std::memory_order_release));
+                        version.fetch_add(1, std::memory_order_release),
+                        TInstant::Zero() /* cacheDeadline */);
                 }
 
                 context->Todo.fetch_sub(1, std::memory_order_release);

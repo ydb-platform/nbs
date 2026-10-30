@@ -8,8 +8,10 @@
 
 #include <library/cpp/cache/cache.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
+#include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -22,6 +24,19 @@ private:
     NProto::TNodeAttr Attrs;
     ui64 RefCount = 1;
     ui64 LastUpdateVersion = 1;
+
+    //
+    // The state of the backend-driven caching (see NodeCacheTTL in
+    // GetNodeAttr responses): Attrs may be used for responding until
+    // CacheDeadline. CacheVersion is the version at which the request that
+    // has fetched Attrs has started. CacheInvalidationVersion is the version
+    // of the last invalidation of the cached attrs - the attrs fetched by the
+    // requests started before it are not cached.
+    //
+
+    TInstant CacheDeadline;
+    ui64 CacheVersion = 0;
+    ui64 CacheInvalidationVersion = 0;
 
 private:
     explicit TNode(NProto::TNodeAttr attrs) noexcept
@@ -68,16 +83,21 @@ private:
         LastUpdateVersion = version;
     }
 
+    void ResetCache()
+    {
+        CacheDeadline = TInstant::Zero();
+        CacheVersion = 0;
+    }
+
     friend class TNodeCacheShard;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
- * Currently this cache is not used for lookup - we rely on the inode cache in
- * the guest for this. This cache is used to be able to detect races between
- * the operations that fetch node attrs from the backend and the operations that
- * can modify those attrs.
+ * This cache is used to be able to detect races between the operations that
+ * fetch node attrs from the backend and the operations that can modify those
+ * attrs.
  *
  * When an attr-reading operation starts, it should get current fs "version".
  * Upon each attr-modifying operation completion we bump this global version and
@@ -87,7 +107,12 @@ private:
  * it should tell the guest not to cache these attributes because they might
  * already be stale.
  *
- * In the future we might actually start using this cache for attribute lookups.
+ * Additionally, the attrs may be used for responding to the guest until the
+ * deadline set via the TTL supplied by the backend (NodeCacheTTL in the
+ * GetNodeAttr responses). The backend sends an invalidation event upon a
+ * change of the node. The local changes invalidate the cached attrs via
+ * InvalidateCachedAttrs. The node entries are retained after the deadline
+ * passes - they are still needed for the race detection described above.
  */
 class TNodeCacheShard
 {
@@ -101,11 +126,42 @@ public:
         : FileSystemId(std::move(fileSystemId))
     {}
 
+    //
+    // The version of the last invalidation of the cached attrs of the nodes
+    // that were absent from Id2Node at that moment - such nodes may be
+    // inserted by the requests started before the invalidation.
+    //
+
+    ui64 AbsentNodeInvalidationVersion = 0;
+
+    //
+    // The version of the last invalidation of all the cached attrs.
+    //
+
+    ui64 AllNodesInvalidationVersion = 0;
+
 public:
-    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version);
+    bool UpdateNode(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        TInstant cacheDeadline);
     void InvalidateNode(ui64 ino, ui64 version);
     void ForgetNode(ui64 ino, size_t count);
     ui64 GetNodeVersion(ui64 ino) const;
+
+    void UpdateCachedAttrs(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        TInstant cacheDeadline);
+    TMaybe<NProto::TNodeAttr> GetCachedAttrs(ui64 ino, TInstant now);
+    TMaybe<NProto::TNodeAttr> RefCachedNode(ui64 ino, TInstant now);
+    void InvalidateCachedAttrs(ui64 ino, ui64 version);
+    void InvalidateAllCachedAttrs(ui64 version);
+
+private:
+    bool IsCacheable(const TNode& node, ui64 version) const;
+    void SetCachedAttrs(TNode& node, ui64 version, TInstant cacheDeadline);
+    bool IsCached(TNode& node, TInstant now);
 };
 
 class TNodeCache
@@ -122,9 +178,27 @@ public:
     }
 
 public:
-    bool UpdateNode(const NProto::TNodeAttr& attrs, ui64 version)
+    /**
+     * Updates the node attrs and increments the node ref count, see
+     * TNodeCacheShard. Additionally makes the attrs usable for responding
+     * until cacheDeadline if no invalidation of the node has happened after
+     * version.
+     *
+     * @param attrs - Node attrs.
+     * @param version - Cache version at which the request that has fetched
+     *  the attrs has started.
+     * @param cacheDeadline - Zero if the attrs are not cacheable.
+     * @return - False if the node has a newer version.
+     */
+    bool UpdateNode(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        TInstant cacheDeadline)
     {
-        return Shards[attrs.GetId() % Shards.size()].UpdateNode(attrs, version);
+        return Shards[attrs.GetId() % Shards.size()].UpdateNode(
+            attrs,
+            version,
+            cacheDeadline);
     }
 
     void InvalidateNode(ui64 ino, ui64 version)
@@ -140,6 +214,80 @@ public:
     ui64 GetNodeVersion(ui64 ino) const
     {
         return Shards[ino % Shards.size()].GetNodeVersion(ino);
+    }
+
+    /**
+     * Same as UpdateNode but doesn't change the ref count and doesn't insert
+     * the absent nodes. Used for the responses that don't change the guest's
+     * lookup count (GetAttr).
+     *
+     * @param attrs - Node attrs.
+     * @param version - Cache version at which the request that has fetched
+     *  the attrs has started.
+     * @param cacheDeadline - Zero if the attrs are not cacheable.
+     */
+    void UpdateCachedAttrs(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        TInstant cacheDeadline)
+    {
+        Shards[attrs.GetId() % Shards.size()].UpdateCachedAttrs(
+            attrs,
+            version,
+            cacheDeadline);
+    }
+
+    /**
+     * Returns the cached node attrs if they may be used for responding. If
+     * the deadline has passed, the cached attrs are reset, the node itself is
+     * retained.
+     *
+     * @param ino - Node id.
+     * @param now - Current time.
+     * @return - The attrs or Nothing.
+     */
+    TMaybe<NProto::TNodeAttr> GetCachedAttrs(ui64 ino, TInstant now)
+    {
+        return Shards[ino % Shards.size()].GetCachedAttrs(ino, now);
+    }
+
+    /**
+     * Same as GetCachedAttrs but also increments the node ref count if the
+     * attrs are returned - for the responses that increment the guest's
+     * lookup count (Lookup).
+     *
+     * @param ino - Node id.
+     * @param now - Current time.
+     * @return - The attrs or Nothing.
+     */
+    TMaybe<NProto::TNodeAttr> RefCachedNode(ui64 ino, TInstant now)
+    {
+        return Shards[ino % Shards.size()].RefCachedNode(ino, now);
+    }
+
+    /**
+     * Makes the cached attrs of the node unusable for responding, including
+     * the attrs fetched by the requests started before version. Doesn't
+     * affect the race detection state (LastUpdateVersion).
+     *
+     * @param ino - Node id.
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateCachedAttrs(ui64 ino, ui64 version)
+    {
+        Shards[ino % Shards.size()].InvalidateCachedAttrs(ino, version);
+    }
+
+    /**
+     * Same as InvalidateCachedAttrs but for all the nodes.
+     *
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateAllCachedAttrs(ui64 version)
+    {
+        for (auto& shard: Shards) {
+            shard.InvalidateAllCachedAttrs(version);
+        }
     }
 };
 

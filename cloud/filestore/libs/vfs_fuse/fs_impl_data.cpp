@@ -276,7 +276,7 @@ void TFileSystem::Create(
     }
 
     auto request = StartRequest<NProto::TCreateHandleRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
     request->SetMode(mode & ~(S_IFMT));
     // Kernel read requests can occur even on write-only files when write-back
     // caching is enabled (read-modify-write non page aligned range). Open
@@ -328,6 +328,8 @@ void TFileSystem::Create(
                     }
                 }
 
+                self->InvalidateCachedEntry(parent, name);
+                self->InvalidateCachedNode(response.GetNodeAttr().GetId());
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
@@ -383,6 +385,10 @@ void TFileSystem::Open(
             self->CheckNodeError(*callContext, req, response.GetError()))
         {
             const auto& response = future.GetValue();
+
+            if (HasFlag(flags, NProto::TCreateHandleRequest::E_TRUNCATE)) {
+                self->InvalidateCachedNode(ino);
+            }
 
             if (response.GetHandleCreatedAsync()) {
                 if (!asyncCreateHandle) {
