@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     config_dispatcher
+    configs_manager
     csi_driver
     direct_device_acquire
     disk_agent_config
