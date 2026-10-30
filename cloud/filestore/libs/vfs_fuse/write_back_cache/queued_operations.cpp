@@ -42,6 +42,19 @@ struct TFlushOrReleasePromiseCompletedEvent
     }
 };
 
+struct TReadDataPromiseFailedEvent
+{
+    NThreading::TPromise<NProto::TReadDataResponse> Promise;
+    NCloud::NProto::TError Error;
+
+    void Invoke()
+    {
+        NProto::TReadDataResponse response;
+        *response.MutableError() = std::move(Error);
+        Promise.SetValue(std::move(response));
+    }
+};
+
 struct TFlushOrReleasePromiseFailedEvent
 {
     NThreading::TPromise<NCloud::NProto::TError> Promise;
@@ -89,6 +102,7 @@ struct TScheduleFlushEvent
 using TEventVariant = std::variant<
     TWriteDataPromiseCompletedEvent,
     TWriteDataPromiseFailedEvent,
+    TReadDataPromiseFailedEvent,
     TFlushOrReleasePromiseCompletedEvent,
     TFlushOrReleasePromiseFailedEvent,
     TAcquireBarrierPromiseCompletedEvent,
@@ -169,6 +183,13 @@ void TQueuedOperations::FailWriteDataPromise(
     const NCloud::NProto::TError& error)
 {
     Events.push_back(TWriteDataPromiseFailedEvent{std::move(promise), error});
+}
+
+void TQueuedOperations::FailReadDataPromise(
+    NThreading::TPromise<NProto::TReadDataResponse> promise,
+    const NCloud::NProto::TError& error)
+{
+    Events.push_back(TReadDataPromiseFailedEvent{std::move(promise), error});
 }
 
 void TQueuedOperations::CompleteFlushOrReleasePromise(

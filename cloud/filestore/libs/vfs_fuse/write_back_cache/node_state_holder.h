@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <util/generic/function_ref.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 
@@ -73,6 +74,9 @@ public:
     // The state is only physically removed when there are no pins with id lower
     // than DeletionSequenceId.
     void DeleteNodeState(ui64 nodeId);
+
+    // The visitor must not add or delete node states.
+    void VisitNodes(TFunctionRef<void(ui64, TNodeState&)> visitor);
 
     [[nodiscard]] TNodeStatePin Pin();
     void Unpin(TNodeStatePin pinId);

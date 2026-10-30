@@ -95,6 +95,11 @@ public:
         return AllocationPtr != nullptr;
     }
 
+    bool IsSerialized() const
+    {
+        return Serialized.load(std::memory_order_acquire);
+    }
+
     // Serializes the request into its persistent storage allocation.
     void SerializeToAllocation();
 };

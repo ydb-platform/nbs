@@ -64,6 +64,10 @@ public:
         NThreading::TPromise<NProto::TWriteDataResponse> promise,
         const NCloud::NProto::TError& error);
 
+    void FailReadDataPromise(
+        NThreading::TPromise<NProto::TReadDataResponse> promise,
+        const NCloud::NProto::TError& error);
+
     void CompleteFlushOrReleasePromise(
         NThreading::TPromise<NCloud::NProto::TError> promise);
 

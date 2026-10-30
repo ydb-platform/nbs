@@ -81,6 +81,15 @@ void TNodeStateHolder::DeleteNodeState(ui64 nodeId)
     Stats->IncrementDeletedNodeCount();
 }
 
+void TNodeStateHolder::VisitNodes(TFunctionRef<void(ui64, TNodeState&)> visitor)
+{
+    for (auto& [nodeId, nodeState]: NodeStates) {
+        if (!nodeState.DeletionSequenceId) {
+            visitor(nodeId, nodeState);
+        }
+    }
+}
+
 TNodeStatePin TNodeStateHolder::Pin()
 {
     const ui64 pinId = ++SequenceId;

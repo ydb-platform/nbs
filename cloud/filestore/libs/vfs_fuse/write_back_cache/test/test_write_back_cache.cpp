@@ -170,6 +170,11 @@ public:
         return Execute([this] { return Cache.Shutdown(); });
     }
 
+    void CancelPendingRequests()
+    {
+        Cache.CancelPendingRequests();
+    }
+
     bool IsDrained() const
     {
         return Cache.IsDrained();
@@ -318,6 +323,11 @@ TFuture<NProto::TError> TTestWriteBackCache::Drain()
 TFuture<NProto::TError> TTestWriteBackCache::Shutdown()
 {
     return Impl->Shutdown();
+}
+
+void TTestWriteBackCache::CancelPendingRequests()
+{
+    Impl->CancelPendingRequests();
 }
 
 bool TTestWriteBackCache::IsDrained() const

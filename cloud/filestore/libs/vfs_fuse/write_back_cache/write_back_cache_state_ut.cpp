@@ -1508,7 +1508,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
     }
 
-    void TestShouldNotDropAllocatedRequestsOnFlushFailure(bool shutdown)
+    void TestShouldNotDropAllocatedRequestsOnFlushFailure(
+        bool shutdown,
+        bool cancelPending = false)
     {
         TBootstrap b;
         b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 1;
@@ -1541,21 +1543,29 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                 // The barrier is acquired after the front pending request
                 // becomes allocated but before it is serialized, so only the
                 // last two requests will be failed.
-                ui64 failedNodeId = 2;
-                if (shutdown) {
-                    // Flush the node whose serializer still holds the front
-                    // allocated request. Shutdown must preserve that request
-                    // until serialization finishes.
-                    b.State->ReleaseBarrier(1, future.GetValue().GetResult());
-                    b.State->SetShutdownMode();
-                    b.State->SetDrainingMode();
-                    b.State->AddFlushRequest(1);
-                    failedNodeId = 1;
-                }
+                if (cancelPending) {
+                    b.State->CancelPendingRequests();
+                } else {
+                    ui64 failedNodeId = 2;
+                    if (shutdown) {
+                        // Flush the node whose serializer still holds the front
+                        // allocated request. Shutdown must preserve that
+                        // request until serialization finishes.
+                        b.State->ReleaseBarrier(
+                            1,
+                            future.GetValue().GetResult());
+                        b.State->SetShutdownMode();
+                        b.State->SetDrainingMode();
+                        b.State->AddFlushRequest(1);
+                        failedNodeId = 1;
+                    }
 
-                UNIT_ASSERT(
-                    b.State->FlushFailed(failedNodeId, MakeError(E_FS_NOSPC)) ==
-                    EFlushRetryStatus::ShouldRetry);
+                    UNIT_ASSERT(
+                        b.State->FlushFailed(
+                            failedNodeId,
+                            MakeError(E_FS_NOSPC)) ==
+                        EFlushRetryStatus::ShouldRetry);
+                }
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
@@ -1574,7 +1584,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 1);
 
         UNIT_ASSERT(backpressured1.HasValue());
-        UNIT_ASSERT(backpressured1.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(!cancelPending, backpressured1.GetValue());
         UNIT_ASSERT(barrier.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
 
@@ -1601,6 +1611,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
     Y_UNIT_TEST(ShouldNotDropAllocatedRequestsOnShutdownFlushFailure)
     {
         TestShouldNotDropAllocatedRequestsOnFlushFailure(true);
+    }
+
+    Y_UNIT_TEST(ShouldCancelAllocatedRequestsAfterSerialization)
+    {
+        TestShouldNotDropAllocatedRequestsOnFlushFailure(false, true);
     }
 
     void DoShouldNotReleaseHandleBeingUsedForFlush(bool flushFails)
