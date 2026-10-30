@@ -754,3 +754,65 @@ bash .github/scripts/tracing/render_ya_trace_bundle.sh \
   --component cloud/blockstore \
   --operation tests
 ```
+
+## Workflow overview and execution links
+
+Ya conversion produces one trace bundle per build/test invocation.
+[`workflow_trace_report.py`](workflow_trace_report.py) can later fetch the
+completed GitHub run's jobs and small ya bundle manifests. It creates workflow
+queue, job queue, job, and step spans in `workflow-trace.*`. Each job row links
+to its separate build/test execution reports. The workflow report never reads
+ya OTLP or rewrites ya trace IDs.
+
+Ya manifests record `github.runner.name` from `RUNNER_NAME`, along with the
+repository, run ID, and run attempt. A link is attached only when these match
+and the runner identifies exactly one job; missing or ambiguous identities are
+skipped, without guessing from timestamps. URLs point to `trace.html` beside
+each manifest. `ci.trace.report.<index>.name` and `.url` job attributes preserve
+these links in the workflow OTLP as well as the HTML.
+
+Manifest discovery is optional and bounded. Missing, malformed, or oversized
+manifests are skipped, and S3 failures leave the GitHub workflow report usable.
+Build presets and architectures have separate `variants/<variant>/` directories
+under the run's report prefix, preventing matrix jobs from overwriting reports.
+
+For the first attempt, the workflow root retains GitHub's creation-to-update
+interval and its queue span. For reruns, `created_at` still refers to the
+original attempt and is ignored. The root instead begins at the earliest usable
+current `run_started_at` or job timestamp. A first attempt missing both workflow
+start timestamps also uses job timing. If no start evidence is usable, either
+attempt deterministically falls back to `updated_at`.
+
+GitHub `success` conclusions map to OTLP `OK`. Failure-like conclusions,
+including `stale`, map to `ERROR`; neutral and skipped conclusions remain
+`UNSET`.
+
+## Code map
+
+| Component | Responsibility |
+| --- | --- |
+| [`ya_trace_report.py`](ya_trace_report.py) | CLI, discovery, resource metadata, file list, bundle orchestration |
+| [`yatrace/projection.py`](yatrace/projection.py) | Root span, logical/evlog projection order, longest-test ranking |
+| [`projector.py`](projector.py) | Bound trace/resource/scope/parent context and stable span creation |
+| [`yatrace/trace_collection.py`](yatrace/trace_collection.py) | Safe discovery and enrichment lookup API |
+| [`yatrace/trace_loader.py`](yatrace/trace_loader.py) | JSONL parsing, merging, chunk assignment, attempt normalization |
+| [`yatrace/trace_model.py`](yatrace/trace_model.py) | `SuiteTrace`, `Chunk`, `TestAttempt`, `TestEvent`, durations, and logs |
+| [`yatrace/trace_spans.py`](yatrace/trace_spans.py) | Suite, chunk, ordered test timing, result markers, and inferred test stages |
+| [`yatrace/evlog_loader.py`](yatrace/evlog_loader.py) | Event-log parsing, details, failures, and statistics selection |
+| [`yatrace/node.py`](yatrace/node.py) | One normalized event-log `YaNode` and classification |
+| [`yatrace/evlog_data.py`](yatrace/evlog_data.py) | Immutable event-log aggregate |
+| [`yatrace/evlog.py`](yatrace/evlog.py) | Ya phases and event-log projection orchestration |
+| [`yatrace/test_operations.py`](yatrace/test_operations.py) | Direct worker/chunk matching and test operation spans |
+| [`yatrace/build_operations.py`](yatrace/build_operations.py) | Build envelope, direct selection, nodes, and commands |
+| [`yatrace/worker_spans.py`](yatrace/worker_spans.py) | Worker, phase, build-node, and command projection |
+| [`yatrace/statistics.py`](yatrace/statistics.py) | Cache, graph, execution, and aggregate attributes |
+| [`yatrace/critical_path.py`](yatrace/critical_path.py) | Ya critical-path parsing and build/test matching |
+| [`otlp`](otlp) | Official proto-backed types plus IDs, attributes, `Ns`, `Interval`, and `Trace` |
+| [`trace_io.py`](trace_io.py) | Validated, batched OTLP JSONL read/write |
+| [`trace_report.py`](trace_report.py) | Static HTML model/rendering and bundle output |
+| [`render_ya_trace_bundle.sh`](render_ya_trace_bundle.sh) | Shared nonblocking CI wrapper |
+| [`pack_ya_trace_inputs.sh`](pack_ya_trace_inputs.sh) | Literal-path raw-input tar archive |
+| [`workflow_trace.py`](workflow_trace.py) | Workflow, queue, job, and step projection with report links |
+| [`workflow_trace_links.py`](workflow_trace_links.py) | Bounded manifest discovery and explicit runner matching |
+| [`workflow_trace_report.py`](workflow_trace_report.py) | GitHub workflow bundle CLI with optional execution links |
+| [`render-workflow-trace.yaml`](../../workflows/render-workflow-trace.yaml) | Trusted post-workflow rendering and upload |

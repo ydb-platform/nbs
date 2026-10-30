@@ -82,6 +82,7 @@ class ResourceAttributes(dict[str, Any]):
                 "github.workflow": environment.get("GITHUB_WORKFLOW", ""),
                 "github.workflow.ref": environment.get("GITHUB_WORKFLOW_REF", ""),
                 "github.job": environment.get("GITHUB_JOB", ""),
+                "github.runner.name": environment.get("RUNNER_NAME", ""),
                 "github.run.id": _optional_int(environment.get("GITHUB_RUN_ID")),
                 "github.run.number": _optional_int(
                     environment.get("GITHUB_RUN_NUMBER")

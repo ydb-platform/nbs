@@ -91,6 +91,10 @@ input,button,select { color:inherit; background:var(--panel); border:1px solid v
 .span-row { border-top:1px solid var(--line) } .span-row:hover { background:var(--panel) }
 .span-row.selected { background:var(--selected) }
 .name-cell { display:flex; align-items:center; min-width:0 }
+.name-cell:has(.trace-report-links) { flex-wrap:wrap }
+.trace-report-links { display:flex; flex-wrap:wrap; gap:.3rem 1rem;
+  flex-basis:100%; padding:.2rem 0 .2rem 2.5rem; font-size:.85rem }
+.trace-report-links a { color:var(--bar) }
 .toggle,.metadata-button { display:inline-grid; place-items:center; flex:none; width:2.25rem;
   height:2.25rem; padding:0; border:1px solid transparent; background:transparent;
   border-radius:6px }

@@ -39,6 +39,21 @@ observed test-excluded worker-node cache ratios (including per-tool `CC`, `AR`,
 times, distributed-cache I/O, and the build-only portion of ya's reported
 critical path. Critical-path build nodes are marked on their individual spans.
 
+`render-workflow-trace.yaml` runs after the main test workflows complete. It
+stores GitHub workflow, queue, job, and step timings in `workflow-trace.*` at
+the run's S3 report prefix. Job rows link to separate build and test traces.
+Only the small ya manifests are read; ya spans are never downloaded or merged.
+Links require matching repository, run, attempt, and a runner name that
+identifies exactly one job. Missing or ambiguous metadata omits the link.
+S3 failures and malformed manifests leave the workflow trace available.
+
+Ya reports and test summaries live under
+`reports/<repository>/<workflow>/<run>/<attempt>/variants/<runner-prefix><architecture>-<preset>/<component>/<build-or-test-attempt>/`.
+This keeps matrix variants separate. The nightly summary collector accepts
+both this layout and the earlier layout without `variants/<variant>/`.
+The `workflow_run` job always checks out the default branch and bounds manifest
+discovery by object count, bytes, and time.
+
 To render a saved OTLP bundle locally:
 
 ```bash

@@ -368,6 +368,8 @@ def get_summary_component(summary_json_uri: str) -> str:
         return ""
 
     relative_parts = parts[6:-1]
+    if relative_parts[:1] == ["variants"]:
+        relative_parts = relative_parts[2:]
     if len(relative_parts) <= 1:
         return ""
     return "/".join(relative_parts[:-1])
