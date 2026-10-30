@@ -834,6 +834,8 @@ func (c *client) Create(
 	)
 }
 
+// !Be careful!: |maxSizeBytes| can truncate the proxy overlay disk if it is
+// smaller than the highest offset of stored data on the base disk.
 func (c *client) CreateProxyOverlayDisk(
 	ctx context.Context,
 	diskID string,
@@ -865,7 +867,7 @@ func (c *client) CreateProxyOverlayDisk(
 	// Recognize an already existing overlay disk without describing its
 	// original base disk: this method is retried after a crash, and in the
 	// meantime the overlay disk may have been rebased onto another base disk
-	// and the original base disk deleted (pools retire base disks).
+	// and the original base disk deleted (see pools.RetireBaseDisk task).
 	existing, err := c.describeVolume(ctx, diskID)
 	if err == nil {
 		if len(existing.BaseDiskId) == 0 ||
@@ -927,6 +929,9 @@ func (c *client) CreateProxyOverlayDisk(
 		&nbs_client.CreateVolumeOpts{
 			BaseDiskId:           baseDiskID,
 			BaseDiskCheckpointId: baseDiskCheckpointID,
+			// The proxy overlay disk must have the same block size as the base
+			// disk. Otherwise, the underlying GetChangedBlocks operation cannot
+			// work correctly.
 			BlockSize:            volume.BlockSize,
 			StorageMediaKind:     core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
 			PartitionsCount:      1,
@@ -1648,6 +1653,8 @@ func (c *client) GetCheckpointSize(
 	}
 }
 
+// !Be careful!: |maxSizeBytes| sets the upper byte offset used to calculate
+// the amount of changed data. Data beyond this offset is ignored.
 func (c *client) GetChangedBytes(
 	ctx context.Context,
 	diskID string,

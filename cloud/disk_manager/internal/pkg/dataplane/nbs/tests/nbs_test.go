@@ -219,7 +219,7 @@ func TestChunkIndices(t *testing.T) {
 	}
 }
 
-// The source covers the first maxSizeBytes of the disk only: chunk count,
+// The source covers the first |maxSizeBytes| of the disk only: chunk count,
 // chunk indices and the estimate are computed for them.
 func TestMaxSizeBytes(t *testing.T) {
 	ctx := newContext()

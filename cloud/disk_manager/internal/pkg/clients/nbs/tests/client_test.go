@@ -1663,7 +1663,7 @@ func TestCreateProxyOverlayDiskWithMaxSizeBytes(t *testing.T) {
 }
 
 // Scenario: the proxy overlay disk has been created, but the caller has not
-// persisted this fact and retries; in the meantime the proxy overlay disk has
+// persisted this fact and retries, in the meantime the proxy overlay disk has
 // been rebased onto another base disk and the original base disk has been
 // deleted (pools.RetireBaseDisk). The retry should not need the original base
 // disk.

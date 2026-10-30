@@ -259,11 +259,11 @@ func (s *diskSource) Close(ctx context.Context) {
 ////////////////////////////////////////////////////////////////////////////////
 
 // |diskID| is used to compute changed blocks. The data is read from
-// |proxyDiskID| if it is set (an overlay disk on top of |diskID|), otherwise
-// from |diskID| itself. The disk the data is read from is mounted locally if
-// |mountLocally| is set: local mount moves the disk tablet to the NBS node
-// serving the session, so it should be used for one-shot disks (e.g. proxy
-// overlay disks) only, not for user disks.
+// |proxyDiskID| if it is set, otherwise from |diskID| itself. The disk the data
+// is read from is mounted locally if |mountLocally| is set: local mount moves
+// the disk tablet to the NBS node serving the session, so it should be used for
+// one-shot disks (e.g. proxy overlay disks) only, not for user disks.
+//
 // The source covers the first min(|maxSizeBytes|, disk size) bytes of the disk
 // (rounded up to the block size), zero |maxSizeBytes| means the whole disk.
 func NewDiskSource(
