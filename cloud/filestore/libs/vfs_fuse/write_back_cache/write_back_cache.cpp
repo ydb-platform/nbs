@@ -16,7 +16,11 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 
+#include <util/generic/scope.h>
+#include <util/system/mutex.h>
+
 #include <atomic>
+#include <optional>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -32,6 +36,116 @@ struct TFlushConfig
 {
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
+};
+
+// A flush-all error can arrive before other nodes finish their writes. Keep
+// shutdown pending until all running flushes and their callbacks have retired.
+class TFlushTracker
+{
+private:
+    TMutex Lock;
+    size_t Activities = 0;
+    size_t Requests = 0;
+    std::optional<NProto::TError> ShutdownResult;
+    bool Finished = false;
+    TPromise<NProto::TError> ShutdownPromise = NewPromise<NProto::TError>();
+
+public:
+    bool TryBeginActivity()
+    {
+        with_lock (Lock) {
+            if (Finished) {
+                return false;
+            }
+            ++Activities;
+            return true;
+        }
+    }
+
+    void EndActivity()
+    {
+        with_lock (Lock) {
+            Y_ABORT_UNLESS(Activities);
+            --Activities;
+        }
+        TryComplete();
+    }
+
+    void BeginRequests(size_t count)
+    {
+        with_lock (Lock) {
+            Requests += count;
+        }
+    }
+
+    void EndRequest()
+    {
+        with_lock (Lock) {
+            Y_ABORT_UNLESS(Requests);
+            --Requests;
+        }
+        TryComplete();
+    }
+
+    TFuture<NProto::TError> GetShutdownFuture() const
+    {
+        return ShutdownPromise.GetFuture();
+    }
+
+    void SetShutdownResult(const NProto::TError& error)
+    {
+        with_lock (Lock) {
+            if (!ShutdownResult) {
+                ShutdownResult = error;
+            }
+        }
+        TryComplete();
+    }
+
+private:
+    void TryComplete()
+    {
+        std::optional<NProto::TError> result;
+        with_lock (Lock) {
+            if (!Finished && ShutdownResult && !Activities && !Requests) {
+                Finished = true;
+                result = ShutdownResult;
+            }
+        }
+        if (result) {
+            ShutdownPromise.SetValue(std::move(*result));
+        }
+    }
+};
+
+class TFlushActivity
+{
+private:
+    std::shared_ptr<TFlushTracker> Tracker;
+
+public:
+    TFlushActivity(const TFlushActivity&) = delete;
+    TFlushActivity& operator=(const TFlushActivity&) = delete;
+
+    explicit TFlushActivity(std::shared_ptr<TFlushTracker> tracker)
+        : Tracker(std::move(tracker))
+    {
+        if (!Tracker->TryBeginActivity()) {
+            Tracker.reset();
+        }
+    }
+
+    ~TFlushActivity()
+    {
+        if (Tracker) {
+            Tracker->EndActivity();
+        }
+    }
+
+    explicit operator bool() const
+    {
+        return !!Tracker;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,6 +200,9 @@ private:
 
     std::atomic<bool> DrainRequested = false;
     std::atomic<bool> DrainCompleted = false;
+    std::atomic<bool> ShutdownRequested = false;
+    const std::shared_ptr<TFlushTracker> FlushTracker =
+        std::make_shared<TFlushTracker>();
 
 public:
     explicit TImpl(TWriteBackCacheArgs args)
@@ -191,8 +308,15 @@ public:
 
     NThreading::TFuture<NCloud::NProto::TError> Shutdown()
     {
+        TFlushActivity activity(FlushTracker);
+        if (!activity || ShutdownRequested.exchange(true)) {
+            return FlushTracker->GetShutdownFuture();
+        }
+
         State.SetShutdownMode();
-        return Drain();
+        Drain().Subscribe([tracker = FlushTracker](const auto& future)
+                          { tracker->SetShutdownResult(future.GetValue()); });
+        return FlushTracker->GetShutdownFuture();
     }
 
     bool IsDrained()
@@ -497,6 +621,11 @@ private:
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
+        TFlushActivity activity(FlushTracker);
+        if (!activity) {
+            return;
+        }
+
         auto batchBuilder =
             RequestBuilder->CreateWriteDataRequestBatchBuilder(nodeId);
 
@@ -548,6 +677,11 @@ private:
 
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
+        TFlushActivity activity(FlushTracker);
+        if (!activity) {
+            return;
+        }
+
         // TODO(#6201): until handleless IO is implemented, flush needs a live
         // handle to execute WriteData requests
         auto handle = State.AcquireFlushHandle(flushState->GetNodeId());
@@ -581,6 +715,7 @@ private:
         }
 
         auto requests = flushState->BeginFlush();
+        FlushTracker->BeginRequests(requests.size());
 
         for (size_t i = 0; i < requests.size(); ++i) {
             auto& request = requests[i];
@@ -593,12 +728,18 @@ private:
 
             request->SetHandle(handle);
 
-            auto callback = [ptr = weak_from_this(), flushState, i](
-                                const auto& future) mutable
+            auto callback =
+                [ptr = weak_from_this(), tracker = FlushTracker, flushState, i](
+                    const auto& future) mutable
             {
+                Y_DEFER
+                {
+                    tracker->EndRequest();
+                };
+
                 auto action = flushState->OnWriteDataRequestCompleted(
                     i,
-                    future.GetValue());
+                    ExtractResponse(future));
 
                 switch (action) {
                     case EWriteDataRequestCompletedAction::CollectFlushResult:
@@ -738,99 +879,116 @@ TWriteBackCache::~TWriteBackCache() = default;
 
 EWriteBackCacheMode TWriteBackCache::GetMode() const
 {
-    return Impl->GetMode();
+    auto impl = Impl;
+    return impl->GetMode();
 }
 
 NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
 {
-    return Impl->Drain();
+    auto impl = Impl;
+    return impl->Drain();
 }
 
 NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Shutdown()
 {
-    return Impl->Shutdown();
+    auto impl = Impl;
+    return impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const
 {
-    return Impl->IsDrained();
+    auto impl = Impl;
+    return impl->IsDrained();
 }
 
 TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadData(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> request)
 {
-    return Impl->ReadData(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->ReadData(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDataRequest> request)
 {
-    return Impl->WriteData(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->WriteData(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
 {
-    return Impl->FlushNodeData(nodeId);
+    auto impl = Impl;
+    return impl->FlushNodeData(nodeId);
 }
 
 TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 {
-    return Impl->FlushAllData();
+    auto impl = Impl;
+    return impl->FlushAllData();
 }
 
 TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
 {
-    return Impl->ReleaseHandle(nodeId, handle);
+    auto impl = Impl;
+    return impl->ReleaseHandle(nodeId, handle);
 }
 
 TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataDirect(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> request)
 {
-    return Impl->ReadDataDirect(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->ReadDataDirect(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataDirect(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDataRequest> request)
 {
-    return Impl->WriteDataDirect(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->WriteDataDirect(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TSetNodeAttrRequest> request)
 {
-    return Impl->SetNodeAttr(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->SetNodeAttr(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TCreateHandleResponse> TWriteBackCache::CreateHandle(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TCreateHandleRequest> request)
 {
-    return Impl->CreateHandle(std::move(callContext), std::move(request));
+    auto impl = Impl;
+    return impl->CreateHandle(std::move(callContext), std::move(request));
 }
 
 ui64 TWriteBackCache::AcquireNodeStateRef()
 {
-    return Impl->AcquireNodeStateRef();
+    auto impl = Impl;
+    return impl->AcquireNodeStateRef();
 }
 
 void TWriteBackCache::ReleaseNodeStateRef(ui64 refId)
 {
-    Impl->ReleaseNodeStateRef(refId);
+    auto impl = Impl;
+    impl->ReleaseNodeStateRef(refId);
 }
 
 ui64 TWriteBackCache::GetMaxWrittenOffset(ui64 nodeId) const
 {
-    return Impl->GetMaxWrittenOffset(nodeId);
+    auto impl = Impl;
+    return impl->GetMaxWrittenOffset(nodeId);
 }
 
 IModuleStatsPtr TWriteBackCache::CreateModuleStats() const
 {
-    return Impl->CreateModuleStats();
+    auto impl = Impl;
+    return impl->CreateModuleStats();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

@@ -2284,6 +2284,44 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
     }
 
+    Y_UNIT_TEST(ShouldWaitForAllFlushRequestsOnShutdownFailure)
+    {
+        TBootstrap b;
+        THashMap<ui64, TPromise<NProto::TWriteDataResponse>> writes;
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writes.emplace(request->GetNodeId(), promise);
+            return promise.GetFuture();
+        };
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        NProto::TWriteDataResponse error;
+        *error.MutableError() = MakeError(E_IO, "Flush failed");
+        writes.at(1).SetValue(std::move(error));
+
+        // A failed FlushAll result must not let shutdown destroy the cache
+        // while another node still has a backend write using its data.
+        UNIT_ASSERT(!shutdown.HasValue());
+        UNIT_ASSERT(!b.Cache.IsDrained());
+
+        writes.at(2).SetValue({});
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, shutdown.GetValue().GetCode());
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        b.CheckStatsAreEmpty();
+    }
+
     Y_UNIT_TEST(ShouldFlushCachedDataOnShutdown)
     {
         TBootstrap b;
