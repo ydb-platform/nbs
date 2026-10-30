@@ -134,8 +134,10 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 {
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountThresholdForBackpressureHDD(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
+    config.SetFreshByteCountLimitForBackpressureHDD(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
 
@@ -1549,7 +1551,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetWriteBlobThreshold(200_KB); // increasing the chance of batching
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2673,7 +2675,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetEnableConversionIntoMixedIndexV2(true);
         config.SetHotZoneRequestCountFactor(1);
         config.SetColdZoneRequestCountFactor(1);
-        config.SetFlushThreshold(100_MB);
+        config.SetFlushThresholdHDD(100_MB);
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -2803,7 +2805,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldNotOverwriteNewerDataWithInflightFlushedBlob)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
-        config.SetFlushThreshold(100_MB);
+        config.SetFlushThresholdHDD(100_MB);
         config.SetUpdateBlobsThreshold(999999);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2913,7 +2915,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetCompactionGarbageThreshold(999999);
         config.SetHotZoneRequestCountFactor(1);
         config.SetColdZoneRequestCountFactor(1);
-        config.SetFlushThreshold(100_MB);
+        config.SetFlushThresholdHDD(100_MB);
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3048,7 +3050,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetSSDV2MaxBlobsPerRange(999999);
         config.SetHDDV2MaxBlobsPerRange(999999);
         config.SetCompactionGarbageThreshold(999999);
-        config.SetFlushThreshold(1_GB);
+        config.SetFlushThresholdHDD(1_GB);
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -5638,7 +5640,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetCompactionGarbageThreshold(999999); // disabling garbage compaction
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -6035,7 +6037,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -6305,7 +6307,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteBlobThreshold(120_KB); // 30 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -6327,7 +6329,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -6438,7 +6440,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetHotZoneRequestCountFactor(1);
         config.SetColdZoneRequestCountFactor(1);
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
@@ -6565,7 +6567,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
@@ -6617,7 +6619,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         NProto::TStorageServiceConfig config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
@@ -6976,7 +6978,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
@@ -7066,7 +7068,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(60_KB); // 15 blocks or more => merged
-        config.SetFlushThreshold(1_GB); // disabling flush
+        config.SetFlushThresholdHDD(1_GB); // disabling flush
         config.SetUpdateBlobsThreshold(999999); // disabling cleanup
         config.SetSSDV2MaxBlobsPerRange(999999); // disabling compaction
         config.SetHDDV2MaxBlobsPerRange(999999); // disabling compaction
@@ -7257,8 +7259,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
+        config.SetFlushThresholdHDD(4_MB);
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -7898,7 +7900,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
 
         auto runtime = PrepareTestActorRuntime(config);
