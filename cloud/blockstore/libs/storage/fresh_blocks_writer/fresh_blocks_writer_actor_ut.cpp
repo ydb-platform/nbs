@@ -267,9 +267,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 {
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureHDD(400_KB);
     config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureHDD(1200_KB);
     config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);

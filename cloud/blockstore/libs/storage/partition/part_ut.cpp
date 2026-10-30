@@ -140,9 +140,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 {
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureHDD(400_KB);
     config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureHDD(1200_KB);
     config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
@@ -2306,8 +2306,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshBlobCountFlushThreshold(4);
-        config.SetFreshBlobByteCountFlushThreshold(999999999);
+        config.SetFreshBlobCountFlushThresholdHDD(4);
+        config.SetFreshBlobByteCountFlushThresholdHDD(999999999);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2355,8 +2355,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshBlobCountFlushThreshold(999999);
-        config.SetFreshBlobByteCountFlushThreshold(15_MB);
+        config.SetFreshBlobCountFlushThresholdHDD(999999);
+        config.SetFreshBlobByteCountFlushThresholdHDD(15_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -5975,7 +5975,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(1);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -6006,7 +6006,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCollectGarbageThreshold(3);
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -6039,7 +6039,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCollectGarbageThreshold(3);
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -6076,7 +6076,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerRange(2);
         config.SetHDDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(1);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -6130,7 +6130,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetHDDMaxBlobsPerRange(2);
         config.SetSSDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(3);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -6179,7 +6179,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldCorrectlyHandleZeroAndNonZeroFreshBlobsDuringFlush)
     {
         auto config = DefaultConfig();
-        config.SetFlushThreshold(12_KB);
+        config.SetFlushThresholdHDD(12_KB);
         config.SetFlushBlobSizeThreshold(8_KB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -11323,8 +11323,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -11358,7 +11358,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFreshChannelZeroRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
@@ -13585,7 +13585,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(128_KB);
         config.SetMaxBlobRangeSize(128_MB);
         // disabling flush
-        config.SetFlushThreshold(1_GB);
+        config.SetFlushThresholdHDD(1_GB);
         // enabling fresh channel writes to make stats check a bit more
         // convenient
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -15936,7 +15936,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         constexpr ui32 FreshChannelId = 4;
 
         auto config = DefaultConfig();
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
 
@@ -16317,8 +16317,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRejectSmallZerosAfterReachingFreshByteCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFreshChannelZeroRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
@@ -18120,7 +18120,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldDrainWhenFreshByteCountHardLimitExceeded)
     {
         auto config = DefaultConfig();
-        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);

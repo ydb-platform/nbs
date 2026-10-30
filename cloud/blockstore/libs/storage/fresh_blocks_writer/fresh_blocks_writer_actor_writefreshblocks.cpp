@@ -37,7 +37,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
                 PartitionConfig.GetBlockSize(),
             PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                 ? Config->GetFreshByteCountHardLimitSSD()
-                : Config->GetFreshByteCountHardLimit(),
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -150,7 +150,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
                 PartitionConfig.GetBlockSize(),
             PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                 ? Config->GetFreshByteCountHardLimitSSD()
-                : Config->GetFreshByteCountHardLimit(),
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {

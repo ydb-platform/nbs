@@ -406,7 +406,7 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
     const auto flushThreshold =
         PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
             ? Config->GetFlushThresholdSSD()
-            : Config->GetFlushThreshold();
+            : Config->GetFlushThresholdHDD();
     const bool shouldFlush =
         !State->IsLoadStateFinished() || dataSize >= flushThreshold ||
         freshBlockUpdatesSize >= FreshBlockUpdatesSizeThreshold;

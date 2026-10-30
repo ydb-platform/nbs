@@ -174,9 +174,9 @@ void TPartitionActor::CompleteLoadState(
         },
         {
             isSSD ? Config->GetFreshByteCountLimitForBackpressureSSD()
-                  : Config->GetFreshByteCountLimitForBackpressure(),
+                  : Config->GetFreshByteCountLimitForBackpressureHDD(),
             isSSD ? Config->GetFreshByteCountThresholdForBackpressureSSD()
-                  : Config->GetFreshByteCountThresholdForBackpressure(),
+                  : Config->GetFreshByteCountThresholdForBackpressureHDD(),
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {

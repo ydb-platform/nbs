@@ -464,7 +464,7 @@ void TPartitionActor::WriteFreshBlocks(
     const auto freshByteCountHardLimit =
         PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
             ? Config->GetFreshByteCountHardLimitSSD()
-            : Config->GetFreshByteCountHardLimit();
+            : Config->GetFreshByteCountHardLimitHDD();
     if (freshByteCount >= freshByteCountHardLimit) {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
