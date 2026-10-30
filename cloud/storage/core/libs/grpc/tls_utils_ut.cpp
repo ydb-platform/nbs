@@ -567,6 +567,23 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         WriteTextFile(rootPath, "not a certificate");
         UNIT_ASSERT_EXCEPTION(LoadRootCaPair(rootPath), yexception);
     }
+
+    Y_UNIT_TEST(ShouldRejectIdentityChainWithBrokenIntermediate)
+    {
+        TTempDir tempDir;
+        const auto files = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt") +
+                "\n-----BEGIN CERTIFICATE-----\nMIIB\n"
+                "-----END CERTIFICATE-----\n");
+
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            LoadCertificatePairs({files}),
+            yexception,
+            "Failed to parse PEM certificates");
+    }
 }
 
 }   // namespace NCloud::NTlsUtils

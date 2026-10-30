@@ -89,6 +89,7 @@ protected:
     ITaskQueuePtr LongRunningTaskExecutor;
     ILocalNVMeDeviceProviderPtr LocalNVMeDeviceProvider;
     ILocalNVMeServicePtr LocalNVMeService;
+    ICertificateWatcherPtr CertificateWatcher;
     ICertificateProviderPtr CertificateProvider;
 
     TProgramShouldContinue ShouldContinue;

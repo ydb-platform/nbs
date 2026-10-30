@@ -1,15 +1,17 @@
 #include "tls_certificate_provider.h"
 
+#include "tls_certificate_watcher.h"
 #include "tls_utils.h"
 
-#include <cloud/storage/core/libs/common/error.h>
+#include <src/core/lib/gprpp/ref_counted_ptr.h>
+#include <src/core/lib/security/credentials/tls/grpc_tls_certificate_distributor.h>
+#include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <util/generic/maybe.h>
+#include <util/system/mutex.h>
 
-#include <util/digest/city.h>
-#include <util/folder/dirut.h>
-#include <util/generic/yexception.h>
-#include <util/stream/file.h>
+#include <memory>
+#include <optional>
 
 namespace NCloud {
 
@@ -17,12 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 RootCaFingerprint(TStringBuf rootCa)
-{
-    // Dynamic counters export gauges as double. Keep only 53 bits to avoid
-    // precision loss while preserving a high-quality fingerprint.
-    return CityHash64(rootCa) & ((1ULL << 53) - 1);
-}
+using grpc_core::PemKeyCertPairList;
+using grpc_core::RefCountedPtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,31 +29,15 @@ class TStaticCertificateProvider final
 {
 private:
     const NTlsUtils::TRootCaPair RootCaPair;
-    const ILoggingServicePtr Logging;
-    const TString LogComponent;
-    const NMonitoring::TDynamicCountersPtr ServerGroup;
-    TVector<NTlsUtils::TCertificatePair> Certificates;
-
-    TLog Log;
+    const TVector<NTlsUtils::TCertificatePair> Certificates;
 
 public:
     TStaticCertificateProvider(
             TString rootCertPath,
-            TVector<TCertificateFiles> certificates,
-            ILoggingServicePtr logging,
-            TString logComponent,
-            NMonitoring::TDynamicCountersPtr serverGroup)
+            TVector<TCertificateFiles> certificates)
         : RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
-        , Logging(std::move(logging))
-        , LogComponent(std::move(logComponent))
-        , ServerGroup(std::move(serverGroup))
         , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
     {}
-
-    NThreading::TFuture<NProto::TError> UpdateCertificates() override
-    {
-        return NThreading::MakeFuture(NProto::TError());
-    }
 
     std::shared_ptr<grpc::ChannelCredentials>
         CreateSecureClientCredentials() override
@@ -94,55 +76,206 @@ public:
     }
 
     void Start() override
-    {
-        if (Logging) {
-            Log = Logging->CreateLog(LogComponent);
-        }
-
-        InitCounters();
-    }
+    {}
 
     void Stop() override
     {}
+};
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TGrpcTlsCertificateProvider final
+    : public grpc_tls_certificate_provider
+{
 private:
-    void InitCounters()
+    RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
+
+public:
+    TGrpcTlsCertificateProvider()
+        : Distributor(
+            grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
+    {}
+
+    void PublishCerts(
+        const TMaybe<TString>& rootCertificate,
+        PemKeyCertPairList identityPairs)
     {
-        if (!ServerGroup) {
-            return;
+        Distributor->SetKeyMaterials(
+            "",
+            rootCertificate.Defined()
+                ? *rootCertificate
+                : std::optional<TString>{},
+            std::move(identityPairs));
+    }
+
+    RefCountedPtr<grpc_tls_certificate_distributor> distributor() const override
+    {
+        return Distributor;
+    }
+
+    grpc_core::UniqueTypeName type() const override
+    {
+        static grpc_core::UniqueTypeName::Factory kFactory(
+            "NCloudCertificateProvider");
+        return kFactory.Create();
+    }
+
+    int CompareImpl(const grpc_tls_certificate_provider* other) const override
+    {
+        // gRPC sorts and searches providers with a three-way compare of their
+        // addresses.
+        auto res = std::compare_three_way{}(
+            static_cast<const grpc_tls_certificate_provider*>(this),
+            other);
+        if (res < 0) {
+            return -1;
         }
+        return res > 0 ? 1 : 0;
+    }
+};
 
-        auto tlsMetricsGroup =
-            ServerGroup->GetSubgroup("subsystem", "certificates");
+////////////////////////////////////////////////////////////////////////////////
 
-        if (RootCaPair.RootCaPath) {
-            auto rootMetrics = tlsMetricsGroup->GetSubgroup(
-                "cert",
-                GetBaseName(RootCaPair.RootCaPath));
-            *rootMetrics->GetCounter("Fingerprint", false) =
-                RootCaFingerprint(RootCaPair.RootCa);
-        }
+class TGrpcCertificateProvider final
+    : public grpc::experimental::CertificateProviderInterface
+{
+private:
+    grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> Provider;
 
-        for (const auto& cert: Certificates) {
-            auto certMetrics = tlsMetricsGroup->GetSubgroup(
-                "cert",
-                GetBaseName(cert.Files.CertChainPath));
+public:
+    explicit TGrpcCertificateProvider(
+            grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> provider)
+        : Provider(std::move(provider))
+    {}
 
-            auto expireTs = certMetrics->GetCounter("ExpireTs", false);
+    grpc_tls_certificate_provider* c_provider() override
+    {
+        return Provider.get();
+    }
+};
 
-            auto [seconds, error] =
-                NTlsUtils::GetCertificateNotAfterTimestampSec(
-                    cert.Content.CertChain);
-            if (HasError(error)) {
-                STORAGE_WARN(
-                    "Unable to parse certificate notAfter date for "
-                    << cert.Files.CertChainPath.Quote() << ": "
-                    << FormatError(error));
-            } else {
-                expireTs->Set(static_cast<TAtomicBase>(seconds));
+////////////////////////////////////////////////////////////////////////////////
+
+class TWatchedCertificateProvider final
+    : public ICertificateProvider
+{
+private:
+    // Shared with the watcher callbacks, which may outlive the provider.
+    struct TState
+    {
+        const grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider>
+            TlsProvider =
+                grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>();
+
+        TMutex Mutex;
+        TString RootCa;
+        TVector<NTlsUtils::TIdentityContent> Identities;
+
+        // Under Mutex, so that two publishes cannot reorder.
+        void Publish()
+        {
+            PemKeyCertPairList identityPairs;
+            for (const auto& identity: Identities) {
+                if (identity.PrivateKey.empty() || identity.CertChain.empty()) {
+                    continue;
+                }
+                identityPairs.emplace_back(
+                    identity.PrivateKey,
+                    identity.CertChain);
+            }
+
+            TMaybe<TString> rootCa = RootCa.empty()
+                ? Nothing()
+                : TMaybe<TString>(RootCa);
+            if (rootCa.Defined() || !identityPairs.empty()) {
+                TlsProvider->PublishCerts(rootCa, std::move(identityPairs));
             }
         }
+    };
+
+    const std::shared_ptr<TState> State = std::make_shared<TState>();
+    const std::shared_ptr<grpc::experimental::CertificateProviderInterface>
+        GrpcProvider;
+    bool HasRootCa = false;
+    bool HasIdentities = false;
+
+public:
+    TWatchedCertificateProvider(
+            const ICertificateWatcherPtr& watcher,
+            const TString& rootCertPath,
+            TVector<TCertificateFiles> certificates)
+        : GrpcProvider(
+            std::make_shared<TGrpcCertificateProvider>(State->TlsProvider))
+    {
+        auto certs =
+            NTlsUtils::PrepareCertificateFilePairs(std::move(certificates));
+        HasIdentities = !certs.empty();
+        HasRootCa = !rootCertPath.empty();
+
+        // Held across the subscriptions, so that an update delivered in
+        // between cannot be overwritten by the initial content.
+        TGuard<TMutex> lock(State->Mutex);
+
+        State->Identities.resize(certs.size());
+        for (size_t i = 0; i < certs.size(); ++i) {
+            State->Identities[i] = watcher->WatchIdentity(
+                certs[i],
+                [state = State, i](const NTlsUtils::TIdentityContent& content)
+                {
+                    TGuard<TMutex> lock(state->Mutex);
+                    state->Identities[i] = content;
+                    state->Publish();
+                });
+        }
+
+        if (HasRootCa) {
+            State->RootCa = watcher->WatchRootCa(
+                rootCertPath,
+                [state = State](const TString& rootCa)
+                {
+                    TGuard<TMutex> lock(state->Mutex);
+                    state->RootCa = rootCa;
+                    state->Publish();
+                });
+        }
+
+        State->Publish();
     }
+
+    std::shared_ptr<grpc::ChannelCredentials>
+        CreateSecureClientCredentials() override
+    {
+        grpc::experimental::TlsChannelCredentialsOptions tlsOptions;
+        tlsOptions.set_certificate_provider(GrpcProvider);
+        if (HasIdentities) {
+            tlsOptions.watch_identity_key_cert_pairs();
+        }
+        if (HasRootCa) {
+            tlsOptions.watch_root_certs();
+        }
+        return grpc::experimental::TlsCredentials(tlsOptions);
+    }
+
+    std::shared_ptr<grpc::ServerCredentials>
+        CreateSecureServerCredentials() override
+    {
+        grpc::experimental::TlsServerCredentialsOptions tlsOptions(GrpcProvider);
+        tlsOptions.set_cert_request_type(
+            GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY);
+        if (HasIdentities) {
+            tlsOptions.watch_identity_key_cert_pairs();
+        }
+        if (HasRootCa) {
+            tlsOptions.watch_root_certs();
+        }
+        return grpc::experimental::TlsServerCredentials(tlsOptions);
+    }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
 };
 
 }   // namespace
@@ -151,17 +284,11 @@ private:
 
 ICertificateProviderPtr CreateStaticCertificateProvider(
     TString rootCertPath,
-    TVector<TCertificateFiles> certificates,
-    ILoggingServicePtr logging,
-    TString logComponent,
-    NMonitoring::TDynamicCountersPtr serverGroup)
+    TVector<TCertificateFiles> certificates)
 {
     return std::make_shared<TStaticCertificateProvider>(
         std::move(rootCertPath),
-        std::move(certificates),
-        std::move(logging),
-        std::move(logComponent),
-        std::move(serverGroup));
+        std::move(certificates));
 }
 
 ICertificateProviderPtr CreateCertificateProviderStub()
@@ -170,63 +297,14 @@ ICertificateProviderPtr CreateCertificateProviderStub()
 }
 
 ICertificateProviderPtr CreateCertificateProvider(
-    ILoggingServicePtr logging,
-    TString logComponent,
-    ISchedulerPtr scheduler,
-    ITaskQueuePtr taskQueue,
-    NMonitoring::TDynamicCountersPtr serverGroup,
-    TString rootCertPath,
-    TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval)
-{
-    if (refreshInterval == TDuration::Zero()) {
-        return CreateStaticCertificateProvider(
-            std::move(rootCertPath),
-            std::move(certificates),
-            std::move(logging),
-            std::move(logComponent),
-            std::move(serverGroup));
-    }
-
-    auto certs = NTlsUtils::PrepareCertificateFilePairs(std::move(certificates));
-    if (certs.empty()) {
-        if (rootCertPath) {
-            return CreatePeriodicCertificateProvider(
-                std::move(logging),
-                std::move(logComponent),
-                std::move(scheduler),
-                std::move(taskQueue),
-                std::move(serverGroup),
-                std::move(rootCertPath),
-                {},
-                refreshInterval);
-        }
-
-        return CreateStaticCertificateProvider({}, {});
-    }
-
-    return CreatePeriodicCertificateProvider(
-        std::move(logging),
-        std::move(logComponent),
-        std::move(scheduler),
-        std::move(taskQueue),
-        std::move(serverGroup),
-        std::move(rootCertPath),
-        std::move(certs),
-        refreshInterval);
-}
-
-ICertificateProviderPtr CreateStaticCertificateProvider(
+    ICertificateWatcherPtr watcher,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates)
 {
-    return CreateStaticCertificateProvider(
-        std::move(rootCertPath),
-        std::move(certificates),
-        {},       // logging
-        {},       // logComponent
-        nullptr   // serverGroup
-    );
+    return std::make_shared<TWatchedCertificateProvider>(
+        watcher,
+        rootCertPath,
+        std::move(certificates));
 }
 
 }   // namespace NCloud
