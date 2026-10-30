@@ -131,8 +131,7 @@ private:
     ITimerPtr Timer;
     NProto::TVolume Volume;
     TString ClientId;
-    ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     TLatencySliConfig LatencySli;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
@@ -164,7 +163,6 @@ private:
 
 TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
     : Logging{std::move(logging)}
-    , CompletionStats(CreateCompletionStats())
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -347,7 +345,8 @@ void TRdmaBackend::ProcessQueue(
 
 std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
 {
-    return CompletionStats->Get(timeout);
+    Y_UNUSED(timeout);
+    return SnapshotCompletionStats(CompletionStatsData);
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -471,8 +470,6 @@ void TRdmaBackend::CompleteRequest(
             isError);
     }
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
-
-    CompletionStats->Sync(CompletionStatsData);
 }
 
 }   // namespace

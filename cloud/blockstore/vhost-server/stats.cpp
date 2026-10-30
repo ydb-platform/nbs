@@ -242,4 +242,12 @@ ICompletionStatsPtr CreateCompletionStats()
     return std::make_shared<TCompletionStats>();
 }
 
+TSimpleStats SnapshotCompletionStats(const TAtomicStats& stats)
+{
+    TSimpleStats snapshot;
+    snapshot += stats;
+    snapshot.CompletionSnapshotCycles = GetCycleCount();
+    return snapshot;
+}
+
 }   // namespace NCloud::NBlockStore::NVHostServer
