@@ -191,6 +191,9 @@ runs:
             --stat
             --output "$OUT_DIR"
             -DGITHUB_CI=yes
+            # intended to fix case when ya make lists tests and timeouts,
+            # which fails the test run
+            --list-before-test
         )
 
         case "$BUILD_PRESET" in

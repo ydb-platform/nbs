@@ -1446,7 +1446,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 response.GetLastProcessedRangeId());
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(TStatus::E_RUNNING),
-                static_cast<int>(response.GetStatus()));
+                static_cast<int>(response.GetOperationStatus()));
         }
 
         UNIT_ASSERT(completion);
@@ -1481,7 +1481,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<int>(TStatus::E_COMPLETED),
-                static_cast<int>(response.GetStatus()));
+                static_cast<int>(response.GetOperationStatus()));
         }
 
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
@@ -1503,6 +1503,102 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             4,
             subgroup->FindSubgroup("request", "Compaction")
                 ->GetCounter("Count")->GetAtomic());
+    }
+
+    void TestForcedTabletOperationAction(
+        NProtoPrivate::TForcedOperationRequest::EForcedOperationType operation)
+    {
+        using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+
+        TTestEnv env;
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+
+        bool operationCompleted = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTabletPrivate::EvForcedTabletOperationCompleted)
+                {
+                    operationCompleted = true;
+                }
+
+                return false;
+            });
+
+        NProtoPrivate::TForcedOperationRequest request;
+        request.SetFileSystemId("test");
+        request.SetOpType(operation);
+
+        TString input;
+        google::protobuf::util::MessageToJsonString(request, &input);
+        auto actionResponse = service.ExecuteAction("forcedoperation", input);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            actionResponse->GetStatus(),
+            actionResponse->GetErrorReason());
+
+        NProtoPrivate::TForcedOperationResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                        actionResponse->Record.GetOutput(),
+                        &response)
+                        .ok());
+        UNIT_ASSERT_VALUES_UNEQUAL(TString(), response.GetOperationId());
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return operationCompleted;
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        NProtoPrivate::TForcedOperationStatusRequest statusRequest;
+        statusRequest.SetFileSystemId("test");
+        statusRequest.SetOperationId(response.GetOperationId());
+
+        TString statusInput;
+        google::protobuf::util::MessageToJsonString(
+            statusRequest,
+            &statusInput);
+        actionResponse =
+            service.ExecuteAction("forcedoperationstatus", statusInput);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            actionResponse->GetStatus(),
+            actionResponse->GetErrorReason());
+
+        NProtoPrivate::TForcedOperationStatusResponse statusResponse;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                        actionResponse->Record.GetOutput(),
+                        &statusResponse)
+                        .ok());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(TStatus::E_COMPLETED),
+            static_cast<int>(statusResponse.GetOperationStatus()));
+    }
+
+    Y_UNIT_TEST(ShouldRunForcedFlushAction)
+    {
+        TestForcedTabletOperationAction(
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH);
+    }
+
+    Y_UNIT_TEST(ShouldRunForcedFlushBytesAction)
+    {
+        TestForcedTabletOperationAction(
+            NProtoPrivate::TForcedOperationRequest::E_FLUSH_BYTES);
+    }
+
+    Y_UNIT_TEST(ShouldRunForcedCollectGarbageAction)
+    {
+        TestForcedTabletOperationAction(
+            NProtoPrivate::TForcedOperationRequest::E_COLLECT_GARBAGE);
     }
 
     Y_UNIT_TEST(ShouldMarkNodeRefsExhaustive)

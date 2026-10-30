@@ -12,6 +12,8 @@
 #include <util/stream/format.h>
 #include <util/system/fs.h>
 
+#include <fcntl.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -43,6 +45,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::optional<TTempDir> TempDir;
 
     TFsPath SysFsRoot;
+    TFsPath DevFsRoot;
     TFsPath NVMeDriverPath;
     TFsPath VFIODriverPath;
 
@@ -54,8 +57,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         TempDir.emplace();
 
-        SysFsRoot = TempDir->Path();
-        SysFs = CreateSysFs(TempDir->Path());
+        SysFsRoot = TempDir->Path() / "sys";
+        DevFsRoot = TempDir->Path() / "dev";
+
+        SysFs = CreateSysFs(SysFsRoot, DevFsRoot);
 
         NVMeDriverPath = PrepareDriver("nvme");
         VFIODriverPath = PrepareDriver("vfio-pci");
@@ -218,6 +223,44 @@ Y_UNIT_TEST_SUITE(TSysFsHelpersTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "",
             SysFs->GetDriverForPCIDevice(Devices[2].GetPCIAddress()));
+    }
+
+    Y_UNIT_TEST_F(ShouldOpenCurrentVfioGroup, TFixture)
+    {
+        const auto vfioRoot = DevFsRoot / "vfio";
+        NFs::MakeDirectoryRecursive(vfioRoot);
+        auto sysFs = CreateSysFs(SysFsRoot, DevFsRoot);
+        const auto& device = Devices[1];
+        const auto& pciAddr = device.GetPCIAddress();
+
+        {
+            auto r = SafeExecute<TResultOrError<TFileHandle>>(
+                [&] { return sysFs->OpenVfioGroupForPCIDevice(pciAddr); });
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_SYSTEM_ERROR(ENOENT),
+                r.GetError().GetCode());
+            UNIT_ASSERT(!(vfioRoot / "20").Exists());
+        }
+
+        // Resolve the current group from sysfs rather than cached device info.
+        const auto groupPath = GetPCIDevicePath(device) / "iommu_group";
+        NFs::Remove(groupPath);
+        NFs::SymLink(PrepareIOMMUGroup(21), groupPath);
+        const auto groupFile = vfioRoot / "21";
+        groupFile.Touch();
+
+        {
+            auto handle = sysFs->OpenVfioGroupForPCIDevice(pciAddr);
+            UNIT_ASSERT(handle.IsOpen());
+            UNIT_ASSERT(::fcntl(handle, F_GETFD) & FD_CLOEXEC);
+            UNIT_ASSERT_VALUES_EQUAL(4, handle.Write("test", 4));
+            UNIT_ASSERT_VALUES_EQUAL("test", TFileInput(groupFile).ReadAll());
+        }
+
+        NFs::Remove(groupPath);
+        auto r = SafeExecute<TResultOrError<TFileHandle>>(
+            [&] { return sysFs->OpenVfioGroupForPCIDevice(pciAddr); });
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, r.GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldBindDevice, TFixture)

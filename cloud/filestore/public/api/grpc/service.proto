@@ -179,22 +179,6 @@ service TFileStoreService
         };
     }
 
-    rpc SubscribeSession(TSubscribeSessionRequest) returns (TSubscribeSessionResponse) {
-        option (google.api.http) = {
-            post: "/subscribe_session"
-            body: "*"
-        };
-    }
-
-    rpc GetSessionEvents(TGetSessionEventsRequest) returns (TGetSessionEventsResponse) {
-        option (google.api.http) = {
-            post: "/get_session_events"
-            body: "*"
-        };
-    }
-
-    rpc GetSessionEventsStream(TGetSessionEventsRequest) returns (stream TGetSessionEventsResponse);
-
     //
     // Checkpoint management.
     //

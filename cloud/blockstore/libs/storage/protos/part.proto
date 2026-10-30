@@ -235,6 +235,9 @@ message TFreshBlobMeta
     repeated uint32 StartIndices = 1;
     repeated uint32 EndIndices = 2;
     bool IsZero = 3;
+
+    // Time when the fresh write started, in microseconds since epoch.
+    uint64 Timestamp = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

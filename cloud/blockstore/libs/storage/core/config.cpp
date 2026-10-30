@@ -133,6 +133,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
     xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
     xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
+    xxx(SystemTabletBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\
@@ -208,6 +209,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FlushThreshold,                ui32,      4_MB                        )\
     xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
     xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
+    xxx(FreshBlobAgeFlushThresholdSSD, TDuration, TDuration::Zero()           )\
+    xxx(FreshBlobAgeFlushThresholdHDD, TDuration, TDuration::Zero()           )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
@@ -752,6 +755,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionStatsTrackerEnabled,              bool,       false         )\
     xxx(MixedBlocksCompactionMinStoredBytesHDD,     ui64,       1_GB          )\
     xxx(MixedBlocksCompactionMinStoredBytesSSD,     ui64,       1_GB          )\
+    xxx(IgnorePartitionCountInMaxBlobsPerRange,     bool,       false         )\
     xxx(VolumeBalancerEnabled,                      bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW

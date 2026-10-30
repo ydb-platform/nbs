@@ -1,0 +1,9 @@
+#pragma once
+
+namespace NCloud::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFastShardContext;
+
+}   // namespace NCloud::NFastShard

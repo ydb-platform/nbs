@@ -5,10 +5,13 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
         storage_group.cpp
         storage_group_factory.cpp
         storage_group_helpers.cpp
+        storage_group_inflight.cpp
         storage_group_quorum.cpp
     )
 
     PEERDIR(
+        cloud/fastshard/libs/fiber
+
         contrib/libs/silk/src/fibers
     )
 ELSE()
@@ -20,8 +23,9 @@ ENDIF()
 PEERDIR(
     cloud/filestore/private/api/protos
 
-    cloud/fastshard/protos
-    cloud/fastshard/sn/iface
+    cloud/fastshard/libs/common
+    cloud/fastshard/libs/sn/iface
+    cloud/fastshard/public/api/protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/protos
@@ -30,6 +34,10 @@ PEERDIR(
 END()
 
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    RECURSE(
+        bench
+    )
+
     RECURSE_FOR_TESTS(
         ut
     )

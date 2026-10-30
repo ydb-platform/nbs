@@ -20,7 +20,7 @@ class FilestoreVhost(Daemon):
         return super(FilestoreVhost, self).daemon.process.pid
 
 
-@retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
+@retrying.retry(stop_max_delay=180000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_filestore_vhost(daemon, port, port_type="endpoint"):
     '''
     Ping filestore vhost with delay between attempts to ensure

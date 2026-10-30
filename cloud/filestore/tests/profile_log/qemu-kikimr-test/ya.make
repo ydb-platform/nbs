@@ -17,7 +17,9 @@ TEST_SRCS(
 
 SET(QEMU_VIRTIO fs)
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tools/testing/fs_posix_compliance/fs_posix_compliance.inc)
+# Not `fs_posix_compliance.inc`: we only need the compliance suites, without
+# their python tests, which would get into the profile log.
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tools/testing/fs_posix_compliance/fs_posix_compliance_suite.inc)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)

@@ -576,7 +576,7 @@ TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
     },
     "medium": {
         "blockstore": 90,
-        "filestore": 90,
+        "filestore": 120,
         "disk_manager": 60,
         "tasks": 60,
         "storage": 60,

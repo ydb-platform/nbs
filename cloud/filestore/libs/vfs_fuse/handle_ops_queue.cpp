@@ -6,9 +6,14 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
-    , Stats(CreateHandleOpsQueueStats(size))
+THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 stateFileSize)
+    : RequestsToProcess(filePath, stateFileSize, 0, EFileRingBufferVersion::V5)
+    , Stats(
+          // Resizing is deferred until the queue is empty. GetDataCapacity()
+          // returns the actual capacity, which may still be the old value.
+          // The metric is set only once and is not updated after resizing,
+          // so report the target capacity instead.
+          CreateHandleOpsQueueStats(RequestsToProcess.GetTargetDataCapacity()))
 {
     Stats->SetEntryCount(RequestsToProcess.Size());
 }
@@ -146,9 +151,9 @@ ui64 THandleOpsQueue::Size() const
 
 THandleOpsQueuePtr CreateHandleOpsQueue(
     const TString& filePath,
-    ui32 size)
+    ui32 stateFileSize)
 {
-    return std::make_unique<THandleOpsQueue>(filePath, size);
+    return std::make_unique<THandleOpsQueue>(filePath, stateFileSize);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

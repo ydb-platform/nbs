@@ -62,8 +62,6 @@ void TIndexTabletActor::HandleCreateHandle(
     const TEvService::TEvCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TResponse = TEvService::TEvCreateHandleResponse;
 
     auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(

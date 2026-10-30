@@ -1025,7 +1025,8 @@ private:
                     auto result =
                         PersistentState->AcquireHandleOpsQueueStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetHandleOpsQueueSize());
 
                     if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1083,7 +1084,8 @@ private:
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1128,7 +1130,7 @@ private:
                      .FileSystemId = Config->GetFileSystemId(),
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                     .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                     .StateFileSize = Config->GetWriteBackCacheStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =
@@ -1362,6 +1364,9 @@ private:
         }
         if (features.GetXAttrCacheTimeout()) {
             config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
+        }
+        if (features.GetXAttrCacheLimit()) {
+            config.SetXAttrCacheLimit(features.GetXAttrCacheLimit());
         }
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());

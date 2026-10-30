@@ -239,7 +239,12 @@ void TPartitionActor::CompleteLoadState(
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
 
-    SharedState->Init(SelfId(), Executor()->Generation(), 0);
+    SharedState->Init(
+        SelfId(),
+        Executor()->Generation(),
+        0,   // lastCommitId
+        ctx.Now(),
+        ctx.Monotonic());
 
     std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig;
     if (IsMixedBlocksFilterEnabled()) {
@@ -298,7 +303,7 @@ void TPartitionActor::CompleteLoadState(
         PartitionConfig,
         Info(),
         TabletID(),
-        BlobCodec,
+        BlobsCompressor,
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,

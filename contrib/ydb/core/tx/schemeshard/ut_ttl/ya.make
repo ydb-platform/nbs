@@ -12,6 +12,7 @@ ELSE()
 ENDIF()
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     contrib/ydb/core/kqp/ut/common
     contrib/ydb/core/tx/schemeshard/ut_helpers
     yql/essentials/parser/pg_wrapper

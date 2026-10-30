@@ -41,8 +41,16 @@ TThrottlingRequestInfo BuildRequestInfo(
     const TEvService::TEvWriteDataRequest& request,
     ui32 policyVersion)
 {
+    ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request.Record);
+    // TODO(#7538): add Length to TWriteDataRequest and set it to the payload
+    // size on the client side so that data length can be retrieved uniformly
+    // across payload types: protobuf buffer, iovecs, and external payload.
+    if (byteCount == 0 && request.GetPayloadCount() > 0) {
+        byteCount = request.GetPayload(0).GetSize();
+    }
+
     return {
-        NCloud::NFileStore::CalculateByteCount(request.Record),
+        byteCount,
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
         policyVersion
     };

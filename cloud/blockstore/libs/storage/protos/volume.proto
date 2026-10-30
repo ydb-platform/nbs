@@ -815,11 +815,11 @@ message TLinkLeaderVolumeToFollowerRequest
     // Follower volume.
     string FollowerDiskId = 3;
 
-    // Leader volume shard Id.
-    string LeaderShardId = 4;
+    // Leader volume cell Id.
+    string LeaderCellId = 4;
 
-    // Follower volume shard Id.
-    string FollowerShardId = 5;
+    // Follower volume cell Id.
+    string FollowerCellId = 5;
 }
 
 message TLinkLeaderVolumeToFollowerResponse
@@ -853,11 +853,11 @@ message TUpdateLinkOnFollowerRequest
     // Leader volume.
     string LeaderDiskId = 5;
 
-    // Leader volume shard.
-    string LeaderShardId = 6;
+    // Leader volume cell.
+    string LeaderCellId = 6;
 
-    // Follower volume shard.
-    string FollowerShardId = 7;
+    // Follower volume cell.
+    string FollowerCellId = 7;
 }
 
 message TUpdateLinkOnFollowerResponse
@@ -882,14 +882,14 @@ message TGetLinkStatusRequest
     // Leader volume.
     string LeaderDiskId = 3;
 
-    // Leader volume shard.
-    string LeaderShardId = 4;
+    // Leader volume cell.
+    string LeaderCellId = 4;
 
     // Follower volume.
     string FollowerDiskId = 5;
 
-    // Follower volume shard.
-    string FollowerShardId = 6;
+    // Follower volume cell.
+    string FollowerCellId = 6;
 }
 
 message TGetLinkStatusResponse
@@ -907,6 +907,10 @@ message TGetLinkStatusResponse
 
     // Error message when link in error state.
     string ErrorMessage = 4;
+
+    string LinkUUID = 5;
+    string LeaderCellId = 6;
+    string FollowerCellId = 7;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -927,11 +931,11 @@ message TUnlinkLeaderVolumeFromFollowerRequest
     // Follower volume.
     string FollowerDiskId = 3;
 
-    // Leader volume shard Id.
-    string LeaderShardId = 4;
+    // Leader volume cell Id.
+    string LeaderCellId = 4;
 
-    // Follower volume shard Id.
-    string FollowerShardId = 5;
+    // Follower volume cell Id.
+    string FollowerCellId = 5;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

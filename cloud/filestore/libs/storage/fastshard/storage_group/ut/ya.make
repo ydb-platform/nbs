@@ -6,14 +6,15 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/fastshard/testlib
+    cloud/fastshard/libs/fiber
+    cloud/fastshard/libs/sn/testlib
     cloud/filestore/libs/storage/fastshard/storage_group
-    
+
     contrib/restricted/googletest/googletest
 )
 
 # The silk crash dumper sources its gdb scripts from the source tree
-# (see SetUpCrashDumperScriptDir in cloud/fastshard/testlib).
+# (see SetUpCrashDumperScriptDir in cloud/fastshard/libs/sn/testlib).
 DATA(arcadia/contrib/libs/silk/src/gdb)
 
 END()

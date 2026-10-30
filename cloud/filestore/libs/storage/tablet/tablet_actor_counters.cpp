@@ -354,7 +354,8 @@ void TIndexTabletActor::UpdateMetrics(
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
     const TIndexTabletState::TBackpressureValues& backpressureValues,
-    const THandlesStats& handlesStats)
+    const THandlesStats& handlesStats,
+    const TFileSystemEventSubscriptions::TStats& subscriptionsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -554,6 +555,22 @@ void TIndexTabletActor::UpdateMetrics(
         Metrics->DeferredNodeDestructionCount,
         miscNodeStats.DeferredNodeDestructionCount);
 
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeCount,
+        subscriptionsStats.NodeCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeRefCount,
+        subscriptionsStats.NodeRefCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryClientCount,
+        subscriptionsStats.ClientCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryExtraPageCount,
+        subscriptionsStats.ExtraPageCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeXAttrCount,
+        subscriptionsStats.NodeXAttrCount);
+
     Metrics->BusyIdleCalc.OnUpdateStats();
     Metrics->UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
@@ -564,6 +581,8 @@ void TIndexTabletActor::UpdateMetrics(
     FILESTORE_TABLET_METRICS_REQUESTS(FILESTORE_TABLET_UPDATE_REQUEST_METRICS)
 
 #undef FILESTORE_TABLET_UPDATE_REQUEST_METRICS
+
+    Metrics->ListNodesExtra.UpdatePrev();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -617,7 +636,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
 
     // TabletStartTimestamp should be set only once
     i64 expected = 0;
@@ -703,7 +723,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 

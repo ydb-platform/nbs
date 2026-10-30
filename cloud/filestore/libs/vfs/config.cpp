@@ -26,10 +26,10 @@ namespace {
     xxx(VhostQueuesCount,       ui32,           0                             )\
                                                                                \
     xxx(HandleOpsQueuePath,     TString,        ""                            )\
-    xxx(HandleOpsQueueSize,     ui32,           1_GB                          )\
+    xxx(HandleOpsQueueSize,     ui32,           100_MB                        )\
                                                                                \
     xxx(WriteBackCachePath,                 TString,   ""                     )\
-    xxx(WriteBackCacheCapacity,             ui64,      256_MB                 )\
+    xxx(WriteBackCacheStateFileSize,        ui64,      256_MB                 )\
     xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
                                             TDuration::MilliSeconds(100)      )\
     xxx(WriteBackCacheFlushRetryPeriod,     TDuration,                         \

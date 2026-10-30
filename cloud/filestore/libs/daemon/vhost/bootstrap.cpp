@@ -38,7 +38,7 @@
 #include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -618,11 +618,9 @@ void TBootstrapVhost::InitEndpoints()
     const auto& vhostConfig = *Configs->VhostServiceConfig;
     auto persistentState = NFuse::CreatePersistentStateManager({
         .HandleOpsQueueBasePath = vhostConfig.GetHandleOpsQueuePath(),
-        .HandleOpsQueueStateFileSize = vhostConfig.GetHandleOpsQueueSize(),
         .HandleOpsQueueTotalSizeLimit =
             vhostConfig.GetHandleOpsQueueTotalSizeLimit(),
         .WriteBackCacheBasePath = vhostConfig.GetWriteBackCachePath(),
-        .WriteBackCacheStateFileSize = vhostConfig.GetWriteBackCacheCapacity(),
         .WriteBackCacheTotalSizeLimit =
             vhostConfig.GetWriteBackCacheTotalSizeLimit(),
         .DirectoryHandlesStorageBasePath =
@@ -646,13 +644,13 @@ void TBootstrapVhost::InitEndpoints()
             MultiFileSystemEventHandler),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize =
+            .StateFileSize =
                 Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
-            .Capacity =
-                Configs->VhostServiceConfig->GetWriteBackCacheCapacity(),
+            .StateFileSize =
+                Configs->VhostServiceConfig->GetWriteBackCacheStateFileSize(),
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),

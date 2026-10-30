@@ -201,6 +201,7 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;
@@ -229,6 +230,8 @@ public:
     TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
+    TDuration GetXAttrCacheTimeout() const;
+    ui32 GetXAttrCacheLimit() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
@@ -373,6 +376,10 @@ public:
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
     bool GetFileSystemEventsEnabled() const;
+    bool GetFileSystemEventsDryRunModeEnabled() const;
+    TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
+    TDuration GetFileSystemEventSubscriptionsCacheTTLMargin() const;
+    bool GetFileSystemListingEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 
@@ -473,6 +480,8 @@ public:
     ui32 GetMaxSlowestRequestsEntries() const;
 
     TDuration GetNodeLatencyHalfLife() const;
+
+    [[nodiscard]] bool GetEnableRdmaForWrites() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

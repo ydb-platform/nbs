@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_base_disk_keep_alive.h>
+#include <cloud/blockstore/libs/storage/partition_common/blobs_compressor.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -86,7 +87,6 @@ TPartitionActor::TPartitionActor(
     , SiblingCount(siblingCount)
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
-    , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
           StartTime,
@@ -100,6 +100,11 @@ TPartitionActor::TPartitionActor(
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
         TabletID());
+    BlobsCompressor = std::make_shared<TBlobsCompressor>(
+        NBlockCodecs::Codec(Config->GetBlobCompressionCodec()),
+        Config->GetBlobCompressionRate(),
+        DiagnosticsConfig->GetBlobCompressionChunkSizes(),
+        SharedState->GetPartCounters());
 }
 
 TPartitionActor::~TPartitionActor()
@@ -222,10 +227,10 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
     if (!PartCounters) {
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
         SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions()));
+            *DiagnosticsConfig));
     }
 }
 
@@ -718,6 +723,10 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+
+    if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleUpdateYellowState(
@@ -1038,6 +1047,13 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
+TDuration TPartitionActor::GetFreshBlobAgeFlushThreshold() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshBlobAgeFlushThresholdSSD()
+               : Config->GetFreshBlobAgeFlushThresholdHDD();
 }
 
 void TPartitionActor::CreateFreshBlocksCompanionClient()

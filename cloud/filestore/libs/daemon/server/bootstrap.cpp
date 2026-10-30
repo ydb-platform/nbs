@@ -21,7 +21,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
