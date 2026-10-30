@@ -47,6 +47,8 @@ private:
     THashMap<TKey, ui64> Tombstones;
     TDeque<TTombstone> TombstoneQueue;
     const ui32 MaxTombstoneCount;
+    // Max version among the tombstones added since the last InvalidateAll.
+    ui64 MaxTombstoneVersion = 0;
     ui64 Watermark = 0;
     TAdaptiveLock Lock;
 
@@ -119,14 +121,12 @@ public:
         // versions are kept in the watermark.
         //
 
-        Watermark = Max(Watermark, version);
-        for (const auto& [key, tombstoneVersion]: Tombstones) {
-            Watermark = Max(Watermark, tombstoneVersion);
-        }
+        Watermark = Max(Watermark, version, MaxTombstoneVersion);
 
         Entries.Clear();
         Tombstones.clear();
         TombstoneQueue.clear();
+        MaxTombstoneVersion = 0;
     }
 
     size_t GetEntryCount()
@@ -141,6 +141,7 @@ private:
     {
         ui64& tombstoneVersion = Tombstones[key];
         tombstoneVersion = Max(tombstoneVersion, version);
+        MaxTombstoneVersion = Max(MaxTombstoneVersion, version);
         TombstoneQueue.push_back({.Key = key, .Version = version});
 
         //
