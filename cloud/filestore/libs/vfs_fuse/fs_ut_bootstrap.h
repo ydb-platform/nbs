@@ -76,43 +76,41 @@ struct TBootstrap
 
     TString SocketPath;
 
-    NThreading::TPromise<void> StopTriggered =
-        NThreading::NewPromise<void>();
+    NThreading::TPromise<void> StopTriggered = NThreading::NewPromise<void>();
 
     TString DirectoryHandleStoragePath;
 
     TBootstrap(
-            ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler(),
-            const NProto::TFileStoreFeatures& featuresConfig = {},
-            ui32 handleOpsQueueStateFileSize = 1000,
-            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheStateFileSize = WriteBackCacheStateFileSize,
-            ui64 directoryHandlesInitialDataSize = 0,
-            ui64 directoryHandlesMaxDataAreaStepSize = 0,
-            IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-                CreateFileMapMemoryLimiterStub(),
-            IPersistentStateManagerPtr persistentStateManager = nullptr,
-            IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler =
-                nullptr)
-        : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
+        ITimerPtr timer = CreateWallClockTimer(),
+        ISchedulerPtr scheduler = CreateScheduler(),
+        const NProto::TFileStoreFeatures& featuresConfig = {},
+        ui32 handleOpsQueueStateFileSize = 1000,
+        ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
+        ui64 writeBackCacheStateFileSize = WriteBackCacheStateFileSize,
+        ui64 directoryHandlesInitialDataSize = 0,
+        ui64 directoryHandlesMaxDataAreaStepSize = 0,
+        IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
+            CreateFileMapMemoryLimiterStub(),
+        IPersistentStateManagerPtr persistentStateManager = nullptr,
+        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler = nullptr)
+        : Logging(CreateLoggingService("console", {TLOG_RESOURCES}))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
         , Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
         , FsCountersProvider{CreateFsCountersProvider(
-            TString{MetricsComponent},
-            Counters)}
+              TString{MetricsComponent},
+              Counters)}
         , StatsRegistry{CreateRequestStatsRegistry(
-            TString{MetricsComponent},
-            std::make_shared<TDiagnosticsConfig>(),
-            Counters,
-            Timer,
-            NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub(),
-            FsCountersProvider)}
+              TString{MetricsComponent},
+              std::make_shared<TDiagnosticsConfig>(),
+              Counters,
+              Timer,
+              NCloud::NStorage::NUserStats::CreateUserCounterSupplierStub(),
+              FsCountersProvider)}
         , ModuleStatsRegistry{CreateModuleStatsRegistry(
-            Timer,
-            FsCountersProvider,
-            Counters->GetSubgroup("component", TString{MetricsComponent}))}
+              Timer,
+              FsCountersProvider,
+              Counters->GetSubgroup("component", TString{MetricsComponent}))}
     {
         signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
 
@@ -145,20 +143,23 @@ struct TBootstrap
             return NThreading::MakeFuture(result);
         };
 
-        Service->ResetSessionHandler = [] (auto, auto) {
+        Service->ResetSessionHandler = [](auto, auto)
+        {
             return NThreading::MakeFuture(NProto::TResetSessionResponse{});
         };
 
-        Service->DestroySessionHandler = [] (auto, auto) {
+        Service->DestroySessionHandler = [](auto, auto)
+        {
             return NThreading::MakeFuture(NProto::TDestroySessionResponse());
         };
 
-        Service->PingSessionHandler = [] (auto, auto) {
+        Service->PingSessionHandler = [](auto, auto)
+        {
             return NThreading::MakeFuture(NProto::TPingSessionResponse());
         };
 
-        auto sessionConfig = std::make_shared<NClient::TSessionConfig>(
-            NProto::TSessionConfig{});
+        auto sessionConfig =
+            std::make_shared<NClient::TSessionConfig>(NProto::TSessionConfig{});
         Session = NClient::CreateSession(
             Logging,
             Timer,
@@ -257,8 +258,7 @@ struct TBootstrap
 
     NMonitoring::TDynamicCountersPtr GetAggregateHandleOpsQueueCounters() const
     {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent})
+        return Counters->FindSubgroup("component", TString{MetricsComponent})
             ->FindSubgroup("module", "HandleOpsQueue");
     }
 
@@ -267,7 +267,7 @@ struct TBootstrap
         Stop();
     }
 
-    NProto::TError Start(bool sendInitRequest=true)
+    NProto::TError Start(bool sendInitRequest = true)
     {
         auto response = StartAsync();
         UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
@@ -343,7 +343,7 @@ struct TBootstrap
         auto interrupt = Fuse->SendRequest<NVhost::TInterruptRequest>(
             Fuse->GetLastRequestId() + 2);
         UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
-    };
+    }
 
     static TBootstrap CreateWithHandleStorage(
         ui64 directoryHandlesInitialDataSize = 0,
