@@ -96,7 +96,8 @@ void TFileSystem::SetAttr(
                 error,
                 req,
                 response.GetNode(),
-                version);
+                version,
+                TInstant::Zero() /* cacheDeadline */);
         }
     };
 
@@ -121,6 +122,10 @@ void TFileSystem::GetAttr(
         return;
     }
 
+    if (TryReplyAttrFromCache(*callContext, req, ino)) {
+        return;
+    }
+
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
 
     // Take into account cached WriteData requests
@@ -139,6 +144,17 @@ void TFileSystem::GetAttr(
                 if (self && self->CheckNodeError(
                         *callContext, req, response.GetError()))
                 {
+                    //
+                    // The attrs of a node with the data cached in
+                    // WriteBackCache are going to change upon flush, which
+                    // doesn't produce an invalidation if it changes only
+                    // the timestamps.
+                    //
+
+                    const auto cacheDeadline = maxWrittenOffset
+                        ? TInstant::Zero()
+                        : self->GetCacheDeadline(response.GetNodeCacheTTL());
+
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
                     self->ReplyAttrWithCache(
@@ -146,7 +162,8 @@ void TFileSystem::GetAttr(
                         response.GetError(),
                         req,
                         response.GetNode(),
-                        version);
+                        version,
+                        cacheDeadline);
                 }
             });
 }

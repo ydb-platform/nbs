@@ -935,7 +935,8 @@ private:
 
         FileSystemEventHandler = CreateFileSystemEventHandler(
             Log,
-            Config->GetFileSystemId());
+            Config->GetFileSystemId(),
+            FileSystem);
         FileSystemEventHandlerFileSystemId =
             FileSystemConfig->GetFileSystemId();
         MultiFileSystemEventHandler->Register(
@@ -993,7 +994,6 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
-            RegisterFileSystemEventHandler();
             if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
                 RequestStats->EnableAvailabilityTracking(
                     FileSystemConfig->GetAvailabilityTrackingInterval());
@@ -1277,6 +1277,7 @@ private:
                 std::move(handleOpsQueue),
                 std::move(directoryHandleStorage),
                 WriteBackCache);
+            RegisterFileSystemEventHandler();
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
