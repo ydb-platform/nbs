@@ -2435,6 +2435,41 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(b.Cache.IsDrained());
     }
 
+    Y_UNIT_TEST(ShouldCancelPendingWritesWhenShutdownStarts)
+    {
+        TBootstrap b({.MaxWriteRequestsCount = 1});
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        const TString data(400_KB, 'x');
+        b.WriteToCacheSync(1, 101, 0, data);
+        b.WriteToCacheSync(1, 101, 1_MB, data);
+        auto pendingWrite = b.WriteToCache(2, 0, data);
+        UNIT_ASSERT(!pendingWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.PendingQueue.Count->Get());
+
+        // Shutdown itself must cancel cache waiters, without a preceding
+        // CancelPendingRequests call from the frontend.
+        auto shutdown = b.Cache.Shutdown();
+
+        UNIT_ASSERT(pendingWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            pendingWrite.GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(!HasError(shutdown.GetValue()));
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.SessionWriteDataHandlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        b.CheckStatsAreEmpty();
+    }
+
     Y_UNIT_TEST(ShouldFlushCachedDataOnShutdown)
     {
         TBootstrap b;

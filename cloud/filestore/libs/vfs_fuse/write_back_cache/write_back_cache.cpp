@@ -318,6 +318,7 @@ public:
             return FlushTracker->GetShutdownFuture();
         }
 
+        CancelPendingRequests();
         State.SetShutdownMode();
         Drain(true).Subscribe(
             [tracker = FlushTracker](const auto& future)

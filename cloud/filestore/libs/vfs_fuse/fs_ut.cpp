@@ -6666,13 +6666,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TestShouldSupportZeroCopyWriteByWriteBackCache(true);
     }
 
-    Y_UNIT_TEST(ShouldFlushAllRequestsBeforeSessionIsDestroyed)
+    Y_UNIT_TEST(ShouldCancelPendingWritesBeforeSessionIsDestroyed)
     {
         // The idea is to fill WriteBackCache with requests and to stop session.
-        // It should flush both cached and pending requests before session is
-        // destroyed. To ensure that there are pending requests, we write more
-        // data than the cache capacity (~1_MB) and temporarily prevent write
-        // requests from completion.
+        // It should cancel pending requests and flush cached data before the
+        // session is destroyed. To ensure there are pending requests, write
+        // more data than the cache capacity (~1_MB) and temporarily prevent
+        // write requests from completion.
 
         // Note: due to the test framework/client limitations, the number of
         // pending requests should not exceed 128 and the size of a message
@@ -6716,6 +6716,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.Start();
         Y_DEFER
         {
+            writeDataPromise.TrySetValue();
             bootstrap.Stop();
         };
 
@@ -6783,16 +6784,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto stopFuture = bootstrap.StopAsync();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            MaxPendingRequestCount,
-            requestInProgressSensor->Val());
+        // Guest requests must finish before the blocked backend flush does.
+        // Otherwise completion-queue shutdown and cache draining wait on each
+        // other when a pending write cannot enter the full cache.
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requestInProgressSensor->Val() == 0; }));
+        UNIT_ASSERT(!stopFuture.HasValue());
 
         // Enable progression of WriteData requests - this will enable flushing
         writeDataPromise.SetValue();
         UNIT_ASSERT(stopFuture.Wait(Timeout));
 
         UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->Val());
-        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            requestCount - MaxPendingRequestCount,
+            requestCountSensor->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxPendingRequestCount,
+            counters->GetCounter("Errors")->Val());
         UNIT_ASSERT(!path.Exists());
     }
 
