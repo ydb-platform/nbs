@@ -1,8 +1,9 @@
 /*******************************************************************************
 
 Storage configuration wrappers keep raw protobuf values and share live ICB
-controls. Read-write getters use ICB Value when it differs from Default;
-otherwise they return their own raw value or the compiled fallback.
+controls. Read-write getters use ICB Value when it differs from Default and,
+for enums, matches a declared value. Otherwise they return their own raw value
+or the compiled fallback.
 
 
 DOUBLE VALUES PROCESSING
@@ -45,12 +46,15 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include <util/generic/size_literals.h>
 #include <util/system/mutex.h>
 
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/generated_enum_reflection.h>
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
 
 #include <cmath>
 #include <limits>
 #include <type_traits>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -865,6 +869,24 @@ TTarget ConvertValue(const TSource& value)
     return static_cast<TTarget>(value);
 }
 
+// Validate enum overrides before narrowing; accept other override types.
+template <typename TValue>
+bool IsValidEnumOverrideValue(i64 value)
+{
+    if constexpr (std::is_enum_v<TValue>) {
+        if (!std::in_range<int>(value)) {
+            return false;
+        }
+
+        static const auto* const descriptor =
+            google::protobuf::GetEnumDescriptor<TValue>();
+        return descriptor->FindValueByNumber(static_cast<int>(value)) !=
+               nullptr;
+    }
+
+    return true;
+}
+
 template <>
 TDuration ConvertValue<TDuration, i64>(const i64& value)
 {
@@ -1175,14 +1197,31 @@ struct TStorageConfigControls::TImpl
 #undef BLOCKSTORE_CONFIG_RESET
     }
 
-    std::optional<i64> ReadOverride(const TControlWrapper& control) const
+    // Capture an explicit override with its enum-validation result.
+    template <typename TValue>
+    std::optional<TOverrideInfo> ReadOverrideInfo(
+        const TControlWrapper& control) const
     {
         const TAtomicBase value = static_cast<TAtomicBase>(control);
         if (value == control.GetDefault()) {
             return std::nullopt;
         }
 
-        return static_cast<i64>(value);
+        // Retain invalid operator values so monitoring can explain the
+        // fallback.
+        return TOverrideInfo{
+            .Value = static_cast<i64>(value),
+            .IsValid = IsValidEnumOverrideValue<TValue>(value),
+        };
+    }
+
+    // Return only overrides that can be applied to the field type.
+    template <typename TValue>
+    std::optional<i64> ReadOverride(const TControlWrapper& control) const
+    {
+        const auto info = ReadOverrideInfo<TValue>(control);
+        return info && info->IsValid ? std::optional<i64>(info->Value)
+                                     : std::nullopt;
     }
 };
 
@@ -1246,9 +1285,19 @@ void TStorageConfigControls::UpdateDefaults(
 
 std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
 {
-#define BLOCKSTORE_CONFIG_GET_OVERRIDE(field, ...)                             \
+    const auto info = GetOverrideInfo(name);
+    return (info && info->IsValid) ? std::optional<i64>(info->Value)
+                                   : std::nullopt;
+}
+
+// Capture an override and its validation result using the field's declared
+// type.
+std::optional<TStorageConfigControls::TOverrideInfo>
+TStorageConfigControls::GetOverrideInfo(TStringBuf name) const
+{
+#define BLOCKSTORE_CONFIG_GET_OVERRIDE(field, type, ...)                       \
     if (name == #field) {                                                      \
-        return Impl->ReadOverride(Impl->Control##field);                       \
+        return Impl->ReadOverrideInfo<type>(Impl->Control##field);             \
     }                                                                          \
     // BLOCKSTORE_CONFIG_GET_OVERRIDE
 
@@ -1292,7 +1341,7 @@ struct TStorageConfig::TImpl
     // Apply current ICB overrides to the returned proto copy.
 #define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
     if (const auto value =                                                     \
-            Controls->Impl->ReadOverride(Controls->Impl->Control##name))       \
+            Controls->Impl->ReadOverride<type>(Controls->Impl->Control##name)) \
     {                                                                          \
         using T = decltype(StorageServiceConfig.Get##name());                  \
         proto.Set##name(ConvertValue<T>(*value));                              \
@@ -1410,12 +1459,12 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
-// Return raw values (not ICB Default) when no ICB override exists, see head
-// comment.
+// Return raw values (not ICB Default) when no valid ICB override exists, see
+// head comment.
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
-        if (const auto value = ControlsImpl()->ReadOverride(                   \
+        if (const auto value = ControlsImpl()->ReadOverride<type>(             \
                 ControlsImpl()->Control##name))                                \
         {                                                                      \
             return ConvertValue<type>(*value);                                 \
