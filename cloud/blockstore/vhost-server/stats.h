@@ -112,7 +112,7 @@ struct TStats
 
     // Set once before workers start; never copied into monitoring snapshots.
     const TLatencySliConfig* LatencySli = nullptr;
-    // Stamped only when the completion thread copies a monitoring snapshot.
+    // Stamped when completion counters are copied into a monitoring snapshot.
     ui64 CompletionSnapshotCycles = 0;
 
     void SetLatencySli(const TLatencySliConfig& config)
@@ -230,6 +230,10 @@ struct ICompletionStats
 ////////////////////////////////////////////////////////////////////////////////
 
 ICompletionStatsPtr CreateCompletionStats();
+
+// RDMA callbacks can run on multiple queue threads. Snapshot their atomic
+// counters on demand, including during idle periods with no completions.
+TSimpleStats SnapshotCompletionStats(const TAtomicStats& stats);
 
 void DumpStats(
     const TCompleteStats& completeStats,

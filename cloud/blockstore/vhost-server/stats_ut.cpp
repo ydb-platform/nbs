@@ -9,6 +9,7 @@
 #include <util/stream/str.h>
 
 #include <chrono>
+#include <thread>
 #include <tuple>
 
 using namespace std::chrono_literals;
@@ -18,6 +19,119 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldSnapshotIdleAndFailedCompletions)
+    {
+        using namespace NCloud::NBlockStore;
+        const auto config = TLatencySliConfig::Parse("1;0:1:8193:1000");
+        TAtomicStats producer;
+        producer.SetLatencySli(config);
+
+        const auto idle = SnapshotCompletionStats(producer);
+        UNIT_ASSERT(idle.CompletionSnapshotCycles);
+        UNIT_ASSERT_VALUES_EQUAL(0, idle.Completed);
+
+        ++producer.Completed;
+        ++producer.Requests[0].Errors;
+        producer.RecordLatency(false, 4096, 0, true);
+        const auto failed = SnapshotCompletionStats(producer);
+        UNIT_ASSERT(failed.CompletionSnapshotCycles >= idle.CompletionSnapshotCycles);
+        UNIT_ASSERT_VALUES_EQUAL(1, failed.Completed);
+        UNIT_ASSERT_VALUES_EQUAL(1, failed.Requests[0].Errors);
+        UNIT_ASSERT_VALUES_EQUAL(1, failed.Requests[0].LatencyBad);
+        UNIT_ASSERT_VALUES_EQUAL(0, failed.Requests[0].LatencyUnknown);
+
+        const auto nextIdle = SnapshotCompletionStats(producer);
+        UNIT_ASSERT(nextIdle.CompletionSnapshotCycles >= failed.CompletionSnapshotCycles);
+        UNIT_ASSERT_VALUES_EQUAL(1, nextIdle.Requests[0].LatencyBad);
+
+        ++producer.Completed;
+        ++producer.Requests[0].Errors;
+        producer.RecordLatency(false, 4096, 0, true);
+        const auto nextFailed = SnapshotCompletionStats(producer);
+        UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Completed);
+        UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Requests[0].Errors);
+        UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Requests[0].LatencyBad);
+        UNIT_ASSERT_VALUES_EQUAL(0, nextFailed.Requests[0].LatencyUnknown);
+    }
+
+    Y_UNIT_TEST(ShouldSnapshotConcurrentCompletions)
+    {
+        using namespace NCloud::NBlockStore;
+        const auto config = TLatencySliConfig::Parse(
+            "1;0:1:8193:1000;1:1:8193:1000");
+        TAtomicStats producer;
+        producer.SetLatencySli(config);
+        constexpr ui64 workerCount = 4;
+        constexpr ui64 iterations = 3000;
+        const auto elapsed = DurationToCyclesSafe(TDuration::MicroSeconds(500));
+        std::atomic<bool> start = false;
+        std::atomic<ui64> running = workerCount;
+        TVector<std::thread> workers;
+        for (ui64 worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&, write = worker % 2] {
+                while (!start.load()) {
+                    std::this_thread::yield();
+                }
+                for (ui64 i = 0; i < iterations; ++i) {
+                    const bool failed = i % 3 == 1;
+                    const ui64 bytes = i % 3 == 2 ? 16384 : 4096;
+                    ++producer.Completed;
+                    if (failed) {
+                        ++producer.Requests[write].Errors;
+                    } else {
+                        ++producer.Requests[write].Count;
+                        producer.Requests[write].Bytes += bytes;
+                        producer.Times[write].Increment(elapsed);
+                        producer.Sizes[write].Increment(bytes);
+                    }
+                    producer.RecordLatency(write, bytes, elapsed, failed);
+                }
+                --running;
+            });
+        }
+
+        bool monotonic = true;
+        TSimpleStats previous;
+        start = true;
+        do {
+            const auto snapshot = SnapshotCompletionStats(producer);
+            monotonic &= snapshot.Completed >= previous.Completed;
+            for (size_t write = 0; write < 2; ++write) {
+                const auto& current = snapshot.Requests[write];
+                const auto& old = previous.Requests[write];
+                monotonic &= current.LatencyGood >= old.LatencyGood &&
+                    current.LatencyBad >= old.LatencyBad &&
+                    current.LatencyUnknown >= old.LatencyUnknown;
+            }
+            previous = snapshot;
+        } while (running.load());
+        for (auto& worker: workers) {
+            worker.join();
+        }
+
+        UNIT_ASSERT(monotonic);
+        const auto snapshot = SnapshotCompletionStats(producer);
+        UNIT_ASSERT_VALUES_EQUAL(workerCount * iterations, snapshot.Completed);
+        constexpr ui64 perOutcome = workerCount / 2 * iterations / 3;
+        for (size_t write = 0; write < 2; ++write) {
+            const auto& stats = snapshot.Requests[write];
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyGood);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyBad);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyUnknown);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.Errors);
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, stats.Count);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome * (4096 + 16384), stats.Bytes);
+            ui64 times = 0;
+            ui64 sizes = 0;
+            snapshot.Times[write].IterateBuckets(
+                [&](ui64, ui64, ui64 count) { times += count; });
+            snapshot.Sizes[write].IterateBuckets(
+                [&](ui64, ui64, ui64 count) { sizes += count; });
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, times);
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, sizes);
+        }
+    }
+
     Y_UNIT_TEST(ShouldPreserveCaptureTimeWhenPickingUpALateSnapshot)
     {
         auto completion = CreateCompletionStats();

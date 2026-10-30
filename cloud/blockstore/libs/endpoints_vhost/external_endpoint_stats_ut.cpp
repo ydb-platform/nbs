@@ -164,6 +164,53 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
+    Y_UNIT_TEST(ShouldPreserveFailuresAfterIdleSnapshots)
+    {
+        TFixture f(true);
+        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+        auto group = f.Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", f.DiskId)
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")
+            ->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "ssd_local");
+        auto snapshot = [](ui64 sequence, ui64 good, ui64 bad, bool completed) {
+            return NJson::TJsonMap{
+                {"latency_sli", NJson::TJsonMap{
+                    {"version", ui64(1)}, {"epoch", "process-1"},
+                    {"sequence", sequence}, {"fresh", true},
+                    {"config", "1;0:1:8193:1000"}}},
+                {"read", NJson::TJsonMap{
+                    {"errors", ui64(completed)}, {"latency_good", good},
+                    {"latency_bad", bad}, {"latency_unknown", ui64(0)}}},
+                {"write", NJson::TJsonMap{
+                    {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
+                    {"latency_unknown", ui64(0)}}}};
+        };
+
+        reader.Update(snapshot(1, 0, 0, false)); // idle before the first request
+        reader.Update(snapshot(2, 0, 1, true));
+        reader.Update(snapshot(3, 0, 1, false)); // idle between failures
+        reader.Update(snapshot(4, 0, 1, false));
+        reader.Update(snapshot(5, 0, 2, true));
+        f.ServerStats->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+
+        reader.Update(snapshot(6, 1, 2, false));
+        reader.Update(snapshot(7, 1, 2, false)); // idle after a successful request
+        reader.Update(snapshot(8, 1, 3, true));
+        f.ServerStats->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
     Y_UNIT_TEST(ShouldProtectLatencyBatches)
     {
         TFixture f(true);

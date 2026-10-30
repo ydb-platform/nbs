@@ -15,6 +15,9 @@
 
 namespace NCloud::NBlockStore {
 
+using TLatencySliThresholds =
+    TVector<NProto::TDiagnosticsConfig::TLatencySliThreshold>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TVolumePerfSettings: public TAtomicRefCount<TVolumePerfSettings>
@@ -136,6 +139,9 @@ public:
     [[nodiscard]] const NProto::TDiagnosticsConfig& GetConfigProto() const;
 
     TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const;
+
+    bool GetEnableLatencySli() const;
+    TLatencySliThresholds GetLatencySliThresholds() const;
 
     NProto::EHostNameScheme GetHostNameScheme() const;
     TString GetBastionNameSuffix() const;
