@@ -4,6 +4,9 @@
 #include <cloud/filestore/libs/client/probes.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/action.pb.h>
+
 #include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -12,6 +15,8 @@
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/guid.h>
@@ -427,6 +432,32 @@ TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateCustomSession(
     TString fsId,
     TString clientId)
 {
+    NProtoPrivate::TDescribeSessionsRequest describeRequest;
+    describeRequest.SetFileSystemId(fsId);
+
+    auto request = std::make_shared<NProto::TExecuteActionRequest>();
+    request->SetAction("describesessions");
+    auto callContext = PrepareCallContext(fsId);
+    request->MutableHeaders()->SetRequestId(callContext->RequestId);
+    auto describeResponse = WaitFor(
+        Client->ExecuteAction(std::move(callContext), std::move(request)));
+    CheckResponse(describeResponse);
+
+    NProtoPrivate::TDescribeSessionsResponse sessions;
+    google::protobuf::util::JsonStringToMessage(
+        describeResponse.GetOutput(),
+        &sessions);
+    CheckResponse(sessions);
+
+    for (const auto& session: sessions.GetSessions()) {
+        if (session.GetClientId() == clientId) {
+            STORAGE_THROW_SERVICE_ERROR(MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "session already exists for client " << clientId));
+        }
+    }
+
     NProto::TSessionConfig protoConfig;
     protoConfig.SetFileSystemId(std::move(fsId));
     protoConfig.SetClientId(std::move(clientId));
