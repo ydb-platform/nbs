@@ -20,6 +20,7 @@ message CreateDRBasedDiskCheckpointResponse {
 message CreateDRBasedDiskCheckpointTaskState {
     int32 CheckpointIteration = 1;
     string CheckpointId = 2;
+    bool EstimateSaved = 3;
 }
 
 message CreateDRBasedDiskCheckpointMetadata {
