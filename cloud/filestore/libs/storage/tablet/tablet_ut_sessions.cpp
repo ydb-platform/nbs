@@ -1582,6 +1582,41 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
 
+    Y_UNIT_TEST(
+        ShouldReturnServerWriteBackCacheStateFileSizeFromStorageConfigOverride)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const auto checkCapacity = [&](ui64 expectedCapacity)
+        {
+            auto response = tablet.CreateSession("client", "session");
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCapacity,
+                response->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetServerWriteBackCacheStateFileSize());
+        };
+
+        checkCapacity(2_MB);
+
+        NProto::TStorageConfig patch;
+        patch.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkCapacity(4_GB + 100500);
+
+        patch.SetServerWriteBackCacheStateFileSize(0);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkCapacity(0);
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)
     {
         const ui32 maxTabletStep = 4;

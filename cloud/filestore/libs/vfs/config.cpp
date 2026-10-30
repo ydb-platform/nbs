@@ -29,7 +29,6 @@ namespace {
     xxx(HandleOpsQueueSize,     ui32,           100_MB                        )\
                                                                                \
     xxx(WriteBackCachePath,                 TString,   ""                     )\
-    xxx(WriteBackCacheStateFileSize,        ui64,      256_MB                 )\
     xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
                                             TDuration::MilliSeconds(100)      )\
     xxx(WriteBackCacheFlushRetryPeriod,     TDuration,                         \

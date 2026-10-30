@@ -651,8 +651,6 @@ void TBootstrapVhost::InitEndpoints()
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
-            .StateFileSize =
-                Configs->VhostServiceConfig->GetWriteBackCacheStateFileSize(),
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),
