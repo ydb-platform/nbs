@@ -3,9 +3,12 @@
 #include "socket_helpers.h"
 #include "socket_worker.h"
 
+#include <cloud/storage/core/libs/common/thread.h>
+
 #include <library/cpp/time_provider/monotonic.h>
 
 #include <util/generic/vector.h>
+#include <util/generic/yexception.h>
 #include <util/system/guard.h>
 
 #include <climits>
@@ -82,16 +85,20 @@ public:
             address,
             TMonotonic::Now() + timeout);
         auto future = request->Promise.GetFuture();
+        bool wake = false;
         {
             TGuard<TMutex> guard(QueueMutex);
             if (Accepting) {
+                wake = Queued.empty();
                 Queued.push_back(std::move(request));
-                Worker.Wake();
-                return future;
             }
         }
-        request->Complete(
-            MakeError(E_REJECTED, "TCP connector is not running"));
+        if (request) {
+            request->Complete(
+                MakeError(E_REJECTED, "TCP connector is not running"));
+        } else if (wake) {
+            Worker.Wake();
+        }
         return future;
     }
 
@@ -124,14 +131,13 @@ private:
             request->Complete(std::move(error));
             return;
         }
-        const int status = ConnectSocket(*socket, request->Address);
+        request->Socket = std::move(socket);
+        const int status = ConnectSocket(*request->Socket, request->Address);
         if (!status) {
-            request->Complete(std::move(socket));
+            request->Complete(std::move(request->Socket));
         } else if (status == EINPROGRESS || status == EINTR) {
-            request->Socket = std::move(socket);
             pending.push_back(std::move(request));
         } else {
-            socket.Reset();
             request->Complete(MakeSocketError(status, "connect"));
         }
     }
@@ -193,12 +199,10 @@ private:
                 auto request = std::move(pending[i]);
                 pending[i] = std::move(pending.back());
                 pending.pop_back();
-                auto socket = std::move(request->Socket);
                 if (HasError(error)) {
-                    socket.Reset();
                     request->Complete(std::move(error));
                 } else {
-                    request->Complete(std::move(socket));
+                    request->Complete(std::move(request->Socket));
                 }
             }
         }
@@ -206,14 +210,16 @@ private:
 
     void Run() override
     {
+        NCloud::SetCurrentThreadName("ICV2Connector", 0);
         TRequests pending;
+        TVector<pollfd> fds;
         auto failure = MakeError(E_REJECTED, "TCP connector is stopping");
         while (!Worker.IsStopping()) {
             ProcessQueued(pending, failure);
             if (Worker.IsStopping()) {
                 break;
             }
-            TVector<pollfd> fds(pending.size() + 1);
+            fds.resize(pending.size() + 1);
             const int res = PollPending(pending, fds);
             if (res < 0) {
                 failure = MakeSocketError(-res, "connector poll");
@@ -231,9 +237,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IConnectorPtr CreateConnector()
+TResultOrError<IConnectorPtr> CreateConnector()
 {
-    return std::make_shared<TConnector>();
+    try {
+        return IConnectorPtr(std::make_shared<TConnector>());
+    } catch (const TSystemError& error) {
+        return MakeSocketError(error.Status(), "create connector resources");
+    }
 }
 
 }   // namespace NCloud::NIcV2

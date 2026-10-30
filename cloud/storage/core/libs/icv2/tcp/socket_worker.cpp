@@ -6,6 +6,12 @@
 
 namespace NCloud::NIcV2 {
 
+namespace {
+
+thread_local const TSocketWorker* CurrentWorker = nullptr;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ISocketWorkerHandler::~ISocketWorkerHandler() = default;
@@ -34,21 +40,29 @@ TSocketWorker::~TSocketWorker()
 void TSocketWorker::Start()
 {
     TGuard<TMutex> stop(StopMutex);
-    TGuard<TMutex> guard(Mutex);
-    Y_ABORT_UNLESS(!Started && !Stopping);
-    Worker = std::thread([this] { Handler.Run(); });
-    Started = true;
+    Y_ABORT_UNLESS(!Worker.joinable() && !Joined && !Stopping);
+
+    Worker = std::thread(
+        [this]
+        {
+            CurrentWorker = this;
+            Handler.Run();
+            CurrentWorker = nullptr;
+        });
 }
 
 void TSocketWorker::RequestStop()
 {
-    TGuard<TMutex> guard(Mutex);
     Stopping = true;
     Wake();
 }
 
 void TSocketWorker::Stop()
 {
+    Y_ABORT_UNLESS(
+        CurrentWorker != this,
+        "Stop() must not be called from the socket worker thread");
+
     RequestStop();
     TGuard<TMutex> stop(StopMutex);
     if (!Joined) {
@@ -85,10 +99,11 @@ void TSocketWorker::DrainWake()
 {
     char bytes[256];
     for (;;) {
-        if (recv(WakeReader, bytes, sizeof(bytes), 0) > 0) {
+        const ssize_t res = recv(WakeReader, bytes, sizeof(bytes), 0);
+        if (res > 0) {
             continue;
         }
-        if (errno != EINTR) {
+        if (res == 0 || errno != EINTR) {
             break;
         }
     }
@@ -96,6 +111,10 @@ void TSocketWorker::DrainWake()
 
 int TSocketWorker::Poll(TArrayRef<pollfd> fds, int timeout)
 {
+    Y_ABORT_UNLESS(
+        !fds.empty() && fds[0].fd == GetWakeSocket(),
+        "Poll() requires the wakeup socket as the first descriptor");
+
     const int res = poll(fds.data(), fds.size(), timeout);
     if (res < 0) {
         return errno == EINTR ? 0 : -errno;

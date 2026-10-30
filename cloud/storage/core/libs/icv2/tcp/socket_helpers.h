@@ -10,7 +10,9 @@ NProto::TError MakeSocketError(int error, const char* operation);
 // Create an unconnected IPv4/IPv6 socket ready for nonblocking TCP use.
 TSocketResult CreateSocket(const NInterconnect::TAddress& address);
 // Returns 0 or positive errno; EINPROGRESS/EINTR require checking completion.
-int ConnectSocket(SOCKET socket, const NInterconnect::TAddress& address);
+int ConnectSocket(
+    const NInterconnect::TStreamSocket& socket,
+    const NInterconnect::TAddress& address);
 // Enables TCP_NODELAY.
 TSocketResult PrepareSocket(TSocketPtr socket);
 

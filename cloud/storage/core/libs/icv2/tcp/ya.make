@@ -3,7 +3,7 @@ LIBRARY()
 SRCS(
     connector.cpp
     listener.cpp
-    socket_helper.cpp
+    socket_helpers.cpp
     socket_worker.cpp
 )
 

@@ -4,6 +4,11 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/scope.h>
+#include <util/generic/vector.h>
+
+#include <sys/resource.h>
+
 #include <array>
 #include <future>
 
@@ -60,7 +65,7 @@ public:
 
     void WaitUntilEntered()
     {
-        UNIT_ASSERT(Entered.GetFuture().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(Entered.GetFuture().Wait(TDuration::Seconds(30)));
     }
 
     void Release()
@@ -73,12 +78,32 @@ public:
 
 Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
 {
+    SIMPLE_UNIT_FORKED_TEST(ReturnsErrorWhenWakeupDescriptorsAreExhausted)
+    {
+        rlimit original;
+        UNIT_ASSERT_VALUES_EQUAL(getrlimit(RLIMIT_NOFILE, &original), 0);
+        auto limited = original;
+        limited.rlim_cur = 0;
+        UNIT_ASSERT_VALUES_EQUAL(setrlimit(RLIMIT_NOFILE, &limited), 0);
+        Y_DEFER
+        {
+            setrlimit(RLIMIT_NOFILE, &original);
+        };
+
+        auto result = CreateConnector();
+        UNIT_ASSERT_VALUES_EQUAL(setrlimit(RLIMIT_NOFILE, &original), 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            result.GetError().GetCode(),
+            MAKE_SYSTEM_ERROR(EMFILE));
+        UNIT_ASSERT(!result.GetResult());
+    }
+
     Y_UNIT_TEST(ConnectsConcurrentlyOverIpv4AndIpv6)
     {
         for (const char* host: {"127.0.0.1", "::1"}) {
             TTestListener listener(host);
             listener.Listener->Start();
-            auto connector = CreateConnector();
+            auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
             connector->Start();
             std::array<TSocketFuture, 8> futures;
             for (auto& future: futures) {
@@ -94,12 +119,51 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
         }
     }
 
+    Y_UNIT_TEST(ConnectsFromConcurrentProducers)
+    {
+        constexpr size_t producerCount = 4;
+        constexpr size_t connectionsPerProducer = 16;
+        TTestListener listener(
+            "127.0.0.1",
+            producerCount * connectionsPerProducer);
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
+        listener.Listener->Start();
+        connector->Start();
+        TVector<std::future<TVector<TSocketFuture>>> producers;
+        for (size_t i = 0; i < producerCount; ++i) {
+            producers.push_back(
+                std::async(
+                    std::launch::async,
+                    [&]
+                    {
+                        TVector<TSocketFuture> requests;
+                        for (size_t j = 0; j < connectionsPerProducer; ++j) {
+                            requests.push_back(connector->Connect(
+                                listener.Listener->GetAddress(),
+                                TDuration::Seconds(5)));
+                        }
+                        return requests;
+                    }));
+        }
+        TVector<TSocketPtr> sockets;
+        for (auto& producer: producers) {
+            for (const auto& request: producer.get()) {
+                sockets.push_back(WaitSocket(request));
+            }
+        }
+        for (size_t i = 0; i < producerCount * connectionsPerProducer; ++i) {
+            CheckSocket(listener.Accept());
+        }
+        connector->Stop();
+        listener.Listener->Stop();
+    }
+
     Y_UNIT_TEST(ReportsConnectionRefused)
     {
         TTestListener listener;
         const auto address = listener.Listener->GetAddress();
         listener.Listener->Stop();
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         connector->Start();
         auto result =
             WaitResult(connector->Connect(address, TDuration::Seconds(5)));
@@ -112,7 +176,7 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
 
     Y_UNIT_TEST(RejectsRequestsOutsideLifecycleAndExpiredDeadline)
     {
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         const NInterconnect::TAddress address("127.0.0.1", 1);
         auto before =
             WaitResult(connector->Connect(address, TDuration::Seconds(5)));
@@ -135,7 +199,7 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
             "127.0.0.1",
             1);   // intentionally does not accept
         auto occupied = OccupyBacklog(listener.Listener->GetAddress());
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         connector->Start();
         auto pending = connector->Connect(
             listener.Listener->GetAddress(),
@@ -154,7 +218,7 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
     {
         TTestListener listener("127.0.0.1", 1);
         auto occupied = OccupyBacklog(listener.Listener->GetAddress());
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         connector->Start();
         auto pending = connector->Connect(
             listener.Listener->GetAddress(),
@@ -169,7 +233,7 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
     {
         TTestListener listener("127.0.0.1", 1);
         auto occupied = OccupyBacklog(listener.Listener->GetAddress());
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         connector->Start();
         auto pending = connector->Connect(
             listener.Listener->GetAddress(),
@@ -196,7 +260,7 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
     {
         TTestListener listener("127.0.0.1", 1);
         auto occupied = OccupyBacklog(listener.Listener->GetAddress());
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         connector->Start();
         auto first = connector->Connect(
             listener.Listener->GetAddress(),

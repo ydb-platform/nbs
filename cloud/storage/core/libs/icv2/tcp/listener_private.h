@@ -2,18 +2,24 @@
 
 #include "listener.h"
 
-#include <functional>
-
 namespace NCloud::NIcV2::NPrivate {
 
-// Return an errno to inject, or zero to accept normally.
-using TAcceptErrorInjector = std::function<int()>;
+// Return an errno to fail this attempt, or zero to proceed.
+struct IListenerErrorInjector
+{
+    virtual ~IListenerErrorInjector();
 
-// For tests that need a specific backlog or injected accept errors.
-TResultOrError<IListenerPtr> CreateListenerWithAcceptError(
+    virtual int BeforeAccept() = 0;
+    virtual int BeforePrepareSocket() = 0;
+};
+
+using IListenerErrorInjectorPtr = std::shared_ptr<IListenerErrorInjector>;
+
+// For tests that need a specific backlog or injected accept/setup errors.
+TResultOrError<IListenerPtr> CreateListener(
     const NInterconnect::TAddress& address,
     int backlog,
     IListenerClientPtr client,
-    TAcceptErrorInjector injectAcceptError = {});
+    IListenerErrorInjectorPtr errorInjector);
 
 }   // namespace NCloud::NIcV2::NPrivate

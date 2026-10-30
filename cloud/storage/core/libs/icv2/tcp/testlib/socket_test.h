@@ -24,11 +24,14 @@ public:
     void OnError(const NProto::TError& error) override;
 };
 
+IConnectorPtr CreateTestConnector();
+
 TSocketResult WaitResult(const TSocketFuture& future);
 TSocketPtr WaitSocket(const TSocketFuture& future);
 void CheckSocket(const TSocketPtr& socket);
 
-// Keep both sockets alive without accepting to fill a listener's backlog of 1.
+// Two sockets fill backlog 1; keep them alive without accepting.
+// Pending connects may need SYN retransmission after accepting resumes.
 std::array<TSocketPtr, 2> OccupyBacklog(const NInterconnect::TAddress& address);
 
 class TTestListener

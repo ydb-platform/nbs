@@ -28,6 +28,13 @@ void TTestListenerClient::OnError(const NProto::TError& error)
     Callback(error);
 }
 
+IConnectorPtr CreateTestConnector()
+{
+    auto [connector, error] = CreateConnector();
+    UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    return connector;
+}
+
 TSocketResult WaitResult(const TSocketFuture& future)
 {
     UNIT_ASSERT(future.Wait(TDuration::Seconds(10)));
@@ -55,7 +62,7 @@ void CheckSocket(const TSocketPtr& socket)
 
 std::array<TSocketPtr, 2> OccupyBacklog(const NInterconnect::TAddress& address)
 {
-    auto connector = CreateConnector();
+    auto connector = CreateTestConnector();
     connector->Start();
     std::array<TSocketPtr, 2> sockets;
     for (auto& socket: sockets) {
@@ -69,7 +76,7 @@ TTestListener::TTestListener(const char* host, int backlog)
     : Listener(
           [&]
           {
-              auto [listener, error] = NPrivate::CreateListenerWithAcceptError(
+              auto [listener, error] = NPrivate::CreateListener(
                   NInterconnect::TAddress(host, 0),
                   backlog,
                   std::make_shared<TTestListenerClient>(
@@ -78,7 +85,8 @@ TTestListener::TTestListener(const char* host, int backlog)
                           std::lock_guard guard(Mutex);
                           Accepted.push_back(std::move(result));
                           Changed.notify_all();
-                      }));
+                      }),
+                  nullptr);
               UNIT_ASSERT_C(!HasError(error), FormatError(error));
               return listener;
           }())

@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     connector_ut.cpp
     listener_ut.cpp
+    socket_worker_ut.cpp
 )
 
 PEERDIR(

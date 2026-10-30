@@ -42,12 +42,11 @@ TSocketResult CreateSocket(const NInterconnect::TAddress& address)
     return PrepareSocket(MakeIntrusive<NInterconnect::TStreamSocket>(fd));
 }
 
-int ConnectSocket(SOCKET socket, const NInterconnect::TAddress& address)
+int ConnectSocket(
+    const NInterconnect::TStreamSocket& socket,
+    const NInterconnect::TAddress& address)
 {
-    if (::connect(socket, address.SockAddr(), address.Size()) == 0) {
-        return 0;
-    }
-    return errno;
+    return -socket.Connect(address);
 }
 
 }   // namespace NCloud::NIcV2

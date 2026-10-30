@@ -9,7 +9,8 @@ namespace NCloud::NIcV2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Connect asynchronously after Start(). Restart is not supported.
-// Stop() waits for completions; do not call it from completion callbacks.
+// Stop() waits for completions. Completion callbacks must not throw,
+// call Stop(), or release the last reference to the connector.
 struct IConnector: public IStartable
 {
     // Timeout starts at this call. Stop() does not close returned sockets.
@@ -24,6 +25,6 @@ struct IConnector: public IStartable
 
 using IConnectorPtr = std::shared_ptr<IConnector>;
 
-IConnectorPtr CreateConnector();
+TResultOrError<IConnectorPtr> CreateConnector();
 
 }   // namespace NCloud::NIcV2

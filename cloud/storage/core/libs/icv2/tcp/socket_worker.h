@@ -32,10 +32,8 @@ class TSocketWorker
     TSocketHolder WakeReader;
     TSocketHolder WakeWriter;
     TMutex StopMutex;
-    TMutex Mutex;
     std::thread Worker;
     bool Joined = false;
-    bool Started = false;
     std::atomic<bool> Stopping = false;
 
 public:

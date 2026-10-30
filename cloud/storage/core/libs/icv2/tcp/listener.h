@@ -15,7 +15,7 @@ struct IListenerClient
 
     // Take the accepted socket and use it to handle the connection.
     virtual void OnConnection(TSocketPtr socket) = 0;
-    // Reports a terminal error; no more connections will be delivered.
+    // Reports a terminal error; create a new listener to resume accepting.
     virtual void OnError(const NProto::TError& error) = 0;
 };
 
@@ -35,6 +35,7 @@ struct IListener: public IStartable
 using IListenerPtr = std::shared_ptr<IListener>;
 
 // Binds immediately and keeps client alive. Notifications begin after Start.
+// Note: client should keep a weak reference to the listener to avoid cycles.
 TResultOrError<IListenerPtr> CreateListener(
     const NInterconnect::TAddress& address,
     IListenerClientPtr client);

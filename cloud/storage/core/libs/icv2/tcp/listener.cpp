@@ -37,6 +37,7 @@ bool IsTransientAcceptError(int error)
         case EHOSTUNREACH:
         case EOPNOTSUPP:
         case ENETUNREACH:
+        case EPERM:
             return true;
         default:
             return false;
@@ -52,19 +53,19 @@ class TListener final
     TSocketPtr Socket;
     const NInterconnect::TAddress Address;
     const IListenerClientPtr Client;
-    const NPrivate::TAcceptErrorInjector InjectAcceptError;
+    const NPrivate::IListenerErrorInjectorPtr ErrorInjector;
 
 public:
     TListener(
         TSocketPtr socket,
         NInterconnect::TAddress address,
         IListenerClientPtr client,
-        NPrivate::TAcceptErrorInjector injectAcceptError)
+        NPrivate::IListenerErrorInjectorPtr errorInjector)
         : Worker(*this)
         , Socket(std::move(socket))
         , Address(address)
         , Client(std::move(client))
-        , InjectAcceptError(std::move(injectAcceptError))
+        , ErrorInjector(std::move(errorInjector))
     {
         SocketPoller.WaitRead(*Socket, this);
         SocketPoller.WaitRead(Worker.GetWakeSocket(), nullptr);
@@ -119,13 +120,23 @@ private:
 
     int AcceptSocket()
     {
-        if (InjectAcceptError) {
-            if (const int error = InjectAcceptError()) {
+        if (ErrorInjector) {
+            if (const int error = ErrorInjector->BeforeAccept()) {
                 errno = error;
                 return -1;
             }
         }
         return accept4(*Socket, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    }
+
+    TSocketResult PrepareAcceptedSocket(TSocketPtr socket)
+    {
+        if (ErrorInjector) {
+            if (const int error = ErrorInjector->BeforePrepareSocket()) {
+                return MakeSocketError(error, "prepare accepted socket");
+            }
+        }
+        return PrepareSocket(std::move(socket));
     }
 
     void AcceptClients()
@@ -141,18 +152,13 @@ private:
                 RequestStop();
                 break;
             }
-            auto result =
-                PrepareSocket(MakeIntrusive<NInterconnect::TStreamSocket>(fd));
+            auto result = PrepareAcceptedSocket(
+                MakeIntrusive<NInterconnect::TStreamSocket>(fd));
+            if (HasError(result.GetError())) {
+                continue;
+            }
             if (!Worker.IsStopping()) {
-                const bool failed = HasError(result.GetError());
-                if (failed) {
-                    Client->OnError(result.GetError());
-                } else {
-                    Client->OnConnection(result.ExtractResult());
-                }
-                if (failed) {
-                    RequestStop();
-                }
+                Client->OnConnection(result.ExtractResult());
             }
         }
     }
@@ -178,11 +184,13 @@ private:
 
 IListenerClient::~IListenerClient() = default;
 
-TResultOrError<IListenerPtr> NPrivate::CreateListenerWithAcceptError(
+NPrivate::IListenerErrorInjector::~IListenerErrorInjector() = default;
+
+TResultOrError<IListenerPtr> NPrivate::CreateListener(
     const NInterconnect::TAddress& address,
     int backlog,
     IListenerClientPtr client,
-    TAcceptErrorInjector injectAcceptError)
+    IListenerErrorInjectorPtr errorInjector)
 {
     if (!client || backlog <= 0) {
         return MakeError(
@@ -229,7 +237,7 @@ TResultOrError<IListenerPtr> NPrivate::CreateListenerWithAcceptError(
                 std::move(socket),
                 bound,
                 std::move(client),
-                std::move(injectAcceptError)));
+                std::move(errorInjector)));
     } catch (const TSystemError& error) {
         return MakeSocketError(error.Status(), "create listener resources");
     }
@@ -239,10 +247,11 @@ TResultOrError<IListenerPtr> CreateListener(
     const NInterconnect::TAddress& address,
     IListenerClientPtr client)
 {
-    return NPrivate::CreateListenerWithAcceptError(
+    return NPrivate::CreateListener(
         address,
         SocketBacklog,
-        std::move(client));
+        std::move(client),
+        nullptr);
 }
 
 }   // namespace NCloud::NIcV2

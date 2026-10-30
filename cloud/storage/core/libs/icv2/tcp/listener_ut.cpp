@@ -22,6 +22,8 @@ namespace NCloud::NIcV2 {
 using namespace NTests;
 using namespace std::chrono_literals;
 
+namespace {
+
 class TErrorListenerClient final: public IListenerClient
 {
 public:
@@ -39,6 +41,33 @@ public:
         Error.SetValue(error);
     }
 };
+
+class TTestErrorInjector final: public NPrivate::IListenerErrorInjector
+{
+    const int AcceptError;
+    const int PrepareError;
+
+public:
+    size_t AcceptCalls = 0;
+    size_t PrepareCalls = 0;
+
+    explicit TTestErrorInjector(int acceptError = 0, int prepareError = 0)
+        : AcceptError(acceptError)
+        , PrepareError(prepareError)
+    {}
+
+    int BeforeAccept() override
+    {
+        return AcceptCalls++ == 0 ? AcceptError : 0;
+    }
+
+    int BeforePrepareSocket() override
+    {
+        return PrepareCalls++ == 0 ? PrepareError : 0;
+    }
+};
+
+}   // namespace
 
 Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
 {
@@ -86,7 +115,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
     Y_UNIT_TEST(AcceptsPreparedSockets)
     {
         TTestListener listener;
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         listener.Listener->Start();
         connector->Start();
         UNIT_ASSERT(listener.Listener->GetAddress().GetPort());
@@ -121,12 +150,14 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             ENONET,
             EHOSTUNREACH,
             EOPNOTSUPP,
-            ENETUNREACH};
+            ENETUNREACH,
+            EPERM};
         for (int injectedError: errors) {
             auto firstAccepted = NThreading::NewPromise<TSocketResult>();
             auto secondAccepted = NThreading::NewPromise<TSocketResult>();
             size_t accepted = 0;   // accessed only by the listener worker
-            auto [listener, error] = NPrivate::CreateListenerWithAcceptError(
+            auto injector = std::make_shared<TTestErrorInjector>(injectedError);
+            auto [listener, error] = NPrivate::CreateListener(
                 NInterconnect::TAddress("127.0.0.1", 0),
                 16,
                 std::make_shared<TTestListenerClient>(
@@ -138,17 +169,10 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
                             secondAccepted.SetValue(std::move(result));
                         }
                     }),
-                [injectedError, first = true]() mutable
-                {
-                    if (first) {
-                        first = false;
-                        return injectedError;
-                    }
-                    return 0;
-                });
+                injector);
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             listener->Start();
-            auto connector = CreateConnector();
+            auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
             connector->Start();
             auto first = WaitSocket(connector->Connect(
                 listener->GetAddress(),
@@ -160,28 +184,61 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             CheckSocket(WaitSocket(secondAccepted.GetFuture()));
             connector->Stop();
             listener->Stop();
+            UNIT_ASSERT(injector->AcceptCalls >= 3);
         }
+    }
+
+    Y_UNIT_TEST(ContinuesAcceptingAfterSocketPreparationFailure)
+    {
+        auto accepted = NThreading::NewPromise<TSocketResult>();
+        auto injector = std::make_shared<TTestErrorInjector>(0, EIO);
+        auto [listener, error] = NPrivate::CreateListener(
+            NInterconnect::TAddress("127.0.0.1", 0),
+            16,
+            std::make_shared<TTestListenerClient>(
+                [accepted](TSocketResult result) mutable
+                { accepted.SetValue(std::move(result)); }),
+            injector);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
+        listener->Start();
+        connector->Start();
+        auto dropped = WaitResult(
+            connector->Connect(listener->GetAddress(), TDuration::Seconds(5)));
+        auto outgoing = WaitSocket(
+            connector->Connect(listener->GetAddress(), TDuration::Seconds(5)));
+        CheckSocket(WaitSocket(accepted.GetFuture()));
+        listener->Stop();
+        connector->Stop();
+        UNIT_ASSERT_VALUES_EQUAL(injector->PrepareCalls, 2);
     }
 
     Y_UNIT_TEST(ReportsTerminalAcceptError)
     {
-        auto client = std::make_shared<TErrorListenerClient>();
-        auto [listener, error] = NPrivate::CreateListenerWithAcceptError(
-            NInterconnect::TAddress("127.0.0.1", 0),
-            16,
-            client,
-            [] { return EBADF; });
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        listener->Start();
-        auto connector = CreateConnector();
-        connector->Start();
-        auto outgoing = WaitResult(
-            connector->Connect(listener->GetAddress(), TDuration::Seconds(5)));
-        UNIT_ASSERT(client->Error.GetFuture().Wait(TDuration::Seconds(5)));
-        listener->Stop();
-        connector->Stop();
-        UNIT_ASSERT(HasError(client->Error.GetFuture().GetValue()));
-        UNIT_ASSERT_VALUES_EQUAL(client->Connections, 0);
+        for (int injectedError: {EBADF, EMFILE, ENFILE, ENOBUFS, ENOMEM}) {
+            auto client = std::make_shared<TErrorListenerClient>();
+            auto injector = std::make_shared<TTestErrorInjector>(injectedError);
+            auto [listener, error] = NPrivate::CreateListener(
+                NInterconnect::TAddress("127.0.0.1", 0),
+                16,
+                client,
+                injector);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            listener->Start();
+            auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
+            connector->Start();
+            auto outgoing = WaitResult(connector->Connect(
+                listener->GetAddress(),
+                TDuration::Seconds(5)));
+            UNIT_ASSERT(client->Error.GetFuture().Wait(TDuration::Seconds(5)));
+            listener->Stop();
+            connector->Stop();
+            UNIT_ASSERT_VALUES_EQUAL(
+                client->Error.GetFuture().GetValue().GetCode(),
+                MAKE_SYSTEM_ERROR(injectedError));
+            UNIT_ASSERT_VALUES_EQUAL(client->Connections, 0);
+            UNIT_ASSERT_VALUES_EQUAL(injector->AcceptCalls, 1);
+        }
     }
 
     Y_UNIT_TEST(RejectsDuplicateBindingAndReleasesPort)
@@ -207,16 +264,17 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         auto noClient =
             CreateListener(NInterconnect::TAddress("127.0.0.1", 0), {});
         UNIT_ASSERT_VALUES_EQUAL(noClient.GetError().GetCode(), E_ARGUMENT);
-        auto badBacklog = NPrivate::CreateListenerWithAcceptError(
+        auto badBacklog = NPrivate::CreateListener(
             NInterconnect::TAddress("127.0.0.1", 0),
             0,
-            std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+            std::make_shared<TTestListenerClient>([](TSocketResult) {}),
+            nullptr);
         UNIT_ASSERT_VALUES_EQUAL(badBacklog.GetError().GetCode(), E_ARGUMENT);
     }
 
     Y_UNIT_TEST(RequestStopFromCallbackAndConcurrentStop)
     {
-        auto entered = NThreading::NewPromise<void>();
+        auto entered = NThreading::NewPromise<TSocketResult>();
         auto release = NThreading::NewPromise<void>();
         IListenerPtr listener;
         auto [created, error] = CreateListener(
@@ -224,16 +282,13 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             std::make_shared<TTestListenerClient>(
                 [&](TSocketResult result)
                 {
-                    UNIT_ASSERT_C(
-                        !HasError(result.GetError()),
-                        FormatError(result.GetError()));
                     listener->RequestStop();
-                    entered.SetValue();
+                    entered.SetValue(std::move(result));
                     release.GetFuture().GetValueSync();
                 }));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         listener = std::move(created);
-        auto connector = CreateConnector();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
         std::future<void> first;
         std::future<void> second;
         Y_DEFER
@@ -245,7 +300,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         connector->Start();
         auto socket = WaitSocket(
             connector->Connect(listener->GetAddress(), TDuration::Seconds(5)));
-        UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
+        CheckSocket(WaitSocket(entered.GetFuture()));
         first = std::async(std::launch::async, [&] { listener->Stop(); });
         second = std::async(std::launch::async, [&] { listener->Stop(); });
         const bool waits =
