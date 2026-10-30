@@ -1633,6 +1633,51 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT_VALUES_EQUAL(expectedContent, actualContent);
     }
 
+    Y_UNIT_TEST(ShouldKeepFreshVersionsBetweenCheckpoints)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(1, '1');
+        partition.CreateCheckpoint("c1");
+        fbwClient.WriteBlocks(1, '2');
+        partition.CreateCheckpoint("c2");
+        fbwClient.WriteBlocks(1, '3');
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('1'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1), "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('2'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1), "c2")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('3'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)
     {
         TMyTestEnv testEnv;
