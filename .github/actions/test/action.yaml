@@ -372,6 +372,7 @@ runs:
             if [ "$RC" -eq 124 ]; then
                 ATTEMPT_TIMED_OUT=1
             fi
+            # ya exit codes: https://github.com/yandex/yatool/blob/main/devtools/ya/core/error/__init__.py#L23
             case $RC in
                 0)
                     echo "ya test successfully finished, no errors"
@@ -402,9 +403,12 @@ runs:
                         fi
                     fi
                     ;;
-                8)
-                    echo "ya make configuration failed; stopping retries"
+                # USAGE_ERROR, CONFIGURE_ERROR, NO_TESTS_COLLECTED, NOT_RETRIABLE_ERROR.
+                4|8|9|13)
+                    echo "ya make failed with non-retriable exit code $RC; stopping retries"
                     ;;
+                # GENERIC_ERROR (1), UNHANDLED_EXCEPTION (3), TEST_FAILED (10),
+                # INFRASTRUCTURE_ERROR (12), YT_STORE_FETCH_ERROR (14), or other failures.
                 *)
                     echo "ya test returned $RC"
                     ls -la "${JUNIT_REPORT_XML}.${i}" || true
