@@ -349,6 +349,7 @@ void TConfigsManagerActor::Handle(
         }
     } catch (...) {
         ReportConfigUpdateError(
+            ConfigRenderer.Data,
             TStringBuilder()
                 << "Failed to process PrivateDatabaseConfig notification: "
                 << CurrentExceptionMessage(),

@@ -192,13 +192,13 @@ TString FormatEnumValue(
     const google::protobuf::EnumDescriptor& enumType,
     i64 value)
 {
-    const auto* enumValue = std::in_range<int>(value)
-                               ? enumType.FindValueByNumber(
-                                     static_cast<int>(value))
-                               : nullptr;
-    return enumValue ? TStringBuilder() << enumValue->name() << " (" << value
-                                       << ')'
-                     : ToString(value);
+    const auto* enumValue =
+        std::in_range<int>(value)
+            ? enumType.FindValueByNumber(static_cast<int>(value))
+            : nullptr;
+    return enumValue
+               ? (TStringBuilder() << enumValue->name() << " (" << value << ')')
+               : ToString(value);
 }
 
 // Format enum overrides by their schema and other ICB values as integers.
@@ -229,10 +229,10 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
 
     if (field->cpp_type() == FieldDescriptor::CPPTYPE_ENUM) {
         const auto* reflection = message->GetReflection();
-        const auto value = field->is_repeated()
-                               ? reflection->GetRepeatedEnumValue(
-                                     *message, field, index)
-                               : reflection->GetEnumValue(*message, field);
+        const auto value =
+            field->is_repeated()
+                ? reflection->GetRepeatedEnumValue(*message, field, index)
+                : reflection->GetEnumValue(*message, field);
         return FormatEnumValue(*field->enum_type(), value);
     }
 
@@ -310,9 +310,9 @@ void RenderField(
                     RenderCell(
                         out,
                         icb ? std::optional<TString>(
-                                  IsSensitive(*field) ? TString("[redacted]")
-                                                      : FormatIcbValue(
-                                                            *field, *icb))
+                                  IsSensitive(*field)
+                                      ? TString("[redacted]")
+                                      : FormatIcbValue(*field, *icb))
                             : std::nullopt);
                 } else {
                     out << "<td class='config-icb-unavailable'></td>";
@@ -375,10 +375,10 @@ bool RenderNestedMessage(
     for (size_t source = 0; source != sources.size(); ++source) {
         children[source] = GetMessage(sources[source], field, index);
         // Ignore empty top-level sections created by BuildEffectiveConfig.
-        hasEmptyMessage |=
-            IsMessageEmpty(children[source]) &&
-            (source != EffectiveSource ||
-             field->containing_type() != NProto::TBlockstoreConfig::descriptor());
+        hasEmptyMessage |= IsMessageEmpty(children[source]) &&
+                           (source != EffectiveSource ||
+                            field->containing_type() !=
+                                NProto::TBlockstoreConfig::descriptor());
     }
     // Stop at absent messages before descending into their schemas.
     if (AllOf(children, [](const auto* child) { return !child; })) {
@@ -526,9 +526,10 @@ bool RenderScalarField(
     }
 
     // Omit unset fields unless a live ICB override supplies their value.
-    if (!icb && AllOf(sources, [field](const auto* source) {
-            return !HasValue(source, field);
-        }))
+    if (!icb &&
+        AllOf(
+            sources,
+            [field](const auto* source) { return !HasValue(source, field); }))
     {
         return false;
     }
@@ -568,15 +569,18 @@ bool RenderMessage(
         if (field->is_repeated()) {
             counts.Dynamic +=
                 HasValue(sources[context.CurrentDynamicSource], field);
-            rendered |=
-                field->is_map()
-                    ? RenderMapField(out, sources, field, fieldPath, fieldContext)
-                    : RenderRepeatedField(
-                          out,
-                          sources,
-                          field,
-                          fieldPath,
-                          fieldContext);
+            rendered |= field->is_map() ? RenderMapField(
+                                              out,
+                                              sources,
+                                              field,
+                                              fieldPath,
+                                              fieldContext)
+                                        : RenderRepeatedField(
+                                              out,
+                                              sources,
+                                              field,
+                                              fieldPath,
+                                              fieldContext);
         } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
             rendered |= RenderNestedMessage(
                 out,
