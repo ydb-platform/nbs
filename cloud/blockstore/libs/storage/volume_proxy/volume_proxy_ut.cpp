@@ -15,6 +15,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 #include <unordered_set>
 #include <vector>
 
@@ -62,6 +64,91 @@ ui32 SetupTestEnv(
 
 Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 {
+    Y_UNIT_TEST(ShouldRouteExternalVolumesByDiskAndTabletId)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        auto createVolume = [&](const TString& diskId)
+        {
+            service.CreateVolume(
+                diskId,
+                100_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "",
+                "",
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            service.WaitForVolume(diskId);
+        };
+
+        createVolume("tablet-a");
+        createVolume("tablet-b");
+
+        TVector<ui64> tabletIds;
+        runtime.SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvSSProxy::EvDescribeVolumeResponse)
+            {
+                const auto& description =
+                    event->Get<TEvSSProxy::TEvDescribeVolumeResponse>()
+                        ->PathDescription.GetBlockStoreVolumeDescription();
+                tabletIds.push_back(description.GetVolumeTabletId());
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+        service.DescribeVolume("tablet-a");
+        service.DescribeVolume("tablet-b");
+        UNIT_ASSERT_VALUES_EQUAL(2, tabletIds.size());
+        UNIT_ASSERT(tabletIds[0] != tabletIds[1]);
+
+        TVector<TActorId> recipients;
+        ui32 describeRequests = 0;
+        runtime.SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeRequest)
+            {
+                ++describeRequests;
+            }
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvReallocateDiskRequest &&
+                event->GetRecipientRewrite() != MakeVolumeProxyServiceId())
+            {
+                recipients.push_back(event->GetRecipientRewrite());
+            }
+            return false;
+        });
+
+        auto reallocate = [&](const TString& diskId, ui64 tabletId)
+        {
+            auto request =
+                std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+            request->Record.SetDiskId(diskId);
+            request->Record.SetExternalVolumeTabletId(tabletId);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            service.RecvResponse<TEvVolume::TEvReallocateDiskResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(0, describeRequests);
+            UNIT_ASSERT(!recipients.empty());
+            auto recipient = recipients.back();
+            recipients.clear();
+            return recipient;
+        };
+
+        const auto first = reallocate("external-a", tabletIds[0]);
+        const auto shared = reallocate("external-b", tabletIds[0]);
+        const auto second = reallocate("external-a", tabletIds[1]);
+        const auto repeated = reallocate("external-a", tabletIds[0]);
+
+        UNIT_ASSERT(first);
+        UNIT_ASSERT_VALUES_EQUAL(first, shared);
+        UNIT_ASSERT_VALUES_EQUAL(first, repeated);
+        UNIT_ASSERT(second != first);
+    }
+
     Y_UNIT_TEST(ShouldDescribeVolumeBeforeCreatingPipeToIt)
     {
         TTestEnv env;

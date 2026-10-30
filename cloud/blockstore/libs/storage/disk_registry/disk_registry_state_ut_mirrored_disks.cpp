@@ -35,7 +35,7 @@ void NotifyDisks(
     TVector<TDiskNotificationResult> diskBeingNotify;
     for (const auto& [disk, seqNo]: state.GetDisksToReallocate()) {
         TDiskNotificationResult notification{
-            TDiskNotification{disk, seqNo},
+            TDiskNotification{disk, seqNo, 0},
             {},
         };
         diskBeingNotify.push_back(notification);
@@ -270,8 +270,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-1", diskIds[0]);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
 
         group = state.FindPlacementGroup("disk-1/g");
@@ -425,8 +425,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL("disk-2", diskIds[0]);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-2"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-2"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-2", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-2", 0));
         });
 
         group = state.FindPlacementGroup("disk-2/g");
@@ -543,8 +543,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+            UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
         });
     }
 
@@ -1065,7 +1065,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }
@@ -1265,7 +1265,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -1419,7 +1419,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }
@@ -1564,7 +1564,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -1747,7 +1747,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[1].ReplacementTs);
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -1956,7 +1956,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs2, replaced[1].ReplacementTs);
 
         executor.WriteTx([&](TDiskRegistryDatabase db)
-                         { state.DeallocateDisk(db, "disk-1"); });
+                         { state.DeallocateDisk(db, "disk-1", 0); });
     }
 
     Y_UNIT_TEST(ShouldTakeReplicaAvailabilityIntoAccount)
@@ -2128,7 +2128,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -2704,7 +2704,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -2994,7 +2994,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             });
 
         executor.WriteTx([&](TDiskRegistryDatabase db)
-                         { state.DeallocateDisk(db, "disk-1"); });
+                         { state.DeallocateDisk(db, "disk-1", 0); });
     }
 
     void DoTestShouldWaitForReplicaMigrationUponCmsRemoveRequest(
@@ -3180,7 +3180,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 Now(),
                 db,
                 TDiskNotificationResult{
-                    TDiskNotification{"disk-1", 4},
+                    TDiskNotification{"disk-1", 4, 0},
                     {},
                 });
         });
@@ -3239,7 +3239,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.History.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -3388,7 +3388,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                             Now(),
                             db,
                             TDiskNotificationResult{
-                                TDiskNotification{x.first, x.second},
+                                TDiskNotification{x.first, x.second, 0},
                                 {},
                             });
                     }
@@ -3431,7 +3431,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(0, replaced.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -4176,7 +4176,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
+            state.DeallocateDisk(db, "disk-1", 0);
         });
     }
 
@@ -4344,8 +4344,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[1].ReplacementTs);
 
          executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            state.DeallocateDisk(db, "disk-1");
-            state.DeallocateDisk(db, "disk-2");
+            state.DeallocateDisk(db, "disk-1", 0);
+            state.DeallocateDisk(db, "disk-2", 0);
         });
     }
 
@@ -4464,7 +4464,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         UNIT_ASSERT_VALUES_EQUAL(changeStateTs, replaced[0].ReplacementTs);
 
         executor.WriteTx([&](TDiskRegistryDatabase db)
-                         { state.DeallocateDisk(db, "disk-1"); });
+                         { state.DeallocateDisk(db, "disk-1", 0); });
     }
 
     Y_UNIT_TEST(
@@ -4656,8 +4656,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
             });
 
         UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
@@ -4743,8 +4743,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
-                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1", 0));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1", 0));
             });
 
         UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
