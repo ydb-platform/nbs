@@ -106,6 +106,7 @@
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
 #include <cloud/storage/core/libs/opentelemetry/impl/trace_reader.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
@@ -342,6 +343,16 @@ void TBootstrapBase::Init()
         });
     }
 
+    // Explicit name instead of GetComponentName(): the latter depends on
+    // kikimr, which server_lightweight does not link.
+    CertificateWatcher = CreateCertificateWatcher(
+        Logging,
+        "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
+        Scheduler,
+        LongRunningTaskExecutor,
+        rootGroup->GetSubgroup("component", "certificates"),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
@@ -349,20 +360,10 @@ void TBootstrapBase::Init()
             certPathList,
             "Secure port is configured without certificates");
 
-        // Below we use explicit name "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER"
-        // because overwise it would break server_lightweight build.
-        // GetComponentName() depend on kikimr which is prohibited in
-        // server_lightweight.
-
         CertificateProvider = CreateCertificateProvider(
-            Logging,
-            "BLOCKSTORE_TLS_CERTIFICATE_PROVIDER",
-            Scheduler,
-            LongRunningTaskExecutor,
-            serverGroup,
+            CertificateWatcher,
             Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            std::move(certPathList));
     }
 
     for (auto& event: PostponedCriticalEvents) {
@@ -1056,6 +1057,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
+    START_COMMON_COMPONENT(CertificateWatcher);
     START_COMMON_COMPONENT(CertificateProvider);
     START_COMMON_COMPONENT(GrpcEndpointListener);
     START_COMMON_COMPONENT(Executor);
@@ -1140,6 +1142,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
+    STOP_COMMON_COMPONENT(CertificateWatcher);
     STOP_COMMON_COMPONENT(Executor);
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);
