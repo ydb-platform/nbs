@@ -25,6 +25,34 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
 
+namespace {
+
+using TDeviceConfigs = TVector<NProto::TDeviceConfig>;
+using TReplicaUuids = TVector<TVector<TString>>;
+
+void SendCreateDiskFromDevices(
+    TDiskRegistryClient& diskRegistry,
+    const TString& diskId,
+    ui32 blockSize,
+    TDeviceConfigs devices,
+    NProto::EStorageMediaKind mediaKind =
+        NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+    TReplicaUuids replicas = {},
+    bool force = false,
+    bool keepBlockCount = false)
+{
+    diskRegistry.SendRequest(diskRegistry.CreateCreateDiskFromDevicesRequest(
+        diskId,
+        blockSize,
+        std::move(devices),
+        mediaKind,
+        std::move(replicas),
+        force,
+        keepBlockCount));
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
@@ -89,19 +117,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }();
 
         {
-            diskRegistry.SendCreateDiskFromDevicesRequest(
+            SendCreateDiskFromDevices(
+                diskRegistry,
                 "foo",
                 4_KB,
-                TVector {
+                TDeviceConfigs {
                     device("agent-1", "dev-1"),
                     device("agent-1", "dev-2")
-                }
-            );
+                });
             auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("is allocated for"),
                 response->GetErrorReason());
+            UNIT_ASSERT(!diskRegistry.Exists("foo"));
         }
 
         diskRegistry.CreateDiskFromDevices(
@@ -119,15 +148,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.DeallocateDisk("disk-1");
 
         {
-            diskRegistry.SendCreateDiskFromDevicesRequest(
+            SendCreateDiskFromDevices(
+                diskRegistry,
                 "bar",
                 4_KB,
-                TVector {
+                TDeviceConfigs {
                     device("agent-1", "dev-1"),
                     device("agent-1", "dev-2")
-                },
-                false    // force
-            );
+                });
             auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -140,15 +168,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            diskRegistry.SendCreateDiskFromDevicesRequest(
+            SendCreateDiskFromDevices(
+                diskRegistry,
                 "bar",
                 4_KB,
-                TVector {
+                TDeviceConfigs {
                     device("agent-1", "dev-1"),
                     device("agent-1", "dev-2")
-                },
-                false    // force
-            );
+                });
             auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_ALREADY,
@@ -161,20 +188,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            diskRegistry.SendCreateDiskFromDevicesRequest(
+            SendCreateDiskFromDevices(
+                diskRegistry,
                 "bar",
                 4_KB,
-                TVector {
+                TDeviceConfigs {
                     device("agent-1", "dev-1"),
                     device("agent-1", "dev-3")
-                },
-                false    // force
-            );
+                });
             auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 response->GetStatus(),
                 response->GetErrorReason());
+            UNIT_ASSERT(diskRegistry.Exists("bar"));
         }
 
         {
@@ -195,6 +222,90 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1.2",
                 response->Record.GetDevices(1).GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevices)
+    {
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1.1"),
+                    Device("dev-2", "uuid-1.2"),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-2.1"),
+                    Device("dev-2", "uuid-2.2"),
+                }),
+        };
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        const TVector<TVector<TString>> replicas = {
+            {
+                "uuid-1.1",
+                "uuid-1.2",
+            },
+            {
+                "uuid-2.1",
+                "uuid-2.2",
+            },
+        };
+
+        TDeviceConfigs mirrorDevices;
+
+        {
+            SendCreateDiskFromDevices(
+                diskRegistry,
+                "mirror-1",
+                DefaultLogicalBlockSize,
+                mirrorDevices,
+                NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                replicas);
+
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetBlockCount());
+        }
+
+        {
+            SendCreateDiskFromDevices(
+                diskRegistry,
+                "mirror-2",
+                DefaultLogicalBlockSize,
+                mirrorDevices,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                replicas);
+
+            auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "Replicas count is inconsistent with media kind"));
+            UNIT_ASSERT(!diskRegistry.Exists("mirror-2"));
+        }
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        {
+            auto response = diskRegistry.DescribeDisk("mirror-1");
+            const auto& record = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, record.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, record.GetReplicas(0).DevicesSize());
         }
     }
 
@@ -307,7 +418,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             dev2.SetAgentId("agent-2");
             dev2.SetDeviceName("dev-2");
 
-            diskRegistry.SendCreateDiskFromDevicesRequest("ssd0", 4_KB, devices);
+            SendCreateDiskFromDevices(diskRegistry, "ssd0", 4_KB, std::move(devices));
 
             auto response = diskRegistry.RecvCreateDiskFromDevicesResponse();
 
