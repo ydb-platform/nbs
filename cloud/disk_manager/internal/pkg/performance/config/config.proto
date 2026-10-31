@@ -20,4 +20,9 @@ message PerformanceConfig {
     optional uint64 DeleteSnapshotDataBandwidthMiBs = 7 [default = 1000];
     optional uint64 SSDLocalDiskDeletingBandwidthMiBs = 8 [default = 500];
     optional uint64 HDDLocalDiskDeletingBandwidthMiBs = 9 [default = 100];
+
+    // Maximum read bandwidth of one base disk allocation unit. Used by pools
+    // to convert the expected read bandwidth of an overlay disk
+    // (AcquireBaseDiskRequest.ExpectedReadBandwidthMiBs) into base disk units.
+    optional uint64 BaseDiskUnitMaxReadBandwidthMiBs = 10 [default = 500];
 }

@@ -31,9 +31,10 @@ type Slot struct {
 	OverlayDisk     *types.Disk
 	OverlayDiskKind types.DiskKind
 	OverlayDiskSize uint64
-	// Allot units as for an overlay disk of the base disk size, OverlayDiskSize
-	// is ignored. The slot is stored with the base disk size as its size.
-	UseBaseDiskSize bool
+	// When set, the slot is charged by bandwidth rather than by
+	// OverlayDiskSize/OverlayDiskKind, without any oversubscription (see
+	// computeAllottedUnits).
+	ExpectedReadBandwidthMiBs uint64
 }
 
 type RebaseInfo struct {

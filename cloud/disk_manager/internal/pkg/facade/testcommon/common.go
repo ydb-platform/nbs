@@ -730,10 +730,15 @@ func newPoolStorage(
 	cloudID := "cloud"
 	folderID := "pools"
 
-	storage, err := pools_storage.NewStorage(&pools_config.PoolsConfig{
-		CloudId:  &cloudID,
-		FolderId: &folderID,
-	}, db, metrics.NewEmptyRegistry())
+	storage, err := pools_storage.NewStorage(
+		&pools_config.PoolsConfig{
+			CloudId:  &cloudID,
+			FolderId: &folderID,
+		},
+		GetServerConfig(t).GetPerformanceConfig(),
+		db,
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	return storage, closeFunc

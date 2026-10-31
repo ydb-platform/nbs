@@ -1258,23 +1258,19 @@ func (s *storageYDB) acquireBaseDiskSlot(
 			continue
 		}
 
-		overlayDiskSize := st.OverlayDiskSize
-		if st.UseBaseDiskSize {
-			overlayDiskSize = baseDisk.sizeOrDefault()
-		}
-
 		slot := &slot{
-			overlayDiskID:   overlayDiskID,
-			overlayDiskKind: st.OverlayDiskKind,
-			overlayDiskSize: overlayDiskSize,
-			baseDiskID:      baseDisk.id,
-			imageID:         baseDisk.imageID,
-			zoneID:          zoneID,
-			status:          slotStatusAcquired,
+			overlayDiskID:             overlayDiskID,
+			overlayDiskKind:           st.OverlayDiskKind,
+			overlayDiskSize:           st.OverlayDiskSize,
+			expectedReadBandwidthMiBs: st.ExpectedReadBandwidthMiBs,
+			baseDiskID:                baseDisk.id,
+			imageID:                   baseDisk.imageID,
+			zoneID:                    zoneID,
+			status:                    slotStatusAcquired,
 		}
 
 		baseDiskOldState := baseDisk
-		err = acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
+		err = s.acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
 		if err != nil {
 			return BaseDisk{}, err
 		}
@@ -1767,7 +1763,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 	baseDiskOldState := baseDisk
 	slotOldState := slot
 
-	err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, &slot)
+	err = s.acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, &slot)
 	if err != nil {
 		return err
 	}
@@ -3638,7 +3634,7 @@ func (s *storageYDB) retireBaseDisk(
 			continue
 		}
 
-		err := acquireTargetUnitsAndSlots(ctx, tx, target, slot)
+		err := s.acquireTargetUnitsAndSlots(ctx, tx, target, slot)
 		if err != nil {
 			return nil, err
 		}
