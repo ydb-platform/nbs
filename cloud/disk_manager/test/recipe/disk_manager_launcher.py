@@ -28,7 +28,6 @@ LoggingConfig: <
 """
 
 CONTROLPLANE_CONFIG_TEMPLATE = """
-{proxy_overlay_disk_id_prefix_config}
 GrpcConfig: <
     Port: {port}
     Certs: <
@@ -300,7 +299,6 @@ S3Config: <
 """
 
 DATAPLANE_CONFIG_TEMPLATE = """
-{proxy_overlay_disk_id_prefix_config}
 TasksConfig: <
     ZoneIds: ["zone-a", "zone-b", "zone-c", "zone-d", "zone-d-shard1"]
     TaskPingPeriod: "1s"
@@ -582,7 +580,6 @@ class DiskManagerLauncher:
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
         base_disk_id_prefix="",
-        proxy_overlay_disk_id_prefix="",
         creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
         disable_disk_registry_based_disks=False,
         dataplane_ydb_port=None,
@@ -633,14 +630,6 @@ class DiskManagerLauncher:
             'disk_manager_client_config_{}.txt'.format(idx)
         )
         self.__server_config = None
-
-        # Don't override the default from the proto with an empty value.
-        proxy_overlay_disk_id_prefix_config = ""
-        if proxy_overlay_disk_id_prefix:
-            proxy_overlay_disk_id_prefix_config = 'ProxyOverlayDiskIdPrefix: "{}"'.format(
-                proxy_overlay_disk_id_prefix
-            )
-
         if is_dataplane:
             with open(self.config_file, "w") as f:
                 f.write(DATAPLANE_CONFIG_TEMPLATE.format(
@@ -658,7 +647,6 @@ class DiskManagerLauncher:
                         s3_port=s3_port,
                         s3_credentials_file=s3_credentials_file,
                     ),
-                    proxy_overlay_disk_id_prefix_config=proxy_overlay_disk_id_prefix_config,
                     dataplane_ydb_port=dataplane_ydb_port if dataplane_ydb_port is not None else ydb_port,
                     migration_config="" if migration_dst_ydb_port is None else MIGRATION_CONFIG_TEMPLATE.format(
                         migration_dst_ydb_port=migration_dst_ydb_port,
@@ -718,7 +706,6 @@ class DiskManagerLauncher:
                     access_service_port=access_service_port,
                     ydb_port=ydb_port,
                     base_disk_id_prefix=base_disk_id_prefix,
-                    proxy_overlay_disk_id_prefix_config=proxy_overlay_disk_id_prefix_config,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",
