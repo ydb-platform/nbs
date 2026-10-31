@@ -36,7 +36,6 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <util/generic/guid.h>
 #include <util/stream/file.h>
 #include <util/string/ascii.h>
 #include <util/string/builder.h>
@@ -299,6 +298,7 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     }
     sessionConfig.ClientVersionInfo = GetFullVersionString();
     sessionConfig.AccessMode = accessMode;
+    sessionConfig.InstanceId = ClientConfig->GetInstanceId();
 
     auto future = EncryptionClientFactory->CreateEncryptionClient(
         ClientEndpoint,
@@ -637,8 +637,11 @@ void TCommand::InitClientConfig()
     }
 
     if (!clientConfig.GetClientId()) {
-        clientConfig.SetClientId(
-            TStringBuilder() << "cli-" << CreateGuidAsString());
+        clientConfig.SetClientId("cli-blockstore-client");
+    }
+
+    if (!clientConfig.GetInstanceId()) {
+        clientConfig.SetInstanceId("cli-blockstore-client");
     }
 
     // This retry mode is not expected in blockstore-client

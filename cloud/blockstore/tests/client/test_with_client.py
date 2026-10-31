@@ -364,6 +364,64 @@ def test_read_with_io_depth():
     tear_down(env)
 
 
+def test_metrics_reuse():
+    storage = TStorageServiceConfig()
+    # Disable inactive client volumes removal:
+    storage.InactiveClientsTimeout = 0
+    env, run = setup(storage_config_patches=[storage])
+    disk_id = "cli-metrics"
+    backup_disk_id = disk_id + "-backup"
+    socket_file = tempfile.NamedTemporaryFile(suffix=".sock")
+
+    run("createvolume",
+        "--disk-id", disk_id,
+        "--blocks-count", "1")
+
+    with open(WRITEREQ_FILE, "wb") as wr:
+        wr.write(b"B" * BLOCK_SIZE)
+
+    run("writeblocks",
+        "--disk-id", disk_id,
+        "--input", WRITEREQ_FILE)
+
+    run("readblocks",
+        "--disk-id", disk_id,
+        "--blocks-count", "1")
+
+    run("zeroblocks",
+        "--disk-id", disk_id,
+        "--start-index", "0",
+        "--blocks-count", "1")
+
+    run("backupvolume",
+        "--disk-id", disk_id,
+        "--backup-disk-id", backup_disk_id,
+        "--checkpoint-id", "metrics-checkpoint")
+
+    run("restorevolume",
+        "--disk-id", disk_id,
+        "--backup-disk-id", backup_disk_id)
+
+    run("startendpoint",
+        "--disk-id", disk_id,
+        "--socket", socket_file.name,
+        "--ipc-type", "grpc")
+
+    run("stopendpoint", "--socket", socket_file.name)
+
+    sensors = get_nbs_counters(env.mon_port)["sensors"]
+    for metrics_disk_id in (disk_id, backup_disk_id):
+        instances = {
+            sensor["labels"]["instance"]
+            for sensor in sensors
+            if "instance" in sensor["labels"]
+            and sensor["labels"].get("component") == "server_volume"
+            and sensor["labels"].get("volume") == metrics_disk_id
+        }
+        assert len(instances) == 1, (metrics_disk_id, instances)
+    tear_down(env)
+
+
 def test_flush_profile_log():
     env, run = setup()
     print("output_path = {}".format(yatest_common.output_path()))
