@@ -13,7 +13,7 @@ namespace NCloud::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Select the CMS config using useYamlConfig and YAML YamlConfigEnabled.
-// In PROTO mode, replace only TAppConfig::BlockstoreConfig with its YAML value.
+// Preserve the complete PROTO configuration when YAML selection is disabled.
 NKikimrConfig::TAppConfig SelectCmsAppConfig(
     NKikimrConfig::TAppConfig regularConfig,
     NKikimrConfig::TAppConfig yamlConfig,
