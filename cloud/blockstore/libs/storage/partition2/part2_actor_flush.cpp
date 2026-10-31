@@ -403,9 +403,13 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 
     const auto freshBlockUpdatesSize = State->GetFreshBlockUpdateCount();
     const auto dataSize = State->GetFreshBlockCount() * State->GetBlockSize();
-    const bool shouldFlush = !State->IsLoadStateFinished()
-        || dataSize >= Config->GetFlushThreshold()
-        || freshBlockUpdatesSize >= FreshBlockUpdatesSizeThreshold;
+    const auto flushThreshold =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetFlushThresholdSSD()
+            : Config->GetFlushThresholdHDD();
+    const bool shouldFlush =
+        !State->IsLoadStateFinished() || dataSize >= flushThreshold ||
+        freshBlockUpdatesSize >= FreshBlockUpdatesSizeThreshold;
 
     if (!shouldFlush) {
         return;

@@ -1,22 +1,12 @@
 syntax = "proto3";
 
+import "cloud/blockstore/public/api/protos/local_nvme.proto";
+
 package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/local_nvme/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
-
-enum ENVMeDeviceState
-{
-    // The device is operational and available for use.
-    NVME_DEVICE_STATE_ONLINE = 0;
-
-    // The device is marked for maintenance.
-    NVME_DEVICE_STATE_MAINTENANCE = 1;
-
-    // The device has failed or is unreachable.
-    NVME_DEVICE_STATE_OFFLINE = 2;
-}
 
 message TNVMeDevice
 {

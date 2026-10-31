@@ -12,8 +12,6 @@
 #include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
-#include <memory>
-
 namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,17 +22,27 @@ struct TKeyBuffer
     TBuffer Buffer;
 };
 
+// What a store holds: the single metadata buffer and the key buffers.
+struct TRestoredBuffers
+{
+    TBuffer MetaBuffer;
+    TVector<TKeyBuffer> KeyBuffers;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IKeyBufferStore
 {
-    using TRestoreResult = TResultOrError<TVector<TKeyBuffer>>;
+    using TRestoreResult = TResultOrError<TRestoredBuffers>;
 
     virtual ~IKeyBufferStore() = default;
 
     [[nodiscard]] virtual NThreading::TFuture<TRestoreResult> Restore() = 0;
 
     [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
+        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+
+    [[nodiscard]] virtual auto WriteMeta(TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
     [[nodiscard]] virtual auto EraseBelow(ui64 key)

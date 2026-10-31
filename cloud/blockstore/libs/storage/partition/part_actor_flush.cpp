@@ -447,10 +447,21 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
+    const bool isSSD =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD;
+    const ui32 flushThreshold =
+        isSSD ? Config->GetFlushThresholdSSD() : Config->GetFlushThresholdHDD();
+    const ui32 freshBlobCountFlushThreshold =
+        isSSD ? Config->GetFreshBlobCountFlushThresholdSSD()
+              : Config->GetFreshBlobCountFlushThresholdHDD();
+    const ui32 freshBlobByteCountFlushThreshold =
+        isSSD ? Config->GetFreshBlobByteCountFlushThresholdSSD()
+              : Config->GetFreshBlobByteCountFlushThresholdHDD();
+
     if (!State->IsLoadStateFinished() ||
-        freshBlockByteCount >= Config->GetFlushThreshold() ||
-        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold())
+        freshBlockByteCount >= flushThreshold ||
+        freshBlobCount >= freshBlobCountFlushThreshold ||
+        freshBlobByteCount >= freshBlobByteCountFlushThreshold)
     {
         return true;
     }

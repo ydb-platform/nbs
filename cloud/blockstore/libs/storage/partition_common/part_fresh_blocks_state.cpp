@@ -246,7 +246,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
     ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
-    SortUnique(checkpoints);
+    // FindGarbageVersions expects checkpoints in descending order.
+    SortUnique(checkpoints, TGreater<ui64>());
 
     TVector<ui64> existingCommitIds;
     TVector<ui64> garbage;
