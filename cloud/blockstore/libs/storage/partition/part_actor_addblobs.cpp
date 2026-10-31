@@ -1000,6 +1000,19 @@ void TPartitionActor::ExecuteAddBlobs(
     // need this barrier to prevent dirty reads from concurrent Cleanup
     State->GetCleanupQueue().AcquireBarrier(args.DeletionCommitId);
 
+    const auto hasExpectedCommitId = [&](const auto& blob)
+    {
+        return blob.BlobId.CommitId() == args.CommitId;
+    };
+    Y_DEBUG_ABORT_UNLESS(AllOf(args.MixedBlobs, hasExpectedCommitId));
+    Y_DEBUG_ABORT_UNLESS(AllOf(args.MergedBlobs, hasExpectedCommitId));
+    Y_DEBUG_ABORT_UNLESS(AllOf(args.FreshBlobs, hasExpectedCommitId));
+
+    TMaybe<NProto::TPartitionStats> countersBefore;
+    if (State->ShouldTrackMetadataRebuildCounters(args.CommitId)) {
+        countersBefore = State->GetStats();
+    }
+
     TAddBlobsExecutor executor(
         *State,
         args,
@@ -1011,6 +1024,9 @@ void TPartitionActor::ExecuteAddBlobs(
             ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
+    if (countersBefore) {
+        State->TrackMetadataRebuildCounters(*countersBefore);
+    }
 }
 
 void TPartitionActor::CompleteAddBlobs(

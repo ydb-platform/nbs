@@ -470,6 +470,10 @@ private:
         ui64 mergedBlocksCount,
         ui64 mixedChannelBlocksCount,
         ui64 mergedChannelBlocksCount,
+        ui64 mixedIndexBlobsCount,
+        ui64 mergedIndexBlobsCount,
+        ui64 mixedChannelBlobsCount,
+        ui64 mergedChannelBlobsCount,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
@@ -757,6 +761,10 @@ private:
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
+
+    void StartMetadataRebuildBlockCount(
+        const NActors::TActorContext& ctx,
+        ui32 batchSize);
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,

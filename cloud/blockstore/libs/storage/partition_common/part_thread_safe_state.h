@@ -214,7 +214,7 @@ public:
             StateLock, CheckpointsInFlight);
     }
 
-    void WaitCommitForCompaction(
+    void WaitCommit(
         const NActors::TActorContext& ctx,
         std::unique_ptr<ITransactionBase> tx,
         ui64 commitId);
