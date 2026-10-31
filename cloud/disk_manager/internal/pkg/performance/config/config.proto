@@ -24,5 +24,5 @@ message PerformanceConfig {
     // Maximum read bandwidth of one base disk allocation unit. Used by pools
     // to convert the expected read bandwidth of an overlay disk
     // (AcquireBaseDiskRequest.ExpectedReadBandwidthMiBs) into base disk units.
-    optional uint64 BaseDiskUnitMaxReadBandwidthMiBs = 10 [default = 500];
+    optional uint64 BaseDiskUnitMaxReadBandwidthMiBs = 10 [default = 100];
 }

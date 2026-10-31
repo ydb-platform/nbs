@@ -214,7 +214,7 @@ func TestCommonFreeSlots(t *testing.T) {
 
 func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	ctx := newContext()
-	s := &storageYDB{baseDiskUnitMaxReadBandwidthMiBs: 500}
+	s := &storageYDB{baseDiskUnitMaxReadBandwidthMiBs: 100}
 
 	baseDisk := &baseDisk{
 		maxActiveSlots: 4,
@@ -278,12 +278,12 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	require.True(t, baseDisk.hasFreeSlots())
 
 	// Slot charged by the expected read bandwidth: 2 base disk (SSD)
-	// allocation units of 500 MiB/s each are needed for 501 MiB/s, without
+	// allocation units of 100 MiB/s each are needed for 101 MiB/s, without
 	// oversubscription. Overlay disk size and kind are ignored.
 	slot4 := &slot{}
 	slot4.overlayDiskKind = types.DiskKind_DISK_KIND_HDD
 	slot4.overlayDiskSize = 3 * hddUnit
-	slot4.expectedReadBandwidthMiBs = 501
+	slot4.expectedReadBandwidthMiBs = 101
 
 	err = s.acquireUnitsAndSlots(ctx, nil, baseDisk, slot4)
 	require.NoError(t, err)
