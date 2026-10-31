@@ -37,6 +37,10 @@ namespace NCloud::NFileStore {
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
+    xxx(SetQuota,                           __VA_ARGS__)                       \
+    xxx(DeleteQuota,                        __VA_ARGS__)                       \
+    xxx(ListQuotas,                         __VA_ARGS__)                       \
+                                                                               \
     xxx(ExecuteAction,                      __VA_ARGS__)                       \
 // FILESTORE_SERVICE_METHODS
 
@@ -216,7 +220,10 @@ enum class EFileStoreRequest
     FuseFsync = 66,
     FuseFsyncDir = 67,
     AsyncDestroyHandle = 68,
-    MAX = 69,
+    SetQuota = 69,
+    DeleteQuota = 70,
+    ListQuotas = 71,
+    MAX = 72,
 };
 
 constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::MAX);

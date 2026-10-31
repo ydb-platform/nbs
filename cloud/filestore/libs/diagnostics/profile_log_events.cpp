@@ -15,6 +15,7 @@
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
+#include <cloud/filestore/public/api/protos/quota.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -205,6 +206,9 @@ void FinalizeProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
+    IMPLEMENT_DEFAULT_METHOD(SetQuota)
+    IMPLEMENT_DEFAULT_METHOD(DeleteQuota)
+    IMPLEMENT_DEFAULT_METHOD(ListQuotas)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -676,6 +680,9 @@ void UpdateRangeNodeIds(
     IMPLEMENT_DEFAULT_METHOD(CancelAddData, NProtoPrivate)
     IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
     IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
+    IMPLEMENT_DEFAULT_METHOD(SetQuota, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DeleteQuota, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ListQuotas, NProto)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 

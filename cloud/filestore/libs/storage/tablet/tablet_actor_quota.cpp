@@ -11,42 +11,47 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateSetQuotaRequest(const NProto::TSetQuotaRequest& request)
+{
+    if (!request.GetQuotaId()) {
+        return MakeError(E_ARGUMENT, "quotaId must be non-zero");
+    }
+
+    return {};
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleSetQuota(
-    const TEvIndexTablet::TEvSetQuotaRequest::TPtr& ev,
+    const TEvService::TEvSetQuotaRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    if (!AcceptRequestNoSession<TEvService::TSetQuotaMethod>(
+            ev,
+            ctx,
+            ValidateSetQuotaRequest))
+    {
+        return;
+    }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s SetQuota started (quotaId: %u, maxBytes: %lu, maxNodes: %lu)",
-        LogTag.c_str(),
-        msg->Record.GetQuotaId(),
-        msg->Record.GetMaxBytes(),
-        msg->Record.GetMaxNodes());
+    auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>());
+        msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-
-    if (!msg->Record.GetQuotaId()) {
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
-                E_ARGUMENT,
-                "quotaId must be non-zero"));
-        NCloud::Reply(ctx, *requestInfo, std::move(response));
-        return;
-    }
 
     if (!FindQuota(msg->Record.GetQuotaId()) && GetQuotaCount() >= MaxQuotas)
     {
         auto response =
-            std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(MakeError(
+            std::make_unique<TEvService::TEvSetQuotaResponse>(MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "too many quotas, limit is " << MaxQuotas));
@@ -54,7 +59,7 @@ void TIndexTabletActor::HandleSetQuota(
         return;
     }
 
-    AddInFlightRequest<TEvIndexTablet::TSetQuotaMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TSetQuotaMethod>(*requestInfo);
 
     ExecuteTx<TSetQuota>(
         ctx,
@@ -94,18 +99,16 @@ void TIndexTabletActor::CompleteTx_SetQuota(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s SetQuota completed (%s)",
-        LogTag.c_str(),
-        FormatError(args.Error).c_str());
-
     auto response =
-        std::make_unique<TEvIndexTablet::TEvSetQuotaResponse>(args.Error);
+        std::make_unique<TEvService::TEvSetQuotaResponse>(args.Error);
     if (!HasError(args.Error)) {
         *response->Record.MutableQuota() = args.Quota;
     }
+
+    CompleteResponse<TEvService::TSetQuotaMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
 
     if (HasError(args.Error) ||
         GetFileSystem().GetShardFileSystemIds().empty() || !IsMainTablet())
@@ -126,14 +129,14 @@ void TIndexTabletActor::CompleteTx_SetQuota(
         LogTag.c_str(),
         JoinSeq(",", shardIds).c_str());
 
-    NProtoPrivate::TSetQuotaRequest request;
+    NProto::TSetQuotaRequest request;
     request.SetQuotaId(args.QuotaId);
     request.SetMaxBytes(args.MaxBytes);
     request.SetMaxNodes(args.MaxNodes);
 
     auto actor = std::make_unique<TShardRequestActor<
-        TEvIndexTablet::TEvSetQuotaRequest,
-        TEvIndexTablet::TEvSetQuotaResponse>>(
+        TEvService::TEvSetQuotaRequest,
+        TEvService::TEvSetQuotaResponse>>(
         LogTag,
         SelfId(),
         std::move(args.RequestInfo),
@@ -148,25 +151,26 @@ void TIndexTabletActor::CompleteTx_SetQuota(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleDeleteQuota(
-    const TEvIndexTablet::TEvDeleteQuotaRequest::TPtr& ev,
+    const TEvService::TEvDeleteQuotaRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    if (!AcceptRequestNoSession<TEvService::TDeleteQuotaMethod>(
+            ev,
+            ctx,
+            {} /* validator */))
+    {
+        return;
+    }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s DeleteQuota started (quotaId: %u)",
-        LogTag.c_str(),
-        msg->Record.GetQuotaId());
+    auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        MakeIntrusive<TCallContext>());
+        msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddInFlightRequest<TEvIndexTablet::TDeleteQuotaMethod>(*requestInfo);
+    AddInFlightRequest<TEvService::TDeleteQuotaMethod>(*requestInfo);
 
     ExecuteTx<TDeleteQuota>(
         ctx,
@@ -201,15 +205,13 @@ void TIndexTabletActor::CompleteTx_DeleteQuota(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s DeleteQuota completed (%s)",
-        LogTag.c_str(),
-        FormatError(args.Error).c_str());
-
     auto response =
-        std::make_unique<TEvIndexTablet::TEvDeleteQuotaResponse>(args.Error);
+        std::make_unique<TEvService::TEvDeleteQuotaResponse>(args.Error);
+
+    CompleteResponse<TEvService::TDeleteQuotaMethod>(
+        response->Record,
+        args.RequestInfo->CallContext,
+        ctx);
 
     if (HasError(args.Error) ||
         GetFileSystem().GetShardFileSystemIds().empty() || !IsMainTablet())
@@ -230,12 +232,12 @@ void TIndexTabletActor::CompleteTx_DeleteQuota(
         LogTag.c_str(),
         JoinSeq(",", shardIds).c_str());
 
-    NProtoPrivate::TDeleteQuotaRequest request;
+    NProto::TDeleteQuotaRequest request;
     request.SetQuotaId(args.QuotaId);
 
     auto actor = std::make_unique<TShardRequestActor<
-        TEvIndexTablet::TEvDeleteQuotaRequest,
-        TEvIndexTablet::TEvDeleteQuotaResponse>>(
+        TEvService::TEvDeleteQuotaRequest,
+        TEvService::TEvDeleteQuotaResponse>>(
         LogTag,
         SelfId(),
         std::move(args.RequestInfo),
@@ -250,10 +252,20 @@ void TIndexTabletActor::CompleteTx_DeleteQuota(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleListQuotas(
-    const TEvIndexTablet::TEvListQuotasRequest::TPtr& ev,
+    const TEvService::TEvListQuotasRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvListQuotasResponse>();
+    if (!AcceptRequestNoSession<TEvService::TListQuotasMethod>(
+            ev,
+            ctx,
+            {} /* validator */))
+    {
+        return;
+    }
+
+    auto* msg = ev->Get();
+
+    auto response = std::make_unique<TEvService::TEvListQuotasResponse>();
 
     auto quotas = GetQuotas();
     for (auto& quota: quotas) {
@@ -267,12 +279,10 @@ void TIndexTabletActor::HandleListQuotas(
         proto->SetUsedNodes(usage.UsedNodes);
     }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s ListQuotas completed (count: %lu)",
-        LogTag.c_str(),
-        quotas.size());
+    CompleteResponse<TEvService::TListQuotasMethod>(
+        response->Record,
+        msg->CallContext,
+        ctx);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

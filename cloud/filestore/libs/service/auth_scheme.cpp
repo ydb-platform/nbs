@@ -78,6 +78,13 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
             return CreatePermissionList({
                 EPermission::Read,
                 EPermission::Write});
+        // Delete is reserved for destroying the filestore/node/client
+        // itself; deleting a quota is just another config update.
+        case EFileStoreRequest::SetQuota:
+        case EFileStoreRequest::DeleteQuota:
+            return CreatePermissionList({EPermission::Update});
+        case EFileStoreRequest::ListQuotas:
+            return CreatePermissionList({EPermission::List});
         case EFileStoreRequest::DescribeFileStoreModel:
             return CreatePermissionList({EPermission::Get});
         case EFileStoreRequest::ListFileStores:
