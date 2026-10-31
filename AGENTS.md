@@ -1,6 +1,6 @@
 # C++ section separators
 
-These rules apply to C++ source and header files under `cloud/filestore`.
+These rules apply to C++ source and header files.
 They describe the convention used in the existing code; preserve the local
 grouping when editing a file.
 
