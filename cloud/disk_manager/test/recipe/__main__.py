@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 
@@ -7,6 +8,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
+from cloud.disk_manager.test.recipe.backup_fault_proxy_launcher import BackupFaultProxyLauncher
 from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.kms_launcher import KmsLauncher
@@ -33,6 +35,12 @@ def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("--certs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nemesis", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--controlled-nemesis", action="store_true", default=False)
+    parser.add_argument("--backup", action="store_true", default=False)
+    parser.add_argument("--backup-encryption", action="store_true", default=False)
+    parser.add_argument("--backup-fault-proxy", action="store_true", default=False)
+    parser.add_argument("--backup-s3-call-timeout-sec", type=int, default=2)
+    parser.add_argument("--backup-task-max-retriable-errors", type=int, default=None)
     parser.add_argument(
         "--min-restart-period-sec",
         action='store',
@@ -97,7 +105,17 @@ def read_regular_filesystem_scrubbing_config(config_path: str) -> str:
 
 def start(argv):
     args = parse_args(argv)
+    if args.controlled_nemesis and not args.nemesis:
+        raise ValueError("controlled Nemesis requires --nemesis")
+    if (args.backup_encryption or args.backup_fault_proxy) and not args.backup:
+        raise ValueError("backup encryption/fault proxy requires --backup")
+    if not 1 <= args.backup_s3_call_timeout_sec <= 60:
+        raise ValueError("backup S3 call timeout must be between 1 and 60 seconds")
+    if args.backup_task_max_retriable_errors is not None:
+        if not args.backup or args.backup_task_max_retriable_errors < 0:
+            raise ValueError("backup retry override requires --backup and a nonnegative limit")
     set_env("NEMESIS_ENABLED", str(bool(args.nemesis)).lower())
+    set_env("DISK_MANAGER_RECIPE_CONTROLLED_NEMESIS", str(args.controlled_nemesis).lower())
 
     if args.regular_filesystem_scrubbing_config:
         config_path = yatest_common.source_path(
@@ -365,6 +383,33 @@ def start(argv):
     with open(s3_credentials_file, "w") as f:
         f.write(S3_CREDENTIALS_FILE)
 
+    # A separate emulator prevents backup fault tests from affecting primary S3.
+    backup_s3_port = None
+    backup_kek_file = ""
+    if args.backup:
+        set_env("DISK_MANAGER_RECIPE_BACKUP_KEK_FILE", "")
+        set_env("DISK_MANAGER_RECIPE_BACKUP_S3_CALL_TIMEOUT_SECONDS", str(args.backup_s3_call_timeout_sec))
+        set_env("DISK_MANAGER_RECIPE_BACKUP_TASK_MAX_RETRIABLE_ERRORS", (
+            "" if args.backup_task_max_retriable_errors is None
+            else str(args.backup_task_max_retriable_errors)
+        ))
+        backup_s3 = S3Launcher()
+        backup_s3.start()
+        backup_s3_port = backup_s3.port
+        set_env("DISK_MANAGER_RECIPE_BACKUP_S3_READ_PORT", str(backup_s3_port))
+        if args.backup_fault_proxy:
+            fault_proxy = BackupFaultProxyLauncher(backup_s3_port)
+            fault_proxy.start()
+            backup_s3_port = fault_proxy.port
+            set_env("DISK_MANAGER_RECIPE_BACKUP_S3_CONTROL_PORT", str(fault_proxy.control_port))
+        set_env("DISK_MANAGER_RECIPE_BACKUP_S3_PORT", str(backup_s3_port))
+        if args.backup_encryption:
+            backup_kek_file = os.path.join(working_dir, "backup_test_kek")
+            with open(backup_kek_file, "xb") as key_file:
+                os.chmod(backup_kek_file, 0o600)
+                key_file.write(os.urandom(32))
+            set_env("DISK_MANAGER_RECIPE_BACKUP_KEK_FILE", backup_kek_file)
+
     disk_managers = []
 
     controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
@@ -385,6 +430,7 @@ def start(argv):
             is_dataplane=False,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
+            controlled_nemesis=args.controlled_nemesis,
             nfs_port=nfs.secure_port,
             nfs2_port=nfs2.secure_port,
             nfs3_port=nfs3.secure_port,
@@ -399,6 +445,11 @@ def start(argv):
             retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
             cell_selection_policy=args.cell_selection_policy,
             image_s3_default_storage_class=args.image_s3_default_storage_class,
+            backup_s3_port=backup_s3_port,
+            backup_s3_credentials_file=s3_credentials_file,
+            backup_kek_file=backup_kek_file,
+            backup_s3_call_timeout_sec=args.backup_s3_call_timeout_sec,
+            backup_task_max_retriable_errors=args.backup_task_max_retriable_errors,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -430,11 +481,16 @@ def start(argv):
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
+            controlled_nemesis=args.controlled_nemesis,
             nfs_port=nfs.secure_port,
             nfs2_port=nfs2.secure_port,
             nfs3_port=nfs3.secure_port,
             s3_port=s3.port,
             s3_credentials_file=s3_credentials_file,
+            backup_s3_port=backup_s3_port,
+            backup_s3_credentials_file=s3_credentials_file,
+            backup_kek_file=backup_kek_file,
+            backup_s3_call_timeout_sec=args.backup_s3_call_timeout_sec,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
             proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
@@ -459,6 +515,24 @@ def start(argv):
     # First node is always control plane.
     set_env("DISK_MANAGER_RECIPE_DISK_MANAGER_PORT", str(disk_managers[0].port))
     set_env("DISK_MANAGER_RECIPE_SERVER_CONFIG", disk_managers[0].server_config)
+    if args.nemesis:
+        set_env("DISK_MANAGER_RECIPE_RESTART_TIMINGS_FILES", json.dumps([
+            disk_manager.restart_timings_file for disk_manager in disk_managers
+        ]))
+        set_env("DISK_MANAGER_RECIPE_NEMESIS_PROCESSES_BY_ROLE", json.dumps({
+            role: [
+                {
+                    "pid": manager.pid,
+                    "restart_timings_file": manager.restart_timings_file,
+                    "restart_trigger_file": manager.restart_trigger_file,
+                }
+                for manager in managers
+            ]
+            for role, managers in (
+                ("controlplane", disk_managers[:controlplane_disk_manager_count]),
+                ("dataplane", disk_managers[controlplane_disk_manager_count:]),
+            )
+        }))
 
 
 def stop(argv):
@@ -471,6 +545,7 @@ def stop(argv):
     KmsLauncher.stop()
     ComputeLauncher.stop()
     YDBLauncher.stop()
+    BackupFaultProxyLauncher.stop()
     S3Launcher.stop()
 
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)
