@@ -925,7 +925,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(
-                    error.GetMessage().Contains("already attached to other disk"));
+                    error.GetMessage().Contains("already exists"));
 
                 AssertNoMirror2DiskArtifactsForMaster(*boundStatePtr, "disk-1");
                 TDiskInfo info;

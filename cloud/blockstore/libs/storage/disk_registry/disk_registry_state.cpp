@@ -8370,7 +8370,7 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     std::optional<NProto::EDevicePoolKind> poolKind;
 
     for (auto& device: devices) {
-        if (allowFreshDevices && device.GetDeviceUUID().empty()) {
+        if (allowFreshDevices && !device.GetDeviceUUID()) {
             deviceIds.push_back(device.GetDeviceUUID());
             continue;
         }
@@ -8421,11 +8421,14 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
     if (auto* disk = Disks.FindPtr(diskId); disk && !disk->Devices.empty()) {
         bool sameDevices = true;
         if (allowFreshDevices) {
-            for (ui32 i = 0; i < disk->Devices.size(); ++i) {
-                if (!deviceIds[i]) {
-                    continue;
+            if (disk->Devices.size() != deviceIds.size()) {
+                sameDevices = false;
+            } else {
+                for (ui32 i = 0; i < disk->Devices.size(); ++i) {
+                    if (deviceIds[i]) {
+                        sameDevices &= disk->Devices[i] == deviceIds[i];
+                    }
                 }
-                sameDevices &= disk->Devices[i] == deviceIds[i];
             }
         } else {
             sameDevices = disk->Devices == deviceIds;
@@ -8585,7 +8588,6 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
             return incDataError;
         }
     }
-
     return {};
 }
 
@@ -8688,6 +8690,8 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     const TVector<TVector<TDeviceId>>& replicas,
     TAllocateDiskResult* result)
 {
+    Y_DEBUG_ABORT_UNLESS(result);
+
     auto error =
         CanCreateMirroredDiskFromDevices(db, masterId, params, replicas);
     if (HasError(error)) {
@@ -8695,6 +8699,11 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     }
 
     if (error.GetCode() == S_ALREADY) {
+        for (const auto& uuid: Disks[GetReplicaDiskId(masterId, 0)].Devices) {
+            const auto* device = DeviceList.FindDevice(uuid);
+            Y_DEBUG_ABORT_UNLESS(device);
+            result->Devices.push_back(*device);
+        }
         return error;
     }
 
@@ -8730,7 +8739,6 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     };
 
     TVector<TVector<TDeviceId>> resolvedReplicas(replicas);
-    TVector<TAllocateDiskResult> allocateResults(replicas.size());
 
     for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
@@ -8745,6 +8753,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             resolvedReplicas,
             params.BlockSize);
 
+        TAllocateDiskResult allocateResult;
         if (!HasError(error)) {
             error = CreateSimpleDiskFromDevices(
                 now,
@@ -8754,7 +8763,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 ToDeviceConfig(resolvedReplicas[i]),
                 /*dryRun=*/false,
                 /*allowFreshDevices=*/false,
-                &allocateResults[i]);
+                &allocateResult);
         }
 
         if (HasError(error)) {
@@ -8775,6 +8784,12 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
             });
 
         db.UpdateDisk(BuildDiskConfig(replicaId, replica));
+
+        // AllocateDiskResult is used to calculate block count. For
+        // mirrored disk it's equal to the block count in any of the replicas.
+        if (i == 0) {
+            *result = std::move(allocateResult);
+        }
     }
 
     for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
@@ -8799,11 +8814,6 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     master.State = CalculateDiskState(masterId, master);
 
     db.UpdateDisk(BuildDiskConfig(masterId, master));
-
-    // AllocateDiskResult is used to calculate logical block count. For mirrored
-    // disk it is equal to the logical block count in any of the replicas.
-    *result = std::move(allocateResults.front());
-
     return {};
 }
 
