@@ -501,6 +501,23 @@ func (s *storageYDB) CheckBaseDiskSlotReleased(
 	)
 }
 
+func (s *storageYDB) CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	ctx context.Context,
+	overlayDiskIDPrefix string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+				ctx,
+				session,
+				overlayDiskIDPrefix,
+			)
+		},
+	)
+}
+
 func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	return s.db.Execute(
 		ctx,

@@ -79,4 +79,8 @@ message ServerConfig {
     optional filesystem_snapshot.FilesystemSnapshotsConfig FilesystemSnapshotsConfig = 20;
     optional cells.CellsConfig FilestoreCellsConfig = 21;
     optional backup.SnapshotStorageBackupConfig SnapshotStorageBackupConfig = 22;
+    // Prefix for ids of proxy overlay disks (one-shot overlay disks created
+    // to read disk data directly from the storage nodes). Should be in sync with
+    // NBS DestructionAllowedOnlyForDisksWithIdPrefixes if that one is set.
+    optional string ProxyOverlayDiskIdPrefix = 23 [default = "proxy-"];
 }

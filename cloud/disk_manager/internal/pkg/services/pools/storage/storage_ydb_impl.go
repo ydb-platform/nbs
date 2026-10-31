@@ -1258,10 +1258,15 @@ func (s *storageYDB) acquireBaseDiskSlot(
 			continue
 		}
 
+		overlayDiskSize := st.OverlayDiskSize
+		if st.UseBaseDiskSize {
+			overlayDiskSize = baseDisk.sizeOrDefault()
+		}
+
 		slot := &slot{
 			overlayDiskID:   overlayDiskID,
 			overlayDiskKind: st.OverlayDiskKind,
-			overlayDiskSize: st.OverlayDiskSize,
+			overlayDiskSize: overlayDiskSize,
 			baseDiskID:      baseDisk.id,
 			imageID:         baseDisk.imageID,
 			zoneID:          zoneID,

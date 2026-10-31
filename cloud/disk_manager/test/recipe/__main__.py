@@ -146,6 +146,8 @@ def start(argv):
         kms_port = kms.port
 
     base_disk_id_prefix = "base-"
+    # Should match the default of ProxyOverlayDiskIdPrefix in ServerConfig (the
+    # Disk Manager configs generated here don't override it).
     proxy_overlay_disk_id_prefix = "proxy-"
 
     destruction_allowed_only_for_disks_with_id_prefixes = []
@@ -437,7 +439,6 @@ def start(argv):
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
-            proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
             filesystem_dataplane_enabled=args.filesystem_dataplane_enabled,
             list_nodes_max_bytes=args.list_nodes_max_bytes,
             scrubbing_config_content=read_regular_filesystem_scrubbing_config(

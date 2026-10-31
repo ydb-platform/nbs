@@ -414,7 +414,6 @@ DataplaneConfig: <
     SnapshotCollectionTimeout: "1s"
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
-    ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 {migration_config}
 {filesystem_dataplane_config}
 >
@@ -581,7 +580,6 @@ class DiskManagerLauncher:
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
         base_disk_id_prefix="",
-        proxy_overlay_disk_id_prefix="",
         creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
         disable_disk_registry_based_disks=False,
         dataplane_ydb_port=None,
@@ -649,7 +647,6 @@ class DiskManagerLauncher:
                         s3_port=s3_port,
                         s3_credentials_file=s3_credentials_file,
                     ),
-                    proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
                     dataplane_ydb_port=dataplane_ydb_port if dataplane_ydb_port is not None else ydb_port,
                     migration_config="" if migration_dst_ydb_port is None else MIGRATION_CONFIG_TEMPLATE.format(
                         migration_dst_ydb_port=migration_dst_ydb_port,

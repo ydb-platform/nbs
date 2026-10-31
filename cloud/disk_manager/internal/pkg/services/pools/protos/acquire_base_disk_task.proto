@@ -13,6 +13,11 @@ message AcquireBaseDiskRequest {
     types.Disk OverlayDisk = 2;
     types.DiskKind OverlayDiskKind = 3;
     uint64 OverlayDiskSize = 4;
+    // Allot base disk units as for an overlay disk of the base disk size
+    // (OverlayDiskSize is ignored). Meant for overlay disks that read the
+    // whole base disk with fixed parallelism regardless of their own size,
+    // e.g. proxy overlay disks of disks.CreateDiskFromBaseDisk task.
+    bool UseBaseDiskSize = 5;
 }
 
 message AcquireBaseDiskResponse {
