@@ -26,6 +26,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	nfs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/config"
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	filesystem_scrubbing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	filesystem_snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/storage"
@@ -100,6 +101,18 @@ func ReplaceUnacceptableSymbolsFromResourceID(t *testing.T) string {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Returns config of the control plane Disk Manager started by the recipe.
+func GetServerConfig(t *testing.T) *server_config.ServerConfig {
+	configString := os.Getenv("DISK_MANAGER_RECIPE_SERVER_CONFIG")
+	require.NotEmpty(t, configString)
+
+	config := &server_config.ServerConfig{}
+	err := proto.UnmarshalText(configString, config)
+	require.NoError(t, err)
+
+	return config
+}
 
 func GetRawImageFileURL() string {
 	port := os.Getenv("DISK_MANAGER_RECIPE_RAW_IMAGE_FILE_SERVER_PORT")
@@ -905,29 +918,39 @@ func CheckBaseDiskSlotReleased(
 	require.NoError(t, err)
 }
 
+// Proxy overlay disks are one-shot entities deleted by the tasks that created
+// them before the corresponding operations complete, there’s a delay between
+// releasing a slot in pool storage and deleting the corresponding disk from
+// NBS, so give the disks some time to disappear.
+const proxyOverlayDiskDeletionTimeout = 5 * time.Minute
+
 func CheckConsistency(t *testing.T, ctx context.Context) {
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
 
+	config := GetServerConfig(t)
+
+	// Note: the recipe uses the same prefix for the dataplane.
+	proxyOverlayDiskIDPrefix := config.GetProxyOverlayDiskIdPrefix()
+	baseDiskIDPrefix := config.GetPoolsConfig().GetBaseDiskIdPrefix()
+	// Otherwise any disk would match.
+	require.NotEmpty(t, proxyOverlayDiskIDPrefix)
+	require.NotEmpty(t, baseDiskIDPrefix)
+
+	deadline := time.Now().Add(proxyOverlayDiskDeletionTimeout)
+
 	for {
-		ok := true
+		var proxyOverlayDiskIDs []string
 
 		diskIDs, err := nbsClient.List(ctx)
 		require.NoError(t, err)
 
 		for _, diskID := range diskIDs {
-			// TODO: should remove dependency on disk id here.
-			if strings.HasPrefix(diskID, "proxy") {
-				ok = false
-
-				logging.Info(
-					ctx,
-					"waiting for proxy overlay disk %v deletion",
-					diskID,
-				)
+			if strings.HasPrefix(diskID, proxyOverlayDiskIDPrefix) {
+				proxyOverlayDiskIDs = append(proxyOverlayDiskIDs, diskID)
 				continue
 			}
 
-			if strings.HasPrefix(diskID, "base") {
+			if strings.HasPrefix(diskID, baseDiskIDPrefix) {
 				continue
 			}
 
@@ -939,17 +962,35 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 			)
 		}
 
-		if ok {
+		if len(proxyOverlayDiskIDs) == 0 {
 			break
 		}
 
+		require.True(
+			t,
+			time.Now().Before(deadline),
+			"proxy overlay disks are leaked: %v",
+			proxyOverlayDiskIDs,
+		)
+
+		logging.Info(
+			ctx,
+			"waiting for proxy overlay disks %v deletion",
+			proxyOverlayDiskIDs,
+		)
 		time.Sleep(time.Second)
 	}
 
 	poolStorage, closeFunc := newPoolStorage(t, ctx)
 	defer closeFunc()
 
-	err := poolStorage.CheckConsistency(ctx)
+	err := poolStorage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+		ctx,
+		proxyOverlayDiskIDPrefix,
+	)
+	require.NoError(t, err)
+
+	err = poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.

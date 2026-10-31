@@ -31,6 +31,9 @@ type Slot struct {
 	OverlayDisk     *types.Disk
 	OverlayDiskKind types.DiskKind
 	OverlayDiskSize uint64
+	// Allot units as for an overlay disk of the base disk size, OverlayDiskSize
+	// is ignored. The slot is stored with the base disk size as its size.
+	UseBaseDiskSize bool
 }
 
 type RebaseInfo struct {
@@ -200,6 +203,14 @@ type Storage interface {
 
 	// Used in tests and SRE tools.
 	CheckBaseDiskSlotReleased(ctx context.Context, overlayDiskID string) error
+
+	// Used in tests and SRE tools.
+	// Checks that slots of all overlay disks with ids prefixed by
+	// |overlayDiskIDPrefix| are released.
+	CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+		ctx context.Context,
+		overlayDiskIDPrefix string,
+	) error
 
 	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.

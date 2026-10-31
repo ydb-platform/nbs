@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -283,6 +284,44 @@ func (s *storageYDB) checkBaseDiskSlotReleased(
 		)
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	ctx context.Context,
+	session *persistence.Session,
+	overlayDiskIDPrefix string,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	slots, err := s.getSlots(ctx, tx)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, slot := range slots {
+		if !strings.HasPrefix(slot.overlayDiskID, overlayDiskIDPrefix) {
+			continue
+		}
+
+		if slot.status != slotStatusReleased {
+			return errors.NewNonRetriableErrorf(
+				"internal inconsistency: slot %+v should be released",
+				slot,
+			)
+		}
+	}
+
+	return nil
 }
 
 func (s *storageYDB) checkPoolConsistency(
