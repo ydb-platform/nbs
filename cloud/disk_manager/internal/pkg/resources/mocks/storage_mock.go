@@ -601,3 +601,25 @@ func NewStorageMock() *StorageMock {
 func assertStorageMockIsStorage(arg *StorageMock) resources.Storage {
 	return arg
 }
+
+func (s *StorageMock) FinishDiskTransfer(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	sourceCellID string,
+	targetCellID string,
+	createTaskID string,
+	transferTaskID string,
+) error {
+	return s.Called(ctx, tx, diskID, sourceCellID, targetCellID, createTaskID, transferTaskID).Error(0)
+}
+
+func (s *StorageMock) ReserveDiskOperation(ctx context.Context, tx *persistence.Transaction, operation resources.DiskOperation) (*resources.DiskMeta, error) {
+	args := s.Called(ctx, tx, operation)
+	meta, _ := args.Get(0).(*resources.DiskMeta)
+	return meta, args.Error(1)
+}
+
+func (s *StorageMock) ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error {
+	return s.Called(ctx, tx, diskID, taskID).Error(0)
+}

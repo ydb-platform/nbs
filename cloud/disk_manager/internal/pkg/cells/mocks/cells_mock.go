@@ -20,6 +20,10 @@ func NewCellSelectorMock() *CellSelectorMock {
 	return &CellSelectorMock{}
 }
 
+func (s *CellSelectorMock) CellsShareZone(sourceCellID, targetCellID string) bool {
+	return s.Called(sourceCellID, targetCellID).Bool(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *CellSelectorMock) ReplaceZoneIdWithCellIdInDiskMeta(

@@ -95,6 +95,11 @@ func (s *ServiceMock) MigrateDisk(
 	return args.String(0), args.Error(1)
 }
 
+func (s *ServiceMock) TransferVolumeViaLink(ctx context.Context, req *disk_manager.TransferVolumeViaLinkRequest) (string, error) {
+	args := s.Called(ctx, req)
+	return args.String(0), args.Error(1)
+}
+
 func (s *ServiceMock) SendMigrationSignal(
 	ctx context.Context,
 	req *disk_manager.SendMigrationSignalRequest,

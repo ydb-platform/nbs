@@ -149,6 +149,13 @@ func (c *client) MigrateDisk(
 	return c.diskServiceClient.Migrate(ctx, req)
 }
 
+func (c *client) TransferVolumeViaLink(
+	ctx context.Context,
+	req *disk_manager.TransferVolumeViaLinkRequest,
+) (*disk_manager.Operation, error) {
+	return c.diskServiceClient.TransferVolumeViaLink(ctx, req)
+}
+
 func (c *client) SendMigrationSignal(
 	ctx context.Context,
 	req *disk_manager.SendMigrationSignalRequest,

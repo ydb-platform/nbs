@@ -115,6 +115,40 @@ func (client *safeClient) DestroyVolume(
 	return err
 }
 
+func (client *safeClient) CreateVolumeLink(
+	ctx context.Context,
+	leaderDiskId string,
+	followerDiskId string,
+	followerCellId string,
+) error {
+
+	req := &protos.TCreateVolumeLinkRequest{
+		Headers:        &protos.THeaders{ExactDiskIdMatch: true},
+		LeaderDiskId:   leaderDiskId,
+		FollowerDiskId: followerDiskId,
+		FollowerCellId: followerCellId,
+	}
+	_, err := client.Impl.CreateVolumeLink(ctx, req)
+	return err
+}
+
+func (client *safeClient) DestroyVolumeLink(
+	ctx context.Context,
+	leaderDiskId string,
+	followerDiskId string,
+	followerCellId string,
+) error {
+
+	req := &protos.TDestroyVolumeLinkRequest{
+		Headers:        &protos.THeaders{ExactDiskIdMatch: true},
+		LeaderDiskId:   leaderDiskId,
+		FollowerDiskId: followerDiskId,
+		FollowerCellId: followerCellId,
+	}
+	_, err := client.Impl.DestroyVolumeLink(ctx, req)
+	return err
+}
+
 func (client *safeClient) ResizeVolume(
 	ctx context.Context,
 	diskId string,

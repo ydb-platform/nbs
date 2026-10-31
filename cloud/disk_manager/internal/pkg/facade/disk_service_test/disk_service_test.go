@@ -1417,3 +1417,35 @@ func TestDiskServiceDeleteNonExistentDisk(t *testing.T) {
 func TestDiskServiceDeleteNonExistentDiskSync(t *testing.T) {
 	testDiskServiceDeleteNonExistentDisk(t, true /* sync */)
 }
+
+func TestDiskServiceTransferVolumeViaLinkRejectsMissingSource(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	operation, err := client.TransferVolumeViaLink(testcommon.GetRequestContext(t, ctx), &disk_manager.TransferVolumeViaLinkRequest{ZoneId: defaultZoneID})
+	require.ErrorContains(t, err, "source disk ID is required")
+	require.Nil(t, operation)
+}
+
+func TestDiskServiceTransferVolumeViaLinkSchedulesOperationIdempotently(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	request := &disk_manager.TransferVolumeViaLinkRequest{
+		SrcDiskId: testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_missing",
+		ZoneId:    defaultZoneID,
+	}
+	operation, err := client.TransferVolumeViaLink(reqCtx, request)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation.Id)
+	require.Equal(t, "type.googleapis.com/cloud.disk_manager.TransferVolumeViaLinkMetadata", operation.GetMetadata().GetTypeUrl())
+	repeated, err := client.TransferVolumeViaLink(reqCtx, request)
+	require.NoError(t, err)
+	require.Equal(t, operation.Id, repeated.Id)
+	// A missing managed disk fails in preparation without contacting NBS.
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.ErrorContains(t, err, "no creation task")
+}

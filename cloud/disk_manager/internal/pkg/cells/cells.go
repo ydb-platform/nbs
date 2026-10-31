@@ -236,6 +236,23 @@ func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
 	return s.resolveCells(zoneID)
 }
 
+func (s *cellSelector) CellsShareZone(sourceCellID, targetCellID string) bool {
+	if sourceCellID == "" || targetCellID == "" {
+		return false
+	}
+	if sourceCellID == targetCellID {
+		return true
+	}
+	for zoneID := range s.config.GetCells() {
+		sourceMatches := sourceCellID == zoneID || s.ZoneContainsCell(zoneID, sourceCellID)
+		targetMatches := targetCellID == zoneID || s.ZoneContainsCell(zoneID, targetCellID)
+		if sourceMatches && targetMatches {
+			return true
+		}
+	}
+	return false
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *cellSelector) getCells(zoneID string) []string {

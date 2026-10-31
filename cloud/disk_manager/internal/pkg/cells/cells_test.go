@@ -940,3 +940,22 @@ func TestReplaceZoneIdWithCellIdInDiskMetaIfConfigIsNotSet(t *testing.T) {
 
 	mock.AssertExpectationsForObjects(t, storage)
 }
+
+func TestCellsSharePublicZone(t *testing.T) {
+	selector := &cellSelector{config: &cells_config.CellsConfig{Cells: map[string]*cells_config.ZoneCells{
+		"zone-a": {Cells: []string{"a-1", "a-2"}, DiskKindToDedicatedCell: map[string]string{"ssd": "a-dedicated"}},
+		"zone-b": {Cells: []string{"b-1"}},
+	}}}
+	for _, test := range []struct {
+		source, target string
+		expected       bool
+	}{
+		{"a-1", "a-2", true}, {"zone-a", "a-1", true}, {"a-dedicated", "a-2", true},
+		{"a-1", "b-1", false}, {"unknown", "a-1", false}, {"", "", false},
+	} {
+		require.Equal(t, test.expected, selector.CellsShareZone(test.source, test.target), test)
+	}
+	withoutConfig := &cellSelector{}
+	require.True(t, withoutConfig.CellsShareZone("cell", "cell"))
+	require.False(t, withoutConfig.CellsShareZone("a", "b"))
+}

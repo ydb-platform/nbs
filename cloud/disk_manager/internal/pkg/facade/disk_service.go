@@ -124,6 +124,17 @@ func (s *diskService) Migrate(
 	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
+func (s *diskService) TransferVolumeViaLink(
+	ctx context.Context,
+	req *disk_manager.TransferVolumeViaLinkRequest,
+) (*disk_manager.Operation, error) {
+	taskID, err := s.service.TransferVolumeViaLink(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
 func (s *diskService) SendMigrationSignal(
 	ctx context.Context,
 	req *disk_manager.SendMigrationSignalRequest,
