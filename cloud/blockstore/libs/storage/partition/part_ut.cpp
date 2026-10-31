@@ -10203,6 +10203,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 });
 
+            if (testCase & 2) {
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+            }
+
             runtime->Send(firstWrite.Release());
             partition.RecvWriteBlocksResponse();
             if (!completed) {
@@ -10212,17 +10217,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
             UNIT_ASSERT(completed);
             UNIT_ASSERT_VALUES_EQUAL(
-                1024,
-                initialCounters.InitialMergedChannelBlocks);
+                1024, initialCounters.Initial.Channel.MergedBlocks);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                initialCounters.InitialMergedChannelBlobs);
+                1, initialCounters.Initial.Channel.MergedBlobs);
             UNIT_ASSERT_VALUES_EQUAL(
                 useChannelCounters ? 1024 : 0,
-                initialCounters.InitialMergedIndexBlocks);
+                initialCounters.Initial.Index.MergedBlocks);
             UNIT_ASSERT_VALUES_EQUAL(
                 useChannelCounters ? 1 : 0,
-                initialCounters.InitialMergedIndexBlobs);
+                initialCounters.Initial.Index.MergedBlobs);
 
             if (savedWrite) {
                 // Rebuild must finish without waiting for the newer write.
@@ -10333,14 +10336,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 runtime->DispatchEvents(options);
             }
             UNIT_ASSERT(savedResponse);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 2 : 0,
-                                     rebuildState.InitialMixedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 1 : 0,
-                                     rebuildState.InitialMergedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 0 : 2,
-                                     rebuildState.InitialMixedChannelBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 2 : 1,
-                                     rebuildState.InitialMergedChannelBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 2 : 0,
+                rebuildState.Initial.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1 : 0,
+                rebuildState.Initial.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 0 : 2,
+                rebuildState.Initial.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 2 : 1,
+                rebuildState.Initial.Channel.MergedBlobs);
 
             // New blobs must be retained even though they are outside the scan.
             partition.WriteBlocks(5, 5);
@@ -10356,10 +10363,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 runtime->DispatchEvents(options);
             }
             UNIT_ASSERT(completed);
-            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.MixedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.MergedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(0, rebuildState.MixedChannelBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.MergedChannelBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.Rebuilt.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.Rebuilt.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, rebuildState.Rebuilt.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, rebuildState.Rebuilt.Channel.MergedBlobs);
 
             const auto assertCounters = [&]
             {
@@ -10444,8 +10453,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event->Get<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>();
                         UNIT_ASSERT_VALUES_UNEQUAL(
                             0,
-                            msg->RebuildState.MixedIndexBlocks +
-                                msg->RebuildState.MergedIndexBlocks);
+                            msg->RebuildState.Rebuilt.Index.MixedBlocks +
+                                msg->RebuildState.Rebuilt.Index.MergedBlocks);
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);

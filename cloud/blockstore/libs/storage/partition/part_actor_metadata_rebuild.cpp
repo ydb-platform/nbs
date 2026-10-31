@@ -210,10 +210,11 @@ void TPartitionActor::CompleteStartMetadataRebuild(
     // Exclude their delta from the baseline, since their blobs are outside
     // the scan and must be preserved by the final counter adjustment.
     const auto delta = State->FinishMetadataRebuildCounterTracking();
+    const auto& blobsOutsideScan =
+        State->ShouldUseBlobChannelDataKindForCounters() ? delta.Index
+                                                         : delta.Channel;
     State->SetRebuildBlockCountTotal(
-        State->ShouldUseBlobChannelDataKindForCounters()
-            ? delta.GetMixedIndexBlobsCount() + delta.GetMergedIndexBlobsCount()
-            : delta.GetMixedBlobsCount() + delta.GetMergedBlobsCount());
+        blobsOutsideScan.MixedBlobs + blobsOutsideScan.MergedBlobs);
 
     auto actorId = NCloud::Register(
         ctx,
@@ -221,14 +222,7 @@ void TPartitionActor::CompleteStartMetadataRebuild(
             SelfId(),
             args.BatchSize,
             args.CommitId - 1,
-            State->GetMixedIndexBlocksCount() - delta.GetMixedIndexBlocksCount(),
-            State->GetMergedIndexBlocksCount() - delta.GetMergedIndexBlocksCount(),
-            State->GetMixedBlocksCount() - delta.GetMixedBlocksCount(),
-            State->GetMergedBlocksCount() - delta.GetMergedBlocksCount(),
-            State->GetMixedIndexBlobsCount() - delta.GetMixedIndexBlobsCount(),
-            State->GetMergedIndexBlobsCount() - delta.GetMergedIndexBlobsCount(),
-            State->GetMixedBlobsCount() - delta.GetMixedBlobsCount(),
-            State->GetMergedBlobsCount() - delta.GetMergedBlobsCount(),
+            State->GetBlobAndBlockCounts() - delta,
             Config->GetCompactionRetryTimeout()));
     Actors.Insert(actorId);
 }

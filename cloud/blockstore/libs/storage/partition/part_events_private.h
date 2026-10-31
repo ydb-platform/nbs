@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_and_block_counts.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
@@ -266,25 +267,8 @@ using TReadBlocksRequests = TVector<TReadBlocksRequest>;
 
 struct TBlockCountRebuildState
 {
-    ui64 MixedIndexBlocks = 0;
-    ui64 MergedIndexBlocks = 0;
-    ui64 MixedChannelBlocks = 0;
-    ui64 MergedChannelBlocks = 0;
-
-    ui64 MixedIndexBlobs = 0;
-    ui64 MergedIndexBlobs = 0;
-    ui64 MixedChannelBlobs = 0;
-    ui64 MergedChannelBlobs = 0;
-
-    ui64 InitialMixedIndexBlobs = 0;
-    ui64 InitialMergedIndexBlobs = 0;
-    ui64 InitialMixedChannelBlobs = 0;
-    ui64 InitialMergedChannelBlobs = 0;
-
-    ui64 InitialMixedIndexBlocks = 0;
-    ui64 InitialMergedIndexBlocks = 0;
-    ui64 InitialMixedChannelBlocks = 0;
-    ui64 InitialMergedChannelBlocks = 0;
+    TPartitionBlobAndBlockCounts Initial;
+    TPartitionBlobAndBlockCounts Rebuilt;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

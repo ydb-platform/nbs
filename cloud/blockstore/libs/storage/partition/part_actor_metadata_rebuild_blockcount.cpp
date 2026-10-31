@@ -87,9 +87,9 @@ private:
         Y_UNUSED(blockMask);
 
         if (blobMeta.HasMixedBlocks()) {
-            ++Args.MixedIndexBlobCount;
+            ++Args.BatchCounters.Index.MixedBlobs;
         } else {
-            ++Args.MergedIndexBlobCount;
+            ++Args.BatchCounters.Index.MergedBlobs;
         }
 
         // Deletion markers count towards index totals, but have no data channel.
@@ -101,24 +101,24 @@ private:
         ui64 blocksCount = 0;
         if (blobMeta.HasMixedBlocks()) {
             blocksCount = blobMeta.GetMixedBlocks().BlocksSize();
-            Args.MixedIndexBlockCount += blocksCount;
+            Args.BatchCounters.Index.MixedBlocks += blocksCount;
         } else {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
             blocksCount = mergedBlocks.GetEnd() - mergedBlocks.GetStart() + 1;
             blocksCount -= mergedBlocks.GetSkipped();
-            Args.MergedIndexBlockCount += blocksCount;
+            Args.BatchCounters.Index.MergedBlocks += blocksCount;
         }
 
         const auto channelDataKind =
             State.GetChannelDataKind(partialBlobId.Channel());
         switch (channelDataKind) {
             case EChannelDataKind::Mixed:
-                ++Args.MixedChannelBlobCount;
-                Args.MixedChannelBlockCount += blocksCount;
+                ++Args.BatchCounters.Channel.MixedBlobs;
+                Args.BatchCounters.Channel.MixedBlocks += blocksCount;
                 break;
             case EChannelDataKind::Merged:
-                ++Args.MergedChannelBlobCount;
-                Args.MergedChannelBlockCount += blocksCount;
+                ++Args.BatchCounters.Channel.MergedBlobs;
+                Args.BatchCounters.Channel.MergedBlocks += blocksCount;
                 break;
             default:
                 Y_ABORT(
@@ -148,14 +148,7 @@ public:
         const TActorId& tablet,
         ui32 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        ui64 mixedIndexBlobsCount,
-        ui64 mergedIndexBlobsCount,
-        ui64 mixedChannelBlobsCount,
-        ui64 mergedChannelBlobsCount,
+        TPartitionBlobAndBlockCounts initialCounters,
         const TDuration retryTimeout);
 
     void Bootstrap(const TActorContext& ctx);
@@ -186,31 +179,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMetadataRebuildBlockCountActor::TMetadataRebuildBlockCountActor(
-        const TActorId& tablet,
-        ui32 blobsPerBatch,
-        ui64 finalCommitId,
-        ui64 mixedIndexBlocksCount,
-        ui64 mergedIndexBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        ui64 mixedIndexBlobsCount,
-        ui64 mergedIndexBlobsCount,
-        ui64 mixedChannelBlobsCount,
-        ui64 mergedChannelBlobsCount,
-        const TDuration retryTimeout)
+    const TActorId& tablet,
+    ui32 blobsPerBatch,
+    ui64 finalCommitId,
+    TPartitionBlobAndBlockCounts initialCounters, const TDuration retryTimeout)
     : Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
 {
-    RebuildState.InitialMixedIndexBlobs = mixedIndexBlobsCount;
-    RebuildState.InitialMergedIndexBlobs = mergedIndexBlobsCount;
-    RebuildState.InitialMixedChannelBlobs = mixedChannelBlobsCount;
-    RebuildState.InitialMergedChannelBlobs = mergedChannelBlobsCount;
-    RebuildState.InitialMixedIndexBlocks = mixedIndexBlocksCount;
-    RebuildState.InitialMergedIndexBlocks = mergedIndexBlocksCount;
-    RebuildState.InitialMixedChannelBlocks = mixedChannelBlocksCount;
-    RebuildState.InitialMergedChannelBlocks = mergedChannelBlocksCount;
+    RebuildState.Initial = std::move(initialCounters);
 }
 
 void TMetadataRebuildBlockCountActor::Bootstrap(const TActorContext& ctx)
@@ -424,76 +402,20 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
     Y_UNUSED(ctx);
 
     State->UpdateRebuildMetadataProgress(args.ReadCount);
-    args.RebuildState.MixedIndexBlobs += args.MixedIndexBlobCount;
-    args.RebuildState.MergedIndexBlobs += args.MergedIndexBlobCount;
-    args.RebuildState.MixedChannelBlobs += args.MixedChannelBlobCount;
-    args.RebuildState.MergedChannelBlobs += args.MergedChannelBlobCount;
-    args.RebuildState.MixedIndexBlocks += args.MixedIndexBlockCount;
-    args.RebuildState.MergedIndexBlocks += args.MergedIndexBlockCount;
-    args.RebuildState.MixedChannelBlocks += args.MixedChannelBlockCount;
-    args.RebuildState.MergedChannelBlocks += args.MergedChannelBlockCount;
+    args.RebuildState.Rebuilt += args.BatchCounters;
 
     if (args.LastReadBlobId == args.FinalBlobId) {
         TPartitionDatabase db(tx.DB);
 
-        ui64 mixedIndexBlocks = State->GetMixedIndexBlocksCount() -
-                     args.RebuildState.InitialMixedIndexBlocks +
-                     args.RebuildState.MixedIndexBlocks;
-
-        ui64 mergedIndexBlocks = State->GetMergedIndexBlocksCount() -
-                      args.RebuildState.InitialMergedIndexBlocks +
-                      args.RebuildState.MergedIndexBlocks;
-
-        ui64 mixedChannelBlocks = State->GetMixedBlocksCount() -
-                            args.RebuildState.InitialMixedChannelBlocks +
-                            args.RebuildState.MixedChannelBlocks;
-
-        ui64 mergedChannelBlocks = State->GetMergedBlocksCount() -
-                             args.RebuildState.InitialMergedChannelBlocks +
-                             args.RebuildState.MergedChannelBlocks;
-
-        ui64 mixedIndexBlobs = State->GetMixedIndexBlobsCount() -
-            args.RebuildState.InitialMixedIndexBlobs +
-            args.RebuildState.MixedIndexBlobs;
-
-        ui64 mergedIndexBlobs = State->GetMergedIndexBlobsCount() -
-            args.RebuildState.InitialMergedIndexBlobs +
-            args.RebuildState.MergedIndexBlobs;
-
-        ui64 mixedChannelBlobs = State->GetMixedBlobsCount() -
-            args.RebuildState.InitialMixedChannelBlobs +
-            args.RebuildState.MixedChannelBlobs;
-
-        ui64 mergedChannelBlobs = State->GetMergedBlobsCount() -
-            args.RebuildState.InitialMergedChannelBlobs +
-            args.RebuildState.MergedChannelBlobs;
-
+        auto rebuilt = args.RebuildState.Rebuilt;
         if (!State->ShouldUseBlobChannelDataKindForCounters()) {
-            mixedChannelBlobs = State->GetMixedBlobsCount() -
-                args.RebuildState.InitialMixedChannelBlobs +
-                args.RebuildState.MixedIndexBlobs;
-            mergedChannelBlobs = State->GetMergedBlobsCount() -
-                args.RebuildState.InitialMergedChannelBlobs +
-                args.RebuildState.MergedIndexBlobs;
-            mixedChannelBlocks = State->GetMixedBlocksCount() -
-                args.RebuildState.InitialMixedChannelBlocks +
-                args.RebuildState.MixedIndexBlocks;
-            mergedChannelBlocks = State->GetMergedBlocksCount() -
-                args.RebuildState.InitialMergedChannelBlocks +
-                args.RebuildState.MergedIndexBlocks;
+            // Legacy counters classify blobs and blocks by index kind.
+            rebuilt.Channel = rebuilt.Index;
         }
 
-        State->UpdateBlocksCountersAfterMetadataRebuild(
-            mixedIndexBlocks,
-            mergedIndexBlocks,
-            mixedChannelBlocks,
-            mergedChannelBlocks);
-
-        State->UpdateBlobsCountersAfterMetadataRebuild(
-            mixedIndexBlobs,
-            mergedIndexBlobs,
-            mixedChannelBlobs,
-            mergedChannelBlobs);
+        const auto corrected = State->GetBlobAndBlockCounts() -
+                               args.RebuildState.Initial + rebuilt;
+        State->UpdateBlobAndBlockCountsAfterMetadataRebuild(corrected);
 
         db.WriteMeta(State->GetMeta());
     }
@@ -523,29 +445,11 @@ IActorPtr TPartitionActor::CreateMetadataRebuildBlockCountActor(
     TActorId tablet,
     ui64 blobsPerBatch,
     ui64 finalCommitId,
-    ui64 mixedBlocksCount,
-    ui64 mergedBlocksCount,
-    ui64 mixedChannelBlocksCount,
-    ui64 mergedChannelBlocksCount,
-    ui64 mixedIndexBlobsCount,
-    ui64 mergedIndexBlobsCount,
-    ui64 mixedChannelBlobsCount,
-    ui64 mergedChannelBlobsCount,
-    TDuration retryTimeout)
+    TPartitionBlobAndBlockCounts initialCounters, TDuration retryTimeout)
 {
     return std::make_unique<TMetadataRebuildBlockCountActor>(
         std::move(tablet),
-        blobsPerBatch,
-        finalCommitId,
-        mixedBlocksCount,
-        mergedBlocksCount,
-        mixedChannelBlocksCount,
-        mergedChannelBlocksCount,
-        mixedIndexBlobsCount,
-        mergedIndexBlobsCount,
-        mixedChannelBlobsCount,
-        mergedChannelBlobsCount,
-        retryTimeout);
+        blobsPerBatch, finalCommitId, std::move(initialCounters), retryTimeout);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

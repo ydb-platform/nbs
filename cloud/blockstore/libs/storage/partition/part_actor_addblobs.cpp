@@ -1008,9 +1008,9 @@ void TPartitionActor::ExecuteAddBlobs(
     Y_DEBUG_ABORT_UNLESS(AllOf(args.MergedBlobs, hasExpectedCommitId));
     Y_DEBUG_ABORT_UNLESS(AllOf(args.FreshBlobs, hasExpectedCommitId));
 
-    TMaybe<NProto::TPartitionStats> countersBefore;
+    TMaybe<TPartitionBlobAndBlockCounts> countersBefore;
     if (State->ShouldTrackMetadataRebuildCounters(args.CommitId)) {
-        countersBefore = State->GetStats();
+        countersBefore = State->GetBlobAndBlockCounts();
     }
 
     TAddBlobsExecutor executor(

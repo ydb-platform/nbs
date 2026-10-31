@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_and_block_counts.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
@@ -875,7 +876,7 @@ public:
 private:
     TMetadataRebuildState RebuildState;
     ui64 MetadataRebuildCommitId = InvalidCommitId;
-    NProto::TPartitionStats MetadataRebuildCounterDelta;
+    TPartitionBlobAndBlockCounts MetadataRebuildCounterDelta;
 
 public:
     bool IsMetadataRebuildStarted() const
@@ -907,7 +908,7 @@ public:
     void StartMetadataRebuildCounterTracking(ui64 commitId)
     {
         MetadataRebuildCommitId = commitId;
-        MetadataRebuildCounterDelta.Clear();
+        MetadataRebuildCounterDelta = {};
     }
 
     bool ShouldTrackMetadataRebuildCounters(ui64 commitId) const
@@ -916,38 +917,16 @@ public:
                commitId > MetadataRebuildCommitId;
     }
 
-    void TrackMetadataRebuildCounters(const NProto::TPartitionStats& before)
+    void TrackMetadataRebuildCounters(
+        const TPartitionBlobAndBlockCounts& before)
     {
-        MetadataRebuildCounterDelta.SetMixedIndexBlocksCount(
-            MetadataRebuildCounterDelta.GetMixedIndexBlocksCount() +
-            GetMixedIndexBlocksCount() - before.GetMixedIndexBlocksCount());
-        MetadataRebuildCounterDelta.SetMergedIndexBlocksCount(
-            MetadataRebuildCounterDelta.GetMergedIndexBlocksCount() +
-            GetMergedIndexBlocksCount() - before.GetMergedIndexBlocksCount());
-        MetadataRebuildCounterDelta.SetMixedBlocksCount(
-            MetadataRebuildCounterDelta.GetMixedBlocksCount() +
-            GetMixedBlocksCount() - before.GetMixedBlocksCount());
-        MetadataRebuildCounterDelta.SetMergedBlocksCount(
-            MetadataRebuildCounterDelta.GetMergedBlocksCount() +
-            GetMergedBlocksCount() - before.GetMergedBlocksCount());
-        MetadataRebuildCounterDelta.SetMixedIndexBlobsCount(
-            MetadataRebuildCounterDelta.GetMixedIndexBlobsCount() +
-            GetMixedIndexBlobsCount() - before.GetMixedIndexBlobsCount());
-        MetadataRebuildCounterDelta.SetMergedIndexBlobsCount(
-            MetadataRebuildCounterDelta.GetMergedIndexBlobsCount() +
-            GetMergedIndexBlobsCount() - before.GetMergedIndexBlobsCount());
-        MetadataRebuildCounterDelta.SetMixedBlobsCount(
-            MetadataRebuildCounterDelta.GetMixedBlobsCount() +
-            GetMixedBlobsCount() - before.GetMixedBlobsCount());
-        MetadataRebuildCounterDelta.SetMergedBlobsCount(
-            MetadataRebuildCounterDelta.GetMergedBlobsCount() +
-            GetMergedBlobsCount() - before.GetMergedBlobsCount());
+        MetadataRebuildCounterDelta += GetBlobAndBlockCounts() - before;
     }
 
-    NProto::TPartitionStats FinishMetadataRebuildCounterTracking()
+    TPartitionBlobAndBlockCounts FinishMetadataRebuildCounterTracking()
     {
         MetadataRebuildCommitId = InvalidCommitId;
-        return std::move(MetadataRebuildCounterDelta);
+        return std::exchange(MetadataRebuildCounterDelta, {});
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const
@@ -965,32 +944,35 @@ public:
         RebuildState.Complete();
     }
 
-    void UpdateBlocksCountersAfterMetadataRebuild(
-        ui64 mixedIndex,
-        ui64 mergedIndex,
-        ui64 mixedChannel,
-        ui64 mergedChannel)
+    TPartitionBlobAndBlockCounts GetBlobAndBlockCounts() const
     {
-        if (UseBlobChannelDataKindForCounters) {
-            AccessStats().SetMixedIndexBlocksCount(mixedIndex);
-            AccessStats().SetMergedIndexBlocksCount(mergedIndex);
-        }
-        AccessStats().SetMixedBlocksCount(mixedChannel);
-        AccessStats().SetMergedBlocksCount(mergedChannel);
+        return {
+            .Index =
+                {.MixedBlobs = GetMixedIndexBlobsCount(),
+                 .MergedBlobs = GetMergedIndexBlobsCount(),
+                 .MixedBlocks = GetMixedIndexBlocksCount(),
+                 .MergedBlocks = GetMergedIndexBlocksCount()},
+            .Channel = {
+                .MixedBlobs = GetMixedBlobsCount(),
+                .MergedBlobs = GetMergedBlobsCount(),
+                .MixedBlocks = GetMixedBlocksCount(),
+                .MergedBlocks = GetMergedBlocksCount()}};
     }
 
-    void UpdateBlobsCountersAfterMetadataRebuild(
-        ui64 mixedIndex,
-        ui64 mergedIndex,
-        ui64 mixedChannel,
-        ui64 mergedChannel)
+    void UpdateBlobAndBlockCountsAfterMetadataRebuild(
+        const TPartitionBlobAndBlockCounts& counters)
     {
+        auto& stats = AccessStats();
         if (UseBlobChannelDataKindForCounters) {
-            AccessStats().SetMixedIndexBlobsCount(mixedIndex);
-            AccessStats().SetMergedIndexBlobsCount(mergedIndex);
+            stats.SetMixedIndexBlobsCount(counters.Index.MixedBlobs);
+            stats.SetMergedIndexBlobsCount(counters.Index.MergedBlobs);
+            stats.SetMixedIndexBlocksCount(counters.Index.MixedBlocks);
+            stats.SetMergedIndexBlocksCount(counters.Index.MergedBlocks);
         }
-        AccessStats().SetMixedBlobsCount(mixedChannel);
-        AccessStats().SetMergedBlobsCount(mergedChannel);
+        stats.SetMixedBlobsCount(counters.Channel.MixedBlobs);
+        stats.SetMergedBlobsCount(counters.Channel.MergedBlobs);
+        stats.SetMixedBlocksCount(counters.Channel.MixedBlocks);
+        stats.SetMergedBlocksCount(counters.Channel.MergedBlocks);
     }
 
     //

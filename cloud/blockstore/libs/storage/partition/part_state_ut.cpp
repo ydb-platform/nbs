@@ -147,14 +147,6 @@ TPartitionState MakeState(
     return MakeState(DefaultConfig(1, blockCount), std::move(options));
 }
 
-struct TBlobAndBlockCounts
-{
-    ui64 MixedBlobs = 0;
-    ui64 MergedBlobs = 0;
-    ui64 MixedBlocks = 0;
-    ui64 MergedBlocks = 0;
-};
-
 void AssertBlobAndBlockCounts(
     const NProto::TPartitionStats& stats,
     const TBlobAndBlockCounts& channel,
@@ -446,7 +438,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             stats.SetMixedIndexBlocksCount(7);
             stats.SetMergedIndexBlocksCount(11);
 
-            state.UpdateBlocksCountersAfterMetadataRebuild(20, 60, 10, 70);
+            state.UpdateBlobAndBlockCountsAfterMetadataRebuild(
+                {.Index = {.MixedBlocks = 20, .MergedBlocks = 60},
+                 .Channel = {.MixedBlocks = 10, .MergedBlocks = 70}});
 
             AssertBlobAndBlockCounts(
                 state.GetStats(),
@@ -466,7 +460,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             stats.SetMixedIndexBlobsCount(7);
             stats.SetMergedIndexBlobsCount(11);
 
-            state.UpdateBlobsCountersAfterMetadataRebuild(2, 6, 1, 7);
+            state.UpdateBlobAndBlockCountsAfterMetadataRebuild(
+                {.Index = {.MixedBlobs = 2, .MergedBlobs = 6},
+                 .Channel = {.MixedBlobs = 1, .MergedBlobs = 7}});
 
             AssertBlobAndBlockCounts(
                 state.GetStats(),

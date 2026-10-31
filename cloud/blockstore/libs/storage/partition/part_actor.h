@@ -472,15 +472,7 @@ private:
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        ui64 mixedIndexBlobsCount,
-        ui64 mergedIndexBlobsCount,
-        ui64 mixedChannelBlobsCount,
-        ui64 mergedChannelBlobsCount,
-        TDuration retryTimeout);
+        TPartitionBlobAndBlockCounts initialCounters, TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
 
