@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -2334,7 +2335,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	// size and capacity are measured in slots, not base disks.
 	wantToCreate := config.capacity - pool.size
 	// TODO: introduce new capacity param that is measured in units
-	wantToCreate = divideWithRoundingUp(
+	wantToCreate = common.DivideWithRoundingUp(
 		wantToCreate,
 		baseDiskTemplate.freeSlots(),
 	)

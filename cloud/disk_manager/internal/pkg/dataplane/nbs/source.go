@@ -242,6 +242,7 @@ func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
 		s.baseCheckpointID,
 		s.checkpointID,
 		s.ignoreBaseDisk,
+		s.blockCount*uint64(s.blockSize), // maxSizeBytes
 	)
 	if err != nil && nbs.IsNotImplementedError(err) {
 		// Worst case estimate
@@ -257,12 +258,20 @@ func (s *diskSource) Close(ctx context.Context) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Data will be read from proxy disk.
+// |diskID| is used to compute changed blocks. The data is read from
+// |proxyDiskID| if it is set, otherwise from |diskID| itself. The disk the data
+// is read from is mounted locally if |mountLocally| is set: local mount moves
+// the disk tablet to the NBS node serving the session, so it should be used for
+// one-shot disks (e.g. proxy overlay disks) only, not for user disks.
+//
+// The source covers the first min(|maxSizeBytes|, disk size) bytes of the disk
+// (rounded up to |chunkSize|), zero |maxSizeBytes| means the whole disk.
 func NewDiskSource(
 	ctx context.Context,
 	client nbs.Client,
 	diskID string,
 	proxyDiskID string,
+	mountLocally bool,
 	baseCheckpointID string,
 	checkpointID string,
 	encryption *types.EncryptionDesc,
@@ -270,14 +279,20 @@ func NewDiskSource(
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
 	dontReadFromCheckpoint bool,
+	maxSizeBytes uint64,
 ) (dataplane_common.Source, error) {
+
+	dataDiskID := diskID
+	if len(proxyDiskID) != 0 {
+		dataDiskID = proxyDiskID
+	}
 
 	var session *nbs.Session
 	var err error
-	if len(proxyDiskID) != 0 {
-		session, err = client.MountLocalRO(ctx, proxyDiskID, encryption)
+	if mountLocally {
+		session, err = client.MountLocalRO(ctx, dataDiskID, encryption)
 	} else {
-		session, err = client.MountRO(ctx, diskID, encryption)
+		session, err = client.MountRO(ctx, dataDiskID, encryption)
 	}
 
 	if err != nil {
@@ -301,6 +316,20 @@ func NewDiskSource(
 			"blocksInChunk should be multiple of 8, blocksInChunk=%v",
 			blocksInChunk,
 		)
+	}
+
+	if maxSizeBytes != 0 {
+		// Rounded up to the chunk size: the source reads whole chunks (and the
+		// target of a transfer is chunk aligned as well, see NewDiskTarget).
+		// Clamped to the disk, so the result stays valid (see validate).
+		maxChunkCount := common.DivideWithRoundingUp(
+			maxSizeBytes,
+			uint64(chunkSize),
+		)
+		maxBlockCount := maxChunkCount * blocksInChunk
+		if maxBlockCount < blockCount {
+			blockCount = maxBlockCount
+		}
 	}
 
 	maxChangedBlockCountPerIteration :=
