@@ -21,6 +21,11 @@ TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
     const TString& tenantName,
     const TString& nodeType);
 
+// Make a config kind available without changing other allow/deny rules.
+void AllowConfigItem(
+    ui32 kind,
+    NKikimr::NConfig::TConfigsDispatcherInitInfo* info);
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,
