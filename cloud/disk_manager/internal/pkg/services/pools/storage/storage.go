@@ -207,7 +207,7 @@ type Storage interface {
 
 	// Used in tests and SRE tools.
 	// Checks that slots of all overlay disks with ids prefixed by
-	// |overlayDiskIDPrefix| are released.
+	// |overlayDiskIDPrefix| are released. The prefix should not be empty.
 	CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 		ctx context.Context,
 		overlayDiskIDPrefix string,

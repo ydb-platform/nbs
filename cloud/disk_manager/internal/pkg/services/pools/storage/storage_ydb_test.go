@@ -1548,13 +1548,17 @@ func TestStorageYDBCheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	require.NoError(t, err)
 
 	// Slot of the regular disk is still acquired.
-	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "regular-")
 	require.ErrorContains(t, err, "regular-disk")
+
+	// Empty prefix (which would match any slot) is rejected.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	require.ErrorContains(t, err, "should not be empty")
 
 	_, err = storage.ReleaseBaseDiskSlot(ctx, regularDisk)
 	require.NoError(t, err)
 
-	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "regular-")
 	require.NoError(t, err)
 
 	err = storage.CheckConsistency(ctx)

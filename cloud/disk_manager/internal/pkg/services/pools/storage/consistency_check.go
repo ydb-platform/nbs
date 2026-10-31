@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -292,33 +291,50 @@ func (s *storageYDB) checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	overlayDiskIDPrefix string,
 ) error {
 
-	tx, err := session.BeginRWTransaction(ctx)
+	if lenP0+r4B33\P0+r4B34\P0+r4B35\P0+r6B42\(overlayDiskIDPrefix) == 0 {
+		return errors.NewNonRetriableErrorf(
+			"overlay disk id prefix should not be empty",
+		)
+	}
+
+	// Note: overlay_disk_id is the primary key of the table.
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $overlay_disk_id_prefix as Utf8;
+		declare $status as Int64;
+
+		select *
+		from slots
+		where StartsWith(overlay_disk_id, $overlay_disk_id_prefix) and status != $status
+		limit 1
+	`, s.tablesPath),
+		persistence.ValueParam("$overlay_disk_id_prefix", persistence.UTF8Value(overlayDiskIDPrefix)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(slotStatusReleased))),
+	)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer res.Close()
 
-	slots, err := s.getSlots(ctx, tx)
-	if err != nil {
-		return err
-	}
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			slot, err := scanSlot(res)
+			if err != nil {
+				return err
+			}
 
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, slot := range slots {
-		if !strings.HasPrefix(slot.overlayDiskID, overlayDiskIDPrefix) {
-			continue
-		}
-
-		if slot.status != slotStatusReleased {
 			return errors.NewNonRetriableErrorf(
 				"internal inconsistency: slot %+v should be released",
 				slot,
 			)
 		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
