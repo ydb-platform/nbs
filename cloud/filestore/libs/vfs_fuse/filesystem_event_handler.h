@@ -8,12 +8,15 @@
 
 #include <util/generic/string.h>
 
+#include <memory>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemEventHandlerPtr CreateFileSystemEventHandler(
     TLog log,
-    TString fileSystemId);
+    TString fileSystemId,
+    std::weak_ptr<IFileSystem> fileSystem);
 
 }   // namespace NCloud::NFileStore::NFuse
