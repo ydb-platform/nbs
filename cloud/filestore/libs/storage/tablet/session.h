@@ -45,6 +45,7 @@ struct TPerNodeHandleStats
 private:
     i64 OpenHandles = 0;
     ui64 MTimeAtLastCacheInvalidation = 0;
+    ui64 CommitIdAtLastCacheInvalidation = 0;
 
     void RegisterHandle()
     {
@@ -56,9 +57,10 @@ private:
         --OpenHandles;
     }
 
-    void OnGuestCacheInvalidated(ui64 mtime)
+    void OnGuestCacheInvalidated(ui64 mtime, ui64 commitId)
     {
         MTimeAtLastCacheInvalidation = mtime;
+        CommitIdAtLastCacheInvalidation = commitId;
     }
 
     [[nodiscard]] bool Empty() const
@@ -102,7 +104,7 @@ public:
         }
     }
 
-    void OnGuestCacheInvalidated(const NProto::TNodeAttr& node)
+    void OnGuestCacheInvalidated(const NProto::TNodeAttr& node, ui64 commitId)
     {
         auto mtime = node.GetMTime();
         if (mtime == 0) {
@@ -111,16 +113,20 @@ public:
 
         auto it = Stats.find(node.GetId());
         if (it != Stats.end()) {
-            it->second.OnGuestCacheInvalidated(mtime);
+            it->second.OnGuestCacheInvalidated(mtime, commitId);
         }
     }
 
     // The cache can be kept if the node was not modified since the last time
-    // the cache was invalidated
-    [[nodiscard]] bool IsAllowedToKeepCache(const NProto::TNodeAttr& node) const
+    // the cache was invalidated. Both the commit id of the last modification of
+    // the node and its mtime are checked
+    [[nodiscard]] bool IsAllowedToKeepCache(
+        const NProto::TNodeAttr& node,
+        ui64 nodeCommitId) const
     {
         auto it = Stats.find(node.GetId());
         return it != Stats.end() &&
+               it->second.CommitIdAtLastCacheInvalidation >= nodeCommitId &&
                it->second.MTimeAtLastCacheInvalidation >= node.GetMTime();
     }
 
