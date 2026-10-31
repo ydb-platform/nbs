@@ -444,17 +444,6 @@ public:
 
     struct TCreateDiskFromDevicesParams
     {
-        explicit TCreateDiskFromDevicesParams(
-            ui32 blockSize,
-            NProto::EStorageMediaKind mediaKind,
-            bool force,
-            bool keepBlockCount)
-            : BlockSize(blockSize)
-            , MediaKind(mediaKind)
-            , Force(force)
-            , KeepBlockCount(keepBlockCount)
-        {}
-
         ui32 BlockSize;
         NProto::EStorageMediaKind MediaKind;
         bool Force = false;

@@ -1297,15 +1297,25 @@ struct TTxDiskRegistry
         {
             TStringStream ss;
 
-            ss << "Force=" << Force
-                << " DiskId=" << DiskId
-                << " BlockSize=" << BlockSize
-                << " Devices=[ ";
-            for (auto& d: Devices) {
-                ss << "("
-                    << d.GetAgentId() << " "
-                    << d.GetDeviceName()
-                    << ") ";
+            ss << "Force=" << Force << " DiskId=" << DiskId
+               << " BlockSize=" << BlockSize
+               << " KeepBlockCount=" << KeepBlockCount;
+            if (!Devices.empty()) {
+                ss << " Devices=[ ";
+                for (auto& d: Devices) {
+                    ss << "(" << d.GetAgentId() << " " << d.GetDeviceName()
+                       << ") ";
+                }
+            }
+            if (!Replicas.empty()) {
+                ss << " Replicas=[ ";
+                for (const auto& r: Replicas) {
+                    ss << "[";
+                    for (const auto& d: r) {
+                        ss << d << " ";
+                    }
+                    ss << "] ";
+                }
             }
             ss << "]";
             return ss.Str();

@@ -11,6 +11,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -128,11 +130,8 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    const bool isMirrored =
-        Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR2 ||
-        Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_MIRROR3;
-
-    if (!isMirrored && Request.GetDeviceUUIDs().size() == 0) {
+    const bool isMirrored = IsReliableDiskRegistryMediaKind(Request.GetStorageMediaKind());
+    if (!isMirrored && Request.GetDeviceUUIDs().empty()) {
         ReplyAndDie(
             ctx,
             MakeError(E_ARGUMENT, "Devices cannot be empty for simple disk"));

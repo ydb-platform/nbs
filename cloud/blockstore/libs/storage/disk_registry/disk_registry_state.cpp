@@ -333,17 +333,6 @@ bool StateTransitionAllowed(
     }
 }
 
-TVector<TString> ToDeviceIds(const TVector<NProto::TDeviceConfig>& devices)
-{
-    TVector<TString> result;
-    result.reserve(devices.size());
-
-    for (const auto& config: devices) {
-        result.push_back(config.GetDeviceUUID());
-    }
-    return result;
-}
-
 TVector<NProto::TDeviceConfig> ToDeviceConfig(const TVector<TString>& devices)
 {
     TVector<NProto::TDeviceConfig> result;
@@ -8657,7 +8646,7 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
         const auto* refConfig = DeviceList.FindDevice(uuid);
         if (!refConfig) {
             return MakeError(
-                E_INVALID_STATE,
+                E_ARGUMENT,
                 TStringBuilder() << "device " << uuid.Quote() << " not found");
         }
 
@@ -8674,32 +8663,20 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
             .PoolKind = refConfig->GetPoolKind(),
         };
 
-        if (query.PoolKind == NProto::DEVICE_POOL_KIND_LOCAL) {
-            query.NodeIds = {refConfig->GetNodeId()};
-        }
-
-        auto [targetDevice, error] = AllocateReplacementDevice(
-            db,
-            replicaId,
-            {},
-            query,
-            /*(unused)timestamp=*/{},
-            /*(unused)message=*/{});
-
-        if (HasError(error)) {
-            return error;
+        auto allocatedDevice = DeviceList.AllocateDevice(replicaId, query);
+        if (!allocatedDevice.GetDeviceUUID()) {
+            return MakeError(E_BS_DISK_ALLOCATION_FAILED, "can't allocate device");
         }
 
         AdjustDeviceBlockCount(
             /*(unused)now=*/{},
             db,
-            targetDevice,
-            logicalBlockCount * blockSize / targetDevice.GetBlockSize(),
+            allocatedDevice,
+            logicalBlockCount * blockSize / allocatedDevice.GetBlockSize(),
             replicaId);
 
-        resolvedReplica[i] = targetDevice.GetDeviceUUID();
+        resolvedReplica[i] = allocatedDevice.GetDeviceUUID();
     }
-
     return {};
 }
 
@@ -8800,19 +8777,16 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         db.UpdateDisk(BuildDiskConfig(replicaId, replica));
     }
 
-    for (ui32 i = 0; i < replicas.size(); ++i) {
-        ReplicaTable.UpdateReplica(
-            masterId,
-            i,
-            ToDeviceIds(allocateResults[i].Devices));
+    for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
+        ReplicaTable.UpdateReplica(masterId, i, resolvedReplicas[i]);
 
-        for (ui32 d = 0; d < allocateResults[i].Devices.size(); ++d) {
+        for (ui32 d = 0; d < resolvedReplicas[i].size(); ++d) {
             if (!replicas[i][d].empty()) {
                 continue;
             }
             ReplicaTable.MarkReplacementDevice(
                 masterId,
-                allocateResults[i].Devices[d].GetDeviceUUID(),
+                resolvedReplicas[i][d],
                 true);
         }
     }

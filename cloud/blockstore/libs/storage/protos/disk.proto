@@ -1644,6 +1644,14 @@ message TUpdatePlacementGroupSettingsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// List of devices UUIDs.
+
+message TDeviceList
+{
+    repeated string DeviceUUIDs = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Volume create from devices request/response.
 
 message TCreateVolumeFromDevicesRequest
@@ -1668,11 +1676,6 @@ message TCreateVolumeFromDevicesRequest
 
     // Kind of described space.
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
-
-    message TDeviceList
-    {
-        repeated string DeviceUUIDs = 1;
-    }
 
     // Replicas of the disk (for mirrored disks).
     repeated TDeviceList Replicas = 8;
