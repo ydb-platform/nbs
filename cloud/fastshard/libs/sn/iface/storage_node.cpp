@@ -13,9 +13,10 @@ class TStorageNodeStub: public IStorageNode
 public:
 #define SN_STUB_METHOD(name, ...)                                              \
     NCloud::NProto::T##name##Response name(                                    \
-        NCloud::NProto::T##name##Request request) override                     \
+        NCloud::NProto::T##name##Request request,                              \
+        TFastShardContext& ctx) override                                       \
     {                                                                          \
-        Y_UNUSED(request);                                                     \
+        Y_UNUSED(request, ctx);                                                \
         NProto::T##name##Response response;                                    \
         *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);               \
         return response;                                                       \

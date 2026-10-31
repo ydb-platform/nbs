@@ -6,6 +6,8 @@
 
 namespace NCloud::NFastShard {
 
+struct TFastShardContext;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define SN_METHODS(xxx, ...)                                                   \
@@ -29,6 +31,7 @@ namespace NCloud::NFastShard {
  * implementation just cooperatively suspends the fiber.
  * Implementations that need to wait on external I/O should do so via
  * silk primitives (FiberFuture::wait, FiberScheduler::poll, etc.).
+ * A cancel of the request's context ends a transport's waits.
  */
 struct IStorageNode
 {
@@ -36,7 +39,8 @@ struct IStorageNode
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
     virtual NCloud::NProto::T##name##Response name(                            \
-        NCloud::NProto::T##name##Request request) = 0;                         \
+        NCloud::NProto::T##name##Request request,                              \
+        TFastShardContext& ctx) = 0;                                           \
     // SN_DECLARE_METHOD
 
     SN_METHODS(SN_DECLARE_METHOD)

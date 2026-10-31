@@ -55,6 +55,8 @@ using TStorageNodeClientMetricsPtr =
  *     response whose Error field is set to E_REJECTED. The failed
  *     connection is closed and dropped from the pool; the next call
  *     opens a fresh one.
+ *   - A context cancel interrupts network polling, unless it has already
+ *     completed, and the call returns E_REJECTED.
  *   - A TDeviceProtocolResponse.ProtocolError from the server is
  *     copied into the concrete response's Error field.
  *
