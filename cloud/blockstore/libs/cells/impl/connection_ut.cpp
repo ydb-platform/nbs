@@ -90,7 +90,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
 {
     // set by the env: a channel belongs to one host, and a test that cannot
     // tell them apart cannot tell a move from staying put
-    NClient::IMultiHostClientPtr GrpcClient;
+    NClient::IEndpointFactoryPtr GrpcClient;
 
     // counts calls rather than distinct hosts: a pool that kept a channel
     // warm would never call this again for the same fqdn, so a rise here
@@ -218,7 +218,7 @@ struct TRecordingControlService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestGrpcClient: public NClient::IMultiHostClient
+struct TTestGrpcClient: public NClient::IEndpointFactory
 {
     std::shared_ptr<TTestBlockStore> Service =
         std::make_shared<TTestBlockStore>();
@@ -240,15 +240,6 @@ struct TTestGrpcClient: public NClient::IMultiHostClient
             host,
             Service,
             &LastControlHost);
-    }
-
-    IBlockStorePtr
-    CreateDataEndpoint(const TString& host, ui32 port, bool isSecure) override
-    {
-        Y_UNUSED(host);
-        Y_UNUSED(port);
-        Y_UNUSED(isSecure);
-        return {};
     }
 
     IBlockStorePtr

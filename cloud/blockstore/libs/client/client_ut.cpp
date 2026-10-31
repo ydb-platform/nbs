@@ -112,6 +112,63 @@ Y_UNIT_TEST_SUITE(TClientTest)
                 future.GetValue().ShortDebugString());
         }
     }
+
+    Y_UNIT_TEST(ShouldCreateEndpointPerCall)
+    {
+        auto result = CreateEndpointFactory(
+            std::make_shared<TClientAppConfig>(NProto::TClientAppConfig()),
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateServerStatsStub(),
+            CreateCertificateProviderStub());
+        auto factory = result.ExtractResult();
+        UNIT_ASSERT_C(factory, FormatError(result.GetError()));
+
+        auto first = factory->CreateEndpoint("localhost", 9001, false);
+        auto second = factory->CreateEndpoint("localhost", 9001, false);
+        UNIT_ASSERT(first != second);
+
+        auto io = factory->CreateIOEndpoint("localhost", 9001, false);
+        UNIT_ASSERT(io != factory->CreateIOEndpoint("localhost", 9001, false));
+    }
+
+    Y_UNIT_TEST(ShouldFinishRequestWhoseEndpointWasReleased)
+    {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort(9001);   // nobody listens
+
+        NProto::TClientAppConfig clientAppConfig;
+        clientAppConfig.MutableClientConfig()->SetRequestTimeout(1000);
+
+        auto result = CreateEndpointFactory(
+            std::make_shared<TClientAppConfig>(clientAppConfig),
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateServerStatsStub(),
+            CreateCertificateProviderStub());
+        auto factory = result.ExtractResult();
+        UNIT_ASSERT_C(factory, FormatError(result.GetError()));
+        factory->Start();
+
+        // the only handle to the endpoint goes away right after the request
+        // is enqueued; whether the executor sends it before or after that is
+        // a race, so under ASAN this catches a handler that borrows the stub
+        auto future = factory->CreateEndpoint("localhost", port, false)
+                          ->Ping(
+                              MakeIntrusive<TCallContext>(),
+                              std::make_shared<NProto::TPingRequest>());
+
+        factory->Stop();
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_C(
+            HasError(future.GetValue()),
+            future.GetValue().ShortDebugString());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

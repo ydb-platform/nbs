@@ -97,7 +97,7 @@ public:
 
     NClient::IClientPtr BuildClient();
 
-    NClient::IMultiHostClientPtr BuildMultiHostClient();
+    NClient::IEndpointFactoryPtr BuildEndpointFactory();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
