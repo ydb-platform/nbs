@@ -1598,12 +1598,15 @@ private:
         const TDiskId& diskId,
         const TCreateDiskFromDevicesParams& params,
         const TVector<NProto::TDeviceConfig>& devices,
+        bool dryRun,
+        bool allowFreshDevices,
         TAllocateDiskResult* result);
 
     NProto::TError CanCreateMirroredDiskFromDevices(
+        TDiskRegistryDatabase& db,
         const TDiskId& masterId,
         const TCreateDiskFromDevicesParams& params,
-        const TVector<TVector<TDeviceId>>& replicas) const;
+        const TVector<TVector<TDeviceId>>& replicas);
 
     void CollectRacksByReplicas(
         ui32 currentReplicaIdx,
