@@ -923,11 +923,12 @@ func CheckBaseDiskSlotReleased(
 	require.NoError(t, err)
 }
 
-// Proxy overlay disks are one-shot entities deleted by the tasks that created
-// them before the corresponding operations complete, there’s a delay between
-// releasing a slot in pool storage and deleting the corresponding disk from
-// NBS, so give the disks some time to disappear.
-const proxyOverlayDiskDeletionTimeout = 5 * time.Minute
+// Proxy overlay disks are one-shot entities: the tasks that create them delete
+// them (and release the base disk slots acquired for them) before the
+// corresponding operations complete. However, NBS destroys volumes
+// asynchronously, and a disk is deleted before its slot is released, so give
+// them some time to disappear.
+const proxyOverlayDiskCleanupTimeout = 5 * time.Minute
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
 	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
@@ -941,7 +942,10 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 	require.NotEmpty(t, proxyOverlayDiskIDPrefix)
 	require.NotEmpty(t, baseDiskIDPrefix)
 
-	deadline := time.Now().Add(proxyOverlayDiskDeletionTimeout)
+	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	defer closeFunc()
+
+	deadline := time.Now().Add(proxyOverlayDiskCleanupTimeout)
 
 	for {
 		var proxyOverlayDiskIDs []string
@@ -967,35 +971,33 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 			)
 		}
 
-		if len(proxyOverlayDiskIDs) == 0 {
+		slotsErr := poolStorage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+			ctx,
+			proxyOverlayDiskIDPrefix,
+		)
+
+		if len(proxyOverlayDiskIDs) == 0 && slotsErr == nil {
 			break
 		}
 
 		require.True(
 			t,
 			time.Now().Before(deadline),
-			"proxy overlay disks are leaked: %v",
+			"proxy overlay disks are leaked: disks %v, slots: %v",
 			proxyOverlayDiskIDs,
+			slotsErr,
 		)
 
 		logging.Info(
 			ctx,
-			"waiting for proxy overlay disks %v deletion",
+			"waiting for proxy overlay disks %v deletion and slots release (%v)",
 			proxyOverlayDiskIDs,
+			slotsErr,
 		)
 		time.Sleep(time.Second)
 	}
 
-	poolStorage, closeFunc := newPoolStorage(t, ctx)
-	defer closeFunc()
-
-	err := poolStorage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
-		ctx,
-		proxyOverlayDiskIDPrefix,
-	)
-	require.NoError(t, err)
-
-	err = poolStorage.CheckConsistency(ctx)
+	err := poolStorage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	// TODO: validate internal YDB tables (tasks, pools etc.) consistency.
