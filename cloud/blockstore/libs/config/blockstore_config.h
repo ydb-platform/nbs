@@ -135,6 +135,10 @@ NProto::TBlockstoreConfig MergeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig);
 
+// Copy non-protobuf parameters from the current Blockstore configuration.
+TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
+    const IBlockstoreConfig& currentConfig);
+
 // Merge the source protos and create independently owned runtime adapters. The
 // controls pointer must be non-null and becomes the live ICB overlay of the
 // Storage wrapper. Extra parameters supply host-specific DiskAgent values.
