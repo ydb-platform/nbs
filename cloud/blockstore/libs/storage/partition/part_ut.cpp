@@ -2302,6 +2302,44 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAutomaticallyFlushZerosFromFreshChannelBeforeHardLimit)
+    {
+        for (const auto mediaKind:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            auto config = DefaultConfig();
+            config.SetFreshBlocksWriterEnabled(false);
+            config.SetFreshChannelZeroRequestsEnabled(true);
+            config.SetFlushThresholdSSD(8_KB);
+            config.SetFlushThresholdHDD(8_KB);
+            config.SetFreshLogicalBlocksByteCountHardLimit(16_KB);
+
+            auto runtime = PrepareTestActorRuntime(
+                config,
+                1024,
+                {},
+                {.MediaKind = mediaKind});
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            for (ui32 batch = 0; batch < 3; ++batch) {
+                partition.ZeroBlocks(2 * batch);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    partition.StatPartition()
+                        ->Record.GetStats().GetFreshBlocksCount());
+
+                partition.ZeroBlocks(2 * batch + 1);
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+                auto response = partition.StatPartition();
+                const auto& stats = response->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushBlocksWhenFreshBlobCountThresholdIsReached)
     {
         auto config = DefaultConfig();

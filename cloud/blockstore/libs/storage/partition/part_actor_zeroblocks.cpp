@@ -413,6 +413,7 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
 
     SharedState->AccessDrainActorCompanion()->ProcessDrainRequests(ctx);
     ProcessCommitQueue(ctx);
+    EnqueueFlushIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
