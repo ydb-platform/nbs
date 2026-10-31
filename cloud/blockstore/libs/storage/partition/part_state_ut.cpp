@@ -1083,6 +1083,47 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             disabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
     }
 
+    Y_UNIT_TEST(ShouldDetectWhenBlobCountToCleanupDroppedBelowThreshold)
+    {
+        const ui64 deletionCommitId = MakeCommitId(0, 10);
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+
+        for (bool checkpointAware: {false, true}) {
+            auto state = MakeState(
+                DefaultBlockCount,
+                {.CheckpointAwareCleanupEnabled = checkpointAware});
+
+            TVector<TCleanupQueueItem> items;
+            for (ui32 i = 1; i <= 3; ++i) {
+                items.push_back({{1, i, 4, 4_KB, 0, 0}, deletionCommitId, {}});
+                state.GetCleanupQueue().Add(items.back());
+            }
+
+            UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+                cleanupCommitId,
+                3));
+
+            state.RemoveCleanupQueueItem(items[0]);
+
+            UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
+                cleanupCommitId,
+                3));
+            UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+                cleanupCommitId,
+                2));
+
+            // A lower threshold is reached regardless of the queue size.
+            UNIT_ASSERT(state.HasBlobCountToCleanupReachedThreshold(
+                cleanupCommitId,
+                1));
+
+            // Blobs deleted after cleanupCommitId are not counted.
+            UNIT_ASSERT(!state.HasBlobCountToCleanupReachedThreshold(
+                deletionCommitId - 1,
+                1));
+        }
+    }
+
     Y_UNIT_TEST(ShouldUpdateCleanupMilestoneIfNeeded)
     {
         auto state = MakeState(

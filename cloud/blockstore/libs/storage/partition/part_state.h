@@ -971,33 +971,10 @@ public:
     //
 
 private:
-    struct TBlobCountToCleanupEstimate
-    {
-        ui32 BlobCount = 0;
-        ui64 CleanupCommitId = 0;
-        ui64 MilestoneCommitId = 0;
-        TPartialBlobId MilestoneBlobId;
-
-        TBlobCountToCleanupEstimate() = default;
-
-        TBlobCountToCleanupEstimate(
-            ui32 blobCount,
-            ui64 cleanupCommitId,
-            ui64 milestoneCommitId,
-            const TPartialBlobId& milestoneBlobId)
-            : BlobCount(blobCount)
-            , CleanupCommitId(cleanupCommitId)
-            , MilestoneCommitId(milestoneCommitId)
-            , MilestoneBlobId(milestoneBlobId)
-        {}
-    };
-
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
     const bool CheckpointAwareCleanupEnabled;
-
-    mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
     TDuration LastCleanupExecTime;
     TInstant LastCleanupFinishTs;
@@ -1078,12 +1055,6 @@ public:
     {
         bool removed = CleanupQueue.Remove(item);
         Y_ABORT_UNLESS(removed);
-
-        // BlobCountToCleanupEstimate is not perfectly synchronized with
-        // CleanupQueue: it can actually be smaller.
-        if (BlobCountToCleanupEstimate.BlobCount) {
-            --BlobCountToCleanupEstimate.BlobCount;
-        }
     }
 
     TTsRingBuffer<ui32>& GetCleanupScoreHistory()

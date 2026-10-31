@@ -62,13 +62,14 @@ struct TCleanupQueue::TImpl
             return Items.size();
         }
 
-        return GetCount(0, TPartialBlobId(0, 0), toCommitId);
+        return GetCount(0, TPartialBlobId(0, 0), toCommitId, Max<size_t>());
     }
 
     size_t GetCount(
         ui64 fromCommitId,
         const TPartialBlobId& fromBlobId,
-        ui64 toCommitId) const
+        ui64 toCommitId,
+        size_t limit) const
     {
         auto it = Items.upper_bound(TCleanupQueueItem{
             .BlobId = fromBlobId,
@@ -76,7 +77,7 @@ struct TCleanupQueue::TImpl
             .BlobMeta = {}});
 
         size_t result = 0;
-        for (; it != Items.end(); ++it) {
+        for (; it != Items.end() && result < limit; ++it) {
             if (it->CommitId > toCommitId) {
                 break;
             }
@@ -171,9 +172,10 @@ size_t TCleanupQueue::GetCount(ui64 toCommitId) const
 size_t TCleanupQueue::GetCount(
     ui64 fromCommitId,
     const TPartialBlobId& fromBlobId,
-    ui64 toCommitId) const
+    ui64 toCommitId,
+    size_t limit) const
 {
-    return Impl->GetCount(fromCommitId, fromBlobId, toCommitId);
+    return Impl->GetCount(fromCommitId, fromBlobId, toCommitId, limit);
 }
 
 TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
