@@ -88,6 +88,33 @@ std::pair<TString, TBlockRange64> ParseCheckRangeRequestJson(
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldUseUniqueClientIdsWithDefaultInstanceId)
+    {
+        auto client = std::make_shared<TTestService>();
+        TVector<TString> clientIds;
+        client->StartEndpointHandler =
+            [&](std::shared_ptr<NProto::TStartEndpointRequest> request) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "blockstore-client",
+                    request->GetInstanceId());
+                UNIT_ASSERT(!request->GetClientId().empty());
+                clientIds.push_back(request->GetClientId());
+                return MakeFuture<NProto::TStartEndpointResponse>();
+            };
+
+        const TVector<TString> argv = {
+            GetProgramName(),
+            "--config=/dev/null",
+            "--disk-id=" + DefaultDiskId,
+            "--socket=test.sock",
+            "--ipc-type=grpc",
+        };
+        UNIT_ASSERT(ExecuteRequest("startendpoint", argv, client));
+        UNIT_ASSERT(ExecuteRequest("startendpoint", argv, client));
+        UNIT_ASSERT_VALUES_EQUAL(2, clientIds.size());
+        UNIT_ASSERT_VALUES_UNEQUAL(clientIds[0], clientIds[1]);
+    }
+
     Y_UNIT_TEST(ShouldAutoMountUnmountVolumeOnReadWriteZeroBlocksRequests)
     {
         auto client = std::make_shared<TTestService>();
@@ -106,6 +133,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 detectedMountVolumeRequest = true;
                 UNIT_ASSERT(request->GetVolumeMountMode() == NProto::VOLUME_MOUNT_REMOTE);
                 UNIT_ASSERT(request->GetToken() == mountToken);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "blockstore-client",
+                    request->GetInstanceId());
 
                 NProto::TMountVolumeResponse response;
                 response.SetSessionId(sessionId);

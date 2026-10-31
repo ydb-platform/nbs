@@ -36,6 +36,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/generic/guid.h>
 #include <util/stream/file.h>
 #include <util/string/ascii.h>
 #include <util/string/builder.h>
@@ -637,11 +638,12 @@ void TCommand::InitClientConfig()
     }
 
     if (!clientConfig.GetClientId()) {
-        clientConfig.SetClientId("cli-blockstore-client");
+        clientConfig.SetClientId(
+            TStringBuilder() << "cli-" << CreateGuidAsString());
     }
 
     if (!clientConfig.GetInstanceId()) {
-        clientConfig.SetInstanceId("cli-blockstore-client");
+        clientConfig.SetInstanceId("blockstore-client");
     }
 
     // This retry mode is not expected in blockstore-client

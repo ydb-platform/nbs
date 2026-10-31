@@ -418,7 +418,7 @@ def test_metrics_reuse():
             and sensor["labels"].get("component") == "server_volume"
             and sensor["labels"].get("volume") == metrics_disk_id
         }
-        assert len(instances) == 1, (metrics_disk_id, instances)
+        assert instances == {"blockstore-client"}, (metrics_disk_id, instances)
     tear_down(env)
 
 
