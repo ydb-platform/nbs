@@ -350,7 +350,7 @@ TResultOrError<TString> GetDeviceWithData(
     ui32 deviceIdx)
 {
     for (const TVector<TString>& replica: replicas) {
-        if (!replica[deviceIdx].empty()) {
+        if (replica[deviceIdx]) {
             return replica[deviceIdx];
         }
     }
@@ -8634,7 +8634,7 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
         forbiddenRacks);
 
     for (ui32 i = 0; i < resolvedReplica.size(); ++i) {
-        if (!resolvedReplica[i].empty()) {
+        if (resolvedReplica[i]) {
             continue;
         }
 
@@ -8708,7 +8708,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         [this](const TDiskId& replicaId, const TVector<TDeviceId>& devices)
     {
         for (const auto& uuid: devices) {
-            if (!uuid.empty()) {
+            if (uuid) {
                 DeviceList.MarkDeviceAllocated(replicaId, uuid);
             }
         }
@@ -8717,7 +8717,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
     auto releaseDevices = [this](const TVector<TDeviceId>& devices)
     {
         for (const auto& uuid: devices) {
-            if (!uuid.empty()) {
+            if (uuid) {
                 DeviceList.ReleaseDevice(uuid);
             }
         }
@@ -8781,7 +8781,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         ReplicaTable.UpdateReplica(masterId, i, resolvedReplicas[i]);
 
         for (ui32 d = 0; d < resolvedReplicas[i].size(); ++d) {
-            if (!replicas[i][d].empty()) {
+            if (replicas[i][d]) {
                 continue;
             }
             ReplicaTable.MarkReplacementDevice(
