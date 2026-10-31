@@ -1618,9 +1618,8 @@ private:
         TDiskRegistryDatabase& db,
         const TDiskId& replicaId,
         ui32 replicaIndex,
-        const TVector<TVector<TDeviceId>>& replicas,
-        ui32 blockSize,
-        TVector<TDeviceId>& resolvedReplica);
+        TVector<TVector<TDeviceId>>& replicas,
+        ui32 blockSize);
 
     NProto::TError CreateMirroredDiskFromDevices(
         TInstant now,

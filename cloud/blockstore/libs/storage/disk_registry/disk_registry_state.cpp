@@ -8631,11 +8631,10 @@ NProto::TError TDiskRegistryState::AllocateFreshDevicesForReplica(
     TDiskRegistryDatabase& db,
     const TDiskId& replicaId,
     ui32 replicaIndex,
-    const TVector<TVector<TDeviceId>>& replicas,
-    ui32 blockSize,
-    TVector<TDeviceId>& resolvedReplica)
+    TVector<TVector<TDeviceId>>& replicas,
+    ui32 blockSize)
 {
-    resolvedReplica = replicas[replicaIndex];
+    TVector<TDeviceId>& resolvedReplica = replicas[replicaIndex];
 
     THashSet<TString> preferredRacks;
     THashSet<TString> forbiddenRacks;
@@ -8753,22 +8752,21 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
         .MediaKind = params.MediaKind,
     };
 
+    TVector<TVector<TDeviceId>> resolvedReplicas(replicas);
     TVector<TAllocateDiskResult> allocateResults(replicas.size());
 
-    for (ui32 i = 0; i < replicas.size(); ++i) {
+    for (ui32 i = 0; i < resolvedReplicas.size(); ++i) {
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
         // Reserve non-fresh devices to avoid using them for fresh.
-        reserveDevices(replicaId, replicas[i]);
+        reserveDevices(replicaId, resolvedReplicas[i]);
 
-        TVector<TDeviceId> resolvedReplica;
         auto error = AllocateFreshDevicesForReplica(
             db,
             replicaId,
             i,
-            replicas,
-            params.BlockSize,
-            resolvedReplica);
+            resolvedReplicas,
+            params.BlockSize);
 
         if (!HasError(error)) {
             error = CreateSimpleDiskFromDevices(
@@ -8776,7 +8774,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 db,
                 replicaId,
                 params,
-                ToDeviceConfig(resolvedReplica),
+                ToDeviceConfig(resolvedReplicas[i]),
                 /*dryRun=*/false,
                 /*allowFreshDevices=*/false,
                 &allocateResults[i]);
@@ -8784,7 +8782,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 
         if (HasError(error)) {
             CleanupMirroredDisk(now, db, allocateDiskParams);
-            releaseDevices(resolvedReplica);
+            releaseDevices(resolvedReplicas[i]);
             return error;
         }
 
