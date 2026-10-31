@@ -444,6 +444,61 @@ Y_UNIT_TEST_SUITE(TBootstrapVhostTest)
             NodeLeaseExpirationExitCode,
             shouldContinue.GetReturnCode());
     }
+
+    Y_UNIT_TEST(ShouldInitSecureClientEndpointsWithoutLocalService)
+    {
+        auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
+        auto vhostFactories =
+            std::make_shared<NDaemon::TVhostModuleFactories>();
+        vhostFactories->LoopFactory = NFuse::CreateFuseLoopFactory;
+
+        TBootstrapVhost bootstrap(
+            std::move(moduleFactories),
+            std::move(vhostFactories));
+
+        TTempDir dir;
+        auto vhostConfigPath = dir.Path() / "nfs-vhost.txt";
+        auto vhostConfigStr = Sprintf(
+            R"(
+                VhostServiceConfig {
+                    EndpointStorageType: ENDPOINT_STORAGE_FILE
+                    EndpointStorageDir: "%s"
+                    ServiceEndpoints {
+                        Name: "secure"
+                        ClientConfig {
+                            Host: "localhost"
+                            SecurePort: 9766
+                            RootCertsFile: "%s"
+                            CertFile: "%s"
+                            CertPrivateKeyFile: "%s"
+                        }
+                    }
+                }
+            )",
+            dir.Path().GetPath().c_str(),
+            GetCertFile().c_str(),
+            GetCertFile().c_str(),
+            GetCertKeyFile().c_str());
+        TOFStream(vhostConfigPath.GetPath()).Write(vhostConfigStr);
+
+        TVector<TString> args = {
+            "./program",
+            "--service", "local",
+            "--vhost-file", vhostConfigPath,
+        };
+
+        TVector<char*> argv;
+        argv.reserve(args.size());
+        for (auto& arg: args) {
+            argv.push_back(arg.begin());
+        }
+
+        bootstrap.ParseOptions(argv.size(), argv.data());
+
+        // The secure endpoint's certificate provider is created inside Init
+        // and needs the process-wide certificate watcher to exist by then.
+        bootstrap.Init();
+    }
 };
 
 }   // namespace NCloud::NFileStore::NDaemon

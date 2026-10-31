@@ -1023,17 +1023,9 @@ void TBootstrapYdb::SetupCellManager()
                 "Secure cells port is configured without certificates");
 
             cellCertProvider = CreateCertificateProvider(
-                Logging,
-                GetComponentName(
-                    TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
-                Scheduler,
-                LongRunningTaskExecutor,
-                Monitoring->GetCounters()
-                    ->GetSubgroup("counters", "blockstore")
-                    ->GetSubgroup("component", "cells"),
+                CertificateWatcher,
                 grpcConfig.GetRootCertsFile(),
-                std::move(certList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
+                std::move(certList));
         }
 
         CellManager = CreateCellManager(
