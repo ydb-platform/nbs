@@ -29,14 +29,10 @@ func selectClientForDisk(
 	storage resources.Storage,
 ) (nbs.Client, error) {
 
-	var client nbs.Client
-	var err error
-
 	if len(params.PlacementGroupId) > 0 {
 		// Pin disk to the same cell where its placement group was
 		// created so that DR placement constraints work correctly.
-		var pgMeta *resources.PlacementGroupMeta
-		pgMeta, err = storage.GetPlacementGroupMeta(
+		pgMeta, err := storage.GetPlacementGroupMeta(
 			ctx,
 			params.PlacementGroupId,
 		)
@@ -60,8 +56,7 @@ func selectClientForDisk(
 				)
 			}
 		} else {
-			var zoneCells []string
-			zoneCells, err = cellSelector.ResolveCells(params.Disk.ZoneId)
+			zoneCells, err := cellSelector.ResolveCells(params.Disk.ZoneId)
 			if err != nil {
 				return nil, err
 			}
@@ -76,8 +71,7 @@ func selectClientForDisk(
 		}
 
 		if common.IsLocalDiskKind(params.Kind) {
-			var localClient nbs.Client
-			localClient, err = cellSelector.SelectCellForLocalDisk(
+			client, err := cellSelector.SelectCellForLocalDisk(
 				ctx,
 				params.Disk.ZoneId,
 				params.AgentIds,
@@ -85,41 +79,39 @@ func selectClientForDisk(
 			if err != nil {
 				return nil, err
 			}
-			if localClient.ZoneID() != pgMeta.ZoneID {
+			if client.ZoneID() != pgMeta.ZoneID {
 				return nil, errors.NewNonRetriableErrorf(
 					"agent for local disk is in cell %v, "+
 						"but placement group %v is in cell %v",
-					localClient.ZoneID(),
+					client.ZoneID(),
 					params.PlacementGroupId,
 					pgMeta.ZoneID,
 				)
 			}
-			client = localClient
-		} else {
-			client, err = nbsFactory.GetClient(ctx, pgMeta.ZoneID)
+
+			return client, nil
 		}
-	} else if common.IsLocalDiskKind(params.Kind) {
+
+		return nbsFactory.GetClient(ctx, pgMeta.ZoneID)
+	}
+
+	if common.IsLocalDiskKind(params.Kind) {
 		// There is an agent, where local disk should be created. Can't use
 		// default cell selection mechanism.
-		client, err = cellSelector.SelectCellForLocalDisk(
+		return cellSelector.SelectCellForLocalDisk(
 			ctx,
 			params.Disk.ZoneId,
 			params.AgentIds,
 		)
-	} else {
-		client, err = cellSelector.SelectCellForDisk(
-			ctx,
-			params.Disk.ZoneId,
-			params.FolderId,
-			params.Kind,
-			params.RequireExactCellIdMatch,
-		)
-	}
-	if err != nil {
-		return nil, err
 	}
 
-	return client, nil
+	return cellSelector.SelectCellForDisk(
+		ctx,
+		params.Disk.ZoneId,
+		params.FolderId,
+		params.Kind,
+		params.RequireExactCellIdMatch,
+	)
 }
 
 func SelectCellForDisk(

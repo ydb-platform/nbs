@@ -35,7 +35,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
-	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
@@ -718,6 +717,7 @@ func NewFilesystemSnapshotStorage(
 func newPoolStorage(
 	t *testing.T,
 	ctx context.Context,
+	config *server_config.ServerConfig,
 ) (pools_storage.Storage, func()) {
 
 	db := newYDB(t, ctx)
@@ -726,16 +726,9 @@ func newPoolStorage(
 		_ = db.Close(ctx)
 	}
 
-	// Should be in sync with settings from PoolsConfig in test recipe.
-	cloudID := "cloud"
-	folderID := "pools"
-
 	storage, err := pools_storage.NewStorage(
-		&pools_config.PoolsConfig{
-			CloudId:  &cloudID,
-			FolderId: &folderID,
-		},
-		GetServerConfig(t).GetPerformanceConfig(),
+		config.GetPoolsConfig(),
+		config.GetPerformanceConfig(),
 		db,
 		metrics.NewEmptyRegistry(),
 	)
@@ -916,7 +909,7 @@ func CheckBaseDiskSlotReleased(
 	overlayDiskID string,
 ) {
 
-	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	poolStorage, closeFunc := newPoolStorage(t, ctx, GetServerConfig(t))
 	defer closeFunc()
 
 	err := poolStorage.CheckBaseDiskSlotReleased(ctx, overlayDiskID)
@@ -931,8 +924,6 @@ func CheckBaseDiskSlotReleased(
 const proxyOverlayDiskCleanupTimeout = 5 * time.Minute
 
 func CheckConsistency(t *testing.T, ctx context.Context) {
-	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
-
 	config := GetServerConfig(t)
 
 	// Note: the recipe uses the same prefix for the dataplane.
@@ -942,7 +933,9 @@ func CheckConsistency(t *testing.T, ctx context.Context) {
 	require.NotEmpty(t, proxyOverlayDiskIDPrefix)
 	require.NotEmpty(t, baseDiskIDPrefix)
 
-	poolStorage, closeFunc := newPoolStorage(t, ctx)
+	nbsClient := NewNbsTestingClient(t, ctx, "zone-a")
+
+	poolStorage, closeFunc := newPoolStorage(t, ctx, config)
 	defer closeFunc()
 
 	deadline := time.Now().Add(proxyOverlayDiskCleanupTimeout)

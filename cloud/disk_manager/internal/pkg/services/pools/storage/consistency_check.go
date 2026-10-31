@@ -291,7 +291,7 @@ func (s *storageYDB) checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	overlayDiskIDPrefix string,
 ) error {
 
-	if lenP0+r4B33\P0+r4B34\P0+r4B35\P0+r6B42\(overlayDiskIDPrefix) == 0 {
+	if len(overlayDiskIDPrefix) == 0 {
 		return errors.NewNonRetriableErrorf(
 			"overlay disk id prefix should not be empty",
 		)
