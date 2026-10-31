@@ -13,10 +13,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockstoreConfigHolderPtr& BlockstoreConfigHolder()
+IBlockstoreConfigProviderPtr& BlockstoreConfigProvider()
 {
-    static TBlockstoreConfigHolderPtr holder;
-    return holder;
+    static IBlockstoreConfigProviderPtr provider;
+    return provider;
 }
 
 }   // namespace
@@ -25,33 +25,34 @@ TBlockstoreConfigHolderPtr& BlockstoreConfigHolder()
 
 IBlockstoreConfigConstPtr GetCurrentBlockstoreConfig()
 {
-    const auto& holder = BlockstoreConfigHolder();
+    const auto& provider = BlockstoreConfigProvider();
     Y_ABORT_UNLESS(
-        holder,
+        provider,
         "Blockstore configuration provider is not initialized");
-    return holder->Get();
+    return provider->Get();
 }
 
 TBlockstoreConfigHolderPtr InitializeBlockstoreConfigProvider(
     IBlockstoreConfigPtr initialConfig)
 {
-    auto& holder = BlockstoreConfigHolder();
+    auto& provider = BlockstoreConfigProvider();
     Y_ABORT_UNLESS(
-        !holder,
+        !provider,
         "Blockstore configuration provider cannot be reset or rebound");
     Y_ABORT_UNLESS(
         initialConfig,
         "Initial Blockstore configuration must not be null");
 
-    holder =
+    auto holder =
         std::make_shared<TBlockstoreConfigHolder>(std::move(initialConfig));
+    provider = holder;
     return holder;
 }
 
 void ResetBlockstoreConfigProvider()
 {
-    auto& holder = BlockstoreConfigHolder();
-    holder.reset();
+    auto& provider = BlockstoreConfigProvider();
+    provider.reset();
 }
 
 }   // namespace NCloud::NBlockStore
