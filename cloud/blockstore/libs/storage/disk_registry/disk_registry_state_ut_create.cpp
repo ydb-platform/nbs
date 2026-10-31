@@ -925,7 +925,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
                 UNIT_ASSERT(
-                    error.GetMessage().Contains("already exists"));
+                    error.GetMessage().Contains("already attached to other disk"));
 
                 AssertNoMirror2DiskArtifactsForMaster(*boundStatePtr, "disk-1");
                 TDiskInfo info;
@@ -1304,35 +1304,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             });
     }
 
-    // BUG: retrying a request that has a fresh (empty) slot destroys the
-    // mirrored disk created by the first attempt.
-    //
-    // Retries are expected: the DR proxy retries on E_REJECTED and tablet
-    // restarts, and the operator can re-run the restore script after a
-    // timeout. On the retry:
-    //  1. CanCreateMirroredDiskFromDevices() passes. It rejects only an
-    //     existing master with non-empty Devices, but a mirrored master never
-    //     has Devices, and the replicas have MasterDiskId == "disk-1".
-    //  2. CreateMirroredDiskPlacementGroup() returns S_ALREADY.
-    //  3. AllocateFreshDevicesForReplica() allocates a new device for the
-    //     empty slot, because the request still contains "".
-    //  4. CreateSimpleDiskFromDevices("disk-1/0") gets a different device list
-    //     and fails with 'disk "disk-1/0" already exists'.
-    //  5. The error branch calls CleanupMirroredDisk(). It deallocates both
-    //     existing replicas (their devices become dirty and get erased),
-    //     destroys the placement group and adds "disk-1" to BrokenDisks.
-    //     The master is erased only in memory (Disks.erase() without
-    //     db.DeleteDisk()), so after a DR reboot the master row is loaded
-    //     back without replicas.
-    //
-    // FIX: check for an existing disk before changing any state. If the
-    // master exists, compare the request with it: each non-empty UUID must
-    // match the existing device at the same position of the same replica, and
-    // an empty slot matches the device that is already there (a previous
-    // attempt allocated it). If everything matches, return S_ALREADY with the
-    // existing devices. Otherwise return E_ARGUMENT and leave the existing
-    // disk alone. Never run cleanup for a disk that existed before the call
-    // (the same rule as isNewDisk in AllocateMirroredDisk()).
     Y_UNIT_TEST(ShouldBeIdempotentWhenCreatingMirroredDiskWithFreshDevices)
     {
         TTestExecutor executor;

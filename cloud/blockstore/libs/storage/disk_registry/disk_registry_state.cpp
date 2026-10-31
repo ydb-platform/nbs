@@ -8382,6 +8382,7 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
 
     for (auto& device: devices) {
         if (allowFreshDevices && device.GetDeviceUUID().empty()) {
+            deviceIds.push_back(device.GetDeviceUUID());
             continue;
         }
 
@@ -8432,11 +8433,10 @@ NProto::TError TDiskRegistryState::CreateSimpleDiskFromDevices(
         bool sameDevices = true;
         if (allowFreshDevices) {
             for (ui32 i = 0; i < disk->Devices.size(); ++i) {
-                const auto& uuid = disk->Devices[i];
-                if (ReplicaTable.IsReplacementDevice(diskId, uuid)) {
+                if (!deviceIds[i]) {
                     continue;
                 }
-                sameDevices &= uuid == deviceIds[i];
+                sameDevices &= disk->Devices[i] == deviceIds[i];
             }
         } else {
             sameDevices = disk->Devices == deviceIds;
@@ -8550,21 +8550,30 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
         if (HasError(error)) {
             return error;
         }
+
+        if (replicas[i].size() != devicesCount) {
+            return MakeError(E_ARGUMENT, "devices count mismatch");
+        }
         allReplicasAlreadyCreated &= error.GetCode() == S_ALREADY;
 
         auto* replica = Disks.FindPtr(replicaId);
-        if (replica && replica->MasterDiskId != masterId) {
+        if (!replica) {
+            allReplicasAlreadyCreated = false;
+            continue;
+        }
+        if (error.GetCode() != S_ALREADY) {
+            return MakeError(
+                E_INVALID_STATE,
+                "already exsists with other parameters");
+        }
+        if (!replica->MasterDiskId) {
+            return MakeError(E_ARGUMENT, "already exists as simple disk");
+        }
+        if (replica->MasterDiskId != masterId) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "replica " << replicaId.Quote()
-                                 << " is already attached to disk "
-                                 << replica->MasterDiskId.Quote());
-        }
-
-        if (replicas[i].size() != devicesCount) {
-            return MakeError(
-                E_ARGUMENT,
-                "inconsistent devices count in replicas");
+                                 << " is already attached to other disk ");
         }
     }
 
@@ -8577,8 +8586,8 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
         }
         return MakeError(
             E_ARGUMENT,
-            "a part of the disk has been already created but is inconsistent "
-            "with the master disk");
+            TStringBuilder() << "replicas already exists but are inconsistent "
+                             << "with the master disk: " << masterId.Quote());
     }
 
     for (ui32 i = 0; i < devicesCount; ++i) {
