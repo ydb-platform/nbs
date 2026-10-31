@@ -34,6 +34,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
+#include <util/system/rwlock.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -58,6 +59,12 @@ class TDiskAgentActor final: public NActors::TActorBootstrapped<TDiskAgentActor>
         NActors::IEventHandlePtr Event;
     };
 
+    struct TPreStopSyncFlag
+    {
+        TRWMutex Mutex;
+        bool Stopped = false;
+    };
+
 private:
     const TStorageConfigConstPtr Config;
     const TDiskAgentConfigConstPtr AgentConfig;
@@ -68,6 +75,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ILocalNVMeServicePtr LocalNVMeService;
+    const std::shared_ptr<TPreStopSyncFlag> PreStopSyncFlagPtr;
 
     ILoggingServicePtr Logging;
     NCloud::NStorage::NRdma::IServerPtr RdmaServer;
@@ -129,6 +137,9 @@ public:
 
     ~TDiskAgentActor() override;
 
+    void Registered(
+        NActors::TActorSystem* sys,
+        const NActors::TActorId& owner) override;
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:

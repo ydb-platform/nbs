@@ -31,8 +31,15 @@ bool TDiskAgentActor::SecureErase(
     auto* actorSystem = ctx.ActorSystem();
     auto replyTo = ctx.SelfID;
 
-    auto reply = [actorSystem, deviceId, replyTo](auto error)
+    auto reply =
+        [actorSystem, deviceId, replyTo, preStopSyncFlag = PreStopSyncFlagPtr](
+            auto error)
     {
+        TReadGuard guard(preStopSyncFlag->Mutex);
+        if (preStopSyncFlag->Stopped) {
+            return;
+        }
+
         auto response =
             std::make_unique<TEvDiskAgentPrivate::TEvSecureEraseCompleted>(
                 std::move(error),

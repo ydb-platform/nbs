@@ -4029,6 +4029,52 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(1, AtomicGet(spdk->SecureEraseCount));
     }
 
+    SIMPLE_UNIT_FORKED_TEST(ShouldHandleSecureEraseAfterActorSystemShutdown)
+    {
+        auto erase = NewPromise<NProto::TError>();
+
+        {
+            TTestBasicRuntime runtime;
+
+            NProto::TDeviceConfig device;
+            device.SetDeviceName("uuid");
+            device.SetDeviceUUID("uuid");
+            device.SetBlocksCount(DefaultBlocksCount);
+            device.SetBlockSize(DefaultBlockSize);
+
+            auto spdk = std::make_shared<TTestSpdkEnv>(TVector{device});
+
+            auto env =
+                TTestEnvBuilder(runtime)
+                    .With(
+                        []
+                        {
+                            auto config = DiskAgentConfig({"uuid"});
+                            config.SetDeviceEraseMethod(
+                                NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE);
+                            return config;
+                        }())
+                    .With(spdk)
+                    .Build();
+
+            TDiskAgentClient diskAgent(runtime);
+            diskAgent.WaitReady();
+
+            spdk->SecureEraseResult = erase;
+
+            diskAgent.SendSecureEraseDeviceRequest("uuid");
+            diskAgent.WaitReady();
+            UNIT_ASSERT_VALUES_EQUAL(1, AtomicGet(spdk->SecureEraseCount));
+
+            // The test emulates situation when the PoisonPill has not been
+            // processed before the ActorSystem destruction. It was not sent
+            // explicitly, and to prevent env from sending PoisonPill:
+            env.Actors.clear();
+        }
+
+        erase.SetValue(NProto::TError{});
+    }
+
     Y_UNIT_TEST(ShouldRejectIORequestsDuringSecureErase)
     {
         TTestBasicRuntime runtime;
