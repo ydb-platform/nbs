@@ -32,7 +32,7 @@ A **backend** identifies YDB or a configured S3 endpoint, bucket, and key prefix
 
 Keep the flat `chunk_map` and the existing logical snapshot membership in `chunk_blobs`. Add backend-aware physical references to `chunk_placements`. Add backend-aware placement states, locks, and tombstones to `snapshot_placements`. The same chunk ID may have one physical copy on each backend, shared by all snapshots that own it there.
 
-Save the full ancestor set when creating a snapshot from another snapshot or incremental base, including ancestors whose chunks were all replaced. The set includes deleted ancestor IDs. Creation acquires its source protection and all destination-backend ancestor locks in one transaction. Detachment atomically changes its placement state and installs the required ancestor/backend tombstones. Physical cleanup follows after admission.
+Record the creators of the nonzero chunks actually referenced by each snapshot. Its parent set consists of the foreign creators in that set. A deleted creator remains a parent while the snapshot references its chunks. Creation acquires direct-source protection and destination-backend origin locks in one transaction; it publishes the exact parent set from the completed map. Detachment atomically changes its placement state and installs the required origin/backend tombstones. Physical cleanup follows after admission.
 
 A tombstone permits reuse of an existing Ready physical chunk and temporarily forbids creating a missing chunk under that origin's existing key on that backend. A collector removes eligible tombstones after tracked cleanup and a configured retention delay. Copying can then resume with the same chunk IDs. The accepted consistency model includes storage requests that can outlive this delay; missing reads are retried and monitored.
 
@@ -58,7 +58,7 @@ Inspection returns the set of Ready backend IDs from `snapshot_placements`, alon
 | `DetachSnapshotBackend` | Snapshot ID, one backend | Marks that placement Deleting and schedules its collection; the last complete backend cannot be detached. |
 | `MigrateSnapshotBackend` | Snapshot ID, one destination backend, optional write options | Completes that destination, then marks the old placements for collection. |
 | `MigrateSnapshotsByCutoff` | Snapshot selector, one destination backend, optional cutoff | Migrates the selected pre-cutoff snapshots through individual serialized operations. |
-| `EstablishSnapshotInheritance` | Snapshot ID or resumable scan scope | Establishes ancestry/origin coverage and legacy backend ownership under protection. |
+| `EstablishSnapshotInheritance` | Snapshot ID or resumable scan scope | Establishes chunk-origin dependencies and legacy backend ownership under protection. |
 | `GetSnapshotPlacements` | Snapshot ID | Returns placement statuses, the actual Ready backend set, and establishment/operation status. |
 
 Every mutation has a stable idempotency key and a durable operation result. A retry recovers its original destination and progress. Another placement-changing operation for that snapshot waits without taking source or ancestor locks. Different snapshots may copy shared chunks concurrently.
@@ -77,7 +77,7 @@ Configure allowed backend sets and one default destination per folder, with sepa
 
 Add `PlacementTombstoneRetention`, with a proposed initial default of 30 minutes, separately from the existing delay before physical snapshot collection. The tombstone collector applies this delay after the final associated cleanup completes. Admission checks tombstone presence; readers and writers do not perform a second reattachment-time calculation.
 
-Add `MaxIncrementalDepth` and enforce it for disk incrementals and snapshot/image shallow copies. A full root has depth zero. A child over the limit performs a full copy with fresh chunk IDs and an empty ownership ancestor set. Record this choice before transfer and preserve it across retries. The bound must fit the complete ancestor-lock transaction within supported database limits. Admission also checks the actual ancestor-set size, including imported legacy sets whose historical depth may be unknown. Unknown legacy depth requires establishment or a deliberate full rewrite before starting a new bounded chain. Replication and migration preserve IDs and cannot silently rewrite an oversized legacy snapshot; establish a supported set or report the admission limit.
+Add `MaxIncrementalDepth` and enforce it for disk incrementals and snapshot/image shallow copies. This scalar counts creation steps since a full rewrite; it is separate from the number of current chunk dependencies. A full root has depth zero. A child over the limit performs a full copy with fresh chunk IDs and an empty parent set. Record this choice before transfer and preserve it across retries. Treat an unknown legacy copy depth conservatively as reaching the limit for new creation; it does not prevent establishing the exact origins of existing chunks. Admission separately bounds the actual origin-lock set to fit database transaction limits. Replication and migration preserve IDs and cannot silently rewrite an oversized legacy snapshot; report the admission limit if its established origin set is too large.
 
 Keep limits for concurrent operations across snapshots, chunk workers, bytes in flight, and backend request/bandwidth usage. Configure monitoring for retriable missing reads, tombstone age, pending cleanup, and stalled establishment. Rollout gates separately control upgraded legacy accounting, establishment, new placement operations, and collection.
 
@@ -87,19 +87,23 @@ Keep limits for concurrent operations across snapshots, chunk workers, bytes in 
 
 | Table | Key | Stored state |
 | --- | --- | --- |
-| `snapshots` | Existing snapshot key | Lifecycle, immutable creation inputs, ancestor/origin set, establishment status, incremental depth, current operation owner and durable results. |
+| `snapshots` | Existing snapshot key | Lifecycle, immutable creation inputs, chunk-origin set, establishment status, incremental depth, current operation owner and durable results. |
 | `chunk_map` | Existing snapshot/index key | Logical chunk ID; legacy `stored_in_s3` retained for old mixed reads and establishment. |
 | `chunk_blobs` | Existing shard/chunk/referer key | Logical root count and distinct snapshot references; compatible YDB payload fields. |
-| `snapshot_placements` | Snapshot ID, placement/backend ID, holder scope and task ID | Placement root/status, source and ancestor lock holders, origin/backend tombstone, cleanup holders, and collection state. |
+| `snapshot_placements` | Snapshot ID, placement/backend ID, holder scope and task ID | Placement root/status, source and chunk-origin lock holders, origin/backend tombstone, cleanup holders, and collection state. |
 | `chunk_placements` | Shard ID, backend ID, chunk ID, referer | Physical root/state at empty referer and one reference row per physical owner. |
 
-Snapshot ancestry is a deduplicated set. A new child of P records `{P} union ancestors(P)`; deletion leaves that set intact on surviving children. Establishment for legacy data records all recoverable parent relationships and every original creator needed by the map. Record whether ancestry is historical or established from surviving ownership evidence. The protection requirement is complete coverage of chunk origins, including deleted creators.
+For a snapshot S, `origins(S)` is the set of creator snapshot IDs extracted from its nonzero chunk IDs. Its stored parent set is `parents(S) = origins(S) minus {S}`. In this design, a parent or ancestor is one of those actual chunk creators. The direct creation source and NBS base/checkpoint remain separate metadata. A source can provide the complete map without having written any of its chunks.
+
+For example, if A writes x, B copies A, and C copies B, both B and C have the data-parent set `{A}`. C locks B as its direct source during copying; it records A as the creator of its inherited data. Replacing every A-origin chunk removes A from a new snapshot's parent set. Deleting A's snapshot metadata leaves A in the sets of snapshots that still reference its chunks.
+
+A deleting snapshot retains its captured origin set until its cleanup is complete. Coordination rows, cleanup holders, and delayed tombstones have their own retention rules after chunk references are removed. Cleanup of an incomplete copy uses its durable map, progress, and admitted origin scope until all issued writes are accounted for.
 
 A normal placement has state `Absent`, `Copying`, `Ready`, `Deleting`, or `Deleted`. Coordination-only rows use Absent. The reserved internal Legacy placement records the protected mixed layout and its discovered backend associations. Actual Ready backend membership is a set derived from normal placement rows.
 
 Tombstone presence is separate from placement status. A row can have a tombstone while surviving Ready chunks are reused to establish a complete placement. A Ready placement remains readable in that case. Deleted or absent ancestor identities still have coordination rows where needed; they need no live snapshot or payload to participate in admission.
 
-Each source/ancestor lock holder is identified by task, admission version, and scope. Idempotent holder insertion/removal updates the corresponding count. A cleanup holder identifies a task that may still remove references or issue physical deletes for that origin/backend. A detach registers these holders for its entire self-and-ancestor set, including ancestors whose Ready placements exempt them from immediate tombstoning. The collector retains a shared tombstone until every associated cleanup is complete.
+Each source/ancestor lock holder is identified by task, admission version, and scope. Idempotent holder insertion/removal updates the corresponding count. A cleanup holder identifies a task that may still remove references or issue physical deletes for that origin/backend. A detach registers these holders for its captured chunk-origin set and its own placement scope, including origins whose Ready placements exempt them from immediate tombstoning. The collector retains a shared tombstone until every associated cleanup is complete.
 
 References keep their existing set-membership semantics. A logical snapshot contributes one `chunk_blobs` reference to a chunk. A normal physical owner contributes one `chunk_placements` reference for `(snapshot, chunk, backend)`. The same owner on another backend contributes a separate physical reference. Backend lists are sets, and retries or repeated map indexes do not add another member.
 
@@ -111,7 +115,7 @@ Keep the compatible YDB payload in `chunk_blobs`, with its lifetime controlled b
 
 ## Transaction boundaries
 
-Creation acquires the direct-parent/source protection and the full destination-backend ancestor lock set in one serializable transaction. Replication includes the snapshot itself and all its ancestors. The snapshot's operation owner, Copying destination, saved lock holders, and admission result commit together. A failed admission leaves no partial lock set.
+Creation acquires direct-source protection and its destination-backend candidate-origin locks in one serializable transaction. Before the changed-chunk selection is complete, `{source} union parents(source)` can serve as a temporary protection superset; it is saved on the operation, not as the child's parent set. Replication uses the existing snapshot's recorded chunk origins and its own placement scope. The snapshot's operation owner, Copying destination, saved lock holders, and admission result commit together. A failed admission leaves no partial lock set.
 
 Detach reads current placement states and coordination counts, marks the placement Deleting, installs its own and required ancestor tombstones, and records all cleanup holders in one serializable transaction. Missing placement rows still participate through their stable coordination keys. Ancestor attachment and tombstoning update those same keys, so absence checks are protected from concurrent changes.
 
@@ -134,16 +138,18 @@ A retry recovers that owner's saved request and progress; another operation retr
 Source readers may hold shared locks concurrently with a copy operation.
 An operation that finds its destination already Ready returns success without starting another copy.
 
-For incremental and shallow-copy creation, keep the full ancestor set on each snapshot, including ancestors that supplied no surviving chunks.
-For a child created from P, save `{P} union ancestors(P)` before transferring data.
-The set remains unchanged when ancestors are deleted or detached.
-The selected incremental base and its checkpoint are separate immutable creation inputs.
-A shallow copy also records its source and its source's complete ancestor set.
-A full creation with no source snapshot records an empty set.
-Creation locks `{parent} union ancestors(parent)` on the destination; replication locks `{snapshot} union ancestors(snapshot)` there.
-The snapshot's own scope is necessary when replication may recreate chunks originally written by that snapshot.
+For incremental and shallow-copy creation, derive the child's parent set from the nonzero chunks that remain in its completed map.
+Each inherited chunk contributes its original creator; chunks written by the child use its own scope.
+Persist progress and verified origins during transfer, then publish the exact final set with Ready.
+The selected source snapshot, incremental base, and checkpoint are separate immutable creation inputs.
+A shallow copy preserves the source map's origin set, with foreign creators becoming the child's parents.
+A full creation writes self-origin chunks and has an empty parent set.
+Before enumeration completes, creation may protect `{source} union parents(source)` on the destination as a temporary candidate set.
+That operation lock set is separate from the child's published dependencies; candidates with no surviving chunks are omitted from its parents.
+Replication uses the existing snapshot's origins and its own placement scope.
+The direct source is locked separately throughout active copying, even when it contributes no own-origin chunks.
 
-Before choosing incremental or shallow-copy admission, check the proposed depth and actual ancestor-set size. At the configured limit, new snapshot creation may persist full-copy mode, depth zero, and an empty ownership ancestor set. It still protects its readable source, reads every source chunk, and uses the existing new-chunk writer to assign destination-owned IDs. Full disk creation reads its selected checkpoint without a base bitmap. Apply this branch to disk, snapshot, and image creation; URL creation naturally starts a full root. Replication and migration keep the existing IDs and ancestry.
+Before choosing incremental or shallow-copy admission, check the proposed depth and candidate origin-lock set size. At the configured limit, new snapshot creation may persist full-copy mode, depth zero, and an empty parent set. It still protects its readable source, reads every source chunk, and uses the existing new-chunk writer to assign destination-owned IDs. Full disk creation reads its selected checkpoint without a base bitmap. Apply this branch to disk, snapshot, and image creation; URL creation naturally starts a full root. Replication and migration keep the existing IDs and chunk dependencies.
 
 Use `snapshot_placements` for source locks, ancestor/backend coordination, and retained tombstones.
 A coordination row can exist without a physical placement on that backend.
@@ -155,9 +161,9 @@ Shared locks acquired by creation conflict with the tombstone changes made by de
 
 - Recover the operation receipt and the per-snapshot operation owner.
 - Validate the snapshot lifecycle, destination backend, and destination placement state.
-- For incremental creation, validate and save the direct parent and its matching checkpoint.
-- Protect the direct parent against deletion and protect the actual source placement against detachment.
-- For every ancestor, including the direct parent, acquire its destination-backend coordination lock; replication includes the snapshot itself. Protect new self-origin writes through the owned destination record.
+- For incremental creation, validate and save the direct source and its matching checkpoint.
+- Protect the direct source against deletion and protect the actual source placement against detachment.
+- Acquire destination-backend coordination locks for the candidate chunk origins. Save that candidate set on the operation; replication uses the established map's origins. Protect new self-origin writes through the owned destination record.
 - Create missing coordination rows; an absent placement still participates in locking.
 - Save the source and ancestor lock holders, the Copying destination, the operation owner, and an active admission version.
 
@@ -176,7 +182,7 @@ Resume only after reacquiring the complete lock set, revalidating the source and
 If the original source disappeared during the wait, finish through the defined failure/cancellation path; partial progress is not a complete source.
 Never wait for a tombstone to disappear while retaining the locks that prevent its collection.
 
-The parent snapshot lock must be checked by both whole-snapshot deletion and source-backend detachment.
+The source snapshot lock must be checked by both whole-snapshot deletion and source-backend detachment.
 A snapshot deletion lock alone does not protect a source backend during cross-backend copying.
 Long-running restore and backup tasks use the same source-placement protection.
 During rollout, detachment also honors the existing `lock_task_id` until old saved tasks finish.
@@ -206,7 +212,7 @@ Ordinary transfer retries preserve the Copying destination, physical ownership, 
 
 `PublishPlacement` requires every nonzero chunk to have a physical owner and a Ready root on the destination.
 The completed contiguous scan and committed chunk operations establish that requirement.
-It publishes the destination Ready, records copy-stage completion, and releases the operation's copy locks together.
+It publishes the destination Ready with the exact origin/parent set from the completed map, records copy-stage completion, and releases the operation's copy locks together.
 Initial creation also publishes the snapshot Ready. Creation and standalone replication finalize their result and release the operation slot. Migration keeps its outer operation slot and remains incomplete until its separate detach decision commits.
 An all-zero snapshot needs no physical chunk rows, but still completes admission and publication.
 
@@ -215,11 +221,11 @@ BeginPlacement(S, destination, task):
   tx:
     recover receipt and operation ownership
     require live snapshot and admissible destination
-    resolve complete source and immutable ancestors
+    resolve complete source and candidate chunk origins
     require every required lock is available
     record retained tombstones that restrict creating missing old chunks
-    protect direct parent and actual source placement
-    lock all ancestors on destination, including absent placements
+    protect direct source and actual source placement
+    lock candidate origins on destination, including deleted creators
     save Copying destination, lock holders, request, and progress
 
 ReplicatePlacement(S, destination, task):
@@ -297,7 +303,7 @@ Whole-snapshot deletion first waits for protected readers and active copy operat
 Its admission transaction then marks the snapshot unavailable and records cleanup of all its placements.
 It adopts existing cleanup work rather than starting a second physical deletion owner.
 After all placements are collected, remove logical snapshot references and chunk-map entries.
-Retain ancestry metadata as required by surviving snapshots; descendants already hold their own complete ancestor sets.
+Surviving snapshots retain their own chunk-origin sets. Cleanup holders and tombstones remain until their separate collection conditions are satisfied.
 
 ## Reattachment and delayed workers
 
@@ -338,25 +344,25 @@ Long-running copy, restore, and backup tasks retain their source locks during ac
 
 ## Establish and preserve inheritance
 
-New writers save the complete parent set before transfer. For a child of P, it is `{P} union ancestors(P)`, even if the child replaces every P-origin chunk. Preserve deleted IDs in that set. A full rewrite with fresh chunk IDs starts a new ownership root; historical source information may remain separately. Backend replication preserves the chunk IDs and ownership ancestry.
+New writers establish the exact data-parent set from the completed chunk map. Retain a foreign creator ID when at least one nonzero chunk still carries that ID, including when the creator snapshot has been deleted. Candidate origins protected during creation belong to the operation's lock state. Publish only the origins actually present in the result. A full rewrite uses self-origin IDs and produces an empty parent set. Backend replication preserves the map and its dependencies.
 
 Keep NBS creation inputs immutable: the actual base snapshot and its matching checkpoint determine the changed-block calculation. A checkpoint ID can differ from its snapshot ID. Lock the selected source before using that pair. If source deletion wins admission, select and validate a new matching pair or create a full snapshot. Later ancestor cleanup changes neither the saved pair nor the established origin set.
 
-Retained ancestor IDs provide common coordination keys after snapshot deletion. Descendants already contain the set needed for their own operations, so deleting an intermediate snapshot requires no reparenting or descendant rewrite. Tombstone collection changes the temporary backend fence; it leaves surviving snapshots' stored ancestry intact.
+Recorded chunk origins provide common coordination keys after creator deletion. Each snapshot directly identifies the creators of its current data, so deleting an intermediate source requires no reparenting or descendant rewrite. Tombstone collection changes the temporary backend fence and leaves live snapshots' origin sets intact. Cleanup obligations survive removal of the last chunk reference until their tracked work and retention are complete.
 
 For legacy data, `EstablishSnapshotInheritance` runs under snapshot protection and the rollout collection barrier. It saves a task identity, scan cookie, discovered dependencies, and completion status. Before scanning, drain or fence already-running physical cleanup tasks as well as new collection admission. Ready maps remain immutable while protected. Creating snapshots are revisited after completion; partially deleted work is drained or explicitly reconciled before its range is declared complete.
 
 The task performs these steps:
 
-1. Read saved base/checkpoint metadata and surviving creation requests. Validate existing parent links and follow the already established sets that remain available.
-2. Enumerate the complete map, including snapshots whose parent is already known. Record `(chunk_index, chunk_id, legacy backend)` for every entry needed by establishment. Zero chunks need no physical ownership.
-3. Extract each original creator using the defined chunk-ID parser. Add foreign creators to the ancestor/origin set even if their snapshots have been deleted. Track self-origin chunks under the snapshot's own scope so enumeration cannot introduce self-ancestry. Recursively inspect available creator/parent records, deduplicate the dependency set, and reject cycles in claimed historical relations.
+1. Read available saved source/base/checkpoint metadata for creation context. Keep it separate from the data-parent set derived from the protected current map. A missing historical source or base does not block establishment when the map and surviving physical references establish ownership.
+2. Enumerate the complete map, including snapshots with saved inheritance metadata. Record `(chunk_index, chunk_id, legacy backend)` for every entry needed by establishment. Zero chunks need no physical ownership.
+3. Extract each nonzero chunk's original creator using the defined parser and deduplicate those IDs into `origins(S)`. Foreign creators form `parents(S)`, including deleted creators; self-origin chunks use S's own scope. Each map directly establishes its data dependencies, with no recursive historical-parent expansion.
 4. Resolve the backend through the entry's legacy flag and surviving chunk ownership/placement metadata. Cross-check the snapshot's reference against the physical data and logical reference records. Deduplicate repeated chunk IDs per owner/backend.
 5. Import physical ownership and save the resolved backend associations on the snapshot's Legacy placement. Publish the established dependency set, verified coverage, and completion status atomically after all batches have committed.
 
 Keep the existing chunk-ID generation and parsing logic unchanged; backend IDs are not encoded in chunk IDs. The parsed creator ID identifies the origin coordination scope. Resolve physical locations through the protected source placement, the legacy per-entry backend flag, and exact `(backend_id, chunk_id)` placement records. During new creation, record the resolved origin/backend associations in the destination's establishment and placement metadata, add its physical reference on the selected backend, and publish that backend only after the complete map is present there. A creator's own current backend need not be where a descendant stores the chunk. Surviving ownership and retained coordination records support resolution after the creator snapshot disappears.
 
-An unchanged intermediate snapshot may leave no identifiable chunks of its own. Overlap can help inspect candidate ancestry, but exact historical parentage is not a prerequisite when the protected scan proves coverage of every original creator in the current map. Store this distinction explicitly for legacy establishment. Missing origin coverage, unresolved backend ownership, or an incomplete scan keeps establishment Pending. The invariant needed by locking is that every chunk's origin is included in the destination's protected set.
+An unchanged intermediate copy contributes no new chunk origin. It remains relevant as a direct source while being copied, but adds no data-parent ID unless the result references chunks that it created. The map provides the exact dependency set without overlap scoring or reconstruction of a historical chain. Missing origin coverage, unresolved backend ownership, or an incomplete scan keeps establishment Pending. The invariant needed by locking is that every chunk's actual origin is protected.
 
 An established snapshot's backend set is derived from its placement records. Discovered Legacy locations describe the old mixture; complete Ready placements describe the copies that new callers may select. Inheritance establishment creates ownership records without copying payloads or changing logical membership. Initial rollout must also establish the relevant ancestor/backend coordination records and collection obligations before admitting new placement operations.
 
@@ -376,7 +382,7 @@ Record and revisit ranges containing unresolved pre-cutoff creations. A creation
 
 Roll out the changes in separate stages:
 
-1. Add the backend registry, placement tables, ancestry/establishment fields, compatible task formats, and monitoring with new placement operations and collection disabled.
+1. Add the backend registry, placement tables, chunk-origin/establishment fields, compatible task formats, and monitoring with new placement operations and collection disabled.
 2. Upgrade all creation, replication, deletion, migration, backup, restore, and cleanup workers. Keep old saved requests executable with their original `UseS3` and inherited-location meaning. Every writer maintains compatible logical references and the new physical ownership once its scope is imported.
 3. Enable the protected inheritance-establishment scan. Fence destructive cleanup, including already-scheduled `DeleteSnapshotData` tasks, before evidence is enumerated. Use either a quiescent boundary or upgraded writers that maintain imported ownership while the task revisits unfinished ranges.
 4. Establish every selected legacy snapshot's dependencies, backend associations, and physical reference membership. Create its protected Legacy placement and all required origin/backend records. Validate coverage and counts, including Creating and Deleting work; a Ready-only snapshot listing is insufficient.
@@ -396,7 +402,7 @@ These examples use `A`, `B`, and `C` for backends, `S0`, `S1`, and `S2` for snap
 
 A logical reference is set membership of a snapshot in a chunk's users, regardless of that snapshot's number of replicas. Physical references count owners separately on each backend. Zero chunks have neither payloads nor physical references.
 
-The origin of a chunk is the snapshot that created its ID. A child can retain only a subset of an ancestor's original chunks; unchanged chunks retain their IDs. Ancestor protection includes deleted ancestors and the origin records required by the established inheritance chain. A tombstone for `(origin, backend)` fences recreation until the tombstone collector removes it after the configured delay and its tracked cleanup is complete. Tombstones have a bounded retention period. The design accepts the stated bound on workers and backend requests and the eventual consistency behavior illustrated below.
+The origin of a chunk is the snapshot that created its ID. A child can retain only a subset of an ancestor's original chunks; unchanged chunks retain their IDs. Ancestor protection covers the creators of chunks actually referenced, including deleted creators. Direct-source locks and temporary candidate-origin locks are recorded separately during creation. A tombstone for `(origin, backend)` fences recreation until the tombstone collector removes it after the configured delay and its tracked cleanup is complete. Tombstones have a bounded retention period. The design accepts the stated bound on workers and backend requests and the eventual consistency behavior illustrated below.
 
 ## 1. Creation fails partway through its one destination
 
@@ -432,9 +438,9 @@ The origin of a chunk is the snapshot that created its ID. A child can retain on
 
 ## 5. Creation wins the atomic lock transaction before detach
 
-**Initial state:** Child S2 will read S1 on B and create its one placement on A. The established ancestry includes S0, whose record may describe an already deleted snapshot.
+**Initial state:** Child S2 will read S1 on B and create its one placement on A. The source map includes S0-origin chunks, and S0 may already be deleted.
 
-**Interleaving:** In one transaction, creation validates and locks the direct parent/source and the complete required ancestor-record set for A. Detachment then attempts a transaction that would tombstone one of those records.
+**Interleaving:** In one transaction, creation validates and locks the direct source and the complete required ancestor-record set for A. Detachment then attempts a transaction that would tombstone one of those records.
 
 **Outcome:** Detachment waits or retries without committing a partial set of tombstones. Creation keeps its protection until publication or cancellation releases the owned locks. Afterward detach retries its complete transaction against the current state.
 
@@ -443,7 +449,7 @@ sequenceDiagram
     participant C as Child creation on A
     participant M as Metadata
     participant D as Detach
-    C->>M: Atomically lock parent source and all required ancestor records for A
+    C->>M: Atomically lock source and candidate chunk origins for A
     M-->>C: Commit complete lock set
     D->>M: Atomically mark placement Deleting and tombstone affected origins
     M-->>D: Retry because an origin is locked
@@ -453,7 +459,7 @@ sequenceDiagram
 
 ## 6. Detach wins before the complete lock set is acquired
 
-**Initial state:** The same creation has discovered its parent and ancestors but has not committed their locks.
+**Initial state:** The same creation has selected its source and candidate chunk origins but has not committed their locks.
 
 **Interleaving:** Detachment commits first, marking its placement Deleting and tombstoning the affected origin/backend records. Creation then attempts its single lock transaction.
 
@@ -550,13 +556,13 @@ flowchart LR
 
 **Outcome:** If the reference commits first, the payload remains owned. If final unref wins, the root is Deleting and the new operation cannot treat it as a usable copy; it follows the cleanup/tombstone admission path. Removing the YDB payload does not remove S3 data or a logical root still used by S2. Counts are maintained independently per backend, and logical membership changes only with snapshot ownership.
 
-## 17. Deleting an intermediate ancestor preserves the required history
+## 17. Deleting an intermediate source preserves chunk dependencies
 
-**Initial state:** The established ancestry is S0→S1→S2, and S2 still contains S0-origin chunks. S1, or both S0 and S1, are being deleted.
+**Initial state:** S0 created x, S1 copied S0, and S2 copied S1. Both S1 and S2 contain x and directly record S0 as their data parent. S1 contributes no own-origin chunks to S2. S1, or both S0 and S1, are being deleted.
 
-**Interleaving:** A new descendant discovers its required ancestor records while deletion updates lifecycle state.
+**Interleaving:** A new copy from S2 acquires its source protection and chunk-origin locks while deletion updates lifecycle state.
 
-**Outcome:** The atomic admission transaction includes the relevant records even when their snapshots are deleted. Parent removal must not erase the origin path needed to find locks and tombstones; concurrent deletions cannot create a gap in that protected closure. A creation using an NBS changed-block bitmap also retains its matching base snapshot/checkpoint inputs. If deletion wins before that base is locked, select a matching usable pair or perform a full creation; never substitute an ancestor while keeping the deleted base's checkpoint.
+**Outcome:** Admission locks S2 as the direct source and includes S0's destination-backend coordination record even if S0 is deleted. S1 has no role in the copy's data dependencies. Its removal leaves S2's recorded origin S0 intact. A creation using an NBS changed-block bitmap separately retains its matching base snapshot/checkpoint inputs. If deletion wins before that base is locked, select a matching usable pair or perform a full creation.
 
 ## 18. Overlapping cleanup extends the origin fence
 
@@ -604,9 +610,9 @@ sequenceDiagram
 
 **Initial state:** Legacy snapshots have mixed `stored_in_s3` maps and incomplete inheritance metadata. A scan has found only part of the existing chunk ownership.
 
-**Interleaving:** The repair holds the required snapshot/inheritance protection while enumerating maps and validating candidate ancestry. Physical cleanup remains fenced so the evidence cannot disappear. Existing or resumed creations are included or revisited before the completion boundary is accepted.
+**Interleaving:** The establishment task holds snapshot protection while enumerating each map and identifying the actual creators of its chunks. Physical cleanup remains fenced so the evidence cannot disappear. Existing or resumed creations are included or revisited before the completion boundary is accepted.
 
-**Outcome:** Keep new multibackend operations disabled until inheritance and ownership have been established for their required scope. A known parent can stop further parent inference, but does not eliminate that snapshot's ownership enumeration. An unresolved origin or incomplete owner set keeps the gate closed. Imported Legacy ownership remains distinct from ownership of a subsequently added complete replica, so cancelling that replica cannot remove the original mixed copy.
+**Outcome:** Keep new multibackend operations disabled until inheritance and ownership have been established for their required scope. Every snapshot's complete map is enumerated to derive its exact data parents and physical ownership. An unresolved origin or incomplete owner set keeps the gate closed. Imported Legacy ownership remains distinct from ownership of a subsequently added complete replica, so cancelling that replica cannot remove the original mixed copy.
 
 ## 22. Old saved tasks retain their source protection during rollout
 
@@ -628,7 +634,7 @@ sequenceDiagram
 
 **Initial state:** P is at the configured incremental-depth limit. A request creates a new snapshot S from P's disk checkpoint or immutable snapshot contents.
 
-**Interleaving:** Admission selects full-copy mode before transferring anything and saves depth zero and an empty ownership ancestor set. It retains the source protection needed to read the complete contents.
+**Interleaving:** Admission selects full-copy mode before transferring anything and saves depth zero and an empty parent set. It retains the source protection needed to read the complete contents.
 
 **Outcome:** S writes every nonzero source chunk through the existing new-chunk ID logic. Its resulting chunks belong to S, so future creation starts a bounded ownership chain. A retry keeps this mode. Simply dropping old ancestor IDs while keeping their shared chunks would leave their tombstones outside the lock set. Replication of P to another backend preserves P's chunk IDs and cannot apply this reset silently.
 
