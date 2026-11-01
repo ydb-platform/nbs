@@ -104,7 +104,9 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 	).Return(nbsClient, nil)
 	nbsClient.On("ZoneID").Return("zone")
 
-	// Base disk slot is acquired for the proxy overlay disk.
+	// Pool is configured in the selected cell, so a base disk slot is acquired
+	// for the proxy overlay disk.
+	poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(true, nil)
 	poolService.On(
 		"AcquireBaseDisk",
 		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_acquire"),
@@ -195,6 +197,137 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 	require.True(t, task.state.DataTransferred)
 }
 
+// No pool is configured for the image in the cell selected for the disk
+// (pools are configured per cell, the disk service only checks the requested
+// zone): the disk is filled from the snapshot storage, nothing is acquired
+// from pools and no proxy overlay disk is created.
+func TestCreateDiskFromBaseDiskTaskFallbackToSnapshotStorage(t *testing.T) {
+	ctx := newContext()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	request := &protos.CreateDiskFromBaseDiskRequest{
+		SrcImageId: "image",
+		Params: &protos.CreateDiskParams{
+			BlocksCount: 1 << 20,
+			Disk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			},
+			BlockSize: 4096,
+			Kind:      types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			CloudId:   "cloud",
+			FolderId:  "folder",
+		},
+	}
+
+	task := &createDiskFromBaseDiskTask{
+		storage:                  storage,
+		scheduler:                scheduler,
+		poolService:              poolService,
+		nbsFactory:               nbsFactory,
+		performanceConfig:        newPerformanceConfig(),
+		proxyOverlayDiskIDPrefix: "proxy-",
+		request:                  request,
+		state:                    &protos.CreateDiskFromBaseDiskTaskState{},
+		cellSelector:             cellSelector,
+	}
+
+	// TODO: Improve this expectations.
+	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
+		ID: "disk",
+	}, nil)
+	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
+
+	cellSelector.On(
+		"SelectCellForDisk",
+		ctx,
+		"zone",
+		"folder",
+		types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		false, // requireExactCellIDMatch
+	).Return(nbsClient, nil)
+	nbsClient.On("ZoneID").Return("zone")
+
+	poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(false, nil)
+
+	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
+		ID:          "disk",
+		BlocksCount: 1 << 20,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		CloudID:     "cloud",
+		FolderID:    "folder",
+	}).Return(nil)
+
+	scheduler.On(
+		"ScheduleZonalTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		"dataplane.TransferFromSnapshotToDisk",
+		"",
+		"zone",
+		&dataplane_protos.TransferFromSnapshotToDiskRequest{
+			SrcSnapshotId: "image",
+			DstDisk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			},
+		},
+	).Return("transfer", nil)
+	scheduler.On("WaitTask", ctx, execCtx, "transfer").Return(
+		&empty.Empty{},
+		nil,
+	)
+
+	execCtx.On("SaveState", ctx).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
+	require.NoError(t, err)
+	require.False(t, task.state.ProxyOverlayDiskCreated)
+	require.True(t, task.state.DataTransferred)
+
+	// Cancel cleans up the proxy overlay disk and its slot anyway (it doesn't
+	// know whether they have been created), and deletes the disk.
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{ID: "disk", ZoneID: "zone"}, nil)
+	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
+	nbsClient.On("Delete", ctx, "disk").Return(nil)
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+
+	err = task.Cancel(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		nbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
+	require.NoError(t, err)
+}
+
 func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 	t *testing.T,
 ) {
@@ -255,6 +388,7 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 	).Return(nbsClient, nil)
 	nbsClient.On("ZoneID").Return("zone")
 
+	poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(true, nil)
 	poolService.On(
 		"AcquireBaseDisk",
 		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_acquire"),

@@ -14,6 +14,7 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
+	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -160,6 +161,74 @@ func TestIsCreationFromBaseDiskSupportedForDiskKind(t *testing.T) {
 	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
 		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
 	))
+}
+
+// Cell selection is not idempotent (with the MAX_FREE_BYTES policy it depends
+// on the current capacities), and a retried request must schedule the very
+// same task, so the cell is selected by the task (and persisted in its state),
+// not by the service: the service only checks that a pool is configured for
+// the requested zone.
+func TestDiskServiceCreateDiskFromBaseDiskDoesNotSelectCell(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	diskService := &service{
+		config: &disks_config.DisksConfig{
+			EnableDiskRegistryBasedDisksCreationFromBaseDisks: proto.Bool(true),
+		},
+		taskScheduler:   scheduler,
+		resourceStorage: storage,
+		poolService:     poolService,
+		cellSelector:    cellSelector,
+	}
+
+	storage.On("GetImageMeta", ctx, "image").Return(&resources.ImageMeta{
+		ID:   "image",
+		Size: 1 << 30,
+	}, nil)
+
+	poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(true, nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		ctx,
+		"disks.CreateDiskFromBaseDisk",
+		"",
+		mock.MatchedBy(func(request proto.Message) bool {
+			typedRequest, ok := request.(*protos.CreateDiskFromBaseDiskRequest)
+			return ok &&
+				typedRequest.SrcImageId == "image" &&
+				typedRequest.Params.Disk.DiskId == "disk" &&
+				typedRequest.Params.Disk.ZoneId == "zone"
+		}),
+	).Return("task", nil)
+
+	taskID, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: "image",
+		},
+		Size: 262144 * 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CloudId:  "cloud",
+		FolderId: "folder",
+	})
+	// No calls to the cell selector are expected.
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		cellSelector,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "task", taskID)
 }
 
 func TestDiskServicegetZoneIDForExistingDisk(

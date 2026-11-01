@@ -489,24 +489,15 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, nil
 	}
 
-	// Pools are configured per cell, and the disk (together with its proxy
-	// overlay disk) is created in the cell selected by the task, which may
-	// differ from the requested zone. The task selects the cell the same way.
-	client, err := selectClientForDisk(
-		ctx,
-		params,
-		s.cellSelector,
-		s.nbsFactory,
-		s.resourceStorage,
-	)
-	if err != nil {
-		return false, err
-	}
-
+	// Note: pools are configured per cell, and the cell is selected by the
+	// task (idempotently, the selection may depend on the current state of the
+	// cells), so this is only a hint, as for overlay disks: the task falls
+	// back to the snapshot storage if no pool is configured in the selected
+	// cell.
 	return s.poolService.IsPoolConfigured(
 		ctx,
 		srcImageID,
-		client.ZoneID(),
+		params.Disk.ZoneId,
 	)
 }
 

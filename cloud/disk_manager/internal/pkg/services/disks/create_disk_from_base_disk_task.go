@@ -29,6 +29,9 @@ import (
 
 // Creates a disk from an image using a base disk from the pool as a data
 // source instead of transferring the data from the snapshot storage (S3/YDB).
+// Pools are configured per cell, so if it turns out that no pool is configured
+// for the image in the cell selected for the disk, the data is transferred
+// from the snapshot storage after all (see createAndFillDisk).
 //
 // The flow mirrors createOverlayDiskTask (acquire a base disk slot), but the
 // resulting disk is not layered: the data is copied into it by
@@ -141,7 +144,8 @@ func (t *createDiskFromBaseDiskTask) Run(
 	// Proxy overlay disk is a one-shot entity: it is not needed anymore once
 	// the data has been transferred. Performed outside of createAndFillDisk,
 	// after DataTransferred has been persisted, so that a retry performs it
-	// even though createAndFillDisk is skipped.
+	// even though createAndFillDisk is skipped. Safe to perform even if the
+	// data has been transferred from the snapshot storage.
 	err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
 	if err != nil {
 		return err
@@ -218,8 +222,10 @@ func (t *createDiskFromBaseDiskTask) GetMetadata(
 			return nil, err
 		}
 
-		transferMetadata, ok := message.(*dataplane_protos.TransferFromDiskToDiskMetadata)
-		if ok {
+		switch transferMetadata := message.(type) {
+		case *dataplane_protos.TransferFromDiskToDiskMetadata:
+			metadata.Progress = transferMetadata.Progress
+		case *dataplane_protos.TransferFromSnapshotToDiskMetadata:
 			metadata.Progress = transferMetadata.Progress
 		}
 	}
@@ -233,8 +239,9 @@ func (t *createDiskFromBaseDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Acquires a base disk, creates a proxy overlay disk on top of it, creates
-// the disk and transfers the data from the proxy overlay disk into the disk.
+// Creates the disk and fills it with the image data: from a base disk (via a
+// proxy overlay disk) if a pool is configured for the image in the selected
+// cell, from the snapshot storage otherwise.
 func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -243,53 +250,32 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 ) error {
 
 	params := t.request.Params
-	selfTaskID := execCtx.GetTaskID()
-	proxyOverlayDisk := t.getProxyOverlayDisk(selfTaskID)
 
 	err := t.checkEncryption()
 	if err != nil {
 		return err
 	}
 
-	// Acquire base disk slot for the proxy overlay disk. The transfer reads
-	// the base disk at the transfer bandwidth regardless of the size of the
-	// disk being created, so the slot is charged by this bandwidth rather than
-	// by the overlay disk size.
-	taskID, err := t.poolService.AcquireBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
-		&pools_protos.AcquireBaseDiskRequest{
-			SrcImageId:                t.request.SrcImageId,
-			OverlayDisk:               proxyOverlayDisk,
-			OverlayDiskKind:           types.DiskKind_DISK_KIND_SSD,
-			ExpectedReadBandwidthMiBs: t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	acquireResponse, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return err
-	}
-
-	baseDiskID, baseDiskCheckpointID, err := parseAcquireBaseDiskResponse(
-		acquireResponse,
-	)
-	if err != nil {
-		return err
-	}
-
-	err = t.createProxyOverlayDisk(
+	// Pools are configured per cell, and the cell is selected by the task
+	// (the disk service only checks that a pool is configured for the
+	// requested zone).
+	poolConfigured, err := t.poolService.IsPoolConfigured(
 		ctx,
-		execCtx,
-		client,
-		proxyOverlayDisk,
-		baseDiskID,
-		baseDiskCheckpointID,
+		t.request.SrcImageId,
+		disk.ZoneId,
 	)
 	if err != nil {
 		return err
+	}
+
+	if !poolConfigured {
+		logging.Info(
+			ctx,
+			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
+			t.request.SrcImageId,
+			disk.ZoneId,
+			disk.DiskId,
+		)
 	}
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
@@ -310,7 +296,104 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 		return err
 	}
 
-	taskID, err = t.scheduler.ScheduleZonalTask(
+	var taskID string
+	if poolConfigured {
+		taskID, err = t.scheduleTransferFromBaseDisk(ctx, execCtx, client, disk)
+	} else {
+		taskID, err = t.scheduleTransferFromSnapshotStorage(ctx, execCtx, disk)
+	}
+	if err != nil {
+		return err
+	}
+
+	t.state.DataplaneTaskId = taskID
+
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	return err
+}
+
+// Fallback for the case when no pool is configured for the image in the
+// selected cell: the same transfer as in disks.CreateDiskFromImage.
+func (t *createDiskFromBaseDiskTask) scheduleTransferFromSnapshotStorage(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	disk *types.Disk,
+) (string, error) {
+
+	return t.scheduler.ScheduleZonalTask(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		"dataplane.TransferFromSnapshotToDisk",
+		"",
+		disk.ZoneId,
+		&dataplane_protos.TransferFromSnapshotToDiskRequest{
+			SrcSnapshotId: t.request.SrcImageId,
+			DstDisk:       disk,
+			DstEncryption: t.request.Params.EncryptionDesc,
+		},
+	)
+}
+
+// Acquires a base disk, creates a proxy overlay disk on top of it and
+// schedules the transfer of the data from the proxy overlay disk into the
+// disk.
+func (t *createDiskFromBaseDiskTask) scheduleTransferFromBaseDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs.Client,
+	disk *types.Disk,
+) (string, error) {
+
+	params := t.request.Params
+	selfTaskID := execCtx.GetTaskID()
+	proxyOverlayDisk := t.getProxyOverlayDisk(selfTaskID)
+
+	// Acquire base disk slot for the proxy overlay disk. The transfer reads
+	// the base disk at the transfer bandwidth regardless of the size of the
+	// disk being created, so the slot is charged by this bandwidth rather than
+	// by the overlay disk size.
+	taskID, err := t.poolService.AcquireBaseDisk(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
+		&pools_protos.AcquireBaseDiskRequest{
+			SrcImageId:                t.request.SrcImageId,
+			OverlayDisk:               proxyOverlayDisk,
+			OverlayDiskKind:           types.DiskKind_DISK_KIND_SSD,
+			ExpectedReadBandwidthMiBs: t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	acquireResponse, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return "", err
+	}
+
+	baseDiskID, baseDiskCheckpointID, err := parseAcquireBaseDiskResponse(
+		acquireResponse,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	err = t.createProxyOverlayDisk(
+		ctx,
+		execCtx,
+		client,
+		proxyOverlayDisk,
+		baseDiskID,
+		baseDiskCheckpointID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
 		"dataplane.TransferFromDiskToDisk",
 		// Image id and disk kind are not present in the transfer request.
@@ -333,19 +416,6 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 			DstDisk:             disk,
 		},
 	)
-	if err != nil {
-		return err
-	}
-
-	t.state.DataplaneTaskId = taskID
-
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
 }
 
 func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
