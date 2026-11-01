@@ -93,12 +93,12 @@ void TDiskRegistryActor::ExecuteCreateDiskFromDevices(
         ctx.Now(),
         db,
         args.DiskId,
-        TDiskRegistryState::TCreateDiskFromDevicesParams(
-            args.BlockSize,
-            args.MediaKind,
-            args.Force,
-            args.KeepBlockCount
-        ),
+        {
+            .BlockSize = args.BlockSize,
+            .MediaKind = args.MediaKind,
+            .Force = args.Force,
+            .KeepBlockCount = args.KeepBlockCount
+        },
         args.Devices,
         args.Replicas,
         &result);
