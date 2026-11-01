@@ -16,6 +16,17 @@ message CreateDiskFromBaseDiskRequest {
     CreateDiskParams Params = 2;
 }
 
+// Where the disk data is read from.
+enum FillSource {
+    FILL_SOURCE_UNSPECIFIED = 0;
+    // Base disk from the pool, via a proxy overlay disk.
+    FILL_SOURCE_BASE_DISK = 1;
+    // Snapshot storage (S3/YDB): fallback for the case when no pool is
+    // configured for the image in the cell selected for the disk (pools are
+    // configured per cell).
+    FILL_SOURCE_SNAPSHOT_STORAGE = 2;
+}
+
 message CreateDiskFromBaseDiskTaskState {
     string SelectedCellId = 1;
     string DataplaneTaskId = 2;
@@ -24,4 +35,7 @@ message CreateDiskFromBaseDiskTaskState {
     // disk again.
     bool DataTransferred = 3;
     bool ProxyOverlayDiskCreated = 4;
+    // Decided once the cell is selected and persisted before anything is
+    // acquired for the proxy overlay disk.
+    FillSource FillSource = 5;
 }

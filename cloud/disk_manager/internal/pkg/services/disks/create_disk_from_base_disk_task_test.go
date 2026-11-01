@@ -193,6 +193,11 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 		cellSelector,
 	)
 	require.NoError(t, err)
+	require.Equal(
+		t,
+		protos.FillSource_FILL_SOURCE_BASE_DISK,
+		task.state.FillSource,
+	)
 	require.True(t, task.state.ProxyOverlayDiskCreated)
 	require.True(t, task.state.DataTransferred)
 }
@@ -298,11 +303,15 @@ func TestCreateDiskFromBaseDiskTaskFallbackToSnapshotStorage(t *testing.T) {
 		cellSelector,
 	)
 	require.NoError(t, err)
+	require.Equal(
+		t,
+		protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE,
+		task.state.FillSource,
+	)
 	require.False(t, task.state.ProxyOverlayDiskCreated)
 	require.True(t, task.state.DataTransferred)
 
-	// Cancel cleans up the proxy overlay disk and its slot anyway (it doesn't
-	// know whether they have been created), and deletes the disk.
+	// Nothing to clean up in pools on cancel either, only the disk itself.
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -406,6 +415,15 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 		nil,
 	)
 
+	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
+		ID:          "disk",
+		BlocksCount: 1 << 20,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD_MIRROR3,
+		CloudID:     "cloud",
+		FolderID:    "folder",
+	}).Return(nil)
+
 	// Base disk can't be used as a base for the proxy overlay disk: no
 	// fallback to direct reads from the base disk.
 	nbsClient.On(
@@ -431,6 +449,11 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 		cellSelector,
 	)
 	require.Error(t, err)
+	require.Equal(
+		t,
+		protos.FillSource_FILL_SOURCE_BASE_DISK,
+		task.state.FillSource,
+	)
 	require.False(t, task.state.ProxyOverlayDiskCreated)
 	require.False(t, task.state.DataTransferred)
 }
@@ -478,6 +501,7 @@ func TestCreateDiskFromBaseDiskTaskCancelAfterDiskIsDeletedConcurrently(
 		// the task was cancelled.
 		state: &protos.CreateDiskFromBaseDiskTaskState{
 			SelectedCellId:          "zone",
+			FillSource:              protos.FillSource_FILL_SOURCE_BASE_DISK,
 			ProxyOverlayDiskCreated: true,
 		},
 		cellSelector: cellSelector,
@@ -582,6 +606,87 @@ func TestCreateDiskFromBaseDiskTaskCancelBeforeCellIsSelected(t *testing.T) {
 		cellSelector,
 	)
 	require.NoError(t, err)
+}
+
+// The pool may be reconfigured while the task is running: the fill source
+// is selected once and retries stick to it.
+func TestCreateDiskFromBaseDiskTaskSelectFillSourceIsIdempotent(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		fillSource      protos.FillSource
+		poolConfigured  bool
+		expectPoolCheck bool
+		expected        protos.FillSource
+	}{
+		{
+			name:            "pool is configured",
+			fillSource:      protos.FillSource_FILL_SOURCE_UNSPECIFIED,
+			poolConfigured:  true,
+			expectPoolCheck: true,
+			expected:        protos.FillSource_FILL_SOURCE_BASE_DISK,
+		},
+		{
+			name:            "pool is not configured",
+			fillSource:      protos.FillSource_FILL_SOURCE_UNSPECIFIED,
+			poolConfigured:  false,
+			expectPoolCheck: true,
+			expected:        protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE,
+		},
+		{
+			// Persisted by a previous attempt, the pool has been deleted since
+			// then.
+			name:            "base disk has already been selected",
+			fillSource:      protos.FillSource_FILL_SOURCE_BASE_DISK,
+			poolConfigured:  false,
+			expectPoolCheck: false,
+			expected:        protos.FillSource_FILL_SOURCE_BASE_DISK,
+		},
+		{
+			// Persisted by a previous attempt, the pool has been configured
+			// since then.
+			name:            "snapshot storage has already been selected",
+			fillSource:      protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE,
+			poolConfigured:  true,
+			expectPoolCheck: false,
+			expected:        protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newContext()
+			poolService := pools_mocks.NewServiceMock()
+			execCtx := tasks_mocks.NewExecutionContextMock()
+
+			task := &createDiskFromBaseDiskTask{
+				poolService: poolService,
+				request: &protos.CreateDiskFromBaseDiskRequest{
+					SrcImageId: "image",
+					Params: &protos.CreateDiskParams{
+						Disk: &types.Disk{
+							ZoneId: "zone",
+							DiskId: "disk",
+						},
+					},
+				},
+				state: &protos.CreateDiskFromBaseDiskTaskState{
+					FillSource: tc.fillSource,
+				},
+			}
+
+			if tc.expectPoolCheck {
+				poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(
+					tc.poolConfigured,
+					nil,
+				)
+				// The choice is persisted.
+				execCtx.On("SaveState", ctx).Return(nil)
+			}
+
+			err := task.selectFillSource(ctx, execCtx, "zone")
+			mock.AssertExpectationsForObjects(t, poolService, execCtx)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, task.state.FillSource)
+		})
+	}
 }
 
 func TestCreateDiskFromBaseDiskTaskCheckEncryption(t *testing.T) {

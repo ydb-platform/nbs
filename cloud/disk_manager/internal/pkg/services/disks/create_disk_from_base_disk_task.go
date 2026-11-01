@@ -31,7 +31,7 @@ import (
 // source instead of transferring the data from the snapshot storage (S3/YDB).
 // Pools are configured per cell, so if it turns out that no pool is configured
 // for the image in the cell selected for the disk, the data is transferred
-// from the snapshot storage after all (see createAndFillDisk).
+// from the snapshot storage after all (see selectFillSource).
 //
 // The flow mirrors createOverlayDiskTask (acquire a base disk slot), but the
 // resulting disk is not layered: the data is copied into it by
@@ -141,14 +141,15 @@ func (t *createDiskFromBaseDiskTask) Run(
 		}
 	}
 
-	// Proxy overlay disk is a one-shot entity: it is not needed anymore once
-	// the data has been transferred. Performed outside of createAndFillDisk,
-	// after DataTransferred has been persisted, so that a retry performs it
-	// even though createAndFillDisk is skipped. Safe to perform even if the
-	// data has been transferred from the snapshot storage.
-	err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
-	if err != nil {
-		return err
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
+		// Proxy overlay disk is a one-shot entity: it is not needed anymore
+		// once the data has been transferred. Performed outside of
+		// createAndFillDisk, after DataTransferred has been persisted, so that
+		// a retry performs it even though createAndFillDisk is skipped.
+		err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
 	}
 
 	diskMeta.CreatedAt = time.Now()
@@ -160,12 +161,15 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// Should be done regardless of the disk state: the disk may have already
-	// been deleted by a concurrent disks.DeleteDisk task, which knows nothing
-	// about the proxy overlay disk and the base disk slot acquired for it.
-	err := t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
-	if err != nil {
-		return err
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
+		// Should be done regardless of the disk state: the disk may have
+		// already been deleted by a concurrent disks.DeleteDisk task, which
+		// knows nothing about the proxy overlay disk and the base disk slot
+		// acquired for it. Nothing is acquired before the source is persisted.
+		err := t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
 	}
 
 	params := t.request.Params
@@ -246,26 +250,9 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 		return err
 	}
 
-	// Pools are configured per cell, and the cell is selected by the task
-	// (the disk service only checks that a pool is configured for the
-	// requested zone).
-	poolConfigured, err := t.poolService.IsPoolConfigured(
-		ctx,
-		t.request.SrcImageId,
-		disk.ZoneId,
-	)
+	err = t.selectFillSource(ctx, execCtx, disk.ZoneId)
 	if err != nil {
 		return err
-	}
-
-	if !poolConfigured {
-		logging.Info(
-			ctx,
-			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
-			t.request.SrcImageId,
-			disk.ZoneId,
-			disk.DiskId,
-		)
 	}
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
@@ -287,10 +274,10 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 	}
 
 	var taskID string
-	if poolConfigured {
-		taskID, err = t.scheduleTransferFromBaseDisk(ctx, execCtx, client, disk)
-	} else {
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE {
 		taskID, err = t.scheduleTransferFromSnapshotStorage(ctx, execCtx, disk)
+	} else {
+		taskID, err = t.scheduleTransferFromBaseDisk(ctx, execCtx, client, disk)
 	}
 	if err != nil {
 		return err
@@ -305,6 +292,46 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 	return err
+}
+
+// Pools are configured per cell, and the cell is selected by the task (the
+// disk service only checks that a pool is configured for the requested zone),
+// so the source is chosen here, once the cell is selected. The pool may be
+// reconfigured while the task is running, so the choice is made once and
+// persisted before anything is acquired for the proxy overlay disk.
+func (t *createDiskFromBaseDiskTask) selectFillSource(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	cellID string,
+) error {
+
+	if t.state.FillSource != protos.FillSource_FILL_SOURCE_UNSPECIFIED {
+		return nil
+	}
+
+	configured, err := t.poolService.IsPoolConfigured(
+		ctx,
+		t.request.SrcImageId,
+		cellID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if configured {
+		t.state.FillSource = protos.FillSource_FILL_SOURCE_BASE_DISK
+	} else {
+		logging.Info(
+			ctx,
+			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
+			t.request.SrcImageId,
+			cellID,
+			t.request.Params.Disk.DiskId,
+		)
+		t.state.FillSource = protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE
+	}
+
+	return execCtx.SaveState(ctx)
 }
 
 // Fallback for the case when no pool is configured for the image in the
