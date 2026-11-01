@@ -39,8 +39,10 @@ the suffix is absent or invalid, it opens the log and decodes the first and last
 non-empty profile records. Without the flag, undated files keep unknown bounds
 and retain their input order relative to other undated files.
 The earliest request timestamp in the first record supplies the start; the latest
-in the last record supplies the end. It locates boundary frames from either end
-and does not decode intervening frames. Filesystem modification time is not used.
+in the last record supplies the end. It scans frame headers using the eventlog
+library, then decodes the first and last usable profile records without decoding
+intervening frames. Incomplete or corrupt boundary frames are ignored when
+estimating bounds. Filesystem modification time is not used.
 Empty or unreadable logs retain unknown bounds for normal read-error handling.
 
 Files are sorted by end time, with unknown end times last in input order.

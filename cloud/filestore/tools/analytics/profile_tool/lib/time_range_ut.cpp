@@ -181,10 +181,24 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             UNIT_ASSERT_VALUES_EQUAL(*file.StartTime, Time(900));
             UNIT_ASSERT_VALUES_EQUAL(*file.EndTime, Time(3100));
 
+            const auto lastByteOffset = input.GetLength() - 1;
+            char lastByte = 0;
+            UNIT_ASSERT_VALUES_EQUAL(input.Pread(&lastByte, 1, lastByteOffset), 1);
+            const char damagedByte = lastByte ^ 1;
+            input.Pwrite(&damagedByte, 1, lastByteOffset);
+            const auto damaged = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT(damaged.StartTime);
+            UNIT_ASSERT(damaged.EndTime);
+            UNIT_ASSERT_VALUES_EQUAL(*damaged.StartTime, Time(900));
+            UNIT_ASSERT_VALUES_EQUAL(*damaged.EndTime, Time(2000));
+            input.Pwrite(&lastByte, 1, lastByteOffset);
+
             input.Resize(input.GetLength() - 1);
             const auto truncated = GetProfileLogFile(input.Name(), true);
-            UNIT_ASSERT(!truncated.StartTime);
-            UNIT_ASSERT(!truncated.EndTime);
+            UNIT_ASSERT(truncated.StartTime);
+            UNIT_ASSERT(truncated.EndTime);
+            UNIT_ASSERT_VALUES_EQUAL(*truncated.StartTime, Time(900));
+            UNIT_ASSERT_VALUES_EQUAL(*truncated.EndTime, Time(2000));
         }
     }
 

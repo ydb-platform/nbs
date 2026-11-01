@@ -22,47 +22,60 @@ struct TRecordBounds
     TInstant End;
 };
 
-TMaybe<TRecordBounds> ReadBoundaryRecord(TStringBuf data, bool last)
+TVector<TStringBuf> FindCompleteFrames(TStringBuf data)
 {
-    while (!data.empty()) {
-        const auto offset = last ? data.rfind(COMPRESSED_LOG_FRAME_SYNC_DATA)
-                                 : data.find(COMPRESSED_LOG_FRAME_SYNC_DATA);
-        if (offset == TStringBuf::npos) {
-            return {};
+    TVector<TStringBuf> frames;
+    TMemoryInput input(data);
+    while (input.Avail()) {
+        const auto offset = data.size() - input.Avail();
+        auto frame = FindNextFrame(&input, NEvClass::Factory());
+        if (!frame || frame->FrameLength() > input.Avail()) {
+            break;
         }
-        TMemoryInput input(
-            data.SubStr(offset + COMPRESSED_LOG_FRAME_SYNC_DATA.size()));
-        TFrameHeader header(input);
-        Y_ENSURE(
-            header.FrameLength() <= input.Avail(),
-            "Incomplete profile log frame");
-        const auto nextOffset = data.size() - input.Avail() + header.FrameLength();
-        TFrame frame(input, header, NEvClass::Factory());
-        TMaybe<TRecordBounds> bounds;
-        for (auto it = frame.GetIterator(); it.Avail(); it.Next()) {
-            const auto event = *it;
-            const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
-                event->GetProto());
-            if (!record || record->GetRequests().empty()) {
+        input.Skip(frame->FrameLength());
+        frames.push_back(data.SubStr(offset, data.size() - input.Avail() - offset));
+    }
+    return frames;
+}
+
+TMaybe<TRecordBounds> ReadBoundaryRecord(
+    const TVector<TStringBuf>& frames,
+    bool last)
+{
+    for (size_t i = 0; i < frames.size(); ++i) {
+        TMemoryInput input(frames[last ? frames.size() - 1 - i : i]);
+        try {
+            auto frame = FindNextFrame(&input, NEvClass::Factory());
+            if (!frame) {
                 continue;
             }
-            TRecordBounds current{TInstant::Max(), TInstant::Zero()};
-            for (const auto& request: record->GetRequests()) {
-                Y_ENSURE(request.HasTimestampMcs(), "Missing request timestamp");
-                const auto time =
-                    TInstant::MicroSeconds(request.GetTimestampMcs());
-                current.Start = Min(current.Start, time);
-                current.End = Max(current.End, time);
+            TMaybe<TRecordBounds> bounds;
+            for (auto it = frame->GetIterator(); it.Avail(); it.Next()) {
+                const auto event = *it;
+                const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
+                    event->GetProto());
+                if (!record || record->GetRequests().empty()) {
+                    continue;
+                }
+                TRecordBounds current{TInstant::Max(), TInstant::Zero()};
+                for (const auto& request: record->GetRequests()) {
+                    Y_ENSURE(request.HasTimestampMcs(), "Missing request timestamp");
+                    const auto time =
+                        TInstant::MicroSeconds(request.GetTimestampMcs());
+                    current.Start = Min(current.Start, time);
+                    current.End = Max(current.End, time);
+                }
+                bounds = current;
+                if (!last) {
+                    return bounds;
+                }
             }
-            bounds = current;
-            if (!last) {
+            if (bounds) {
                 return bounds;
             }
+        } catch (const yexception&) {
+            // Try the next complete frame; normal processing reports read errors.
         }
-        if (bounds) {
-            return bounds;
-        }
-        data = last ? data.SubStr(0, offset) : data.SubStr(nextOffset);
     }
     return {};
 }
@@ -87,8 +100,9 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
     }
     try {
         const auto data = TBlob::FromFile(path);
-        const auto first = ReadBoundaryRecord(data.AsStringBuf(), false);
-        const auto last = ReadBoundaryRecord(data.AsStringBuf(), true);
+        const auto frames = FindCompleteFrames(data.AsStringBuf());
+        const auto first = ReadBoundaryRecord(frames, false);
+        const auto last = ReadBoundaryRecord(frames, true);
         if (first && last && first->Start <= last->End) {
             file.StartTime = first->Start;
             file.EndTime = last->End;
