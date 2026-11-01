@@ -10,6 +10,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
 #include <util/random/random.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -153,6 +154,7 @@ struct TBootstrap
         , RequestManager(
               std::make_shared<TSequenceIdGenerator>(),
               Storage,
+              1_MB /* maxCachedWriteRequestSize */,
               Timer,
               Stats->GetWriteDataRequestManagerStats())
     {}

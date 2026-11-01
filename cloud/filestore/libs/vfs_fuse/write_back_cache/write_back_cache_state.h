@@ -97,6 +97,7 @@ public:
         IQueuedOperationsProcessor& processor,
         std::unique_ptr<IWriteBackCacheLock> lock,
         IPersistentStoragePtr persistentStorage,
+        ui64 maxCachedWriteRequestSize,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,

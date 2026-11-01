@@ -5,6 +5,7 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
+#include <util/generic/utility.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -24,6 +25,7 @@ private:
     // Used to visit items in the allocation order
     TIntrusiveList<TEntry> List;
     size_t Capacity = 0;
+    ui64 MaxSupportedAllocationByteCount = Max<ui64>();
 
 public:
     explicit TTestStorage(IPersistentStorageStatsPtr stats);
@@ -40,6 +42,7 @@ public:
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);
+    void SetMaxSupportedAllocationByteCount(ui64 byteCount);
 
 private:
     void SetStats();

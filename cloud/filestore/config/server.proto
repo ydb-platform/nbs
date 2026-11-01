@@ -246,6 +246,10 @@ message TLocalServiceConfig
     // the vhost default.
     optional uint32 NodeRefCacheLimit = 45;
     optional uint32 NodeAttrsCacheLimit = 46;
+
+    // Max FUSE request size in pages (max_write / max_pages negotiated with
+    // the guest). Zero means the vhost default (TVFSConfig.MaxWritePages).
+    optional uint32 MaxWritePages = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

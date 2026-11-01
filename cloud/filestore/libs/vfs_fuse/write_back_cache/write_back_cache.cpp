@@ -118,6 +118,7 @@ public:
               *this,
               CreateWriteBackCacheLock(args.LockMethod),
               PersistentStorage,
+              args.MaxCachedWriteRequestSize,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),

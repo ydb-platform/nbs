@@ -1025,4 +1025,9 @@ message TStorageConfig
     // The writes which bypass the storage service (the fastshard side channel)
     // are not counted.
     optional bool WriteDataZeroBlockStatsEnabled = 565;
+
+    // Max FUSE request size in pages (max_write / max_pages negotiated with
+    // the guest). Zero means the vhost default (TVFSConfig.MaxWritePages).
+    // Applies after vhost restart and guest remount.
+    optional uint32 MaxWritePages = 566;
 }

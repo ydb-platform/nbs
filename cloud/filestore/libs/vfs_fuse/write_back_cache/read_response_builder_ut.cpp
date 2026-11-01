@@ -9,6 +9,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 namespace {
@@ -39,6 +41,7 @@ public:
               *this,
               CreateWriteBackCacheLock(NProto::WBC_LOCK_ADAPTIVE),
               CreateTestStorage(Stats),
+              1_MB /* maxCachedWriteRequestSize */,
               std::make_shared<TTestTimer>(),
               Stats->GetWriteBackCacheStateStats(),
               Stats->GetWriteDataRequestManagerStats(),
