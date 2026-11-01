@@ -64,7 +64,7 @@ NProto::TError PosixAclFromXattr(
     TVector<posix_acl_xattr_entry>& acls)
 {
     size_t count = 0;
-    acls.resize(count);
+    acls.clear();
 
     NProto::TError error = PosixAclXattrCount(value, count);
     if (HasError(error)) {
@@ -201,7 +201,7 @@ TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
         mode &= static_cast<ui32>(maskObj->e_perm << 3) | ~s_irwxg_32;
 
         result.Type = EXattrAclType::Extended;
-        PosixAclToXattr(acls, result.XAttraAcl);
+        PosixAclToXattr(acls, result.Acl);
     } else {
         // Minimal ACL: group mode bits come from ACL_GROUP_OBJ.
         if (!groupObj) {
@@ -223,7 +223,7 @@ TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
 
 TResultOrError<TChildXattrAcl> GetChildXattrAcl(
     const TString& xattrAcl,
-    const ui32& mode)
+    const ui32 mode)
 {
     TVector<posix_acl_xattr_entry> acls;
 
@@ -237,8 +237,8 @@ TResultOrError<TChildXattrAcl> GetChildXattrAcl(
     // This case should be explicitely taken into account by a caller.
     if (!acls) {
         return TChildXattrAcl{
-            .XAttraAcl = "",
-            .Mode = 0,
+            .Acl = "",
+            .Mode = mode,
             .Type = EXattrAclType::HeaderOnly};
     }
 

@@ -18,14 +18,14 @@ enum class EXattrAclType {
 };
 
 struct TChildXattrAcl {
-    TString XAttraAcl;
+    TString Acl;
     ui32 Mode = 0;
     EXattrAclType Type = EXattrAclType::Undefined;
 };
 
 TResultOrError<TChildXattrAcl> GetChildXattrAcl(
     const TString& xattrAcl,
-    const ui32& mode);
+    const ui32 mode);
 
 constexpr TStringBuf PosixAclAccessXAttr = "system.posix_acl_access";
 constexpr TStringBuf PosixAclDefaultXAttr = "system.posix_acl_default";

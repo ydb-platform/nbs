@@ -76,16 +76,17 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
 {
     Y_UNIT_TEST(ShouldIgnoreHeaderOnlyAcl)
     {
+        const ui32 mode = S_IFREG | 0666;
         auto resultOrError =
-            GetChildXattrAcl(SerializeAcl({}), S_IFREG | 0666);
+            GetChildXattrAcl(SerializeAcl({}), mode);
 
         UNIT_ASSERT_C(
             !NCloud::HasError(resultOrError),
             resultOrError.GetError());
         const auto& result = resultOrError.GetResult();
         UNIT_ASSERT(result.Type == EXattrAclType::HeaderOnly);
-        UNIT_ASSERT(result.XAttraAcl.empty());
-        UNIT_ASSERT_VALUES_EQUAL(0, result.Mode);
+        UNIT_ASSERT(result.Acl.empty());
+        UNIT_ASSERT_VALUES_EQUAL(mode, result.Mode);
     }
 
     Y_UNIT_TEST(ShouldRejectMalformedAcl)
@@ -270,7 +271,7 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             static_cast<ui32>(S_IFREG | 0764),
             result.Mode);
 
-        const auto entries = DeserializeAcl(result.XAttraAcl);
+        const auto entries = DeserializeAcl(result.Acl);
         UNIT_ASSERT_VALUES_EQUAL(4, entries.size());
         AssertEntry(entries[0], ACL_USER_OBJ, 7);
         AssertEntry(entries[1], ACL_GROUP_OBJ, 5);
@@ -299,7 +300,7 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             static_cast<ui32>(S_IFDIR | 0650),
             result.Mode);
 
-        const auto entries = DeserializeAcl(result.XAttraAcl);
+        const auto entries = DeserializeAcl(result.Acl);
         UNIT_ASSERT_VALUES_EQUAL(5, entries.size());
         AssertEntry(entries[0], ACL_USER_OBJ, 6);
         AssertEntry(entries[1], ACL_USER, 7, 1000);
@@ -330,7 +331,7 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
             static_cast<ui32>(S_IFREG | S_ISUID | S_ISGID | S_ISVTX | 0444),
             result.Mode);
 
-        const auto entries = DeserializeAcl(result.XAttraAcl);
+        const auto entries = DeserializeAcl(result.Acl);
         UNIT_ASSERT_VALUES_EQUAL(6, entries.size());
         AssertEntry(entries[0], ACL_USER_OBJ, 4);
         AssertEntry(entries[1], ACL_USER, 7, 1000);
@@ -358,7 +359,7 @@ Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(S_IFDIR | 0740),
             result.Mode);
-        UNIT_ASSERT(result.XAttraAcl.empty());
+        UNIT_ASSERT(result.Acl.empty());
     }
 }
 
