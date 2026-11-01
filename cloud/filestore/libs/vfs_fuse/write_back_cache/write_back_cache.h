@@ -10,6 +10,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/size_literals.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse {
@@ -81,6 +83,10 @@ struct TWriteBackCacheArgs
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     bool FlushWritesInParallelEnabled = false;
+
+    // Max WriteData request size (in bytes) the cache must be able to store
+    // (the negotiated FUSE max_write).
+    ui64 MaxCachedWriteRequestSize = 1_MB;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

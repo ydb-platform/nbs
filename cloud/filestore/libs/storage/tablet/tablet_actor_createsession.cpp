@@ -103,6 +103,7 @@ void FillFeatures(
 
     features->SetMaxBackground(config.GetMaxBackground());
     features->SetMaxFuseLoopThreads(config.GetMaxFuseLoopThreads());
+    features->SetMaxWritePages(config.GetMaxWritePages());
 
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
 

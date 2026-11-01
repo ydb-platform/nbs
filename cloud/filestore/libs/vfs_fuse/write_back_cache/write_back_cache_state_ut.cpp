@@ -15,6 +15,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +116,7 @@ struct TBootstrap
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
             Storage,
+            1_MB /* maxCachedWriteRequestSize */,
             Timer,
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),

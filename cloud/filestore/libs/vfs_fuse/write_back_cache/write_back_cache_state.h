@@ -96,6 +96,7 @@ public:
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
         IPersistentStoragePtr persistentStorage,
+        ui64 maxCachedWriteRequestSize,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,

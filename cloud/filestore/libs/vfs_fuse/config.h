@@ -39,6 +39,9 @@ public:
     ui32 GetNodeAttrsCacheLimit() const;
 
     ui32 GetMaxBufferSize() const;
+    ui32 GetMaxWritePages() const;
+    // ListNodes batch / directory handle buffers: data limit capped at 1 MiB
+    ui32 GetMaxMetadataBufferSize() const;
     ui32 GetPreferredBlockSize() const;
 
     bool GetAsyncDestroyHandleEnabled() const;

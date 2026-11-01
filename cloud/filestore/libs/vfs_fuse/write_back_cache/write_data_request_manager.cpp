@@ -21,10 +21,12 @@ struct TLoadedWriteDataRequest
 TWriteDataRequestManager::TWriteDataRequestManager(
     ISequenceIdGeneratorPtr sequenceIdGenerator,
     IPersistentStoragePtr persistentStorage,
+    ui64 maxCachedWriteRequestSize,
     ITimerPtr timer,
     IWriteDataRequestManagerStatsPtr stats)
     : SequenceIdGenerator(std::move(sequenceIdGenerator))
     , PersistentStorage(std::move(persistentStorage))
+    , MaxCachedWriteRequestSize(maxCachedWriteRequestSize)
     , Timer(std::move(timer))
     , Stats(std::move(stats))
 {}
@@ -39,8 +41,8 @@ NProto::TError TWriteDataRequestManager::Init(
     // File ring buffer should be able to store any valid TWriteDataRequest.
     // Inability to store it will cause this and future requests to remain
     // in the pending queue forever (including requests with smaller size).
-    // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
-    const ui64 maxAllocationByteCount = 1024 * 1024 + 1016;
+    // Should fit max request data plus some headers (assume 1 KiB is enough).
+    const ui64 maxAllocationByteCount = MaxCachedWriteRequestSize + 1016;
 
     const ui64 maxSupportedAllocationByteCount =
         PersistentStorage->GetMaxSupportedAllocationByteCount();

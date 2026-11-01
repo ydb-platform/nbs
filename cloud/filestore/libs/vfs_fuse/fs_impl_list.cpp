@@ -116,7 +116,7 @@ void TFileSystem::ReadDir(
 
     auto request = StartRequest<NProto::TListNodesRequest>(ino);
     request->SetCookie(handle->GetCookie());
-    request->SetMaxBytes(Config->GetMaxBufferSize());
+    request->SetMaxBytes(Config->GetMaxMetadataBufferSize());
 
     // We don't know the nodes yet so we have to adjust the node size after
     // receiving ListNodes response.
