@@ -13,6 +13,7 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -415,6 +416,11 @@ func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	// of the task may still be running.
 	testcommon.WaitOperationEnded(t, ctx, operation.Id, 200*time.Second)
 
+	// Creation may have won the race: don't leak the disk (nonreplicated disk
+	// devices are limited in the recipe). No-op if the creation has been
+	// cancelled.
+	testcommon.DeleteDisk(t, ctx, client, diskID)
+
 	// Proxy overlay disk is a one-shot entity: it should be deleted and its
 	// slot should be released whether the creation has been cancelled or has
 	// managed to complete, both are checked by CheckConsistency.
@@ -480,10 +486,15 @@ func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
 		return nbs.IsDiskNotFoundError(err)
 	}, 30*time.Second, 100*time.Millisecond)
 
-	// Deletion task releases the slot by the disk id (tombstone), the
-	// creation task releases the slot acquired for the proxy overlay disk
-	// (checked by CheckConsistency).
-	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
+	// Base disk slot is acquired for the proxy overlay disk, not for the disk
+	// itself, and the deletion task knows nothing about it: it should have
+	// been released by the creation task (if it has managed to acquire it).
+	proxyOverlayDiskID := dataplane_common.GetProxyOverlayDiskID(
+		testcommon.GetServerConfig(t).GetProxyOverlayDiskIdPrefix(),
+		diskID,
+		createOp.Id, // Operation id is the task id.
+	)
+	testcommon.CheckBaseDiskSlotReleased(t, ctx, proxyOverlayDiskID)
 	testcommon.CheckConsistency(t, ctx)
 }
 
