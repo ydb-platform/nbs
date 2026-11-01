@@ -477,9 +477,11 @@ func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
 		return err == nil && ended
 	}, 200*time.Second, 100*time.Millisecond)
 
-	// Disk may have been created in NBS by the creation task after the
-	// deletion task has finished, so it should have been deleted by the
-	// creation task itself.
+	// Disk should have been deleted from NBS by the deletion task. The
+	// creation task can't recreate it afterwards: every run of the task
+	// re-checks storage.CreateDisk, which does not accept a deleting/deleted
+	// disk (except for the narrow window between this check and the disk
+	// creation in NBS, which any disk creation has).
 	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
 	require.Eventually(t, func() bool {
 		_, err := nbsClient.Describe(ctx, diskID)

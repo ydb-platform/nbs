@@ -145,7 +145,7 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 
 	scheduler.On(
 		"ScheduleZonalTask",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_transfer_from_base_disk"),
 		"dataplane.TransferFromDiskToDisk",
 		"Fill ssd-nonreplicated disk disk from image image using base disk base",
 		"zone",
@@ -272,7 +272,7 @@ func TestCreateDiskFromBaseDiskTaskFallbackToSnapshotStorage(t *testing.T) {
 
 	scheduler.On(
 		"ScheduleZonalTask",
-		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id"),
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_transfer_from_snapshot_storage"),
 		"dataplane.TransferFromSnapshotToDisk",
 		"",
 		"zone",

@@ -338,7 +338,10 @@ func (t *createDiskFromBaseDiskTask) scheduleTransferFromSnapshotStorage(
 ) (string, error) {
 
 	return t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			execCtx.GetTaskID()+"_transfer_from_snapshot_storage",
+		),
 		"dataplane.TransferFromSnapshotToDisk",
 		"",
 		disk.ZoneId,
@@ -406,7 +409,7 @@ func (t *createDiskFromBaseDiskTask) scheduleTransferFromBaseDisk(
 	}
 
 	return t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID),
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_transfer_from_base_disk"),
 		"dataplane.TransferFromDiskToDisk",
 		// Image id and disk kind are not present in the transfer request.
 		fmt.Sprintf(
