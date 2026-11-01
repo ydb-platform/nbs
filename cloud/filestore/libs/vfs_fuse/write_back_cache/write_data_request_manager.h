@@ -23,6 +23,8 @@ class TWriteDataRequestManager
 private:
     ISequenceIdGeneratorPtr SequenceIdGenerator;
     IPersistentStoragePtr PersistentStorage;
+    // The ring buffer must fit a request of this size (in bytes)
+    ui64 MaxCachedWriteRequestSize = 0;
     ITimerPtr Timer;
     IWriteDataRequestManagerStatsPtr Stats;
 
@@ -63,6 +65,7 @@ public:
     TWriteDataRequestManager(
         ISequenceIdGeneratorPtr sequenceIdGenerator,
         IPersistentStoragePtr persistentStorage,
+        ui64 maxCachedWriteRequestSize,
         ITimerPtr timer,
         IWriteDataRequestManagerStatsPtr stats);
 

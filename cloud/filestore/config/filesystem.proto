@@ -142,4 +142,7 @@ message TFileSystemConfig
 
     // Server WriteBackCache state file size in bytes per session.
     optional uint64 ServerWriteBackCacheStateFileSize = 42;
+
+    // Max FUSE request size in pages offered to the guest in FUSE_INIT.
+    optional uint32 MaxWritePages = 43;
 }

@@ -11,6 +11,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 namespace {
@@ -38,6 +40,7 @@ struct TBootstrap
         , RequestManager(
               SequenceIdGenerator,
               Storage,
+              1_MB /* maxCachedWriteRequestSize */,
               Timer,
               Stats->GetWriteDataRequestManagerStats())
     {}
@@ -226,6 +229,28 @@ struct TBootstrap
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError InitRequestManager(
+    ui64 maxSupportedAllocationByteCount,
+    ui64 maxCachedWriteRequestSize)
+{
+    auto stats = CreateWriteBackCacheStats();
+    auto storage = CreateTestStorage(stats);
+    storage->SetMaxSupportedAllocationByteCount(
+        maxSupportedAllocationByteCount);
+
+    TWriteDataRequestManager requestManager(
+        std::make_shared<TSequenceIdGenerator>(),
+        storage,
+        maxCachedWriteRequestSize,
+        std::make_shared<TTestTimer>(),
+        stats->GetWriteDataRequestManagerStats());
+
+    return requestManager.Init(
+        [](std::unique_ptr<TCachedWriteDataRequest>, bool) {});
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -298,6 +323,28 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         UNIT_ASSERT(!allocResult.Request);
         UNIT_ASSERT(!allocResult.Failed);
         UNIT_ASSERT(allocResult.StorageIsFull);
+    }
+
+    Y_UNIT_TEST(ShouldFailInitIfStorageCannotFitMaxCachedWriteRequest)
+    {
+        // A 4 MiB request plus its headers does not fit
+        const auto error = InitRequestManager(
+            4_MB /* maxSupportedAllocationByteCount */,
+            4_MB /* maxCachedWriteRequestSize */);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            error.GetCode(),
+            FormatError(error));
+    }
+
+    Y_UNIT_TEST(ShouldInitIfStorageCanFitMaxCachedWriteRequest)
+    {
+        const auto error = InitRequestManager(
+            4_MB + 1_KB /* maxSupportedAllocationByteCount */,
+            4_MB /* maxCachedWriteRequestSize */);
+
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
     }
 
     Y_UNIT_TEST(ShouldAbortOnSerializationFailure)
