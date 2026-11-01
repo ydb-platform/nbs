@@ -1598,7 +1598,7 @@ private:
         const TVector<TVector<TDeviceId>>& replicas);
 
     void CollectRacksByReplicas(
-        ui32 currentReplicaIdx,
+        ui32 currReplicaIdx,
         const TVector<TVector<TDeviceId>>& replicas,
         THashSet<TString>& preferredRacks,
         THashSet<TString>& forbiddenRacks) const;

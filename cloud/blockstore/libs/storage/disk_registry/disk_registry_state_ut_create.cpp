@@ -796,7 +796,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                     {MakeMirror2ReplicaUuids()[0]});
 
                 UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-                UNIT_ASSERT(error.GetMessage().Contains("expects 2 replicas"));
+                UNIT_ASSERT(error.GetMessage().Contains("unexpected replicas count"));
 
                 AssertMirrorCreateFromDevicesFailedClean(
                     state,
