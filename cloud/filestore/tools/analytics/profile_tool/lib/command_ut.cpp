@@ -177,7 +177,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(input.Name()));
     }
 
-    Y_UNIT_TEST(ShouldReadAllFilesUnlessPruningRequested)
+    Y_UNIT_TEST(ShouldSkipFilesUnlessDisabled)
     {
         TTempDir directory;
         TTempFileHandle oldFile(
@@ -200,15 +200,15 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             if (TStringBuf(name) == "findbytesaccess") {
                 args.insert(args.end(), {"--start", "0", "--count", "1"});
             }
-            // Default reading exposes even errors outside the estimated range.
-            UNIT_ASSERT_VALUES_EQUAL(
-                GetCommand(name)->Run(args.size(), args.data()),
-                1);
-            args.push_back("--prune-by-time");
-            // Only explicit pruning skips the old, truncated log.
+            // Default pruning skips the old, truncated log.
             UNIT_ASSERT_VALUES_EQUAL(
                 GetCommand(name)->Run(args.size(), args.data()),
                 0);
+            args.push_back("--no-skip-files");
+            // Disabling pruning exposes errors outside the estimated range.
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetCommand(name)->Run(args.size(), args.data()),
+                1);
         }
     }
 
@@ -306,10 +306,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             "--since",
             "1970-01-01T00:38:21Z",
             "--until",
-            "1970-01-01T00:41:40Z",
-            "--prune-by-time"};
+            "1970-01-01T00:41:40Z"};
         TReadTestCommand command;
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(10, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.FilesSelected, 1);
         UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems.size(), 1);
         UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], "selected");
@@ -317,8 +316,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
     Y_UNIT_TEST(ShouldContinueAfterTruncatedFileOnlyWhenRequested)
     {
-        TTempFileHandle broken;
-        TTempFileHandle good;
+        TTempDir directory;
+        TTempFileHandle broken(directory.Name() + "/log.2026-09-26T00:01");
+        TTempFileHandle good(directory.Name() + "/log.2026-09-26T00:02");
         for (const auto* input: {&broken, &good}) {
             TEventLog log(input->Name(), 0);
             {
@@ -388,7 +388,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
     }
 
-    Y_UNIT_TEST(ShouldProbeUndatedFilesOnlyWhenPruningRequested)
+    Y_UNIT_TEST(ShouldProbeUndatedFilesUnlessSkippingDisabled)
     {
         TTempFileHandle newer;
         TTempFileHandle older;
@@ -396,14 +396,16 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         WriteProfileLog(older.Name(), 1000);
         const char* args[] = {
             "test", "--profile-log", newer.Name().c_str(), older.Name().c_str(),
-            "--prune-by-time"};
+            "--no-skip-files"};
         TTestCommand unprobed;
-        UNIT_ASSERT_VALUES_EQUAL(unprobed.Run(4, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Run(5, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[0], RealPath(newer.Name()));
         UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[1], RealPath(older.Name()));
+        const char* probedArgs[] = {
+            "test", "--profile-log", newer.Name().c_str(), older.Name().c_str()};
         TTestCommand probed;
-        UNIT_ASSERT_VALUES_EQUAL(probed.Run(5, args), 0);
+        UNIT_ASSERT_VALUES_EQUAL(probed.Run(4, probedArgs), 0);
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(older.Name()));
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(newer.Name()));
@@ -447,9 +449,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             current.Name().c_str(),
             newer.Name().c_str(),
             oldest.Name().c_str(),
-            newest.Name().c_str(),
-            "--prune-by-time"};
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(7, args), 0);
+            newest.Name().c_str()};
+        UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(oldest.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));

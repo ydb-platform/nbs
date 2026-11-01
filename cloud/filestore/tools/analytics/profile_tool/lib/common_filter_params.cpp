@@ -55,10 +55,9 @@ TMaybe<TInstant> Parse(
 TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
 {
     opts.AddLongOption(
-            "prune-by-time",
-            "Skip files outside since/until using estimated time ranges (opt-in). "
-            "Dated filenames assume UTC end times, otherwise first/last records are read; "
-            "incorrect estimates can skip matching records")
+            "no-skip-files",
+            "Read every supplied file instead of skipping by estimated time range. "
+            "Disables first/last record probing; exact request filters still apply")
         .NoArgument();
 
     opts.AddLongOption(

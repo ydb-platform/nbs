@@ -182,7 +182,7 @@ public:
                 fileSystemId.GetRef());
         }
 
-        if (parseResult.Has("prune-by-time")) {
+        if (!parseResult.Has("no-skip-files")) {
             ProfileLogFiles =
                 SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
         }

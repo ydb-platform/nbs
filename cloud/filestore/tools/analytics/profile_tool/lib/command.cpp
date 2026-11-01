@@ -142,8 +142,8 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
                    "or a positional path";
         }
 
-        const bool readRecords = Opts.FindLongOption("prune-by-time") &&
-                                 parseResult.Has("prune-by-time");
+        const bool readRecords = Opts.FindLongOption("no-skip-files") &&
+                                 !parseResult.Has("no-skip-files");
         for (const auto& path: ProfileLogPaths) {
             ProfileLogFiles.push_back(MakeProfileLogFile(path, readRecords));
         }
