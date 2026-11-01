@@ -440,7 +440,7 @@ TCellHostPool::EnsureChannelLocked(const TString& fqdn)
 {
     auto& channel = Channels[fqdn];
     if (!channel.Endpoint.Initialized()) {
-        // cheap: the setup only wraps an already pooled gRPC client
+        // cheap: a channel and a stub, nothing connects yet
         channel.Endpoint = Bootstrap.EndpointsSetup->SetupHostGrpcEndpoint(
             Bootstrap,
             MakeHostConfig(fqdn));
