@@ -60,10 +60,13 @@ void TIndexTabletActor::HandleListNodes(
     const TEvService::TEvListNodesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TMethod = TEvService::TListNodesMethod;
     auto* msg = ev->Get();
+
+    const auto pipeServerId = RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        msg->Record.GetHeaders());
 
     const bool shouldValidateSession = !msg->Record.GetUnsafe();
 
@@ -80,7 +83,7 @@ void TIndexTabletActor::HandleListNodes(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-    requestInfo->PipeServerId = ev->Recipient;
+    requestInfo->PipeServerId = pipeServerId;
 
     AddInFlightRequest<TEvService::TListNodesMethod>(*requestInfo);
 
@@ -113,10 +116,13 @@ void TIndexTabletActor::HandleListNodesInternal(
     const TEvIndexTablet::TEvListNodesInternalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TMethod = TEvIndexTablet::TListNodesInternalMethod;
     auto* msg = ev->Get();
+
+    const auto pipeServerId = RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        msg->Record.GetHeaders());
 
     if (!AcceptRequestNoSession<TMethod>(ev, ctx, ValidateInternalRequest)) {
         return;
@@ -127,7 +133,7 @@ void TIndexTabletActor::HandleListNodesInternal(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-    requestInfo->PipeServerId = ev->Recipient;
+    requestInfo->PipeServerId = pipeServerId;
 
     AddInFlightRequest<TEvIndexTablet::TListNodesInternalMethod>(*requestInfo);
 
@@ -268,6 +274,11 @@ void TIndexTabletActor::ReplyListNodes(
         std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
+        const auto cacheTTL =
+            GetFileSystemListingEventsCacheTTL(args.RequestInfo->PipeServerId)
+                .MilliSeconds();
+        record.SetNodeCacheTTL(cacheTTL);
+        record.SetNodeRefCacheTTL(cacheTTL);
         record.MutableNames()->Reserve(args.ChildRefs.size());
         record.MutableNodes()->Reserve(args.ChildRefs.size());
 
@@ -358,6 +369,11 @@ void TIndexTabletActor::ReplyListNodesInternal(
         }
 
         auto& record = response->Record;
+        const auto cacheTTL =
+            GetFileSystemListingEventsCacheTTL(args.RequestInfo->PipeServerId)
+                .MilliSeconds();
+        record.SetNodeCacheTTL(cacheTTL);
+        record.SetNodeRefCacheTTL(cacheTTL);
         TListNodesInternalResponseBuilder builder(
             record,
             nameBufferSize,
@@ -436,7 +452,7 @@ void TIndexTabletActor::CompleteTx_ListNodes(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    if (!HasError(args.Error)) {
+    if (!HasError(args.Error) && IsFileSystemListingEventsEnabled()) {
         //
         // The client may cache the listed entries and the attrs of the local
         // child nodes. The attrs of the external nodes are fetched from the

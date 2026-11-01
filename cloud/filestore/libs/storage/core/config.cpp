@@ -318,9 +318,13 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
     xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
-    xxx(FileSystemEventSubscriptionsSealPeriod,                               \
-        TDuration,                                                            \
-        TDuration::Minutes(30))                                               \
+    xxx(FileSystemEventSubscriptionsSealPeriod,                                \
+        TDuration,                                                             \
+        TDuration::Minutes(30))                                                \
+    xxx(FileSystemEventSubscriptionsCacheTTLMargin,                            \
+        TDuration,                                                             \
+        TDuration::Minutes(1))                                                 \
+    xxx(FileSystemListingEventsEnabled,    bool,       false                  )\
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\

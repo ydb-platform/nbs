@@ -379,6 +379,14 @@ message TListNodesResponse
     // Cookie will be set for partial answer due to limitations.
     bytes Cookie = 4;
 
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 5;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned NodeRefs. Zero means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 6;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -514,6 +522,15 @@ message TGetNodeAttrResponse
     // parent-id + name pair.
     bool IsNodeRefLocked = 3;
 
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Node. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 4;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // NodeRef. Set only for the requests with parent-id + name pair. Zero
+    // means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 5;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -546,6 +563,11 @@ message TGetNodeXAttrResponse
 
     // Version of set value.
     uint64 Version = 3;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // attribute value or, for E_FS_NOXATTR, its absence. Zero means that
+    // caching is not allowed.
+    uint32 XAttrCacheTTL = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

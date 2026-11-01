@@ -5,3 +5,9 @@ RECURSE(
     journal
     sn
 )
+
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    RECURSE(
+        fiber
+    )
+ENDIF()

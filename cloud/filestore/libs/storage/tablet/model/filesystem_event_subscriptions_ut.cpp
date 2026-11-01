@@ -95,6 +95,44 @@ Y_UNIT_TEST_SUITE(TFileSystemEventSubscriptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
     }
 
+    Y_UNIT_TEST(ShouldExtractNodeXAttrSubscribers)
+    {
+        TFileSystemEventSubscriptions subscriptions(SealPeriod);
+        subscriptions.AddNodeXAttrSubscriber(1, "user.a", Pipe1, T0);
+        subscriptions.AddNodeXAttrSubscriber(1, "user.a", Pipe2, T0);
+        subscriptions.AddNodeXAttrSubscriber(1, "user.b", Pipe1, T0);
+        subscriptions.AddNodeXAttrSubscriber(2, "user.a", Pipe1, T0);
+        auto stats = subscriptions.GetStats();
+
+        //
+        // NodeXAttrs, Nodes and NodeRefs are tracked independently.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeRefCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.NodeXAttrCount);
+        UNIT_ASSERT(subscriptions.ExtractNodeSubscribers(1, T0).empty());
+        UNIT_ASSERT(
+            subscriptions.ExtractNodeRefSubscribers(1, "user.a", T0).empty());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            Sorted({Pipe1, Pipe2}),
+            Sorted(subscriptions.ExtractNodeXAttrSubscribers(1, "user.a", T0)));
+        UNIT_ASSERT(
+            subscriptions.ExtractNodeXAttrSubscribers(1, "user.a", T0).empty());
+        UNIT_ASSERT(
+            subscriptions.ExtractNodeXAttrSubscribers(1, "user.c", T0).empty());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TActorId>{Pipe1},
+            subscriptions.ExtractNodeXAttrSubscribers(1, "user.b", T0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TActorId>{Pipe1},
+            subscriptions.ExtractNodeXAttrSubscribers(2, "user.a", T0));
+        stats = subscriptions.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.NodeXAttrCount);
+    }
+
     Y_UNIT_TEST(ShouldStoreClientsInFirstPage)
     {
         TFileSystemEventSubscriptions subscriptions(SealPeriod);

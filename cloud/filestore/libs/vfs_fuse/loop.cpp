@@ -1025,7 +1025,8 @@ private:
                     auto result =
                         PersistentState->AcquireHandleOpsQueueStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetHandleOpsQueueSize());
 
                     if (HasError(result)) {
                         ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1083,7 +1084,8 @@ private:
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
-                            SessionId);
+                            SessionId,
+                            Config->GetWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1128,7 +1130,8 @@ private:
                      .FileSystemId = Config->GetFileSystemId(),
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                     .StateFileSize = Config->GetWriteBackCacheStateFileSize(),
+                     .StateFileSize =
+                         WriteBackCacheStateFileGuard.GetTargetStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =

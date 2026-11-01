@@ -263,6 +263,7 @@ struct TEvPartitionCommonPrivate
         // be calculated.
         const ui32 BlockSizeForChecksums;
         const bool Async;
+        const bool CompressedSizeEstimationCandidate;
         const TInstant Deadline;
 
         template <typename TData>
@@ -271,11 +272,13 @@ struct TEvPartitionCommonPrivate
                 TData data,
                 ui32 blockSizeForChecksums,
                 bool async,
+                bool compressedSizeEstimationCandidate,
                 TInstant deadline = TInstant::Max())
             : BlobId(blobId)
             , Data(std::move(data))
             , BlockSizeForChecksums(blockSizeForChecksums)
             , Async(async)
+            , CompressedSizeEstimationCandidate(compressedSizeEstimationCandidate)
             , Deadline(deadline)
         {}
     };

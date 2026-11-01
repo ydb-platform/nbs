@@ -567,6 +567,9 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics->FileSystemEventsSubscriberRegistryExtraPageCount,
         subscriptionsStats.ExtraPageCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeXAttrCount,
+        subscriptionsStats.NodeXAttrCount);
 
     Metrics->BusyIdleCalc.OnUpdateStats();
     Metrics->UpdatePerformanceMetrics(now, diagConfig, fileSystem);

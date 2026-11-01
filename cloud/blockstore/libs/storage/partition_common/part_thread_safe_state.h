@@ -10,13 +10,14 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
+#include <cloud/storage/core/libs/tablet/model/commit.h>
+
 #include <contrib/ydb/library/actors/core/monotonic.h>
 
 #include <util/system/spinlock.h>
 
 #include <atomic>
 #include <memory>
-#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -77,7 +78,7 @@ class TPartitionThreadSafeState
 public:
     struct TFreshWriteInfo
     {
-        ui64 CommitId;
+        ui64 CommitId = InvalidCommitId;
         TInstant Timestamp;
     };
 
@@ -105,13 +106,10 @@ private:
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
-    struct TFreshWriteTimeAnchor
-    {
-        TInstant Timestamp;
-        NActors::TMonotonic Monotonic;
-    };
-
-    std::optional<TFreshWriteTimeAnchor> FreshWriteTimeAnchor;
+    // Fresh write timestamps are Unix time advanced with the monotonic clock
+    // from this anchor.
+    TInstant FreshWriteTimeAnchor;
+    NActors::TMonotonic FreshWriteMonotonicAnchor;
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
@@ -138,7 +136,9 @@ public:
     void Init(
         NActors::TActorId partitionActorId,
         ui32 generation,
-        ui32 lastCommitId);
+        ui32 lastCommitId,
+        TInstant now,
+        NActors::TMonotonic monotonic);
 
     TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
@@ -166,6 +166,10 @@ public:
     TFreshWriteInfo StartFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 blockCount);
+
+    // Read the same clock without allocating a commit id.
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx) const;
+
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -260,7 +264,6 @@ public:
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
-    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
 
     void ExecuteTxs(
         const NActors::TActorContext& ctx,

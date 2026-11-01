@@ -378,6 +378,8 @@ public:
     bool GetFileSystemEventsEnabled() const;
     bool GetFileSystemEventsDryRunModeEnabled() const;
     TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
+    TDuration GetFileSystemEventSubscriptionsCacheTTLMargin() const;
+    bool GetFileSystemListingEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 

@@ -70,7 +70,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
     {
         NProto::TBlockstoreConfig staticConfig;
         staticConfig.MutableStorageService()->SetWriteBlobThreshold(10);
-        staticConfig.MutableStorageService()->SetFlushThreshold(20);
+        staticConfig.MutableStorageService()->SetFlushThresholdHDD(20);
         auto* staticFeature = staticConfig.MutableFeatures()->AddFeatures();
         staticFeature->SetName("static");
 
@@ -86,7 +86,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             result.GetStorageService().GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             20,
-            result.GetStorageService().GetFlushThreshold());
+            result.GetStorageService().GetFlushThresholdHDD());
         UNIT_ASSERT_VALUES_EQUAL(2, result.GetFeatures().FeaturesSize());
         UNIT_ASSERT_VALUES_EQUAL(
             "static",

@@ -12,7 +12,6 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/scope.h>
 #include <util/generic/utility.h>
@@ -28,8 +27,6 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 MetadataKey = Max<ui64>();
 
 ui64 PageCountOf(const NCloud::NProto::TDevicePageGroupRef& ref)
 {
@@ -313,7 +310,7 @@ public:
         -> TFuture<NCloud::NProto::TError> override;
 
 private:
-    TResultOrError<ui64> RestoreFrom(TVector<TKeyBuffer> buffers);
+    TResultOrError<ui64> RestoreFrom(TRestoredBuffers restored);
 
     TVector<TLogRecordPtr> FilterStrandedRecords(
         const THashMap<ui64, TLogRecordPtr>& lsnToRecord,
@@ -364,18 +361,14 @@ TFuture<TResultOrError<ui64>> TJournal::Restore()
         });
 }
 
-TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
+TResultOrError<ui64> TJournal::RestoreFrom(TRestoredBuffers restored)
 {
     //
-    // Take the lsn low watermark from the metadata
+    // Take the lsn low watermark from the metadata - a journal that has
+    // never advanced it holds no metadata
     //
 
-    auto metadataIt = FindIf(
-        buffers,
-        [](const auto& keyBuffer) { return keyBuffer.Key == MetadataKey; });
-
-    if (metadataIt != buffers.end()) {
-        const auto& buffer = metadataIt->Buffer;
+    if (const auto& buffer = restored.MetaBuffer; !buffer.Empty()) {
         auto metadata = DeserializeMetadata(buffer);
         if (!metadata) {
             return MakeError(
@@ -386,7 +379,6 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
         }
 
         LsnLowWatermark.store(metadata->LsnLowWatermark);
-        buffers.erase(metadataIt);
     }
 
     ui64 lsnLowWatermark = LsnLowWatermark.load();
@@ -397,7 +389,7 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
 
     THashMap<ui64, TLogRecordPtr> lsnToRecord;
 
-    for (const auto& [key, buffer]: buffers) {
+    for (const auto& [key, buffer]: restored.KeyBuffers) {
         auto record = DeserializeRecord(buffer);
         if (!record) {
             return MakeError(
@@ -407,11 +399,11 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
                     << " from " << buffer.Size() << " bytes");
         }
 
-        if (record->PrevLsn != key) {
+        if (record->Lsn != key) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder() << "log record with key " << key
-                                 << " has prevLsn " << record->PrevLsn);
+                                 << " has lsn " << record->Lsn);
         }
 
         if (record->PrevLsn >= record->Lsn) {
@@ -431,17 +423,8 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
                                  << rangeError.GetMessage());
         }
 
-        auto [it, inserted] = lsnToRecord.emplace(record->Lsn, record);
-        if (!inserted) {
-            const ui64 otherPrevLsn = it->second->PrevLsn;
-            return MakeError(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "records with prev lsn "
-                    << Min(record->PrevLsn, otherPrevLsn) << " and "
-                    << Max(record->PrevLsn, otherPrevLsn)
-                    << " both carry lsn " << record->Lsn);
-        }
+        // the store holds one buffer per key and the key is the lsn
+        lsnToRecord.emplace(record->Lsn, record);
     }
 
     //
@@ -621,20 +604,7 @@ TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
 NCloud::NProto::TError TJournal::ValidateWriteRequest(
     const NCloud::NProto::TWriteLogRecordRequest& request) const
 {
-    auto err = ValidatePageRanges(request.GetPageGroups(), DevicePageCount);
-    if (HasError(err)) {
-        return err;
-    }
-
-    const ui64 lsn = request.GetLogSequenceNumber();
-    if (lsn == MetadataKey) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "lsn " << lsn << " is reserved for journal metadata");
-    }
-
-    return {};
+    return ValidatePageRanges(request.GetPageGroups(), DevicePageCount);
 }
 
 NProto::TError TJournal::WriteLogRecord(
@@ -684,7 +654,7 @@ NProto::TError TJournal::WriteLogRecord(
         return error;
     }
 
-    auto metaFuture = MetaStore->Write(record.PrevLsn, SerializeRecord(record));
+    auto metaFuture = MetaStore->Write(record.Lsn, SerializeRecord(record));
     if (auto error = Executor->WaitFor(metaFuture); HasError(error)) {
         return error;
     }
@@ -860,7 +830,7 @@ TJournal::AdvanceLsnLowWatermark(
         .LsnLowWatermark = lsnLowWatermark,
     };
 
-    auto future = MetaStore->Write(MetadataKey, SerializeMetadata(metadata));
+    auto future = MetaStore->WriteMeta(SerializeMetadata(metadata));
     if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         return MakeFuture<TResponse>(TErrorResponse(error));
     }
@@ -923,8 +893,8 @@ TFuture<NCloud::NProto::TError> TJournal::CleanupFlushedRecords()
 
     ui64 eraseUpToLsn = FlushedLsnBarrier.GetBarrierLsn();
 
-    // The meta store holds the records by their PrevLsn
-    auto future = MetaStore->EraseBelow(eraseUpToLsn);
+    // The meta store holds the records by their lsn
+    auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
     if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         return MakeFuture(error);
     }

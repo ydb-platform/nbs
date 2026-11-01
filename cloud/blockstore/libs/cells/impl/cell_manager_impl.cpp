@@ -223,7 +223,7 @@ ICellManagerPtr CreateCellManager(
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
 
-    auto result = NClient::CreateMultiHostClient(
+    auto result = NClient::CreateEndpointFactory(
         std::move(appConfig),
         timer,
         scheduler,

@@ -110,6 +110,11 @@ struct Y_PACKED TSerializedWriteDataRequestHeader
     ui64 Offset = 0;
 };
 
+inline bool HasWriteDataRequestPayload(size_t allocationSize)
+{
+    return allocationSize > sizeof(TSerializedWriteDataRequestHeader);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCachedWriteDataRequest

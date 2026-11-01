@@ -47,6 +47,11 @@ public:
             const auto& invalidate = event.GetInvalidateNodeRef();
             InvalidateNodeRef(invalidate.GetNodeId(), invalidate.GetName());
         }
+
+        if (event.HasInvalidateNodeXAttr()) {
+            const auto& invalidate = event.GetInvalidateNodeXAttr();
+            InvalidateNodeXAttr(invalidate.GetNodeId(), invalidate.GetName());
+        }
     }
 
     void OnDisconnect(ui64 tabletId) override
@@ -85,6 +90,24 @@ private:
             FileSystemId.Quote().c_str(),
             nodeId,
             MaskFileName(name).Quote().c_str());
+    }
+
+    void InvalidateNodeXAttr(ui64 nodeId, const TString& name)
+    {
+        //
+        // Same as for the NodeRefs - the name is logged in debug mode only.
+        //
+
+        STORAGE_DEBUG(
+            "[f:%s] InvalidateNodeXAttr: %lu, %s",
+            FileSystemId.Quote().c_str(),
+            nodeId,
+            name.Quote().c_str());
+
+        STORAGE_INFO(
+            "[f:%s] InvalidateNodeXAttr: %lu",
+            FileSystemId.Quote().c_str(),
+            nodeId);
     }
 };
 

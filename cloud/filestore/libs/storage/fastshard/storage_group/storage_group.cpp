@@ -1,13 +1,19 @@
 #include "storage_group.h"
 #include "storage_group_helpers.h"
 
+#include <cloud/fastshard/libs/common/context.h>
+
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 #include <silk/util/logger.h>
 
 #include <util/generic/vector.h>
 
+#include <atomic>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::TFastShardContext;
 
 namespace {
 
@@ -36,6 +42,7 @@ struct TWriteLogRecordParams
     NProto::TWriteLogRecordResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
+    TFastShardContext* Context;
 };
 
 int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
@@ -43,6 +50,7 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
     NProto::TWriteLogRecordRequest request = *params->Request;
     request.SetDeviceUUID(std::move(params->Device.DeviceUUID));
     *params->Response = CallWithRetries(
+        *params->Context,
         *params->RetryPolicy,
         *params->Timer,
         [&] { return params->Device.Node->WriteLogRecord(request); });
@@ -56,6 +64,7 @@ struct TReadJournalTailParams
     NProto::TReadJournalTailResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
+    TFastShardContext* Context;
 };
 
 int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
@@ -63,6 +72,7 @@ int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
     NProto::TReadJournalTailRequest request = *params->Request;
     request.SetDeviceUUID(params->Device.DeviceUUID);
     *params->Response = CallWithRetries(
+        *params->Context,
         *params->RetryPolicy,
         *params->Timer,
         [&] { return params->Device.Node->ReadJournalTail(request); });
@@ -78,6 +88,7 @@ private:
     const TStorageGroupConfig Config;
     TVector<TStorageDevice> Devices;
     ITimerPtr Timer;
+    std::atomic<ui64> NextRequestId = 1;
     std::atomic<ui32> Selector{0};
     bool TornDown = false;
 
@@ -96,9 +107,11 @@ public:
     // where every device's journal ends.
     TResultOrError<ui64> Init() override
     {
+        TFastShardContext ctx(NextRequestId++);
         NProto::TAcquireDevicesRequest acquire;
         acquire.SetGeneration(Config.AcquireGeneration);
         auto error = MirrorRequest<NProto::TAcquireDevicesResponse>(
+            ctx,
             Config,
             Devices,
             *Timer,
@@ -112,6 +125,7 @@ public:
         tail.SetMaxRecordCount(1);
         TVector<NProto::TReadJournalTailResponse> responses;
         error = MirrorRequest<NProto::TReadJournalTailResponse>(
+            ctx,
             Config,
             Devices,
             *Timer,
@@ -137,7 +151,9 @@ public:
         }
         TornDown = true;
 
+        TFastShardContext ctx(NextRequestId++);
         auto error = MirrorRequest<NProto::TReleaseDevicesResponse>(
+            ctx,
             Config,
             Devices,
             *Timer,
@@ -160,7 +176,9 @@ public:
             link);
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
+        TFastShardContext ctx(NextRequestId++);
         return MirrorRequest<NProto::TWriteLogRecordResponse>(
+            ctx,
             Config,
             Devices,
             *Timer,
@@ -180,7 +198,9 @@ public:
             std::move(headers),
             pageGroupRefs,
             Config.PageSize);
+        TFastShardContext ctx(NextRequestId++);
         auto response = CallWithRetries(
+            ctx,
             Config.RetryPolicy,
             *Timer,
             [&]

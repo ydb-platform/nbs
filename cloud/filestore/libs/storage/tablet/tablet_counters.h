@@ -281,12 +281,14 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     // number of event sends. Counted in dry run mode as well.
     std::atomic<i64> InvalidateNodeEventSendCount{0};
     std::atomic<i64> InvalidateNodeRefEventSendCount{0};
+    std::atomic<i64> InvalidateNodeXAttrEventSendCount{0};
 
     // FileSystemEvents stats: subscriber registry stats
     std::atomic<i64> FileSystemEventsSubscriberRegistryNodeCount{0};
     std::atomic<i64> FileSystemEventsSubscriberRegistryNodeRefCount{0};
     std::atomic<i64> FileSystemEventsSubscriberRegistryClientCount{0};
     std::atomic<i64> FileSystemEventsSubscriberRegistryExtraPageCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeXAttrCount{0};
 
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 

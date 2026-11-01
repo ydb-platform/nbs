@@ -5,10 +5,13 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
         storage_group.cpp
         storage_group_factory.cpp
         storage_group_helpers.cpp
+        storage_group_inflight.cpp
         storage_group_quorum.cpp
     )
 
     PEERDIR(
+        cloud/fastshard/libs/fiber
+
         contrib/libs/silk/src/fibers
     )
 ELSE()
