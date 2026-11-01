@@ -1953,7 +1953,7 @@ void TServer::HandleConnectRequest(
     }
 
     const int protocolVersion = ParseMessageHeader(connectParams->private_data);
-    if (protocolVersion < RDMA_PROTO_MIN_VERSION ||
+    if (protocolVersion < RDMA_PROTO_PREV_VERSION ||
         protocolVersion > RDMA_PROTO_VERSION)
     {
         Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
@@ -2127,7 +2127,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver >= RDMA_PROTO_MIN_VERSION && ver <= RDMA_PROTO_VERSION)
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }

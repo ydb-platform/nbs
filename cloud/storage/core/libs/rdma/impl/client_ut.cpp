@@ -1837,7 +1837,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionToServerVersionOnRejection)
     ASSERT_EQ(RDMA_PROTO_VERSION_2, secondConnectVersion.load());
 }
 
-TEST(TRdmaClientTest, ShouldNotDowngradeProtocolVersionOnV3Rejection)
+TEST(TRdmaClientTest, ShouldNotDowngradeOnCurrentVersionRejection)
 {
     auto testContext = MakeIntrusive<NVerbs::TTestContext>();
 
@@ -1865,7 +1865,7 @@ TEST(TRdmaClientTest, ShouldNotDowngradeProtocolVersionOnV3Rejection)
         }
 
         TRejectMessage rejectMsg{};
-        InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_3);
+        InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
         rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_INVALID_REQUEST);
         NVerbs::EnqueueRejectEvent(
             testContext,
@@ -1884,7 +1884,7 @@ TEST(TRdmaClientTest, ShouldNotDowngradeProtocolVersionOnV3Rejection)
     with_lock (lock) {
         ASSERT_FALSE(connectVersions.empty());
         for (int version: connectVersions) {
-            ASSERT_EQ(RDMA_PROTO_VERSION_3, version);
+            ASSERT_EQ(RDMA_PROTO_VERSION, version);
         }
     }
 }

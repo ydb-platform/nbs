@@ -1679,7 +1679,12 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
     }
 
     if (req->Eager) {
-        // the SEND reads the request buffer until it completes
+        // The NIC reads the eager payload from InBuffer until the SEND
+        // completes, which may happen after the request itself is gone. The WR
+        // takes the buffer over, so FreeRequest() can't return it to the pool
+        // while the NIC still reads it; ReleaseEagerBuffer() frees it on SEND
+        // completion or flush. RequestBuffer points into the same memory, so it
+        // goes too.
         send->EagerBuffer = req->InBuffer;
         req->InBuffer = {};
         req->RequestBuffer = {};
@@ -3052,7 +3057,7 @@ void TClient::HandleConnected(
     }
 
     const int version = ParseMessageHeader(param->private_data);
-    if (version < RDMA_PROTO_MIN_VERSION ||
+    if (version < RDMA_PROTO_PREV_VERSION ||
         version > endpoint->GetNegotiatedProtocolVersion())
     {
         RDMA_ERROR(
@@ -3122,22 +3127,25 @@ void TClient::HandleRejected(
 
     const int version = ParseMessageHeader(param->private_data);
     const auto* msg = static_cast<const TRejectMessage*>(param->private_data);
+    // Only two protocol versions are supported at a time. If v4 arrives before
+    // v3 is fully rolled out, the two-version requirement will be lifted.
     switch (version) {
-        case RDMA_PROTO_VERSION_2: {
+        case RDMA_PROTO_PREV_VERSION: {
             if (msg->Status == RDMA_PROTO_INVALID_REQUEST &&
-                endpoint->GetNegotiatedProtocolVersion() != version)
+                endpoint->GetNegotiatedProtocolVersion() !=
+                    RDMA_PROTO_PREV_VERSION)
             {
                 RDMA_WARN(
                     endpoint->Log,
-                    "connection rejected, retry connect with protocol version "
-                        << version);
-                endpoint->SetNegotiatedProtocolVersion(version);
+                    "connection rejected, retry connect with previous protocol "
+                    "version");
+                endpoint->SetNegotiatedProtocolVersion(RDMA_PROTO_PREV_VERSION);
                 endpoint->TryForceReconnect();
                 return;
             }
             [[fallthrough]];
         }
-        case RDMA_PROTO_VERSION_3: {
+        case RDMA_PROTO_VERSION: {
             if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
                 bool changed = false;
                 if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {
@@ -3287,7 +3295,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TSendWr* send)
     out << "SEND " << TWorkRequestId(send->wr.wr_id);
     if (auto msg = send->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver >= RDMA_PROTO_MIN_VERSION && ver <= RDMA_PROTO_VERSION)
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }
@@ -3300,7 +3308,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
         if (auto ver = ParseMessageHeader(msg);
-            ver >= RDMA_PROTO_MIN_VERSION && ver <= RDMA_PROTO_VERSION)
+            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
         {
             out << " [request=" << msg->ReqId << "]";
         }

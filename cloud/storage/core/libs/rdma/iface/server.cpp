@@ -39,6 +39,12 @@ void TServerConfig::Validate(TLog& log)
                                << " is greater than 7, set QpRnrRetryCount=7");
         QpRnrRetryCount = ThreeBitsMax;
     }
+    // Eager receive slots come from the buffer pool, which hands out
+    // page-aligned page-multiple buffers. The alignment is what the aligned
+    // data feature (RDMA_PROTO_FLAG_DATA_AT_THE_END) relies on: data placed at
+    // the end of such a buffer is block-aligned, so the handler can pass it
+    // to O_DIRECT I/O without a copy. Rounding the limit up to a page turns
+    // the padding into usable eager capacity.
     const size_t pageSize = GetPlatformPageSize();
     const size_t maxEagerRequestBytes = Min(
         AlignUp<size_t>(MaxEagerRequestBytes, pageSize),
