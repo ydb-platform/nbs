@@ -509,10 +509,6 @@ func TestCreateDiskFromBaseDiskTaskCancelAfterDiskIsDeletedConcurrently(
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
-	// Disk may have been created in NBS after the concurrent deletion has
-	// finished, so it should be deleted anyway.
-	nbsClient.On("Delete", ctx, "disk").Return(nil)
-
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(
 		t,

@@ -180,28 +180,18 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 		return err
 	}
 
-	if len(t.state.SelectedCellId) != 0 {
-		client, err := t.nbsFactory.GetClient(ctx, t.state.SelectedCellId)
-		if err != nil {
-			return err
-		}
-
-		// Delete the disk from NBS even if it has already been deleted by a
-		// concurrent disks.DeleteDisk task (diskMeta == nil): creation from
-		// base disk takes a while and this task may have created the disk in
-		// NBS after that task has finished. A disk of another owner with the
-		// same id can't be deleted here: if the id is in use, CreateDisk
-		// does not accept it and the task fails with a non-cancellable error
-		// (Cancel is not invoked); if the id belongs to a deleting/deleted
-		// disk, Cancel is invoked but that disk is being deleted anyway.
-		err = client.Delete(ctx, params.Disk.DiskId)
-		if err != nil {
-			return err
-		}
-	}
-
 	if diskMeta == nil {
 		return nil
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	if err != nil {
+		return err
+	}
+
+	err = client.Delete(ctx, diskMeta.ID)
+	if err != nil {
+		return err
 	}
 
 	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
@@ -431,19 +421,11 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 		return nil
 	}
 
-	// |baseDiskID| is the one returned by the (already finished) acquire task.
-	// If this task is retried after a crash that happened before
-	// ProxyOverlayDiskCreated has been persisted, the proxy overlay disk may
-	// have been rebased onto another base disk and |baseDiskID| deleted in the
-	// meantime (see pools.RetireBaseDisk), so CreateProxyOverlayDisk must not
-	// (and does not) require |baseDiskID| to exist when the proxy overlay disk
-	// already exists.
-	//
 	// `maxSizeBytes` is used here to reduce the number of `GetChangedBlocks`
 	// requests when using a base disk with the default size of 4 TiB. It is
 	// specified in bytes: the proxy overlay disk has the block size of the
 	// base disk, which may differ from the block size of the disk being
-	// created (the transfer operates on chunks that are multiples of both).
+	// created.
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDisk.DiskId,
