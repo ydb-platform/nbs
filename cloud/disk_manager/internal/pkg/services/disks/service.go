@@ -442,6 +442,28 @@ func (s *service) isCreationFromBaseDiskSupportedForDiskKind(
 	)
 }
 
+// Proxy overlay disks (and base disks) are not encrypted, and the data is
+// written to the disk as is. So the disk is either not encrypted or encrypted
+// at rest by NBS on its side (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, such disks
+// are mounted without encryption, see nbs.Client). Client-side encryption is
+// not supported here.
+func isEncryptionSupportedForCreationFromBaseDisk(
+	encryptionDesc *types.EncryptionDesc,
+) bool {
+
+	if encryptionDesc == nil {
+		return true
+	}
+
+	switch encryptionDesc.Mode {
+	case types.EncryptionMode_NO_ENCRYPTION,
+		types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
+		return true
+	default:
+		return false
+	}
+}
+
 // Checks whether the disk should be filled from a base disk from the pool (via
 // disks.CreateDiskFromBaseDisk) instead of from the snapshot storage. Has lower
 // priority than isOverlayDiskAllowed.
@@ -456,14 +478,7 @@ func (s *service) isCreationFromBaseDiskAllowed(
 		return false, nil
 	}
 
-	if req.EncryptionDesc != nil &&
-		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION &&
-		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
-		// The data is read from the (unencrypted) proxy overlay disk and
-		// written to the disk as is, so the disk is either not encrypted or
-		// encrypted at rest by NBS on its side
-		// (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY). Client-side encryption is
-		// not supported here.
+	if !isEncryptionSupportedForCreationFromBaseDisk(params.EncryptionDesc) {
 		return false, nil
 	}
 

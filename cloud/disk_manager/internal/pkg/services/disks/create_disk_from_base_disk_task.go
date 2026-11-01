@@ -245,12 +245,7 @@ func (t *createDiskFromBaseDiskTask) createAndFillDisk(
 
 	params := t.request.Params
 
-	err := t.checkEncryption()
-	if err != nil {
-		return err
-	}
-
-	err = t.selectFillSource(ctx, execCtx, disk.ZoneId)
+	err := t.selectFillSource(ctx, execCtx, disk.ZoneId)
 	if err != nil {
 		return err
 	}
@@ -487,30 +482,6 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 
 	t.state.ProxyOverlayDiskCreated = true
 	return execCtx.SaveState(ctx)
-}
-
-// Proxy overlay disks (and base disks) are not encrypted, and the data is
-// written to the disk as is. So the disk is either not encrypted or encrypted
-// at rest by NBS on its side (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, such disks
-// are mounted without encryption, see nbs.Client).
-func (t *createDiskFromBaseDiskTask) checkEncryption() error {
-	params := t.request.Params
-
-	if params.EncryptionDesc == nil {
-		return nil
-	}
-
-	switch params.EncryptionDesc.Mode {
-	case types.EncryptionMode_NO_ENCRYPTION,
-		types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
-		return nil
-	default:
-		return errors.NewNonRetriableErrorf(
-			"disk %v with encryption mode %v can't be created from base disk",
-			params.Disk.DiskId,
-			params.EncryptionDesc.Mode,
-		)
-	}
 }
 
 // Proxy overlay disk lives in the same cell as the disk being created. Its id
