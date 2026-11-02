@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -16,6 +17,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -51,6 +54,7 @@ private:
     TLog Log;
 
     TIntrusiveList<TRequestContext> RequestsInFlight;
+    TAdaptiveLock RequestsLock;
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
@@ -83,16 +87,26 @@ public:
         IOutputStream& out,
         TServerResponse& response) override
     {
-        out.Write(
-            response.HeaderBuffer.Data(),
-            response.HeaderBuffer.Size());
-
-        if (response.DataBuffer) {
+        try {
             out.Write(
-                response.DataBuffer.get(),
-                response.RequestBytes);
+                response.HeaderBuffer.Data(),
+                response.HeaderBuffer.Size());
+
+            if (response.DataBuffer) {
+                out.Write(response.DataBuffer.get(), response.RequestBytes);
+            }
+        } catch (...) {
+            UnregisterRequest(
+                response.RequestContext,
+                MakeError(E_CANCELLED, CurrentExceptionMessage()));
+            throw;
         }
 
+        CompleteResponse(response);
+    }
+
+    void CompleteResponse(TServerResponse& response) override
+    {
         UnregisterRequest(response.RequestContext, response.Error);
     }
 
@@ -114,6 +128,21 @@ public:
     void ProcessException(std::exception_ptr e) override
     {
         ErrorHandler->ProcessException(e);
+    }
+
+    void CancelRequests() override
+    {
+        TVector<TRequestContextPtr> requests;
+        with_lock (RequestsLock) {
+            for (auto& request: RequestsInFlight) {
+                requests.emplace_back(&request);
+            }
+        }
+
+        const auto error = MakeError(E_CANCELLED, "NBD connection was closed");
+        for (const auto& request: requests) {
+            UnregisterRequest(request, error);
+        }
     }
 
 private:
@@ -576,9 +605,15 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                auto requestData = DeviceHandler->AllocateBuffer(request.Length);
-                if (request.Length) {
-                    in.ReadOrFail(requestData.get(), request.Length);
+                TStorageBuffer requestData;
+                try {
+                    requestData = DeviceHandler->AllocateBuffer(request.Length);
+                    if (request.Length) {
+                        in.ReadOrFail(requestData.get(), request.Length);
+                    }
+                } catch (...) {
+                    UnregisterRequest(requestCtx, cancelError);
+                    throw;
                 }
 
                 ctx->ExecuteSimple(
@@ -846,7 +881,9 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         requestCtx->MetricRequest,
         *requestCtx->CallContext);
 
-    RequestsInFlight.PushBack(requestCtx.Get());
+    with_lock (RequestsLock) {
+        RequestsInFlight.PushBack(requestCtx.Get());
+    }
 
     return requestCtx;
 }
@@ -855,7 +892,13 @@ void TServerHandler::UnregisterRequest(
     const TRequestContextPtr& requestCtx,
     const NProto::TError& error)
 {
-    requestCtx->Unlink();
+    if (requestCtx->Completed.exchange(true)) {
+        return;
+    }
+
+    with_lock (RequestsLock) {
+        requestCtx->Unlink();
+    }
 
     ServerStats->RequestCompleted(
         Log,
@@ -869,6 +912,7 @@ size_t TServerHandler::CollectRequests(
 {
     ui64 now = GetCycleCount();
     size_t count = 0;
+    TGuard<TAdaptiveLock> guard(RequestsLock);
     for (auto& request : RequestsInFlight) {
         ++count;
         auto requestTime = request.CallContext->CalcRequestTime(now);
