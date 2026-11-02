@@ -392,6 +392,32 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TCellConnectionTest)
 {
+    Y_UNIT_TEST(ShouldMarkForwardedDataRequests)
+    {
+        TTestEnv env;
+        const auto connection = env.Connect("host-a");
+        auto storage = connection->GetStorage();
+        auto read = std::make_shared<NProto::TReadBlocksLocalRequest>();
+        read->MutableHeaders()->MutableInternal()->SetAuthToken("local");
+        UNIT_ASSERT(!HasError(storage->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(), read).GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL("cell-1", env.GrpcClient->Service->LastRequestCellId);
+        UNIT_ASSERT(!read->GetHeaders().HasInternal());
+
+        auto write = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        write->MutableHeaders()->MutableInternal()->SetAuthToken("local");
+        UNIT_ASSERT(!HasError(storage->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(), write).GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL("cell-1", env.GrpcClient->Service->LastRequestCellId);
+        UNIT_ASSERT(!write->GetHeaders().HasInternal());
+
+        // Retried requests retain the forwarding marker as well.
+        read->MutableHeaders()->SetRetryNumber(1);
+        UNIT_ASSERT(!HasError(storage->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(), read).GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL("cell-1", env.GrpcClient->Service->LastRequestCellId);
+    }
+
     Y_UNIT_TEST(ShouldReportOnlyForeignTabletHost)
     {
         TTestEnv env;

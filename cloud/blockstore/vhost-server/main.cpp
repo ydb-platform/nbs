@@ -278,6 +278,7 @@ int main(int argc, char** argv)
         }
         switch (sig) {
             case SIGUSR1: {
+                const auto collectedAt = Now();
                 auto completeStats = server->GetStats(prevStats);
                 auto now = Now();
                 try {
@@ -287,7 +288,8 @@ int main(int argc, char** argv)
                         now - ts,
                         Cout,
                         GetCyclesPerMillisecond(),
-                        &options.LatencySli);
+                        &options.LatencySli,
+                        collectedAt);
                 } catch (const TSystemError& e) {
                     STORAGE_INFO("DumpStats error: " << e.AsStrBuf());
                 }

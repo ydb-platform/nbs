@@ -650,6 +650,7 @@ private:
         ui64 requestBytes = 0;
 
         if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            MetricRequest.ForwardedRequest = !headers.GetCellId().empty();
             startIndex = GetStartIndex(*Request);
             requestBytes = CalculateBytesCount(
                 *Request,

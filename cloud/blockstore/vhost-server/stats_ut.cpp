@@ -164,13 +164,16 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         complete.SimpleStats += producer;
         TStringStream stream;
         DumpStats(complete, previous, TDuration::Seconds(1), stream,
-            GetCyclesPerMillisecond(), &config);
+            GetCyclesPerMillisecond(), &config, TInstant::Seconds(10));
         NJson::TJsonValue first;
         NJson::ReadJsonTree(stream.Str(), &first, true);
         UNIT_ASSERT_VALUES_EQUAL(1, first["read"]["latency_good"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
         UNIT_ASSERT(first["latency_sli"]["fresh"].GetBoolean());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TInstant::Seconds(10).MicroSeconds(),
+            first["latency_sli"]["collected_at_us"].GetUInteger());
         TStringStream next;
         complete.Fresh = false;
         DumpStats(complete, previous, TDuration::Seconds(1), next,

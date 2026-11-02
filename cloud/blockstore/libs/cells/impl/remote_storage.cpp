@@ -21,10 +21,15 @@ struct TRemoteStorage: public IStorage
 {
     const IBlockStorePtr Endpoint;
     const ICellConnectionPtr Connection;
+    const TString CellId;
 
-    TRemoteStorage(IBlockStorePtr endpoint, ICellConnectionPtr connection)
+    TRemoteStorage(
+        IBlockStorePtr endpoint,
+        ICellConnectionPtr connection,
+        TString cellId)
         : Endpoint(std::move(endpoint))
         , Connection(std::move(connection))
+        , CellId(std::move(cellId))
     {}
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -40,6 +45,7 @@ struct TRemoteStorage: public IStorage
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
         request->MutableHeaders()->ClearInternal();
+        request->MutableHeaders()->SetCellId(CellId);
         return Endpoint->ReadBlocksLocal(
             std::move(callContext),
             std::move(request));
@@ -50,6 +56,7 @@ struct TRemoteStorage: public IStorage
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
         request->MutableHeaders()->ClearInternal();
+        request->MutableHeaders()->SetCellId(CellId);
         return Endpoint->WriteBlocksLocal(
             std::move(callContext),
             std::move(request));
@@ -78,11 +85,13 @@ struct TRemoteStorage: public IStorage
 
 IStoragePtr CreateRemoteStorage(
     IBlockStorePtr endpoint,
-    ICellConnectionPtr connection)
+    ICellConnectionPtr connection,
+    TString cellId)
 {
     return std::make_shared<TRemoteStorage>(
         std::move(endpoint),
-        std::move(connection));
+        std::move(connection),
+        std::move(cellId));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

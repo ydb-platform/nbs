@@ -455,7 +455,9 @@ void TServerStats::RequestCompleted(
         req.AccessMode,
         req.MountMode);
 
-    if (LatencySliEnabled && req.VolumeInfo && !req.CellRequest) {
+    if (LatencySliEnabled && req.VolumeInfo && !req.CellRequest &&
+        !req.ForwardedRequest)
+    {
         const auto type = TranslateLocalRequestType(req.RequestType);
         if (type == EBlockStoreRequest::ReadBlocks ||
             type == EBlockStoreRequest::WriteBlocks)

@@ -14,6 +14,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Polling normally takes one second, with up to two seconds to read a reply.
+// Allow scheduling jitter, but do not publish accumulated traffic after a stall.
+constexpr auto MaxLatencySnapshotAge = TDuration::Seconds(5);
+
 template <typename F>
 auto GetHist(const NJson::TJsonValue& value, F&& func)
 {
@@ -79,7 +83,7 @@ void BatchCompleted(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
+void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats, TInstant now)
 {
     const auto& meta = stats["latency_sli"];
     const auto isCount = [](const NJson::TJsonValue& value) {
@@ -102,6 +106,16 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
         }
         LatencyEpoch = epoch;
     }
+
+    const auto collectedAt =
+        TInstant::MicroSeconds(meta["collected_at_us"].GetUInteger());
+    const bool timely = isCount(meta["collected_at_us"]) && collectedAt &&
+        now >= collectedAt && now - collectedAt <= MaxLatencySnapshotAge &&
+        isCount(stats["elapsed_ms"]) &&
+        stats["elapsed_ms"].GetUInteger() <= MaxLatencySnapshotAge.MilliSeconds() &&
+        (!LatencyReceivedAt ||
+         (now >= LatencyReceivedAt &&
+          now - LatencyReceivedAt <= MaxLatencySnapshotAge));
 
     for (size_t write = 0; write < 2; ++write) {
         TMetricRequest request{write ? EBlockStoreRequest::WriteBlocks
@@ -153,7 +167,7 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
                 counters->GetConfig().Serialize();
             // After a gap, preserve coverage without attributing old data to
             // the current observation window. No history is retained.
-            if (matching && sequence == LatencySequence + 1) {
+            if (matching && timely && sequence == LatencySequence + 1) {
                 counters->Add(good, bad, unknown);
             } else {
                 counters->Add(0, 0, good + bad + unknown);
@@ -162,12 +176,18 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
     }
     if (versioned) {
         LatencySequence = sequence;
+        LatencyReceivedAt = now;
     }
 }
 
 void TEndpointStats::Update(const NJson::TJsonValue& stats)
 {
-    UpdateLatency(stats);
+    Update(stats, TInstant::Now());
+}
+
+void TEndpointStats::Update(const NJson::TJsonValue& stats, TInstant now)
+{
+    UpdateLatency(stats, now);
 
     BatchCompleted(
         *ServerStats,

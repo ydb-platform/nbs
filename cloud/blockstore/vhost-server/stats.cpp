@@ -154,7 +154,8 @@ void DumpStats(
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli)
+    const TLatencySliConfig* latencySli,
+    TInstant collectedAt)
 {
     const auto & stats = completeStats.SimpleStats;
 
@@ -197,6 +198,7 @@ void DumpStats(
         buf.BeginObject();
         write("version", 1);
         write("sequence", ++sequence);
+        write("collected_at_us", collectedAt.MicroSeconds());
         buf.WriteKey("epoch");
         buf.WriteString(epoch);
         buf.WriteKey("config");

@@ -241,6 +241,7 @@ void DumpStats(
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli = nullptr);
+    const TLatencySliConfig* latencySli = nullptr,
+    TInstant collectedAt = TInstant::Now());
 
 }   // namespace NCloud::NBlockStore::NVHostServer
