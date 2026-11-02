@@ -59,19 +59,20 @@ struct TFixture
             ->GetSubgroup("volume", "disk")->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", "ssd_nonrepl");
+        // Intentionally aggregate both operations while keeping separate thresholds.
         Read = group;
         Write = group;
     }
 
     void Complete(ui64 elapsedUs, ui64 postponedUs = 0, ui32 error = S_OK,
-                  bool write = false, ui64 bytes = 4096, bool cell = false,
+                  bool write = false, ui64 bytes = 4096, bool forwarded = false,
                   bool valid = true, ui64 backoff = 0, ui64 shaping = 0,
                   ui64 originalBytes = 0)
     {
         TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
                                     : EBlockStoreRequest::ReadBlocksLocal};
         Server->PrepareMetricRequest(metric, "client", "disk", 0, bytes, false);
-        metric.CellRequest = cell;
+        metric.ForwardedRequest = forwarded;
         if (originalBytes) {
             metric.OriginalRequestBytes = originalBytes;
         }
@@ -94,6 +95,18 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TLatencySliTest)
 {
+    Y_UNIT_TEST(ShouldMergeReadAndWriteOutcomesUsingTheirOwnThresholds)
+    {
+        TFixture f;
+        UNIT_ASSERT(f.Read == f.Write);
+        f.Complete(1500); // above the 1000us read threshold
+        f.Complete(1500, 0, S_OK, true); // below the 2000us write threshold
+        f.Server->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+    }
+
     Y_UNIT_TEST(ShouldUseManualSizeBoundariesAndInclusiveThreshold)
     {
         auto config = TLatencySliConfig::Parse("1;0:1:4097:100;0:4097:8193:200;1:1:8193:300");

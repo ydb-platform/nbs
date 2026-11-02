@@ -3,12 +3,18 @@
 #include "server_test.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/start_endpoint_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -17,6 +23,8 @@
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <array>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -49,6 +57,140 @@ void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
+    Y_UNIT_TEST(ShouldClassifyOnlyOriginalIoOverGrpc)
+    {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+        TTestFactory factory;
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(true);
+        for (bool write: {false, true}) {
+            auto* row = proto.AddLatencySliThresholds();
+            row->SetMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            row->SetWrite(write);
+            row->SetStartBytes(1);
+            row->SetEndBytes(8193);
+            row->SetThresholdUs(10000000);
+        }
+        auto diagnostics = std::make_shared<TDiagnosticsConfig>(proto);
+        NProto::TServerAppConfig serverProto;
+        serverProto.MutableServerConfig()->SetPort(port);
+        serverProto.MutableServerConfig()->SetDataPort(0);
+        auto config = std::make_shared<TServerAppConfig>(serverProto);
+        auto stats = CreateServerStats(
+            config, diagnostics, factory.Monitoring, factory.ProfileLog,
+            factory.RequestStats,
+            CreateVolumeStats(factory.Monitoring, diagnostics, {},
+                EVolumeStatsType::EServerStats, factory.Timer));
+        NProto::TVolume volume;
+        volume.SetDiskId("disk");
+        volume.SetBlockSize(4096);
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        stats->MountVolume(volume, "client", "instance");
+
+        // Observe the metric prepared by the real gRPC handler, then run the
+        // real collector. Waiting for this callback avoids publication races.
+        auto observed = std::make_shared<TTestServerStats>();
+        observed->GetBlockSizeHandler =
+            std::bind_front(&IServerStats::GetBlockSize, stats.get());
+        observed->PrepareMetricRequestHandler =
+            std::bind_front(&IServerStats::PrepareMetricRequest, stats.get());
+        observed->RequestStartedHandler =
+            std::bind_front(&IServerStats::RequestStarted, stats.get());
+        observed->ResponseSentHandler =
+            std::bind_front(&IServerStats::ResponseSent, stats.get());
+        std::array<TPromise<std::pair<bool, bool>>, 6> completed;
+        for (auto& promise: completed) {
+            promise = NewPromise<std::pair<bool, bool>>();
+        }
+        observed->RequestCompletedHandler = [&](
+            TLog& log, TMetricRequest& metric, TCallContext& context,
+            const NProto::TError& error)
+        {
+            stats->RequestCompleted(log, metric, context, error);
+            completed.at(context.RequestId - 1).SetValue(
+                {metric.ForwardedRequest, metric.CellRequest});
+        };
+
+        auto service = std::make_shared<TTestService>();
+        service->ReadBlocksHandler = [](const auto& request) {
+            NProto::TReadBlocksResponse response;
+            if (request->GetHeaders().GetRetryNumber()) {
+                *response.MutableError() = MakeError(E_REJECTED);
+            } else {
+                response.MutableBlocks()->AddBuffers(TString(4096, 'x'));
+            }
+            return MakeFuture(std::move(response));
+        };
+        service->WriteBlocksHandler = [](const auto& request) {
+            NProto::TWriteBlocksResponse response;
+            if (request->GetHeaders().GetRetryNumber()) {
+                *response.MutableError() = MakeError(E_REJECTED);
+            }
+            return MakeFuture(std::move(response));
+        };
+        auto server = CreateServer(config, factory.Logging, observed,
+            service, nullptr, {}, CreateCertificateProviderStub());
+        auto client = factory.CreateClientBuilder().BuildMultiHostClient();
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+        // Cell forwarding uses an IO endpoint on the control port.
+        auto endpoint = client->CreateIOEndpoint("localhost", port, false);
+        endpoint->Start();
+        Y_DEFER { endpoint->Stop(); };
+        for (size_t i = 0; i < completed.size(); ++i) {
+            const bool forwarded = i < 4;
+            const bool failed = i == 2 || i == 3 || i == 5;
+            auto prepare = [&](auto& request) {
+                request.SetDiskId("disk");
+                auto* headers = request.MutableHeaders();
+                headers->SetClientId("client");
+                headers->SetRequestId(i + 1);
+                headers->SetRetryNumber(failed ? 1 : 0);
+                if (forwarded) {
+                    headers->SetCellId("cell-1");
+                }
+            };
+            if (i % 2) {
+                auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+                prepare(*request);
+                request->MutableBlocks()->AddBuffers(TString(4096, 'x'));
+                const auto response = endpoint->WriteBlocks(
+                    MakeIntrusive<TCallContext>(), request).GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
+            } else {
+                auto request = std::make_shared<NProto::TReadBlocksRequest>();
+                prepare(*request);
+                request->SetBlocksCount(1);
+                const auto response = endpoint->ReadBlocks(
+                    MakeIntrusive<TCallContext>(), request).GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
+            }
+            const auto flags = completed[i].GetFuture().GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(forwarded, flags.first);
+            UNIT_ASSERT(!flags.second); // legacy error accounting stays enabled
+        }
+
+        stats->UpdateStats(false);
+        auto group = factory.Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "disk")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")
+            ->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "ssd_nonrepl");
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
     Y_UNIT_TEST(ShouldPrepareRequestHeaders)
     {
         NProto::THeaders headers;

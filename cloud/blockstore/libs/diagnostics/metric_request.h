@@ -30,6 +30,8 @@ struct TMetricRequest
     TInstant RequestTimestamp;
     bool Unaligned = false;
     bool CellRequest = false;
+    // Forwarded data is classified at the original endpoint, including retries.
+    bool ForwardedRequest = false;
     NProto::EVolumeAccessMode AccessMode =
         NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode MountMode =

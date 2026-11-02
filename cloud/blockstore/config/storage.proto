@@ -1785,5 +1785,4 @@ message TStorageServiceConfig
     // When disabled, clear these counters and report legacy index-based counts.
     // Enable before compression: missing counters are initialized from block counts.
     optional bool ExtendedBlobCountersEnabled = 554;
-
 }

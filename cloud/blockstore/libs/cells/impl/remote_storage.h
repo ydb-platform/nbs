@@ -9,6 +9,7 @@ namespace NCloud::NBlockStore::NCells {
 
 IStoragePtr CreateRemoteStorage(
     IBlockStorePtr endpoint,
-    ICellConnectionPtr connection);
+    ICellConnectionPtr connection,
+    TString cellId);
 
 }   // namespace NCloud::NBlockStore::NCells
