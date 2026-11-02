@@ -66,20 +66,43 @@ const TString& GetComponentName(int component);
 
 struct TFileStoreEvents
 {
+    // NB: adding new event ranges should be done at the end of this enum in
+    // order to maintain compatibility with existing events
     enum
     {
         START = EventSpaceBegin(NKikimr::TKikimrEvents::ES_FILESTORE),
 
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
-        component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
-// FILESTORE_DECLARE_COMPONENT
+        SCHEMESHARD_START = START + 1,
+        SCHEMESHARD_END = SCHEMESHARD_START + 100,
 
-        FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
+        SERVICE_START = SCHEMESHARD_END + 1,
+        SERVICE_END = SERVICE_START + 100,
 
-#undef FILESTORE_DECLARE_COMPONENT
+        SERVICE_WORKER_START = SERVICE_END + 1,
+        SERVICE_WORKER_END = SERVICE_WORKER_START + 100,
 
-        END
+        SERVICE_PROXY_START = SERVICE_WORKER_END + 1,
+        SERVICE_PROXY_END = SERVICE_PROXY_START + 100,
+
+        TABLET_START = SERVICE_PROXY_END + 1,
+        TABLET_END = TABLET_START + 100,
+
+        TABLET_WORKER_START = TABLET_END + 1,
+        TABLET_WORKER_END = TABLET_WORKER_START + 100,
+
+        TABLET_PROXY_START = TABLET_WORKER_END + 1,
+        TABLET_PROXY_END = TABLET_PROXY_START + 100,
+
+        SS_PROXY_START = TABLET_PROXY_END + 1,
+        SS_PROXY_END = SS_PROXY_START + 100,
+
+        DISK_REGISTRY_PROXY_START = SS_PROXY_END + 1,
+        DISK_REGISTRY_PROXY_END = DISK_REGISTRY_PROXY_START + 100,
+
+        SERVICE_EXTRA_START = DISK_REGISTRY_PROXY_END + 1,
+        SERVICE_EXTRA_END = SERVICE_EXTRA_START + 100,
+
+        END = SERVICE_EXTRA_END + 1
     };
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE),
@@ -90,20 +113,40 @@ struct TFileStoreEvents
 
 struct TFileStoreEventsPrivate
 {
+    // NB: adding new event ranges should be done at the end of this enum in
+    // order to maintain compatibility with existing events
     enum
     {
         START = EventSpaceBegin(NKikimr::TKikimrEvents::ES_FILESTORE_PRIVATE),
 
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
-        component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
-// FILESTORE_DECLARE_COMPONENT
+        SCHEMESHARD_START = START + 1,
+        SCHEMESHARD_END = SCHEMESHARD_START + 100,
 
-        FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
+        SERVICE_START = SCHEMESHARD_END + 1,
+        SERVICE_END = SERVICE_START + 100,
 
-#undef FILESTORE_DECLARE_COMPONENT
+        SERVICE_WORKER_START = SERVICE_END + 1,
+        SERVICE_WORKER_END = SERVICE_WORKER_START + 100,
 
-        END
+        SERVICE_PROXY_START = SERVICE_WORKER_END + 1,
+        SERVICE_PROXY_END = SERVICE_PROXY_START + 100,
+
+        TABLET_START = SERVICE_PROXY_END + 1,
+        TABLET_END = TABLET_START + 100,
+
+        TABLET_WORKER_START = TABLET_END + 1,
+        TABLET_WORKER_END = TABLET_WORKER_START + 100,
+
+        TABLET_PROXY_START = TABLET_WORKER_END + 1,
+        TABLET_PROXY_END = TABLET_PROXY_START + 100,
+
+        SS_PROXY_START = TABLET_PROXY_END + 1,
+        SS_PROXY_END = SS_PROXY_START + 100,
+
+        DISK_REGISTRY_PROXY_START = SS_PROXY_END + 1,
+        DISK_REGISTRY_PROXY_END = DISK_REGISTRY_PROXY_START + 100,
+
+        END = DISK_REGISTRY_PROXY_END + 1
     };
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE_PRIVATE),
