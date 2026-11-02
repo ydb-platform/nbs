@@ -80,7 +80,12 @@ def is_request_error(exception):
     retry_on_exception=is_request_error,
 )
 def _check_final_block_digest_mismatch(host, mon_port):
-    _check_block_digest_mismatch(host, mon_port)
+    # AppCriticalEvents counter updates are published at the end of each
+    # 15-second interval, not immediately
+    for attempt in range(5):
+        if attempt:
+            time.sleep(5)
+        _check_block_digest_mismatch(host, mon_port)
 
 
 def _extract_tracks(nbs_log_path, track_filter):
