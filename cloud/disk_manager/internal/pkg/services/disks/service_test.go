@@ -3,6 +3,7 @@ package disks
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -833,4 +834,113 @@ func TestDiskOperationGuardModePersistsAcrossWorkerConfigs(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestTransferVolumeViaLinkSchedulesNonCancellableTask(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		zoneID    string
+		dstCellID string
+	}{
+		{name: "source-only"},
+		{name: "zone-and-destination", zoneID: "zone-a", dstCellID: "target-cell"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			scheduler := tasks_mocks.NewSchedulerMock()
+			storage := storage_mocks.NewStorageMock()
+			// Queueing remains allowed while busy; the worker decides admission.
+			storage.On("GetDiskMeta", ctx, "leader").Return(&resources.DiskMeta{
+				CreateTaskID: "create-task", ZoneID: "source-cell", ActiveOperationTaskIDs: []string{"resize-task"},
+			}, nil).Once()
+			scheduler.On("ScheduleNonCancellableTask", ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+				LogicalDiskId: "leader", ZoneId: test.zoneID, DstCellId: test.dstCellID,
+				ExpectedSourceCreateTaskId: "create-task", ExpectedSourceCellId: "source-cell",
+			}).Return("task-id", nil).Once()
+			diskService := &service{config: &disks_config.DisksConfig{EnableDiskOperationGuard: proto.Bool(true)}, resourceStorage: storage, taskScheduler: scheduler}
+			id, err := diskService.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{
+				SrcDiskId: "leader", ZoneId: test.zoneID, DstCellId: test.dstCellID,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "task-id", id)
+			mock.AssertExpectationsForObjects(t, storage, scheduler)
+		})
+	}
+}
+
+func TestTransferVolumeViaLinkRejectsMissingSource(t *testing.T) {
+	for _, request := range []*disk_manager.TransferVolumeViaLinkRequest{nil, {ZoneId: "zone-a", DstCellId: "target-cell"}} {
+		scheduler := tasks_mocks.NewSchedulerMock()
+		diskService := &service{taskScheduler: scheduler}
+		id, err := diskService.TransferVolumeViaLink(context.Background(), request)
+		require.ErrorContains(t, err, "source disk ID is required")
+		require.Empty(t, id)
+		scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	}
+}
+
+func TestTransferVolumeViaLinkReturnsSchedulingError(t *testing.T) {
+	ctx := context.Background()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	storage := storage_mocks.NewStorageMock()
+	storage.On("GetDiskMeta", ctx, "leader").Return(readyDiskMeta(), nil).Once()
+	failure := fmt.Errorf("task storage unavailable")
+	scheduler.On("ScheduleNonCancellableTask", ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+		LogicalDiskId: "leader", ExpectedSourceCreateTaskId: "create-task", ExpectedSourceCellId: "source-cell",
+	}).Return("", failure).Once()
+	diskService := &service{config: &disks_config.DisksConfig{EnableDiskOperationGuard: proto.Bool(true)}, resourceStorage: storage, taskScheduler: scheduler}
+	id, err := diskService.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{SrcDiskId: "leader"})
+	require.ErrorIs(t, err, failure)
+	require.Empty(t, id)
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
+}
+
+func TestTransferVolumeViaLinkRejectsInvalidCatalogSource(t *testing.T) {
+	lookupError := fmt.Errorf("catalog unavailable")
+	for _, test := range []struct {
+		name      string
+		meta      *resources.DiskMeta
+		lookupErr error
+		message   string
+	}{
+		{name: "missing", message: "does not exist"},
+		{name: "deleting", meta: &resources.DiskMeta{DeleteTaskID: "delete-task"}, message: "being deleted"},
+		{name: "missing-creation-task", meta: &resources.DiskMeta{ZoneID: "source-cell"}, message: "incomplete catalog identity"},
+		{name: "missing-cell", meta: &resources.DiskMeta{CreateTaskID: "create-task"}, message: "incomplete catalog identity"},
+		{name: "lookup-error", lookupErr: lookupError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			storage := storage_mocks.NewStorageMock()
+			scheduler := tasks_mocks.NewSchedulerMock()
+			storage.On("GetDiskMeta", ctx, "leader").Return(test.meta, test.lookupErr).Once()
+			diskService := &service{config: &disks_config.DisksConfig{EnableDiskOperationGuard: proto.Bool(true)}, resourceStorage: storage, taskScheduler: scheduler}
+			id, err := diskService.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{SrcDiskId: "leader"})
+			if test.lookupErr != nil {
+				require.ErrorIs(t, err, test.lookupErr)
+			} else {
+				require.ErrorContains(t, err, test.message)
+			}
+			require.Empty(t, id)
+			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			mock.AssertExpectationsForObjects(t, storage, scheduler)
+		})
+	}
+}
+
+func TestTransferVolumeViaLinkRejectsDisabledGuard(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	svc := &service{
+		config:          &disks_config.DisksConfig{},
+		resourceStorage: storage,
+		taskScheduler:   scheduler,
+	}
+	id, err := svc.TransferVolumeViaLink(ctx, &disk_manager.TransferVolumeViaLinkRequest{SrcDiskId: "leader"})
+	require.ErrorContains(t, err, "EnableDiskOperationGuard must be enabled")
+	require.Empty(t, id)
+	storage.AssertNotCalled(t, "GetDiskMeta", mock.Anything, mock.Anything)
+	scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
 }

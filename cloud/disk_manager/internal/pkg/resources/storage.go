@@ -143,6 +143,16 @@ type Storage interface {
 	ReserveDiskOperation(ctx context.Context, tx *persistence.Transaction, operation DiskOperation) (*DiskMeta, error)
 	ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error
 
+	FinishDiskTransfer(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		diskID string,
+		sourceCellID string,
+		targetCellID string,
+		createTaskID string,
+		transferTaskID string,
+	) error
+
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	CreateDisk(ctx context.Context, disk DiskMeta) (*DiskMeta, error)
 

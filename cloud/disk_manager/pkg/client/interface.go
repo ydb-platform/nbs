@@ -19,6 +19,7 @@ type Client interface {
 	DescribeDiskModel(ctx context.Context, req *disk_manager.DescribeDiskModelRequest) (*disk_manager.DiskModel, error)
 	StatDisk(ctx context.Context, req *disk_manager.StatDiskRequest) (*disk_manager.DiskStats, error)
 	MigrateDisk(ctx context.Context, req *disk_manager.MigrateDiskRequest) (*disk_manager.Operation, error)
+	TransferVolumeViaLink(ctx context.Context, req *disk_manager.TransferVolumeViaLinkRequest) (*disk_manager.Operation, error)
 	SendMigrationSignal(ctx context.Context, req *disk_manager.SendMigrationSignalRequest) error
 	DescribeDisk(ctx context.Context, req *disk_manager.DescribeDiskRequest) (*disk_manager.DiskParams, error)
 	ListDiskStates(ctx context.Context, req *disk_manager.ListDiskStatesRequest) (*disk_manager.ListDiskStatesResponse, error)

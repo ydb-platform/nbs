@@ -182,6 +182,18 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(TransferVolumeViaLinkTaskType, func() tasks.Task {
+		return &transferVolumeViaLinkTask{
+			nbsFactory:   nbsFactory,
+			storage:      resourceStorage,
+			scheduler:    taskScheduler,
+			cellSelector: cellSelector,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"disks.ClearDeletedDisks",

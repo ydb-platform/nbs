@@ -679,6 +679,7 @@ func newDisksCmd(
 		newAlterDiskCmd(clientConfig),
 		newAssignDiskCmd(clientConfig),
 		newUnassignDiskCmd(clientConfig),
+		newTransferVolumeViaLinkCmd(clientConfig),
 	)
 
 	return cmd

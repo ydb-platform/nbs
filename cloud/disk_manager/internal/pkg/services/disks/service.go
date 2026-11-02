@@ -985,6 +985,37 @@ func (s *service) MigrateDisk(
 	)
 }
 
+func (s *service) TransferVolumeViaLink(
+	ctx context.Context,
+	req *disk_manager.TransferVolumeViaLinkRequest,
+) (string, error) {
+	if req.GetSrcDiskId() == "" {
+		return "", common.NewInvalidArgumentError("source disk ID is required")
+	}
+	// Gate new tasks only; already scheduled transfers retain exclusive admission.
+	if !s.config.GetEnableDiskOperationGuard() {
+		return "", common.NewInvalidArgumentError("volume-link transfers are disabled: EnableDiskOperationGuard must be enabled")
+	}
+	meta, err := s.resourceStorage.GetDiskMeta(ctx, req.GetSrcDiskId())
+	if err != nil {
+		return "", err
+	}
+	if meta == nil || meta.DeleteTaskID != "" {
+		return "", common.NewInvalidArgumentError("source disk %q does not exist or is being deleted", req.GetSrcDiskId())
+	}
+	if meta.CreateTaskID == "" || meta.ZoneID == "" {
+		return "", common.NewInvalidArgumentError("source disk %q has incomplete catalog identity", req.GetSrcDiskId())
+	}
+	// Busy admission is decided by the worker. Only pin the requested source here.
+	return s.taskScheduler.ScheduleNonCancellableTask(ctx, TransferVolumeViaLinkTaskType, "", "", &protos.TransferVolumeViaLinkRequest{
+		LogicalDiskId:              req.GetSrcDiskId(),
+		DstCellId:                  req.GetDstCellId(),
+		ZoneId:                     req.GetZoneId(),
+		ExpectedSourceCreateTaskId: meta.CreateTaskID,
+		ExpectedSourceCellId:       meta.ZoneID,
+	})
+}
+
 func (s *service) SendMigrationSignal(
 	ctx context.Context,
 	req *disk_manager.SendMigrationSignalRequest,
