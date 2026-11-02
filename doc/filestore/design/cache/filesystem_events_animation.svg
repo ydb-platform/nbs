@@ -1,0 +1,474 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 490" width="760" height="490" role="img" aria-label="FileSystemEvents: reads, modifications, invalidations">
+<style>
+
+:root, svg {
+  --bg: #fafaf7;
+  --fg: #222;
+  --muted: #777;
+  --panel: #fff;
+  --read: #2e9d4f;
+  --sub: #222;
+  --mod: #2a62d4;
+  --inval: #d8382f;
+  --cached: #4cc06a;
+}
+@media (prefers-color-scheme: dark) {
+  :root, svg {
+    --bg: #1c1c1e;
+    --fg: #e6e6e6;
+    --muted: #999;
+    --panel: #26262a;
+    --sub: #e6e6e6;
+  }
+}
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.label { fill: var(--fg); font-size: 15px; }
+.small { fill: var(--muted); font-size: 13px; }
+.caption { fill: var(--fg); font-size: 14px; }
+.edge { stroke-width: 3; fill: none; }
+.read { stroke: var(--read); }
+.mod { stroke: var(--mod); stroke-dasharray: 8 5; }
+.client { stroke: var(--fg); stroke-width: 2; }
+.shard { stroke: var(--fg); stroke-width: 2; fill: var(--panel); }
+
+@keyframes k-sub-0-dir {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  6.954% { opacity: 0; }
+  8.278% { opacity: 1; }
+  83.444% { stroke: var(--sub); }
+  84.768% { stroke: var(--inval); }
+  86.755% { opacity: 1; }
+  88.079% { opacity: 0; }
+  88.411% { stroke: var(--inval); }
+  89.735% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-0-dir { animation: k-sub-0-dir 30.20s linear infinite; }
+@keyframes k-read-0-dir {
+  0.000% { opacity: 0; }
+  1.987% { opacity: 0; }
+  3.311% { opacity: 1; }
+  6.954% { opacity: 1; }
+  8.278% { opacity: 0; }
+  66.556% { opacity: 0; }
+  67.881% { opacity: 1; }
+  71.523% { opacity: 1; }
+  72.848% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-0-dir { animation: k-read-0-dir 30.20s linear infinite; }
+@keyframes k-mod-0-dir {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-0-dir { animation: k-mod-0-dir 30.20s linear infinite; }
+@keyframes k-sub-0-node {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  6.954% { opacity: 0; }
+  8.278% { opacity: 1; }
+  49.007% { stroke: var(--sub); }
+  50.331% { stroke: var(--inval); }
+  52.318% { opacity: 1; }
+  53.642% { opacity: 0; }
+  53.974% { stroke: var(--inval); }
+  55.298% { stroke: var(--sub); }
+  71.523% { opacity: 0; }
+  72.848% { opacity: 1; }
+  83.444% { stroke: var(--sub); }
+  84.768% { stroke: var(--inval); }
+  86.755% { opacity: 1; }
+  88.079% { opacity: 0; }
+  88.411% { stroke: var(--inval); }
+  89.735% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-0-node { animation: k-sub-0-node 30.20s linear infinite; }
+@keyframes k-read-0-node {
+  0.000% { opacity: 0; }
+  3.642% { opacity: 0; }
+  4.967% { opacity: 1; }
+  6.954% { opacity: 1; }
+  8.278% { opacity: 0; }
+  68.212% { opacity: 0; }
+  69.536% { opacity: 1; }
+  71.523% { opacity: 1; }
+  72.848% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-0-node { animation: k-read-0-node 30.20s linear infinite; }
+@keyframes k-mod-0-node {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-0-node { animation: k-mod-0-node 30.20s linear infinite; }
+@keyframes k-sub-1-dir {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  17.881% { opacity: 0; }
+  19.205% { opacity: 1; }
+  83.444% { stroke: var(--sub); }
+  84.768% { stroke: var(--inval); }
+  86.755% { opacity: 1; }
+  88.079% { opacity: 0; }
+  88.411% { stroke: var(--inval); }
+  89.735% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-1-dir { animation: k-sub-1-dir 30.20s linear infinite; }
+@keyframes k-read-1-dir {
+  0.000% { opacity: 0; }
+  12.914% { opacity: 0; }
+  14.238% { opacity: 1; }
+  17.881% { opacity: 1; }
+  19.205% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-1-dir { animation: k-read-1-dir 30.20s linear infinite; }
+@keyframes k-mod-1-dir {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-1-dir { animation: k-mod-1-dir 30.20s linear infinite; }
+@keyframes k-sub-1-node {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  17.881% { opacity: 0; }
+  19.205% { opacity: 1; }
+  49.007% { stroke: var(--sub); }
+  50.331% { stroke: var(--inval); }
+  52.318% { opacity: 1; }
+  53.642% { opacity: 0; }
+  53.974% { stroke: var(--inval); }
+  55.298% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-1-node { animation: k-sub-1-node 30.20s linear infinite; }
+@keyframes k-read-1-node {
+  0.000% { opacity: 0; }
+  14.570% { opacity: 0; }
+  15.894% { opacity: 1; }
+  17.881% { opacity: 1; }
+  19.205% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-1-node { animation: k-read-1-node 30.20s linear infinite; }
+@keyframes k-mod-1-node {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-1-node { animation: k-mod-1-node 30.20s linear infinite; }
+@keyframes k-sub-2-dir {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  28.808% { opacity: 0; }
+  30.132% { opacity: 1; }
+  83.444% { stroke: var(--sub); }
+  84.768% { stroke: var(--inval); }
+  86.755% { opacity: 1; }
+  88.079% { opacity: 0; }
+  88.411% { stroke: var(--inval); }
+  89.735% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-2-dir { animation: k-sub-2-dir 30.20s linear infinite; }
+@keyframes k-read-2-dir {
+  0.000% { opacity: 0; }
+  23.841% { opacity: 0; }
+  25.166% { opacity: 1; }
+  28.808% { opacity: 1; }
+  30.132% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-2-dir { animation: k-read-2-dir 30.20s linear infinite; }
+@keyframes k-mod-2-dir {
+  0.000% { opacity: 0; }
+  77.483% { opacity: 0; }
+  78.808% { opacity: 1; }
+  81.457% { opacity: 1; }
+  82.781% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-2-dir { animation: k-mod-2-dir 30.20s linear infinite; }
+@keyframes k-sub-2-node {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  28.808% { opacity: 0; }
+  30.132% { opacity: 1; }
+  49.007% { stroke: var(--sub); }
+  50.331% { stroke: var(--inval); }
+  52.318% { opacity: 1; }
+  53.642% { opacity: 0; }
+  53.974% { stroke: var(--inval); }
+  55.298% { stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-2-node { animation: k-sub-2-node 30.20s linear infinite; }
+@keyframes k-read-2-node {
+  0.000% { opacity: 0; }
+  25.497% { opacity: 0; }
+  26.821% { opacity: 1; }
+  28.808% { opacity: 1; }
+  30.132% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-2-node { animation: k-read-2-node 30.20s linear infinite; }
+@keyframes k-mod-2-node {
+  0.000% { opacity: 0; }
+  77.483% { opacity: 0; }
+  78.808% { opacity: 1; }
+  81.457% { opacity: 1; }
+  82.781% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-2-node { animation: k-mod-2-node 30.20s linear infinite; }
+@keyframes k-sub-3-dir {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-3-dir { animation: k-sub-3-dir 30.20s linear infinite; }
+@keyframes k-read-3-dir {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-3-dir { animation: k-read-3-dir 30.20s linear infinite; }
+@keyframes k-mod-3-dir {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-3-dir { animation: k-mod-3-dir 30.20s linear infinite; }
+@keyframes k-sub-3-node {
+  0.000% { opacity: 0; stroke: var(--sub); }
+  100.000% { opacity: 0; stroke: var(--sub); }
+}
+#sub-3-node { animation: k-sub-3-node 30.20s linear infinite; }
+@keyframes k-read-3-node {
+  0.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#read-3-node { animation: k-read-3-node 30.20s linear infinite; }
+@keyframes k-mod-3-node {
+  0.000% { opacity: 0; }
+  43.046% { opacity: 0; }
+  44.371% { opacity: 1; }
+  47.020% { opacity: 1; }
+  48.344% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#mod-3-node { animation: k-mod-3-node 30.20s linear infinite; }
+@keyframes k-client-0 {
+  0.000% { fill: var(--panel); }
+  6.954% { fill: var(--panel); }
+  8.278% { fill: var(--cached); }
+  52.318% { fill: var(--cached); }
+  53.642% { fill: var(--panel); }
+  71.523% { fill: var(--panel); }
+  72.848% { fill: var(--cached); }
+  86.755% { fill: var(--cached); }
+  88.079% { fill: var(--panel); }
+  100.000% { fill: var(--panel); }
+}
+#client-0 { animation: k-client-0 30.20s linear infinite; }
+@keyframes k-client-1 {
+  0.000% { fill: var(--panel); }
+  17.881% { fill: var(--panel); }
+  19.205% { fill: var(--cached); }
+  52.318% { fill: var(--cached); }
+  53.642% { fill: var(--panel); }
+  100.000% { fill: var(--panel); }
+}
+#client-1 { animation: k-client-1 30.20s linear infinite; }
+@keyframes k-client-2 {
+  0.000% { fill: var(--panel); }
+  28.808% { fill: var(--panel); }
+  30.132% { fill: var(--cached); }
+  52.318% { fill: var(--cached); }
+  53.642% { fill: var(--panel); }
+  100.000% { fill: var(--panel); }
+}
+#client-2 { animation: k-client-2 30.20s linear infinite; }
+@keyframes k-client-3 {
+  0.000% { fill: var(--panel); }
+  100.000% { fill: var(--panel); }
+}
+#client-3 { animation: k-client-3 30.20s linear infinite; }
+@keyframes k-v0 {
+  0.000% { opacity: 1; }
+  46.358% { opacity: 1; }
+  47.020% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#v0 { animation: k-v0 30.20s linear infinite; }
+@keyframes k-v1 {
+  0.000% { opacity: 0; }
+  46.358% { opacity: 0; }
+  47.020% { opacity: 1; }
+  80.795% { opacity: 1; }
+  81.457% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#v1 { animation: k-v1 30.20s linear infinite; }
+@keyframes k-v2 {
+  0.000% { opacity: 0; }
+  80.795% { opacity: 0; }
+  81.457% { opacity: 1; }
+  99.338% { opacity: 1; }
+  100.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#v2 { animation: k-v2 30.20s linear infinite; }
+@keyframes k-c0 {
+  0.000% { opacity: 1; }
+  10.265% { opacity: 1; }
+  10.927% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c0 { animation: k-c0 30.20s linear infinite; }
+@keyframes k-c1 {
+  0.000% { opacity: 0; }
+  10.265% { opacity: 0; }
+  10.927% { opacity: 1; }
+  21.192% { opacity: 1; }
+  21.854% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c1 { animation: k-c1 30.20s linear infinite; }
+@keyframes k-c2 {
+  0.000% { opacity: 0; }
+  21.192% { opacity: 0; }
+  21.854% { opacity: 1; }
+  32.119% { opacity: 1; }
+  32.781% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c2 { animation: k-c2 30.20s linear infinite; }
+@keyframes k-c3 {
+  0.000% { opacity: 0; }
+  32.119% { opacity: 0; }
+  32.781% { opacity: 1; }
+  40.397% { opacity: 1; }
+  41.060% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c3 { animation: k-c3 30.20s linear infinite; }
+@keyframes k-c4 {
+  0.000% { opacity: 0; }
+  40.397% { opacity: 0; }
+  41.060% { opacity: 1; }
+  46.358% { opacity: 1; }
+  47.020% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c4 { animation: k-c4 30.20s linear infinite; }
+@keyframes k-c5 {
+  0.000% { opacity: 0; }
+  46.358% { opacity: 0; }
+  47.020% { opacity: 1; }
+  56.623% { opacity: 1; }
+  57.285% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c5 { animation: k-c5 30.20s linear infinite; }
+@keyframes k-c6 {
+  0.000% { opacity: 0; }
+  56.623% { opacity: 0; }
+  57.285% { opacity: 1; }
+  63.907% { opacity: 1; }
+  64.570% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c6 { animation: k-c6 30.20s linear infinite; }
+@keyframes k-c7 {
+  0.000% { opacity: 0; }
+  63.907% { opacity: 0; }
+  64.570% { opacity: 1; }
+  74.834% { opacity: 1; }
+  75.497% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c7 { animation: k-c7 30.20s linear infinite; }
+@keyframes k-c8 {
+  0.000% { opacity: 0; }
+  74.834% { opacity: 0; }
+  75.497% { opacity: 1; }
+  80.795% { opacity: 1; }
+  81.457% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c8 { animation: k-c8 30.20s linear infinite; }
+@keyframes k-c9 {
+  0.000% { opacity: 0; }
+  80.795% { opacity: 0; }
+  81.457% { opacity: 1; }
+  91.060% { opacity: 1; }
+  91.722% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c9 { animation: k-c9 30.20s linear infinite; }
+@keyframes k-c10 {
+  0.000% { opacity: 0; }
+  91.060% { opacity: 0; }
+  91.722% { opacity: 1; }
+  99.338% { opacity: 1; }
+  100.000% { opacity: 0; }
+  100.000% { opacity: 0; }
+}
+#c10 { animation: k-c10 30.20s linear infinite; }
+</style>
+<rect width="760" height="490" fill="var(--bg)"/>
+<rect x="20" y="16" width="18" height="4" fill="var(--read)"/>
+<text x="44" y="23" class="small">read</text>
+<rect x="150" y="16" width="18" height="4" fill="var(--sub)"/>
+<text x="174" y="23" class="small">subscription</text>
+<rect x="280" y="16" width="18" height="4" fill="var(--mod)"/>
+<text x="304" y="23" class="small">modification</text>
+<rect x="410" y="16" width="18" height="4" fill="var(--inval)"/>
+<text x="434" y="23" class="small">invalidation</text>
+<text x="20" y="44" class="small">filled client = cached NodeRef + Node</text>
+<line id="sub-0-dir" class="edge" x1="138" y1="110" x2="520" y2="200.0"/>
+<line id="read-0-dir" class="edge read" x1="138" y1="116" x2="520" y2="206.0"/>
+<line id="mod-0-dir" class="edge mod" x1="138" y1="116" x2="520" y2="206.0"/>
+<line id="sub-0-node" class="edge" x1="138" y1="110" x2="520" y2="380.0"/>
+<line id="read-0-node" class="edge read" x1="138" y1="116" x2="520" y2="386.0"/>
+<line id="mod-0-node" class="edge mod" x1="138" y1="116" x2="520" y2="386.0"/>
+<line id="sub-1-dir" class="edge" x1="138" y1="210" x2="520" y2="200.0"/>
+<line id="read-1-dir" class="edge read" x1="138" y1="216" x2="520" y2="206.0"/>
+<line id="mod-1-dir" class="edge mod" x1="138" y1="216" x2="520" y2="206.0"/>
+<line id="sub-1-node" class="edge" x1="138" y1="210" x2="520" y2="380.0"/>
+<line id="read-1-node" class="edge read" x1="138" y1="216" x2="520" y2="386.0"/>
+<line id="mod-1-node" class="edge mod" x1="138" y1="216" x2="520" y2="386.0"/>
+<line id="sub-2-dir" class="edge" x1="138" y1="310" x2="520" y2="200.0"/>
+<line id="read-2-dir" class="edge read" x1="138" y1="316" x2="520" y2="206.0"/>
+<line id="mod-2-dir" class="edge mod" x1="138" y1="316" x2="520" y2="206.0"/>
+<line id="sub-2-node" class="edge" x1="138" y1="310" x2="520" y2="380.0"/>
+<line id="read-2-node" class="edge read" x1="138" y1="316" x2="520" y2="386.0"/>
+<line id="mod-2-node" class="edge mod" x1="138" y1="316" x2="520" y2="386.0"/>
+<line id="sub-3-dir" class="edge" x1="138" y1="410" x2="520" y2="200.0"/>
+<line id="read-3-dir" class="edge read" x1="138" y1="416" x2="520" y2="206.0"/>
+<line id="mod-3-dir" class="edge mod" x1="138" y1="416" x2="520" y2="206.0"/>
+<line id="sub-3-node" class="edge" x1="138" y1="410" x2="520" y2="380.0"/>
+<line id="read-3-node" class="edge read" x1="138" y1="416" x2="520" y2="386.0"/>
+<line id="mod-3-node" class="edge mod" x1="138" y1="416" x2="520" y2="386.0"/>
+<circle id="client-0" class="client" cx="110" cy="110" r="28"/>
+<text x="18" y="115" class="label">client 1</text>
+<circle id="client-1" class="client" cx="110" cy="210" r="28"/>
+<text x="18" y="215" class="label">client 2</text>
+<circle id="client-2" class="client" cx="110" cy="310" r="28"/>
+<text x="18" y="315" class="label">client 3</text>
+<circle id="client-3" class="client" cx="110" cy="410" r="28"/>
+<text x="18" y="415" class="label">client 4</text>
+<rect x="520" y="160" width="200" height="80" rx="8" class="shard"/>
+<text x="532" y="190" class="label">Directory shard</text>
+<rect x="520" y="340" width="200" height="80" rx="8" class="shard"/>
+<text x="532" y="370" class="label">Node shard</text>
+<text x="532" y="216" class="small">NodeRef (root, "f") &#8594; node</text>
+<text id="v0" x="532" y="396" class="small">Node attrs v1</text>
+<text id="v1" x="532" y="396" class="small">Node attrs v2</text>
+<text id="v2" x="532" y="396" class="small">Node attrs v3</text>
+<text id="c0" x="20" y="70" class="caption">client 1: Lookup(root, &quot;f&quot;) - read requests (green) to directory shard and node shard.</text>
+<text id="c1" x="20" y="70" class="caption">client 2: Lookup(root, &quot;f&quot;) - read requests (green) to directory shard and node shard.</text>
+<text id="c2" x="20" y="70" class="caption">client 3: Lookup(root, &quot;f&quot;) - read requests (green) to directory shard and node shard.</text>
+<text id="c3" x="20" y="70" class="caption">Clients 1-3 reply to Lookup and GetAttr from their caches - no requests to the shards.</text>
+<text id="c4" x="20" y="70" class="caption">client 4: SetAttr(node) - modification (blue) to node shard.</text>
+<text id="c5" x="20" y="70" class="caption">The shards send invalidations (red) to the subscribers and drop the subscriptions.</text>
+<text id="c6" x="20" y="70" class="caption">Clients 1-3 still have the NodeRef cached, but not the Node - Lookup goes to the shards again.</text>
+<text id="c7" x="20" y="70" class="caption">client 1: Lookup(root, &quot;f&quot;) - read requests (green) to directory shard and node shard.</text>
+<text id="c8" x="20" y="70" class="caption">client 3: Unlink(root, &quot;f&quot;) - modification (blue) to directory shard and node shard.</text>
+<text id="c9" x="20" y="70" class="caption">The shards send invalidations (red) to the subscribers and drop the subscriptions.</text>
+<text id="c10" x="20" y="70" class="caption">Nothing is cached anymore. The scenario restarts.</text>
+</svg>
