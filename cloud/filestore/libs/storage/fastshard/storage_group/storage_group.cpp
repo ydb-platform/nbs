@@ -53,7 +53,12 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
         *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->WriteLogRecord(request); });
+        [&]
+        {
+            return params->Device.Node->WriteLogRecord(
+                *params->Context,
+                request);
+        });
     return 0;
 }
 
@@ -75,7 +80,12 @@ int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
         *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->ReadJournalTail(request); });
+        [&]
+        {
+            return params->Device.Node->ReadJournalTail(
+                *params->Context,
+                request);
+        });
 
     return 0;
 }
@@ -212,7 +222,7 @@ public:
                 SILK_DEBUG(
                     "sg read: %s",
                     request.ShortUtf8DebugString().c_str());
-                return Devices[i].Node->ReadPages(request);
+                return Devices[i].Node->ReadPages(ctx, request);
             });
 
         if (!HasError(response.GetError())) {

@@ -88,6 +88,7 @@ void TJournalledStorageNode::Stop()
 }
 
 NProto::TAcquireDevicesResponse TJournalledStorageNode::AcquireDevices(
+    TFastShardContext&,
     NProto::TAcquireDevicesRequest)
 {
     ++Counters.AcquireDevices;
@@ -95,6 +96,7 @@ NProto::TAcquireDevicesResponse TJournalledStorageNode::AcquireDevices(
 }
 
 NProto::TReleaseDevicesResponse TJournalledStorageNode::ReleaseDevices(
+    TFastShardContext&,
     NProto::TReleaseDevicesRequest)
 {
     ++Counters.ReleaseDevices;
@@ -102,6 +104,7 @@ NProto::TReleaseDevicesResponse TJournalledStorageNode::ReleaseDevices(
 }
 
 NProto::TFormatDeviceResponse TJournalledStorageNode::FormatDevice(
+    TFastShardContext&,
     NProto::TFormatDeviceRequest)
 {
     ++Counters.FormatDevice;
@@ -109,6 +112,7 @@ NProto::TFormatDeviceResponse TJournalledStorageNode::FormatDevice(
 }
 
 NProto::TListDevicesResponse TJournalledStorageNode::ListDevices(
+    TFastShardContext&,
     NProto::TListDevicesRequest)
 {
     ++Counters.ListDevices;
@@ -125,6 +129,7 @@ NProto::TListDevicesResponse TJournalledStorageNode::ListDevices(
 
 #define SN_FORWARD(name)                                                       \
     NProto::T##name##Response TJournalledStorageNode::name(                    \
+        TFastShardContext&,                                                    \
         NProto::T##name##Request request)                                      \
     {                                                                          \
         ++Counters.name;                                                       \

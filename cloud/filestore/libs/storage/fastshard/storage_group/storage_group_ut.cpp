@@ -150,6 +150,7 @@ struct TFakeDevice: TFakeStorageNode
         Watermarks;
 
     NProto::TReadPagesResponse ReadPages(
+        TFastShardContext&,
         NProto::TReadPagesRequest request) override
     {
         const auto refs = request.GetPageGroupRefs();
@@ -170,18 +171,21 @@ struct TFakeDevice: TFakeStorageNode
     }
 
     NProto::TWriteLogRecordResponse WriteLogRecord(
+        TFastShardContext&,
         NProto::TWriteLogRecordRequest request) override
     {
         return Writes.Call(std::move(request));
     }
 
     NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext&,
         NProto::TAcquireDevicesRequest request) override
     {
         return Acquires.Call(std::move(request));
     }
 
     NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
         NProto::TAdvanceLsnLowWatermarkRequest request) override
     {
         return Watermarks.Call(std::move(request));

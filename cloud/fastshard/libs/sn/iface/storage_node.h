@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/fastshard/libs/common/public.h>
 #include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <memory>
@@ -36,6 +37,7 @@ struct IStorageNode
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
     virtual NCloud::NProto::T##name##Response name(                            \
+        TFastShardContext& ctx,                                                \
         NCloud::NProto::T##name##Request request) = 0;                         \
     // SN_DECLARE_METHOD
 

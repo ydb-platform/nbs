@@ -78,11 +78,12 @@ struct TBlockingStorageNode: public TFakeStorageNode
     std::atomic<bool> Completed{false};
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext& ctx,
         NCloud::NProto::TAcquireDevicesRequest request) override
     {
         Gate.wait();
         Completed.store(true);
-        return TFakeStorageNode::AcquireDevices(std::move(request));
+        return TFakeStorageNode::AcquireDevices(ctx, std::move(request));
     }
 };
 
