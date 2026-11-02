@@ -276,6 +276,24 @@ def test_write_summary_omits_fail_build_log_link(tmp_path: Path, monkeypatch) ->
     assert "https://summary/build_errors.html" not in content
 
 
+def test_configure_failure_links_build_report_with_passing_tests(
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
+    report = tmp_path / "junit.xml"
+    write_junit_xml(report, mk_testcase())
+    summary = gs.gen_summary(
+        "",
+        str(tmp_path),
+        [("Tests", "tests.html", str(report))],
+        build_error_log_url="build_errors.html",
+    )
+
+    markdown = gs.render_summary_markdown(summary, build_failed_count=1)
+    assert "[Build errors](build_errors.html)" in markdown
+    assert "[1](build_errors.html)" in markdown
+    assert summary.lines[0].test_count == summary.lines[0].passed == 1
+
+
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
 
