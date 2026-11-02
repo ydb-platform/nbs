@@ -105,7 +105,7 @@ private:
         ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture Endpoint;
         ui32 RefCount = 0;
         bool Configured = false;
-        bool Alive = true;
+        EHostLiveness Liveness = EHostLiveness::Unknown;
         TVector<std::weak_ptr<ICellHostWatcher>> Watchers;
     };
 
@@ -129,8 +129,9 @@ public:
     [[nodiscard]] TCellHostEndpoints GetDescribeEndpoints(
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    // A live configured host, or - only when there is none - a live host
-    // discovered at runtime.
+    // A host that answered a ping, configured before discovered; only when
+    // there is none, a host that has not been asked yet, in the same order.
+    // Never a host found dead.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHost() const;
 
     // The same, minus hosts the caller already knows are no good for it -
@@ -165,7 +166,7 @@ public:
     struct THostStatus
     {
         TString Fqdn;
-        bool Alive = false;
+        EHostLiveness Liveness = EHostLiveness::Unknown;
         bool Warm = false;
         size_t Connections = 0;
     };

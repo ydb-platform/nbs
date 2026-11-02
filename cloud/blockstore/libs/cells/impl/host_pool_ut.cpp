@@ -963,13 +963,9 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         service.PingPromise.SetValue(std::move(response));
 
         UNIT_ASSERT_VALUES_EQUAL(0, watcher->Notifications);
-
-        bool sawHostA = false;
-        for (ui32 i = 0; i < 50; ++i) {
-            auto picked = pool->PickHost();
-            sawHostA |= picked.GetResult().GetFqdn() == "host-a";
-        }
-        UNIT_ASSERT_C(sawHostA, "the host must not have been buried");
+        UNIT_ASSERT_C(
+            !pool->IsHostKnownDead("host-a"),
+            "the host must not have been buried");
     }
 
     Y_UNIT_TEST(ShouldIgnoreAPingFromAChannelThatWasRebuilt)
@@ -1050,6 +1046,186 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         pool.SetHostAlive("host-a", true);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.HostsUnavailable->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameAvailable->Val());
+    }
+
+    // Which of the three configured hosts get the two warm channels follows
+    // the hash order of the config, so a test asks rather than assumes.
+    struct TWarmth
+    {
+        TVector<TString> Warm;
+        TString Cold;
+    };
+
+    TWarmth SortByWarmth(const TCellHostPool& pool)
+    {
+        TWarmth result;
+        for (const auto& status: pool.GetHostStatuses()) {
+            if (status.Warm) {
+                result.Warm.push_back(status.Fqdn);
+            } else {
+                result.Cold = status.Fqdn;
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, result.Warm.size());
+        UNIT_ASSERT(result.Cold);
+        return result;
+    }
+
+    EHostLiveness LivenessOf(const TCellHostPool& pool, const TString& fqdn)
+    {
+        for (const auto& status: pool.GetHostStatuses()) {
+            if (status.Fqdn == fqdn) {
+                return status.Liveness;
+            }
+        }
+        UNIT_FAIL("no status for " + fqdn);
+        return EHostLiveness::Unknown;
+    }
+
+    Y_UNIT_TEST(ShouldStartUnknownUntilPinged)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true, true);
+        const auto hosts = SortByWarmth(*pool);
+
+        // nothing has answered yet, so nothing is vouched for
+        for (const auto& status: pool->GetHostStatuses()) {
+            UNIT_ASSERT_EQUAL_C(
+                EHostLiveness::Unknown,
+                status.Liveness,
+                status.Fqdn);
+        }
+
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        // only the warm hosts are pinged; the cold one stays unknown
+        UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, hosts.Warm[0]));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, hosts.Warm[1]));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Unknown, LivenessOf(*pool, hosts.Cold));
+    }
+
+    Y_UNIT_TEST(ShouldPreferVerifiedHostOnFailover)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true, true);
+        const auto hosts = SortByWarmth(*pool);
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        // leaving one warm host: the other answered a ping, the cold one
+        // never did
+        for (ui32 i = 0; i < 50; ++i) {
+            auto picked = pool->PickHostExcept({hosts.Warm[0]});
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                hosts.Warm[1],
+                picked.GetResult().GetFqdn());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFallBackToUnverifiedHostsWhenNoneVerified)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true, true);
+        const auto hosts = SortByWarmth(*pool);
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        for (const auto& fqdn: hosts.Warm) {
+            env.EndpointsSetup->Service(fqdn).PingError =
+                MakeError(E_REJECTED, "host is down");
+        }
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        // the cold host was warmed in their place but has not been pinged yet
+        UNIT_ASSERT_EQUAL(EHostLiveness::Unknown, LivenessOf(*pool, hosts.Cold));
+        for (ui32 i = 0; i < 10; ++i) {
+            auto picked = pool->PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(hosts.Cold, picked.GetResult().GetFqdn());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreferVerifiedDiscoveredHostOverUnknownConfigured)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true, true);
+        const auto hosts = SortByWarmth(*pool);
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        // a tablet host this cell never listed; its channel gets pinged too
+        pool->AcquireControlChannel("host-z");
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, "host-z"));
+
+        for (const auto& fqdn: hosts.Warm) {
+            env.EndpointsSetup->Service(fqdn).PingError =
+                MakeError(E_REJECTED, "host is down");
+        }
+        env.AdvanceTime(TDuration::Seconds(1));
+
+        // the cold host is configured but only just warmed; host-z is known
+        // to answer
+        for (ui32 i = 0; i < 10; ++i) {
+            auto picked = pool->PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_EQUAL("host-z", picked.GetResult().GetFqdn());
+        }
+
+        // once the cold host answers, the configured list is back in charge
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, hosts.Cold));
+        for (ui32 i = 0; i < 10; ++i) {
+            auto picked = pool->PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(hosts.Cold, picked.GetResult().GetFqdn());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotCountFirstPingAsRecovery)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true);
+        const auto& counters = pool->GetCounters();
+
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostBecameAvailable->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostBecameUnavailable->Val());
+
+        auto& service = env.EndpointsSetup->Service("host-a");
+        service.PingError = MakeError(E_REJECTED, "host is down");
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameUnavailable->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostsUnavailable->Val());
+
+        service.PingError = {};
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostBecameAvailable->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostsUnavailable->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepRetainedDiscoveredHostOnItsOwnFirstAnswer)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        // no Start(): which configured host it would warm is up to hash order
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+
+        pool.AcquireControlChannel("host-a");
+        pool.SetHostAlive("host-a", false);
+
+        // the only other channel is dead, so the discovered host is retained
+        pool.AcquireControlChannel("host-z");
+        pool.ReleaseControlChannel("host-z");
+
+        // a describe opens a channel to host-b, which nobody has pinged yet
+        auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
+        Y_UNUSED(pool.GetDescribeEndpoints(clientConfig));
+
+        // host-z answers its first ping: an unverified host-b is no reason to
+        // let go of the one host known to work
+        pool.SetHostAlive("host-z", true);
+        pool.SetHostAlive("host-b", false);
+
+        pool.AcquireControlChannel("host-z");
+        UNIT_ASSERT_VALUES_EQUAL(1, endpoints->SetupCalls["host-z"]);
     }
 }
 

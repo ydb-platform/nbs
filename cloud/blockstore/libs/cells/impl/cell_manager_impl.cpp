@@ -77,7 +77,7 @@ TCellsSnapshot TCellManager::GetSnapshot()
         for (const auto& status: pool->GetHostStatuses()) {
             statuses.push_back({
                 .Fqdn = status.Fqdn,
-                .Alive = status.Alive,
+                .Liveness = status.Liveness,
                 .Warm = status.Warm,
                 .Connections = static_cast<ui32>(status.Connections)});
         }
