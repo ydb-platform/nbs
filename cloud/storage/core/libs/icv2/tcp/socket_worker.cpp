@@ -4,6 +4,8 @@
 #include <util/system/error.h>
 #include <util/system/guard.h>
 
+#include <algorithm>
+
 namespace NCloud::NIcV2 {
 
 namespace {
@@ -79,15 +81,26 @@ bool TSocketWorker::IsStopping() const
     return Stopping.load();
 }
 
-void TSocketWorker::Wake()
+int TSocketWorker::Wake()
 {
+    if (const int error = WakeError.load()) {
+        return error;
+    }
+
     const char byte = 0;
     ssize_t res;
     do {
         res = send(WakeWriter, &byte, sizeof(byte), MSG_NOSIGNAL);
     } while (res < 0 && errno == EINTR);
-    Y_ABORT_UNLESS(
-        res == 1 || (res < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)));
+    if (res == 1 || (res < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))) {
+        return 0;
+    }
+
+    const int error = res < 0 ? errno : EIO;
+    int expected = 0;
+    WakeError.compare_exchange_strong(expected, error);
+    shutdown(WakeWriter, SHUT_WR);
+    return WakeError.load();
 }
 
 SOCKET TSocketWorker::GetWakeSocket() const
@@ -115,7 +128,18 @@ int TSocketWorker::Poll(TArrayRef<pollfd> fds, int timeout)
         !fds.empty() && fds[0].fd == GetWakeSocket(),
         "Poll() requires the wakeup socket as the first descriptor");
 
-    const int res = poll(fds.data(), fds.size(), timeout);
+    if (const int error = WakeError.load()) {
+        return -error;
+    }
+
+    // A bounded wait also handles a failed shutdown of the wakeup socket.
+    constexpr int MaxPollTimeoutMs = 1000;
+    const int boundedTimeout =
+        timeout < 0 ? MaxPollTimeoutMs : std::min(timeout, MaxPollTimeoutMs);
+    const int res = poll(fds.data(), fds.size(), boundedTimeout);
+    if (const int error = WakeError.load()) {
+        return -error;
+    }
     if (res < 0) {
         return errno == EINTR ? 0 : -errno;
     }

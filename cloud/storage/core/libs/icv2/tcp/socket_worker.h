@@ -35,6 +35,7 @@ class TSocketWorker
     std::thread Worker;
     bool Joined = false;
     std::atomic<bool> Stopping = false;
+    std::atomic<int> WakeError = 0;
 
 public:
     explicit TSocketWorker(ISocketWorkerHandler& handler);
@@ -45,7 +46,8 @@ public:
     void RequestStop();
     void Stop();
 
-    void Wake();
+    // Returns 0 or a positive errno. A failure is also returned by Poll().
+    int Wake();
     bool IsStopping() const;
     // Monitor readability to respond to Wake(); then call DrainWake().
     SOCKET GetWakeSocket() const;

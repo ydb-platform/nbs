@@ -2,6 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -27,6 +28,23 @@ public:
 
 Y_UNIT_TEST_SUITE(TIcV2SocketWorkerTest)
 {
+    Y_UNIT_TEST(ReturnsWakeErrorFromPoll)
+    {
+        class THandler final: public ISocketWorkerHandler
+        {
+        public:
+            void Run() override
+            {}
+        } handler;
+
+        TSocketWorker worker(handler);
+        UNIT_ASSERT_VALUES_EQUAL(shutdown(worker.GetWakeSocket(), SHUT_RD), 0);
+        UNIT_ASSERT_VALUES_EQUAL(worker.Wake(), EPIPE);
+        pollfd fd{.fd = worker.GetWakeSocket(), .events = POLLIN, .revents = 0};
+        UNIT_ASSERT_VALUES_EQUAL(worker.Poll({&fd, 1}, -1), -EPIPE);
+        worker.Stop();
+    }
+
     SIMPLE_UNIT_FORKED_TEST(RejectsStopFromWorkerBeforeWaitingForExternalStop)
     {
         const pid_t child = fork();
