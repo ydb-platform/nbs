@@ -189,15 +189,15 @@ def run_scenario(tl):
     sc.pause(
         "Clients 1-3 reply to Lookup and GetAttr from their caches - no "
         "requests to the shards.",
-        2.5)
+        4)
     sc.modify(3, ["node"], "SetAttr(node)", ["node"])
     sc.pause(
         "Clients 1-3 still have the NodeRef cached, but not the Node - "
         "Lookup goes to the shards again.",
-        2.2)
+        4)
     sc.read(0, ["dir", "node"], lookup)
     sc.modify(2, ["dir", "node"], 'Unlink(root, "f")', ["dir", "node"])
-    sc.pause("Nothing is cached anymore. The scenario restarts.", 2.5)
+    sc.pause("Nothing is cached anymore. The scenario restarts.", 4)
     return tl.finish()
 
 
