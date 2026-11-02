@@ -8,15 +8,14 @@
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
 #include <util/generic/hash_set.h>
+#include <util/generic/yexception.h>
 #include <util/random/random.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/system/error.h>
-
-#include <dirent.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <util/system/file.h>
+#include <util/system/fs.h>
+#include <util/system/fstat.h>
 
 namespace NCloud::NFileStore {
 
@@ -40,14 +39,19 @@ NProto::TError MakeSystemError(const TString& what, const TFsPath& path)
             << LastSystemErrorText(error));
 }
 
-TFileAttrs ToFileAttrs(const struct stat& st)
+TFileAttrs ToFileAttrs(const TFileStat& st)
 {
     return TFileAttrs{
-        .Ino = st.st_ino,
-        .Mode = st.st_mode,
-        .Size = static_cast<ui64>(st.st_size),
-        .Links = st.st_nlink,
+        .Ino = st.INode,
+        .Mode = st.Mode,
+        .Size = st.Size,
+        .Links = st.NLinks,
     };
+}
+
+TFileStat LStat(const TFsPath& path)
+{
+    return TFileStat(path, true /* nofollow */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,7 +209,7 @@ private:
             const ui32 dice = RandomNumber<ui32>(100);
             if (dice < Options.UnlinkPercentage) {
                 const auto path = OwnDir / name;
-                if (unlink(path.c_str())) {
+                if (!NFs::Remove(path)) {
                     return MakeSystemError("unlink", path);
                 }
                 State.Files.erase(name);
@@ -216,7 +220,7 @@ private:
                 const auto newName = NewName();
                 const auto path = OwnDir / name;
                 const auto newPath = OwnDir / newName;
-                if (rename(path.c_str(), newPath.c_str())) {
+                if (!NFs::Rename(path, newPath)) {
                     return MakeSystemError("rename", path);
                 }
                 State.Files.erase(name);
@@ -232,8 +236,8 @@ private:
 
         for (auto& [name, attrs]: State.Files) {
             const auto path = OwnDir / name;
-            struct stat st = {};
-            if (lstat(path.c_str(), &st)) {
+            const auto st = LStat(path);
+            if (st.IsNull()) {
                 return MakeSystemError("lstat", path);
             }
             attrs = ToFileAttrs(st);
@@ -245,8 +249,8 @@ private:
     NProto::TError CreateFile(const TString& name)
     {
         const auto path = OwnDir / name;
-        const int fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
-        if (fd < 0) {
+        TFileHandle file(path, CreateNew | WrOnly | Seq);
+        if (!file.IsOpen()) {
             return MakeSystemError("open", path);
         }
 
@@ -255,20 +259,15 @@ private:
             'a' + NameCounter % 26);
         size_t written = 0;
         while (written < data.size()) {
-            const ssize_t res =
-                write(fd, data.data() + written, data.size() - written);
+            const i32 res =
+                file.Write(data.data() + written, data.size() - written);
             if (res < 0) {
-                if (LastSystemError() == EINTR) {
-                    continue;
-                }
-                auto error = MakeSystemError("write", path);
-                close(fd);
-                return error;
+                return MakeSystemError("write", path);
             }
             written += res;
         }
 
-        if (close(fd)) {
+        if (!file.Close()) {
             return MakeSystemError("close", path);
         }
 
@@ -295,22 +294,19 @@ private:
         // The listing should contain exactly the expected names.
         //
 
-        DIR* d = opendir(dir.c_str());
-        if (!d) {
-            ReportError(state, FormatError(MakeSystemError("opendir", dir)));
+        //
+        // TFsPath::ListNames reports errors via exceptions.
+        //
+
+        TVector<TString> names;
+        try {
+            dir.ListNames(names);
+        } catch (...) {
+            ReportError(state, TStringBuilder() << "failed to list "
+                << dir.GetPath().Quote() << ": " << CurrentExceptionMessage());
             return;
         }
-
-        THashSet<TString> listed;
-        while (const dirent* entry = readdir(d)) {
-            const TStringBuf name(entry->d_name);
-            if (name != "." && name != "..") {
-                listed.emplace(name);
-            }
-        }
-        if (closedir(d)) {
-            ReportError(state, FormatError(MakeSystemError("closedir", dir)));
-        }
+        const THashSet<TString> listed(names.begin(), names.end());
 
         for (const auto& [name, _]: state.Files) {
             if (!listed.contains(name)) {
@@ -332,8 +328,8 @@ private:
         for (const auto& [name, expected]: state.Files) {
             ++CheckedFiles;
             const auto path = dir / name;
-            struct stat st = {};
-            if (lstat(path.c_str(), &st)) {
+            const auto st = LStat(path);
+            if (st.IsNull()) {
                 ReportError(state, FormatError(MakeSystemError("lstat", path)));
                 continue;
             }
@@ -350,20 +346,29 @@ private:
         // The renamed-from and unlinked names should not exist.
         //
 
-        for (const auto* names: {&state.RenamedFrom, &state.Unlinked}) {
-            for (const auto& name: *names) {
-                ++CheckedAbsentNames;
-                const auto path = dir / name;
-                struct stat st = {};
-                if (!lstat(path.c_str(), &st)) {
-                    ReportError(state, TStringBuilder() << name.Quote()
-                        << " should not exist, actual "
-                        << FormatAttrs(ToFileAttrs(st)));
-                } else if (LastSystemError() != ENOENT) {
-                    ReportError(
-                        state,
-                        FormatError(MakeSystemError("lstat", path)));
-                }
+        CheckAbsent(state, dir, state.RenamedFrom, "renamed-from");
+        CheckAbsent(state, dir, state.Unlinked, "unlinked");
+    }
+
+    void CheckAbsent(
+        const TDirState& state,
+        const TFsPath& dir,
+        const TVector<TString>& names,
+        const TString& kind)
+    {
+        for (const auto& name: names) {
+            ++CheckedAbsentNames;
+            const auto path = dir / name;
+            const auto st = LStat(path);
+            if (!st.IsNull()) {
+                ReportError(state, TStringBuilder() << kind << " "
+                    << name.Quote() << " should not exist, actual "
+                    << FormatAttrs(ToFileAttrs(st)));
+            } else if (LastSystemError() != ENOENT) {
+                ReportError(
+                    state,
+                    TStringBuilder() << kind << " " << name.Quote() << ": "
+                        << FormatError(MakeSystemError("lstat", path)));
             }
         }
     }

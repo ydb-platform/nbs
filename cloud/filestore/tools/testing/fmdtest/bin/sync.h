@@ -28,11 +28,11 @@ namespace NCloud::NFileStore {
 class TSyncClient
 {
 private:
-    TSocketHolder Socket;
+    TSocket Socket;
     const TDuration Timeout;
 
 public:
-    TSyncClient(TSocketHolder socket, TDuration timeout);
+    TSyncClient(TSocket socket, TDuration timeout);
 
     /**
      * Connects to the hub and introduces the instance.
