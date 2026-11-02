@@ -22,6 +22,7 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
+#include <util/digest/multi.h>
 #include <util/generic/hash_set.h>
 
 #include <utility>
@@ -204,6 +205,22 @@ class TVolumeProxyActor final
         TActorId ClientId;
     };
 
+    struct TExternalVolumeKey
+    {
+        TString DiskId;
+        ui64 ExternalVolumeTabletId;
+
+        bool operator==(const TExternalVolumeKey&) const = default;
+    };
+
+    struct TExternalVolumeKeyHash
+    {
+        size_t operator()(const TExternalVolumeKey& key) const
+        {
+            return MultiHash(key.DiskId, key.ExternalVolumeTabletId);
+        }
+    };
+
 private:
     const TStorageConfigConstPtr Config;
     const TDuration PipeInactivityTimeout;
@@ -220,7 +237,7 @@ private:
     // Mapping of the DiskId to the connection with exact DiskId match.
     THashMap<TString, TConnection*> ConnectionByRealDiskId;
     // External routes are identified by both disk and owner tablet.
-    THashMap<std::pair<TString, ui64>, TConnection*>
+    THashMap<TExternalVolumeKey, TConnection*, TExternalVolumeKeyHash>
         ConnectionByExternalVolume;
     THashMap<ui64, TTabletConnection> TabletConnections;
 
@@ -361,7 +378,9 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
 {
     if (externalVolumeTabletId) {
         if (TConnection** conn = ConnectionByExternalVolume.FindPtr(
-                std::pair{diskId, externalVolumeTabletId}))
+                TExternalVolumeKey{
+                    .DiskId = diskId,
+                    .ExternalVolumeTabletId = externalVolumeTabletId}))
         {
             return **conn;
         }
@@ -387,8 +406,9 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
             TemporaryServer));
 
     if (externalVolumeTabletId) {
-        ConnectionByExternalVolume[
-            std::pair{diskId, externalVolumeTabletId}] =
+        ConnectionByExternalVolume[TExternalVolumeKey{
+            .DiskId = diskId,
+            .ExternalVolumeTabletId = externalVolumeTabletId}] =
             &it->second;
     } else if (exactDiskIdMatch) {
         ConnectionByRealDiskId[diskId] = &it->second;
@@ -454,7 +474,9 @@ void TVolumeProxyActor::EraseConnection(
     if (conn->ExternalVolumeTabletId) {
         removeFromMap(
             ConnectionByExternalVolume,
-            std::pair{conn->DiskId, conn->ExternalVolumeTabletId});
+            TExternalVolumeKey{
+                .DiskId = conn->DiskId,
+                .ExternalVolumeTabletId = conn->ExternalVolumeTabletId});
     }
 
     DetachFromTablet(ctx, *conn);
