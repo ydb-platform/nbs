@@ -125,12 +125,14 @@ void TWriteBackCacheState::CancelPendingRequests()
             }
         });
 
+    HangingRequests.Cancel(QueuedOperations, error);
     FailAllUnallocatedPendingRequests(error);
     CancelSerializedPendingRequests();
 
     Nodes.VisitNodes(
         [&](ui64 nodeId, TNodeState& nodeState)
         {
+            CancelReleaseHandleRequests(nodeState);
             if (!IsFailed) {
                 UpdateFlushStatus(nodeId, nodeState);
             }
@@ -230,11 +232,11 @@ TFuture<TError> TWriteBackCacheState::AddFlushAllRequest(bool forShutdown)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (RequestsCancelled && !forShutdown) {
+    if (RequestsCancelled && (!forShutdown || IsFailed)) {
         return MakeFuture(MakeCancellationError());
     }
 
-    if (IsFailed) {
+    if (IsFailed && !RequestsCancelled) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
     }
 
@@ -257,14 +259,13 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (IsFailed) {
-        return HangingRequests.CreateFlushOrReleaseHandleResponse();
-    }
-
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr) {
         if (RequestsCancelled) {
             return MakeFuture(MakeCancellationError());
+        }
+        if (IsFailed) {
+            return HangingRequests.CreateFlushOrReleaseHandleResponse();
         }
         Stats->RequestCompletedImmediately(ERequestType::ReleaseHandle);
         return MakeFuture<TError>();
@@ -274,6 +275,9 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
     if (handleState == nullptr) {
         if (RequestsCancelled) {
             return MakeFuture(MakeCancellationError());
+        }
+        if (IsFailed) {
+            return HangingRequests.CreateFlushOrReleaseHandleResponse();
         }
         Stats->RequestCompletedImmediately(ERequestType::ReleaseHandle);
         return MakeFuture<TError>();
@@ -288,10 +292,17 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
 
         nodeState->HandlesWithReleaseRequests.insert(handle);
 
-        UpdateFlushStatus(nodeId, *nodeState);
+        if (!IsFailed) {
+            UpdateFlushStatus(nodeId, *nodeState);
+        }
     }
 
-    return handleState->ReleaseHandleRequest->ReadyToReleasePromise.GetFuture();
+    auto future =
+        handleState->ReleaseHandleRequest->ReadyToReleasePromise.GetFuture();
+    if (RequestsCancelled) {
+        CancelReleaseHandleRequests(*nodeState);
+    }
+    return future;
 }
 
 void TWriteBackCacheState::AddHangingRequest(
@@ -471,6 +482,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (IsFailed) {
+        ReleaseFailedFlushHandle(nodeId);
         return;
     }
 
@@ -495,6 +507,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 
         if (!RequestManager.SetFlushed(cachedRequest)) {
             SetFailedFlag();
+            CancelReleaseHandleRequests(nodeState);
             return;
         }
 
@@ -502,6 +515,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     }
 
     TryRemoveUnusedHandle(nodeState, flushHandle);
+    CancelReleaseHandleRequests(nodeState);
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
@@ -514,6 +528,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (IsFailed) {
+        ReleaseFailedFlushHandle(nodeId);
         return EFlushRetryStatus::ShouldNotRetry;
     }
 
@@ -587,6 +602,8 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         FailNodeUnallocatedPendingRequests(nodeState, error);
     }
 
+    CancelReleaseHandleRequests(nodeState);
+
     // Fail all ReleaseHandle requests
     while (!nodeState.HandlesWithReleaseRequests.empty()) {
         auto handle = *nodeState.HandlesWithReleaseRequests.begin();
@@ -617,6 +634,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
             auto* request = handleState.UnflushedRequests.PopFront();
             if (!RequestManager.SetHandleReleased(request)) {
                 SetFailedFlag();
+                CancelReleaseHandleRequests(nodeState);
                 return EFlushRetryStatus::ShouldNotRetry;
             }
         }
@@ -1020,6 +1038,11 @@ void TWriteBackCacheState::ProcessSerializedRequests()
     }
 
     ProcessPendingRequests();
+
+    if (RequestsCancelled) {
+        Nodes.VisitNodes([this](ui64, TNodeState& nodeState)
+                         { CancelReleaseHandleRequests(nodeState); });
+    }
 }
 
 void TWriteBackCacheState::ProcessPendingRequests()
@@ -1310,12 +1333,70 @@ void TWriteBackCacheState::CancelSerializedPendingRequests()
         });
 }
 
+void TWriteBackCacheState::CancelReleaseHandleRequests(TNodeState& nodeState)
+{
+    if (!RequestsCancelled || !IsFailed) {
+        // Healthy releases retain their normal flush lifecycle. Completing
+        // them early could destroy the only handle for later flush batches.
+        return;
+    }
+
+    auto it = nodeState.HandlesWithReleaseRequests.begin();
+    while (it != nodeState.HandlesWithReleaseRequests.end()) {
+        const auto handle = *it;
+        auto& handleState = nodeState.Handles[handle];
+
+        // Completing ReleaseHandle allows the frontend to destroy the backend
+        // handle. An active flush must release its borrow first.
+        if (handle == nodeState.FlushHandle) {
+            ++it;
+            continue;
+        }
+
+        if (!handleState.PendingRequests.Empty()) {
+            bool serializing = false;
+            for (const auto& request: handleState.PendingRequests) {
+                serializing |= !request.IsSerialized();
+            }
+            if (serializing) {
+                ++it;
+                continue;
+            }
+        }
+
+        auto& request = handleState.ReleaseHandleRequest;
+        Stats->RequestFailed(
+            ERequestType::ReleaseHandle,
+            Timer->Now() - request->RequestStartTime);
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(request->ReadyToReleasePromise),
+            MakeCancellationError());
+
+        nodeState.HandlesWithReleaseRequests.erase(it++);
+        nodeState.Handles.erase(handle);
+    }
+}
+
+void TWriteBackCacheState::ReleaseFailedFlushHandle(ui64 nodeId)
+{
+    if (auto* nodeState = Nodes.GetNodeState(nodeId, false)) {
+        nodeState->FlushHandle = NProto::E_INVALID_HANDLE;
+        CancelReleaseHandleRequests(*nodeState);
+    }
+}
+
 void TWriteBackCacheState::SetFailedFlag()
 {
     // FailedFlag is set only when a failed result is returned from
     // PersistentStorage. Each failure in PersistentStorage is already reported
     // as a critical event - no need to fire an event again.
     IsFailed = true;
+    if (RequestsCancelled) {
+        CancelFlushAllRequests();
+        CancelSerializedPendingRequests();
+        Nodes.VisitNodes([this](ui64, TNodeState& nodeState)
+                         { CancelReleaseHandleRequests(nodeState); });
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

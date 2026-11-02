@@ -116,9 +116,8 @@ public:
     // Pending requests are not cancelled.
     void SetShutdownMode();
 
-    // Reject new frontend requests and cancel requests waiting in a healthy
-    // cache. Allocated writes and borrowed handles retain their normal
-    // lifetime. Requests hanging due to failed storage are handled separately.
+    // Reject new frontend requests and cancel cache-held requests. Allocated
+    // writes and borrowed handles remain alive until their users finish.
     void CancelPendingRequests();
 
     // Returns true if the cache is in draining mode and there are no more
@@ -285,6 +284,8 @@ private:
 
     void CancelFlushAllRequests();
     void CancelSerializedPendingRequests();
+    void CancelReleaseHandleRequests(TNodeState& nodeState);
+    void ReleaseFailedFlushHandle(ui64 nodeId);
 
     void SetFailedFlag();
 };
