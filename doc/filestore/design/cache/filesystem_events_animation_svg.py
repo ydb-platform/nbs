@@ -173,7 +173,7 @@ class Scenario:
         tl.wait(FADE + 0.1)
         for other, s in targets:
             tl.set(sub(other, s), stroke="var(--sub)")
-        tl.wait(1.0)
+        tl.wait(3.0)
 
     def pause(self, text, seconds):
         self.tl.caption(text)
