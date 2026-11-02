@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NIcV2.NHandshakeProto;
+
+message THandshakeHello
+{
+    required uint32 ProtocolVersion = 1;
+    optional bool EnableXdc = 2;
+    optional bool Auxiliary = 3;
+    optional bytes PairId = 4;
+}
