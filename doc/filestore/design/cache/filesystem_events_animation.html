@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileSystemEvents animation</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --fg: #222;
+    --muted: #777;
+    --panel: #fff;
+    --border: #ccc;
+    --read: #2e9d4f;
+    --sub: #222;
+    --mod: #2a62d4;
+    --inval: #d8382f;
+    --cached: #4cc06a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e;
+      --fg: #e6e6e6;
+      --muted: #999;
+      --panel: #26262a;
+      --border: #555;
+      --sub: #e6e6e6;
+    }
+  }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  button {
+    font: inherit;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .scene {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  svg { display: block; width: 100%; height: auto; min-width: 560px; }
+  .client { stroke: var(--fg); stroke-width: 2; fill: var(--panel);
+            transition: fill 400ms; }
+  .client.cached { fill: var(--cached); }
+  .shard { stroke: var(--fg); stroke-width: 2; fill: var(--panel); }
+  .label { fill: var(--fg); font-size: 14px; }
+  .small { fill: var(--muted); font-size: 12px; }
+  .edge { stroke-width: 3; fill: none; opacity: 0;
+          transition: stroke 500ms, opacity 500ms; }
+  .edge.read { stroke: var(--read); opacity: 1; }
+  .edge.sub { stroke: var(--sub); opacity: 1; }
+  .edge.mod { stroke: var(--mod); opacity: 1; stroke-dasharray: 8 5; }
+  .edge.inval { stroke: var(--inval); opacity: 1; }
+  .edge.gone { opacity: 0; }
+  .step { min-height: 2.8em; margin: 8px 0; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
+  .sw { display: inline-block; width: 18px; height: 4px;
+        vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>FileSystemEvents: reads, modifications, invalidations</h1>
+  <div class="legend">
+    <span><span class="sw" style="background: var(--read)"></span>read</span>
+    <span><span class="sw" style="background: var(--sub)"></span>subscription</span>
+    <span><span class="sw" style="background: var(--mod)"></span>modification</span>
+    <span><span class="sw" style="background: var(--inval)"></span>invalidation</span>
+    <span>filled client = has cached NodeRef + Node</span>
+  </div>
+  <div class="controls">
+    <button id="play">Pause</button>
+    <button id="step">Step</button>
+    <button id="restart">Restart</button>
+    <label>Speed
+      <input id="speed" type="range" min="0.5" max="3" step="0.5" value="1">
+    </label>
+  </div>
+  <div class="step" id="log"></div>
+  <div class="scene">
+    <svg id="svg" viewBox="0 0 760 420" role="img"
+         aria-label="Clients, shards and subscriptions"></svg>
+  </div>
+</div>
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("svg");
+  const log = document.getElementById("log");
+
+  const CLIENTS = 4;
+  const SHARDS = [
+    {
+      id: "dir",
+      title: "Directory shard",
+      line: () => "NodeRef (root, \"f\") → node",
+      y: 110,
+    },
+    {
+      id: "node",
+      title: "Node shard",
+      line: () => "Node attrs v" + state.nodeVersion,
+      y: 290,
+    },
+  ];
+
+  const state = {
+    nodeVersion: 1,
+    // client index -> set of shard ids the client holds cached data from
+    cached: [],
+  };
+
+  function el(name, attrs, parent) {
+    const e = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) {
+      e.setAttribute(k, v);
+    }
+    (parent || svg).appendChild(e);
+    return e;
+  }
+
+  // Layout.
+  const clientPos = [];
+  for (let i = 0; i < CLIENTS; ++i) {
+    clientPos.push({x: 110, y: 60 + i * 100});
+  }
+  const shardX = 520;
+  const shardW = 200;
+  const shardH = 80;
+
+  // Edges are drawn first so that the nodes are on top. For every
+  // (client, shard) pair there is a subscription edge and a request edge
+  // drawn slightly offset so that a request is visible next to an
+  // established subscription.
+  const subEdges = {};
+  const reqEdges = {};
+  const edgeLayer = el("g", {});
+  for (let c = 0; c < CLIENTS; ++c) {
+    for (const s of SHARDS) {
+      const x1 = clientPos[c].x + 28;
+      const y1 = clientPos[c].y;
+      const x2 = shardX;
+      const y2 = s.y + shardH / 2;
+      subEdges[c + s.id] = el("line",
+        {x1, y1, x2, y2, class: "edge"}, edgeLayer);
+      reqEdges[c + s.id] = el("line",
+        {x1, y1: y1 + 6, x2, y2: y2 + 6, class: "edge"}, edgeLayer);
+    }
+  }
+
+  const clientEls = [];
+  for (let c = 0; c < CLIENTS; ++c) {
+    const p = clientPos[c];
+    clientEls.push(el("circle", {cx: p.x, cy: p.y, r: 28, class: "client"}));
+    el("text", {x: p.x - 92, y: p.y + 5, class: "label"}).textContent =
+      "client " + (c + 1);
+  }
+
+  const shardText = {};
+  for (const s of SHARDS) {
+    el("rect", {x: shardX, y: s.y, width: shardW, height: shardH, rx: 8,
+                class: "shard"});
+    el("text", {x: shardX + 12, y: s.y + 30, class: "label"}).textContent =
+      s.title;
+    shardText[s.id] = el("text", {x: shardX + 12, y: s.y + 56,
+                                  class: "small"});
+  }
+
+  function render() {
+    for (const s of SHARDS) {
+      shardText[s.id].textContent = s.line();
+    }
+    for (let c = 0; c < CLIENTS; ++c) {
+      const cached = state.cached[c];
+      const full = cached.has("dir") && cached.has("node");
+      clientEls[c].classList.toggle("cached", full);
+    }
+  }
+
+  function setEdge(edge, cls) {
+    edge.setAttribute("class", "edge" + (cls ? " " + cls : ""));
+  }
+
+  // Animation primitives. Every primitive waits so that the transitions
+  // are visible; the duration is scaled by the speed slider.
+  let speed = 1;
+  let paused = false;
+  let stepOnce = false;
+  let generation = 0;
+  let resumeWaiters = [];
+
+  function sleep(ms) {
+    const gen = generation;
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (gen !== generation) {
+          reject(new Error("restarted"));
+          return;
+        }
+        resolve();
+      }, ms / speed);
+    });
+  }
+
+  async function checkpoint(text) {
+    log.textContent = text;
+    if (stepOnce) {
+      stepOnce = false;
+      paused = true;
+      updatePlayButton();
+    }
+    while (paused) {
+      const gen = generation;
+      await new Promise((resolve) => resumeWaiters.push(resolve));
+      if (gen !== generation) {
+        throw new Error("restarted");
+      }
+    }
+  }
+
+  async function read(c, shardIds, what) {
+    await checkpoint("client " + (c + 1) + ": " + what + " - read requests " +
+      "(green) to " + shardIds.map(shardTitle).join(" and ") + ".");
+    for (const s of shardIds) {
+      setEdge(reqEdges[c + s], "read");
+      await sleep(500);
+    }
+    await sleep(500);
+    for (const s of shardIds) {
+      // The response arrives, the shard keeps a subscription.
+      setEdge(reqEdges[c + s], "gone");
+      setEdge(subEdges[c + s], "sub");
+      state.cached[c].add(s);
+    }
+    render();
+    await sleep(900);
+  }
+
+  async function modify(c, shardIds, what, invalidates) {
+    await checkpoint("client " + (c + 1) + ": " + what + " - modification " +
+      "(blue) to " + shardIds.map(shardTitle).join(" and ") + ".");
+    for (const s of shardIds) {
+      setEdge(reqEdges[c + s], "mod");
+    }
+    // The modifying client invalidates its own cache straight away.
+    for (const s of invalidates) {
+      state.cached[c].delete(s);
+    }
+    render();
+    await sleep(1000);
+    for (const s of shardIds) {
+      setEdge(reqEdges[c + s], "gone");
+    }
+    if (invalidates.includes("node")) {
+      state.nodeVersion += 1;
+    }
+    render();
+
+    await checkpoint("The shards send invalidations (red) to the " +
+      "subscribers and drop the subscriptions.");
+    const targets = [];
+    for (let other = 0; other < CLIENTS; ++other) {
+      for (const s of invalidates) {
+        if (subEdges[other + s].classList.contains("sub")) {
+          targets.push([other, s]);
+        }
+      }
+    }
+    for (const [other, s] of targets) {
+      setEdge(subEdges[other + s], "inval");
+    }
+    await sleep(900);
+    for (const [other, s] of targets) {
+      setEdge(subEdges[other + s], "gone");
+      state.cached[other].delete(s);
+    }
+    render();
+    await sleep(900);
+  }
+
+  function shardTitle(id) {
+    return SHARDS.find((s) => s.id === id).title.toLowerCase();
+  }
+
+  async function scenario() {
+    state.nodeVersion = 1;
+    state.cached = [];
+    for (let c = 0; c < CLIENTS; ++c) {
+      state.cached.push(new Set());
+      for (const s of SHARDS) {
+        setEdge(subEdges[c + s.id], "");
+        setEdge(reqEdges[c + s.id], "");
+      }
+    }
+    render();
+
+    const lookup = "Lookup(root, \"f\")";
+    await read(0, ["dir", "node"], lookup);
+    await read(1, ["dir", "node"], lookup);
+    await read(2, ["dir", "node"], lookup);
+
+    await checkpoint("Clients 1-3 reply to Lookup and GetAttr from their " +
+      "caches - no requests to the shards.");
+    await sleep(1500);
+
+    await modify(3, ["node"], "SetAttr(node)", ["node"]);
+
+    await checkpoint("Clients 1-3 still have the NodeRef cached, but not " +
+      "the Node - Lookup goes to the shards again.");
+    await sleep(1200);
+    await read(0, ["dir", "node"], lookup);
+
+    await modify(2, ["dir", "node"], "Unlink(root, \"f\")", ["dir", "node"]);
+
+    await checkpoint("Nothing is cached anymore. The scenario restarts.");
+    await sleep(2000);
+  }
+
+  async function loop() {
+    const gen = generation;
+    for (;;) {
+      try {
+        await scenario();
+      } catch (e) {
+        return;
+      }
+      if (gen !== generation) {
+        return;
+      }
+    }
+  }
+
+  function wake() {
+    const waiters = resumeWaiters;
+    resumeWaiters = [];
+    for (const w of waiters) {
+      w();
+    }
+  }
+
+  function updatePlayButton() {
+    document.getElementById("play").textContent = paused ? "Play" : "Pause";
+  }
+
+  document.getElementById("play").addEventListener("click", () => {
+    paused = !paused;
+    updatePlayButton();
+    wake();
+  });
+  document.getElementById("step").addEventListener("click", () => {
+    stepOnce = true;
+    paused = false;
+    updatePlayButton();
+    wake();
+  });
+  document.getElementById("restart").addEventListener("click", () => {
+    generation += 1;
+    paused = false;
+    stepOnce = false;
+    updatePlayButton();
+    wake();
+    loop();
+  });
+  document.getElementById("speed").addEventListener("input", (e) => {
+    speed = Number(e.target.value);
+  });
+
+  loop();
+})();
+</script>
+</body>
+</html>

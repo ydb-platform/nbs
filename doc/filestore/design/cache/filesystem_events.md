@@ -4,6 +4,10 @@ Tablet → client notifications about the changes of the Nodes, NodeRefs and
 XAttrs the client has read. The goal is to let the clients (vhost / vfs_fuse)
 cache them and drop them as soon as they change.
 
+Animation of the read / modification / invalidation exchange for a single
+NodeRef + Node: [filesystem_events_animation.html](filesystem_events_animation.html)
+(open it in a browser).
+
 ## Events
 
 - `InvalidateNode {NodeId}` - node attrs changed or the node was removed
