@@ -98,13 +98,22 @@ TPartitionActor::TPartitionActor(
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
         TabletID());
-    BlobsCompressor = std::make_shared<TBlobsCompressor>(
-        PartitionConfig.GetBlockSize(),
-        Config->GetBlobCompressionCodec(),
-        TBlobsCompressor::TMetricsConfig{
-            .CompressionRate = Config->GetBlobCompressionRate(),
-            .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
-            .PartCounters = SharedState->GetPartCounters()});
+    const auto codec =
+        ParseBlobCompressionCodec(Config->GetBlobCompressionCodec());
+    // An unsupported codec disables compression estimation.
+    if (!HasError(codec.GetError())) {
+        BlobsCompressor = std::make_shared<TBlobsCompressor>(
+            PartitionConfig.GetBlockSize(),
+            codec.GetResult(),
+            TBlobsCompressor::TMetricsConfig{
+                .CompressionRate = Config->GetBlobCompressionRate(),
+                .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
+                .PartCounters = SharedState->GetPartCounters()});
+    } else {
+        ReportInvalidBlobCompressionCodec(
+            FormatError(codec.GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
+    }
 }
 
 TPartitionActor::~TPartitionActor()

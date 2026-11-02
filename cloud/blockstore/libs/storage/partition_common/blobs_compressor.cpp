@@ -21,6 +21,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCompressionCodec
+{
+    NProto::TCompressionMetadata::ECompressionType Type;
+    TStringBuf Family;
+    TStringBuf Name;
+};
+
+constexpr TCompressionCodec CompressionCodecs[] = {
+    {NProto::TCompressionMetadata::COMPRESSION_LZ4, "lz4", "lz4-fast14-safe"},
+    {NProto::TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
+    {NProto::TCompressionMetadata::COMPRESSION_ZLIB, "zlib", "zlib-6"},
+    {NProto::TCompressionMetadata::COMPRESSION_LZMA, "lzma", "lzma-5"},
+    {NProto::TCompressionMetadata::COMPRESSION_BZIP2, "bzip2", "bzip2-6"},
+    {NProto::TCompressionMetadata::COMPRESSION_FASTLZ, "fastlz", "fastlz-0"},
+    {NProto::TCompressionMetadata::COMPRESSION_ZSTD, "zstd", "zstd_3"},
+    {NProto::TCompressionMetadata::COMPRESSION_BROTLI, "brotli", "brotli_11"}};
+
 std::optional<TBlobsCompressor::TMetricsConfig> PrepareMetricsConfig(
     std::optional<TBlobsCompressor::TMetricsConfig> config)
 {
@@ -30,15 +47,24 @@ std::optional<TBlobsCompressor::TMetricsConfig> PrepareMetricsConfig(
     return config;
 }
 
-TResultOrError<const NBlockCodecs::ICodec*> GetCodec(TStringBuf codecName)
+TResultOrError<const NBlockCodecs::ICodec*> GetCodec(
+    NProto::TCompressionMetadata::ECompressionType codec)
 {
     try {
-        return NBlockCodecs::Codec(codecName);
+        for (const auto& entry: CompressionCodecs) {
+            if (entry.Type == codec) {
+                return NBlockCodecs::Codec(entry.Name);
+            }
+        }
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Unsupported blob compression type: "
+                             << static_cast<int>(codec));
     } catch (const NBlockCodecs::TNotFound&) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder()
-                << "Unsupported blob compression codec: " << codecName);
+            TStringBuilder() << "Unavailable blob compression type: "
+                             << static_cast<int>(codec));
     } catch (...) {
         return MakeError(
             E_FAIL,
@@ -89,7 +115,7 @@ ui32 GetCompressedChunkSize(
     ui32 blobSize,
     size_t chunk)
 {
-    const auto& chunks = compression.GetPlainChuncks();
+    const auto& chunks = compression.GetPlainChunks();
     const ui32 end = chunk < chunks.ChunkOffsetSize()
                          ? chunks.GetChunkOffset(chunk)
                          : blobSize;
@@ -111,11 +137,11 @@ NProto::TError ValidateReadBlobInput(
     if (!IsSorted(blockOffsets.begin(), blockOffsets.end())) {
         return MakeError(E_ARGUMENT, "Block offsets must be sorted");
     }
-    if (!compression.HasPlainChuncks()) {
+    if (!compression.HasPlainChunks()) {
         return MakeError(E_ARGUMENT, "Missing plain chunk offsets");
     }
     ui32 previousOffset = 0;
-    for (const auto offset: compression.GetPlainChuncks().GetChunkOffset()) {
+    for (const auto offset: compression.GetPlainChunks().GetChunkOffset()) {
         if (offset <= previousOffset || offset >= blobSize) {
             return MakeError(
                 E_ARGUMENT,
@@ -126,7 +152,7 @@ NProto::TError ValidateReadBlobInput(
     }
     for (const auto blockOffset: blockOffsets) {
         if (static_cast<ui64>(blockOffset) * blockSize / chunkSize >=
-            (blobSize ? compression.GetPlainChuncks().ChunkOffsetSize() + 1
+            (blobSize ? compression.GetPlainChunks().ChunkOffsetSize() + 1
                       : 0))
         {
             return MakeError(
@@ -141,7 +167,6 @@ NProto::TError ValidateReadBlobInput(
 NProto::TError ValidateDecompressBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
-    const TVector<TRope>& compressedBuffers,
     const TSgList& outputBuffers,
     const NProto::TCompressionMetadata& compression,
     ui32 blobSize,
@@ -173,48 +198,6 @@ NProto::TError ValidateDecompressBlobInput(
         }
     }
 
-    if (compressedBuffers.empty()) {
-        if (!blockOffsets.empty()) {
-            return MakeError(E_REJECTED, "Missing compressed buffers");
-        }
-        return {};
-    }
-
-    size_t bufferIndex = 0;
-    size_t remainingBytes = compressedBuffers.front().GetSize();
-    size_t currentChunk = compression.GetPlainChuncks().ChunkOffsetSize() + 1;
-    for (const auto blockOffset: blockOffsets) {
-        const size_t chunk =
-            static_cast<ui64>(blockOffset) * blockSize / chunkSize;
-        if (chunk == currentChunk) {
-            continue;
-        }
-        const size_t compressedSize =
-            GetCompressedChunkSize(compression, blobSize, chunk);
-        while (!remainingBytes && bufferIndex < compressedBuffers.size() - 1) {
-            remainingBytes = compressedBuffers[++bufferIndex].GetSize();
-        }
-        if (compressedSize > remainingBytes) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "Incomplete compressed chunk " << chunk << ": expected "
-                    << compressedSize << " bytes, got " << remainingBytes);
-        }
-        remainingBytes -= compressedSize;
-        currentChunk = chunk;
-    }
-
-    if (remainingBytes != 0) {
-        return MakeError(E_REJECTED, "Unexpected compressed data after chunks");
-    }
-    for (++bufferIndex; bufferIndex < compressedBuffers.size(); ++bufferIndex) {
-        if (compressedBuffers[bufferIndex].GetSize() != 0) {
-            return MakeError(
-                E_REJECTED,
-                "Unexpected compressed buffer after chunks");
-        }
-    }
     return {};
 }
 
@@ -257,12 +240,27 @@ NProto::TError DecodeChunk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TResultOrError<NProto::TCompressionMetadata::ECompressionType>
+ParseBlobCompressionCodec(TStringBuf codecName)
+{
+    for (const auto& entry: CompressionCodecs) {
+        if (entry.Family == codecName || entry.Name == codecName) {
+            return entry.Type;
+        }
+    }
+    return MakeError(
+        E_ARGUMENT,
+        TStringBuilder() << "Unsupported blob compression codec: "
+                         << codecName);
+}
+
 TBlobsCompressor::TBlobsCompressor(
     ui32 blockSize,
     ui32 chunkSize,
-    TStringBuf codecName,
+    ECompressionType codec,
     std::optional<TMetricsConfig> metricsConfig)
-    : BlobCodec(GetCodec(codecName))
+    : CompressionType(codec)
+    , BlobCodec(GetCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
     , BlockSize(blockSize)
     , ChunkSize(chunkSize)
@@ -270,9 +268,10 @@ TBlobsCompressor::TBlobsCompressor(
 
 TBlobsCompressor::TBlobsCompressor(
     ui32 blockSize,
-    TStringBuf codecName,
+    ECompressionType codec,
     std::optional<TMetricsConfig> metricsConfig)
-    : BlobCodec(GetCodec(codecName))
+    : CompressionType(codec)
+    , BlobCodec(GetCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
     , BlockSize(blockSize)
     , ChunkSize(std::nullopt)
@@ -293,9 +292,9 @@ TBlobsCompressor::CompressBlob(const TSgList& blobPayload) const
     const auto* codec = BlobCodec.GetResult();
 
     TCompressedBlob result;
-    result.Compression.SetCodec(TString(codec->Name()));
+    result.Compression.SetCodec(CompressionType);
     result.Compression.SetChunkSize(*ChunkSize);
-    auto* chunks = result.Compression.MutablePlainChuncks();
+    auto* chunks = result.Compression.MutablePlainChunks();
 
     const size_t blocksPerChunk = *ChunkSize / BlockSize;
     TString chunk;
@@ -347,7 +346,6 @@ NProto::TError TBlobsCompressor::DecompressBlob(
     if (auto error = ValidateDecompressBlobInput(
             BlockSize,
             chunkSize,
-            compressedBuffers,
             outputBuffers,
             compression,
             blobSize,
@@ -357,9 +355,10 @@ NProto::TError TBlobsCompressor::DecompressBlob(
         return error;
     }
 
-    size_t bufferIndex = 0;
-
     if (compressedBuffers.empty()) {
+        if (!blockOffsets.empty()) {
+            return MakeError(E_REJECTED, "Missing compressed buffers");
+        }
         return {};
     }
 
@@ -369,13 +368,17 @@ NProto::TError TBlobsCompressor::DecompressBlob(
     }
     const auto* codec = codecOrError.GetResult();
 
-    TRope::TConstIterator iter = compressedBuffers.front().Begin();
-    TRope::TConstIterator end = compressedBuffers.front().End();
+    TRope compressedData;
+    for (const auto& buffer: compressedBuffers) {
+        compressedData.Insert(compressedData.End(), TRope(buffer));
+    }
+    TRope::TConstIterator iter = compressedData.Begin();
+    size_t remainingBytes = compressedData.GetSize();
 
     TString compressedChunk;
     TString decoded;
 
-    size_t currentChunk = compression.GetPlainChuncks().ChunkOffsetSize() + 1;
+    size_t currentChunk = compression.GetPlainChunks().ChunkOffsetSize() + 1;
     for (size_t i = 0; i < blockOffsets.size(); ++i) {
         const ui64 blockStart = static_cast<ui64>(blockOffsets[i]) * BlockSize;
         const size_t chunk = blockStart / chunkSize;
@@ -383,23 +386,26 @@ NProto::TError TBlobsCompressor::DecompressBlob(
             const size_t compressedSize =
                 GetCompressedChunkSize(compression, blobSize, chunk);
 
-            while (iter == end && bufferIndex < compressedBuffers.size() - 1) {
-                ++bufferIndex;
-                iter = compressedBuffers[bufferIndex].Begin();
-                end = compressedBuffers[bufferIndex].End();
+            if (compressedSize > remainingBytes) {
+                return MakeError(
+                    E_REJECTED,
+                    TStringBuilder() << "Incomplete compressed chunk " << chunk
+                                     << ": expected " << compressedSize
+                                     << " bytes, got " << remainingBytes);
             }
 
             compressedChunk.ReserveAndResize(compressedSize);
             iter.ExtractPlainDataAndAdvance(
                 compressedChunk.begin(),
                 compressedSize);
+            remainingBytes -= compressedSize;
 
             auto error = DecodeChunk(
                 *codec,
                 compressedChunk,
                 BlockSize,
                 chunkSize,
-                chunk == compression.GetPlainChuncks().ChunkOffsetSize(),
+                chunk == compression.GetPlainChunks().ChunkOffsetSize(),
                 decoded);
             if (HasError(error)) {
                 return error;
@@ -426,6 +432,9 @@ NProto::TError TBlobsCompressor::DecompressBlob(
             BlockSize);
     }
 
+    if (remainingBytes != 0) {
+        return MakeError(E_REJECTED, "Unexpected compressed data after chunks");
+    }
     return {};
 }
 
@@ -469,7 +478,7 @@ TResultOrError<TBlobsCompressor::TReadPlan> TBlobsCompressor::PlanReadBlob(
         }
 
         const ui64 offset =
-            chunk ? compression.GetPlainChuncks().GetChunkOffset(chunk - 1) : 0;
+            chunk ? compression.GetPlainChunks().GetChunkOffset(chunk - 1) : 0;
         const ui64 size = GetCompressedChunkSize(compression, blobSize, chunk);
         auto* previousQuery =
             queriesCount ? &queries[queriesCount - 1] : nullptr;
