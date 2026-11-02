@@ -2147,6 +2147,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 partition.Flush(); // Flush the deletion marker as well.
                 partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
                 assertBytes(3, 1024);
+                partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+                TDispatchOptions options;
+                options.FinalEvents.emplace_back(
+                    TEvPartitionPrivate::EvMetadataRebuildCompleted);
+                runtime->DispatchEvents(options, TDuration::Seconds(1));
+                UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                                ->Record.GetProgress()
+                                .GetIsCompleted());
+                assertBytes(3, 1024);
                 partition.RebootTablet();
                 assertBytes(3, 1024);
 
@@ -2250,6 +2259,22 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             partition.Compaction(0);
             UNIT_ASSERT_VALUES_EQUAL(1, replacedBlobs);
             partition.Cleanup();
+            assertBytes(
+                untouchedBlobSize + replacementBlobSize,
+                untouchedBlobSize + 3 * DefaultBlockSize);
+            partition.RebootTablet();
+            assertBytes(
+                untouchedBlobSize + replacementBlobSize,
+                untouchedBlobSize + 3 * DefaultBlockSize);
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvMetadataRebuildCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                            ->Record.GetProgress()
+                            .GetIsCompleted());
             assertBytes(
                 untouchedBlobSize + replacementBlobSize,
                 untouchedBlobSize + 3 * DefaultBlockSize);
@@ -10806,6 +10831,86 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 1024 * 11 + 1,
                 stats.GetMergedBlocksCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlobBytesWrittenDuringMetadataRebuild)
+    {
+        for (const bool useChannelCounters: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetBlobByteCountersEnabled(true);
+            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            partition.WriteBlocks(1, 1);
+            partition.Flush();
+            partition.ZeroBlocks(2);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+
+            TAutoPtr<IEventHandle> savedEvent;
+            TBlockCountRebuildState rebuilt;
+            bool pause = true;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    using TRequest = TEvPartitionPrivate::
+                        TEvMetadataRebuildBlockCountRequest;
+                    using TResponse = TEvPartitionPrivate::
+                        TEvMetadataRebuildBlockCountResponse;
+                    if (event->GetTypeRewrite() == TRequest::EventType && pause) {
+                        pause = false;
+                        savedEvent = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (event->GetTypeRewrite() == TResponse::EventType) {
+                        rebuilt = event->Get<TResponse>()->RebuildState;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            partition.WriteBlocks(3, 1);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 1);
+            UNIT_ASSERT(savedEvent);
+            runtime->Send(savedEvent.Release());
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvMetadataRebuildCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                            ->Record.GetProgress()
+                            .GetIsCompleted());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, rebuilt.MixedIndexBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024 * DefaultBlockSize,
+                rebuilt.MergedIndexBytes);
+            UNIT_ASSERT_VALUES_EQUAL(0, rebuilt.MixedChannelBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1025 * DefaultBlockSize,
+                rebuilt.MergedChannelBytes);
+
+            const auto assertBytes = [&]
+            {
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    (useChannelCounters ? 0 : 2) * DefaultBlockSize,
+                    counters.MixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    (useChannelCounters ? 2050 : 2048) * DefaultBlockSize,
+                    counters.MergedBytesCount.Value);
+            };
+            assertBytes();
+            partition.RebootTablet();
+            assertBytes();
         }
     }
 
