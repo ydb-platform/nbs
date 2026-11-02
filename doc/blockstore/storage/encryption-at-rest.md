@@ -1,31 +1,42 @@
-# Encryption at rest (NRD/Mirrored)
+# Encryption with a Root KMS-provided key (NRD/Mirrored)
 
 ## General information
-The data encryption key (DEK) is stored in encrypted form in the volume metadata ([EncryptionDesc](https://github.com/ydb-platform/nbs/blob/7e02f27e5ff0473ce899ed037d35897de43d09db/contrib/ydb/core/protos/blockstore_config.proto#L117)). For DEK generation and encryption, the root key management service (RootKMS) is used. A key encryption key (KEK) that is used for encryption and decryption of DEKs is stored in RootKMS and is not transmitted in plain text - requests to RootKMS use only the identifier of the master key. If the master key is compromised, a new one is generated and then all DEKs must be re-encrypted (and updated in the volume metadata) using the new master key.
+
+This document describes encryption with a Root KMS-provided key for non-replicated disks (NRD) and mirrored disks.
+
+The data encryption key (DEK) is stored in encrypted form, together with the key encryption key (KEK) ID, in the volume metadata ([EncryptionDesc](https://github.com/ydb-platform/nbs/blob/7e02f27e5ff0473ce899ed037d35897de43d09db/contrib/ydb/core/protos/blockstore_config.proto#L117)). The root key management service (RootKMS) generates DEKs and encrypts and decrypts them using the KEK. The KEK remains in RootKMS; NBS requests reference it by its ID.
+
+When rotating the KEK, existing DEKs can be re-encrypted under the new KEK. Both the encrypted DEKs and their KEK IDs must then be updated in the volume metadata. This does not require re-encrypting volume data.
 
 ## Creating a volume
-NBS requests a new DEK from RootKMS, sending the KEK identifier. The received encrypted DEK is stored in the volume metadata.
+
+NBS requests a new DEK from RootKMS, sending the configured KEK ID. RootKMS returns the encrypted DEK and the KEK ID, which NBS stores in the volume metadata. The plaintext DEK is not requested during volume creation.
 
 ```mermaid
 sequenceDiagram
     participant NBS
     participant RootKMS
-    
-    NBS->>+RootKMS: generate DEK (KEK id)
-    RootKMS-->>-NBS: encrypted DEK
-    NBS->>NBS: store DEK in VolumeConfig
+
+    NBS->>+RootKMS: generate DEK (KEK ID)
+    RootKMS-->>-NBS: encrypted DEK, KEK ID
+    NBS->>NBS: store encrypted DEK and KEK ID in VolumeConfig
 ```
 
 ## Mounting a volume
-NBS requests the decrypted DEK from RootKMS, sending the encrypted DEK and the KEK ID. The received DEK is used for the encryption/decryption of IO request data. To handle IO requests, the [TEncryptionClient](https://github.com/ydb-platform/nbs/blob/7e02f27e5ff0473ce899ed037d35897de43d09db/cloud/blockstore/libs/encryption/encryption_client.cpp#L138) is used.
+
+During session initialization, [TVolumeEncryptionClient](../../../cloud/blockstore/libs/encryption/encryption_client.cpp) obtains the encrypted DEK and the KEK ID from the volume metadata returned in the MountVolume response. It requests the plaintext DEK from RootKMS, sending the encrypted DEK and the KEK ID, and creates a [TEncryptionClient](https://github.com/ydb-platform/nbs/blob/7e02f27e5ff0473ce899ed037d35897de43d09db/cloud/blockstore/libs/encryption/encryption_client.cpp#L138) with an AES-XTS encryptor initialized with that DEK.
+
+TEncryptionClient encrypts write data before forwarding it to storage and decrypts read data before returning it to the caller. In the endpoint path, this client runs inside the NBS endpoint process, which has access to the plaintext DEK and I/O data.
 
 ```mermaid
 sequenceDiagram
-    participant NBS
+    participant Client as TVolumeEncryptionClient
+    participant NBS as NBS service
     participant RootKMS
 
-    NBS->>NBS: get encrypted DEK from VolumeConfig
-    NBS->>+RootKMS: decrypt DEK (KEK id, encrypted DEK)
-    RootKMS-->>-NBS: DEK
-    NBS->>NBS: create TEncryptionClient (DEK)
+    Client->>+NBS: MountVolume
+    NBS-->>-Client: volume metadata (encrypted DEK, KEK ID)
+    Client->>+RootKMS: decrypt DEK (KEK ID, encrypted DEK)
+    RootKMS-->>-Client: plaintext DEK
+    Client->>Client: create TEncryptionClient with AES-XTS encryptor (DEK)
 ```
