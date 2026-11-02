@@ -158,9 +158,9 @@ public:
     /* Starts draining for session shutdown, allowing cached data to be dropped
      * on flush failure once the node has no pending writes.
      *
-     * Pending requests are not cancelled. The returned future follows Drain()
-     * semantics: an error does not imply all nodes have finished flushing, and
-     * a failed cache may leave it pending.
+     * Pending requests are not cancelled. The returned future waits for active
+     * backend flushes before completing, including when flushing fails. A
+     * failed cache may leave it pending.
      */
     [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Shutdown();
 
