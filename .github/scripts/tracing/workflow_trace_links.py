@@ -33,10 +33,7 @@ def load_ya_report_links(
     if not bucket or not prefix or prefix.startswith("/") or not website_suffix:
         raise ValueError("A bucket, relative S3 prefix and website suffix are required")
     prefix = prefix.rstrip("/") + "/"
-    jobs_by_runner: dict[str, list[WorkflowJob]] = defaultdict(list)
-    for job in jobs:
-        if job.runner_name:
-            jobs_by_runner[job.runner_name].append(job)
+    jobs_by_id = {str(job.id): job for job in jobs}
 
     links: dict[int, list[tuple[str, str]]] = defaultdict(list)
     count = total_bytes = 0
@@ -92,15 +89,9 @@ def load_ya_report_links(
                         raise ValueError(
                             "trace belongs to a different workflow attempt"
                         )
-                    runner = metadata.get("github.runner.name")
-                    candidates = (
-                        jobs_by_runner.get(runner, [])
-                        if isinstance(runner, str)
-                        else []
-                    )
-                    if len(candidates) != 1:
-                        raise ValueError("trace runner does not identify a unique job")
-                    job = candidates[0]
+                    job = jobs_by_id.get(str(metadata.get("github.job.id")))
+                    if job is None:
+                        raise ValueError("trace job ID does not match a workflow job")
                     operation = metadata.get("ci.ya.operation")
                     if operation == "build":
                         label = "Build trace"

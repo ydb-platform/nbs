@@ -764,12 +764,14 @@ queue, job queue, job, and step spans in `workflow-trace.*`. Each job row links
 to its separate build/test execution reports. The workflow report never reads
 ya OTLP or rewrites ya trace IDs.
 
-Ya manifests record `github.runner.name` from `RUNNER_NAME`, along with the
-repository, run ID, and run attempt. A link is attached only when these match
-and the runner identifies exactly one job; missing or ambiguous identities are
-skipped, without guessing from timestamps. URLs point to `trace.html` beside
-each manifest. `ci.trace.report.<index>.name` and `.url` job attributes preserve
-these links in the workflow OTLP as well as the HTML.
+Build and test actions pass `${{ job.check_run_id }}` as `GITHUB_JOB_ID`.
+Ya manifests record it as `github.job.id`, along with the repository, run ID,
+and run attempt. A link is attached only when these match a workflow job, even
+when another job (such as `sleep-if-needed`) reuses the runner. Manifests without
+a matching job ID are skipped. `github.runner.name` remains diagnostic metadata.
+URLs point to `trace.html` beside each manifest. `ci.trace.report.<index>.name`
+and `.url` job attributes preserve these links in the workflow OTLP as well as
+the HTML.
 
 Manifest discovery is optional and bounded. Missing, malformed, or oversized
 manifests are skipped, and S3 failures leave the GitHub workflow report usable.

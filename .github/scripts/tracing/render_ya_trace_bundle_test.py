@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -52,13 +53,19 @@ def _command(tmp_path: Path) -> tuple[list[object], Path, Path, Path]:
 
 def test_bundle_command_renders_packs_and_writes_links(tmp_path: Path) -> None:
     command, report, summary, output = _command(tmp_path)
-    environment = {**os.environ, "PYTHONPATH": str(REPOSITORY_ROOT / ".github")}
+    environment = {
+        **os.environ,
+        "PYTHONPATH": str(REPOSITORY_ROOT / ".github"),
+        "GITHUB_JOB_ID": "99",
+    }
 
     subprocess.run(command, cwd=REPOSITORY_ROOT, env=environment, check=True)
 
     assert (report / "trace.html").is_file()
     assert (report / "trace.otlp.jsonl.gz").is_file()
     assert (report / "trace-inputs.tar.gz").is_file()
+    manifest = json.loads((report / "trace.manifest.json").read_text())
+    assert manifest["metadata"]["github.job.id"] == 99
     assert "[Execution trace]" in summary.read_text()
     assert output.read_text().splitlines() == [
         "html_url=https://example.test/trace.html",

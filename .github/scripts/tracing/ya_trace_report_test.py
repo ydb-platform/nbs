@@ -30,6 +30,8 @@ def test_input_file_list_is_null_delimited_and_relative(tmp_path: Path) -> None:
 
 
 def test_resource_attributes_are_built_locally(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_JOB", "build-and-test")
+    monkeypatch.setenv("GITHUB_JOB_ID", "99")
     monkeypatch.setenv("RUNNER_NAME", "matrix-runner-1")
     args = Namespace(
         operation="tests",
@@ -49,6 +51,8 @@ def test_resource_attributes_are_built_locally(monkeypatch) -> None:
     assert resource["service.name"] == "nbs-ya-tests"
     assert resource["ci.component"] == "cloud/tasks"
     assert resource["ci.ya.retry"] == 2
+    assert resource["github.job"] == "build-and-test"
+    assert resource["github.job.id"] == 99
     assert resource["github.runner.name"] == "matrix-runner-1"
     assert (
         resource["ci.artifact.test_log.url_prefix"]

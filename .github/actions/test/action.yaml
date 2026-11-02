@@ -164,6 +164,7 @@ runs:
       id: check_test_results
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
+        GITHUB_JOB_ID: ${{ job.check_run_id }}
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
         TEST_TIMEOUT_MINUTES: ${{ inputs.test_timeout_minutes }}
         TEST_BUDGET_MINUTES: ${{ inputs.test_budget_minutes }}

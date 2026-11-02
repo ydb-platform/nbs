@@ -202,6 +202,7 @@ def _manifest(**metadata) -> bytes:
                 "github.repository": "example/repo",
                 "github.run.id": 123,
                 "github.run.attempt": 1,
+                "github.job.id": 99,
                 "github.runner.name": "runner-1",
                 "ci.ya.operation": "tests",
                 "ci.ya.retry": 1,
@@ -245,7 +246,7 @@ def _load_links(s3, jobs=None):
     )
 
 
-def test_parallel_jobs_link_by_runner_and_discovery_never_reads_otlp() -> None:
+def test_parallel_jobs_link_by_id_and_discovery_never_reads_otlp() -> None:
     first = _jobs()[0]
     second = WorkflowJob(
         SimpleNamespace(is_not_lazy=False),
@@ -265,6 +266,7 @@ def test_parallel_jobs_link_by_runner_and_discovery_never_reads_otlp() -> None:
             "variants/x86/1/trace.otlp.jsonl.gz": b"invalid OTLP",
             "variants/arm/build/trace.manifest.json": _manifest(
                 **{
+                    "github.job.id": 100,
                     "github.runner.name": "runner-2",
                     "ci.ya.operation": "build",
                 }
@@ -290,8 +292,12 @@ def test_parallel_jobs_link_by_runner_and_discovery_never_reads_otlp() -> None:
 @pytest.mark.parametrize(
     "metadata",
     [
-        {"github.runner.name": ""},
-        {"github.runner.name": "unknown-runner"},
+        {"github.job.id": None},
+        {"github.job.id": ""},
+        {"github.job.id": "not-an-id"},
+        {"github.job.id": []},
+        {"github.job.id": 99.5},
+        {"github.job.id": 100},
         {"github.repository": "other/repo"},
         {"github.run.id": 456},
         {"github.run.attempt": 2},
@@ -302,15 +308,45 @@ def test_unmatched_manifests_are_not_attached(metadata) -> None:
     assert _load_links(s3) == {}
 
 
-def test_reused_runner_is_ambiguous_without_guessing_from_timestamps() -> None:
+@pytest.mark.parametrize("job_id", [99, "99"])
+def test_reused_runner_links_build_and_tests_to_their_job(job_id) -> None:
     first = _jobs()[0]
     second = WorkflowJob(
         SimpleNamespace(is_not_lazy=False),
-        attributes={**first.raw_data, "id": 100, "name": "another job"},
+        attributes={**first.raw_data, "id": 100, "name": "sleep-if-needed"},
         completed=True,
     )
-    s3, _ = _s3({"1/trace.manifest.json": _manifest()})
-    assert _load_links(s3, [first, second]) == {}
+    s3, _ = _s3(
+        {
+            "build/trace.manifest.json": _manifest(
+                **{"github.job.id": job_id, "ci.ya.operation": "build"}
+            ),
+            "1/trace.manifest.json": _manifest(**{"github.job.id": job_id}),
+        }
+    )
+    assert _load_links(s3, [first, second]) == {
+        99: [
+            ("Build trace", f"https://reports.example.test/{PREFIX}build/trace.html"),
+            ("Tests — attempt 1", f"https://reports.example.test/{PREFIX}1/trace.html"),
+        ]
+    }
+
+
+def test_missing_job_id_does_not_fall_back_to_runner() -> None:
+    manifest = json.loads(_manifest())
+    del manifest["metadata"]["github.job.id"]
+    s3, _ = _s3({"1/trace.manifest.json": json.dumps(manifest).encode()})
+
+    assert _load_links(s3) == {}
+
+
+@pytest.mark.parametrize("runner", [None, "", "unknown-runner"])
+def test_job_id_identifies_job_without_matching_runner(runner) -> None:
+    s3, _ = _s3({"1/trace.manifest.json": _manifest(**{"github.runner.name": runner})})
+
+    assert _load_links(s3)[99] == [
+        ("Tests — attempt 1", f"https://reports.example.test/{PREFIX}1/trace.html")
+    ]
 
 
 def test_bad_and_oversized_manifests_do_not_hide_valid_reports() -> None:
