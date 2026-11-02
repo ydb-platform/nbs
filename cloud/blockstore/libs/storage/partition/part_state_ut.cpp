@@ -488,18 +488,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
 
         // Blob counts matter even below the compaction policy threshold.
-        map.Update(0, 2, 100, 100, 0, 0, false);
-        map.Update(secondRange, 3, 100, 100, 0, 0, false);
+        map.Update(0, 2, 100, 100, 0, 0, false, false);
+        map.Update(secondRange, 3, 100, 100, 0, 0, false, false);
         UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
 
-        map.Update(0, 10, 100, 100, 0, 0, false);
+        map.Update(0, 10, 100, 100, 0, 0, false, false);
         UNIT_ASSERT_VALUES_EQUAL(10, state.GetLegacyCompactionScore());
 
         // Compacted ranges no longer contribute to the legacy score.
-        map.Update(0, 10, 100, 100, 0, 0, true);
+        map.Update(0, 10, 100, 100, 0, 0, true, false);
         UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
 
-        map.Update(secondRange, 0, 0, 0, 0, 0, false);
+        map.Update(secondRange, 0, 0, 0, 0, 0, false, false);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
     }
 
@@ -519,8 +519,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto& map = state.GetCompactionMap();
         const ui32 hotRange = map.GetRangeSize();
 
-        map.Update(0, 30, 1024, 1024, 0, 0, false);
-        map.Update(hotRange, 2, 1024, 1024, 0, 0, false);
+        map.Update(0, 30, 1024, 1024, 0, 0, false, false);
+        map.Update(hotRange, 2, 1024, 1024, 0, 0, false, false);
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetLegacyCompactionScore());
         UNIT_ASSERT_DOUBLES_EQUAL(
             10,
@@ -537,7 +537,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             state.CalculateCurrentBackpressure().CompactionScore,
             1e-5);
 
-        map.Update(0, 0, 0, 0, 0, 0, false);
+        map.Update(0, 0, 0, 0, 0, 0, false, false);
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetLegacyCompactionScore());
         UNIT_ASSERT_DOUBLES_EQUAL(
             1,
@@ -556,7 +556,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
         state.AddFreshBlob(1, 400_KB, TInstant::Zero());
-        state.GetCompactionMap().Update(0, 10, 10, 10, 0, 0, false);
+        state.GetCompactionMap().Update(0, 10, 10, 10, 0, 0, false, false);
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
@@ -579,7 +579,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         }
 
         state.AddFreshBlob(3, 300 * 4_KB, TInstant::Zero());
-        state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false, false);
         state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
@@ -587,7 +587,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CompactionScore, 1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.CleanupScore, 1e-5);
 
-        state.GetCompactionMap().Update(0, 100, 100, 100, 0, 0, false);
+        state.GetCompactionMap().Update(0, 100, 100, 100, 0, 0, false, false);
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
@@ -606,7 +606,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             1000,
             {.CompactionPolicy = std::make_shared<TNoBackpressurePolicy>()});
 
-        state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
+        state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false, false);
 
         const auto bp = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);
@@ -928,7 +928,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             10 /*usedBlockCount=*/,
             5 /*newlyZeroedBlocks=*/,
             0 /*mixedBlockCount=*/,
-            false /*compacted=*/);
+            false /*compacted=*/,
+            false /*resetReadCounters=*/);
 
         UNIT_ASSERT_VALUES_EQUAL(
             5u,

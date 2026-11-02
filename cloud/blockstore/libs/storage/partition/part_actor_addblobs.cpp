@@ -681,7 +681,8 @@ private:
                 usedBlockCount,
                 newlyZeroedBlocks,
                 rangeStat.MixedBlockCount,
-                Args.Mode == ADD_COMPACTION_RESULT);
+                Args.Mode == ADD_COMPACTION_RESULT,
+                Args.Mode == ADD_COMPACTION_RESULT);   // resetReadCounters
 
             // Persist what the map has stored, so that map-level policies
             // (e.g. disabled mixed block count tracking) apply to the
