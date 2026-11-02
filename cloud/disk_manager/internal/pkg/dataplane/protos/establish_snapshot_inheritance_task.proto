@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message EstablishSnapshotInheritanceRequest {
+    string SnapshotId = 1;
+}
+
+message EstablishSnapshotInheritanceTaskState {
+    uint32 MilestoneChunkIndex = 1;
+    bool InheritanceEstablished = 2;
+}

@@ -742,7 +742,7 @@ func newCellStorage(
 	return storage, closeFunc
 }
 
-func newSnapshotStorage(
+func NewSnapshotStorage(
 	t *testing.T,
 	ctx context.Context,
 ) (snapshot_storage.Storage, func()) {
@@ -963,7 +963,7 @@ func GetIncremental(
 	disk *types.Disk,
 ) (string, string, error) {
 
-	storage, closeFunc := newSnapshotStorage(t, ctx)
+	storage, closeFunc := NewSnapshotStorage(t, ctx)
 	defer closeFunc()
 
 	return storage.GetIncremental(ctx, disk)
@@ -998,7 +998,7 @@ func GetSnapshotMeta(
 	snapshotID string,
 ) (*snapshot_storage.SnapshotMeta, error) {
 
-	storage, closeFunc := newSnapshotStorage(t, ctx)
+	storage, closeFunc := NewSnapshotStorage(t, ctx)
 	defer closeFunc()
 
 	return storage.GetSnapshotMeta(ctx, snapshotID)

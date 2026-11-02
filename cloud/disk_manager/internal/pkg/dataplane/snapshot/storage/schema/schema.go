@@ -37,6 +37,32 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
+		"snapshot_parents",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"parent_snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithPrimaryKeyColumn(
+				"snapshot_id",
+				"parent_snapshot_id",
+			),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Created snapshot_parents table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
 		"deleting",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -215,6 +241,13 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped snapshots table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "snapshot_parents")
+	if err != nil {
+		return err
+	}
+
+	logging.Info(ctx, "Dropped snapshot_parents table")
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "deleting")
 	if err != nil {

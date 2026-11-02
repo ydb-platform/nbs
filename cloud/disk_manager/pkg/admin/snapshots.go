@@ -451,7 +451,134 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
+		newEstablishSnapshotInheritanceCmd(clientConfig, serverConfig),
+		newEstablishSnapshotInheritanceForAllSnapshotsCmd(
+			clientConfig,
+			serverConfig,
+		),
 	)
 
 	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type establishSnapshotInheritanceCmd struct {
+	commandWithScheduler
+	snapshotID string
+}
+
+func (c *establishSnapshotInheritanceCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.EstablishSnapshotInheritance_"+
+				c.snapshotID+"_"+generateID(),
+		),
+		"dataplane.EstablishSnapshotInheritance",
+		"",
+		&dataplane_protos.EstablishSnapshotInheritanceRequest{
+			SnapshotId: c.snapshotID,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newEstablishSnapshotInheritanceCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &establishSnapshotInheritanceCmd{
+		commandWithScheduler: newCommandWithScheduler(
+			clientConfig,
+			serverConfig,
+		),
+	}
+
+	cmd := &cobra.Command{
+		Use:     "schedule-establish-snapshot-inheritance-task",
+		Aliases: []string{"schedule_establish_snapshot_inheritance_task"},
+		Short:   "Reconstruct a snapshot's parent IDs from its chunk map",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(&c.snapshotID, "id", "", "ID of snapshot; required")
+	err := cmd.MarkFlagRequired("id")
+	if err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type establishSnapshotInheritanceForAllSnapshotsCmd struct {
+	commandWithScheduler
+}
+
+func (c *establishSnapshotInheritanceForAllSnapshotsCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	// Repeated invocations reuse the task in this cluster's task storage.
+	taskID, err := c.scheduler.ScheduleNonCancellableTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.EstablishSnapshotInheritanceForAllSnapshots",
+		),
+		"dataplane.EstablishSnapshotInheritanceForAllSnapshots",
+		"",
+		"", // zoneID
+		&empty.Empty{},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newEstablishSnapshotInheritanceForAllSnapshotsCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &establishSnapshotInheritanceForAllSnapshotsCmd{
+		commandWithScheduler: newCommandWithScheduler(
+			clientConfig,
+			serverConfig,
+		),
+	}
+
+	return &cobra.Command{
+		Use: "schedule-establish-snapshot-inheritance-" +
+			"for-all-snapshots-task",
+		Aliases: []string{
+			"schedule_establish_snapshot_inheritance_for_all_snapshots_task",
+		},
+		Short: "Reconstruct inheritance for snapshots created " +
+			"before the task starts",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
 }

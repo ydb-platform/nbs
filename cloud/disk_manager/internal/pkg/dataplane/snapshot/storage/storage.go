@@ -163,6 +163,28 @@ type Storage interface {
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
 
+	// Lists creating and ready snapshots in ID order. The creation cutoff is
+	// exclusive. The afterSnapshotID is the last ID returned by the previous
+	// page.
+	ListSnapshotsBefore(
+		ctx context.Context,
+		creatingBefore time.Time,
+		afterSnapshotID string,
+		limit uint64,
+	) ([]string, error)
+
+	// Records the creators of chunks referenced by this snapshot. Parents do
+	// not have to exist in snapshot metadata, and repeated additions are safe.
+	// Large additions are split across transactions; partial writes can be
+	// retried safely. Empty IDs and the snapshot's own ID are ignored.
+	AddSnapshotParents(
+		ctx context.Context,
+		snapshotID string,
+		parentIDs map[string]struct{},
+	) error
+
+	GetSnapshotParents(ctx context.Context, snapshotID string) ([]string, error)
+
 	EnqueueBackupChunks(
 		ctx context.Context,
 		snapshotID string,
