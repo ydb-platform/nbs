@@ -1575,91 +1575,12 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 		proxyOverlayDiskID,
 		diskID,
 		"cp",
-		0, // maxSizeBytes, same as the base disk
 	)
 	require.True(t, created)
 	require.NoError(t, err)
 
 	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
-}
-
-func TestCreateProxyOverlayDiskWithMaxSizeBytes(t *testing.T) {
-	ctx := newContext()
-	client := newTestingClient(t, ctx)
-
-	diskID := t.Name()
-	baseDiskBlocksCount := uint64(2 * 1024)
-
-	err := client.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     baseDiskBlocksCount,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD,
-		PartitionsCount: 1,
-	})
-	require.NoError(t, err)
-
-	// Fill the first half only: it is what the smaller proxy covers.
-	diskContentInfo, err := client.FillDisk(
-		ctx,
-		diskID,
-		baseDiskBlocksCount/2*4096,
-	)
-	require.NoError(t, err)
-
-	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
-		DiskID:         diskID,
-		CheckpointID:   "cp",
-		CheckpointType: nbs.CheckpointTypeNormal,
-	})
-	require.NoError(t, err)
-
-	for _, tc := range []struct {
-		name                string
-		maxSizeBytes        uint64
-		expectedBlocksCount uint64
-	}{
-		{
-			name:                "smaller than base disk",
-			maxSizeBytes:        baseDiskBlocksCount / 2 * 4096,
-			expectedBlocksCount: baseDiskBlocksCount / 2,
-		},
-		{
-			name:                "not aligned to base disk block size is rounded up",
-			maxSizeBytes:        baseDiskBlocksCount/2*4096 + 1,
-			expectedBlocksCount: baseDiskBlocksCount/2 + 1,
-		},
-		{
-			name:                "larger than base disk is clamped",
-			maxSizeBytes:        2 * baseDiskBlocksCount * 4096,
-			expectedBlocksCount: baseDiskBlocksCount,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			proxyOverlayDiskID := fmt.Sprintf(
-				"proxy_%v_%v",
-				diskID,
-				tc.maxSizeBytes,
-			)
-			created, err := client.CreateProxyOverlayDisk(
-				ctx,
-				proxyOverlayDiskID,
-				diskID,
-				"cp",
-				tc.maxSizeBytes,
-			)
-			require.True(t, created)
-			require.NoError(t, err)
-
-			proxyOverlayDiskParams, err := client.Describe(ctx, proxyOverlayDiskID)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedBlocksCount, proxyOverlayDiskParams.BlocksCount)
-
-			err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
-			require.NoError(t, err)
-		})
-	}
 }
 
 // Scenario: the proxy overlay disk has been created, but the caller has not
@@ -1699,7 +1620,6 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		baseDiskID,
 		"cp",
-		0, // maxSizeBytes, same as the base disk
 	)
 	require.NoError(t, err)
 	require.True(t, created)
@@ -1722,7 +1642,6 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		baseDiskID,
 		"cp",
-		0, // maxSizeBytes
 	)
 	require.NoError(t, err)
 	require.True(t, created)
@@ -1749,7 +1668,6 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		proxyOverlayDiskID,
 		newBaseDiskID,
 		"other_cp",
-		0, // maxSizeBytes
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1762,7 +1680,6 @@ func TestCreateProxyOverlayDiskAfterRebaseAndBaseDiskDeletion(t *testing.T) {
 		newBaseDiskID,
 		newBaseDiskID,
 		"cp",
-		0, // maxSizeBytes
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1825,7 +1742,6 @@ func TestCreateProxyOverlayDiskCreatesMissingCheckpoint(t *testing.T) {
 		proxyOverlayDiskID,
 		baseDiskID,
 		"cp",
-		0, // maxSizeBytes
 	)
 	require.NoError(t, err)
 	require.True(t, created)
@@ -1867,7 +1783,6 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 		proxyOverlayDiskID,
 		diskID,
 		"cp",
-		0, // maxSizeBytes, same as the base disk
 	)
 	require.True(t, created)
 	require.NoError(t, err)

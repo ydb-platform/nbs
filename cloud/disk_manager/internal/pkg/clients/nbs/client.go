@@ -864,14 +864,11 @@ func (c *client) Create(
 	)
 }
 
-// !Be careful!: |maxSizeBytes| can truncate the proxy overlay disk if it is
-// smaller than the highest offset of stored data on the base disk.
 func (c *client) CreateProxyOverlayDisk(
 	ctx context.Context,
 	diskID string,
 	baseDiskID string,
 	baseDiskCheckpointID string,
-	maxSizeBytes uint64,
 ) (created bool, err error) {
 
 	defer c.metrics.StatRequest("CreateProxyOverlayDisk")(&err)
@@ -886,7 +883,6 @@ func (c *client) CreateProxyOverlayDisk(
 				"base_disk_checkpoint_id",
 				baseDiskCheckpointID,
 			),
-			tracing.AttributeInt64("max_size_bytes", int64(maxSizeBytes)),
 		),
 	)
 	defer span.End()
@@ -940,15 +936,10 @@ func (c *client) CreateProxyOverlayDisk(
 		return false, nil
 	}
 
-	blocksCount, err := boundedBlocksCount(volume, maxSizeBytes)
-	if err != nil {
-		return false, err
-	}
-
 	err = c.createVolume(
 		ctx,
 		diskID,
-		blocksCount,
+		volume.BlocksCount,
 		&nbs_client.CreateVolumeOpts{
 			BaseDiskId:           baseDiskID,
 			BaseDiskCheckpointId: baseDiskCheckpointID,

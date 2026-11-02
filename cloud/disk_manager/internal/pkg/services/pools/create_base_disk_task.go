@@ -92,7 +92,12 @@ func (t *createBaseDiskTask) Run(
 						// The source base disk may be larger than the base
 						// disk being created (an image sized base disk
 						// created from a default sized one), the image fits
-						// into both.
+						// into both. Without this bound the transfer would
+						// scan the unused tail of the source (up to 4 TiB,
+						// chunk by chunk) to estimate the amount of data to
+						// transfer, and it does that from scratch on every
+						// restart, which may take longer than the interval
+						// between restarts.
 						MaxSizeBytes: t.baseDiskSize(),
 					},
 				)

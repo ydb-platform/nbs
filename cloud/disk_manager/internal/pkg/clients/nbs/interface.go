@@ -146,18 +146,11 @@ type Client interface {
 
 	Create(ctx context.Context, params CreateDiskParams) error
 
-	// Creates an overlay disk on top of |baseDiskID|@|baseDiskCheckpointID|
-	// of min(|maxSizeBytes|, base disk size) bytes (rounded up to the base
-	// disk block size), zero |maxSizeBytes| means the base disk size.
-	//
-	// !Be careful!: |maxSizeBytes| can truncate the proxy overlay disk if it is
-	// smaller than the highest offset of stored data on the base disk.
 	CreateProxyOverlayDisk(
 		ctx context.Context,
 		diskID string,
 		baseDiskID string,
 		baseDiskCheckpointID string,
-		maxSizeBytes uint64,
 	) (created bool, err error)
 
 	Delete(ctx context.Context, diskID string) error
