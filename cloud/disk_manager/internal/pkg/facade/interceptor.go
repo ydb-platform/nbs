@@ -37,6 +37,7 @@ var (
 		{name: "DiskService.DescribeModel", permission: "disk-manager.disks.get"},
 		{name: "DiskService.Stat", permission: "disk-manager.disks.get"},
 		{name: "DiskService.Migrate", permission: "disk-manager.disks.update"},
+		{name: "DiskService.TransferVolumeViaLink", permission: "disk-manager.disks.update"},
 		{name: "DiskService.SendMigrationSignal", permission: "disk-manager.disks.update"},
 		{name: "DiskService.Describe", permission: "disk-manager.disks.get"},
 		{name: "DiskService.ListStates", permission: "disk-manager.disks.list"},

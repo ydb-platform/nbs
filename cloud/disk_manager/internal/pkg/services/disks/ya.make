@@ -14,6 +14,7 @@ SRCS(
     disk_operation_task.go
     migrate_disk_task.go
     resize_disk_task.go
+    transfer_volume_via_link_task.go
     unassign_disk_task.go
 
     interface.go
@@ -29,6 +30,7 @@ GO_TEST_SRCS(
     disk_operation_task_test.go
     migrate_disk_task_test.go
     service_test.go
+    transfer_volume_via_link_task_test.go
 )
 
 END()

@@ -54,6 +54,8 @@ type CellSelector interface {
 
 	ZoneContainsCell(zoneID string, cellID string) bool
 
+	CellsShareZone(sourceCellID string, targetCellID string) bool
+
 	// Returns all cell IDs that belong to the given zone.
 	// If no cells config is set, returns []string{zoneID}.
 	// If zoneId is cell ID, returns []string{zoneID}.

@@ -201,6 +201,7 @@ DisksConfig: <
     # Disk Registry based disks created from pooled images are filled from base
     # disks instead of snapshot storage.
     EnableDiskRegistryBasedDisksCreationFromBaseDisks: true
+    EnableDiskOperationGuard: true
     CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
