@@ -1,6 +1,6 @@
 ## Problem
 
-Data on our disks is very compressible. We already have some metrics in the partition that show significant potential for data compression. They show that we can save up to 60% of disk space.
+Data on our disks is very compressible. We already have some metrics in the partition that show significant potential for data compression. The compressed/original ratio of 0.30–0.40 implies 60–70% fewer payload bytes. Actual SSD space savings also depend on allocation overhead.
 
 ![Compressed bytes written relative to uncompressed bytes written on SSD](media/compressed_bytes_written_relative_to_uncompressed_bytes_written.png)
 
@@ -19,29 +19,33 @@ Compress blobs in chunks of K consecutive blob bytes. After compression, we can 
 ```
 message TCompressionMetadata
 {
-    enum ECodec
+    // Codec families provided by library/cpp/blockcodecs.
+    enum ECompressionType
     {
-        // library/cpp/blockcodecs: lz4-fast14-safe.
-        LZ4 = 0;
-        // library/cpp/blockcodecs: zstd08_1 (compression level 1).
-        ZSTD = 1;
+        COMPRESSION_LZ4 = 0;
+        COMPRESSION_SNAPPY = 1;
+        COMPRESSION_ZLIB = 2;
+        COMPRESSION_LZMA = 3;
+        COMPRESSION_BZIP2 = 4;
+        COMPRESSION_FASTLZ = 5;
+        COMPRESSION_ZSTD = 6;    // zstd08_* and zstd_*.
+        COMPRESSION_BROTLI = 7;
     }
-
-    ECodec Codec = 1;
+    ECompressionType Codec = 1;
 
     // Uncompressed chunk size in bytes used when writing this blob.
     uint32 ChunkSize = 2;
 
-    message TPlainChuncks
+    message TPlainChunks
     {
-        // Offsets of each compressed chunk in blob in bytes,
-        // starting from the second one.
-        repeated uint32 ChunkOffsets = 1;
+        // Cumulative compressed end offsets of all chunks except the last.
+        // N chunks have N-1 offsets; the last chunk ends at the blob size.
+        repeated uint32 ChunkOffset = 1;
     }
 
-    oneof Chuncks
+    oneof Chunks
     {
-        TPlainChuncks PlainChuncks = 1;
+        TPlainChunks PlainChunks = 3;
     }
 }
 ```
@@ -78,17 +82,19 @@ We use the merged table to serve user reads, so getting compression metadata fro
 
 BlobIndex is used for metadata rebuilding and other operations and contains complete information about blobs, so let's keep compression metadata there too.
 
-This compression metadata should be passed to the readblob actor to correctly plan and execute BlobStorage requests. We should explicitly indicate whether a blob is compressed. Missing compression metadata is unsafe and should not be interpreted as indicating that the blob is uncompressed. We should report an impossible event and reject such requests.
+Each request to the readblob actor should carry explicit compression information for each blob: either its compression metadata or a special marker meaning no compression. The actor uses this information to correctly plan and execute BlobStorage requests. Legacy uncompressed blobs have no compression metadata in their index entries. When constructing a read request from such an entry, we should pass the no-compression marker. We should also pass this marker for newly written uncompressed blobs. Compressed blobs must have compression metadata stored in both MergedIndex and BlobIndex.
 
-That's why we should first start verifying the presence of compression information and only then enable writing compressed blobs.
+Verification in the readblob actor should be controlled by a separate feature flag. When enabled, it should check that every blob in the request has either all required compression metadata or the explicit no-compression marker. If neither is present or the metadata is incomplete, we should report an impossible event and reject the request. The legacy-data exception applies when reading index entries; missing compression information in a readblob request must not be interpreted as meaning no compression once verification is enabled.
+
+We must first roll out support for passing compression metadata and the no-compression marker on all read paths, then enable the verification feature while compressed blob writes are still disabled. Only after verification is enabled can we enable writing compressed blobs.
 
 For data integrity, we already have a mechanism that works on top of this reading logic to ensure read correctness.
 
 ### Rollout and rollback
 
-First, we must fully roll out a binary that supports the new compression metadata fields in BlobIndex and MergedIndex and can read compressed blobs, while keeping compressed blob writes disabled. Only after this rollout is complete can we enable writing compressed blobs. Once compressed blobs have been written, rolling back two versions to a binary that lacks these fields and cannot read compressed data is not supported, as it will lead to data corruption. Disabling compressed blob writes does not remove this restriction, because existing compressed blobs still need to be read. The only way to roll back to a binary that cannot read compressed blobs is to perform full compaction across the cluster using a version that supports compressed reads, with compressed writes disabled, and delete all checkpoints with data in NBS (or just wait for them to be deleted automatically, since checkpoints are short-lived). After these operations, we can safely downgrade to a version without support for compressed reads.
+First, we must fully roll out a binary that supports the new compression metadata fields in BlobIndex and MergedIndex and can read compressed blobs, while keeping compressed blob writes disabled. Only after this rollout is complete and the compression-information verification feature is enabled can we enable writing compressed blobs. Once compressed blobs have been written, rolling back two versions to a binary that lacks these fields and cannot read compressed data is not supported, as it will lead to data corruption. Disabling compressed blob writes does not remove this restriction, because existing compressed blobs still need to be read. The only way to roll back to a binary that cannot read compressed blobs is to perform full compaction across the cluster using a version that supports compressed reads, with compressed writes disabled, and delete all checkpoints with data in NBS. After these operations, we can safely downgrade to a version without support for compressed reads.
 
-Before enabling nbs with new feature wich start to write new compressed blobs we need to update minumum supported version to the one that supports reading compressed blobs to prevent start of old binaries in cluster as it can leed to corruption. It can be done by updating this files:
+Before enabling compressed blob writes in NBS, we must raise the minimum supported version to one that supports reading compressed blobs, preventing incompatible binaries from joining the cluster and potentially corrupting data. This can be done by updating these files:
 ```contrib/ydb/apps/version/version_definition.cpp```
 ```cloud/storage/core/libs/version_ydb/version.cpp```
 
@@ -96,7 +102,7 @@ Before enabling nbs with new feature wich start to write new compressed blobs we
 
 For the initial approach, we will use chunks of a constant size per blob, for example, 32 KiB. To find the most effective chunk size, we will add new CompressedBytesWritten metrics for each size. We will compress a blob using different chunk sizes and, for each size, report the number of compressed bytes written.
 
-The chunk size can't be too small, because this will increase the index size and fewer blobs will fit in the blob cache. But increasing the chunk size also increases read amplification. After deploying in preproduction, we should carefully examine BlobStorage performance and tune the chunk size. Greater read amplification will increase CPU usage on the BlobStorage side because of erasure coding and encryption. SSD time should increase by only 4% for each requested chunk with a maximum size of 32 KB relative to 4 KB requests, according to the following model with latency = 100 µs and Bandwidth = 7 GB/s:
+The chunk size can't be too small, because this will increase the index size and fewer blobs will fit in the blob cache. But increasing the chunk size also increases read amplification. After deploying in preproduction, we should carefully examine BlobStorage performance and tune the chunk size. Greater read amplification will increase CPU usage on the BlobStorage side because of erasure coding and encryption. SSD time should increase by only 4% for each requested chunk with a maximum size of 32 KiB relative to 4 KiB requests, according to the following model with latency = 100 µs and Bandwidth = 7 GB/s:
 
 ```T = latency + RequestSize / Bandwidth```
 
