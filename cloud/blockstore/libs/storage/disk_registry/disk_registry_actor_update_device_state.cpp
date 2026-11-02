@@ -90,12 +90,7 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
         SendEnableDevice(ctx, args.DeviceId);
     }
 
-    if (!args.AffectedDisk.empty() &&
-        !State->HasPendingCleanup(args.AffectedDisk))
-    {
-        ReplyToPendingDeallocations(ctx, args.AffectedDisk);
-    }
-
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

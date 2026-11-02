@@ -818,14 +818,16 @@ void TDiskRegistryState::ProcessDisksToCleanup(TVector<TString> disksToCleanup)
 
 void TDiskRegistryState::ProcessDirtyDevices(TVector<TDirtyDevice> dirtyDevices)
 {
-    for (auto&& [uuid, diskId]: dirtyDevices) {
-        if (!diskId.empty()) {
-            auto error = AddDevicesToPendingCleanup(diskId, {std::move(uuid)});
-            if (HasError(error)) {
-                ReportDiskRegistryInsertToPendingCleanupFailed(
-                    "An error occurred while processing dirty devices",
-                    {{"disk", diskId}, {"DeviceId", uuid}});
-            }
+    for (const auto& [uuid, diskId]: dirtyDevices) {
+        if (diskId.empty() || !CanSecureErase(uuid)) {
+            continue;
+        }
+
+        auto error = PendingCleanup.Insert(diskId, uuid);
+        if (HasError(error)) {
+            ReportDiskRegistryInsertToPendingCleanupFailed(
+                "An error occurred while processing dirty devices",
+                {{"disk", diskId}, {"DeviceId", uuid}});
         }
     }
 }
@@ -1097,6 +1099,14 @@ auto TDiskRegistryState::RegisterAgent(
         }
 
         DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
+
+        // The agent may report broken or lost devices. They can't be secure
+        // erased, so they shouldn't block the pending cleanup.
+        for (const auto& device: agent.GetDevices()) {
+            if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
+                RemoveDeviceFromPendingCleanup(db, device.GetDeviceUUID());
+            }
+        }
 
         for (const auto& uuid: r.NewDeviceIds) {
             if (!DeviceList.FindDiskId(uuid)) {
@@ -1624,7 +1634,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
                 seqNo);
         }
 
-        error = AddDevicesToPendingCleanup(diskId, {deviceId});
+        error = AddDevicesToPendingCleanup(db, diskId, {deviceId});
         if (HasError(error)) {
             ReportDiskRegistryInsertToPendingCleanupFailed(
                 "An error occurred while replacing device",
@@ -3202,6 +3212,7 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         for (const auto& affectedDiskId: affectedDisks) {
             Y_DEBUG_ABORT_UNLESS(affectedDiskId.StartsWith(diskId + "/"));
             error = AddDevicesToPendingCleanup(
+                db,
                 diskId,
                 DeallocateSimpleDisk(
                     db,
@@ -3223,7 +3234,8 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
     }
 
     auto dirtyDevices = DeallocateSimpleDisk(db, diskId, *disk);
-    auto error = AddDevicesToPendingCleanup(diskId, std::move(dirtyDevices));
+    auto error =
+        AddDevicesToPendingCleanup(db, diskId, std::move(dirtyDevices));
     if (!HasError(error)) {
         // NOTE: We must pass S_ALREADY to the higher-level code. It is used for
         // sync deallocations.
@@ -4118,6 +4130,10 @@ void TDiskRegistryState::ForgetDevices(
     const TVector<TString>& ids)
 {
     for (const auto& id: ids) {
+        // The forgotten device won't be secure erased, so it shouldn't block
+        // the pending cleanup.
+        PendingCleanup.EraseDevice(id);
+
         DeviceList.ForgetDevice(id);
         db.DeleteSuspendedDevice(id);
         db.DeleteDirtyDevice(id);
@@ -5262,7 +5278,7 @@ void TDiskRegistryState::RemoveFinishedMigrations(
 
             DeviceList.ReleaseDevice(m.DeviceId);
             db.UpdateDirtyDevice(m.DeviceId, diskId);
-            auto error = AddDevicesToPendingCleanup(diskId, {m.DeviceId});
+            auto error = AddDevicesToPendingCleanup(db, diskId, {m.DeviceId});
             if (HasError(error)) {
                 ReportDiskRegistryInsertToPendingCleanupFailed(
                     "An error occurred while removing finished migrations",
@@ -6332,12 +6348,7 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     ApplyDeviceStateChange(db, *agentPtr, *devicePtr, now, affectedDisk);
 
     if (newState == NProto::DEVICE_STATE_ERROR) {
-        auto cleanupDiskId = RemoveDeviceFromPendingCleanup(db, deviceId);
-        if (!cleanupDiskId.empty()) {
-            Y_DEBUG_ABORT_UNLESS(
-                affectedDisk.empty() || affectedDisk == cleanupDiskId);
-            affectedDisk = std::move(cleanupDiskId);
-        }
+        RemoveDeviceFromPendingCleanup(db, deviceId);
     }
 
     return error;
@@ -6999,7 +7010,7 @@ NProto::TError TDiskRegistryState::AbortMigrationAndReplaceDevice(
     DeviceList.ReleaseDevice(sourceId);
     db.UpdateDirtyDevice(sourceId, diskId);
 
-    auto error = AddDevicesToPendingCleanup(disk.MasterDiskId, {sourceId});
+    auto error = AddDevicesToPendingCleanup(db, disk.MasterDiskId, {sourceId});
     if (HasError(error)) {
         ReportDiskRegistryInsertToPendingCleanupFailed(
             "An error occurred while aborting migration",
@@ -7871,6 +7882,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
             const size_t idx = masterDisk->ReplicaCount + i + 1;
 
             auto error = AddDevicesToPendingCleanup(
+                db,
                 masterDiskId,
                 DeallocateSimpleDisk(
                     db,
@@ -7915,6 +7927,7 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
 }
 
 NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
+    TDiskRegistryDatabase& db,
     const TString& diskId,
     TVector<TDeviceId> uuids)
 {
@@ -7923,6 +7936,11 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     for (auto& uuid: uuids) {
         if (CanSecureErase(uuid)) {
             devicesAllowedToBeCleaned.push_back(std::move(uuid));
+        } else if (IsDirtyDevice(uuid)) {
+            // The device is not going to be secure erased right now, so it
+            // shouldn't be tied to the disk. Otherwise, it would get into the
+            // pending cleanup after a restart.
+            db.UpdateDirtyDevice(uuid, {});
         }
     }
     if (devicesAllowedToBeCleaned.empty()) {
@@ -7941,17 +7959,19 @@ NProto::TError TDiskRegistryState::AddDevicesToPendingCleanup(
     return PendingCleanup.Insert(diskId, std::move(devicesAllowedToBeCleaned));
 }
 
-TDiskRegistryState::TDiskId TDiskRegistryState::RemoveDeviceFromPendingCleanup(
+void TDiskRegistryState::RemoveDeviceFromPendingCleanup(
     TDiskRegistryDatabase& db,
     const TDeviceId& deviceId)
 {
-    TDiskId diskId = PendingCleanup.EraseDevice(deviceId);
+    if (PendingCleanup.FindDiskId(deviceId).empty()) {
+        return;
+    }
+
+    PendingCleanup.EraseDevice(deviceId);
 
     if (IsDirtyDevice(deviceId)) {
         db.UpdateDirtyDevice(deviceId, {});
     }
-
-    return diskId;
 }
 
 NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
@@ -7990,6 +8010,7 @@ NProto::TError TDiskRegistryState::DeallocateDiskReplicas(
     for (size_t i = masterDisk->ReplicaCount; i >= newReplicaCount + 1; --i) {
         const auto replicaDiskId = GetReplicaDiskId(masterDiskId, i);
         auto error = AddDevicesToPendingCleanup(
+            db,
             masterDiskId,
             DeallocateSimpleDisk(db, replicaDiskId, "DeallocateDiskReplicas"));
         if (HasError(error)) {
@@ -8417,6 +8438,9 @@ NProto::TError TDiskRegistryState::CreateDiskFromDevices(
         DeviceList.MarkDeviceAllocated(diskId, uuid);
         DeviceList.MarkDeviceAsClean(uuid);
         db.DeleteDirtyDevice(uuid);
+        // The device can come from the pending cleanup of another disk. It
+        // won't be secure erased anymore, so it shouldn't block that cleanup.
+        PendingCleanup.EraseDevice(uuid);
 
         DeviceList.ResumeDevice(uuid);
         db.DeleteSuspendedDevice(uuid);
@@ -8502,12 +8526,17 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
     DeviceList.MarkDeviceAllocated(diskId, targetDeviceId);
     DeviceList.MarkDeviceAsClean(targetDeviceId);
     db.DeleteDirtyDevice(targetDeviceId);
+    // The device can come from the pending cleanup of another disk. It won't
+    // be secure erased anymore, so it shouldn't block that cleanup.
+    PendingCleanup.EraseDevice(targetDeviceId);
 
     DeviceList.ResumeDevice(targetDeviceId);
     db.DeleteSuspendedDevice(targetDeviceId);
 
+    // The source device gets the error state below and won't be secure erased
+    // until it's back online, so it shouldn't be tied to the disk.
     DeviceList.ReleaseDevice(sourceDeviceId);
-    db.UpdateDirtyDevice(sourceDeviceId, diskId);
+    db.UpdateDirtyDevice(sourceDeviceId, {});
 
     auto [targetAgent, targetDevice] = FindDeviceLocation(targetDeviceId);
     STORAGE_VERIFY_C(

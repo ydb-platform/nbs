@@ -1336,10 +1336,11 @@ private:
         const TString& diskId);
 
     NProto::TError AddDevicesToPendingCleanup(
+        TDiskRegistryDatabase& db,
         const TString& diskId,
         TVector<TDeviceId> uuids);
 
-    TDiskId RemoveDeviceFromPendingCleanup(
+    void RemoveDeviceFromPendingCleanup(
         TDiskRegistryDatabase& db,
         const TDeviceId& deviceId);
 

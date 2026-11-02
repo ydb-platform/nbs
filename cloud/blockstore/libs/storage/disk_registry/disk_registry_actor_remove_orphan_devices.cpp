@@ -40,7 +40,8 @@ void TDiskRegistryActor::CompleteRemoveOrphanDevices(
     TTxDiskRegistry::TRemoveOrphanDevices& args)
 {
     Y_UNUSED(args);
-    Y_UNUSED(ctx);
+
+    ReplyToCompletedPendingDeallocations(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
