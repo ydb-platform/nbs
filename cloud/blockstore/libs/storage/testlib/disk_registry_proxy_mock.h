@@ -916,7 +916,8 @@ private:
 
         auto& disk = State->Disks[diskId];
 
-        disk.MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
+        disk.MediaKind = static_cast<NProto::EStorageMediaKind>(
+            req.GetVolumeConfig().GetStorageMediaKind());
         disk.Devices = std::move(devices);
         disk.BlockSize = blockSize;
 
