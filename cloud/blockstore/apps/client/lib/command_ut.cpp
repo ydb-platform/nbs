@@ -88,6 +88,36 @@ std::pair<TString, TBlockRange64> ParseCheckRangeRequestJson(
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldUseUniqueClientIdsWithDefaultInstanceId)
+    {
+        auto client = std::make_shared<TTestService>();
+        TSet<TString> instanceIds;
+        TSet<TString> clientIds;
+        client->StartEndpointHandler =
+            [&](std::shared_ptr<NProto::TStartEndpointRequest> request)
+        {
+            UNIT_ASSERT(!request->GetInstanceId().empty());
+            UNIT_ASSERT(!request->GetClientId().empty());
+            instanceIds.insert(request->GetInstanceId());
+            clientIds.insert(request->GetClientId());
+            return MakeFuture<NProto::TStartEndpointResponse>();
+        };
+
+        const TVector<TString> argv = {
+            GetProgramName(),
+            "--config=/dev/null",
+            "--disk-id=" + DefaultDiskId,
+            "--socket=test.sock",
+            "--ipc-type=grpc",
+        };
+        UNIT_ASSERT(ExecuteRequest("startendpoint", argv, client));
+        UNIT_ASSERT(ExecuteRequest("startendpoint", argv, client));
+
+        // Expected 2 different clientIds with the same instanceId:
+        UNIT_ASSERT_VALUES_EQUAL(2, clientIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, instanceIds.size());
+    }
+
     Y_UNIT_TEST(ShouldAutoMountUnmountVolumeOnReadWriteZeroBlocksRequests)
     {
         auto client = std::make_shared<TTestService>();
