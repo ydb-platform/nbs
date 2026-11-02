@@ -16,10 +16,10 @@ namespace {
 
 constexpr TStringBuf ProfileLogLabel = "profile-log";
 
-TProfileLogFile MakeProfileLogFile(TString path, bool readRecords)
+TProfileLogFile MakeProfileLogFile(TString path)
 {
     path = RealPath(path);
-    return GetProfileLogFile(path, readRecords);
+    return GetProfileLogFile(path);
 }
 
 int ProcessProfileLog(
@@ -142,10 +142,8 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
                    "or a positional path";
         }
 
-        const bool readRecords = Opts.FindLongOption("no-skip-files") &&
-                                 !parseResult.Has("no-skip-files");
         for (const auto& path: ProfileLogPaths) {
-            ProfileLogFiles.push_back(MakeProfileLogFile(path, readRecords));
+            ProfileLogFiles.push_back(MakeProfileLogFile(path));
         }
 
         StableSort(

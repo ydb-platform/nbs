@@ -185,6 +185,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle currentFile(directory.Name() + "/profile.log");
         WriteProfileLog(oldFile.Name());
         WriteProfileLog(currentFile.Name(), 2400);
+        WriteProfileLog(oldFile.Name(), 1000);
         oldFile.Resize(oldFile.GetLength() - 1);
 
         for (const auto* name: {"dumpevents", "findbytesaccess"}) {
@@ -285,8 +286,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle first(directory.Name() + "/log.1970-01-01T00:16");
         TTempFileHandle second(directory.Name() + "/log.1970-01-01T00:33");
         TTempFileHandle third;
-        first.Write("not a log", 9);
-        second.Write("not a log", 9);
+        WriteProfileLog(first.Name(), 1000);
+        WriteProfileLog(second.Name(), 2000);
         {
             TEventLog log(third.Name(), 0);
             TSelfFlushLogFrame frame(log);
@@ -388,7 +389,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
     }
 
-    Y_UNIT_TEST(ShouldProbeUndatedFilesUnlessSkippingDisabled)
+    Y_UNIT_TEST(ShouldPreserveUndatedOrderRegardlessOfSkipping)
     {
         TTempFileHandle newer;
         TTempFileHandle older;
@@ -407,8 +408,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTestCommand probed;
         UNIT_ASSERT_VALUES_EQUAL(probed.Run(4, probedArgs), 0);
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(older.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(older.Name()));
     }
 
     Y_UNIT_TEST(ShouldReadCurrentLogAfterRotationsByDefault)
@@ -431,7 +432,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(undated.Name()));
     }
 
-    Y_UNIT_TEST(ShouldSortByFilenameTimeWithRecordFallback)
+    Y_UNIT_TEST(ShouldSortByFilenameTimeWithoutRecordFallback)
     {
         TTempDir directory;
         const TString base = directory.Name() + "/nfs-vhost-profile.log";
@@ -454,8 +455,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(oldest.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(current.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(newest.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(newest.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(current.Name()));
     }
 
     Y_UNIT_TEST(ShouldKeepInputOrderForEqualFilenameTimes)

@@ -33,7 +33,8 @@ TVector<TStringBuf> FindCompleteFrames(TStringBuf data)
             break;
         }
         input.Skip(frame->FrameLength());
-        frames.push_back(data.SubStr(offset, data.size() - input.Avail() - offset));
+        frames.push_back(
+            data.SubStr(offset, data.size() - input.Avail() - offset));
     }
     return frames;
 }
@@ -52,14 +53,17 @@ TMaybe<TRecordBounds> ReadBoundaryRecord(
             TMaybe<TRecordBounds> bounds;
             for (auto it = frame->GetIterator(); it.Avail(); it.Next()) {
                 const auto event = *it;
-                const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
-                    event->GetProto());
+                const auto* record =
+                    dynamic_cast<const NProto::TProfileLogRecord*>(
+                        event->GetProto());
                 if (!record || record->GetRequests().empty()) {
                     continue;
                 }
                 TRecordBounds current{TInstant::Max(), TInstant::Zero()};
                 for (const auto& request: record->GetRequests()) {
-                    Y_ENSURE(request.HasTimestampMcs(), "Missing request timestamp");
+                    Y_ENSURE(
+                        request.HasTimestampMcs(),
+                        "Missing request timestamp");
                     const auto time =
                         TInstant::MicroSeconds(request.GetTimestampMcs());
                     current.Start = Min(current.Start, time);
@@ -74,7 +78,8 @@ TMaybe<TRecordBounds> ReadBoundaryRecord(
                 return bounds;
             }
         } catch (const yexception&) {
-            // Try the next complete frame; normal processing reports read errors.
+            // Try the next complete frame; normal processing reports read
+            // errors.
         }
     }
     return {};
@@ -89,7 +94,8 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
     // Rotated files are named <log>.YYYY-MM-DDTHH:MM (UTC, rotation time).
     TStringBuf base, suffix;
     TInstant parsedEndTime;
-    if (TStringBuf(name).TryRSplit('.', base, suffix) && suffix.size() == 16 &&
+    if (!readRecords && TStringBuf(name).TryRSplit('.', base, suffix) &&
+        suffix.size() == 16 &&
         TInstant::TryParseIso8601(TString(suffix) + ":00Z", parsedEndTime))
     {
         file.EndTime = parsedEndTime;
@@ -118,35 +124,27 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     const TMaybe<TInstant>& since,
     const TMaybe<TInstant>& until)
 {
-    constexpr auto MaxRotationDrift = TDuration::Seconds(300);
+    if (files.size() <= 1 || (!since && !until)) {
+        return files;
+    }
     TVector<TProfileLogFile> result;
-    TMaybe<TInstant> fileStart;   // Fallback for files without a detected start.
-    for (size_t i = 0; i < files.size(); ++i) {
-        const bool isLast = i + 1 == files.size();
-        auto start = files[i].StartTime;
-        if (!start && files[i].EndTime) {
-            start = fileStart;
-        }
-        const auto fileEnd = isLast && !files[i].StartTime
-                                 ? Nothing()
-                                 : files[i].EndTime;
-        const bool endsAfterSince =
-            !since || !fileEnd || *fileEnd + MaxRotationDrift >= *since;
-        const bool startsBeforeUntil =
-            !until || !start || *start <= *until + MaxRotationDrift;
-        fileStart = files[i].EndTime;
+    for (auto& file: files) {
+        const auto bounds = GetProfileLogFile(file.Path, true);
+        const auto& start = bounds.StartTime;
+        const auto& fileEnd = bounds.EndTime;
+        const bool endsAfterSince = !since || !fileEnd || *fileEnd >= *since;
+        const bool startsBeforeUntil = !until || !start || *start <= *until;
         if (endsAfterSince && startsBeforeUntil) {
-            result.push_back(std::move(files[i]));
+            result.push_back(std::move(file));
         } else {
-            Cerr << "Skipping profile log " << files[i].Path;
+            Cerr << "Skipping profile log " << file.Path;
             if (!endsAfterSince) {
-                Cerr << ": estimated end " << *fileEnd << " + "
-                     << MaxRotationDrift.Seconds() << "s is before --since "
+                Cerr << ": estimated end " << *fileEnd << " is before --since "
                      << *since;
             }
             if (!startsBeforeUntil) {
                 Cerr << ": estimated start " << *start << " is after --until "
-                     << *until << " + " << MaxRotationDrift.Seconds() << "s";
+                     << *until;
             }
             Cerr << Endl;
         }

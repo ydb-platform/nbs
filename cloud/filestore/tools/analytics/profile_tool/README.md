@@ -23,47 +23,28 @@ Profile log fills in three places:
 
 ## Multiple files and estimated time ranges
 
-`dumpevents` and `findbytesaccess` skip files outside the estimated time range by
-default. Pass `--no-skip-files` to read every supplied file, subject to normal
-read-error handling. The exact per-request `--since` and `--until` filters apply
-regardless of file pruning.
+`dumpevents` and `findbytesaccess` always scan a single supplied file and apply
+exact per-request `--since` and `--until` filters to its contents.
 
-File skipping uses estimated time ranges before processing records.
-The filename heuristic comes from deployment
-rotation examples supplied when multi-file support was introduced, such as
-`nfs-vhost-profile.log.2026-09-26T10:25`. This is not a repository-defined log
-format or a guarantee about every deployment's rotation configuration.
+With multiple files and either time bound set, the tool skips files outside the
+range estimated from their first and last usable profile records. It scans frame
+headers using the eventlog library and decodes boundary records. The earliest
+request timestamp in the first record supplies the start; the latest in the last
+record supplies the end. Incomplete or corrupt boundary frames are ignored when
+estimating bounds. Files with unknown record bounds are retained.
 
-The tool interprets a `.YYYY-MM-DDTHH:MM` suffix as the file's **end time in UTC**,
-with zero seconds, without opening dated files. Unless `--no-skip-files` is set, when
-the suffix is absent or invalid, it opens the log and decodes the first and last
-non-empty profile records. With the flag, undated files keep unknown bounds
-and retain their input order relative to other undated files.
-The earliest request timestamp in the first record supplies the start; the latest
-in the last record supplies the end. It scans frame headers using the eventlog
-library, then decodes the first and last usable profile records without decoding
-intervening frames. Incomplete or corrupt boundary frames are ignored when
-estimating bounds. Filesystem modification time is not used.
-Empty or unreadable logs retain unknown bounds for normal read-error handling.
+Filename timestamps are used only for sorting, never for skipping files. A
+`.YYYY-MM-DDTHH:MM` suffix is interpreted as the rotation time in UTC. Dated files
+sort oldest first; undated files follow in input order. Filesystem modification
+time is not used. Without time bounds, all files are read without record probing.
 
-Files are sorted by end time, with unknown end times last in input order.
-Pruning uses detected record bounds when available.
-For files with only a filename end time, the start is inferred from the previous
-file's end, with the first open below and the last open above. Selection allows
-300 seconds of drift on each side of the requested range.
-
-Local-time suffixes, suffixes denoting file start times, gaps in
-the supplied rotation chain, or out-of-order records can make these estimates
-incorrect and cause matching records to be skipped when pruning is enabled.
-Set `--no-skip-files` when these assumptions do not hold or when checking
-completeness:
+Pass `--no-skip-files` to disable file skipping and boundary probing. Exact
+per-request filters still apply. Use this when out-of-order records or damaged
+boundary frames could make the estimated ranges incomplete:
 
 ```sh
 ./filestore-profile-tool dumpevents --no-skip-files --profile-log /var/log/nfs/nfs-vhost-profile.log* --since 2026-09-26T10:00:00Z --until 2026-09-26T11:00:00Z
 ```
-
-The flag can also change the ordering of undated files because their record
-bounds are no longer probed.
 
 ## Options for particular commands
 
