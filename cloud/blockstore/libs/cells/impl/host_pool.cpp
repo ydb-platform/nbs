@@ -89,17 +89,26 @@ TCellHostPool::TCellHostPool(TCellConfigPtr config, TBootstrap bootstrap)
 
 TResultOrError<TCellHostConfig> TCellHostPool::PickHost() const
 {
-    return PickHostExcept({});
+    return PickHostImpl({}, false);
 }
 
 TResultOrError<TCellHostConfig> TCellHostPool::PickHostExcept(
     const THashSet<TString>& except) const
 {
+    return PickHostImpl(except, true);
+}
+
+TResultOrError<TCellHostConfig> TCellHostPool::PickHostImpl(
+    const THashSet<TString>& except,
+    bool preferVerified) const
+{
     // the configured list is the contract; a host we happened to hear about
     // in a mount response only stands in when that contract has nothing live
-    // left in it. A host that answered a ping comes before one nobody has
-    // asked: during an outage the latter is as likely dead as not, and a
-    // move there is downtime spent finding that out
+    // left in it. On a move away a host that answered a ping comes before
+    // one nobody has asked: during an outage the latter is as likely dead as
+    // not, and a move there is downtime spent finding that out. A fresh
+    // placement spreads over the whole list instead: only the warm minimum
+    // is pinged, so a cold host that is never picked would never be verified
     TVector<TString> verifiedConfigured;
     TVector<TString> verifiedDiscovered;
     TVector<TString> unknownConfigured;
@@ -119,6 +128,19 @@ TResultOrError<TCellHostConfig> TCellHostPool::PickHostExcept(
                 : (verified ? verifiedDiscovered : unknownDiscovered);
             tier.push_back(fqdn);
         }
+    }
+
+    if (!preferVerified) {
+        verifiedConfigured.insert(
+            verifiedConfigured.end(),
+            unknownConfigured.begin(),
+            unknownConfigured.end());
+        verifiedDiscovered.insert(
+            verifiedDiscovered.end(),
+            unknownDiscovered.begin(),
+            unknownDiscovered.end());
+        unknownConfigured.clear();
+        unknownDiscovered.clear();
     }
 
     for (const auto* candidates:

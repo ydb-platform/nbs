@@ -1144,7 +1144,7 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPreferVerifiedDiscoveredHostOverUnknownConfigured)
+    Y_UNIT_TEST(ShouldPreferVerifiedDiscoveredHostOverUnknownConfiguredOnFailover)
     {
         TPingEnv env;
         auto pool = env.MakePool(true, true);
@@ -1165,7 +1165,7 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         // the cold host is configured but only just warmed; host-z is known
         // to answer
         for (ui32 i = 0; i < 10; ++i) {
-            auto picked = pool->PickHost();
+            auto picked = pool->PickHostExcept({hosts.Warm[0]});
             UNIT_ASSERT_C(!HasError(picked), picked.GetError());
             UNIT_ASSERT_VALUES_EQUAL("host-z", picked.GetResult().GetFqdn());
         }
@@ -1174,7 +1174,7 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         env.AdvanceTime(TDuration::Seconds(1));
         UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, hosts.Cold));
         for (ui32 i = 0; i < 10; ++i) {
-            auto picked = pool->PickHost();
+            auto picked = pool->PickHostExcept({hosts.Warm[0]});
             UNIT_ASSERT_C(!HasError(picked), picked.GetError());
             UNIT_ASSERT_VALUES_EQUAL(hosts.Cold, picked.GetResult().GetFqdn());
         }
@@ -1226,6 +1226,35 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
 
         pool.AcquireControlChannel("host-z");
         UNIT_ASSERT_VALUES_EQUAL(1, endpoints->SetupCalls["host-z"]);
+    }
+
+    Y_UNIT_TEST(ShouldPlaceNewConnectionsOnUnverifiedConfiguredHostsToo)
+    {
+        TPingEnv env;
+        auto pool = env.MakePool(true, true);
+        const auto hosts = SortByWarmth(*pool);
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Unknown, LivenessOf(*pool, hosts.Cold));
+
+        // a verified discovered host must not pull placements off the
+        // configured list either
+        pool->AcquireControlChannel("host-z");
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_EQUAL(EHostLiveness::Alive, LivenessOf(*pool, "host-z"));
+
+        // nothing is down, so a placement is spread over every configured
+        // host: a cold one that is never picked would never be pinged, and
+        // so never verified
+        THashSet<TString> seen;
+        for (ui32 i = 0; i < 200; ++i) {
+            auto picked = pool->PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            seen.insert(picked.GetResult().GetFqdn());
+        }
+        UNIT_ASSERT(seen.contains(hosts.Cold));
+        UNIT_ASSERT(seen.contains(hosts.Warm[0]));
+        UNIT_ASSERT(seen.contains(hosts.Warm[1]));
+        UNIT_ASSERT(!seen.contains("host-z"));
     }
 }
 

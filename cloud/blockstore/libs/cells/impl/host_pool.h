@@ -129,13 +129,16 @@ public:
     [[nodiscard]] TCellHostEndpoints GetDescribeEndpoints(
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    // A host that answered a ping, configured before discovered; only when
-    // there is none, a host that has not been asked yet, in the same order.
-    // Never a host found dead.
+    // Where a new connection goes: a configured host not found dead, picked
+    // at random whether or not it has answered a ping yet; a discovered one
+    // only when no configured host is left.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHost() const;
 
-    // The same, minus hosts the caller already knows are no good for it -
-    // the one it is leaving, and any it has found unusable since.
+    // Where a connection moves to, minus hosts the caller already knows are
+    // no good for it - the one it is leaving, and any it has found unusable
+    // since. A host that answered a ping first, configured before
+    // discovered; only when there is none, a host that has not been asked
+    // yet, in the same order. Never a host found dead.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHostExcept(
         const THashSet<TString>& except) const;
 
@@ -193,6 +196,10 @@ public:
     void ReleaseControlChannel(const TString& fqdn);
 
 private:
+    [[nodiscard]] TResultOrError<TCellHostConfig> PickHostImpl(
+        const THashSet<TString>& except,
+        bool preferVerified) const;
+
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
         EnsureChannelLocked(const TString& fqdn);
 
