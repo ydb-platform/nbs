@@ -178,6 +178,7 @@ message TMigrationSpec
 
 message TGarbageCollectionValidation
 {
+    // Enables the forced cleanup and checks (false by default)
     bool Enabled = 1;
 
     // Maximum duration of final garbage collection (60s by default)
