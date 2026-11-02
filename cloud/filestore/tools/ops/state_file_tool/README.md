@@ -15,7 +15,8 @@ The resulting program is named `filestore-state-file-tool`.
 
 - `list` lists state files below `--state-dir` and prints a JSON summary. It
   accepts `--state-dir` only, not `--state-file`, `--fs-id`, or `--session-id`.
-- `check` validates a write-back-cache state file.
+- `check` validates a write-back-cache state file. An uninitialized file is
+  reported and passes the check.
 - `dump` prints an editable JSON representation. Request payloads are not
   exposed; only their checksums and selected request metadata are included.
 - `patch` applies validated changes from a previous `dump`.
@@ -23,7 +24,10 @@ The resulting program is named `filestore-state-file-tool`.
 State files can be selected either directly with `--state-file`, or through
 `--state-dir`, `--fs-id`, and optional `--session-id`. The default state
 directory is `/Berkanavt/nfs-vhost/state`. A directly supplied file must be a
-write-back-cache state file or a disposable copy of one.
+write-back-cache state file or a disposable copy of one, and requires
+`--file-type write-back-cache`. This option declares the payload format: the
+shared ring-buffer header cannot identify it. Copies may have any filename.
+Locator-based selection uses the write-back-cache file type automatically.
 
 Other options:
 

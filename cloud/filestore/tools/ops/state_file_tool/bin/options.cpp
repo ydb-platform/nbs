@@ -65,6 +65,11 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&StateFile);
 
+    TString fileType;
+    opts.AddLongOption("file-type", "state file payload format: write-back-cache")
+        .RequiredArgument("STR")
+        .StoreResult(&fileType);
+
     opts.AddLongOption(
             'I', "input", "take input data from a file instead of stdin")
         .RequiredArgument("STR")
@@ -91,6 +96,32 @@ void TOptions::Parse(int argc, char** argv)
         ythrow yexception() << "Unknown command: " << commandName;
     }
     Command = *command;
+
+    if (Command != ECommand::Patch && parser.Has("input")) {
+        ythrow yexception() << "--input is only supported by patch";
+    }
+    if (Command != ECommand::List && Command != ECommand::Dump &&
+        parser.Has("output"))
+    {
+        ythrow yexception() << "--output is only supported by list and dump";
+    }
+    if (Command == ECommand::List && parser.Has("unsafe-ignore-lock")) {
+        ythrow yexception() << "--unsafe-ignore-lock is not supported by list";
+    }
+    if (Command != ECommand::Patch && parser.Has("unsafe-ignore-corruption")) {
+        ythrow yexception()
+            << "--unsafe-ignore-corruption is only supported by patch";
+    }
+    if (Command == ECommand::List && parser.Has("file-type")) {
+        ythrow yexception() << "--file-type is not supported by list";
+    }
+
+    if (parser.Has("file-type")) {
+        if (fileType != "write-back-cache") {
+            ythrow yexception() << "Unsupported state file type: " << fileType;
+        }
+        FileType = NProto::EStateFileType::WriteBackCache;
+    }
 
     const bool hasStateFile = parser.Has("state-file");
     const bool hasStateDir = parser.Has("state-dir");

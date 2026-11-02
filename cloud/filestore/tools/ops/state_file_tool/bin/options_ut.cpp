@@ -37,27 +37,37 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
 {
     Y_UNIT_TEST(ShouldAcceptStateFileWithoutRejectingDefaultStateDir)
     {
-        const auto options =
-            ParseOptions({"dump", "--state-file", "/tmp/state"});
+        const auto options = ParseOptions(
+            {"dump", "--state-file", "/tmp/state",
+             "--file-type", "write-back-cache"});
 
         UNIT_ASSERT_EQUAL(ECommand::Dump, options.Command);
         UNIT_ASSERT_VALUES_EQUAL("/tmp/state", options.StateFile);
+        UNIT_ASSERT_EQUAL(NProto::EStateFileType::WriteBackCache, options.FileType);
         UNIT_ASSERT_VALUES_EQUAL(
             "/Berkanavt/nfs-vhost/state", options.StateDir);
     }
 
     Y_UNIT_TEST(ShouldRejectStateFileWithLocatorArguments)
     {
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
-            ParseOptions(
-                {"dump", "--state-file", "/tmp/state", "--fs-id", "fs"}),
-            yexception, "Cannot specify --state-file");
+        for (const TStringBuf option:
+             {"--fs-id", "--state-dir", "--session-id"})
+        {
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                ParseOptions(
+                    {"dump", "--state-file", "/tmp/state", option, "value"}),
+                yexception, "Cannot specify --state-file");
+        }
+    }
 
+    Y_UNIT_TEST(ShouldRejectUnsupportedFileType)
+    {
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             ParseOptions(
-                {"dump",
-                 "--state-file", "/tmp/state", "--state-dir", "/tmp/states"}),
-            yexception, "Cannot specify --state-file");
+                {"dump", "--state-file", "/tmp/state",
+                 "--file-type", "handle-ops-queue"}),
+            yexception,
+            "Unsupported state file type");
     }
 
     Y_UNIT_TEST(ShouldRequireStateFileOrFileSystemId)
@@ -81,6 +91,65 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             ParseOptions({"list", "--state-file", "/tmp/state"}),
             yexception, "list command accepts --state-dir only");
+    }
+
+    Y_UNIT_TEST(ShouldRejectOptionsForOtherCommands)
+    {
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions({"list", "--input", ""}),
+            yexception,
+            "--input is only supported by patch");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions({"dump", "--fs-id", "fs", "--input", "patch.json"}),
+            yexception,
+            "--input is only supported by patch");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions(
+                {"check", "--state-file", "/tmp/state",
+                 "--file-type", "write-back-cache", "--output", ""}),
+            yexception,
+            "--output is only supported by list and dump");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions(
+                {"patch", "--fs-id", "fs", "--output", "dump.json"}),
+            yexception,
+            "--output is only supported by list and dump");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions({"list", "--unsafe-ignore-lock"}),
+            yexception,
+            "--unsafe-ignore-lock is not supported by list");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions({"dump", "--fs-id", "fs", "--unsafe-ignore-corruption"}),
+            yexception,
+            "--unsafe-ignore-corruption is only supported by patch");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ParseOptions({"list", "--file-type", "write-back-cache"}),
+            yexception,
+            "--file-type is not supported by list");
+    }
+
+    Y_UNIT_TEST(ShouldAcceptOptionsForSupportedCommands)
+    {
+        const auto list = ParseOptions({"list", "--output", "list.json"});
+        UNIT_ASSERT_VALUES_EQUAL("list.json", list.OutputFile);
+
+        const auto dump = ParseOptions(
+            {"dump", "--state-file", "/tmp/state",
+             "--file-type", "write-back-cache", "--output", "dump.json",
+             "--unsafe-ignore-lock"});
+        UNIT_ASSERT_VALUES_EQUAL("dump.json", dump.OutputFile);
+        UNIT_ASSERT(dump.UnsafeIgnoreLock);
+
+        const auto patch = ParseOptions(
+            {"patch", "--fs-id", "fs", "--input", "patch.json",
+             "--unsafe-ignore-lock", "--unsafe-ignore-corruption"});
+        UNIT_ASSERT_VALUES_EQUAL("patch.json", patch.InputFile);
+        UNIT_ASSERT(patch.UnsafeIgnoreLock);
+        UNIT_ASSERT(patch.UnsafeIgnoreCorruption);
+
+        const auto check =
+            ParseOptions({"check", "--fs-id", "fs", "--unsafe-ignore-lock"});
+        UNIT_ASSERT(check.UnsafeIgnoreLock);
     }
 }
 

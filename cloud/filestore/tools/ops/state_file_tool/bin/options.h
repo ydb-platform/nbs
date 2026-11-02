@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/filestore/tools/ops/state_file_tool/protos/state_file_tool.pb.h>
+
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NStateFileTool {
@@ -25,6 +27,7 @@ struct TOptions
     TString FsId;
     TString SessionId;
     TString StateFile;
+    NProto::EStateFileType FileType = NProto::EStateFileType::Unknown;
     TString InputFile;
     TString OutputFile;
 

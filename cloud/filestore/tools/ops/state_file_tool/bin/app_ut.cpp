@@ -12,8 +12,8 @@
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 #include <util/string/subst.h>
-#include <util/system/fs.h>
 
+#include <cstddef>
 #include <optional>
 
 namespace NCloud::NFileStore::NStateFileTool {
@@ -177,69 +177,72 @@ Y_UNIT_TEST_SUITE(TStateFileToolAppTest)
         stateFile.Parent().MkDirs();
         TFileOutput(stateFile).Write("state");
 
-        const auto outputFile = tempDir.Path() / "output";
-        UNIT_ASSERT(NFs::HardLink(stateFile.GetPath(), outputFile.GetPath()));
-
         TOptions options;
         options.Command = ECommand::List;
         options.StateDir = (tempDir.Path() / "state").GetPath();
-        options.OutputFile = outputFile.GetPath();
+        options.OutputFile = stateFile.GetPath();
 
-        UNIT_ASSERT_EXCEPTION(AppMain(options), yexception);
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
         UNIT_ASSERT_VALUES_EQUAL("state", TFileInput(stateFile).ReadAll());
     }
 
-    Y_UNIT_TEST(ShouldNotOverwriteOtherStateFileWithDumpOutput)
-    {
-        TTempDir tempDir;
-        const auto stateFile =
-            tempDir.Path() / "fs" / "session-1" / "write_back_cache";
-        const auto otherStateFile =
-            tempDir.Path() / "fs" / "session-2" / "write_back_cache";
-        CreateStateFile(stateFile);
-        CreateStateFile(otherStateFile);
-        const auto state = TFileInput(stateFile).ReadAll();
-        const auto otherState = TFileInput(otherStateFile).ReadAll();
-
-        TFile owner(otherStateFile.GetPath(), OpenExisting | RdOnly);
-        const auto acquired = TryLock(owner);
-        UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
-        UNIT_ASSERT(acquired.GetResult());
-
-        const auto hardLink = tempDir.Path() / "hard-link";
-        const auto symlink = tempDir.Path() / "symlink";
-        UNIT_ASSERT(
-            NFs::HardLink(otherStateFile.GetPath(), hardLink.GetPath()));
-        UNIT_ASSERT(NFs::SymLink(otherStateFile.GetPath(), symlink.GetPath()));
-
-        TOptions options;
-        options.Command = ECommand::Dump;
-        options.StateFile = stateFile.GetPath();
-        for (const auto& outputFile:
-             {otherStateFile, hardLink, symlink, stateFile})
-        {
-            options.OutputFile = outputFile.GetPath();
-            UNIT_ASSERT_EXCEPTION(AppMain(options), yexception);
-            UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
-            UNIT_ASSERT_VALUES_EQUAL(
-                otherState,
-                TFileInput(otherStateFile).ReadAll());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldWriteDumpToNewOutputFile)
+    Y_UNIT_TEST(ShouldNotOverwriteExistingFileWithDumpOutput)
     {
         TTempDir tempDir;
         const auto stateFile = tempDir.Path() / "write_back_cache";
         CreateStateFile(stateFile);
         const auto state = TFileInput(stateFile).ReadAll();
 
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateFile = stateFile.GetPath();
+        options.FileType = NProto::EStateFileType::WriteBackCache;
+        options.OutputFile = stateFile.GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+        UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
+    }
+
+    Y_UNIT_TEST(ShouldReportInvalidPatchInput)
+    {
+        TTempDir tempDir;
+        const auto inputFile = tempDir.Path() / "patch.json";
+        const auto stateFile = tempDir.Path() / "write_back_cache";
+        CreateStateFile(stateFile);
+
+        TOptions options;
+        options.Command = ECommand::Patch;
+        options.InputFile = inputFile.GetPath();
+        options.StateFile = stateFile.GetPath();
+        options.FileType = NProto::EStateFileType::WriteBackCache;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+
+        TFileOutput(inputFile).Write("{");
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+    }
+
+    Y_UNIT_TEST(ShouldDumpLockedStateFileOnlyWithOverride)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "copied-state.bin";
+        CreateStateFile(stateFile);
+        const auto state = TFileInput(stateFile).ReadAll();
+
+        TFile owner(stateFile.GetPath(), OpenExisting | RdOnly);
+        const auto acquired = TryLock(owner);
+        UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
+        UNIT_ASSERT(acquired.GetResult());
+
         const auto outputFile = tempDir.Path() / "dump.json";
         TOptions options;
         options.Command = ECommand::Dump;
         options.StateFile = stateFile.GetPath();
+        options.FileType = NProto::EStateFileType::WriteBackCache;
         options.OutputFile = outputFile.GetPath();
 
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+        UNIT_ASSERT(!outputFile.Exists());
+        options.UnsafeIgnoreLock = true;
         UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
         NProto::TStateFileDump dump;
         ReadJson(TFileInput(outputFile).ReadAll(), dump);
@@ -249,6 +252,118 @@ Y_UNIT_TEST_SUITE(TStateFileToolAppTest)
             static_cast<ui32>(EFileRingBufferVersion::V6),
             dump.GetHeader().GetVersion());
         UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
+    }
+
+    Y_UNIT_TEST(ShouldRequireSupportedTypeForDirectStateFile)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "handle_ops_queue";
+        CreateStateFile(stateFile);
+        const auto state = TFileInput(stateFile).ReadAll();
+        const auto outputFile = tempDir.Path() / "dump.json";
+
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateFile = stateFile.GetPath();
+        options.OutputFile = outputFile.GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+
+        options.FileType = NProto::EStateFileType::HandleOpsQueue;
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+        UNIT_ASSERT(!outputFile.Exists());
+        UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
+    }
+
+    Y_UNIT_TEST(ShouldDumpLocatedStateFile)
+    {
+        TTempDir tempDir;
+        const auto stateDir = tempDir.Path() / "state";
+        CreateStateFile(stateDir / "fs" / "session" / "write_back_cache");
+
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateDir = stateDir.GetPath();
+        options.FsId = "fs";
+        options.OutputFile = (tempDir.Path() / "dump.json").GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+    }
+
+    Y_UNIT_TEST(ShouldCheckStateFileStatus)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "write_back_cache";
+        TFile file(stateFile.GetPath(), CreateNew | RdWr);
+
+        TOptions options;
+        options.Command = ECommand::Check;
+        options.StateFile = stateFile.GetPath();
+        options.FileType = NProto::EStateFileType::WriteBackCache;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+        file.Resize(sizeof(TFileRingBufferHeader) + 64);
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+        file.Close();
+
+        const auto initializedFile = tempDir.Path() / "initialized";
+        CreateStateFile(initializedFile);
+        options.StateFile = initializedFile.GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+
+        TFileOutput(initializedFile).Write("broken");
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+    }
+
+    Y_UNIT_TEST(ShouldRequireCorruptionOverrideToRepairStateFile)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "write_back_cache";
+        CreateStateFile(stateFile);
+        {
+            TFile file(stateFile.GetPath(), OpenExisting | RdWr);
+            const ui32 badChecksum = 1;
+            file.Pwrite(
+                &badChecksum,
+                sizeof(badChecksum),
+                offsetof(TFileRingBufferHeader, MetadataChecksum));
+        }
+        const auto corruptedState = TFileInput(stateFile).ReadAll();
+
+        const auto dumpFile = tempDir.Path() / "dump.json";
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateFile = stateFile.GetPath();
+        options.FileType = NProto::EStateFileType::WriteBackCache;
+        options.OutputFile = dumpFile.GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+
+        NProto::TStateFileDump patch;
+        ReadJson(TFileInput(dumpFile).ReadAll(), patch);
+        UNIT_ASSERT(patch.GetIsCorrupted());
+        UNIT_ASSERT(patch.HasActualMetadataChecksum());
+        patch.MutableHeader()->SetMetadataChecksum(
+            patch.GetActualMetadataChecksum());
+
+        const auto patchFile = tempDir.Path() / "patch.json";
+        {
+            TFileOutput output(patchFile);
+            WriteStateFileDumpJson(patch, output);
+        }
+
+        options.Command = ECommand::Patch;
+        options.OutputFile.clear();
+        options.InputFile = patchFile.GetPath();
+        UNIT_ASSERT_VALUES_EQUAL(1, AppMain(options));
+        UNIT_ASSERT_VALUES_EQUAL(
+            corruptedState,
+            TFileInput(stateFile).ReadAll());
+
+        options.UnsafeIgnoreCorruption = true;
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+
+        options.Command = ECommand::Check;
+        options.InputFile.clear();
+        options.UnsafeIgnoreCorruption = false;
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
     }
 }
 
