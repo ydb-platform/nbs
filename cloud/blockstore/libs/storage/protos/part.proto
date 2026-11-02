@@ -209,17 +209,18 @@ message TPartitionMeta
 
 message TCompressionMetadata
 {
-    // Codec families provided by library/cpp/blockcodecs.
+    // Each value identifies a specific library/cpp/blockcodecs configuration.
+    // Keep in sync with CompressionCodecs in partition_common/blobs_compressor.cpp.
     enum ECompressionType
     {
-        COMPRESSION_LZ4 = 0;
+        COMPRESSION_LZ4_FAST14_SAFE = 0;
         COMPRESSION_SNAPPY = 1;
-        COMPRESSION_ZLIB = 2;
-        COMPRESSION_LZMA = 3;
-        COMPRESSION_BZIP2 = 4;
-        COMPRESSION_FASTLZ = 5;
-        COMPRESSION_ZSTD = 6;    // zstd08_* and zstd_*.
-        COMPRESSION_BROTLI = 7;
+        COMPRESSION_ZLIB_6 = 2;
+        COMPRESSION_LZMA_5 = 3;
+        COMPRESSION_BZIP2_6 = 4;
+        COMPRESSION_FASTLZ_0 = 5;
+        COMPRESSION_ZSTD_3 = 6;
+        COMPRESSION_BROTLI_GENERIC_11 = 7;
     }
     ECompressionType Codec = 1;
 
