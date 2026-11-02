@@ -15,6 +15,15 @@ using namespace NThreading;
 
 using ERequestType = IWriteBackCacheStateStats::ERequestType;
 
+namespace {
+
+NCloud::NProto::TError MakeCancellationError()
+{
+    return MakeError(E_CANCELLED, "WriteBackCache is shutting down");
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBackCacheState::TWriteBackCacheState(
@@ -73,6 +82,61 @@ void TWriteBackCacheState::SetShutdownMode()
     ShutdownMode = true;
 }
 
+void TWriteBackCacheState::CancelPendingRequests()
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (RequestsCancelled) {
+        return;
+    }
+    RequestsCancelled = true;
+
+    const auto error = MakeCancellationError();
+    const auto now = Timer->Now();
+
+    CancelFlushAllRequests();
+    Nodes.VisitNodes(
+        [&](ui64, TNodeState& nodeState)
+        {
+            for (auto& request: nodeState.FlushRequests) {
+                Stats->RequestFailed(
+                    ERequestType::Flush,
+                    now - request->RequestStartTime);
+                QueuedOperations.FailFlushOrReleasePromise(
+                    std::move(request->Promise),
+                    error);
+            }
+            nodeState.FlushRequests.clear();
+
+            for (auto it = nodeState.Barriers.begin();
+                 it != nodeState.Barriers.end();)
+            {
+                if (it->second->IsAcquired) {
+                    ++it;
+                    continue;
+                }
+                Stats->RequestFailed(
+                    ERequestType::AcquireBarrier,
+                    now - it->second->RequestStartTime);
+                QueuedOperations.FailAcquireBarrierPromise(
+                    std::move(it->second->Promise),
+                    error);
+                it = nodeState.Barriers.erase(it);
+            }
+        });
+
+    FailAllUnallocatedPendingRequests(error);
+    CancelSerializedPendingRequests();
+
+    Nodes.VisitNodes(
+        [&](ui64 nodeId, TNodeState& nodeState)
+        {
+            if (!IsFailed) {
+                UpdateFlushStatus(nodeId, nodeState);
+            }
+        });
+}
+
 bool TWriteBackCacheState::IsDrained() const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
@@ -84,6 +148,11 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     std::shared_ptr<TWriteDataRequest> request)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (RequestsCancelled) {
+        return MakeFuture<TWriteDataResponse>(
+            TErrorResponse(MakeCancellationError()));
+    }
 
     if (DrainingMode) {
         // This may happen due to race condition that is valid scenario:
@@ -126,6 +195,10 @@ TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
+    if (RequestsCancelled) {
+        return MakeFuture(MakeCancellationError());
+    }
+
     if (IsFailed) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
     }
@@ -153,9 +226,13 @@ TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
     return future;
 }
 
-TFuture<TError> TWriteBackCacheState::AddFlushAllRequest()
+TFuture<TError> TWriteBackCacheState::AddFlushAllRequest(bool forShutdown)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (RequestsCancelled && !forShutdown) {
+        return MakeFuture(MakeCancellationError());
+    }
 
     if (IsFailed) {
         return HangingRequests.CreateFlushOrReleaseHandleResponse();
@@ -186,12 +263,18 @@ TFuture<TError> TWriteBackCacheState::AddReleaseHandleRequest(
 
     auto* nodeState = Nodes.GetNodeState(nodeId, /* includeDeleted = */ false);
     if (nodeState == nullptr) {
+        if (RequestsCancelled) {
+            return MakeFuture(MakeCancellationError());
+        }
         Stats->RequestCompletedImmediately(ERequestType::ReleaseHandle);
         return MakeFuture<TError>();
     }
 
     auto* handleState = nodeState->Handles.FindPtr(handle);
     if (handleState == nullptr) {
+        if (RequestsCancelled) {
+            return MakeFuture(MakeCancellationError());
+        }
         Stats->RequestCompletedImmediately(ERequestType::ReleaseHandle);
         return MakeFuture<TError>();
     }
@@ -216,7 +299,13 @@ void TWriteBackCacheState::AddHangingRequest(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    HangingRequests.Add(std::move(promise));
+    if (RequestsCancelled) {
+        QueuedOperations.FailReadDataPromise(
+            std::move(promise),
+            MakeCancellationError());
+    } else {
+        HangingRequests.Add(std::move(promise));
+    }
 }
 
 void TWriteBackCacheState::TriggerPeriodicFlushAll()
@@ -238,7 +327,7 @@ std::optional<TCachedData> TWriteBackCacheState::GetCachedData(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (IsFailed) {
+    if (IsFailed || RequestsCancelled) {
         return std::nullopt;
     }
 
@@ -540,7 +629,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
             QueuedOperations.FailFlushOrReleasePromise(
                 std::move(
                     handleState.ReleaseHandleRequest->ReadyToReleasePromise),
-                error);
+                RequestsCancelled ? MakeCancellationError() : error);
 
             handleState.ReleaseHandleRequest.reset();
         }
@@ -568,6 +657,10 @@ NThreading::TFuture<TResultOrError<ui64>> TWriteBackCacheState::AcquireBarrier(
     ui64 nodeId)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
+
+    if (RequestsCancelled) {
+        return MakeFuture(TResultOrError<ui64>(MakeCancellationError()));
+    }
 
     if (IsFailed) {
         return HangingRequests.CreateAcquireBarrierResponse();
@@ -862,6 +955,10 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
 
 void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 {
+    if (RequestsCancelled) {
+        return;
+    }
+
     // Barrier acquisition condition:
     // all requests with SequenceId <= BarrierId are flushed and evicted
 
@@ -916,6 +1013,8 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 
 void TWriteBackCacheState::ProcessSerializedRequests()
 {
+    CancelSerializedPendingRequests();
+
     while (auto cachedRequest = GetNextReadyCachedRequest()) {
         ProcessReadyCachedRequest(std::move(cachedRequest));
     }
@@ -925,7 +1024,7 @@ void TWriteBackCacheState::ProcessSerializedRequests()
 
 void TWriteBackCacheState::ProcessPendingRequests()
 {
-    if (IsFailed) {
+    if (IsFailed || RequestsCancelled) {
         return;
     }
 
@@ -979,8 +1078,10 @@ void TWriteBackCacheState::ProcessReadyCachedRequest(
 
     Y_ABORT_UNLESS(pendingRequest->GetSequenceId() == request->GetSequenceId());
 
-    QueuedOperations.CompleteWriteDataPromise(
-        std::move(pendingRequest->AccessPromise()));
+    if (pendingRequest->AccessPromise().Initialized()) {
+        QueuedOperations.CompleteWriteDataPromise(
+            std::move(pendingRequest->AccessPromise()));
+    }
 
     auto& handleState = nodeState.Handles[request->GetHandle()];
     handleState.PendingRequests.Remove(pendingRequest.get());
@@ -1053,12 +1154,19 @@ void TWriteBackCacheState::TriggerReleaseHandleCompletion(
     THandleState& handleState)
 {
     if (handleState.ReleaseHandleRequest) {
-        Stats->RequestCompleted(
-            ERequestType::ReleaseHandle,
-            Timer->Now() - handleState.ReleaseHandleRequest->RequestStartTime);
-
-        QueuedOperations.CompleteFlushOrReleasePromise(
-            std::move(handleState.ReleaseHandleRequest->ReadyToReleasePromise));
+        const auto duration =
+            Timer->Now() - handleState.ReleaseHandleRequest->RequestStartTime;
+        if (RequestsCancelled) {
+            Stats->RequestFailed(ERequestType::ReleaseHandle, duration);
+            QueuedOperations.FailFlushOrReleasePromise(
+                std::move(
+                    handleState.ReleaseHandleRequest->ReadyToReleasePromise),
+                MakeCancellationError());
+        } else {
+            Stats->RequestCompleted(ERequestType::ReleaseHandle, duration);
+            QueuedOperations.CompleteFlushOrReleasePromise(std::move(
+                handleState.ReleaseHandleRequest->ReadyToReleasePromise));
+        }
 
         nodeState.HandlesWithReleaseRequests.erase(handle);
     }
@@ -1164,6 +1272,42 @@ void TWriteBackCacheState::FailAllUnallocatedPendingRequests(
             CheckAndAcquireBarriers(nodeState);
         }
     }
+}
+
+void TWriteBackCacheState::CancelFlushAllRequests()
+{
+    const auto now = Timer->Now();
+    const auto error = MakeCancellationError();
+    for (auto& request: FlushAllRequestQueue) {
+        Stats->RequestFailed(
+            ERequestType::FlushAll,
+            now - request.RequestStartTime);
+        QueuedOperations.FailFlushOrReleasePromise(
+            std::move(request.Promise),
+            error);
+    }
+    FlushAllRequestQueue.clear();
+}
+
+void TWriteBackCacheState::CancelSerializedPendingRequests()
+{
+    if (!RequestsCancelled) {
+        return;
+    }
+
+    RequestManager.VisitAllocatedPendingRequests(
+        [this](TPendingWriteDataRequest& request)
+        {
+            // The serializer reads borrowed input buffers. Its completion must
+            // precede the cancellation reply that allows the caller to reuse
+            // them, even when corrupted storage prevents committing the write.
+            if (request.IsSerialized() && request.AccessPromise().Initialized())
+            {
+                QueuedOperations.FailWriteDataPromise(
+                    std::move(request.AccessPromise()),
+                    MakeCancellationError());
+            }
+        });
 }
 
 void TWriteBackCacheState::SetFailedFlag()

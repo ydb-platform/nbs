@@ -298,6 +298,14 @@ TWriteDataRequestManager::GetBackUnallocatedPendingRequest() const
                                            : nullptr;
 }
 
+void TWriteDataRequestManager::VisitAllocatedPendingRequests(
+    TFunctionRef<void(TPendingWriteDataRequest&)> visitor)
+{
+    for (auto& request: AllocatedPendingRequests) {
+        visitor(request);
+    }
+}
+
 void TWriteDataRequestManager::RemoveUnallocated(
     std::unique_ptr<TPendingWriteDataRequest> request)
 {

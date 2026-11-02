@@ -79,8 +79,7 @@ private:
     TIntrusiveList<TFlushRequest> FlushRequests;
     TIntrusiveList<TReleaseHandleRequest> ReleaseHandleRequests;
 
-    // Requests that are hanging due to WriteBackCache failed state
-    // It will be used in the future to prevent hanging on session destroy.
+    // Requests that are hanging due to WriteBackCache failed state.
     THangingRequests HangingRequests;
 
     // Either the persistent storage is corrupted or an internal problem in
@@ -90,6 +89,7 @@ private:
 
     bool DrainingMode = false;
     bool ShutdownMode = false;
+    bool RequestsCancelled = false;
 
 public:
     using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
@@ -116,6 +116,11 @@ public:
     // Pending requests are not cancelled.
     void SetShutdownMode();
 
+    // Reject new frontend requests and cancel requests waiting in a healthy
+    // cache. Allocated writes and borrowed handles retain their normal
+    // lifetime. Requests hanging due to failed storage are handled separately.
+    void CancelPendingRequests();
+
     // Returns true if the cache is in draining mode and there are no more
     // unflushed requests.
     // Note: only transition from false to true is possible.
@@ -128,7 +133,8 @@ public:
 
     NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 
-    NThreading::TFuture<NCloud::NProto::TError> AddFlushAllRequest();
+    NThreading::TFuture<NCloud::NProto::TError> AddFlushAllRequest(
+        bool forShutdown = false);
 
     NThreading::TFuture<NCloud::NProto::TError> AddReleaseHandleRequest(
         ui64 nodeId,
@@ -276,6 +282,9 @@ private:
         const NCloud::NProto::TError& error);
 
     void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
+
+    void CancelFlushAllRequests();
+    void CancelSerializedPendingRequests();
 
     void SetFailedFlag();
 };

@@ -119,6 +119,9 @@ public:
     [[nodiscard]] const TPendingWriteDataRequest*
     GetBackUnallocatedPendingRequest() const;
 
+    void VisitAllocatedPendingRequests(
+        TFunctionRef<void(TPendingWriteDataRequest&)> visitor);
+
     // Removes an unallocated request from the pending queue.
     void RemoveUnallocated(std::unique_ptr<TPendingWriteDataRequest> request);
 

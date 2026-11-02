@@ -2284,6 +2284,88 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
     }
 
+    Y_UNIT_TEST(ShouldCancelPendingRequestsBeforeShutdown)
+    {
+        TBootstrap b({.MaxWriteRequestsCount = 1});
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        const TString data(400_KB, 'x');
+        b.WriteToCacheSync(1, 101, 0, data);
+        b.WriteToCacheSync(1, 101, 1_MB, data);
+
+        auto pendingWrite = b.WriteToCache(1, 103, 2_MB, data, {});
+        auto otherNodeWrite = b.WriteToCache(2, 201, 0, data, {});
+        auto flush = b.Cache.FlushNodeData(1);
+        auto flushAll = b.Cache.FlushAllData();
+        auto release = b.Cache.ReleaseHandle(1, 101);
+
+        auto directRequest = std::make_shared<NProto::TWriteDataRequest>();
+        directRequest->SetNodeId(1);
+        directRequest->SetHandle(103);
+        directRequest->SetOffset(3_MB);
+        directRequest->SetBuffer("direct");
+        auto directWrite =
+            b.Cache.WriteDataDirect(b.CallContext, std::move(directRequest));
+
+        UNIT_ASSERT(!pendingWrite.HasValue());
+        UNIT_ASSERT(!otherNodeWrite.HasValue());
+        UNIT_ASSERT(!flush.HasValue());
+        UNIT_ASSERT(!flushAll.HasValue());
+        UNIT_ASSERT(!release.HasValue());
+        UNIT_ASSERT(!directWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
+
+        b.Cache.CancelPendingRequests();
+        b.Cache.CancelPendingRequests();
+
+        UNIT_ASSERT(pendingWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            pendingWrite.GetValue().GetError().GetCode());
+        UNIT_ASSERT(otherNodeWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            otherNodeWrite.GetValue().GetError().GetCode());
+        UNIT_ASSERT(flush.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, flush.GetValue().GetCode());
+        UNIT_ASSERT(flushAll.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, flushAll.GetValue().GetCode());
+        UNIT_ASSERT(directWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            directWrite.GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
+
+        // Releasing the borrowed handle must still wait for its backend write.
+        UNIT_ASSERT(!release.HasValue());
+
+        auto lateWrite = b.WriteToCache(2, 0, "late");
+        UNIT_ASSERT(lateWrite.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            lateWrite.GetValue().GetError().GetCode());
+        auto lateFlush = b.Cache.FlushAllData();
+        UNIT_ASSERT(lateFlush.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, lateFlush.GetValue().GetCode());
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, release.GetValue().GetCode());
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(!HasError(shutdown.GetValue()));
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.SessionWriteDataHandlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        b.CheckStatsAreEmpty();
+    }
+
     Y_UNIT_TEST(ShouldWaitForAllFlushRequestsOnShutdownFailure)
     {
         TBootstrap b;
@@ -2320,6 +2402,37 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             1,
             b.Metrics.WriteDataRequestDroppedCount->Get());
         b.CheckStatsAreEmpty();
+    }
+
+    Y_UNIT_TEST(ShouldCancelReadCompletedAfterCancellation)
+    {
+        TBootstrap b;
+        b.WriteToCacheSync(1, 0, "abc");
+
+        auto readPromise = NewPromise<NProto::TReadDataResponse>();
+        b.Session->ReadDataHandler = [&](auto, auto)
+        {
+            return readPromise.GetFuture();
+        };
+        auto read = b.ReadFromCache(1, 0, 10);
+        UNIT_ASSERT(!read.HasValue());
+
+        b.Cache.CancelPendingRequests();
+        UNIT_ASSERT(!read.HasValue());
+
+        // The backend response arrives after cancellation, when the read can
+        // no longer obtain cached data. Its promise must fail immediately.
+        readPromise.SetValue({});
+
+        UNIT_ASSERT(read.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            read.GetValue().GetError().GetCode());
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(!HasError(shutdown.GetValue()));
+        UNIT_ASSERT(b.Cache.IsDrained());
     }
 
     Y_UNIT_TEST(ShouldFlushCachedDataOnShutdown)

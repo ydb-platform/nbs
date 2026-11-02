@@ -296,14 +296,19 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    void CancelPendingRequests()
+    {
+        State.CancelPendingRequests();
+    }
+
+    NThreading::TFuture<NCloud::NProto::TError> Drain(bool forShutdown = false)
     {
         if (!DrainRequested.exchange(true)) {
             STORAGE_INFO(LogTag << " Start WriteBackCache draining");
         }
 
         State.SetDrainingMode();
-        return State.AddFlushAllRequest();
+        return State.AddFlushAllRequest(forShutdown);
     }
 
     NThreading::TFuture<NCloud::NProto::TError> Shutdown()
@@ -314,8 +319,9 @@ public:
         }
 
         State.SetShutdownMode();
-        Drain().Subscribe([tracker = FlushTracker](const auto& future)
-                          { tracker->SetShutdownResult(future.GetValue()); });
+        Drain(true).Subscribe(
+            [tracker = FlushTracker](const auto& future)
+            { tracker->SetShutdownResult(future.GetValue()); });
         return FlushTracker->GetShutdownFuture();
     }
 
@@ -887,6 +893,12 @@ NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
 {
     auto impl = Impl;
     return impl->Drain();
+}
+
+void TWriteBackCache::CancelPendingRequests()
+{
+    auto impl = Impl;
+    impl->CancelPendingRequests();
 }
 
 NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Shutdown()
