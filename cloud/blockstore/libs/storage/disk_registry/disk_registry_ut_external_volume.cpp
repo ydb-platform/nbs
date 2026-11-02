@@ -195,6 +195,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryExternalVolumeTest)
             diskRegistry.RecvMarkDiskForCleanupResponse()->GetStatus());
         diskRegistry.MarkDiskForCleanup("fs", ExternalVolumeTabletId);
 
+        // A caller that omits the owner check must not release an external disk.
+        // Automatic cleanup also sends requests with owner zero.
         diskRegistry.SendDeallocateDiskRequest("fs");
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -228,6 +230,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryExternalVolumeTest)
         diskRegistry.MarkDiskForCleanup("nbs-garbage");
 
         TVector<TString> described;
+        TVector<TString> deallocated;
         runtime->SetEventFilter([&] (auto&, auto& event) {
             if (event->GetTypeRewrite() ==
                 TEvSSProxy::EvDescribeVolumeRequest)
@@ -236,6 +239,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryExternalVolumeTest)
                     event->template Get<
                         TEvSSProxy::TEvDescribeVolumeRequest>()->DiskId);
             }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDeallocateDiskRequest)
+            {
+                const auto& record = event->template Get<
+                    TEvDiskRegistry::TEvDeallocateDiskRequest>()->Record;
+                UNIT_ASSERT_VALUES_EQUAL(0, record.GetExternalVolumeTabletId());
+                deallocated.push_back(record.GetDiskId());
+            }
             return false;
         });
 
@@ -243,9 +254,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryExternalVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, described.size());
         UNIT_ASSERT_VALUES_EQUAL("nbs-garbage", described[0]);
+        UNIT_ASSERT_VALUES_EQUAL(1, deallocated.size());
+        UNIT_ASSERT_VALUES_EQUAL("nbs-garbage", deallocated[0]);
         UNIT_ASSERT(diskRegistry.Exists("fs"));
         UNIT_ASSERT(!diskRegistry.Exists("nbs-garbage"));
 
+        // Cleanup must also complete when filtering leaves no native disks.
+        described.clear();
+        deallocated.clear();
+        diskRegistry.CleanupDisks();
+        UNIT_ASSERT(described.empty());
+        UNIT_ASSERT(deallocated.empty());
+        UNIT_ASSERT(diskRegistry.Exists("fs"));
+
+        runtime->SetEventFilter([] (auto&, auto&) { return false; });
         diskRegistry.DeallocateDisk("fs", false, ExternalVolumeTabletId);
         UNIT_ASSERT(!diskRegistry.Exists("fs"));
     }
