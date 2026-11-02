@@ -800,21 +800,25 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR)
-            .Subscribe(
-                [onStop = std::move(onStop),
-                 scheduler = Scheduler](TFuture<void> f) mutable
-                {
-                    // this callback may be called from the same thread where
-                    // the returned future is set => we shouldn't call onStop
-                    // inside this callback directly to avoid a deadlock caused
-                    // by the Join call which is done by
-                    // SessionThread->Unmount()
-                    scheduler->Schedule(
-                        TInstant::Zero(),
-                        [onStop = std::move(onStop), f = std::move(f)]() mutable
-                        { onStop(f); });
-                });
+        auto completionQueueStopped = CompletionQueue->StopAsync(FUSE_ERROR);
+        if (WriteBackCache) {
+            WriteBackCache.CancelPendingRequests();
+        }
+
+        completionQueueStopped.Subscribe(
+            [onStop = std::move(onStop),
+             scheduler = Scheduler](TFuture<void> f) mutable
+            {
+                // this callback may be called from the same thread where
+                // the returned future is set => we shouldn't call onStop
+                // inside this callback directly to avoid a deadlock caused
+                // by the Join call which is done by
+                // SessionThread->Unmount()
+                scheduler->Schedule(
+                    TInstant::Zero(),
+                    [onStop = std::move(onStop), f = std::move(f)]() mutable
+                    { onStop(f); });
+            });
 
         return s;
     }
@@ -1496,10 +1500,9 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
-        // Stopping the completion queue first guarantees that no
-        // request-driven WriteBackCache call is in flight. Cache callbacks
-        // retain TImpl while accessing its state, so destruction cannot race
-        // a TQueuedOperations::Release() serialization pass.
+        // Frontend requests have completed, including cancelled cache waiters.
+        // Cache calls retain their implementation while serialization and
+        // completion callbacks unwind.
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
