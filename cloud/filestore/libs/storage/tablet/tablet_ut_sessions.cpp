@@ -1519,6 +1519,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1559,6 +1560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(2_MB);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
@@ -1593,28 +1595,29 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
 
-        const auto checkCapacity = [&](ui64 expectedCapacity)
+        const auto checkStateFileSize = [&](ui64 expectedStateFileSize)
         {
             auto response = tablet.CreateSession("client", "session");
             UNIT_ASSERT_VALUES_EQUAL(
-                expectedCapacity,
+                expectedStateFileSize,
                 response->Record.GetFileStore()
                     .GetFeatures()
                     .GetServerWriteBackCacheStateFileSize());
         };
 
-        checkCapacity(2_MB);
+        checkStateFileSize(2_MB);
 
         NProto::TStorageConfig patch;
         patch.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
         tablet.ChangeStorageConfig(patch);
         tablet.RebootTablet();
-        checkCapacity(4_GB + 100500);
+        checkStateFileSize(4_GB + 100500);
 
+        // Explicit zero uses the client default instead of the server-wide size.
         patch.SetServerWriteBackCacheStateFileSize(0);
         tablet.ChangeStorageConfig(patch);
         tablet.RebootTablet();
-        checkCapacity(0);
+        checkStateFileSize(0);
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)

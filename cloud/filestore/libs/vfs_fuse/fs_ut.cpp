@@ -324,7 +324,6 @@ struct TBootstrap
             persistentStateManager = CreatePersistentStateManager({
                 .HandleOpsQueueBasePath = config->GetHandleOpsQueuePath(),
                 .WriteBackCacheBasePath = config->GetWriteBackCachePath(),
-                .WriteBackCacheMinStateFileSize = WriteBackCacheStateFileSize,
                 .DirectoryHandlesStorageBasePath =
                     config->GetDirectoryHandlesStoragePath(),
             });
@@ -6588,7 +6587,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldUseServerWriteBackCacheStateFileSizeFromFeatures)
     {
         for (const ui64 stateFileSize:
-             {WriteBackCacheStateFileSize, ui64{2_MB}, 4_GB + 100500})
+             {WriteBackCacheStateFileSize, 2_MB, 4_GB + 100500})
         {
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(true);
@@ -6644,25 +6643,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                           FileSystemId / SessionId / "write_back_cache";
 
         UNIT_ASSERT_VALUES_EQUAL(256_MB, TFile(path, RdOnly).GetLength());
-    }
-
-    Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)
-    {
-        NProto::TFileStoreFeatures features;
-        features.SetServerWriteBackCacheEnabled(true);
-        features.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
-
-        TBootstrap bootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features);
-
-        // Narrowing ui64 to ui32 will result in verification failure because
-        // 100500 is less than the minimal allowed cache capacity
-        bootstrap.Start();
-        Y_DEFER {
-            bootstrap.Stop();
-        };
     }
 
     void TestShouldSupportZeroCopyWriteByWriteBackCache(
