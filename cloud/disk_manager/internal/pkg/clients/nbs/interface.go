@@ -159,6 +159,14 @@ type Client interface {
 
 	DeleteWithFillGeneration(ctx context.Context, diskID string, fillGeneration uint64) error
 
+	ResolveVolumeLinkSource(ctx context.Context, logicalDiskID string) (string, error)
+
+	CreateVolumeLink(ctx context.Context, link VolumeLink) error
+
+	DestroyVolumeLink(ctx context.Context, link VolumeLink) error
+
+	GetVolumeLinkStatus(ctx context.Context, link VolumeLink) (VolumeLinkStatus, error)
+
 	CreateCheckpoint(ctx context.Context, params CheckpointParams) error
 
 	GetCheckpointStatus(
@@ -376,6 +384,19 @@ type MultiZoneClient interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 type Factory interface {
+	// saveState confirms the task generation immediately before creating a new
+	// physical target. It is required and is not called for an existing target.
+	CreateVolumeLinkTarget(
+		ctx context.Context,
+		saveState func() error,
+		link VolumeLink,
+		taskID string,
+	) error
+
+	DeleteVolumeLinkTarget(ctx context.Context, link VolumeLink, taskID string) error
+
+	FinalizeVolumeLinkTarget(ctx context.Context, link VolumeLink, taskID string) error
+
 	GetZones() []string
 
 	HasClient(zoneID string) bool
