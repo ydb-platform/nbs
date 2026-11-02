@@ -4,6 +4,8 @@
 
 #include <cloud/storage/core/libs/common/verify.h>
 
+#include <util/system/spinlock.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -85,11 +87,6 @@ public:
         char* ptr = AccessMutableData() + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
-
-    bool UsesLazyAllocation() const override
-    {
-        return false;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,6 +99,7 @@ private:
     mutable TString UnalignedHead;
     mutable TVector<TString> Blocks;
     mutable TString UnalignedTail;
+    TAdaptiveLock Lock;
 
 public:
     explicit TLazyBlockBuffer(TByteRange byteRange)
@@ -110,54 +108,61 @@ public:
     {
     }
 
-    // This method is not thread-safe because it allocates data on its first
-    // invocation.
     TStringBuf GetUnalignedHead() const override
     {
-        if (!UnalignedHead) {
-            UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
+        TStringBuf ret;
+        with_lock (Lock) {
+            if (!UnalignedHead) {
+                UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
+            }
+
+            ret = UnalignedHead;
         }
 
-        return UnalignedHead;
+        return ret;
     }
 
-    // This method is not thread-safe because it allocates data on its first
-    // invocation.
     TStringBuf GetUnalignedTail() const override
     {
-        if (!UnalignedTail) {
-            UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
+        TStringBuf ret;
+        with_lock (Lock) {
+            if (!UnalignedTail) {
+                UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
+            }
+
+            ret = UnalignedTail;
         }
 
-        return UnalignedTail;
+        return ret;
     }
 
-    // This method is not thread-safe because it allocates data on its first
-    // invocation.
     TStringBuf GetBlock(size_t index) const override
     {
-        auto& block = Blocks[index];
-        if (!block) {
-            block.ReserveAndResize(ByteRange.BlockSize);
+        TStringBuf ret;
+        with_lock (Lock) {
+            auto& block = Blocks[index];
+            if (!block) {
+                block.ReserveAndResize(ByteRange.BlockSize);
+            }
+            ret = block;
         }
 
-        return block;
+        return ret;
     }
 
     void SetBlock(size_t index, TStringBuf block) override
     {
-        Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
-        Blocks[index] = block;
+        with_lock (Lock) {
+            Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
+            Blocks[index] = block;
+        }
     }
 
     void ClearBlock(size_t index) override
     {
-        Blocks[index].clear();
-    }
-
-    bool UsesLazyAllocation() const override
-    {
-        return true;
+        with_lock (Lock) {
+            Blocks[index].clear();
+        }
     }
 };
 

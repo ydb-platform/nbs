@@ -29,9 +29,6 @@ bool TFreshBlocks::AddBlock(
     ui64 minCommitId,
     ui64 maxCommitId)
 {
-    // Do not use lazy block buffer as it is not safe to read data concurrently.
-    // e.g. TFlushActor can read it from another thread.
-    Y_DEBUG_ABORT_UNLESS(!blockData.BlockBuffer->UsesLazyAllocation());
     auto [it, inserted] = Blocks.emplace(
         TBlock(nodeId, blockIndex, minCommitId, maxCommitId),
         std::move(blockData));
