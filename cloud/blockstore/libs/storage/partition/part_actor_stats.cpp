@@ -61,11 +61,20 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
         std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
 
-    PartCounters->Simple.MixedBytesCount.Set(
-        State->GetMixedBlocksCount() * State->GetBlockSize());
+    const ui64 logicalMixedBytes =
+        State->GetMixedBlocksCount() * State->GetBlockSize();
+    const ui64 logicalMergedBytes =
+        State->GetMergedBlocksCount() * State->GetBlockSize();
+    PartCounters->Simple.LogicalMixedBytesCount.Set(logicalMixedBytes);
+    PartCounters->Simple.LogicalMergedBytesCount.Set(logicalMergedBytes);
 
-    PartCounters->Simple.MergedBytesCount.Set(
-        State->GetMergedBlocksCount() * State->GetBlockSize());
+    if (State->AreBlobByteCountersEnabled()) {
+        PartCounters->Simple.MixedBytesCount.Set(State->GetMixedBytesCount());
+        PartCounters->Simple.MergedBytesCount.Set(State->GetMergedBytesCount());
+    } else {
+        PartCounters->Simple.MixedBytesCount.Set(logicalMixedBytes);
+        PartCounters->Simple.MergedBytesCount.Set(logicalMergedBytes);
+    }
 
     PartCounters->Simple.MixedIndexBytesCount.Set(
         State->GetMixedIndexBlocksCount() * State->GetBlockSize());

@@ -88,7 +88,8 @@ TPartitionState MakeState(
         std::nullopt,   // mixedBlocksFilterConfig
         false,          // checkpointAwareCleanupEnabled
         useBlobChannelDataKindForCounters,
-        false   // compactionStatsTrackerEnabled
+        false,   // compactionStatsTrackerEnabled
+        true     // blobByteCountersEnabled
     );
 }
 
@@ -166,6 +167,15 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
 
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
     state.GetCleanupQueue().Add({setup.MergedBlobId, deletionCommitId, {}});
+
+    state.UpdateBlobByteCounters(
+        setup.MixedBlobId,
+        EChannelDataKind::Mixed,
+        true);
+    state.UpdateBlobByteCounters(
+        setup.MergedBlobId,
+        EChannelDataKind::Merged,
+        true);
 
     if (state.ShouldUseBlobChannelDataKindForCounters()) {
         state.IncrementMergedBlocksCount(7);
@@ -637,6 +647,12 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 
             RunPrepareAndExecute(executor, env, state, args);
 
+            const auto& bytes = state.GetStats().GetBlobByteCounters();
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMergedIndexBytesCount());
+
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
@@ -862,6 +878,9 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBytesCount());
 
         // No blob metas were read from the database
         UNIT_ASSERT_VALUES_EQUAL(0, args.ReadBlobMetasCount);

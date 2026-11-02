@@ -1778,4 +1778,8 @@ message TStorageServiceConfig
 
     // Allows changing the throttling policy through the volume monitoring page.
     optional bool ChangeThrottlingPolicyEnabled = 552;
+
+    // Track stored and logical blob byte counters for the disk.
+    // Enable before compression: missing counters are initialized from block counts.
+    optional bool BlobByteCountersEnabled = 553;
 }

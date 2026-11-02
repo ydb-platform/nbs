@@ -154,6 +154,11 @@ void TPartitionActor::ExecuteLoadState(
     // override config
     args.Meta->MutableConfig()->CopyFrom(PartitionConfig);
 
+    if (!Config->GetBlobByteCountersEnabled()) {
+        // Reinitialize from block counts if enabled again later.
+        args.Meta->MutableStats()->ClearBlobByteCounters();
+    }
+
     db.WriteMeta(*args.Meta);
 }
 
@@ -284,7 +289,8 @@ void TPartitionActor::CompleteLoadState(
             Config->IsCompactionStatsTrackerFeatureEnabled(
                 partitionConfig.GetCloudId(),
                 partitionConfig.GetFolderId(),
-                partitionConfig.GetDiskId()));
+                partitionConfig.GetDiskId()),
+        Config->GetBlobByteCountersEnabled());
 
     CreateFreshBlocksCompanionClient();
 

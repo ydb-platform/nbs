@@ -224,6 +224,8 @@ private:
         EChannelDataKind indexKind,
         ui64 blocksCount)
     {
+        State.UpdateBlobByteCounters(blobId, indexKind, true);
+
         // Deletion markers contribute to blob totals, but not block totals.
         if (IsDeletionMarker(blobId)) {
             blocksCount = 0;

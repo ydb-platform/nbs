@@ -99,6 +99,7 @@ struct TPartitionStateOptions
     bool CheckpointAwareCleanupEnabled = false;
     bool UseBlobChannelDataKindForCounters = false;
     bool CompactionStatsTrackerEnabled = false;
+    bool BlobByteCountersEnabled = false;
     ICompactionPolicyPtr CompactionPolicy =
         BuildDefaultCompactionPolicy(5, 0, false);
     ui32 MixedIndexCacheSize = 0;
@@ -135,7 +136,8 @@ TPartitionState MakeState(
         std::nullopt,   // mixedBlocksFilterConfig
         options.CheckpointAwareCleanupEnabled,
         options.UseBlobChannelDataKindForCounters,
-        options.CompactionStatsTrackerEnabled);
+        options.CompactionStatsTrackerEnabled,
+        options.BlobByteCountersEnabled);
 }
 
 TPartitionState MakeState(
@@ -199,6 +201,148 @@ void AssertBlobAndBlockCounts(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldAccountForBlobBytesAcrossCounterClassificationChanges)
+    {
+        auto state = MakeState(
+            DefaultBlockCount,
+            {.BlobByteCountersEnabled = true});
+        const TPartialBlobId mixedBlob(1, 1, 3, 123, 0, 0);
+        const TPartialBlobId mergedBlob(1, 2, 3, 456, 0, 0);
+        const TPartialBlobId deletionMarker(1, 3, 0, 0, 0, 0);
+
+        state.UpdateBlobByteCounters(mixedBlob, EChannelDataKind::Mixed, true);
+        state.UpdateBlobByteCounters(
+            mergedBlob,
+            EChannelDataKind::Merged,
+            true);
+        state.UpdateBlobByteCounters(
+            deletionMarker,
+            EChannelDataKind::Mixed,
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(123, state.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(456, state.GetMergedBytesCount());
+
+        auto channelState = MakeState(
+            state.GetMeta(),
+            {.UseBlobChannelDataKindForCounters = true,
+             .BlobByteCountersEnabled = true});
+        UNIT_ASSERT_VALUES_EQUAL(0, channelState.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(579, channelState.GetMergedBytesCount());
+
+        auto indexState = MakeState(
+            channelState.GetMeta(),
+            {.BlobByteCountersEnabled = true});
+        UNIT_ASSERT_VALUES_EQUAL(123, indexState.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(456, indexState.GetMergedBytesCount());
+
+        indexState.UpdateBlobByteCounters(
+            mixedBlob,
+            EChannelDataKind::Mixed,
+            false);
+        indexState.UpdateBlobByteCounters(
+            mergedBlob,
+            EChannelDataKind::Merged,
+            false);
+        UNIT_ASSERT_VALUES_EQUAL(0, indexState.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, indexState.GetMergedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            indexState.GetStats().GetBlobByteCounters().GetMergedBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveInitializedBlobByteCounters)
+    {
+        for (const ui64 bytes: {0ULL, 123ULL}) {
+            auto meta = DefaultConfig(1, DefaultBlockCount);
+            auto& stats = *meta.MutableStats();
+            stats.SetMixedBlocksCount(20);
+            stats.SetMergedBlocksCount(60);
+            auto& counters = *stats.MutableBlobByteCounters();
+            counters.SetMixedBytesCount(bytes);
+            counters.SetMergedBytesCount(bytes);
+            counters.SetMixedIndexBytesCount(bytes);
+            counters.SetMergedIndexBytesCount(bytes);
+
+            auto state = MakeState(meta, {.BlobByteCountersEnabled = true});
+            const auto& restored = state.GetStats().GetBlobByteCounters();
+            UNIT_ASSERT_VALUES_EQUAL(bytes, restored.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(bytes, restored.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(bytes, restored.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(bytes, restored.GetMergedIndexBytesCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotFillBlobByteCountersWhenDisabled)
+    {
+        const TPartialBlobId blob(1, 1, 3, 123, 0, 0);
+        auto disabledState = MakeState();
+        disabledState.UpdateBlobByteCounters(
+            blob,
+            EChannelDataKind::Mixed,
+            true);
+        UNIT_ASSERT(!disabledState.GetStats().HasBlobByteCounters());
+
+        auto enabledState = MakeState(
+            DefaultBlockCount,
+            {.BlobByteCountersEnabled = true});
+        enabledState.UpdateBlobByteCounters(
+            blob,
+            EChannelDataKind::Mixed,
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(123, enabledState.GetMixedBytesCount());
+
+        auto disabledAgain = MakeState(enabledState.GetMeta());
+        UNIT_ASSERT(!disabledAgain.GetStats().HasBlobByteCounters());
+        disabledAgain.UpdateBlobByteCounters(
+            blob,
+            EChannelDataKind::Mixed,
+            false);
+        UNIT_ASSERT(!disabledAgain.GetStats().HasBlobByteCounters());
+    }
+
+    Y_UNIT_TEST(ShouldReinitializeBlobBytesAfterDisabledWrites)
+    {
+        for (const bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters,
+                 .BlobByteCountersEnabled = true});
+            state.UpdateBlobByteCounters(
+                TPartialBlobId(1, 1, 3, DefaultBlockSize, 0, 0),
+                EChannelDataKind::Mixed,
+                true);
+
+            auto disabledState = MakeState(
+                state.GetMeta(),
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+            UNIT_ASSERT(!disabledState.GetStats().HasBlobByteCounters());
+
+            // Simulate writes while tracking is disabled. On re-enable, the
+            // current block totals must replace the stale byte totals.
+            auto& stats = disabledState.AccessStats();
+            stats.SetMixedBlocksCount(useChannelCounters ? 0 : 2);
+            stats.SetMergedBlocksCount(useChannelCounters ? 5 : 3);
+            stats.SetMixedIndexBlocksCount(useChannelCounters ? 2 : 0);
+            stats.SetMergedIndexBlocksCount(useChannelCounters ? 3 : 0);
+
+            auto restoredState = MakeState(
+                disabledState.GetMeta(),
+                {.UseBlobChannelDataKindForCounters = useChannelCounters,
+                 .BlobByteCountersEnabled = true});
+            const auto& bytes = restoredState.GetStats().GetBlobByteCounters();
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5 * DefaultBlockSize,
+                bytes.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2 * DefaultBlockSize,
+                bytes.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3 * DefaultBlockSize,
+                bytes.GetMergedIndexBytesCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldOnlyCreateCompactionStatsTrackerWhenEnabled)
     {
         auto disabledState = MakeState();
@@ -210,7 +354,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT(enabledState.AccessCompactionStatsTracker());
     }
 
-    Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
+    Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCountsAndBlobBytes)
     {
         struct TTestCase
         {
@@ -368,13 +512,35 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                         << ", useChannelCounters=" << useChannelCounters;
                     auto state = MakeState(
                         meta,
-                        {.UseBlobChannelDataKindForCounters =
-                             useChannelCounters});
+                        {.UseBlobChannelDataKindForCounters = useChannelCounters,
+                         .BlobByteCountersEnabled = true});
                     AssertBlobAndBlockCounts(
                         state.GetStats(),
                         expectedChannel,
                         useChannelCounters ? test.ExpectedIndex
                                            : TBlobAndBlockCounts{},
+                        context);
+
+                    UNIT_ASSERT(state.GetStats().HasBlobByteCounters());
+                    const auto& bytes = state.GetStats().GetBlobByteCounters();
+                    const auto& channelBlocks =
+                        hasMixedChannel ? test.ExpectedChannelWithMixed
+                                        : test.ExpectedChannelWithoutMixed;
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        channelBlocks.MixedBlocks * DefaultBlockSize,
+                        bytes.GetMixedBytesCount(),
+                        context);
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        channelBlocks.MergedBlocks * DefaultBlockSize,
+                        bytes.GetMergedBytesCount(),
+                        context);
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        test.ExpectedIndex.MixedBlocks * DefaultBlockSize,
+                        bytes.GetMixedIndexBytesCount(),
+                        context);
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        test.ExpectedIndex.MergedBlocks * DefaultBlockSize,
+                        bytes.GetMergedIndexBytesCount(),
                         context);
                 }
             }
