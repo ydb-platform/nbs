@@ -97,8 +97,8 @@ int CallFiberMain(TDriverParams* params) noexcept
                 pg->AddContent(TString(4_KB, 'x'));
             }
             auto resp = params->Fixture->Client->WriteLogRecord(
-                std::move(req),
-                params->Fixture->Ctx);
+                params->Fixture->Ctx,
+                std::move(req));
             if (resp.GetError().GetCode()) {
                 params->ErrorCount->fetch_add(1);
             }
@@ -106,8 +106,8 @@ int CallFiberMain(TDriverParams* params) noexcept
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("bench-dev");
             auto resp = params->Fixture->Client->AcquireDevices(
-                std::move(req),
-                params->Fixture->Ctx);
+                params->Fixture->Ctx,
+                std::move(req));
             if (resp.GetError().GetCode()) {
                 params->ErrorCount->fetch_add(1);
             }

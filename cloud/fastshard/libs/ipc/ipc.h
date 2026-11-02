@@ -26,7 +26,7 @@ struct IPoller
 int RecvAll(int fd, void* buf, size_t len);
 int SendAll(int fd, const void* buf, size_t len);
 
-int RecvAll(int fd, void* buf, size_t len, IPoller& poller);
-int SendAll(int fd, const void* buf, size_t len, IPoller& poller);
+int RecvAll(IPoller& poller, int fd, void* buf, size_t len);
+int SendAll(IPoller& poller, int fd, const void* buf, size_t len);
 
 }   // namespace NCloud::NFastShard

@@ -30,16 +30,16 @@ struct TFiberPoller final: IPoller
 int RecvAll(int fd, void* buf, size_t len)
 {
     TFiberPoller poller;
-    return RecvAll(fd, buf, len, poller);
+    return RecvAll(poller, fd, buf, len);
 }
 
 int SendAll(int fd, const void* buf, size_t len)
 {
     TFiberPoller poller;
-    return SendAll(fd, buf, len, poller);
+    return SendAll(poller, fd, buf, len);
 }
 
-int RecvAll(int fd, void* buf, size_t len, IPoller& poller)
+int RecvAll(IPoller& poller, int fd, void* buf, size_t len)
 {
     auto* p = static_cast<ui8*>(buf);
     size_t done = 0;
@@ -66,7 +66,7 @@ int RecvAll(int fd, void* buf, size_t len, IPoller& poller)
     return 0;
 }
 
-int SendAll(int fd, const void* buf, size_t len, IPoller& poller)
+int SendAll(IPoller& poller, int fd, const void* buf, size_t len)
 {
     const auto* p = static_cast<const ui8*>(buf);
     size_t done = 0;

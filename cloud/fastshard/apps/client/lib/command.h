@@ -154,7 +154,7 @@ protected:
 
     template <typename TRequest, typename TResponse>
     TResponse Call(
-        TResponse (IStorageNode::*method)(TRequest, TFastShardContext&),
+        TResponse (IStorageNode::*method)(TFastShardContext&, TRequest),
         TRequest request)
     {
         bool needAcquire = false;
@@ -173,7 +173,7 @@ protected:
         }
 
         const TInstant started = TInstant::Now();
-        TResponse response = ((*Client).*method)(std::move(request), Context);
+        TResponse response = ((*Client).*method)(Context, std::move(request));
         CallTime = TInstant::Now() - started;
         Called = true;
 

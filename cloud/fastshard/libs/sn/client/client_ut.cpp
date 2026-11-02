@@ -100,13 +100,13 @@ struct TSlowStorageNode: public IStorageNode
 
 #define SLOW_SN_METHOD(name, ...)                                              \
     NCloud::NProto::T##name##Response name(                                    \
-        NCloud::NProto::T##name##Request request,                              \
-        TFastShardContext& ctx) override                                       \
+        TFastShardContext& ctx,                                                \
+        NCloud::NProto::T##name##Request request) override                     \
     {                                                                          \
         FiberScheduler::SleepFuture sf;                                        \
         FiberScheduler::sleep(DelayNs, &sf);                                   \
         sf.wait();                                                             \
-        return Inner->name(std::move(request), ctx);                           \
+        return Inner->name(ctx, std::move(request));                           \
     }                                                                          \
     // SLOW_SN_METHOD
 
@@ -124,12 +124,12 @@ struct TParkingStorageNode: public TFakeStorageNode
     silk::FiberEvent Gate;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
-        NCloud::NProto::TAcquireDevicesRequest request,
-        TFastShardContext& ctx) override
+        TFastShardContext& ctx,
+        NCloud::NProto::TAcquireDevicesRequest request) override
     {
         Arrived.set();
         Gate.wait();
-        return TFakeStorageNode::AcquireDevices(std::move(request), ctx);
+        return TFakeStorageNode::AcquireDevices(ctx, std::move(request));
     }
 };
 
@@ -150,7 +150,7 @@ int BurstCallFiber(TBurstParams* params) noexcept
 {
     NCloud::NProto::TAcquireDevicesRequest req;
     req.AddDeviceUUIDs("dev-burst");
-    auto resp = params->Client->AcquireDevices(std::move(req), *params->Ctx);
+    auto resp = params->Client->AcquireDevices(*params->Ctx, std::move(req));
     if (resp.GetError().GetCode()) {
         params->ErrorCount->fetch_add(1);
     }
@@ -197,7 +197,7 @@ TEST(ClientTest, AcquireDevicesRoundTrip)
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
             req.AddDeviceUUIDs("dev-b");
-            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
+            auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
 
             EXPECT_FALSE(resp.HasError() && resp.GetError().GetCode())
                 << resp.GetError().GetMessage();
@@ -221,7 +221,7 @@ TEST(ClientTest, ReleaseDevicesRoundTrip)
 
             NCloud::NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
-            auto resp = fx.Client->ReleaseDevices(std::move(req), fx.Ctx);
+            auto resp = fx.Client->ReleaseDevices(fx.Ctx, std::move(req));
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, fx.Storage->ReleaseCalls.size());
@@ -257,7 +257,7 @@ TEST(ClientTest, ReadPagesRoundTrip)
             ref->SetPageCount(2);
             ref->SetPageSize(4096);
 
-            auto resp = fx.Client->ReadPages(std::move(req), fx.Ctx);
+            auto resp = fx.Client->ReadPages(fx.Ctx, std::move(req));
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, resp.PageGroupsSize());
@@ -296,7 +296,7 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
             pg->SetFirstPageNo(0);
             pg->AddContent("payload");
 
-            auto resp = fx.Client->WriteLogRecord(std::move(req), fx.Ctx);
+            auto resp = fx.Client->WriteLogRecord(fx.Ctx, std::move(req));
 
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(1u, fx.Storage->WriteCalls.size());
@@ -329,7 +329,7 @@ TEST(ClientTest, StorageErrorPassesThrough)
 
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
-            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
+            auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
 
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_FS_IO),
@@ -350,7 +350,7 @@ TEST(ClientTest, ConnectFailureReturnsRejected)
 
             NCloud::NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
-            auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
+            auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
 
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_REJECTED),
@@ -459,7 +459,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-before");
-                auto resp = client->AcquireDevices(std::move(req), ctx);
+                auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -473,7 +473,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-down");
-                auto resp = client->AcquireDevices(std::move(req), ctx);
+                auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(
                     static_cast<ui32>(NCloud::E_REJECTED),
                     resp.GetError().GetCode());
@@ -496,7 +496,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-after");
-                auto resp = client->AcquireDevices(std::move(req), ctx);
+                auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -523,7 +523,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             for (ui32 i = 1; i <= 3; ++i) {
                 NCloud::NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs(TString("dev-") + ToString(i));
-                auto resp = fx.Client->AcquireDevices(std::move(req), fx.Ctx);
+                auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
             }
 
@@ -585,7 +585,7 @@ TEST(ClientTest, ShouldInterruptNetworkPollOnCtxCancel)
             req.AddDeviceUUIDs("dev-a");
 
             TFastShardContext ctx(1);
-            auto resp = client->AcquireDevices(std::move(req), ctx);
+            auto resp = client->AcquireDevices(ctx, std::move(req));
             EXPECT_EQ(0u, resp.GetError().GetCode());
             EXPECT_EQ(2u, metrics->ConnectionsCreated.load());
 

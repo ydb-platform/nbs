@@ -69,7 +69,7 @@ public:
     int Poll(int fd, ui32 events) override
     {
         FiberScheduler::IoFuture io;
-        FiberScheduler::poll(fd, events, nullptr, &io);
+        FiberScheduler::poll(fd, events, nullptr /* triggeredEvents */, &io);
 
         FiberFuture* futures[] = {&io, &Cancelled};
         FiberFuture::waitForMultiple(futures, 2, &WaitCycles);
@@ -81,8 +81,7 @@ public:
 
         // Cancelled: take the poll back before its future goes.
         io.cancel();
-        Y_UNUSED(io.wait(&WaitCycles));
-        return ECANCELED;
+        return io.wait(&WaitCycles);
     }
 
     ui64 GetWaitCycles() const
@@ -93,7 +92,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-int OpenTcp(const TString& host, ui16 port, IPoller& poller, int* result)
+int OpenTcp(IPoller& poller, const TString& host, ui16 port, int* result)
 {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -226,7 +225,7 @@ public:
         const TInstant started = TInstant::Now();
 
         int fd = -1;
-        int r = OpenTcp(Host, Port, poller, &fd);
+        int r = OpenTcp(poller, Host, Port, &fd);
         if (Metrics) {
             Metrics->ConnectTimeUs.fetch_add(
                 (TInstant::Now() - started).MicroSeconds());
@@ -272,14 +271,14 @@ public:
 
 #define SN_CLIENT_METHOD(name, ...)                                            \
     NCloud::NProto::T##name##Response name(                                    \
-        NCloud::NProto::T##name##Request request,                              \
-        TFastShardContext& ctx) override                                       \
+        TFastShardContext& ctx,                                                \
+        NCloud::NProto::T##name##Request request) override                     \
     {                                                                          \
         TDeviceProtocolRequest wire;                                           \
         wire.SetRequestId(NextRequestId.fetch_add(1));                         \
         *wire.Mutable##name() = std::move(request);                            \
                                                                                \
-        TDeviceProtocolResponse resp = Exchange(wire, ctx);                    \
+        TDeviceProtocolResponse resp = Exchange(ctx, wire);                    \
                                                                                \
         NCloud::NProto::T##name##Response out;                                 \
         if (resp.HasProtocolError()) {                                         \
@@ -301,13 +300,13 @@ public:
 
 private:
     TDeviceProtocolResponse Exchange(
-        const TDeviceProtocolRequest& req,
-        TFastShardContext& ctx)
+        TFastShardContext& ctx,
+        const TDeviceProtocolRequest& req)
     {
         const ui64 started = GetCycleCount();
 
         TContextPoller poller(ctx);
-        auto response = DoExchange(req, poller);
+        auto response = DoExchange(poller, req);
 
         const ui64 waited = poller.GetWaitCycles();
         ctx.ExecCycles += GetCycleCount() - started - waited;
@@ -316,8 +315,8 @@ private:
     }
 
     TDeviceProtocolResponse DoExchange(
-        const TDeviceProtocolRequest& req,
-        IPoller& poller)
+        IPoller& poller,
+        const TDeviceProtocolRequest& req)
     {
         //
         // The connection is used by this request exclusively, so the
@@ -326,7 +325,7 @@ private:
         // dropped — the next request opens a fresh one. A cancelled exchange
         // leaves its response in flight, so we cannot reuse the connection.
         //
-        // TODO(#5895): keep the connection once it is multiplexed.
+        // TODO(#6957): keep the connection once it is multiplexed.
         //
 
         TPooledConnection conn;
@@ -344,16 +343,16 @@ private:
         Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&buf);
 
         ui32 lenBe = htonl(static_cast<ui32>(buf.size()));
-        if (int r = SendAll(fd, &lenBe, sizeof(lenBe), poller); r) {
+        if (int r = SendAll(poller, fd, &lenBe, sizeof(lenBe)); r) {
             return CloseAndError(fd, req.GetRequestId(), r, "send length");
         }
 
-        if (int r = SendAll(fd, buf.data(), buf.size(), poller); r) {
+        if (int r = SendAll(poller, fd, buf.data(), buf.size()); r) {
             return CloseAndError(fd, req.GetRequestId(), r, "send body");
         }
 
         ui32 respLenBe = 0;
-        if (int r = RecvAll(fd, &respLenBe, sizeof(respLenBe), poller); r) {
+        if (int r = RecvAll(poller, fd, &respLenBe, sizeof(respLenBe)); r) {
             return CloseAndError(fd, req.GetRequestId(), r, "recv length");
         }
 
@@ -361,7 +360,7 @@ private:
 
         TString respBuf;
         respBuf.ReserveAndResize(respLen);
-        if (int r = RecvAll(fd, respBuf.begin(), respLen, poller); r) {
+        if (int r = RecvAll(poller, fd, respBuf.begin(), respLen); r) {
             return CloseAndError(fd, req.GetRequestId(), r, "recv body");
         }
 

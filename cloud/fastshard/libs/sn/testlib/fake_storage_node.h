@@ -59,36 +59,36 @@ struct TFakeStorageNode: public IStorageNode
     TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
-        NCloud::NProto::TAcquireDevicesRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TAcquireDevicesRequest request) override;
 
     NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
-        NCloud::NProto::TReleaseDevicesRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TReleaseDevicesRequest request) override;
 
     NCloud::NProto::TFormatDeviceResponse FormatDevice(
-        NCloud::NProto::TFormatDeviceRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TFormatDeviceRequest request) override;
 
     NCloud::NProto::TListDevicesResponse ListDevices(
-        NCloud::NProto::TListDevicesRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TListDevicesRequest request) override;
 
     NCloud::NProto::TReadPagesResponse ReadPages(
-        NCloud::NProto::TReadPagesRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TReadPagesRequest request) override;
 
     NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TWriteLogRecordRequest request) override;
 
     NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
-        NCloud::NProto::TReadJournalTailRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TReadJournalTailRequest request) override;
 
     NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request,
-        TFastShardContext&) override;
+        TFastShardContext&,
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override;
 };
 
 }   // namespace NCloud::NFastShard

@@ -58,8 +58,8 @@ struct TJournalledStorageNode
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
     NProto::T##name##Response name(                                            \
-        NProto::T##name##Request request,                                      \
-        TFastShardContext& ctx) override;                                      \
+        TFastShardContext& ctx,                                                \
+        NProto::T##name##Request request) override;                            \
     // SN_DECLARE_METHOD
 
     SN_METHODS(SN_DECLARE_METHOD)

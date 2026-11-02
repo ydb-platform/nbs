@@ -41,7 +41,7 @@ namespace {
 constexpr ui64 ReservedPages = TStorageGroupHeader::StorageGroupReservedPages;
 constexpr ui32 QuorumMirrorGroupType = NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR;
 
-// TODO(#5895): unify with blockstore
+// TODO(#6957): unify with blockstore
 bool IsAllZeroes(const char* src, size_t size)
 {
     if (size < sizeof(ui64)) {
@@ -212,8 +212,8 @@ public:
                 NProto::TWriteLogRecordRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
                 return StorageNode->WriteLogRecord(
-                    std::move(deviceRequest),
-                    ctx);
+                    ctx,
+                    std::move(deviceRequest));
             });
 
         if (HasError(response)) {
@@ -238,7 +238,7 @@ public:
             {
                 NProto::TReadPagesRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->ReadPages(std::move(deviceRequest), ctx);
+                return StorageNode->ReadPages(ctx, std::move(deviceRequest));
             });
 
         if (HasError(*response)) {
@@ -268,8 +268,8 @@ public:
                 NProto::TReadJournalTailRequest deviceRequest = request;
                 deviceRequest.SetDeviceUUID(DeviceUUID);
                 return StorageNode->ReadJournalTail(
-                    std::move(deviceRequest),
-                    ctx);
+                    ctx,
+                    std::move(deviceRequest));
             });
 
         if (HasError(*response)) {
@@ -304,7 +304,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->AdvanceLsnLowWatermark(request, ctx);
+                return StorageNode->AdvanceLsnLowWatermark(ctx, request);
             });
 
         if (HasError(response)) {
@@ -329,7 +329,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->AcquireDevices(request, ctx);
+                return StorageNode->AcquireDevices(ctx, request);
             });
 
         if (HasError(response)) {
@@ -351,7 +351,7 @@ public:
             *Timer,
             [&]
             {
-                return StorageNode->ReleaseDevices(request, ctx);
+                return StorageNode->ReleaseDevices(ctx, request);
             });
 
         if (HasError(response)) {

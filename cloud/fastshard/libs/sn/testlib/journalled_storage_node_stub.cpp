@@ -31,8 +31,8 @@ void TJournalledStorageNode::Stop()
 
 #define SN_STUB(name, ...)                                                     \
     NProto::T##name##Response TJournalledStorageNode::name(                    \
-        NProto::T##name##Request,                                              \
-        TFastShardContext&)                                                    \
+        TFastShardContext&,                                                    \
+        NProto::T##name##Request)                                              \
     {                                                                          \
         NProto::T##name##Response response;                                    \
         *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);               \

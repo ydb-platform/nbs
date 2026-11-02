@@ -101,8 +101,8 @@ int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
         [&]
         {
             return params->Device.Node->AcquireDevices(
-                request,
-                *params->Context);
+                *params->Context,
+                request);
         });
 
     return 0;
@@ -119,8 +119,8 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
         [&]
         {
             return params->Device.Node->ReleaseDevices(
-                request,
-                *params->Context);
+                *params->Context,
+                request);
         });
 
     return 0;

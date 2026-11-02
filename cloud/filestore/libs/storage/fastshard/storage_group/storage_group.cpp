@@ -56,8 +56,8 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
         [&]
         {
             return params->Device.Node->WriteLogRecord(
-                request,
-                *params->Context);
+                *params->Context,
+                request);
         });
     return 0;
 }
@@ -83,8 +83,8 @@ int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
         [&]
         {
             return params->Device.Node->ReadJournalTail(
-                request,
-                *params->Context);
+                *params->Context,
+                request);
         });
 
     return 0;
@@ -222,7 +222,7 @@ public:
                 SILK_DEBUG(
                     "sg read: %s",
                     request.ShortUtf8DebugString().c_str());
-                return Devices[i].Node->ReadPages(request, ctx);
+                return Devices[i].Node->ReadPages(ctx, request);
             });
 
         if (!HasError(response.GetError())) {

@@ -113,8 +113,8 @@ struct TNullStorageNode final: IStorageNode
      }
 
     NProto::TReadPagesResponse ReadPages(
-        NProto::TReadPagesRequest request,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TReadPagesRequest request) override
     {
         Sleep();
 
@@ -132,8 +132,8 @@ struct TNullStorageNode final: IStorageNode
     }
 
     NProto::TWriteLogRecordResponse WriteLogRecord(
-        NProto::TWriteLogRecordRequest request,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TWriteLogRecordRequest request) override
     {
         Y_UNUSED(request);
         Sleep();
@@ -142,43 +142,43 @@ struct TNullStorageNode final: IStorageNode
     }
 
     NProto::TAcquireDevicesResponse AcquireDevices(
-        NProto::TAcquireDevicesRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TAcquireDevicesRequest) override
     {
         return {};
     }
 
     NProto::TFormatDeviceResponse FormatDevice(
-        NProto::TFormatDeviceRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TFormatDeviceRequest) override
     {
         return {};
     }
 
     NProto::TReleaseDevicesResponse ReleaseDevices(
-        NProto::TReleaseDevicesRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TReleaseDevicesRequest) override
     {
         return {};
     }
 
     NProto::TListDevicesResponse ListDevices(
-        NProto::TListDevicesRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TListDevicesRequest) override
     {
         return {};
     }
 
     NProto::TReadJournalTailResponse ReadJournalTail(
-        NProto::TReadJournalTailRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TReadJournalTailRequest) override
     {
         return {};
     }
 
     NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
-        NProto::TAdvanceLsnLowWatermarkRequest,
-        TFastShardContext&) override
+        TFastShardContext&,
+        NProto::TAdvanceLsnLowWatermarkRequest) override
     {
         return {};
     }

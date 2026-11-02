@@ -159,16 +159,16 @@ using THandlerRegistryPtr = std::shared_ptr<THandlerRegistry>;
 // Request dispatch.
 
 TDeviceProtocolResponse Dispatch(
+    TFastShardContext& ctx,
     IStorageNode& storage,
-    const TDeviceProtocolRequest& req,
-    TFastShardContext& ctx)
+    const TDeviceProtocolRequest& req)
 {
     TDeviceProtocolResponse resp;
 
     switch (req.GetRequestCase()) {
 #define DISPATCH_REQUEST(name, ...)                                            \
     case TDeviceProtocolRequest::k##name: {                                    \
-        *resp.Mutable##name() = storage.name(req.Get##name(), ctx);            \
+        *resp.Mutable##name() = storage.name(ctx, req.Get##name());            \
         break;                                                                 \
     }                                                                          \
         // DISPATCH_REQUEST
@@ -255,7 +255,7 @@ int ConnFiberMain(TConnParams* params) noexcept
 
         // Dispatch.
         TFastShardContext ctx(req.GetRequestId());
-        TDeviceProtocolResponse resp = Dispatch(*storage, req, ctx);
+        TDeviceProtocolResponse resp = Dispatch(ctx, *storage, req);
 
         // Echo the outer request id so the client can correlate.
         resp.SetRequestId(req.GetRequestId());
