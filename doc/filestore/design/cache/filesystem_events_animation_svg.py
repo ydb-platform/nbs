@@ -84,10 +84,6 @@ def sub(c, s):
     return "sub-%d-%s" % (c, s)
 
 
-def read_req(c, s):
-    return "read-%d-%s" % (c, s)
-
-
 def mod_req(c, s):
     return "mod-%d-%s" % (c, s)
 
@@ -108,8 +104,10 @@ class Scenario:
         for c in range(CLIENTS):
             tl.set(client(c), fill="var(--panel)")
             for s in SHARDS:
-                tl.set(sub(c, s["id"]), opacity=0, stroke="var(--sub)")
-                tl.set(read_req(c, s["id"]), opacity=0)
+                # An invisible edge is green, so that a read only fades it
+                # in. A read of an established subscription turns the black
+                # edge green and back.
+                tl.set(sub(c, s["id"]), opacity=0, stroke="var(--read)")
                 tl.set(mod_req(c, s["id"]), opacity=0)
 
     def render_client(self, c):
@@ -124,12 +122,11 @@ class Scenario:
             c + 1, what, " and ".join(map(shard_title, shards))))
         tl.wait(0.6)
         for s in shards:
-            tl.set(read_req(c, s), opacity=1)
+            tl.set(sub(c, s), opacity=1, stroke="var(--read)")
             tl.wait(0.5)
         tl.wait(0.5)
         for s in shards:
-            tl.set(read_req(c, s), opacity=0)
-            tl.set(sub(c, s), opacity=1)
+            tl.set(sub(c, s), stroke="var(--sub)")
             self.subscribed[c].add(s)
             self.cached[c].add(s)
         self.render_client(c)
@@ -172,7 +169,7 @@ class Scenario:
             self.render_client(other)
         tl.wait(FADE + 0.1)
         for other, s in targets:
-            tl.set(sub(other, s), stroke="var(--sub)")
+            tl.set(sub(other, s), stroke="var(--read)")
         tl.wait(3.0)
 
     def pause(self, text, seconds):
@@ -289,7 +286,6 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .small { fill: var(--muted); font-size: 13px; }
 .caption { fill: var(--fg); font-size: 14px; }
 .edge { stroke-width: 3; fill: none; }
-.read { stroke: var(--read); }
 .mod { stroke: var(--mod); stroke-dasharray: 8 5; }
 .client { stroke: var(--fg); stroke-width: 2; }
 .shard { stroke: var(--fg); stroke-width: 2; fill: var(--panel); }
@@ -336,7 +332,6 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
             line = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
             offset = dict(line, y1=y1 + 6, y2=y2 + 6)
             animate(sub(c, s["id"]), "edge", "line", line)
-            animate(read_req(c, s["id"]), "edge read", "line", offset)
             animate(mod_req(c, s["id"]), "edge mod", "line", offset)
 
     # Clients.

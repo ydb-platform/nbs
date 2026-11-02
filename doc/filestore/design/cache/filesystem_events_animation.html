@@ -60,13 +60,14 @@
   .shard { stroke: var(--fg); stroke-width: 2; fill: var(--panel); }
   .label { fill: var(--fg); font-size: 14px; }
   .small { fill: var(--muted); font-size: 12px; }
-  .edge { stroke-width: 3; fill: none; opacity: 0;
+  .edge { stroke: var(--read); stroke-width: 3; fill: none; opacity: 0;
           transition: stroke 500ms, opacity 500ms; }
   .edge.read { stroke: var(--read); opacity: 1; }
   .edge.sub { stroke: var(--sub); opacity: 1; }
   .edge.mod { stroke: var(--mod); opacity: 1; stroke-dasharray: 8 5; }
   .edge.inval { stroke: var(--inval); opacity: 1; }
   .edge.gone { opacity: 0; }
+  .edge.reset { transition: none; }
   .step { min-height: 2.8em; margin: 8px 0; }
   .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
   .sw { display: inline-block; width: 18px; height: 4px;
@@ -144,9 +145,10 @@
   const shardH = 80;
 
   // Edges are drawn first so that the nodes are on top. For every
-  // (client, shard) pair there is a subscription edge and a request edge
-  // drawn slightly offset so that a request is visible next to an
-  // established subscription.
+  // (client, shard) pair there is a subscription edge, which also shows the
+  // read requests (green, then black once the subscription is established),
+  // and a modification request edge drawn slightly offset so that it's
+  // visible next to an established subscription.
   const subEdges = {};
   const reqEdges = {};
   const edgeLayer = el("g", {});
@@ -159,7 +161,8 @@
       subEdges[c + s.id] = el("line",
         {x1, y1, x2, y2, class: "edge"}, edgeLayer);
       reqEdges[c + s.id] = el("line",
-        {x1, y1: y1 + 6, x2, y2: y2 + 6, class: "edge"}, edgeLayer);
+        {x1, y1: y1 + 6, x2, y2: y2 + 6, class: "edge mod gone reset"},
+        edgeLayer);
     }
   }
 
@@ -237,13 +240,12 @@
     await checkpoint("client " + (c + 1) + ": " + what + " - read requests " +
       "(green) to " + shardIds.map(shardTitle).join(" and ") + ".");
     for (const s of shardIds) {
-      setEdge(reqEdges[c + s], "read");
+      setEdge(subEdges[c + s], "read");
       await sleep(500);
     }
     await sleep(500);
     for (const s of shardIds) {
       // The response arrives, the shard keeps a subscription.
-      setEdge(reqEdges[c + s], "gone");
       setEdge(subEdges[c + s], "sub");
       state.cached[c].add(s);
     }
@@ -264,7 +266,7 @@
     render();
     await sleep(1000);
     for (const s of shardIds) {
-      setEdge(reqEdges[c + s], "gone");
+      setEdge(reqEdges[c + s], "mod gone");
     }
     if (invalidates.includes("node")) {
       state.nodeVersion += 1;
@@ -286,11 +288,16 @@
     }
     await sleep(900);
     for (const [other, s] of targets) {
-      setEdge(subEdges[other + s], "gone");
+      // Fades out in red.
+      setEdge(subEdges[other + s], "inval gone");
       state.cached[other].delete(s);
     }
     render();
     await sleep(900);
+    for (const [other, s] of targets) {
+      // Invisible again - back to green without a transition.
+      setEdge(subEdges[other + s], "reset");
+    }
   }
 
   function shardTitle(id) {
@@ -303,8 +310,8 @@
     for (let c = 0; c < CLIENTS; ++c) {
       state.cached.push(new Set());
       for (const s of SHARDS) {
-        setEdge(subEdges[c + s.id], "");
-        setEdge(reqEdges[c + s.id], "");
+        setEdge(subEdges[c + s.id], "reset");
+        setEdge(reqEdges[c + s.id], "mod gone reset");
       }
     }
     render();
