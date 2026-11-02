@@ -502,9 +502,9 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
     {
         Y_UNUSED(id);
 
-        EXPECT_EQ(sizeof(TRejectMessage2), size);
+        EXPECT_EQ(sizeof(TRejectMessage), size);
 
-        const auto* rejectMsg = static_cast<const TRejectMessage2*>(data);
+        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
         EXPECT_EQ(RDMA_PROTO_VERSION, ParseMessageHeader(rejectMsg));
         EXPECT_EQ(RDMA_PROTO_CONFIG_MISMATCH, rejectMsg->Status);
         EXPECT_EQ(serverConfig->SendQueueSize, rejectMsg->SendQueueSize);
@@ -537,23 +537,243 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
         context,
         static_cast<ui16>(serverConfig->RecvQueueSize + 1),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->SendQueueSize - 1),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     NVerbs::CreateConnection(
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize + 1);
+        serverConfig->MaxBufferSize + 1,
+        0);
 
     done.GetFuture().Wait();
     EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
+}
+
+TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    struct TCapturingHandler final
+        : IServerHandler
+    {
+        std::atomic<int> Calls{0};
+        TStringBuf In;
+        void* Context = nullptr;
+
+        TCallContextBasePtr CreateCallContext() override
+        {
+            return MakeIntrusive<TCallContextBase>(ui64{0});
+        }
+
+        void HandleRequest(
+            void* requestContext,
+            TCallContextBasePtr callContext,
+            TStringBuf in,
+            TStringBuf out) override
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(out);
+
+            In = in;
+            Context = requestContext;
+            ++Calls;
+        }
+    };
+
+    // flush posted WRs when the session enters the error state on Stop()
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    TAdaptiveLock opcodesLock;
+    TVector<ibv_wr_opcode> postedOpcodes;
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        with_lock (opcodesLock) {
+            postedOpcodes.push_back(wr->opcode);
+        }
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
+    auto countPosted = [&](ibv_wr_opcode opcode)
+    {
+        auto guard = Guard(opcodesLock);
+        return static_cast<size_t>(Count(postedOpcodes, opcode));
+    };
+
+    auto waitPosted = [&](ibv_wr_opcode opcode, size_t count)
+    {
+        while (countPosted(opcode) != count) {
+            SpinLockPause();
+        }
+    };
+
+    std::atomic<ui32> acceptedEagerBytes{Max<ui32>()};
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        Y_UNUSED(id);
+        const auto* acceptMsg =
+            static_cast<const TAcceptMessage*>(param->private_data);
+        acceptedEagerBytes = acceptMsg->MaxEagerRequestBytes;
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 2;
+    serverConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER {
+        server->Stop();
+    };
+
+    auto handler = std::make_shared<TCapturingHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(
+        context,
+        2,
+        2,
+        serverConfig->MaxBufferSize,
+        8_KB);
+
+    auto counters = GetServerCounters(monitoring);
+    auto activeRecv = counters->GetCounter("ActiveRecv");
+    auto errors = counters->GetCounter("Errors");
+
+    while (activeRecv->Val() != 2) {
+        SpinLockPause();
+    }
+
+    ASSERT_EQ(8_KB, acceptedEagerBytes.load());
+
+    // takes the last posted recv WR, fills in the request header and
+    // completes it with the given byte count
+    auto receive = [&](ui16 reqId, ui32 inLength, ui32 byteLen)
+    {
+        with_lock (context->CompletionLock) {
+            ASSERT_FALSE(context->RecvEvents.empty());
+
+            auto* recv = context->RecvEvents.back();
+            context->RecvEvents.pop_back();
+
+            ASSERT_EQ(2, recv->num_sge);
+            ASSERT_EQ(sizeof(TRequestMessage), recv->sg_list[0].length);
+            ASSERT_EQ(8_KB, recv->sg_list[1].length);
+
+            auto* msg =
+                reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+            memset(msg, 0, sizeof(*msg));
+            InitMessageHeader(msg, RDMA_PROTO_VERSION);
+            msg->ReqId = reqId;
+            msg->In.Length = inLength;
+            msg->Out.Length = 1_KB;
+
+            const ui64 wrId = recv->wr_id;
+            context->HandleCompletionEvent = [&, wrId, byteLen](ibv_wc* wc)
+            {
+                if (wc->opcode == IBV_WC_RECV && wc->wr_id == wrId) {
+                    wc->byte_len = byteLen;
+                }
+            };
+
+            context->ProcessedRecvEvents.push_back(recv);
+            context->CompletionHandle.Set();
+        }
+    };
+
+    auto eagerBufferOf = [&](size_t index)
+    {
+        auto guard = Guard(context->CompletionLock);
+        return context->RecvEvents.at(index)->sg_list[1].addr;
+    };
+
+    // eager request: payload arrives in the second SGE and is executed
+    // without RDMA_READ
+
+    const TString payload(3000, 'x');
+    const ui64 eagerBuffer = eagerBufferOf(1);
+    memcpy(
+        reinterpret_cast<char*>(eagerBuffer),
+        payload.data(),
+        payload.size());
+
+    receive(7, payload.size(), sizeof(TRequestMessage) + payload.size());
+
+    while (handler->Calls.load() != 1) {
+        SpinLockPause();
+    }
+    ASSERT_EQ(eagerBuffer, reinterpret_cast<ui64>(handler->In.data()));
+    ASSERT_NE(nullptr, handler->Context);
+    ASSERT_EQ(0u, countPosted(IBV_WR_RDMA_READ));
+
+    // the WR has been reposted with a fresh buffer, the payload stays intact
+    with_lock (context->CompletionLock) {
+        ASSERT_EQ(2u, context->RecvEvents.size());
+        for (const auto* recv: context->RecvEvents) {
+            ASSERT_EQ(2, recv->num_sge);
+            ASSERT_EQ(8_KB, recv->sg_list[1].length);
+            ASSERT_NE(eagerBuffer, recv->sg_list[1].addr);
+        }
+    }
+    ASSERT_EQ(payload, TString(handler->In));
+
+    endpoint->SendResponse(handler->Context, 16);
+    waitPosted(IBV_WR_RDMA_WRITE, 1);
+    waitPosted(IBV_WR_SEND, 1);
+
+    // payload length does not match the header: rejected without execution
+
+    receive(8, 2000, sizeof(TRequestMessage) + 3000);
+
+    while (errors->Val() != 1) {
+        SpinLockPause();
+    }
+    waitPosted(IBV_WR_RDMA_WRITE, 2);
+    waitPosted(IBV_WR_SEND, 2);
+    ASSERT_EQ(1, handler->Calls.load());
+
+    // request above the negotiated limit is fetched with RDMA_READ and the
+    // WR keeps its eager buffer
+
+    const ui64 keptBuffer = eagerBufferOf(1);
+
+    receive(9, 16_KB, sizeof(TRequestMessage));
+
+    while (handler->Calls.load() != 2) {
+        SpinLockPause();
+    }
+    ASSERT_EQ(1u, countPosted(IBV_WR_RDMA_READ));
+    ASSERT_EQ(16_KB, handler->In.size());
+    ASSERT_NE(keptBuffer, reinterpret_cast<ui64>(handler->In.data()));
+
+    with_lock (context->CompletionLock) {
+        ASSERT_EQ(2u, context->RecvEvents.size());
+        ASSERT_EQ(keptBuffer, context->RecvEvents.back()->sg_list[1].addr);
+    }
+
+    endpoint->SendResponse(handler->Context, 16);
+    waitPosted(IBV_WR_RDMA_WRITE, 3);
+    waitPosted(IBV_WR_SEND, 3);
+    ASSERT_EQ(1, errors->Val());
 }
 
 TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
@@ -615,7 +835,8 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     auto counters = GetServerCounters(monitoring);
     auto activeRecv = counters->GetCounter("ActiveRecv");
@@ -733,7 +954,8 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
         context,
         static_cast<ui16>(serverConfig->SendQueueSize),
         static_cast<ui16>(serverConfig->RecvQueueSize),
-        serverConfig->MaxBufferSize);
+        serverConfig->MaxBufferSize,
+        0);
 
     auto counters = GetServerCounters(monitoring);
     auto activeRecv = counters->GetCounter("ActiveRecv");

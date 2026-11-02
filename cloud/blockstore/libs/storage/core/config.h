@@ -335,6 +335,7 @@ public:
 
     bool GetThrottlingEnabled() const;
     bool GetThrottlingEnabledSSD() const;
+    bool GetChangeThrottlingPolicyEnabled() const;
     ui32 GetThrottlingBurstPercentage() const;
     ui32 GetThrottlingMaxPostponedWeight() const;
     ui32 GetDefaultPostponedRequestWeight() const;

@@ -1,5 +1,6 @@
 #include "start_endpoint.h"
 
+#include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -208,10 +209,6 @@ protected:
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
-            if (ClientId.empty()) {
-                ClientId = CreateGuidAsString();
-                output << "Generated client id: " << ClientId << Endl;
-            }
             request->SetUnixSocketPath(UnixSocketPath);
             request->SetDiskId(DiskId);
             request->SetIpcType(*GetIpcType(IpcTypeStr));
@@ -242,6 +239,17 @@ protected:
                 request->SetUseFreeNbdDeviceFile(true);
             }
             request->MutableClientCGroups()->Assign(CGroups.begin(), CGroups.end());
+        }
+
+        if (request->GetClientId().empty()) {
+            request->SetClientId(ClientConfig->GetClientId());
+            if (!Proto) {
+                output << "Generated client id: " << request->GetClientId()
+                       << Endl;
+            }
+        }
+        if (request->GetInstanceId().empty()) {
+            request->SetInstanceId(ClientConfig->GetInstanceId());
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");

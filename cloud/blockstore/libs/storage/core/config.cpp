@@ -390,6 +390,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
     xxx(ThrottlingEnabledSSD,          bool,      false                       )\
+    xxx(ChangeThrottlingPolicyEnabled, bool,      false                       )\
     xxx(ThrottlingBurstPercentage,     ui32,      100                         )\
     xxx(ThrottlingMaxPostponedWeight,  ui32,      128_MB                      )\
     xxx(DefaultPostponedRequestWeight, ui32,      1_KB                        )\
