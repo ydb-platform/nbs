@@ -215,6 +215,7 @@ struct TAsyncMethod
     struct TRead
     {
         using TResponse = NProto::TReadBlocksLocalResponse;
+        static constexpr const char* Name = "Read";
 
         static void Execute(
             IFileIOService& fileIO,
@@ -234,6 +235,7 @@ struct TAsyncMethod
     struct TWrite
     {
         using TResponse = NProto::TWriteBlocksLocalResponse;
+        static constexpr const char* Name = "Write";
 
         static void Execute(
             IFileIOService& fileIO,
@@ -380,9 +382,39 @@ struct TReadOrWriteRequest
             this->TotalByteCount,
             this->BytesTransferred);
 
-        Y_ABORT_UNLESS(buffer);
+        Y_ABORT_UNLESS(buffer, "%s", GetDebugString().c_str());
 
         return buffer;
+    }
+
+private:
+    TString GetDebugString() const
+    {
+        const auto& sglist = Guard.Get();
+        TStringBuilder message;
+        message << "Operation=" << TMethod::Name
+                << " RequestId="
+                << (CallContext ? CallContext->RequestId : 0)
+                << " FileOffset=" << FileOffset
+                << " TotalByteCount=" << TotalByteCount
+                << " BytesTransferred=" << BytesTransferred
+                << " SgListByteCount=" << SgListGetSize(sglist)
+                << " SgListBufferCount=" << sglist.size();
+
+        if (auto context = Context.lock()) {
+            message << " File=" << context->File.GetName()
+                    << " BlockSize=" << context->BlockSize;
+        }
+
+        message << " SgListBufferSizes=[";
+        for (size_t i = 0; i < sglist.size(); ++i) {
+            if (i) {
+                message << ", ";
+            }
+            message << sglist[i].Size();
+        }
+        message << "]";
+        return message;
     }
 };
 
