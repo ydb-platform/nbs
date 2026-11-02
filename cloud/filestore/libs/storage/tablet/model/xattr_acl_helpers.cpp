@@ -73,14 +73,16 @@ NProto::TError PosixAclFromXattr(
         return {};
     }
 
-    const posix_acl_xattr_header* header =
-        reinterpret_cast<const posix_acl_xattr_header*>(value.data());
-    const posix_acl_xattr_entry* entry =
-        reinterpret_cast<const posix_acl_xattr_entry*>(header + 1);
+    const char* srcPtr = value.data();
+    // Skip posix_acl_xattr_header.
+    srcPtr += sizeof(posix_acl_xattr_header);
 
     acls.resize(count);
-    for (size_t i = 0; i < acls.size(); ++i, ++entry) {
-        memcpy(acls.data() + i, entry, sizeof(posix_acl_xattr_entry));
+    for (size_t i = 0; i < acls.size(); ++i) {
+        memcpy(
+            acls.data() + i,
+            srcPtr + i * sizeof(posix_acl_xattr_entry),
+            sizeof(posix_acl_xattr_entry));
     }
 
     return {};

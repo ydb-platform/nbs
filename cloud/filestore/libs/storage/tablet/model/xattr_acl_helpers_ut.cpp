@@ -28,10 +28,12 @@ TString SerializeAcl(
     TString result;
     result.resize(sizeof(header) + entries.size() * sizeof(entries.front()));
     std::memcpy(result.Detach(), &header, sizeof(header));
-    std::memcpy(
-        result.Detach() + sizeof(header),
-        entries.data(),
-        entries.size() * sizeof(entries.front()));
+    if (entries) {
+        std::memcpy(
+            result.Detach() + sizeof(header),
+            entries.data(),
+            entries.size() * sizeof(entries.front()));
+    }
     return result;
 }
 
@@ -40,10 +42,12 @@ TVector<posix_acl_xattr_entry> DeserializeAcl(const TString& value)
     const size_t entryCount = (value.size() - sizeof(posix_acl_xattr_header)) /
                               sizeof(posix_acl_xattr_entry);
     TVector<posix_acl_xattr_entry> entries(entryCount);
-    std::memcpy(
-        entries.data(),
-        value.data() + sizeof(posix_acl_xattr_header),
-        entries.size() * sizeof(entries.front()));
+    if (entryCount) {
+        std::memcpy(
+            entries.data(),
+            value.data() + sizeof(posix_acl_xattr_header),
+            entries.size() * sizeof(entries.front()));
+    }
     return entries;
 }
 
