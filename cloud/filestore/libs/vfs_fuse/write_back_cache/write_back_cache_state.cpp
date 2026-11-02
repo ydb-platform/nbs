@@ -66,6 +66,13 @@ void TWriteBackCacheState::SetDrainingMode()
     DrainingMode = true;
 }
 
+void TWriteBackCacheState::SetShutdownMode()
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    ShutdownMode = true;
+}
+
 bool TWriteBackCacheState::IsDrained() const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
@@ -544,8 +551,9 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     TryRemoveUnusedHandle(nodeState, flushHandle);
 
-    if (nodeState.Handles.empty()) {
-        // No live handles remaining - drop all unflushed requests
+    if (ShutdownMode && !nodeState.Cache.HasPendingRequests()) {
+        // During shutdown a failed flush may discard cached data, but pending
+        // requests must retain their normal lifecycle until they are cached.
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
         Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);

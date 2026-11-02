@@ -151,8 +151,18 @@ public:
      *
      * Note: the call is not reversible (WriteBackCache cannot be returned to
      * EWriteBackCacheMode::Normal mode without restart).
+     * Flush failures retain unflushed data for retries, unlike Shutdown().
      */
     [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
+
+    /* Starts draining for session shutdown, allowing cached data to be dropped
+     * on flush failure once the node has no pending writes.
+     *
+     * Pending requests are not cancelled. The returned future follows Drain()
+     * semantics: an error does not imply all nodes have finished flushing, and
+     * a failed cache may leave it pending.
+     */
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Shutdown();
 
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;

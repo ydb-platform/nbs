@@ -89,6 +89,7 @@ private:
     bool IsFailed = false;
 
     bool DrainingMode = false;
+    bool ShutdownMode = false;
 
 public:
     using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
@@ -110,6 +111,10 @@ public:
     // will fail with E_REJECTED error.
     // Note: exiting from draining mode is not possible.
     void SetDrainingMode();
+
+    // Allow cached data to be dropped on flush failure during shutdown.
+    // Pending requests are not cancelled.
+    void SetShutdownMode();
 
     // Returns true if the cache is in draining mode and there are no more
     // unflushed requests.

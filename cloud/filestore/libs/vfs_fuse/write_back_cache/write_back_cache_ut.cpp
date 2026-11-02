@@ -2181,6 +2181,134 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(drain.HasValue());
     }
 
+    Y_UNIT_TEST(ShouldKeepCachedDataOnDrainFailure)
+    {
+        TBootstrap b;
+        b.WriteToCacheSync(1, 0, "abc");
+
+        auto previousHandler = std::move(b.Session->WriteDataHandler);
+        b.Session->WriteDataHandler = [](auto, auto)
+        {
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(E_IO, "Flush failed");
+            return MakeFuture(std::move(response));
+        };
+
+        auto drain = b.Cache.Drain();
+
+        UNIT_ASSERT(drain.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, drain.GetValue().GetCode());
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "abc",
+            b.ReadFromCache(1, 0, 3).GetValue().GetBuffer());
+
+        b.Session->WriteDataHandler = std::move(previousHandler);
+        b.RunAllScheduledTasks();
+
+        UNIT_ASSERT(b.Cache.IsDrained());
+        b.ValidateCacheIsFlushed();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
+    Y_UNIT_TEST(ShouldDropCachedDataOnShutdownFailureWithLiveHandles)
+    {
+        TBootstrap b;
+        b.WriteToCacheSync(1, 101, 0, "abc");
+        b.WriteToCacheSync(1, 102, 3, "def");
+
+        size_t writeAttempts = 0;
+        b.Session->WriteDataHandler = [&](auto, auto)
+        {
+            ++writeAttempts;
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(E_IO, "Flush failed");
+            return MakeFuture(std::move(response));
+        };
+
+        auto shutdown = b.Cache.Shutdown();
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, shutdown.GetValue().GetCode());
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        b.CheckStatsAreEmpty();
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts);
+    }
+
+    Y_UNIT_TEST(ShouldEnterShutdownAfterFailedDrain)
+    {
+        TBootstrap b;
+        b.WriteToCacheSync(1, 0, "abc");
+
+        size_t writeAttempts = 0;
+        b.Session->WriteDataHandler = [&](auto, auto)
+        {
+            ++writeAttempts;
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(E_IO, "Flush failed");
+            return MakeFuture(std::move(response));
+        };
+
+        auto drain = b.Cache.Drain();
+        UNIT_ASSERT(drain.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, drain.GetValue().GetCode());
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts);
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(!shutdown.HasValue());
+
+        b.RunAllScheduledTasks();
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, shutdown.GetValue().GetCode());
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeAttempts);
+    }
+
+    Y_UNIT_TEST(ShouldFlushCachedDataOnShutdown)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 0, "abc");
+        b.WriteToCacheSync(2, 0, "def");
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(!shutdown.HasValue());
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(2, writeRequests.size());
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(!HasError(shutdown.GetValue()));
+        UNIT_ASSERT(b.Cache.IsDrained());
+        b.ValidateCacheIsFlushed();
+        b.CheckStatsAreEmpty();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+    }
+
     Y_UNIT_TEST(ShouldReportOperationalStateMetrics)
     {
         TBootstrap b;
@@ -2254,7 +2382,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.FlushedQueue.Count->Get());
     }
 
-    Y_UNIT_TEST(ShouldDropCachedDataWhenThereAreNoLiveHandles)
+    Y_UNIT_TEST(ShouldKeepCachedDataWithoutLiveHandlesUntilShutdown)
     {
         TBootstrap b({
             .MaxWriteRequestsCount = 1,
@@ -2315,6 +2443,31 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT(HasError(flushFuture.GetValue()));
 
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
+
+        auto drain = b.Cache.Drain();
+        b.RunAllScheduledTasks();
+
+        UNIT_ASSERT(drain.HasValue());
+        UNIT_ASSERT(HasError(drain.GetValue()));
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "123",
+            b.ReadFromCache(1, 10, 3).GetValue().GetBuffer());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+
+        auto shutdown = b.Cache.Shutdown();
+        b.RunAllScheduledTasks();
+
+        UNIT_ASSERT(shutdown.HasValue());
+        UNIT_ASSERT(HasError(shutdown.GetValue()));
+        UNIT_ASSERT(b.Cache.IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(2, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
