@@ -104,6 +104,42 @@ NProto::TDestroyCheckpointResponse TLocalFileSystem::DestroyCheckpoint(
     return {};
 }
 
+NProto::TSetQuotaResponse TLocalFileSystem::SetQuota(
+    const NProto::TSetQuotaRequest& request)
+{
+    STORAGE_TRACE("SetQuota " << ProtoMessagePrinter.ToString(request));
+
+    NProto::TSetQuotaResponse response;
+    *response.MutableError() = MakeError(
+        E_NOT_IMPLEMENTED,
+        "quotas are not supported by the local service");
+    return response;
+}
+
+NProto::TDeleteQuotaResponse TLocalFileSystem::DeleteQuota(
+    const NProto::TDeleteQuotaRequest& request)
+{
+    STORAGE_TRACE("DeleteQuota " << ProtoMessagePrinter.ToString(request));
+
+    NProto::TDeleteQuotaResponse response;
+    *response.MutableError() = MakeError(
+        E_NOT_IMPLEMENTED,
+        "quotas are not supported by the local service");
+    return response;
+}
+
+NProto::TListQuotasResponse TLocalFileSystem::ListQuotas(
+    const NProto::TListQuotasRequest& request)
+{
+    STORAGE_TRACE("ListQuotas " << ProtoMessagePrinter.ToString(request));
+
+    NProto::TListQuotasResponse response;
+    *response.MutableError() = MakeError(
+        E_NOT_IMPLEMENTED,
+        "quotas are not supported by the local service");
+    return response;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node)

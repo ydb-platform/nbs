@@ -15,6 +15,7 @@
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
+#include <cloud/filestore/public/api/protos/quota.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
