@@ -24,7 +24,8 @@ Tests {
             MigrationPeriod: 20
             StateTransferDelay: 10
         }
-        GarbageCollectionValidationConfig: {
+        GarbageCollectionValidation: {
+            Enabled: true
             TimeoutSeconds: 300
         }
     }

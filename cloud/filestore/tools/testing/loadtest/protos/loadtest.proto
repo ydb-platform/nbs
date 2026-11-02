@@ -176,10 +176,12 @@ message TMigrationSpec
     uint32 StateTransferDelay = 2;
 }
 
-message TGarbageCollectionValidationConfig
+message TGarbageCollectionValidation
 {
+    bool Enabled = 1;
+
     // Maximum duration of final garbage collection (60s by default)
-    uint32 TimeoutSeconds = 1;
+    uint32 TimeoutSeconds = 2;
 }
 
 message TLoadTest
@@ -222,7 +224,7 @@ message TLoadTest
 
     // Enables final cleanup and validation of filesystem metrics, assuring
     // no garbage is left
-    TGarbageCollectionValidationConfig GarbageCollectionValidationConfig = 23;
+    TGarbageCollectionValidation GarbageCollectionValidation = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

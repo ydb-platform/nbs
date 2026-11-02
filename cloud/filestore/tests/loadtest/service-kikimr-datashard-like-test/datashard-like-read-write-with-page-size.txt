@@ -27,6 +27,8 @@ Tests {
         }
         IODepth: 4
         TestDuration: 30
-        GarbageCollectionValidationConfig: {}
+        GarbageCollectionValidation: {
+            Enabled: true
+        }
     }
 }

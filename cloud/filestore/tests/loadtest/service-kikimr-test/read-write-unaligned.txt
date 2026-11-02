@@ -24,6 +24,8 @@ Tests {
         IODepth: 4
         RequestsCount: 200000
         TestDuration: 60
-        GarbageCollectionValidationConfig: {}
+        GarbageCollectionValidation: {
+            Enabled: true
+        }
     }
 }

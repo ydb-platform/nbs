@@ -1138,7 +1138,9 @@ public:
         stopTest(SourceTest, SourceFuture);
         stopTest(TargetTest, TargetFuture);
 
-        if (Config.HasGarbageCollectionValidationConfig()) {
+        const auto garbageCollectionValidation =
+            Config.GetGarbageCollectionValidation();
+        if (garbageCollectionValidation.GetEnabled()) {
             TString filesystemId;
             if (Config.HasFileSystemId()) {
                 filesystemId = Config.GetFileSystemId();
@@ -1147,7 +1149,7 @@ public:
                     Config.GetCreateFileStoreRequest().GetFileSystemId();
             }
             ValidateGarbageCollection(
-                Config.GetGarbageCollectionValidationConfig(),
+                garbageCollectionValidation,
                 filesystemId);
         }
 
@@ -1242,7 +1244,7 @@ private:
     }
 
     void ValidateGarbageCollection(
-        const NProto::TGarbageCollectionValidationConfig& config,
+        const NProto::TGarbageCollectionValidation& config,
         const TString& filesystemId)
     {
         STORAGE_INFO(

@@ -20,7 +20,8 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidationConfig: {
+        GarbageCollectionValidation: {
+            Enabled: true
             TimeoutSeconds: 300
         }
     }
@@ -52,7 +53,8 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidationConfig: {
+        GarbageCollectionValidation: {
+            Enabled: true
             TimeoutSeconds: 300
         }
     }

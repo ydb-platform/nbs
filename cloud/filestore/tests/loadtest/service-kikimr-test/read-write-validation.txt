@@ -25,7 +25,9 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
-        GarbageCollectionValidationConfig: {}
+        GarbageCollectionValidation: {
+            Enabled: true
+        }
     }
 }
 Tests {
@@ -55,6 +57,8 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
-        GarbageCollectionValidationConfig: {}
+        GarbageCollectionValidation: {
+            Enabled: true
+        }
     }
 }

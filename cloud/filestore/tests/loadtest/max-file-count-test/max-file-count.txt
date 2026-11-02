@@ -22,6 +22,8 @@ Tests {
             WriteBytes: 4096
             MinFileCount: 3
         }
-        GarbageCollectionValidationConfig: {}
+        GarbageCollectionValidation: {
+            Enabled: true
+        }
     }
 }
