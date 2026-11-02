@@ -29,14 +29,18 @@ struct TCompressionCodec
 };
 
 constexpr TCompressionCodec CompressionCodecs[] = {
-    {NProto::TCompressionMetadata::COMPRESSION_LZ4, "lz4", "lz4-fast14-safe"},
+    {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+     "lz4",
+     "lz4-fast14-safe"},
     {NProto::TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
-    {NProto::TCompressionMetadata::COMPRESSION_ZLIB, "zlib", "zlib-6"},
-    {NProto::TCompressionMetadata::COMPRESSION_LZMA, "lzma", "lzma-5"},
-    {NProto::TCompressionMetadata::COMPRESSION_BZIP2, "bzip2", "bzip2-6"},
-    {NProto::TCompressionMetadata::COMPRESSION_FASTLZ, "fastlz", "fastlz-0"},
-    {NProto::TCompressionMetadata::COMPRESSION_ZSTD, "zstd", "zstd_3"},
-    {NProto::TCompressionMetadata::COMPRESSION_BROTLI, "brotli", "brotli_11"}};
+    {NProto::TCompressionMetadata::COMPRESSION_ZLIB_6, "zlib", "zlib-6"},
+    {NProto::TCompressionMetadata::COMPRESSION_LZMA_5, "lzma", "lzma-5"},
+    {NProto::TCompressionMetadata::COMPRESSION_BZIP2_6, "bzip2", "bzip2-6"},
+    {NProto::TCompressionMetadata::COMPRESSION_FASTLZ_0, "fastlz", "fastlz-0"},
+    {NProto::TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"},
+    {NProto::TCompressionMetadata::COMPRESSION_BROTLI_GENERIC_11,
+     "brotli",
+     "brotli_11"}};
 
 std::optional<TBlobsCompressor::TMetricsConfig> PrepareMetricsConfig(
     std::optional<TBlobsCompressor::TMetricsConfig> config)
