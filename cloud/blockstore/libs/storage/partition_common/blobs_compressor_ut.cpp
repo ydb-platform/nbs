@@ -953,6 +953,33 @@ Y_UNIT_TEST_SUITE(TBlobsCompressorTest)
                 .GetCode());
     }
 
+    Y_UNIT_TEST(ShouldRejectChunkWithInflatedDecodedLength)
+    {
+        const TBlobsCompressor compressor(
+            BlockSize,
+            ChunkSize,
+            "lz4-fast14-safe",
+            std::nullopt);
+        auto blob = GetResultOrFail(
+            compressor.CompressBlob(MakeSgList(TString(BlockSize, 'a'))));
+        // The header claims a full chunk, but LZ4 produces only one block.
+        WriteUnaligned<ui64>(blob.Data.begin(), ChunkSize);
+
+        TString result(BlockSize, '?');
+        const auto error = compressor.DecompressBlob(
+            {TRope(blob.Data)},
+            {{result.begin(), result.size()}},
+            blob.Compression,
+            blob.Data.size(),
+            {2},
+            nullptr);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), result);
+    }
+
     Y_UNIT_TEST(ShouldRejectInvalidCompressedChunksAndMetadata)
     {
         const TBlobsCompressor compressor(
