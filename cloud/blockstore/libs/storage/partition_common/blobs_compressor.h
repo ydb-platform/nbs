@@ -24,6 +24,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Maps a storage configuration codec family (or its default codec name) to the
+// enum stored in blob metadata. Unsupported names return E_ARGUMENT.
+TResultOrError<NProto::TCompressionMetadata::ECompressionType>
+ParseBlobCompressionCodec(TStringBuf codecName);
+
 /**
  * Compresses blob payloads in independently decodable chunks and restores
  * selected blocks from the compressed data.
@@ -42,6 +47,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TBlobsCompressor
 {
 public:
+    using ECompressionType = NProto::TCompressionMetadata::ECompressionType;
+
     struct TMetricsConfig
     {
         // Sample every Nth blob; zero disables estimation.
@@ -78,6 +85,8 @@ public:
     };
 
 private:
+    const ECompressionType CompressionType;
+
     // Resolved once at construction; failures are returned by CompressBlob.
     const TResultOrError<const NBlockCodecs::ICodec*> BlobCodec;
     const std::optional<TMetricsConfig> MetricsConfig;
@@ -97,14 +106,14 @@ public:
      * @param blockSize - Nonzero size of one uncompressed block in bytes.
      * @param chunkSize - Uncompressed chunk size in bytes; must be a multiple
      *  of and at least blockSize.
-     * @param codecName - Codec name used for writes and compression metrics.
+     * @param codec - Codec family used for writes and compression metrics.
      * @param metricsConfig - Optional settings for compression estimation.
      *  Omitting them disables metrics.
      */
     TBlobsCompressor(
         ui32 blockSize,
         ui32 chunkSize,
-        TStringBuf codecName,
+        ECompressionType codec,
         std::optional<TMetricsConfig> metricsConfig);
 
     /**
@@ -112,14 +121,14 @@ public:
      * decompress blobs and calculate compression metrics.
      *
      * @param blockSize - Nonzero size of one uncompressed block in bytes.
-     * @param codecName - Codec name used for compression metrics. Reads use
+     * @param codec - Codec family used for compression metrics. Reads use
      *  the codec recorded in the blob's metadata.
      * @param metricsConfig - Optional settings for compression estimation.
      *  Omitting them disables metrics.
      */
     TBlobsCompressor(
         ui32 blockSize,
-        TStringBuf codecName,
+        ECompressionType codec,
         std::optional<TMetricsConfig> metricsConfig);
 
     /**
@@ -145,8 +154,8 @@ public:
      * Output buffers may already have been written when a failure occurs.
      *
      * @param compressedBuffers - Data from the ranges returned by PlanReadBlob
-     *  for these block offsets, concatenated in query order. Each rope must
-     *  contain only complete compressed chunks, which may span rope segments.
+     *  for these block offsets, concatenated in query order. Compressed chunks
+     *  may span ropes and rope segments.
      *  Empty ropes are allowed. Each compressed chunk is extracted into a
      *  reusable buffer before decoding.
      * @param outputBuffers - One buffer of exactly BlockSize bytes

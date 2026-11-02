@@ -191,22 +191,33 @@ message TPartitionMeta
 
 message TCompressionMetadata
 {
-    // Resolved library/cpp/blockcodecs codec name.
-    string Codec = 1;
+    // Codec families provided by library/cpp/blockcodecs.
+    enum ECompressionType
+    {
+        COMPRESSION_LZ4 = 0;
+        COMPRESSION_SNAPPY = 1;
+        COMPRESSION_ZLIB = 2;
+        COMPRESSION_LZMA = 3;
+        COMPRESSION_BZIP2 = 4;
+        COMPRESSION_FASTLZ = 5;
+        COMPRESSION_ZSTD = 6;    // zstd08_* and zstd_*.
+        COMPRESSION_BROTLI = 7;
+    }
+    ECompressionType Codec = 1;
 
     // Uncompressed chunk size in bytes used when writing this blob.
     uint32 ChunkSize = 2;
 
-    message TPlainChuncks
+    message TPlainChunks
     {
         // Cumulative compressed end offsets of all chunks except the last.
         // N chunks have N-1 offsets; the last chunk ends at the blob size.
         repeated uint32 ChunkOffset = 1;
     }
 
-    oneof Chuncks
+    oneof Chunks
     {
-        TPlainChuncks PlainChuncks = 3;
+        TPlainChunks PlainChunks = 3;
     }
 }
 
