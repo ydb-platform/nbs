@@ -1775,6 +1775,7 @@ message TStorageServiceConfig
     // Fresh byte count backpressure settings for SSD disks.
     optional uint32 FreshByteCountLimitForBackpressureSSD = 550;
     optional uint32 FreshByteCountThresholdForBackpressureSSD = 551;
+
     // Allows changing the throttling policy through the volume monitoring page.
     optional bool ChangeThrottlingPolicyEnabled = 552;
 
