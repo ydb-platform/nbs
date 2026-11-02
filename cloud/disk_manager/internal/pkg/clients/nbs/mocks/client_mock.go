@@ -67,6 +67,28 @@ func (c *ClientMock) DeleteWithFillGeneration(
 	return args.Error(0)
 }
 
+func (c *ClientMock) ResolveVolumeLinkSource(ctx context.Context, logicalDiskID string) (string, error) {
+	args := c.Called(ctx, logicalDiskID)
+	return args.String(0), args.Error(1)
+}
+
+func (c *ClientMock) CreateVolumeLink(ctx context.Context, link nbs.VolumeLink) error {
+	return c.Called(ctx, link).Error(0)
+}
+
+func (c *ClientMock) DestroyVolumeLink(ctx context.Context, link nbs.VolumeLink) error {
+	return c.Called(ctx, link).Error(0)
+}
+
+func (c *ClientMock) GetVolumeLinkStatus(
+	ctx context.Context,
+	link nbs.VolumeLink,
+) (nbs.VolumeLinkStatus, error) {
+	args := c.Called(ctx, link)
+	status, _ := args.Get(0).(nbs.VolumeLinkStatus)
+	return status, args.Error(1)
+}
+
 func (c *ClientMock) CreateCheckpoint(
 	ctx context.Context,
 	params nbs.CheckpointParams,

@@ -13,6 +13,23 @@ type FactoryMock struct {
 	mock.Mock
 }
 
+func (f *FactoryMock) CreateVolumeLinkTarget(
+	ctx context.Context,
+	saveState func() error,
+	link nbs.VolumeLink,
+	taskID string,
+) error {
+	return f.Called(ctx, saveState, link, taskID).Error(0)
+}
+
+func (f *FactoryMock) DeleteVolumeLinkTarget(ctx context.Context, link nbs.VolumeLink, taskID string) error {
+	return f.Called(ctx, link, taskID).Error(0)
+}
+
+func (f *FactoryMock) FinalizeVolumeLinkTarget(ctx context.Context, link nbs.VolumeLink, taskID string) error {
+	return f.Called(ctx, link, taskID).Error(0)
+}
+
 func (f *FactoryMock) GetZones() []string {
 	args := f.Called()
 	return args.Get(0).([]string)
