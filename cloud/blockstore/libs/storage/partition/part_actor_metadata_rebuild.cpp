@@ -154,6 +154,7 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                     State->GetMergedIndexBlocksCount(),
                     State->GetMixedBlocksCount(),
                     State->GetMergedBlocksCount(),
+                    State->GetStats().GetBlobByteCounters(),
                     Config->GetCompactionRetryTimeout()));
 
             Actors.Insert(actorId);
