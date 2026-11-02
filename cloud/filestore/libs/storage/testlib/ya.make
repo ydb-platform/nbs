@@ -2,6 +2,7 @@ LIBRARY(filestore-libs-storage-testlib)
 
 SRCS(
     helpers.cpp
+    rdma_tablet_injector.cpp
     service_client.cpp
     ss_proxy_client.cpp
     tablet_client.cpp
@@ -14,6 +15,8 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/diagnostics
+    cloud/filestore/libs/rdma
+    cloud/filestore/libs/rdma_test
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/iface
@@ -24,6 +27,7 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet_proxy
+    cloud/filestore/libs/storage/tablet_rdma
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

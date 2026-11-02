@@ -164,5 +164,6 @@ RECURSE_FOR_TESTS(
     ut
     ut_cache_stress
     ut_counters
+    ut_rdma
     ut_stress
 )
