@@ -249,6 +249,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetMinChannelCount(4);
+        config.SetBlobByteCountersEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);
@@ -272,6 +273,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         ui64 bytesCount = 0;
         ui64 usedBytesCount = 0;
+        ui64 logicalMergedBytesCount = 0;
         ui32 partStatsSaved = 0;
         ui64 channelHistorySize = 0;
         ui32 partitionCount = 0;
@@ -288,6 +290,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
                 usedBytesCount = msg->DiskCounters->Simple.UsedBytesCount.Value;
+                logicalMergedBytesCount =
+                    msg->DiskCounters->Simple.LogicalMergedBytesCount.Value;
                 channelHistorySize = msg->DiskCounters->Simple.ChannelHistorySize.Value;
             } else if (event->Recipient == MakeStorageStatsServiceId()
                     && event->GetTypeRewrite() == TEvStatsService::EvVolumeSelfCounters)
@@ -329,6 +333,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(partStatsSaved >= 2);
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(6_MB, logicalMergedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
         UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
         UNIT_ASSERT_VALUES_UNEQUAL(0, startTime);
@@ -337,6 +342,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.RebootTablet();
         bytesCount = 0;
         usedBytesCount = 0;
+        logicalMergedBytesCount = 0;
         channelHistorySize = 0;
         loadTime = 0;
         startTime = 0;
@@ -350,6 +356,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(6_MB, logicalMergedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
         UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
         UNIT_ASSERT_VALUES_EQUAL(0, startTime);
@@ -358,6 +365,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // partition stats should be sent not just once
         bytesCount = 0;
         usedBytesCount = 0;
+        logicalMergedBytesCount = 0;
         channelHistorySize = 0;
         loadTime = 0;
         startTime = 0;
@@ -370,6 +378,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(8_MB, bytesCount);
         UNIT_ASSERT_VALUES_EQUAL(6_MB, usedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(6_MB, logicalMergedBytesCount);
         UNIT_ASSERT_VALUES_UNEQUAL(0, channelHistorySize);
         UNIT_ASSERT_VALUES_UNEQUAL(0, loadTime);
         UNIT_ASSERT_VALUES_EQUAL(0, startTime);

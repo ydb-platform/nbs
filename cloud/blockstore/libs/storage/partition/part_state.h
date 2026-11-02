@@ -312,6 +312,7 @@ private:
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
     const bool UseBlobChannelDataKindForCounters;
+    const bool BlobByteCountersEnabled;
 
     TPartitionThreadSafeStatePtr ThreadSafeState;
 
@@ -339,7 +340,8 @@ public:
         const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
         bool useBlobChannelDataKindForCounters,
-        bool compactionStatsTrackerEnabled);
+        bool compactionStatsTrackerEnabled,
+        bool blobByteCountersEnabled);
 
 private:
     bool LoadStateFinished = false;
@@ -1307,6 +1309,19 @@ public:
     {
         return *Meta.MutableStats();
     }
+
+    ui64 GetMixedBytesCount() const;
+    ui64 GetMergedBytesCount() const;
+
+    bool AreBlobByteCountersEnabled() const
+    {
+        return BlobByteCountersEnabled;
+    }
+
+    void UpdateBlobByteCounters(
+        const TPartialBlobId& blobId,
+        EChannelDataKind indexKind,
+        bool added);
 
 #define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name)                             \
     ui64 Get##name() const                                                     \

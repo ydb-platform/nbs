@@ -2099,10 +2099,182 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 finalStats.GetMergedBlocksCount());
     }
 
+    Y_UNIT_TEST(ShouldTrackBlobBytesThroughCompactionCleanupAndReboot)
+    {
+        for (const bool enabled: {false, true}) {
+            for (const bool useChannelCounters: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetBlobByteCountersEnabled(enabled);
+                config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+                config.SetHDDMaxBlobsPerRange(100);
+                config.SetSSDMaxBlobsPerRange(100);
+                auto runtime = PrepareTestActorRuntime(config, 2048);
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                const auto assertBytes = [&](ui64 mixedBlocks, ui64 mergedBlocks)
+                {
+                    partition.SendToPipe(std::make_unique<
+                        TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                    const auto response = partition.RecvResponse<
+                        TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                    const auto& counters = response->DiskCounters->Simple;
+                    const ui64 mixedBytes =
+                        useChannelCounters ? 0 : mixedBlocks * DefaultBlockSize;
+                    const ui64 mergedBytes =
+                        (mergedBlocks + (useChannelCounters ? mixedBlocks : 0)) *
+                        DefaultBlockSize;
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        mixedBytes,
+                        counters.MixedBytesCount.Value);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        mergedBytes,
+                        counters.MergedBytesCount.Value);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        mixedBytes,
+                        counters.LogicalMixedBytesCount.Value);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        mergedBytes,
+                        counters.LogicalMergedBytesCount.Value);
+                };
+
+                assertBytes(0, 0);
+                partition.WriteBlocks(1, 1);
+                partition.WriteBlocks(2, 2);
+                partition.WriteBlocks(3, 3);
+                partition.ZeroBlocks(4);
+                partition.Flush();
+                partition.Flush(); // Flush the deletion marker as well.
+                partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+                assertBytes(3, 1024);
+                partition.RebootTablet();
+                assertBytes(3, 1024);
+
+                partition.Compaction();
+                partition.Cleanup();
+                assertBytes(0, 1027);
+                partition.RebootTablet();
+                assertBytes(0, 1027);
+
+                partition.ZeroBlocks(TBlockRange32::WithLength(1, 3));
+                partition.Flush();
+                partition.Compaction();
+                partition.Cleanup();
+                assertBytes(0, 1024);
+                partition.RebootTablet();
+                assertBytes(0, 1024);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackBlobBytesWhenReplacingBlobWithSmallerOne)
+    {
+        for (const bool useChannelCounters: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetBlobByteCountersEnabled(true);
+            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            config.SetHDDMaxBlobsPerRange(100);
+            config.SetSSDMaxBlobsPerRange(100);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            const ui32 replacementBlobSize = 123;
+            const ui64 untouchedBlobSize = 1024 * DefaultBlockSize;
+            const auto assertBytes = [&](ui64 storedBytes, ui64 logicalBytes)
+            {
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                UNIT_ASSERT_VALUES_EQUAL(0, counters.MixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    storedBytes,
+                    counters.MergedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    counters.LogicalMixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    logicalBytes,
+                    counters.LogicalMergedBytesCount.Value);
+            };
+
+            partition.WriteBlocks(1, 1);
+            partition.WriteBlocks(2, 2);
+            partition.WriteBlocks(3, 3);
+            partition.Flush();
+            // Keep another blob so an excessive decrement during cleanup
+            // cannot be hidden by clamping the byte counter to zero.
+            partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 1);
+
+            ui32 replacedBlobs = 0;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest)
+                    {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == ADD_COMPACTION_RESULT &&
+                            !replacedBlobs)
+                        {
+                            UNIT_ASSERT_VALUES_EQUAL(1, msg->MergedBlobs.size());
+                            const auto& blob = msg->MergedBlobs.front();
+                            const auto& blobId = blob.BlobId;
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                3 * DefaultBlockSize,
+                                blobId.BlobSize());
+                            // Simulate compression without changing the
+                            // logical blocks described by the blob.
+                            TVector<TAddMergedBlob> replacementBlobs;
+                            replacementBlobs.emplace_back(
+                                TPartialBlobId(
+                                    blobId.Generation(),
+                                    blobId.Step(),
+                                    blobId.Channel(),
+                                    replacementBlobSize,
+                                    blobId.Cookie(),
+                                    blobId.PartId()),
+                                blob.BlockRange,
+                                blob.SkipMask,
+                                blob.Checksums);
+                            msg->MergedBlobs.swap(replacementBlobs);
+                            ++replacedBlobs;
+                        }
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.Compaction(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, replacedBlobs);
+            partition.Cleanup();
+            assertBytes(
+                untouchedBlobSize + replacementBlobSize,
+                untouchedBlobSize + 3 * DefaultBlockSize);
+            partition.RebootTablet();
+            assertBytes(
+                untouchedBlobSize + replacementBlobSize,
+                untouchedBlobSize + 3 * DefaultBlockSize);
+
+            // Overwrite every block so compaction does not read the synthetic
+            // blob, and cleanup must subtract its stored size.
+            partition.ZeroBlocks(TBlockRange32::WithLength(1, 3));
+            partition.Flush();
+            partition.Compaction(0);
+            partition.Cleanup();
+            assertBytes(untouchedBlobSize, untouchedBlobSize);
+            partition.RebootTablet();
+            assertBytes(untouchedBlobSize, untouchedBlobSize);
+        }
+    }
+
     Y_UNIT_TEST(ShouldClassifyBlobCountersByChannelAndIndexKindWhenEnabled)
     {
         auto config = DefaultConfig();
         config.SetUseBlobChannelDataKindForCounters(true);
+        config.SetBlobByteCountersEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2131,6 +2303,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui64 mixedBytesCount = 0;
         ui64 mergedBytesCount = 0;
+        ui64 logicalMixedBytesCount = 0;
+        ui64 logicalMergedBytesCount = 0;
         ui64 mixedIndexBytesCount = 0;
         ui64 mergedIndexBytesCount = 0;
 
@@ -2144,6 +2318,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     const auto& counters = msg->DiskCounters->Simple;
                     mixedBytesCount = counters.MixedBytesCount.Value;
                     mergedBytesCount = counters.MergedBytesCount.Value;
+                    logicalMixedBytesCount =
+                        counters.LogicalMixedBytesCount.Value;
+                    logicalMergedBytesCount =
+                        counters.LogicalMergedBytesCount.Value;
                     mixedIndexBytesCount = counters.MixedIndexBytesCount.Value;
                     mergedIndexBytesCount = counters.MergedIndexBytesCount.Value;
                 }
@@ -2160,6 +2338,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, mixedBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, mergedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, logicalMixedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, logicalMergedBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, mixedIndexBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(0, mergedIndexBytesCount);
     }

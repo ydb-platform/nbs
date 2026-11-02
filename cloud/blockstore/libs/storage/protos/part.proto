@@ -139,6 +139,17 @@ message TPartitionStats
     // Numbers of blocks classified by the index they are stored in.
     uint64 MixedIndexBlocksCount = 28;
     uint64 MergedIndexBlocksCount = 29;
+
+    // Stored blob sizes, including compression. Presence marks initialization
+    // from block counts before compression is enabled.
+    message TBlobByteCounters
+    {
+        uint64 MixedBytesCount = 1;
+        uint64 MergedBytesCount = 2;
+        uint64 MixedIndexBytesCount = 3;
+        uint64 MergedIndexBytesCount = 4;
+    }
+    TBlobByteCounters BlobByteCounters = 30;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

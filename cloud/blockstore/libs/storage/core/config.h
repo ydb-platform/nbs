@@ -996,6 +996,8 @@ public:
 
     [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
 
+    [[nodiscard]] bool GetBlobByteCountersEnabled() const;
+
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledHDD() const;
 
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledSSD() const;

@@ -134,7 +134,8 @@ TPartitionState::TPartitionState(
             mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
         bool useBlobChannelDataKindForCounters,
-        bool compactionStatsTrackerEnabled)
+        bool compactionStatsTrackerEnabled,
+        bool blobByteCountersEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -153,6 +154,7 @@ TPartitionState::TPartitionState(
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
     , UseBlobChannelDataKindForCounters(useBlobChannelDataKindForCounters)
+    , BlobByteCountersEnabled(blobByteCountersEnabled)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -173,6 +175,10 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
+    if (!BlobByteCountersEnabled) {
+        AccessStats().ClearBlobByteCounters();
+    }
+
     if (compactionStatsTrackerEnabled) {
         CompactionStatsTracker.emplace(tabletId, CompactionMap, UsedBlocks);
     }
@@ -193,6 +199,24 @@ TPartitionState::TPartitionState(
         }
     }
     InitChannels();
+
+    if (BlobByteCountersEnabled && !GetStats().HasBlobByteCounters()) {
+        // Byte counters must be enabled before compression, so stored sizes
+        // initially equal block counts times block size. Preserve both channel
+        // and index classifications before applying the configured counter mode.
+        auto stats = GetStats();
+        InitializeMixedMergedBlobsAndBlocksCounts(*this, stats, true);
+
+        auto& counters = *AccessStats().MutableBlobByteCounters();
+        counters.SetMixedBytesCount(
+            stats.GetMixedBlocksCount() * GetBlockSize());
+        counters.SetMergedBytesCount(
+            stats.GetMergedBlocksCount() * GetBlockSize());
+        counters.SetMixedIndexBytesCount(
+            stats.GetMixedIndexBlocksCount() * GetBlockSize());
+        counters.SetMergedIndexBytesCount(
+            stats.GetMergedIndexBlocksCount() * GetBlockSize());
+    }
 
     InitializeMixedMergedBlobsAndBlocksCounts(
         *this,
@@ -494,6 +518,65 @@ void TPartitionState::ConfirmBlobs(
 
     UnconfirmedBlobs.clear();
     UnconfirmedBlobCount = 0;
+}
+
+ui64 TPartitionState::GetMixedBytesCount() const
+{
+    const auto& counters = GetStats().GetBlobByteCounters();
+    return UseBlobChannelDataKindForCounters
+               ? counters.GetMixedBytesCount()
+               : counters.GetMixedIndexBytesCount();
+}
+
+ui64 TPartitionState::GetMergedBytesCount() const
+{
+    const auto& counters = GetStats().GetBlobByteCounters();
+    return UseBlobChannelDataKindForCounters
+               ? counters.GetMergedBytesCount()
+               : counters.GetMergedIndexBytesCount();
+}
+
+void TPartitionState::UpdateBlobByteCounters(
+    const TPartialBlobId& blobId,
+    EChannelDataKind indexKind,
+    bool added)
+{
+    if (!BlobByteCountersEnabled || IsDeletionMarker(blobId)) {
+        return;
+    }
+
+    auto& counters = *AccessStats().MutableBlobByteCounters();
+    const auto update = [&](ui64 value)
+    {
+        return added
+                   ? SafeIncrement(value, blobId.BlobSize())
+                   : SafeDecrement(value, Min<ui64>(value, blobId.BlobSize()));
+    };
+
+    switch (indexKind) {
+        case EChannelDataKind::Mixed:
+            counters.SetMixedIndexBytesCount(
+                update(counters.GetMixedIndexBytesCount()));
+            break;
+        case EChannelDataKind::Merged:
+            counters.SetMergedIndexBytesCount(
+                update(counters.GetMergedIndexBytesCount()));
+            break;
+        default:
+            Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
+    }
+
+    switch (GetChannelDataKind(blobId.Channel())) {
+        case EChannelDataKind::Mixed:
+            counters.SetMixedBytesCount(update(counters.GetMixedBytesCount()));
+            break;
+        case EChannelDataKind::Merged:
+            counters.SetMergedBytesCount(
+                update(counters.GetMergedBytesCount()));
+            break;
+        default:
+            Y_ABORT("Unexpected blob channel: %u", blobId.Channel());
+    }
 }
 
 #define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)                           \
