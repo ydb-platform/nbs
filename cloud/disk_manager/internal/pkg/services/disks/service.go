@@ -499,8 +499,9 @@ func (s *service) isCreationFromBaseDiskAllowed(
 	}
 
 	if imageMeta.Size > uint64(req.Size) {
-		// Proxy overlay disk is not larger than the disk being created (see
-		// disks.CreateDiskFromBaseDisk), so the image must fit into it.
+		// Only the first |req.Size| bytes of the base disk are transferred
+		// (see disks.CreateDiskFromBaseDisk), so the image must fit into the
+		// disk being created.
 		return false, nil
 	}
 

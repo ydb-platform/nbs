@@ -130,7 +130,6 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 		proxyOverlayDisk.DiskId,
 		"base",
 		"checkpoint",
-		uint64(1<<20)*4096, // maxSizeBytes: size of the disk being created
 	).Return(true, nil)
 
 	// Disk itself is not layered.
@@ -157,6 +156,7 @@ func TestCreateDiskFromBaseDiskTask(t *testing.T) {
 				ZoneId: "zone",
 				DiskId: "disk",
 			},
+			MaxSizeBytes: uint64(1<<20) * 4096, // Size of the disk being created.
 		},
 	).Return("transfer", nil)
 	scheduler.On("WaitTask", ctx, execCtx, "transfer").Return(
@@ -432,7 +432,6 @@ func TestCreateDiskFromBaseDiskTaskFailureWhenProxyOverlayDiskIsNotCreated(
 		proxyOverlayDisk.DiskId,
 		"base",
 		"checkpoint",
-		uint64(1<<20)*4096, // maxSizeBytes: size of the disk being created
 	).Return(false, nil)
 
 	execCtx.On("SaveState", ctx).Return(nil)

@@ -429,6 +429,13 @@ func (t *createDiskFromBaseDiskTask) scheduleTransferFromBaseDisk(
 			SrcDiskCheckpointId: baseDiskCheckpointID,
 			MountSrcDiskLocally: true,
 			DstDisk:             disk,
+			// The proxy overlay disk has the size of the base disk (4 TiB
+			// by default), which may be much larger than the disk being
+			// created, the image fits into both. Without this bound the
+			// transfer would scan the unused tail of the proxy overlay disk
+			// (chunk by chunk) to estimate the amount of data to transfer,
+			// and it does that from scratch on every restart.
+			MaxSizeBytes: params.BlocksCount * uint64(params.BlockSize),
 		},
 	)
 }
@@ -446,17 +453,14 @@ func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
 		return nil
 	}
 
-	// `maxSizeBytes` is used here to reduce the number of `GetChangedBlocks`
-	// requests when using a base disk with the default size of 4 TiB. It is
-	// specified in bytes: the proxy overlay disk has the block size of the
-	// base disk, which may differ from the block size of the disk being
-	// created.
+	// The proxy overlay disk has the size and the block size of the base disk,
+	// the latter may differ from the block size of the disk being created (the
+	// transfer operates on chunks that are multiples of both).
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDisk.DiskId,
 		baseDiskID,
 		baseDiskCheckpointID,
-		t.request.Params.BlocksCount*uint64(t.request.Params.BlockSize), // maxSizeBytes
 	)
 	if err != nil {
 		return err
