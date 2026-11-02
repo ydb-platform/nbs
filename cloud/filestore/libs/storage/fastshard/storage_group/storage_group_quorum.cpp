@@ -911,6 +911,9 @@ TResultOrError<TLoopPtr> RunLoop(
 
 class TQuorumMirroredStorageGroup final: public IStorageGroup
 {
+private:
+    TGroupStatePtr State;
+
 public:
     TQuorumMirroredStorageGroup(
             TStorageGroupConfig config,
@@ -1179,7 +1182,7 @@ private:
     NProto::TError CheckReady() const
     {
         if (!State->Initialized) {
-            return MakeError(E_REJECTED, "storage group is shutting down");
+            return MakeError(E_REJECTED, "storage group is not initialized");
         }
 
         if (State->Health.IsBroken()) {
@@ -1188,9 +1191,6 @@ private:
 
         return {};
     }
-
-private:
-    TGroupStatePtr State;
 };
 
 }   // namespace

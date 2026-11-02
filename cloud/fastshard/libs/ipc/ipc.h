@@ -14,7 +14,7 @@ struct IPoller
     virtual ~IPoller() = default;
 
     // 0 once one of @p events is ready on @p fd, errno otherwise.
-    virtual int Poll(int fd, uint32_t events) = 0;
+    virtual int Poll(int fd, ui32 events) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

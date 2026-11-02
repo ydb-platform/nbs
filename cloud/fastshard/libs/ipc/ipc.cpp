@@ -17,7 +17,7 @@ namespace {
 
 struct TFiberPoller final: IPoller
 {
-    int Poll(int fd, uint32_t events) override
+    int Poll(int fd, ui32 events) override
     {
         return FiberScheduler::poll(fd, events);
     }

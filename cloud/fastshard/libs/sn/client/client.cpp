@@ -15,10 +15,10 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/scope.h>
-#include <util/system/datetime.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
+#include <util/system/datetime.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -50,8 +50,12 @@ namespace {
 
 class TContextPoller final: public IPoller
 {
+private:
+    silk::FiberEvent::Future Cancelled;
+    ui64 WaitCycles = 0;
+
 public:
-    TContextPoller(TFastShardContext& ctx)
+    explicit TContextPoller(TFastShardContext& ctx)
     {
         ctx.Cancel.wait(&Cancelled);
     }
@@ -62,7 +66,7 @@ public:
         Y_UNUSED(Cancelled.wait());
     }
 
-    int Poll(int fd, uint32_t events) override
+    int Poll(int fd, ui32 events) override
     {
         FiberScheduler::IoFuture io;
         FiberScheduler::poll(fd, events, nullptr, &io);
@@ -85,10 +89,6 @@ public:
     {
         return WaitCycles;
     }
-
-private:
-    silk::FiberEvent::Future Cancelled;
-    ui64 WaitCycles = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
