@@ -236,16 +236,16 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
 
     Y_UNIT_TEST(ShouldAddBlobsInfoForMixedBlob)
     {
-        const ui32 blockSize = 8;
+        const ui32 blockSize = 4096;
         auto buffer1 = CreateBlockBuffer(
             TByteRange{0, blockSize, blockSize},
-            TString("content1"));
+            TString(blockSize, 'A'));
         auto buffer2 = CreateBlockBuffer(
             TByteRange{0, blockSize, blockSize},
-            TString("content2"));
+            TString(blockSize, 'B'));
         auto buffer3 = CreateBlockBuffer(
             TByteRange{0, blockSize, blockSize},
-            TString("content3"));
+            TString(blockSize, 'C'));
         const auto oldBlobFirst = TMixedBlob(
             MakePartialBlobId(1, 1),
             {TBlock(1, 3, 0, 0), TBlock(1, 5, 0, 0), TBlock(3, 6, 0, 0)},
