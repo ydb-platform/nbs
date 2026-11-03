@@ -108,9 +108,8 @@ void TVolumeActor::CompleteLoadState(
     TTxVolume::TLoadState& args)
 {
     if (args.StorageConfig.Defined()) {
-        Config =
-            TStorageConfig::Merge(GlobalStorageConfig, *args.StorageConfig);
-        HasStorageConfigPatch = Config != GlobalStorageConfig;
+        StorageConfigPatch = std::move(*args.StorageConfig);
+        ApplyStorageConfig();
     }
 
     // Create BlockDigestGenerator using the effective storage configuration

@@ -402,6 +402,12 @@ public:
         StartPartitionsNeeded = startPartitionsNeeded;
     }
 
+    // Replace the configuration reference while preserving the object's other state.
+    void UpdateStorageConfig(TStorageConfigPtr config)
+    {
+        StorageConfig = std::move(config);
+    }
+
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
