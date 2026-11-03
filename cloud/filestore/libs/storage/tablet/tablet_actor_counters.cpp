@@ -230,6 +230,11 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 // FILESTORE_TABLET_MERGE_COUNTER
 
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_MERGE_COUNTER)
+    FILESTORE_TABLET_MERGE_COUNTER(FreshBytesItemCount)
+    FILESTORE_TABLET_MERGE_COUNTER(UnconfirmedDataCount)
+    FILESTORE_TABLET_MERGE_COUNTER(ConfirmedDataCount)
+    FILESTORE_TABLET_MERGE_COUNTER(UsedCompactionRanges)
+    FILESTORE_TABLET_MERGE_COUNTER(AllocatedCompactionRanges)
 
 #undef FILESTORE_TABLET_MERGE_COUNTER
 
@@ -925,8 +930,13 @@ void TIndexTabletActor::HandleGetStorageStats(
         // TAggregateStatsActor
         #define FILESTORE_TABLET_CLEAR_COUNTER(name, ...)                      \
             stats->Clear##name();                                              \
-        // FILESTORE_TABLET_MERGE_COUNTER
+        // FILESTORE_TABLET_CLEAR_COUNTER
         FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
+        FILESTORE_TABLET_CLEAR_COUNTER(FreshBytesItemCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(UnconfirmedDataCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(ConfirmedDataCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(UsedCompactionRanges)
+        FILESTORE_TABLET_CLEAR_COUNTER(AllocatedCompactionRanges)
         #undef FILESTORE_TABLET_CLEAR_COUNTER
     }
 

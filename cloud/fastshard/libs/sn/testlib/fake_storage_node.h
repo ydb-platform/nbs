@@ -59,27 +59,35 @@ struct TFakeStorageNode: public IStorageNode
     TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext&,
         NCloud::NProto::TAcquireDevicesRequest request) override;
 
     NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
+        TFastShardContext&,
         NCloud::NProto::TReleaseDevicesRequest request) override;
 
     NCloud::NProto::TFormatDeviceResponse FormatDevice(
+        TFastShardContext&,
         NCloud::NProto::TFormatDeviceRequest request) override;
 
     NCloud::NProto::TListDevicesResponse ListDevices(
+        TFastShardContext&,
         NCloud::NProto::TListDevicesRequest request) override;
 
     NCloud::NProto::TReadPagesResponse ReadPages(
+        TFastShardContext&,
         NCloud::NProto::TReadPagesRequest request) override;
 
     NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
+        TFastShardContext&,
         NCloud::NProto::TWriteLogRecordRequest request) override;
 
     NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+        TFastShardContext&,
         NCloud::NProto::TReadJournalTailRequest request) override;
 
     NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override;
 };
 

@@ -45,7 +45,11 @@ namespace NCloud::NStorage::NRdma {
 using namespace NMonitoring;
 using namespace NThreading;
 
-using TSendWr = TSendWrBase<TRequestMessage>;
+struct TSendWr
+    : TSendWrBase<TRequestMessage>
+{
+    TPooledBuffer EagerBuffer{};
+};
 using TRecvWr = TRecvWrBase<TResponseMessage>;
 
 LWTRACE_USING(STORAGE_RDMA_PROVIDER);
@@ -171,6 +175,7 @@ struct TRequest
     NVerbs::TMemoryWindowPtr OutMemoryWindow = NVerbs::NullPtr;
 
     ui64 BufferPoolGeneration = 0;
+    bool Eager = false;
 
     ERequestState State = ERequestState::Init;
 
@@ -644,6 +649,7 @@ private:
     std::atomic<ui64> ReqIdPool{0};
 
     int NegotiatedProtocolVersion = RDMA_PROTO_VERSION;
+    ui32 NegotiatedEagerRequestBytes = 0;
 
 public:
     static TClientEndpoint* FromEvent(rdma_cm_event* event)
@@ -705,6 +711,7 @@ public:
 
     void SetNegotiatedProtocolVersion(int negotiatedProtocolVersion);
     int GetNegotiatedProtocolVersion() const;
+    ui32 GetNegotiatedEagerRequestBytes() const;
 
 private:
     // called from CQ thread
@@ -713,6 +720,7 @@ private:
     void StartRequest(TRequestPtr req, TSendWr* send) noexcept;
     void SendRequest(TRequest* req, TSendWr* send) noexcept;
     void SendRequestCompleted(TSendWr* send) noexcept;
+    void ReleaseEagerBuffer(TSendWr* send) noexcept;
     void BindBuffers(TRequest* req, TSendWr* send) noexcept;
     void BindInBuffer(TRequest* req, TSendWr* send) noexcept;
     void BindOutBuffer(TRequest* req, TSendWr* send) noexcept;
@@ -820,6 +828,8 @@ void TClientEndpoint::CreateQP()
     if (ResetConfig) {
         Config = *OriginalConfig;
         ResetConfig = false;
+        NegotiatedProtocolVersion = RDMA_PROTO_VERSION;
+        NegotiatedEagerRequestBytes = 0;
     }
 
     CompletionQueue = Verbs->CreateCompletionQueue(
@@ -900,6 +910,7 @@ void TClientEndpoint::CreateQP()
         wr.sg_list[0].lkey = SendBuffer.LKey;
         wr.sg_list[0].addr = requestMsg;
         wr.sg_list[0].length = sizeof(TRequestMessage);
+        wr.EagerBuffer = {};
 
         SendQueue.Push(&wr);
         requestMsg += sizeof(TRequestMessage);
@@ -1176,7 +1187,13 @@ void TClientEndpoint::HandleInvalidations() noexcept
         }
 
         Counters->InvalidationStarted();
-        InvalidateInBuffer(req, send);
+        send->context =
+            reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
+        if (req->Eager) {
+            InvalidateOutBuffer(req, send);
+        } else {
+            InvalidateInBuffer(req, send);
+        }
     }
 }
 
@@ -1407,6 +1424,7 @@ void TClientEndpoint::HandleSendError(TSendWr* send) noexcept
                                    << " state " << req->State);
         }
     }
+    ReleaseEagerBuffer(send);
     SendQueue.Push(send);
 }
 
@@ -1535,6 +1553,21 @@ void TClientEndpoint::StartRequest(TRequestPtr request, TSendWr* send) noexcept
     msg->In = req->InBuffer;
     msg->Out = req->OutBuffer;
 
+    req->Eager = req->InBuffer.Length > 0 &&
+                 req->InBuffer.Length <= NegotiatedEagerRequestBytes;
+
+    if (req->Eager) {
+        msg->In.Address = 0;
+        msg->In.RKey = 0;
+
+        send->wr.num_sge = 2;
+        send->sg_list[1].addr = req->InBuffer.Address;
+        send->sg_list[1].length = req->InBuffer.Length;
+        send->sg_list[1].lkey = req->InBuffer.LKey;
+    } else {
+        send->wr.num_sge = 1;
+    }
+
     req->State = ERequestState::Started;
     Counters->RequestStarted();
 
@@ -1568,14 +1601,20 @@ bool TClientEndpoint::PostSend(
 void TClientEndpoint::BindBuffers(TRequest* req, TSendWr* send) noexcept
 {
     try {
-        // buffers have to fit at least TProtoHeader, so they can't be empty
-        req->InMemoryWindow = MemoryWindows.Acquire();
-        Counters->AcquireMemoryWindow();
+        if (!req->Eager) {
+            req->InMemoryWindow = MemoryWindows.Acquire();
+            Counters->AcquireMemoryWindow();
+        }
 
         req->OutMemoryWindow = MemoryWindows.Acquire();
         Counters->AcquireMemoryWindow();
 
-        BindInBuffer(req, send);
+        Counters->BindStarted();
+        if (req->Eager) {
+            BindOutBuffer(req, send);
+        } else {
+            BindInBuffer(req, send);
+        }
     }
     catch (const TServiceError& e) {
         RDMA_ERROR(send << " " << e.what());
@@ -1593,7 +1632,6 @@ void TClientEndpoint::BindBuffers(TRequest* req, TSendWr* send) noexcept
 
 void TClientEndpoint::BindInBuffer(TRequest* req, TSendWr* send) noexcept
 {
-    Counters->BindStarted();
     req->State = ERequestState::BindInBuffer;
 
     TBindWr wr(
@@ -1638,6 +1676,18 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
 
     if (PostSend(req, send, &send->wr)) {
         return;
+    }
+
+    if (req->Eager) {
+        // The NIC reads the eager payload from InBuffer until the SEND
+        // completes, which may happen after the request itself is gone. The WR
+        // takes the buffer over, so FreeRequest() can't return it to the pool
+        // while the NIC still reads it; ReleaseEagerBuffer() frees it on SEND
+        // completion or flush. RequestBuffer points into the same memory, so it
+        // goes too.
+        send->EagerBuffer = req->InBuffer;
+        req->InBuffer = {};
+        req->RequestBuffer = {};
     }
 
     LWTRACK(
@@ -1700,6 +1750,7 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
     const ui32 reqId =
         SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
 
+    ReleaseEagerBuffer(send);
     Counters->SendRequestCompleted();
     SendQueue.Push(send);
 
@@ -1710,6 +1761,15 @@ void TClientEndpoint::SendRequestCompleted(TSendWr* send) noexcept
             req->CallContext->RequestId);
     }
     // request has been completed or aborted
+}
+
+void TClientEndpoint::ReleaseEagerBuffer(TSendWr* send) noexcept
+{
+    if (send->EagerBuffer.Chunk) {
+        with_lock (AllocationLock) {
+            SendBuffers.ReleaseBuffer(send->EagerBuffer);
+        }
+    }
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv) noexcept
@@ -1808,8 +1868,6 @@ void TClientEndpoint::CompleteRequest(ui32 reqId) noexcept
 
 void TClientEndpoint::InvalidateInBuffer(TRequest* req, TSendWr* send) noexcept
 {
-    send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
-
     req->State = ERequestState::InvalidateInBuffer;
 
     ibv_send_wr wr = {
@@ -2031,6 +2089,11 @@ void TClientEndpoint::SetNegotiatedProtocolVersion(
 int TClientEndpoint::GetNegotiatedProtocolVersion() const
 {
     return NegotiatedProtocolVersion;
+}
+
+ui32 TClientEndpoint::GetNegotiatedEagerRequestBytes() const
+{
+    return NegotiatedEagerRequestBytes;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2954,6 +3017,7 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
             .SendQueueSize = SafeCast<ui16>(endpoint->Config.SendQueueSize),
             .RecvQueueSize = SafeCast<ui16>(endpoint->Config.RecvQueueSize),
             .MaxBufferSize = SafeCast<ui32>(endpoint->Config.MaxBufferSize),
+            .MaxEagerRequestBytes = endpoint->Config.MaxEagerRequestBytes,
         };
         InitMessageHeader(&message, endpoint->GetNegotiatedProtocolVersion());
 
@@ -2993,7 +3057,8 @@ void TClient::HandleConnected(
     }
 
     const int version = ParseMessageHeader(param->private_data);
-    if (version < RDMA_PROTO_PREV_VERSION || version > RDMA_PROTO_VERSION)
+    if (version < RDMA_PROTO_PREV_VERSION ||
+        version > endpoint->GetNegotiatedProtocolVersion())
     {
         RDMA_ERROR(
             endpoint->Log,
@@ -3003,6 +3068,14 @@ void TClient::HandleConnected(
     }
 
     endpoint->SetNegotiatedProtocolVersion(version);
+    endpoint->NegotiatedEagerRequestBytes = 0;
+    if (version >= RDMA_PROTO_VERSION_3) {
+        const auto* acceptMsg =
+            static_cast<const TAcceptMessage*>(param->private_data);
+        endpoint->NegotiatedEagerRequestBytes = Min(
+            acceptMsg->MaxEagerRequestBytes,
+            endpoint->Config.MaxEagerRequestBytes);
+    }
     endpoint->ChangeState(
         EEndpointState::Connecting,
         EEndpointState::Connected);
@@ -3018,7 +3091,13 @@ void TClient::HandleConnected(
     }
     endpoint->StartReceive();
 
-    RDMA_INFO(endpoint->Log, "connected");
+    RDMA_INFO(
+        endpoint->Log,
+        "connected (protocol v"
+            << version << ", eager " << endpoint->NegotiatedEagerRequestBytes
+            << "B, sq/rq " << endpoint->Config.SendQueueSize << "/"
+            << endpoint->Config.RecvQueueSize << ", max buffer "
+            << endpoint->Config.MaxBufferSize << "B)");
 
     if (endpoint->StartResult.Initialized()) {
         auto startResult = std::move(endpoint->StartResult);
@@ -3047,13 +3126,11 @@ void TClient::HandleRejected(
     }
 
     const int version = ParseMessageHeader(param->private_data);
+    const auto* msg = static_cast<const TRejectMessage*>(param->private_data);
+    // Only two protocol versions are supported at a time. If v4 arrives before
+    // v3 is fully rolled out, the two-version requirement will be lifted.
     switch (version) {
         case RDMA_PROTO_PREV_VERSION: {
-            const auto* msg =
-                static_cast<const TRejectMessage*>(param->private_data);
-            // NOTE: Previous version of the server can't reply with
-            // "RDMA_PROTO_CONFIG_MISMATCH", since "StrictValidation" couldn't
-            // be enabled before.
             if (msg->Status == RDMA_PROTO_INVALID_REQUEST &&
                 endpoint->GetNegotiatedProtocolVersion() !=
                     RDMA_PROTO_PREV_VERSION)
@@ -3063,12 +3140,12 @@ void TClient::HandleRejected(
                     "connection rejected, retry connect with previous protocol "
                     "version");
                 endpoint->SetNegotiatedProtocolVersion(RDMA_PROTO_PREV_VERSION);
+                endpoint->TryForceReconnect();
+                return;
             }
-            break;
+            [[fallthrough]];
         }
         case RDMA_PROTO_VERSION: {
-            const auto* msg =
-                static_cast<const TRejectMessage2*>(param->private_data);
             if (msg->Status == RDMA_PROTO_CONFIG_MISMATCH) {
                 bool changed = false;
                 if (endpoint->Config.SendQueueSize > msg->RecvQueueSize) {

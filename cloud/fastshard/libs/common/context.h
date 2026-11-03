@@ -13,7 +13,8 @@ namespace NCloud::NFastShard {
 struct TFastShardContext
 {
     const ui64 RequestId;
-    // TODO(#6957): execution cycles
+    std::atomic<ui64> ExecCycles = 0;
+    std::atomic<ui64> WaitCycles = 0;
     std::atomic<ui64> BackoffCycles = 0;
     silk::FiberEvent Cancel;
 

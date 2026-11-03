@@ -187,6 +187,7 @@ public:
     }
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext&,
         NCloud::NProto::TAcquireDevicesRequest request) override
     {
         Y_UNUSED(request);
@@ -194,6 +195,7 @@ public:
     }
 
     NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
+        TFastShardContext&,
         NCloud::NProto::TReleaseDevicesRequest request) override
     {
         Y_UNUSED(request);
@@ -201,6 +203,7 @@ public:
     }
 
     NCloud::NProto::TFormatDeviceResponse FormatDevice(
+        TFastShardContext&,
         NCloud::NProto::TFormatDeviceRequest request) override
     {
         Y_UNUSED(request);
@@ -208,6 +211,7 @@ public:
     }
 
     NCloud::NProto::TListDevicesResponse ListDevices(
+        TFastShardContext&,
         NCloud::NProto::TListDevicesRequest request) override
     {
         // The file has no device UUID, so there is nothing to list.
@@ -216,6 +220,7 @@ public:
     }
 
     NCloud::NProto::TReadPagesResponse ReadPages(
+        TFastShardContext&,
         NCloud::NProto::TReadPagesRequest request) override
     {
         NCloud::NProto::TReadPagesResponse resp;
@@ -328,6 +333,7 @@ public:
     }
 
     NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
+        TFastShardContext&,
         NCloud::NProto::TWriteLogRecordRequest request) override
     {
         NCloud::NProto::TWriteLogRecordResponse resp;
@@ -446,6 +452,7 @@ public:
     }
 
     NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+        TFastShardContext&,
         NCloud::NProto::TReadJournalTailRequest request) override
     {
         // WriteLogRecord writes in place, so the journal is always empty and
@@ -455,6 +462,7 @@ public:
     }
 
     NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override
     {
         // Every page is already at its final location, so the watermark can be

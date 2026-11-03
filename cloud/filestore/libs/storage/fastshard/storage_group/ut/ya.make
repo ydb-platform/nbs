@@ -6,7 +6,6 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/fastshard/libs/fiber
     cloud/fastshard/libs/sn/testlib
     cloud/filestore/libs/storage/fastshard/storage_group
 

@@ -23,6 +23,7 @@ TResponse PopResponse(TDeque<TResponse>& queue, const TResponse& canned)
 ////////////////////////////////////////////////////////////////////////////////
 
 NCloud::NProto::TAcquireDevicesResponse TFakeStorageNode::AcquireDevices(
+    TFastShardContext&,
     NCloud::NProto::TAcquireDevicesRequest request)
 {
     with_lock (Lock) {
@@ -32,6 +33,7 @@ NCloud::NProto::TAcquireDevicesResponse TFakeStorageNode::AcquireDevices(
 }
 
 NCloud::NProto::TReleaseDevicesResponse TFakeStorageNode::ReleaseDevices(
+    TFastShardContext&,
     NCloud::NProto::TReleaseDevicesRequest request)
 {
     with_lock (Lock) {
@@ -41,6 +43,7 @@ NCloud::NProto::TReleaseDevicesResponse TFakeStorageNode::ReleaseDevices(
 }
 
 NCloud::NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
+    TFastShardContext&,
     NCloud::NProto::TFormatDeviceRequest request)
 {
     with_lock (Lock) {
@@ -50,6 +53,7 @@ NCloud::NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
 }
 
 NCloud::NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
+    TFastShardContext&,
     NCloud::NProto::TListDevicesRequest request)
 {
     with_lock (Lock) {
@@ -59,6 +63,7 @@ NCloud::NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
 }
 
 NCloud::NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
+    TFastShardContext&,
     NCloud::NProto::TReadPagesRequest request)
 {
     with_lock (Lock) {
@@ -68,6 +73,7 @@ NCloud::NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
 }
 
 NCloud::NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
+    TFastShardContext&,
     NCloud::NProto::TWriteLogRecordRequest request)
 {
     with_lock (Lock) {
@@ -77,6 +83,7 @@ NCloud::NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
 }
 
 NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
+    TFastShardContext&,
     NCloud::NProto::TReadJournalTailRequest request)
 {
     with_lock (Lock) {
@@ -87,6 +94,7 @@ NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
 
 NCloud::NProto::TAdvanceLsnLowWatermarkResponse
 TFakeStorageNode::AdvanceLsnLowWatermark(
+    TFastShardContext&,
     NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
 {
     with_lock (Lock) {

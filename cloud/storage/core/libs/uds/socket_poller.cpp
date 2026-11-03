@@ -26,7 +26,7 @@ private:
 
 public:
     TImpl()
-        : Fd(epoll_create1(0))
+        : Fd(epoll_create1(EPOLL_CLOEXEC))
     {
         if (Fd == -1) {
             ythrow TSystemError() << "epoll_create failed";
@@ -99,7 +99,7 @@ private:
         int ret;
 
         do {
-            ret = epoll_wait(Fd, events, len, PollInterval.MicroSeconds());
+            ret = epoll_wait(Fd, events, len, PollInterval.MilliSeconds());
         } while (ret == -1 && errno == EINTR);
 
         Y_ABORT_UNLESS(ret >= 0, "epoll wait error: %s", LastSystemErrorText());

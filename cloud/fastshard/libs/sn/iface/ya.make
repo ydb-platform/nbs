@@ -5,6 +5,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/fastshard/libs/common
     cloud/fastshard/public/api/protos
 
     cloud/storage/core/libs/common

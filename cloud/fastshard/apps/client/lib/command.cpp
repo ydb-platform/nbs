@@ -267,7 +267,7 @@ NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
     request.SetAccessMode(AcquireAccessMode);
     request.SetFastshardId(AcquireFastshardId);
 
-    auto response = Client->AcquireDevices(std::move(request));
+    auto response = Client->AcquireDevices(Context, std::move(request));
     if (HasError(response)) {
         auto error = response.GetError();
         error.SetMessage(TStringBuilder()
@@ -286,7 +286,7 @@ void TCommand::ReleaseDevice(const TString& deviceUUID)
     request.SetGeneration(AcquireGeneration);
     request.SetFastshardId(AcquireFastshardId);
 
-    auto response = Client->ReleaseDevices(std::move(request));
+    auto response = Client->ReleaseDevices(Context, std::move(request));
     if (HasError(response)) {
         STORAGE_ERROR(
             "failed to release device " << deviceUUID << ": "

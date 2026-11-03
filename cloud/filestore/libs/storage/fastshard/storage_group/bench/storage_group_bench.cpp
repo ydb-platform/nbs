@@ -113,6 +113,7 @@ struct TNullStorageNode final: IStorageNode
      }
 
     NProto::TReadPagesResponse ReadPages(
+        TFastShardContext&,
         NProto::TReadPagesRequest request) override
     {
         Sleep();
@@ -131,6 +132,7 @@ struct TNullStorageNode final: IStorageNode
     }
 
     NProto::TWriteLogRecordResponse WriteLogRecord(
+        TFastShardContext&,
         NProto::TWriteLogRecordRequest request) override
     {
         Y_UNUSED(request);
@@ -140,36 +142,42 @@ struct TNullStorageNode final: IStorageNode
     }
 
     NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext&,
         NProto::TAcquireDevicesRequest) override
     {
         return {};
     }
 
     NProto::TFormatDeviceResponse FormatDevice(
+        TFastShardContext&,
         NProto::TFormatDeviceRequest) override
     {
         return {};
     }
 
     NProto::TReleaseDevicesResponse ReleaseDevices(
+        TFastShardContext&,
         NProto::TReleaseDevicesRequest) override
     {
         return {};
     }
 
     NProto::TListDevicesResponse ListDevices(
+        TFastShardContext&,
         NProto::TListDevicesRequest) override
     {
         return {};
     }
 
     NProto::TReadJournalTailResponse ReadJournalTail(
+        TFastShardContext&,
         NProto::TReadJournalTailRequest) override
     {
         return {};
     }
 
     NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
         NProto::TAdvanceLsnLowWatermarkRequest) override
     {
         return {};
