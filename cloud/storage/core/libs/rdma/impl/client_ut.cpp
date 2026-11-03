@@ -1607,16 +1607,16 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
+    std::atomic<int> bound = 0;
+    std::atomic<int> invalidated = 0;
+    std::atomic<int> destroyed = 0;
+    std::atomic<int> sentSges = 0;
+
     auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
     client->Start();
     Y_DEFER {
         client->Stop();
     };
-
-    std::atomic<int> bound = 0;
-    std::atomic<int> invalidated = 0;
-    std::atomic<int> destroyed = 0;
-    std::atomic<int> sentSges = 0;
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -2361,15 +2361,15 @@ TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
+    std::atomic<int> bound = 0;
+    std::atomic<int> destroyed = 0;
+
     auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
 
     client->Start();
     Y_DEFER {
         client->Stop();
     };
-
-    std::atomic<int> bound = 0;
-    std::atomic<int> destroyed = 0;
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
