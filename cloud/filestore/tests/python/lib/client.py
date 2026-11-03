@@ -117,7 +117,7 @@ class FilestoreCliClient:
         logger.info("mounting filestore: " + " ".join(cmd))
         with Daemon(
                 commands=[cmd], cwd=self.__cwd,
-                stderr_on_error_lines=100,
+                max_stderr_lines_in_error_message=100,
                 stderr_tail=True,
                 **daemon_log_files(prefix="nfs-mnt-%s" % fs, cwd=self.__cwd)) as mount:
             mount.start()
