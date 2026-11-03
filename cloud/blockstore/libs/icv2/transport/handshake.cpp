@@ -13,6 +13,8 @@
 #include <util/system/error.h>
 #include <util/system/guard.h>
 
+#include <fcntl.h>
+
 #include <climits>
 
 namespace NCloud::NBlockStore::NIcV2 {
@@ -73,22 +75,22 @@ enum class EStepResult
     Complete,
 };
 
-enum class EHandshakeRole
+struct TOutgoingRequest
 {
-    Outgoing,
-    Incoming,
-    IncomingAuxiliary,
+    NThreading::TPromise<TConnectHandshakeResult> Promise;
+};
+
+struct TIncomingRequest
+{
+    NThreading::TPromise<TAcceptHandshakeResult> Promise;
+    bool Auxiliary = false;
 };
 
 struct TRequest
 {
     TSocketPtr Socket;
-    EHandshakeRole Role;
+    std::variant<TOutgoingRequest, TIncomingRequest> Direction;
     const TMonotonic Deadline;
-    std::variant<
-        NThreading::TPromise<TConnectHandshakeResult>,
-        NThreading::TPromise<TAcceptHandshakeResult>>
-        Promise;
     EStage Stage;
     TString Buffer;
     size_t Offset = 0;
@@ -101,12 +103,13 @@ struct TRequest
 
     bool IsOutgoing() const
     {
-        return Role == EHandshakeRole::Outgoing;
+        return std::holds_alternative<TOutgoingRequest>(Direction);
     }
 
     bool IsIncomingAuxiliary() const
     {
-        return Role == EHandshakeRole::IncomingAuxiliary;
+        const auto* incoming = std::get_if<TIncomingRequest>(&Direction);
+        return incoming != nullptr && incoming->Auxiliary;
     }
 
     const TSocketPtr& CurrentSocket() const
@@ -194,25 +197,31 @@ void TRequest::Complete(const NProto::TError& error)
     if (HasError(error)) {
         Socket.Reset();
         XdcSocket.Reset();
-        std::visit([&](auto& promise) { promise.SetValue(error); }, Promise);
+    }
+
+    if (auto* incoming = std::get_if<TIncomingRequest>(&Direction)) {
+        if (HasError(error)) {
+            incoming->Promise.SetValue(error);
+        } else if (incoming->Auxiliary) {
+            incoming->Promise.SetValue(
+                TAcceptHandshakeOutcome{THandshakeIncomplete{}});
+        } else {
+            incoming->Promise.SetValue(
+                TAcceptHandshakeOutcome{THandshakeReady{
+                    .Socket = std::move(Socket),
+                    .XdcSocket = std::move(XdcSocket)}});
+        }
         return;
     }
 
-    if (IsIncomingAuxiliary()) {
-        std::get<NThreading::TPromise<TAcceptHandshakeResult>>(Promise)
-            .SetValue(TAcceptHandshakeOutcome{THandshakeIncomplete{}});
-        return;
-    }
-
-    THandshakeReady connection{
-        .Socket = std::move(Socket),
-        .XdcSocket = std::move(XdcSocket)};
-    if (IsOutgoing()) {
-        std::get<NThreading::TPromise<TConnectHandshakeResult>>(Promise)
-            .SetValue(std::move(connection));
+    auto* outgoing = std::get_if<TOutgoingRequest>(&Direction);
+    if (HasError(error)) {
+        outgoing->Promise.SetValue(error);
     } else {
-        std::get<NThreading::TPromise<TAcceptHandshakeResult>>(Promise)
-            .SetValue(TAcceptHandshakeOutcome{std::move(connection)});
+        outgoing->Promise.SetValue(
+            THandshakeReady{
+                .Socket = std::move(Socket),
+                .XdcSocket = std::move(XdcSocket)});
     }
 }
 
@@ -270,9 +279,8 @@ public:
         auto future = promise.GetFuture();
         auto request = std::make_unique<TRequest>(
             std::move(socket),
-            EHandshakeRole::Outgoing,
-            TMonotonic::Now() + timeout,
-            std::move(promise));
+            TOutgoingRequest{.Promise = std::move(promise)},
+            TMonotonic::Now() + timeout);
         Submit(std::move(request));
         return future;
     }
@@ -283,9 +291,8 @@ public:
         auto future = promise.GetFuture();
         auto request = std::make_unique<TRequest>(
             std::move(socket),
-            EHandshakeRole::Incoming,
-            TMonotonic::Now() + timeout,
-            std::move(promise));
+            TIncomingRequest{.Promise = std::move(promise), .Auxiliary = false},
+            TMonotonic::Now() + timeout);
         Submit(std::move(request));
         return future;
     }
@@ -293,7 +300,16 @@ public:
 private:
     void Submit(std::unique_ptr<TRequest> request)
     {
-        if (!request->Socket || !IsNonBlock(*request->Socket)) {
+        if (!request->Socket) {
+            request->Complete(MakeError(E_ARGUMENT, "invalid hello request"));
+            return;
+        }
+        const int flags = fcntl(*request->Socket, F_GETFL);
+        if (flags < 0) {
+            request->Complete(MakeSocketError(errno, "get IC V2 socket flags"));
+            return;
+        }
+        if (!(flags & O_NONBLOCK)) {
             request->Complete(MakeError(E_ARGUMENT, "invalid hello request"));
             return;
         }
@@ -309,15 +325,20 @@ private:
         } else {
             request->Next(EStage::ReceiveHeader, TString(HeaderSize, '\0'));
         }
+        bool wake = false;
         {
             TGuard<TMutex> guard(Mutex);
             if (Accepting) {
+                wake = Queued.empty();
                 Queued.push_back(std::move(request));
-                Worker.Wake();
-                return;
             }
         }
-        request->Complete(MakeError(E_REJECTED, "IC V2 hello is not running"));
+        if (request) {
+            request->Complete(
+                MakeError(E_REJECTED, "IC V2 hello is not running"));
+        } else if (wake) {
+            Worker.Wake();
+        }
     }
 
     TRequests TakeQueued()
@@ -328,7 +349,7 @@ private:
         return queued;
     }
 
-    NProto::TError CheckHeader(TRequest& request) const
+    static NProto::TError CheckHeader(TRequest& request)
     {
         const auto& buffer = request.Buffer;
         const size_t size = ReadWord(buffer, 4);
@@ -345,7 +366,7 @@ private:
         NHandshakeProto::THandshakeHello hello;
         if (!hello.ParseFromArray(
                 request.Buffer.data() + HeaderSize,
-                request.Buffer.size() - HeaderSize) ||
+                static_cast<int>(request.Buffer.size() - HeaderSize)) ||
             hello.GetProtocolVersion() != Version)
         {
             return MakeError(
@@ -371,8 +392,9 @@ private:
         } else if (hello.HasPairId()) {
             return MakeError(E_ARGUMENT, "unexpected IC V2 socket pair ID");
         }
-        if (!request.IsOutgoing() && auxiliary) {
-            request.Role = EHandshakeRole::IncomingAuxiliary;
+        if (auto* incoming = std::get_if<TIncomingRequest>(&request.Direction))
+        {
+            incoming->Auxiliary = auxiliary;
         }
         request.UseXdc = xdc && Config.EnableXdc;
         if (!request.UseXdc) {
@@ -389,9 +411,13 @@ private:
 
         if (request.IsIncomingAuxiliary()) {
             const auto it = Pairs.find(request.PairId);
+            if (it != Pairs.end() && TMonotonic::Now() >= it->second->Deadline)
+            {
+                return MakeError(E_TIMEOUT, "expired IC V2 socket pair");
+            }
             if (it == Pairs.end() || it->second->Partner) {
                 return MakeError(
-                    E_ARGUMENT,
+                    E_REJECTED,
                     "unknown or occupied IC V2 socket pair");
             }
             request.Partner = it->second;
@@ -408,7 +434,6 @@ private:
             request.Partner->Partner = nullptr;
             if (HasError(error)) {
                 request.Partner->PairError = error;
-                Worker.Wake();
             }
             request.Partner = nullptr;
         }
@@ -418,7 +443,7 @@ private:
         }
     }
 
-    NProto::TError ConnectXdc(TRequest& request)
+    static NProto::TError ConnectXdc(TRequest& request)
     {
         NInterconnect::TAddress address;
         socklen_t size = sizeof(address.Addr);
@@ -428,6 +453,19 @@ private:
         auto [socket, error] = CreateSocket(address);
         if (HasError(error)) {
             return error;
+        }
+        NInterconnect::TAddress localAddress;
+        size = sizeof(localAddress.Addr);
+        if (getsockname(*request.Socket, localAddress.SockAddr(), &size)) {
+            return MakeSocketError(errno, "get IC V2 local address");
+        }
+        if (localAddress.GetFamily() == AF_INET) {
+            localAddress.Addr.Ipv4.sin_port = 0;
+        } else {
+            localAddress.Addr.Ipv6.sin6_port = 0;
+        }
+        if (bind(*socket, localAddress.SockAddr(), localAddress.Size())) {
+            return MakeSocketError(errno, "bind IC V2 XDC local address");
         }
         request.XdcSocket = std::move(socket);
         request.OnXdc = true;
@@ -451,16 +489,19 @@ private:
             return EStepResult::Continue;
         }
         if (request.IsIncomingAuxiliary()) {
-            const auto it = Pairs.find(request.PairId);
-            if (it == Pairs.end() || TMonotonic::Now() >= it->second->Deadline)
-            {
-                return MakeError(E_ARGUMENT, "expired IC V2 socket pair");
+            auto* main = request.Partner;
+            if (!main || main->XdcSocket) {
+                return MakeError(
+                    E_REJECTED,
+                    "unknown or occupied IC V2 socket pair");
             }
-            it->second->XdcSocket = std::move(request.Socket);
-            Pairs.erase(it);
-            request.Partner->Partner = nullptr;
+            if (TMonotonic::Now() >= main->Deadline) {
+                return MakeError(E_TIMEOUT, "expired IC V2 socket pair");
+            }
+            main->XdcSocket = std::move(request.Socket);
+            Pairs.erase(request.PairId);
+            main->Partner = nullptr;
             request.Partner = nullptr;
-            Worker.Wake();
             return EStepResult::Complete;
         }
         if (!request.IsOutgoing() && request.UseXdc && !request.XdcSocket) {
@@ -528,7 +569,7 @@ private:
         return EStepResult::Continue;
     }
 
-    TResultOrError<EStepResult> Advance(TRequest& request)
+    TResultOrError<EStepResult> Advance(TRequest& request, short events)
     {
         while (!Worker.IsStopping()) {
             if (HasError(request.PairError)) {
@@ -538,7 +579,9 @@ private:
                 return MakeError(E_TIMEOUT, "IC V2 hello timed out");
             }
             if (request.Stage == EStage::WaitXdc) {
-                if (!request.XdcSocket) {
+                if ((events & (POLLRDHUP | POLLHUP | POLLERR | POLLNVAL)) ||
+                    !request.XdcSocket)
+                {
                     return MakeError(
                         E_IO,
                         "IC V2 main socket closed while pairing");
@@ -612,7 +655,7 @@ private:
             if (TMonotonic::Now() >= pending[i]->Deadline) {
                 result = MakeError(E_TIMEOUT, "IC V2 hello timed out");
             } else if (fds[i + 1].revents || pending[i]->IsReady()) {
-                result = Advance(*pending[i]);
+                result = Advance(*pending[i], fds[i + 1].revents);
             }
             const auto& error = result.GetError();
             if (result.GetResult() == EStepResult::Complete || HasError(error))
