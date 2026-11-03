@@ -1387,7 +1387,7 @@ message TStorageServiceConfig
 
     // The volume pulls statistics from the partitions,
     // instead of the partitions pushing statistics to the volume themselves.
-    optional bool UsePullSchemeForVolumeStatistics  = 444 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional bool UsePullSchemeForVolumeStatistics  = 444;
 
     // Initial retry delay for scheduling next resync and migration
     // ranges (in milliseconds).

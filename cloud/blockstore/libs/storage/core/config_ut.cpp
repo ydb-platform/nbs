@@ -861,6 +861,48 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             config->GetEffectiveStorageConfigProto().GetMaxMigrationIoDepth());
     }
 
+    // Verify that deduplication compares raw values and Features with shared
+    // controls, independently of current live ICB values.
+    Y_UNIT_TEST(ShouldCompareRawStorageAndFeatures)
+    {
+        // Build independently owned but equivalent storage and feature
+        // snapshots.
+        NProto::TStorageServiceConfig proto;
+        proto.SetMaxMigrationIoDepth(4);
+        auto controls = std::make_shared<TStorageConfigControls>(proto);
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        const TStorageConfig original(
+            proto, std::make_shared<NFeatures::TFeaturesConfig>(), controls);
+        const TStorageConfig same(
+            proto, std::make_shared<NFeatures::TFeaturesConfig>(), controls);
+        UNIT_ASSERT(original.IsSame(same));
+
+        // Keep a raw change visible even when an ICB override masks both
+        // values.
+        TAtomic previous = 0;
+        board.SetValue("BlockStore_MaxMigrationIoDepth", 8, previous);
+        proto.SetMaxMigrationIoDepth(16);
+        const TStorageConfig changed(
+            proto, std::make_shared<NFeatures::TFeaturesConfig>(), controls);
+        UNIT_ASSERT_VALUES_EQUAL(original.GetMaxMigrationIoDepth(),
+                                 changed.GetMaxMigrationIoDepth());
+        UNIT_ASSERT(!original.IsSame(changed));
+        UNIT_ASSERT(original.IsSame(same));
+
+        // Distinguish Features and control sources from otherwise equal proto.
+        NCloud::NProto::TFeaturesConfig features;
+        features.AddFeatures()->SetName("new-feature");
+        const TStorageConfig changedFeatures(
+            original.GetConfigProto(),
+            std::make_shared<NFeatures::TFeaturesConfig>(features), controls);
+        UNIT_ASSERT(!original.IsSame(changedFeatures));
+        const TStorageConfig differentControls(
+            original.GetConfigProto(),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        UNIT_ASSERT(!original.IsSame(differentControls));
+    }
+
     Y_UNIT_TEST(ShouldOverrideConfigFields)
     {
         NProto::TStorageServiceConfig globalConfigProto;
