@@ -38,6 +38,14 @@ void SaveCompressedBitmap(
     ui64 bitCount,
     NProto::TCompressedBitmapData& proto);
 
+// Combine serialized state with an existing bitmap by OR-ing each chunk into it.
+// Preserves existing set bits; omitted chunks leave the bitmap unchanged.
+// Does not validate proto or resize bitmap, and ignores proto.BitCount.
+// The caller must ensure chunk payloads are valid and indices fit within capacity.
+void MergeCompressedBitmap(
+    TCompressedBitmap& bitmap,
+    const NProto::TCompressedBitmapData& proto);
+
 // Check that BitCount does not exceed maxBitCount, the number of chunks and their
 // indices fit within BitCount, and every chunk has a nonempty payload.
 // Returns E_ARGUMENT on failure, or success otherwise. Does not decode payloads
