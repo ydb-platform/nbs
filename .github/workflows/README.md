@@ -43,9 +43,15 @@ critical path. Critical-path build nodes are marked on their individual spans.
 stores GitHub workflow, queue, job, and step timings in `workflow-trace.*` at
 the run's S3 report prefix. Job rows link to separate build and test traces.
 Only the small ya manifests are read; ya spans are never downloaded or merged.
-Links require matching repository, run, attempt, and a runner name that
-identifies exactly one job. Missing or ambiguous metadata omits the link.
+Links require matching repository, run, attempt, and `github.job.id`, populated
+from `${{ job.check_run_id }}`. Missing or unmatched metadata omits the link.
 S3 failures and malformed manifests leave the workflow trace available.
+
+The renderer checks jobs from the triggering run attempt. Empty attempts and
+attempts containing only skipped jobs produce no report or uploads. Other
+attempts, including failed/cancelled runs and manually rechecked upper stack
+PRs, remain eligible. This decision does not depend on pull-request stack
+metadata in the `workflow_run` payload.
 
 Ya reports and test summaries live under
 `reports/<repository>/<workflow>/<run>/<attempt>/variants/<runner-prefix><architecture>-<preset>/<component>/<build-or-test-attempt>/`.
