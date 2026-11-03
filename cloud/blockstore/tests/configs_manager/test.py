@@ -9,6 +9,7 @@ replace operator overrides, while changes to other parameters preserve them.
 """
 
 import copy
+import json
 import logging
 import re
 import time
@@ -25,6 +26,7 @@ from yatest.common.network import PortManager
 from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.daemon import Nbs, start_nbs, start_ydb
 
@@ -849,6 +851,47 @@ def test_disabled_feature_does_not_start_configs_manager(remove_rdma_config):
         updated = "RDMA config updated from legacy fields after applying CMS configs"
         assert log.count(updated) == int(remove_rdma_config)
         assert ("Fake RDMA client initialized" in log) == (not remove_rdma_config)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
+# Verify that disabling dynamic YAML leaves Volume startup and I/O operational.
+def test_volume_with_dynamic_configuration_disabled(tmp_path):
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Publish a conflicting YAML value while keeping the startup gate off.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service:\n  send_error_on_add_client_conflict: true",
+        )
+        config = make_nbs_config(ydb, False)
+        config.files["storage"].DisableLocalService = False
+        config.files["storage"].ConfigsDispatcherServiceEnabled = True
+        config.files["storage"].SendErrorOnAddClientConflict = False
+        nbs = start_nbs(config)
+
+        # Create and boot a real Volume without a ConfigsManager response.
+        client = NbsClient(nbs.port)
+        disk_id = "static-dynamic-config-volume"
+        client.create_volume(disk_id, "ssd", 1024)
+        storage_config = json.loads(
+            client.execute_action("getstorageconfig", {"DiskId": disk_id})
+        )
+        assert not storage_config.get("SendErrorOnAddClientConflict", False)
+        assert get_config_subscription(nbs) is None
+
+        # Complete real writes and reads through the mounted Volume.
+        content = b"x" * 4096
+        input_path = tmp_path / "input"
+        output_path = tmp_path / "output"
+        input_path.write_bytes(content)
+        client.write_blocks(disk_id, 0, str(input_path))
+        client.read_blocks(disk_id, 0, 1, str(output_path))
+        assert output_path.read_bytes() == content
     finally:
         if nbs:
             nbs.kill()
