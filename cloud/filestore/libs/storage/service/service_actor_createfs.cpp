@@ -2,6 +2,7 @@
 
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -479,17 +480,20 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
             ShardCreationState.MarkPersistentStateUnsupported();
             CreateShards(ctx);
         } else if (ShardCreationState.IsPersistentStateSupported()) {
+            ReportShardCreationStateResponseMissing(
+                TStringBuilder() << "Filesystem " << LogTag.Quote()
+                                 << ": response is missing shard creation state"
+                                 << " after persistent state support was confirmed");
             ReplyAndDie(
                 ctx,
                 MakeError(
                     E_REJECTED,
                     "shard creation state response is missing"));
         } else {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] UnsafeChangeTabletState returned no shard creation state",
-                LogTag.c_str());
+            ReportShardCreationStateResponseMissing(
+                TStringBuilder() << "Filesystem " << LogTag.Quote()
+                                 << ": unexpected response without shard creation"
+                                 << " state after switching to non-persistent flow");
         }
 
         return;
@@ -510,7 +514,15 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     }
 
     if (!ShardCreationState.HasCreatedShardBitmap()) {
-        ShardCreationState.LogStateUnavailable(ctx);
+        // Loading supported persistent state must initialize the bitmap before
+        // any updates are sent. There is no guaranteed progress without it.
+        ReportShardCreationBitmapMissing(
+            TStringBuilder() << "Filesystem " << LogTag.Quote()
+                             << ": shard creation state response received"
+                             << " without an initialized shard bitmap");
+        ReplyAndDie(
+            ctx,
+            MakeError(E_INVALID_STATE, "shard creation bitmap is not initialized"));
         return;
     }
 

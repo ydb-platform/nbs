@@ -225,7 +225,6 @@ private:
 
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
     }
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
