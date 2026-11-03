@@ -14,6 +14,7 @@ DEPENDS(
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+    contrib/ydb/tests/library
 )
 
 SET(NFS_RESTART_INTERVAL 20)
