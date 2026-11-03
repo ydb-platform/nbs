@@ -456,7 +456,7 @@ func (t *createDiskFromBaseDiskTask) selectFillSource(
 	} else {
 		logging.Info(
 			ctx,
-			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
+			"no pool is configured for image %v in cell %v, falling back to filling disk %v from the snapshot storage",
 			t.request.SrcImageId,
 			cellID,
 			t.request.Params.Disk.DiskId,
