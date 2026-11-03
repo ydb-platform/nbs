@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(TJournalMetadataTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectATruncatedBuffer)
+    Y_UNIT_TEST(ShouldRejectTruncatedBuffer)
     {
         const auto good = SerializeMetadata(
             {.Version = CurrentFormatVersion, .LsnLowWatermark = 7});
@@ -70,6 +70,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         TLogRecord record;
         record.Lsn = lsn;
         record.PrevLsn = prevLsn;
+        record.PagesCrc = 0xC0FFEE;
 
         for (ui64 i = 0; i < mappingCount; ++i) {
             record.PageMappings.push_back(
@@ -90,6 +91,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
             UNIT_ASSERT(out);
             UNIT_ASSERT_VALUES_EQUAL(in.Lsn, out->Lsn);
             UNIT_ASSERT_VALUES_EQUAL(in.PrevLsn, out->PrevLsn);
+            UNIT_ASSERT_VALUES_EQUAL(in.PagesCrc, out->PagesCrc);
             UNIT_ASSERT_VALUES_EQUAL(
                 in.PageMappings.size(),
                 out->PageMappings.size());
@@ -113,7 +115,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectATruncatedBuffer)
+    Y_UNIT_TEST(ShouldRejectTruncatedBuffer)
     {
         const auto good = SerializeRecord(MakeRecord(42, 41, 2));
 
@@ -137,7 +139,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         UNIT_ASSERT(!DeserializeRecord(extra));
     }
 
-    Y_UNIT_TEST(ShouldRejectAMismatchedPageMappingCount)
+    Y_UNIT_TEST(ShouldRejectMismatchedPageMappingCount)
     {
         auto buffer = SerializeRecord(MakeRecord(42, 41, 2));
 
@@ -146,6 +148,31 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         memcpy(buffer.Data() + 2 * sizeof(ui64), &bogus, sizeof(bogus));
 
         UNIT_ASSERT(!DeserializeRecord(buffer));
+    }
+
+    Y_UNIT_TEST(ShouldCalculatePagesCrcOverPagesInOrder)
+    {
+        auto page = [](TStringBuf content)
+        {
+            return TBuffer(content.data(), content.size());
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(0, CalculatePagesCrc({}));
+
+        const ui32 crc = CalculatePagesCrc({page("abcd"), page("efgh")});
+        UNIT_ASSERT_VALUES_UNEQUAL(0, crc);
+
+        // the crc covers the contents as one stream, so it does not depend
+        // on how the stream is cut into pages
+        UNIT_ASSERT_VALUES_EQUAL(crc, CalculatePagesCrc({page("abcdefgh")}));
+
+        // but it does depend on their order and on every byte
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            crc,
+            CalculatePagesCrc({page("efgh"), page("abcd")}));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            crc,
+            CalculatePagesCrc({page("abcd"), page("efgX")}));
     }
 }
 

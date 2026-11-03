@@ -1,5 +1,7 @@
 #include "log_record.h"
 
+#include <library/cpp/digest/crc32c/crc32c.h>
+
 #include <cstring>
 #include <type_traits>
 
@@ -22,10 +24,12 @@ struct TRecordHeader
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
     ui64 PageMappingCount = 0;
+    ui32 PagesCrc = 0;
+    ui32 Reserved = 0;
 };
 
 static_assert(sizeof(TMetadataHeader) == 16);
-static_assert(sizeof(TRecordHeader) == 24);
+static_assert(sizeof(TRecordHeader) == 32);
 static_assert(sizeof(TPageMapping) == 24);
 
 static_assert(std::has_unique_object_representations_v<TMetadataHeader>);
@@ -35,6 +39,16 @@ static_assert(std::has_unique_object_representations_v<TPageMapping>);
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculatePagesCrc(const TVector<TBuffer>& pages)
+{
+    ui32 crc = 0;
+    for (const auto& page: pages) {
+        crc = Crc32cExtend(crc, page.Data(), page.Size());
+    }
+
+    return crc;
+}
 
 TBuffer SerializeMetadata(const TJournalMetadata& metadata)
 {
@@ -73,6 +87,7 @@ TBuffer SerializeRecord(const TLogRecord& record)
     header.Lsn = record.Lsn;
     header.PrevLsn = record.PrevLsn;
     header.PageMappingCount = record.PageMappings.size();
+    header.PagesCrc = record.PagesCrc;
 
     TBuffer buffer(
         sizeof(header) + record.PageMappings.size() * sizeof(TPageMapping));
@@ -106,6 +121,7 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer)
     auto record = std::make_shared<TLogRecord>();
     record->Lsn = header.Lsn;
     record->PrevLsn = header.PrevLsn;
+    record->PagesCrc = header.PagesCrc;
 
     record->PageMappings.reserve(header.PageMappingCount);
     const char* ptr = buffer.Data() + sizeof(header);
