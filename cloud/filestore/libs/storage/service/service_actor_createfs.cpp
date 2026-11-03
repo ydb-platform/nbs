@@ -529,8 +529,9 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     if (shardCreationState.GetVersion() <
         ShardCreationState.GetShardCreationStateVersion())
     {
-        // Older update replies can arrive after a newer response has already
-        // advanced the local shard creation state.
+        // A newer response has already advanced the local shard creation state.
+        // Ignoring this stale reply is intentional: progress has already been
+        // made, so returning here does not stall the operation.
         return;
     }
 
@@ -549,6 +550,12 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     }
 
     if (mergeResult.GetResult()) {
+        // Concurrent updates can race on the state version, leaving local
+        // creation bits absent from the returned persistent bitmap. The
+        // companion retries the CAS update with the merged bitmap and the
+        // returned version so these bits are persisted before configuration.
+        // It sends a new request whose response will resume processing, so
+        // returning here does not stall the operation.
         ShardCreationState.UpdateShardCreationState(ctx);
         return;
     }
