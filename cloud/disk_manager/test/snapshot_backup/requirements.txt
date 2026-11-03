@@ -1,0 +1,4 @@
+# Install into the dedicated tester venv, never system Python.
+cryptography==50.0.2
+lz4==4.4.4
+zstandard==0.25.0

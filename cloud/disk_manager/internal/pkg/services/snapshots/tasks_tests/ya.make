@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_TEST_SRCS(
     ../backup_snapshot_task_test.go
+    ../backup_snapshot_faults_test.go
 )
 
 IF (RACE)

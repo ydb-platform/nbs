@@ -4,5 +4,6 @@ RECURSE(
     kms
     metadata
     s3-quota-proxy
+    s3_fault_proxy
     tokenexchange
 )

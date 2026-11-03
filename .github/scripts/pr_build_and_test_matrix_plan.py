@@ -145,6 +145,42 @@ def build_matrix(inp: Inputs) -> list[dict]:
             }
         )
 
+        # The default PR row excludes LARGE suites. Keep backup integration
+        # checks mandatory for DM and task-engine changes without enabling every
+        # large suite. With tasks-only labels, even a large-tests PR excludes DM.
+        selected_test_targets = test_target.split(",")
+        includes_disk_manager = "cloud/disk_manager/" in selected_test_targets
+        includes_tasks = "cloud/tasks/" in selected_test_targets
+        if (includes_disk_manager or includes_tasks) and not (
+            includes_disk_manager and inp.has_large_tests_label
+        ):
+            backup_targets = csv_join(
+                [
+                    "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_test",
+                    "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_encryption_test",
+                    "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_nemesis_test",
+                    "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_s3_fault_test",
+                    "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_crash_test",
+                ]
+            )
+            include.append(
+                {
+                    "mode": mode,
+                    "san": "",
+                    "build_preset": "relwithdebinfo",
+                    "test_type": "go_test",
+                    "test_size": "large",
+                    "build_target": backup_targets,
+                    "test_target": backup_targets,
+                    "vm_name_suffix": "-snapshot-backup",
+                    "number_of_retries": 1,
+                    "run_build": True,
+                    "run_tests": True,
+                    "allow_split_workload": False,
+                    "target_platform": "",
+                }
+            )
+
         # sanitizer rows (multiple can be present)
         for san in SAN_TYPES:
             if inp.has_san.get(san, False):

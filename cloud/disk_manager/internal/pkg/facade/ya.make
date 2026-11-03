@@ -15,6 +15,11 @@ SRCS(
 END()
 
 RECURSE_FOR_TESTS(
+    snapshot_service_backup_test
+    snapshot_service_backup_encryption_test
+    snapshot_service_backup_nemesis_test
+    snapshot_service_backup_s3_fault_test
+    snapshot_service_backup_crash_test
     disk_service_nemesis_test
     disk_service_test
     disk_service_max_free_bytes_policy_nemesis_test

@@ -1,0 +1,62 @@
+name: Snapshot backup tester checks and artifact
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud/disk_manager/**'
+      - 'cloud/tasks/**'
+      - '.github/workflows/snapshot-backup-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'cloud/disk_manager/**'
+      - 'cloud/tasks/**'
+      - '.github/workflows/snapshot-backup-tests.yml'
+  workflow_dispatch:
+
+# No access to real buckets, service accounts, self-hosted runners or secrets.
+# The Go integration suites run in the existing approved PR build matrix.
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-backup-unit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tester-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: false
+          sparse-checkout: cloud/disk_manager/test/snapshot_backup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reader dependencies
+        run: python -m pip install -r cloud/disk_manager/test/snapshot_backup/requirements.txt
+      - name: Run tester and reader unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m unittest discover -s cloud/disk_manager/test/snapshot_backup/tests -v
+      - name: Package the tested source revision without local configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD)"
+          git archive --format=tar.gz --prefix=snapshot-backup-tester/ \
+              --output="snapshot-backup-tester-${revision}.tar.gz" \
+              HEAD cloud/disk_manager/test/snapshot_backup
+          sha256sum "snapshot-backup-tester-${revision}.tar.gz" > SHA256SUMS
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: snapshot-backup-tester-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            snapshot-backup-tester-*.tar.gz
+            SHA256SUMS
