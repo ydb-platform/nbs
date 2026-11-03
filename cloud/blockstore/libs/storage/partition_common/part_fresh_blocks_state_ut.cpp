@@ -11,6 +11,12 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
@@ -233,6 +239,100 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             0,
             state.TrimFreshBlobs(3).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
+    }
+
+    Y_UNIT_TEST(ShouldCountDeadFreshBlobBytes)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, 2, TInstant::Zero());
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+        state.AddFreshBlob(4, 40, TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+
+        state.MarkFreshBlobDead(2);
+        state.MarkFreshBlobDead(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            32,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        state.MarkFreshBlobDead(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            12,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+    }
+
+    Y_UNIT_TEST(ShouldCountDeadFreshBlobBytesForOrdinaryTrim)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId = 1; commitId <= 6; ++commitId) {
+            state.AddFreshBlob(commitId, 10, TInstant::Zero());
+        }
+        for (ui64 commitId: {1, 2, 4, 5}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        // Blob 3 is live, so OrdinaryTrimToCommitId is 2.
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.UpdateOrdinaryTrimmableFreshBlobByteCount(2));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3, 6}));
+        // A dead blob reported live and a live blob not reported are caught.
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({2, 3, 6}));
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({3}));
+
+        // Blob 3 dies, and OrdinaryTrimToCommitId moves to 5.
+        state.MarkFreshBlobDead(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            state.UpdateOrdinaryTrimmableFreshBlobByteCount(5));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            state.TrimFreshBlobs(5).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.UpdateOrdinaryTrimmableFreshBlobByteCount(5));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshBlobsAboveOrdinaryTrimToCommitId)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId = 1; commitId <= 3; ++commitId) {
+            state.AddFreshBlob(commitId, 10, TInstant::Zero());
+        }
+        state.MarkFreshBlobDead(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.UpdateOrdinaryTrimmableFreshBlobByteCount(1));
+
+        // A flush-requested trim may reach past OrdinaryTrimToCommitId.
+        state.MarkFreshBlobDead(2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.UpdateOrdinaryTrimmableFreshBlobByteCount(2));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3}));
     }
 }
 

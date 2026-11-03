@@ -16,6 +16,32 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TPartitionActor::ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId)
+{
+    if (ordinaryTrimToCommitId == State->GetLastTrimFreshLogToCommitId()) {
+        return false;
+    }
+
+    const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
+    return !threshold || State->IsOrdinaryTrimRequested() ||
+           State->UpdateOrdinaryTrimmableFreshBlobByteCount(
+               ordinaryTrimToCommitId) >= threshold;
+}
+
+bool TPartitionActor::CheckDeadFreshBlobByteCount() const
+{
+    TVector<ui64> liveCommitIds;
+    State->GetTrimFreshLogBarriers()->GetCommitIds(liveCommitIds);
+    return State->CheckDeadFreshBlobByteCount(liveCommitIds);
+}
+
+TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind()
+{
+    return ShouldStartOrdinaryTrim(State->GetTrimFreshLogToCommitId())
+               ? ETrimFreshLogKind::Ordinary
+               : ETrimFreshLogKind::None;
+}
+
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 {
     if (State->GetTrimFreshLogState().Status != EOperationStatus::Idle) {
@@ -23,9 +49,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
-
-    if (trimFreshLogToCommitId == State->GetLastTrimFreshLogToCommitId()) {
+    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
         // not ready
         return;
     }
@@ -111,14 +135,21 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
-    if (trimFreshLogToCommitId == State->GetLastTrimFreshLogToCommitId()) {
+    Y_DEBUG_ABORT_UNLESS(
+        CheckDeadFreshBlobByteCount(),
+        "Dead fresh blob byte count: %lu",
+        State->GetDeadUntrimmedFreshBlobByteCount());
+
+    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
         State->AccessTrimFreshLogState().SetStatus(
             EOperationStatus::Idle,
             ctx.Now());
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to trim");
         return;
     }
+
+    State->SetOrdinaryTrimRequested(false);
+    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
 
     ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
@@ -176,6 +207,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             FormatError(msg->GetError()).c_str());
 
         State->RegisterTrimFreshLogError();
+        State->SetOrdinaryTrimRequested(true);
     } else {
         LOG_DEBUG(
             ctx,
@@ -191,6 +223,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
                 trimResult.UnflushedBytesRemoved);
         }
     }
+
+    Y_DEBUG_ABORT_UNLESS(
+        CheckDeadFreshBlobByteCount(),
+        "Dead fresh blob byte count: %lu",
+        State->GetDeadUntrimmedFreshBlobByteCount());
 
     State->AccessTrimFreshLogState().SetStatus(
         EOperationStatus::Idle,

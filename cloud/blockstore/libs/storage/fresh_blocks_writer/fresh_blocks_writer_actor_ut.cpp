@@ -1678,6 +1678,78 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         check(newFbwClient);
     }
 
+    Y_UNIT_TEST(ShouldTrimFreshLogWithoutFlushWhenOverwritesKillBlobs)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = DefaultConfig();
+        config.SetFreshBlobCountFlushThresholdSSD(20);
+        // Writes are rejected unless trims free the writer's byte count.
+        config.SetFreshByteCountHardLimitSSD(64_KB);
+        config.SetFreshDeadBlobByteCountTrimThresholdSSD(3 * DefaultBlockSize);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        ui32 trimsCompleted = 0;
+        ui32 flushesCompleted = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted:
+                        ++trimsCompleted;
+                        break;
+                    case TEvPartitionPrivate::EvFlushCompleted:
+                        ++flushesCompleted;
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            fbwClient.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime.DispatchEvents({}, 100ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, flushesCompleted);
+        UNIT_ASSERT_GT(trimsCompleted, 10);
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlocksContent(client.ReadBlocks(
+                        TBlockRange32::MakeOneBlock(i % RegionSize))));
+            }
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)
     {
         TMyTestEnv testEnv;
