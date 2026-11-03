@@ -1,10 +1,11 @@
 #include "time_range.h"
 
+#include "dump.h"
+
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 
 #include <library/cpp/eventlog/logparser.h>
 
-#include <util/folder/dirut.h>
 #include <util/generic/strbuf.h>
 #include <util/memory/blob.h>
 #include <util/stream/mem.h>
@@ -39,10 +40,12 @@ TVector<TStringBuf> FindCompleteFrames(TStringBuf data)
     return frames;
 }
 
-TMaybe<TRecordBounds> ReadBoundaryRecord(
+TMaybe<TRecordBounds> ReadBoundaryFrame(
     const TVector<TStringBuf>& frames,
-    bool last)
+    bool last,
+    const TString& path)
 {
+    bool reportedError = false;
     for (size_t i = 0; i < frames.size(); ++i) {
         TMemoryInput input(frames[last ? frames.size() - 1 - i : i]);
         try {
@@ -69,15 +72,23 @@ TMaybe<TRecordBounds> ReadBoundaryRecord(
                     current.Start = Min(current.Start, time);
                     current.End = Max(current.End, time);
                 }
-                bounds = current;
-                if (!last) {
-                    return bounds;
+                if (bounds) {
+                    bounds->Start = Min(bounds->Start, current.Start);
+                    bounds->End = Max(bounds->End, current.End);
+                } else {
+                    bounds = current;
                 }
             }
             if (bounds) {
                 return bounds;
             }
-        } catch (const yexception&) {
+        } catch (const yexception& error) {
+            if (!reportedError) {
+                Cerr << "Error probing " << (last ? "last" : "first")
+                     << " profile record in " << path << ": " << error.what()
+                     << Endl;
+                reportedError = true;
+            }
             // Try the next complete frame; normal processing reports read
             // errors.
         }
@@ -90,30 +101,34 @@ TMaybe<TRecordBounds> ReadBoundaryRecord(
 TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
 {
     TProfileLogFile file{path, {}};
-    const auto name = GetBaseName(path);
-    // Rotated files are named <log>.YYYY-MM-DDTHH:MM (UTC, rotation time).
-    TStringBuf base, suffix;
-    TInstant parsedEndTime;
-    if (!readRecords && TStringBuf(name).TryRSplit('.', base, suffix) &&
-        suffix.size() == 16 &&
-        TInstant::TryParseIso8601(TString(suffix) + ":00Z", parsedEndTime))
-    {
-        file.EndTime = parsedEndTime;
-        return file;
-    }
     if (!readRecords) {
         return file;
     }
     try {
         const auto data = TBlob::FromFile(path);
         const auto frames = FindCompleteFrames(data.AsStringBuf());
-        const auto first = ReadBoundaryRecord(frames, false);
-        const auto last = ReadBoundaryRecord(frames, true);
+        if (frames.empty()) {
+            Cerr << "Cannot determine record range for " << path
+                 << ": no complete eventlog frames" << Endl;
+            return file;
+        }
+        const auto first = ReadBoundaryFrame(frames, false, path);
+        const auto last = ReadBoundaryFrame(frames, true, path);
         if (first && last && first->Start <= last->End) {
             file.StartTime = first->Start;
             file.EndTime = last->End;
+        } else if (!first || !last) {
+            Cerr << "Cannot determine record range for " << path
+                 << ": no usable profile records with request timestamps"
+                 << Endl;
+        } else {
+            Cerr << "Cannot determine record range for " << path
+                 << ": first request timestamp " << first->Start
+                 << " is after last request timestamp " << last->End << Endl;
         }
-    } catch (const yexception&) {
+    } catch (const yexception& error) {
+        Cerr << "Cannot determine record range for " << path << ": "
+             << error.what() << Endl;
         // Keep unreadable files eligible for normal processing/error handling.
     }
     return file;
@@ -129,12 +144,19 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     }
     TVector<TProfileLogFile> result;
     for (auto& file: files) {
-        const auto bounds = GetProfileLogFile(file.Path, true);
-        const auto& start = bounds.StartTime;
-        const auto& fileEnd = bounds.EndTime;
+        const auto& start = file.StartTime;
+        const auto& fileEnd = file.EndTime;
         const bool endsAfterSince = !since || !fileEnd || *fileEnd >= *since;
         const bool startsBeforeUntil = !until || !start || *start <= *until;
         if (endsAfterSince && startsBeforeUntil) {
+            Cerr << "Keeping profile log " << file.Path;
+            if (start && fileEnd) {
+                Cerr << ": record range " << *start << " .. " << *fileEnd
+                     << " overlaps requested range";
+            } else {
+                Cerr << ": record range unknown; cannot exclude file";
+            }
+            Cerr << Endl;
             result.push_back(std::move(file));
         } else {
             Cerr << "Skipping profile log " << file.Path;

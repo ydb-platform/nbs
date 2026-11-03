@@ -57,7 +57,7 @@ TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
     opts.AddLongOption(
             "no-skip-files",
             "Read every supplied file instead of skipping by first/last record times. "
-            "Disables first/last record probing; exact request filters still apply")
+            "Record bounds are still read for sorting; exact request filters still apply")
         .NoArgument();
 
     opts.AddLongOption(

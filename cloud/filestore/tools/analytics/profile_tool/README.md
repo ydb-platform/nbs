@@ -19,7 +19,7 @@ Profile log fills in three places:
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
-| ```--no-skip-files```  | Flag      | Disable time-based file skipping and record-bound probing; false by default. Exact request filters still apply |
+| ```--no-skip-files```  | Flag      | Disable time-based file skipping; false by default. Exact request filters still apply |
 
 ## Multiple files and estimated time ranges
 
@@ -27,18 +27,19 @@ Profile log fills in three places:
 exact per-request `--since` and `--until` filters to its contents.
 
 With multiple files and either time bound set, the tool skips files outside the
-range estimated from their first and last usable profile records. It scans frame
+range estimated from their first and last usable profile frames. It scans frame
 headers using the eventlog library and decodes boundary records. The earliest
-request timestamp in the first record supplies the start; the latest in the last
-record supplies the end. Incomplete or corrupt boundary frames are ignored when
-estimating bounds. Files with unknown record bounds are retained.
+request timestamp across all records in the first usable frame supplies the start;
+the latest across all records in the last usable frame supplies the end.
+Incomplete or corrupt boundary frames are ignored when estimating bounds. Files with unknown record bounds are retained.
 
-Filename timestamps are used only for sorting, never for skipping files. A
-`.YYYY-MM-DDTHH:MM` suffix is interpreted as the rotation time in UTC. Dated files
-sort oldest first; undated files follow in input order. Filesystem modification
-time is not used. Without time bounds, all files are read without record probing.
+Multiple files are sorted by detected record end time, oldest first. Unknown
+bounds sort last; equal or unknown end times retain their input order. Boundary
+frames are probed once for sorting even without time filters, and pruning reuses
+those bounds. Single inputs are not probed. No times are inferred from filenames
+or filesystem modification times.
 
-Pass `--no-skip-files` to disable file skipping and boundary probing. Exact
+Pass `--no-skip-files` to disable file skipping; sorting still probes bounds. Exact
 per-request filters still apply. Use this when out-of-order records or damaged
 boundary frames could make the estimated ranges incomplete:
 

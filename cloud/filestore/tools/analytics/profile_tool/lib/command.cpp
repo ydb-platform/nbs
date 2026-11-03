@@ -16,10 +16,10 @@ namespace {
 
 constexpr TStringBuf ProfileLogLabel = "profile-log";
 
-TProfileLogFile MakeProfileLogFile(TString path)
+TProfileLogFile MakeProfileLogFile(TString path, bool readRecords)
 {
     path = RealPath(path);
-    return GetProfileLogFile(path);
+    return GetProfileLogFile(path, readRecords);
 }
 
 int ProcessProfileLog(
@@ -81,7 +81,7 @@ TCommand::TCommand()
     Opts.AddLongOption(
             ProfileLogLabel.data(),
             "Path to profile log (repeat for multiple files; "
-            "processed oldest first by known end time)")
+            "processed oldest first by record end time)")
         .RequiredArgument("STR")
         .AppendTo(&ProfileLogPaths);
 
@@ -143,7 +143,8 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
         }
 
         for (const auto& path: ProfileLogPaths) {
-            ProfileLogFiles.push_back(MakeProfileLogFile(path));
+            ProfileLogFiles.push_back(
+                MakeProfileLogFile(path, ProfileLogPaths.size() > 1));
         }
 
         StableSort(

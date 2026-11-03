@@ -315,7 +315,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], "selected");
     }
 
-    Y_UNIT_TEST(ShouldContinueAfterTruncatedFileOnlyWhenRequested)
+    Y_UNIT_TEST(ShouldFailOnTruncatedInputUnlessErrorsIgnored)
     {
         TTempDir directory;
         TTempFileHandle broken(directory.Name() + "/log.2026-09-26T00:01");
@@ -342,7 +342,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TReadTestCommand strict;
         UNIT_ASSERT_VALUES_EQUAL(strict.Run(4, strictArgs), 1);
         UNIT_ASSERT_VALUES_EQUAL(strict.FilesSelected, 2);
-        UNIT_ASSERT(strict.Processor.FileSystems.empty());
+        // The readable file has known bounds and sorts before the broken file.
+        UNIT_ASSERT_VALUES_EQUAL(strict.Processor.FileSystems.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(strict.Processor.FileSystems[0], good.Name());
 
         const char* tolerantArgs[] = {
             "test",
@@ -389,7 +391,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
     }
 
-    Y_UNIT_TEST(ShouldPreserveUndatedOrderRegardlessOfSkipping)
+    Y_UNIT_TEST(ShouldSortByRecordEndRegardlessOfSkipping)
     {
         TTempFileHandle newer;
         TTempFileHandle older;
@@ -401,18 +403,18 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTestCommand unprobed;
         UNIT_ASSERT_VALUES_EQUAL(unprobed.Run(5, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[0], RealPath(newer.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[1], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[0], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(unprobed.Inputs[1], RealPath(newer.Name()));
         const char* probedArgs[] = {
             "test", "--profile-log", newer.Name().c_str(), older.Name().c_str()};
         TTestCommand probed;
         UNIT_ASSERT_VALUES_EQUAL(probed.Run(4, probedArgs), 0);
         UNIT_ASSERT_VALUES_EQUAL(probed.Inputs.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(newer.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[0], RealPath(older.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(probed.Inputs[1], RealPath(newer.Name()));
     }
 
-    Y_UNIT_TEST(ShouldReadCurrentLogAfterRotationsByDefault)
+    Y_UNIT_TEST(ShouldSortByRecordsIgnoringFilenameAndKeepUnknownLast)
     {
         TTempDir directory;
         const TString base = directory.Name() + "/nfs-vhost-profile.log";
@@ -420,60 +422,19 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle newer(base + ".2026-09-22T15:22");
         TTempFileHandle older(base + ".2026-09-22T15:12");
         TTempFileHandle undated(base + ".other");
+        WriteProfileLog(current.Name(), 3000);
+        WriteProfileLog(newer.Name(), 1000);
+        WriteProfileLog(older.Name(), 1000);
         TTestCommand command;
         const char* args[] = {
             "test", "--profile-log", current.Name().c_str(),
             newer.Name().c_str(), undated.Name().c_str(), older.Name().c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(older.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(newer.Name()));
+        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(older.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(current.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(undated.Name()));
-    }
-
-    Y_UNIT_TEST(ShouldSortByFilenameTimeWithoutRecordFallback)
-    {
-        TTempDir directory;
-        const TString base = directory.Name() + "/nfs-vhost-profile.log";
-        TTempFileHandle current(base);
-        TTempFileHandle newer(base + ".2026-09-22T15:22");
-        TTempFileHandle oldest(base + ".2026-09-21T15:42");
-        TTempFileHandle newest(base + ".2026-09-22T15:32");
-        WriteProfileLog(
-            current.Name(),
-            TInstant::ParseIso8601("2026-09-22T15:27:00Z").Seconds());
-        TTestCommand command;
-        const char* args[] = {
-            "test",
-            "--profile-log",
-            current.Name().c_str(),
-            newer.Name().c_str(),
-            oldest.Name().c_str(),
-            newest.Name().c_str()};
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(oldest.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(newer.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(newest.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(current.Name()));
-    }
-
-    Y_UNIT_TEST(ShouldKeepInputOrderForEqualFilenameTimes)
-    {
-        TTempDir directory;
-        TTempFileHandle first(directory.Name() + "/first.2026-09-26T10:25");
-        TTempFileHandle second(directory.Name() + "/second.2026-09-26T10:25");
-        TTestCommand command;
-        const char* args[] = {
-            "test",
-            "--profile-log",
-            first.Name().c_str(),
-            second.Name().c_str()};
-        UNIT_ASSERT_VALUES_EQUAL(command.Run(4, args), 0);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
-        UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(second.Name()));
     }
 
     Y_UNIT_TEST(ShouldDeferPathValidationUntilInit)
