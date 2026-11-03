@@ -74,6 +74,163 @@ func (t *createDiskFromBaseDiskTask) Load(request, state []byte) error {
 	return proto.Unmarshal(state, t.state)
 }
 
+func (t *createDiskFromBaseDiskTask) Run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	params := t.request.Params
+
+	client, err := SelectCellForDisk(
+		ctx,
+		execCtx,
+		t.state,
+		params,
+		t.cellSelector,
+		t.nbsFactory,
+		t.storage,
+	)
+	if err != nil {
+		return err
+	}
+
+	disk := &types.Disk{
+		DiskId: params.Disk.DiskId,
+		ZoneId: t.state.SelectedCellId,
+	}
+
+	selfTaskID := execCtx.GetTaskID()
+
+	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
+		ID:          disk.DiskId,
+		ZoneID:      disk.ZoneId,
+		SrcImageID:  t.request.SrcImageId,
+		BlocksCount: params.BlocksCount,
+		BlockSize:   params.BlockSize,
+		Kind:        common.DiskKindToString(params.Kind),
+		CloudID:     params.CloudId,
+		FolderID:    params.FolderId,
+
+		CreateRequest: t.request,
+		CreateTaskID:  selfTaskID,
+		CreatingAt:    time.Now(),
+		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
+	})
+	if err != nil {
+		return err
+	}
+
+	if diskMeta == nil {
+		return errors.NewNonCancellableErrorf(
+			"id %v is not accepted",
+			params.Disk.DiskId,
+		)
+	}
+
+	if !t.state.DataTransferred {
+		err = t.createAndFillDisk(ctx, execCtx, client, disk)
+		if err != nil {
+			return err
+		}
+
+		t.state.DataTransferred = true
+
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
+		// Proxy overlay disk is a one-shot entity: it is not needed anymore
+		// once the data has been transferred. Performed outside of
+		// createAndFillDisk, after DataTransferred has been persisted, so that
+		// a retry performs it even though createAndFillDisk is skipped.
+		err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
+	}
+
+	diskMeta.CreatedAt = time.Now()
+	return t.storage.DiskCreated(ctx, *diskMeta)
+}
+
+func (t *createDiskFromBaseDiskTask) Cancel(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
+		// Should be done regardless of the disk state: the disk may have
+		// already been deleted by a concurrent disks.DeleteDisk task, which
+		// knows nothing about the proxy overlay disk and the base disk slot
+		// acquired for it. Nothing is acquired before the source is persisted.
+		err := t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
+		if err != nil {
+			return err
+		}
+	}
+
+	params := t.request.Params
+
+	diskMeta, err := t.storage.DeleteDisk(
+		ctx,
+		params.Disk.DiskId,
+		execCtx.GetTaskID(),
+		time.Now(),
+	)
+	if err != nil {
+		return err
+	}
+
+	if diskMeta == nil {
+		return nil
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	if err != nil {
+		return err
+	}
+
+	err = client.Delete(ctx, diskMeta.ID)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
+}
+
+func (t *createDiskFromBaseDiskTask) GetMetadata(
+	ctx context.Context,
+) (proto.Message, error) {
+
+	metadata := &disk_manager.CreateDiskMetadata{}
+
+	if len(t.state.DataplaneTaskId) != 0 {
+		message, err := t.scheduler.GetTaskMetadata(
+			ctx,
+			t.state.DataplaneTaskId,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		switch transferMetadata := message.(type) {
+		case *dataplane_protos.TransferFromDiskToDiskMetadata:
+			metadata.Progress = transferMetadata.Progress
+		case *dataplane_protos.TransferFromSnapshotToDiskMetadata:
+			metadata.Progress = transferMetadata.Progress
+		}
+	}
+
+	return metadata, nil
+}
+
+func (t *createDiskFromBaseDiskTask) GetResponse() proto.Message {
+	return &empty.Empty{}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Proxy overlay disk lives in the same cell as the disk being created. Its id
@@ -421,163 +578,4 @@ func (t *createDiskFromBaseDiskTask) deleteProxyOverlayDiskAndReleaseBaseDisk(
 
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
 	return err
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func (t *createDiskFromBaseDiskTask) Run(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	params := t.request.Params
-
-	client, err := SelectCellForDisk(
-		ctx,
-		execCtx,
-		t.state,
-		params,
-		t.cellSelector,
-		t.nbsFactory,
-		t.storage,
-	)
-	if err != nil {
-		return err
-	}
-
-	disk := &types.Disk{
-		DiskId: params.Disk.DiskId,
-		ZoneId: t.state.SelectedCellId,
-	}
-
-	selfTaskID := execCtx.GetTaskID()
-
-	diskMeta, err := t.storage.CreateDisk(ctx, resources.DiskMeta{
-		ID:          disk.DiskId,
-		ZoneID:      disk.ZoneId,
-		SrcImageID:  t.request.SrcImageId,
-		BlocksCount: params.BlocksCount,
-		BlockSize:   params.BlockSize,
-		Kind:        common.DiskKindToString(params.Kind),
-		CloudID:     params.CloudId,
-		FolderID:    params.FolderId,
-
-		CreateRequest: t.request,
-		CreateTaskID:  selfTaskID,
-		CreatingAt:    time.Now(),
-		CreatedBy:     "", // TODO: Extract CreatedBy from execCtx
-	})
-	if err != nil {
-		return err
-	}
-
-	if diskMeta == nil {
-		return errors.NewNonCancellableErrorf(
-			"id %v is not accepted",
-			params.Disk.DiskId,
-		)
-	}
-
-	if !t.state.DataTransferred {
-		err = t.createAndFillDisk(ctx, execCtx, client, disk)
-		if err != nil {
-			return err
-		}
-
-		t.state.DataTransferred = true
-
-		err = execCtx.SaveState(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
-	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
-		// Proxy overlay disk is a one-shot entity: it is not needed anymore
-		// once the data has been transferred. Performed outside of
-		// createAndFillDisk, after DataTransferred has been persisted, so that
-		// a retry performs it even though createAndFillDisk is skipped.
-		err = t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-	}
-
-	diskMeta.CreatedAt = time.Now()
-	return t.storage.DiskCreated(ctx, *diskMeta)
-}
-
-func (t *createDiskFromBaseDiskTask) Cancel(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	if t.state.FillSource == protos.FillSource_FILL_SOURCE_BASE_DISK {
-		// Should be done regardless of the disk state: the disk may have
-		// already been deleted by a concurrent disks.DeleteDisk task, which
-		// knows nothing about the proxy overlay disk and the base disk slot
-		// acquired for it. Nothing is acquired before the source is persisted.
-		err := t.deleteProxyOverlayDiskAndReleaseBaseDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-	}
-
-	params := t.request.Params
-
-	diskMeta, err := t.storage.DeleteDisk(
-		ctx,
-		params.Disk.DiskId,
-		execCtx.GetTaskID(),
-		time.Now(),
-	)
-	if err != nil {
-		return err
-	}
-
-	if diskMeta == nil {
-		return nil
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
-	if err != nil {
-		return err
-	}
-
-	err = client.Delete(ctx, diskMeta.ID)
-	if err != nil {
-		return err
-	}
-
-	return t.storage.DiskDeleted(ctx, diskMeta.ID, time.Now())
-}
-
-func (t *createDiskFromBaseDiskTask) GetMetadata(
-	ctx context.Context,
-) (proto.Message, error) {
-
-	metadata := &disk_manager.CreateDiskMetadata{}
-
-	if len(t.state.DataplaneTaskId) != 0 {
-		message, err := t.scheduler.GetTaskMetadata(
-			ctx,
-			t.state.DataplaneTaskId,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		switch transferMetadata := message.(type) {
-		case *dataplane_protos.TransferFromDiskToDiskMetadata:
-			metadata.Progress = transferMetadata.Progress
-		case *dataplane_protos.TransferFromSnapshotToDiskMetadata:
-			metadata.Progress = transferMetadata.Progress
-		}
-	}
-
-	return metadata, nil
-}
-
-func (t *createDiskFromBaseDiskTask) GetResponse() proto.Message {
-	return &empty.Empty{}
 }
