@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/helpers.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 
 #include <util/string/builder.h>
@@ -12,84 +14,6 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
-
-////////////////////////////////////////////////////////////////////////////////
-
-namespace {
-
-ui64 GetChunkDataSize(const NCloud::NProto::TCompressedBitmapData& bitmap)
-{
-    ui64 dataSize = 0;
-    for (const auto& chunk: bitmap.GetChunks()) {
-        dataSize += chunk.GetData().size();
-    }
-
-    return dataSize;
-}
-
-TString DescribeShardCreationState(
-    const NProtoPrivate::TFileSystemShardCreationState& state)
-{
-    const auto& bitmap = state.GetCreatedShardBitmap();
-
-    TStringBuilder out;
-    out << "{Version: ";
-    if (state.HasVersion()) {
-        out << state.GetVersion();
-    } else {
-        out << "<unset>";
-    }
-    out << ", BaseShardCount: " << state.GetBaseShardCount()
-        << ", TargetShardCount: " << state.GetTargetShardCount()
-        << ", TargetShardConfigHash: " << state.GetTargetShardConfigHash()
-        << ", CreatedShardBitmap: {BitCount: " << bitmap.GetBitCount()
-        << ", Chunks: " << bitmap.ChunksSize()
-        << ", ChunkDataSize: " << GetChunkDataSize(bitmap) << "}}";
-
-    return out;
-}
-
-TString DescribeChangeTabletStateRequest(
-    const NProtoPrivate::TUnsafeChangeTabletStateRequest& request)
-{
-    if (!request.HasShardCreationState()) {
-        return request.DebugString();
-    }
-
-    TStringBuilder out;
-    out << "{FileSystemId: " << request.GetFileSystemId();
-    if (request.HasFrozen()) {
-        out << ", Frozen: " << (request.GetFrozen() ? "true" : "false");
-    }
-    if (request.HasCompressNodeRef()) {
-        out << ", CompressNodeRef: "
-            << (request.GetCompressNodeRef() ? "true" : "false");
-    }
-    out << ", ShardCreationState: "
-        << DescribeShardCreationState(request.GetShardCreationState()) << "}";
-
-    return out;
-}
-
-TString DescribeChangeTabletStateResponse(
-    const NProtoPrivate::TUnsafeChangeTabletStateResponse& response)
-{
-    if (!response.HasShardCreationState()) {
-        return response.ShortUtf8DebugString();
-    }
-
-    TStringBuilder out;
-    out << "{";
-    if (HasError(response.GetError())) {
-        out << "Error: " << FormatError(response.GetError()) << ", ";
-    }
-    out << "ShardCreationState: "
-        << DescribeShardCreationState(response.GetShardCreationState()) << "}";
-
-    return out;
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
