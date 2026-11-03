@@ -74,6 +74,357 @@ func (t *createDiskFromBaseDiskTask) Load(request, state []byte) error {
 	return proto.Unmarshal(state, t.state)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Proxy overlay disk lives in the same cell as the disk being created. Its id
+// is derived from the task id (not from the image id) to make it unique per
+// creation attempt: pools storage keeps tombstones for released slots for a
+// while, so a repeated id would be rejected if the same disk is deleted and
+// recreated shortly after.
+func (t *createDiskFromBaseDiskTask) getProxyOverlayDisk(
+	selfTaskID string,
+) *types.Disk {
+
+	return &types.Disk{
+		ZoneId: t.state.SelectedCellId,
+		DiskId: dataplane_common.GetProxyOverlayDiskID(
+			t.proxyOverlayDiskIDPrefix,
+			t.request.Params.Disk.DiskId,
+			selfTaskID,
+		),
+	}
+}
+
+func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs.Client,
+	proxyOverlayDisk *types.Disk,
+	baseDiskID string,
+	baseDiskCheckpointID string,
+) error {
+
+	if t.state.ProxyOverlayDiskCreated {
+		return nil
+	}
+
+	// The proxy overlay disk has the size and the block size of the base disk,
+	// the latter may differ from the block size of the disk being created (the
+	// transfer operates on chunks that are multiples of both).
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDisk.DiskId,
+		baseDiskID,
+		baseDiskCheckpointID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if !created {
+		// Should not happen: base disks from pools are ydb-based, not
+		// encrypted and not layered. Don't fall back to reading from the base
+		// disk directly, since the whole point is to avoid reads via the base
+		// disk tablet.
+		return errors.NewNonRetriableErrorf(
+			"failed to create proxy overlay disk %v: base disk %v can't be used as base disk",
+			proxyOverlayDisk.DiskId,
+			baseDiskID,
+		)
+	}
+
+	logging.Info(
+		ctx,
+		"created proxy overlay disk %v for base disk %v (checkpoint %v) to fill disk %v",
+		proxyOverlayDisk.DiskId,
+		baseDiskID,
+		baseDiskCheckpointID,
+		t.request.Params.Disk.DiskId,
+	)
+
+	t.state.ProxyOverlayDiskCreated = true
+	return execCtx.SaveState(ctx)
+}
+
+// Acquires a base disk slot for the proxy overlay disk and creates the proxy
+// overlay disk on top of the acquired base disk. Returns the base disk and its
+// checkpoint.
+func (t *createDiskFromBaseDiskTask) prepareProxyOverlayDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs.Client,
+) (baseDiskID string, baseDiskCheckpointID string, err error) {
+
+	selfTaskID := execCtx.GetTaskID()
+	proxyOverlayDisk := t.getProxyOverlayDisk(selfTaskID)
+
+	// The transfer reads the base disk at the transfer bandwidth regardless of
+	// the size of the disk being created, so the slot is charged by this
+	// bandwidth rather than by the overlay disk size.
+	taskID, err := t.poolService.AcquireBaseDisk(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
+		&pools_protos.AcquireBaseDiskRequest{
+			SrcImageId:                t.request.SrcImageId,
+			OverlayDisk:               proxyOverlayDisk,
+			OverlayDiskKind:           types.DiskKind_DISK_KIND_SSD,
+			ExpectedReadBandwidthMiBs: t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
+		},
+	)
+	if err != nil {
+		return "", "", err
+	}
+
+	acquireResponse, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return "", "", err
+	}
+
+	baseDiskID, baseDiskCheckpointID, err = parseAcquireBaseDiskResponse(
+		acquireResponse,
+	)
+	if err != nil {
+		return "", "", err
+	}
+
+	err = t.createProxyOverlayDisk(
+		ctx,
+		execCtx,
+		client,
+		proxyOverlayDisk,
+		baseDiskID,
+		baseDiskCheckpointID,
+	)
+	if err != nil {
+		return "", "", err
+	}
+
+	return baseDiskID, baseDiskCheckpointID, nil
+}
+
+// Schedules the transfer of the data from the proxy overlay disk (prepared by
+// prepareProxyOverlayDisk) into the disk.
+func (t *createDiskFromBaseDiskTask) scheduleTransferFromProxyOverlayDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	disk *types.Disk,
+	baseDiskID string,
+	baseDiskCheckpointID string,
+) (string, error) {
+
+	params := t.request.Params
+	selfTaskID := execCtx.GetTaskID()
+
+	return t.scheduler.ScheduleZonalTask(
+		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_transfer_from_base_disk"),
+		"dataplane.TransferFromDiskToDisk",
+		// Image id and disk kind are not present in the transfer request.
+		fmt.Sprintf(
+			"Fill %v disk %v from image %v using base disk %v",
+			common.DiskKindToString(params.Kind),
+			disk.DiskId,
+			t.request.SrcImageId,
+			baseDiskID,
+		),
+		disk.ZoneId,
+		&dataplane_protos.TransferFromDiskToDiskRequest{
+			// Don't refer to the base disk here: it may be retired (and the
+			// proxy overlay disk rebased onto another one) during the
+			// transfer. Proxy overlay disk has a checkpoint with the same id
+			// as the base disk one.
+			SrcDisk:             t.getProxyOverlayDisk(selfTaskID),
+			SrcDiskCheckpointId: baseDiskCheckpointID,
+			MountSrcDiskLocally: true,
+			DstDisk:             disk,
+			// The proxy overlay disk has the size of the base disk (4 TiB
+			// by default), which may be much larger than the disk being
+			// created, the image fits into both. Without this bound the
+			// transfer would scan the unused tail of the proxy overlay disk
+			// (chunk by chunk) to estimate the amount of data to transfer,
+			// and it does that from scratch on every restart.
+			MaxSizeBytes: params.BlocksCount * uint64(params.BlockSize),
+		},
+	)
+}
+
+// Fallback for the case when no pool is configured for the image in the
+// selected cell: the same transfer as in disks.CreateDiskFromImage.
+func (t *createDiskFromBaseDiskTask) scheduleTransferFromSnapshotStorage(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	disk *types.Disk,
+) (string, error) {
+
+	return t.scheduler.ScheduleZonalTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			execCtx.GetTaskID()+"_transfer_from_snapshot_storage",
+		),
+		"dataplane.TransferFromSnapshotToDisk",
+		"",
+		disk.ZoneId,
+		&dataplane_protos.TransferFromSnapshotToDiskRequest{
+			SrcSnapshotId: t.request.SrcImageId,
+			DstDisk:       disk,
+			DstEncryption: t.request.Params.EncryptionDesc,
+		},
+	)
+}
+
+// Pools are configured per cell, and the cell is selected by the task (the
+// disk service only checks that a pool is configured for the requested zone),
+// so the source is chosen here, once the cell is selected. The pool may be
+// reconfigured while the task is running, so the choice is made once and
+// persisted before anything is acquired for the proxy overlay disk.
+func (t *createDiskFromBaseDiskTask) selectFillSource(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	cellID string,
+) error {
+
+	if t.state.FillSource != protos.FillSource_FILL_SOURCE_UNSPECIFIED {
+		return nil
+	}
+
+	configured, err := t.poolService.IsPoolConfigured(
+		ctx,
+		t.request.SrcImageId,
+		cellID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if configured {
+		t.state.FillSource = protos.FillSource_FILL_SOURCE_BASE_DISK
+	} else {
+		logging.Info(
+			ctx,
+			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
+			t.request.SrcImageId,
+			cellID,
+			t.request.Params.Disk.DiskId,
+		)
+		t.state.FillSource = protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE
+	}
+
+	return execCtx.SaveState(ctx)
+}
+
+// Creates the disk and fills it with the image data: from a base disk (via a
+// proxy overlay disk) if a pool is configured for the image in the selected
+// cell, from the snapshot storage otherwise.
+func (t *createDiskFromBaseDiskTask) createAndFillDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs.Client,
+	disk *types.Disk,
+) error {
+
+	params := t.request.Params
+
+	err := t.selectFillSource(ctx, execCtx, disk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	err = client.Create(ctx, nbs.CreateDiskParams{
+		ID:                      disk.DiskId,
+		BlocksCount:             params.BlocksCount,
+		BlockSize:               params.BlockSize,
+		Kind:                    params.Kind,
+		CloudID:                 params.CloudId,
+		FolderID:                params.FolderId,
+		TabletVersion:           params.TabletVersion,
+		PlacementGroupID:        params.PlacementGroupId,
+		PlacementPartitionIndex: params.PlacementPartitionIndex,
+		StoragePoolName:         params.StoragePoolName,
+		AgentIds:                params.AgentIds,
+		EncryptionDesc:          params.EncryptionDesc,
+	})
+	if err != nil {
+		return err
+	}
+
+	var taskID string
+	if t.state.FillSource == protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE {
+		taskID, err = t.scheduleTransferFromSnapshotStorage(ctx, execCtx, disk)
+	} else {
+		var baseDiskID, baseDiskCheckpointID string
+		baseDiskID, baseDiskCheckpointID, err = t.prepareProxyOverlayDisk(
+			ctx,
+			execCtx,
+			client,
+		)
+		if err != nil {
+			return err
+		}
+
+		taskID, err = t.scheduleTransferFromProxyOverlayDisk(
+			ctx,
+			execCtx,
+			disk,
+			baseDiskID,
+			baseDiskCheckpointID,
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	t.state.DataplaneTaskId = taskID
+
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	return err
+}
+
+// Deletes the proxy overlay disk and releases the base disk slot acquired for
+// it. Idempotent, safe to call even if neither has been created yet.
+func (t *createDiskFromBaseDiskTask) deleteProxyOverlayDiskAndReleaseBaseDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if len(t.state.SelectedCellId) == 0 {
+		// Cell is selected (and persisted) before anything is created, so
+		// there is nothing to clean up.
+		return nil
+	}
+
+	proxyOverlayDisk := t.getProxyOverlayDisk(execCtx.GetTaskID())
+
+	client, err := t.nbsFactory.GetClient(ctx, proxyOverlayDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	// Should be deleted before the slot is released: the base disk may be
+	// deleted right after its last slot is released.
+	err = client.Delete(ctx, proxyOverlayDisk.DiskId)
+	if err != nil {
+		return err
+	}
+
+	taskID, err := t.poolService.ReleaseBaseDisk(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_release"),
+		&pools_protos.ReleaseBaseDiskRequest{
+			OverlayDisk: proxyOverlayDisk,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	return err
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (t *createDiskFromBaseDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -229,324 +580,4 @@ func (t *createDiskFromBaseDiskTask) GetMetadata(
 
 func (t *createDiskFromBaseDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Creates the disk and fills it with the image data: from a base disk (via a
-// proxy overlay disk) if a pool is configured for the image in the selected
-// cell, from the snapshot storage otherwise.
-func (t *createDiskFromBaseDiskTask) createAndFillDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	client nbs.Client,
-	disk *types.Disk,
-) error {
-
-	params := t.request.Params
-
-	err := t.selectFillSource(ctx, execCtx, disk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	err = client.Create(ctx, nbs.CreateDiskParams{
-		ID:                      disk.DiskId,
-		BlocksCount:             params.BlocksCount,
-		BlockSize:               params.BlockSize,
-		Kind:                    params.Kind,
-		CloudID:                 params.CloudId,
-		FolderID:                params.FolderId,
-		TabletVersion:           params.TabletVersion,
-		PlacementGroupID:        params.PlacementGroupId,
-		PlacementPartitionIndex: params.PlacementPartitionIndex,
-		StoragePoolName:         params.StoragePoolName,
-		AgentIds:                params.AgentIds,
-		EncryptionDesc:          params.EncryptionDesc,
-	})
-	if err != nil {
-		return err
-	}
-
-	var taskID string
-	if t.state.FillSource == protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE {
-		taskID, err = t.scheduleTransferFromSnapshotStorage(ctx, execCtx, disk)
-	} else {
-		taskID, err = t.scheduleTransferFromBaseDisk(ctx, execCtx, client, disk)
-	}
-	if err != nil {
-		return err
-	}
-
-	t.state.DataplaneTaskId = taskID
-
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
-}
-
-// Pools are configured per cell, and the cell is selected by the task (the
-// disk service only checks that a pool is configured for the requested zone),
-// so the source is chosen here, once the cell is selected. The pool may be
-// reconfigured while the task is running, so the choice is made once and
-// persisted before anything is acquired for the proxy overlay disk.
-func (t *createDiskFromBaseDiskTask) selectFillSource(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	cellID string,
-) error {
-
-	if t.state.FillSource != protos.FillSource_FILL_SOURCE_UNSPECIFIED {
-		return nil
-	}
-
-	configured, err := t.poolService.IsPoolConfigured(
-		ctx,
-		t.request.SrcImageId,
-		cellID,
-	)
-	if err != nil {
-		return err
-	}
-
-	if configured {
-		t.state.FillSource = protos.FillSource_FILL_SOURCE_BASE_DISK
-	} else {
-		logging.Info(
-			ctx,
-			"no pool is configured for image %v in cell %v, disk %v is filled from the snapshot storage",
-			t.request.SrcImageId,
-			cellID,
-			t.request.Params.Disk.DiskId,
-		)
-		t.state.FillSource = protos.FillSource_FILL_SOURCE_SNAPSHOT_STORAGE
-	}
-
-	return execCtx.SaveState(ctx)
-}
-
-// Fallback for the case when no pool is configured for the image in the
-// selected cell: the same transfer as in disks.CreateDiskFromImage.
-func (t *createDiskFromBaseDiskTask) scheduleTransferFromSnapshotStorage(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	disk *types.Disk,
-) (string, error) {
-
-	return t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			execCtx.GetTaskID()+"_transfer_from_snapshot_storage",
-		),
-		"dataplane.TransferFromSnapshotToDisk",
-		"",
-		disk.ZoneId,
-		&dataplane_protos.TransferFromSnapshotToDiskRequest{
-			SrcSnapshotId: t.request.SrcImageId,
-			DstDisk:       disk,
-			DstEncryption: t.request.Params.EncryptionDesc,
-		},
-	)
-}
-
-// Acquires a base disk, creates a proxy overlay disk on top of it and
-// schedules the transfer of the data from the proxy overlay disk into the
-// disk.
-func (t *createDiskFromBaseDiskTask) scheduleTransferFromBaseDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	client nbs.Client,
-	disk *types.Disk,
-) (string, error) {
-
-	params := t.request.Params
-	selfTaskID := execCtx.GetTaskID()
-	proxyOverlayDisk := t.getProxyOverlayDisk(selfTaskID)
-
-	// Acquire base disk slot for the proxy overlay disk. The transfer reads
-	// the base disk at the transfer bandwidth regardless of the size of the
-	// disk being created, so the slot is charged by this bandwidth rather than
-	// by the overlay disk size.
-	taskID, err := t.poolService.AcquireBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_acquire"),
-		&pools_protos.AcquireBaseDiskRequest{
-			SrcImageId:                t.request.SrcImageId,
-			OverlayDisk:               proxyOverlayDisk,
-			OverlayDiskKind:           types.DiskKind_DISK_KIND_SSD,
-			ExpectedReadBandwidthMiBs: t.performanceConfig.GetTransferFromDiskToDiskBandwidthMiBs(),
-		},
-	)
-	if err != nil {
-		return "", err
-	}
-
-	acquireResponse, err := t.scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return "", err
-	}
-
-	baseDiskID, baseDiskCheckpointID, err := parseAcquireBaseDiskResponse(
-		acquireResponse,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	err = t.createProxyOverlayDisk(
-		ctx,
-		execCtx,
-		client,
-		proxyOverlayDisk,
-		baseDiskID,
-		baseDiskCheckpointID,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	return t.scheduler.ScheduleZonalTask(
-		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_transfer_from_base_disk"),
-		"dataplane.TransferFromDiskToDisk",
-		// Image id and disk kind are not present in the transfer request.
-		fmt.Sprintf(
-			"Fill %v disk %v from image %v using base disk %v",
-			common.DiskKindToString(params.Kind),
-			disk.DiskId,
-			t.request.SrcImageId,
-			baseDiskID,
-		),
-		disk.ZoneId,
-		&dataplane_protos.TransferFromDiskToDiskRequest{
-			// Don't refer to the base disk here: it may be retired (and the
-			// proxy overlay disk rebased onto another one) during the
-			// transfer. Proxy overlay disk has a checkpoint with the same id
-			// as the base disk one.
-			SrcDisk:             proxyOverlayDisk,
-			SrcDiskCheckpointId: baseDiskCheckpointID,
-			MountSrcDiskLocally: true,
-			DstDisk:             disk,
-			// The proxy overlay disk has the size of the base disk (4 TiB
-			// by default), which may be much larger than the disk being
-			// created, the image fits into both. Without this bound the
-			// transfer would scan the unused tail of the proxy overlay disk
-			// (chunk by chunk) to estimate the amount of data to transfer,
-			// and it does that from scratch on every restart.
-			MaxSizeBytes: params.BlocksCount * uint64(params.BlockSize),
-		},
-	)
-}
-
-func (t *createDiskFromBaseDiskTask) createProxyOverlayDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	client nbs.Client,
-	proxyOverlayDisk *types.Disk,
-	baseDiskID string,
-	baseDiskCheckpointID string,
-) error {
-
-	if t.state.ProxyOverlayDiskCreated {
-		return nil
-	}
-
-	// The proxy overlay disk has the size and the block size of the base disk,
-	// the latter may differ from the block size of the disk being created (the
-	// transfer operates on chunks that are multiples of both).
-	created, err := client.CreateProxyOverlayDisk(
-		ctx,
-		proxyOverlayDisk.DiskId,
-		baseDiskID,
-		baseDiskCheckpointID,
-	)
-	if err != nil {
-		return err
-	}
-
-	if !created {
-		// Should not happen: base disks from pools are ydb-based, not
-		// encrypted and not layered. Don't fall back to reading from the base
-		// disk directly, since the whole point is to avoid reads via the base
-		// disk tablet.
-		return errors.NewNonRetriableErrorf(
-			"failed to create proxy overlay disk %v: base disk %v can't be used as base disk",
-			proxyOverlayDisk.DiskId,
-			baseDiskID,
-		)
-	}
-
-	logging.Info(
-		ctx,
-		"created proxy overlay disk %v for base disk %v (checkpoint %v) to fill disk %v",
-		proxyOverlayDisk.DiskId,
-		baseDiskID,
-		baseDiskCheckpointID,
-		t.request.Params.Disk.DiskId,
-	)
-
-	t.state.ProxyOverlayDiskCreated = true
-	return execCtx.SaveState(ctx)
-}
-
-// Proxy overlay disk lives in the same cell as the disk being created. Its id
-// is derived from the task id (not from the image id) to make it unique per
-// creation attempt: pools storage keeps tombstones for released slots for a
-// while, so a repeated id would be rejected if the same disk is deleted and
-// recreated shortly after.
-func (t *createDiskFromBaseDiskTask) getProxyOverlayDisk(
-	selfTaskID string,
-) *types.Disk {
-
-	return &types.Disk{
-		ZoneId: t.state.SelectedCellId,
-		DiskId: dataplane_common.GetProxyOverlayDiskID(
-			t.proxyOverlayDiskIDPrefix,
-			t.request.Params.Disk.DiskId,
-			selfTaskID,
-		),
-	}
-}
-
-// Deletes the proxy overlay disk and releases the base disk slot acquired for
-// it. Idempotent, safe to call even if neither has been created yet.
-func (t *createDiskFromBaseDiskTask) deleteProxyOverlayDiskAndReleaseBaseDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	if len(t.state.SelectedCellId) == 0 {
-		// Cell is selected (and persisted) before anything is created, so
-		// there is nothing to clean up.
-		return nil
-	}
-
-	proxyOverlayDisk := t.getProxyOverlayDisk(execCtx.GetTaskID())
-
-	client, err := t.nbsFactory.GetClient(ctx, proxyOverlayDisk.ZoneId)
-	if err != nil {
-		return err
-	}
-
-	// Should be deleted before the slot is released: the base disk may be
-	// deleted right after its last slot is released.
-	err = client.Delete(ctx, proxyOverlayDisk.DiskId)
-	if err != nil {
-		return err
-	}
-
-	taskID, err := t.poolService.ReleaseBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_release"),
-		&pools_protos.ReleaseBaseDiskRequest{
-			OverlayDisk: proxyOverlayDisk,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
 }
