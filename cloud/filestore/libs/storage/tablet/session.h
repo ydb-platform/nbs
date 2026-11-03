@@ -377,6 +377,14 @@ public:
             config->GetSessionHandleOffloadedStatsCapacity());
         return options;
     }
+
+    static NProto::TPersistentSessionOptions CreatePersistentSessionOptions(
+        const TStorageConfig& config)
+    {
+        NProto::TPersistentSessionOptions options;
+        options.SetGuestPosixAclEnabled(config.GetGuestPosixAclEnabled());
+        return options;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
