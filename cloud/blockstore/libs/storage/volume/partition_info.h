@@ -112,6 +112,10 @@ public:
     [[nodiscard]] bool Empty() const;
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
+
+    // Return config-consuming recipients.
+    [[nodiscard]] TVector<NActors::TActorId>
+    GetDynamicConfigUpdateRecipients() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
 
     void UpdateStartInfo(const TPartitionStartInfo& startInfo);

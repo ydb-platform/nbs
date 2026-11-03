@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/get_device_for_range_companion.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
@@ -44,7 +45,8 @@ class TLaggingAgentsReplicaProxyActor final
 private:
     using TBase = NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>;
 
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
@@ -211,6 +213,10 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(WriteBlocks, TEvService);

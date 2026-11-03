@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
@@ -97,6 +98,18 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TEvVolume
 {
+    // Dynamic configuration update for one Volume actor lifetime.
+    // StorageConfig is non-null; Revision is local to the originating Volume.
+    struct TDynamicConfigUpdate
+    {
+        // Effective storage configuration retained by the update; non-null.
+        TStorageConfigConstPtr StorageConfig;
+        // Originating Volume actor; unchanged during the consumer lifetime.
+        NActors::TActorId Owner;
+        // Publication order within that Volume lifetime; zero is allowed.
+        ui64 Revision = 0;
+    };
+
     //
     // ReacquireDisk
     //
@@ -400,6 +413,8 @@ struct TEvVolume
         EvDescribeBlobRequest = EvBegin + 74,
         EvDescribeBlobResponse = EvBegin + 75,
 
+        EvDynamicConfigUpdate = EvBegin + 76,
+
         EvEnd
     };
 
@@ -407,6 +422,9 @@ struct TEvVolume
         "EvEnd expected to be < TBlockStoreEvents::VOLUME_END");
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_DECLARE_PROTO_EVENTS)
+
+    using TEvDynamicConfigUpdate =
+        TRequestEvent<TDynamicConfigUpdate, EvDynamicConfigUpdate>;
 
     using TEvReacquireDisk = TRequestEvent<
         TReacquireDisk,

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/partition2.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -24,6 +25,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
@@ -98,7 +100,8 @@ class TPartitionActor final
 
 private:
     const ui64 StartTime = GetCycleCount();
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const NProto::TPartitionConfig PartitionConfig;
     const TVolumeLabelsConstPtr VolumeLabels;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
@@ -604,6 +607,10 @@ private:
 
     void HandleGetPartCountersRequest(
         const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

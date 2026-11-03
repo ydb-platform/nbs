@@ -119,7 +119,13 @@ void TVolumeActor::HandleDeviceTimedOut(
         LogTitle.GetWithTime().c_str(),
         msg->DeviceUUID.Quote().c_str());
 
-    if (!LaggingDevicesAreAllowed()) {
+    // Follow the protocol selected by the running partition, even if updated
+    // configuration selects a different mode for the next partition startup.
+    const auto& partitionConfig = State->GetNonreplicatedPartitionConfig();
+    const bool allowed = partitionConfig
+                             ? partitionConfig->GetLaggingDevicesAllowed()
+                             : LaggingDevicesAreAllowed();
+    if (!allowed) {
         NCloud::Reply(
             ctx,
             *ev,
