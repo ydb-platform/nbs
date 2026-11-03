@@ -394,6 +394,7 @@ def start(argv):
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
             base_disk_id_prefix=base_disk_id_prefix,
+            proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
             creation_and_deletion_allowed_only_for_disks_with_id_prefix=args.creation_and_deletion_allowed_only_for_disks_with_id_prefix,
             disable_disk_registry_based_disks=args.disable_disk_registry_based_disks,
             retry_broken_disk_registry_based_disk_checkpoint=args.retry_broken_disk_registry_based_disk_checkpoint,
