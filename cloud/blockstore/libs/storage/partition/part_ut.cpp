@@ -10925,6 +10925,90 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCountBlobWrittenBeforeMetadataRebuildExactlyOnce)
+    {
+        auto config = DefaultConfig();
+        config.SetExtendedBlobCountersEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TAutoPtr<IEventHandle> savedAddBlobs;
+        TAutoPtr<IEventHandle> savedRebuild;
+        bool pauseAddBlobs = true;
+        bool pauseRebuild = true;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest &&
+                    pauseAddBlobs)
+                {
+                    pauseAddBlobs = false;
+                    savedAddBlobs = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest &&
+                    pauseRebuild)
+                {
+                    pauseRebuild = false;
+                    savedRebuild = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Allocate the write's commit id before rebuild takes its snapshot,
+        // but delay adding the blob to the index and counters.
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1024), 1);
+        TDispatchOptions waitAddBlobs;
+        waitAddBlobs.CustomFinalCondition = [&]
+        {
+            return !!savedAddBlobs;
+        };
+        runtime->DispatchEvents(waitAddBlobs, TDuration::Seconds(1));
+        UNIT_ASSERT(savedAddBlobs);
+
+        partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+        TDispatchOptions waitRebuild;
+        waitRebuild.CustomFinalCondition = [&]
+        {
+            return !!savedRebuild;
+        };
+        runtime->DispatchEvents(waitRebuild, TDuration::Seconds(1));
+        UNIT_ASSERT(savedRebuild);
+
+        // Finish the write after the initial counters are captured and before
+        // the scan, so both the scan and the counter delta see the same blob.
+        runtime->Send(savedAddBlobs.Release());
+        const auto writeResponse = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_C(
+            SUCCEEDED(writeResponse->GetStatus()),
+            writeResponse->GetErrorReason());
+        runtime->Send(savedRebuild.Release());
+
+        TDispatchOptions complete;
+        complete.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted);
+        runtime->DispatchEvents(complete, TDuration::Seconds(1));
+        UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                        ->Record.GetProgress()
+                        .GetIsCompleted());
+
+        partition.SendToPipe(std::make_unique<
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+        const auto response = partition.RecvResponse<
+            TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+        const auto& counters = response->DiskCounters->Simple;
+        UNIT_ASSERT_VALUES_EQUAL(
+            1024 * DefaultBlockSize,
+            counters.MergedBytesCount.Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1024 * DefaultBlockSize,
+            counters.MergedIndexBytesCount.Value);
+    }
+
     Y_UNIT_TEST(ShouldFailGetMetadataRebuildStatusIfNoOperationRunning)
     {
         constexpr ui32 blockCount = 1024 * 1024;

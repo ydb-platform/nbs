@@ -145,6 +145,43 @@ TPartitionState MakeState(
     return MakeState(DefaultConfig(1, blockCount), std::move(options));
 }
 
+void CheckBlobCountersAfterUpgrade(bool extendedBlobCountersEnabled)
+{
+    auto meta = DefaultConfig(1, DefaultBlockCount);
+    auto& stats = *meta.MutableStats();
+    // With UseBlobChannelDataKindForCounters enabled, these legacy counters
+    // describe one mixed-index blob stored on a merged channel.
+    stats.SetMixedBlobsCount(0);
+    stats.SetMergedBlobsCount(1);
+    stats.SetMixedBlocksCount(0);
+    stats.SetMergedBlocksCount(3);
+    stats.SetMixedIndexBlobsCount(1);
+    stats.SetMergedIndexBlobsCount(0);
+    stats.SetMixedIndexBlocksCount(3);
+    stats.SetMergedIndexBlocksCount(0);
+
+    auto state = MakeState(
+        meta,
+        {.ExtendedBlobCountersEnabled = extendedBlobCountersEnabled});
+
+    // Compact the existing blob into a merged-index blob, then clean up.
+    state.UpdateBlobCounters(
+        TPartialBlobId(2, 1, 3, 3 * DefaultBlockSize, 0, 0),
+        EChannelDataKind::Merged,
+        3,
+        true);
+    state.UpdateBlobCounters(
+        TPartialBlobId(1, 1, 3, 3 * DefaultBlockSize, 0, 0),
+        EChannelDataKind::Mixed,
+        3,
+        false);
+
+    UNIT_ASSERT_VALUES_EQUAL(
+        3,
+        state.GetMixedBlocksCount() + state.GetMergedBlocksCount());
+    UNIT_ASSERT_VALUES_EQUAL(1, state.GetTotalBlobsCount());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,6 +312,16 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT(!state.GetStats().HasBlobByteCounters());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedChannelBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedChannelBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlobCountersOnUpgradeWithExtendedCountersDisabled)
+    {
+        CheckBlobCountersAfterUpgrade(false);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlobCountersOnUpgradeWithExtendedCountersEnabled)
+    {
+        CheckBlobCountersAfterUpgrade(true);
     }
 
     Y_UNIT_TEST(ShouldReinitializeBlobCountersAfterDisabledWrites)
