@@ -3130,6 +3130,70 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         check();
     }
 
+    Y_UNIT_TEST(ShouldFlushFreshBlobsTrimmedDuringFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(2, 3);
+
+        TAutoPtr<IEventHandle> addBlobs;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest &&
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
+                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT &&
+                    !addBlobs)
+                {
+                    addBlobs = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // The flush captures all three blobs, including the dead one.
+        partition.SendFlushRequest();
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!addBlobs;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The trim removes the dead blob while the flush runs.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+
+        runtime->Send(addBlobs.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
     Y_UNIT_TEST(ShouldNotAddSmallNonDeletionBlobsDuringFlush)
     {
         auto config = DefaultConfig(4_MB);
