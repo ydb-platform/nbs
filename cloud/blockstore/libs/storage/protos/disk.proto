@@ -1665,6 +1665,11 @@ message TCreateVolumeFromDevicesRequest
 
     // Devices from which the disk is assembled
     repeated string DeviceUUIDs = 6;
+
+    // Storage media kind of the volume. Only non-replicated and local
+    // DiskRegistry-based media kinds are allowed. STORAGE_MEDIA_SSD_LOCAL is
+    // used if not specified.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
 }
 
 message TCreateVolumeFromDevicesResponse
