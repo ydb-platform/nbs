@@ -1,9 +1,10 @@
 from concurrent import futures
 import json
 import os
-from time import monotonic, sleep
 
 import yatest.common as common
+
+from contrib.ydb.tests.library.common.wait_for import wait_for
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 
@@ -93,8 +94,7 @@ def wait_for_shard_creation_state_update(
     expected_target_shard_count: int,
     resize_future,
 ):
-    deadline = monotonic() + 60
-    while monotonic() < deadline:
+    def has_shard_creation_state_updated():
         if resize_future.done():
             resize_error = resize_future.exception()
             if resize_error:
@@ -117,16 +117,18 @@ def wait_for_shard_creation_state_update(
             ) from error
 
         version = state.get("Version", 0)
-        if (
+        return (
             version > initial_version
             and state.get("BaseShardCount", 0) == expected_base_shard_count
             and state.get("TargetShardCount", 0) == expected_target_shard_count
-        ):
-            return
+        )
 
-        sleep(0.1)
-
-    raise AssertionError(
+    assert wait_for(
+        has_shard_creation_state_updated,
+        timeout_seconds=60,
+        step_seconds=0.1,
+        multiply=1,
+    ), (
         "timed out waiting for partial shard creation progress: "
         f"version did not advance past {initial_version} for range "
         f"[{expected_base_shard_count}, {expected_target_shard_count})"
