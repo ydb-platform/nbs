@@ -28,7 +28,7 @@ class TMixedBlobBuilder final
     struct TRange
     {
         TVector<TBlock> Blocks;
-        TVector<TBlockDataHolder> BlobContent;
+        TVector<TBlockDataHolder> Content;
     };
 
 private:

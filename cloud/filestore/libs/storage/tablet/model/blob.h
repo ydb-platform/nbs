@@ -39,18 +39,18 @@ struct TMixedBlobMeta
 
 struct TMixedBlob: TMixedBlobMeta
 {
-    TVector<TBlockDataHolder> BlobContent;
+    TVector<TBlockDataHolder> Content;
 
     TMixedBlob() = default;
 
     TMixedBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
-            TVector<TBlockDataHolder> blobContent)
+            TVector<TBlockDataHolder> content)
         : TMixedBlobMeta(blobId, std::move(blocks))
-        , BlobContent(std::move(blobContent))
+        , Content(std::move(content))
     {
-        Y_DEBUG_ABORT_UNLESS(Blocks.size() == BlobContent.size());
+        Y_DEBUG_ABORT_UNLESS(Blocks.size() == Content.size());
     }
 };
 

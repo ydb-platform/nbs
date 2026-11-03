@@ -115,8 +115,8 @@ void TFlushActor::WriteBlob(const TActorContext& ctx)
 
     for (auto& blob: Blobs) {
         TString strBlob;
-        strBlob.reserve(blob.BlobContent.size() * BlockSize);
-        for (const auto& blockData: blob.BlobContent) {
+        strBlob.reserve(blob.Content.size() * BlockSize);
+        for (const auto& blockData: blob.Content) {
             strBlob.append(blockData.GetBlockData());
         }
         request->Blobs.emplace_back(blob.BlobId, std::move(strBlob));
@@ -348,7 +348,7 @@ void TIndexTabletActor::HandleFlush(
     for (auto& blob: blobs) {
         const auto ok = GenerateBlobId(
             commitId,
-            blob.BlobContent.size() * GetBlockSize(),
+            blob.Content.size() * GetBlockSize(),
             blobIndex++,
             &blob.BlobId);
 

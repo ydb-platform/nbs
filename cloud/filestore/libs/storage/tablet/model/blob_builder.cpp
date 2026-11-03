@@ -27,13 +27,13 @@ void TMixedBlobBuilder::AddBlock(
     const TBlock& block,
     const TBlockDataHolder& blockData)
 {
-    if (!range.BlobContent) {
+    if (!range.Content) {
         range.Blocks.reserve(MaxBlocksInBlob);
-        range.BlobContent.reserve(MaxBlocksInBlob);
+        range.Content.reserve(MaxBlocksInBlob);
     }
 
     range.Blocks.push_back(block);
-    range.BlobContent.push_back(blockData);
+    range.Content.push_back(blockData);
 
     ++BlocksCount;
 
@@ -47,12 +47,12 @@ void TMixedBlobBuilder::CompleteBlob(TRange& range)
     Blobs.emplace_back(
         TPartialBlobId(), // need to generate BlobId later
         std::move(range.Blocks),
-        std::move(range.BlobContent));
+        std::move(range.Content));
 
     ++BlobsCount;
 
     range.Blocks.clear();
-    range.BlobContent.clear();
+    range.Content.clear();
 }
 
 TVector<TMixedBlob> TMixedBlobBuilder::Finish()
