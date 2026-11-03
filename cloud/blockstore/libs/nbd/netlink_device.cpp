@@ -183,7 +183,10 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
         return StartResult;
     }
 
-    StartResult = NNetlink::GetFamilyId(Executor, NBD_GENL_FAMILY_NAME)
+    StartResult = MakeFuture()
+        .Apply([self = shared_from_this()](const auto&) {
+            return NNetlink::GetFamilyId(self->Executor, NBD_GENL_FAMILY_NAME);
+        })
         .Apply([self = shared_from_this()](const auto& result) {
             self->FamilyId = result.GetValue();
             self->ConnectSocket();
@@ -192,7 +195,8 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
                 return self->ConnectOrReconfigure();
             }
             return self->Connect();
-        }).Apply([self = shared_from_this()](const auto& result) {
+        })
+        .Apply([self = shared_from_this()](const auto& result) {
             try {
                 if (!HasError(result.GetValue())) {
                     auto& Log = self->Log;
@@ -260,7 +264,11 @@ TFuture<NProto::TError> TNetlinkDevice::Reconfigure()
                         static_cast<ui32>(Socket))))
         .Apply([self = shared_from_this()](const auto& result) {
             result.TryRethrow();
-            return self->Resize(self->Handler->GetExportInfo().Size);
+            return self->Resize(self->Handler->GetExportInfo().Size)
+                .Apply([](const auto& result) {
+                    const auto& error = result.GetValue();
+                    return HasError(error) ? error : MakeError(S_ALREADY);
+                });
         });
 }
 
@@ -291,20 +299,22 @@ TFuture<NProto::TError> TNetlinkDevice::Connect(TPrefix... prefix)
 
 TFuture<NProto::TError> TNetlinkDevice::Disconnect()
 {
-    return
-        NNetlink::Send(
-            Executor,
-            TNbdDisconnectRequest(
-                FamilyId,
-                NBD_CMD_DISCONNECT,
-                *DeviceIndex))
+    return MakeFuture()
+        .Apply([self = shared_from_this()](const auto&) {
+            return NNetlink::Send(
+                self->Executor,
+                TNbdDisconnectRequest(
+                    self->FamilyId,
+                    NBD_CMD_DISCONNECT,
+                    *self->DeviceIndex));
+        })
         .Apply([self = shared_from_this()](const auto& result) {
             try {
                 result.TryRethrow();
                 auto& Log = self->Log;
                 STORAGE_INFO("disconnect " << self->GetDevice());
                 return MakeError(S_OK);
-            } catch (const TServiceError& e) {
+            } catch (const std::exception& e) {
                 return self->MakeNetlinkError("disconnect", e);
             }
         });
@@ -312,22 +322,25 @@ TFuture<NProto::TError> TNetlinkDevice::Disconnect()
 
 TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
 {
-    const auto& info = Handler->GetExportInfo();
-    return NNetlink::Send(
-            Executor,
-            TNbdResizeRequest(
-                FamilyId,
-                NBD_CMD_RECONFIGURE,
-                *DeviceIndex,
-                deviceSizeInBytes,
-                static_cast<ui64>(info.MinBlockSize)))
+    return MakeFuture()
+        .Apply([self = shared_from_this(), deviceSizeInBytes](const auto&) {
+            const auto& info = self->Handler->GetExportInfo();
+            return NNetlink::Send(
+                self->Executor,
+                TNbdResizeRequest(
+                    self->FamilyId,
+                    NBD_CMD_RECONFIGURE,
+                    *self->DeviceIndex,
+                    deviceSizeInBytes,
+                    static_cast<ui64>(info.MinBlockSize)));
+        })
         .Apply([self = shared_from_this()](const auto& result) {
             try {
                 result.TryRethrow();
                 auto& Log = self->Log;
                 STORAGE_INFO("resize " << self->GetDevice());
                 return MakeError(S_OK);
-            } catch (const TServiceError& e) {
+            } catch (const std::exception& e) {
                 return self->MakeNetlinkError("resize", e);
             }
         });

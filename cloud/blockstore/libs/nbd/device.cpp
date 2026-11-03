@@ -79,21 +79,21 @@ public:
 
     NThreading::TFuture<NProto::TError> Start() override
     {
-        if (!DevicePath) {
-            DevicePath = FindFreeNbdDevice().replace(
-                0,
-                DEVICE_PREFIX.size(),
-                DevicePrefix);
-
-            if (DevicePath == DevicePrefix) {
-                return NThreading::MakeFuture(MakeError(
-                    E_FAIL,
-                    TStringBuilder()
-                        << "unable to find free nbd device with prefix "
-                        << DevicePrefix.Quote()));
-            }
-        }
         try {
+            if (!DevicePath) {
+                DevicePath = FindFreeNbdDevice().replace(
+                    0,
+                    DEVICE_PREFIX.size(),
+                    DevicePrefix);
+
+                if (DevicePath == DevicePrefix) {
+                    return NThreading::MakeFuture(MakeError(
+                        E_FAIL,
+                        TStringBuilder()
+                            << "unable to find free nbd device with prefix "
+                            << DevicePrefix.Quote()));
+                }
+            }
             ConnectSocket();
             ConnectDevice();
 
