@@ -35,6 +35,9 @@ public:
     TDuration GetXAttrCacheTimeout() const;
     bool GetXAttrCacheInvalidateOnCreateEnabled() const;
 
+    ui32 GetNodeRefCacheLimit() const;
+    ui32 GetNodeAttrsCacheLimit() const;
+
     ui32 GetMaxBufferSize() const;
     ui32 GetPreferredBlockSize() const;
 

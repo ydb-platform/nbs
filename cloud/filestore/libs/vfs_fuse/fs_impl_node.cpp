@@ -22,8 +22,12 @@ void TFileSystem::Lookup(
         return;
     }
 
+    if (TryReplyEntryFromCache(*callContext, req, parent, name)) {
+        return;
+    }
+
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(parent);
-    request->SetName(std::move(name));
+    request->SetName(name);
 
     // We don't know ino yet so we have to adjust the node size after
     // receiving GetNodeAttr response.
@@ -46,6 +50,24 @@ void TFileSystem::Lookup(
                     UnsafeExtractValue(future);
                 const auto& error = response.GetError();
                 if (!HasError(response)) {
+                    self->UpdateCachedNodeRef(parent, name, response, version);
+
+                    //
+                    // The attrs of a node with the data cached in
+                    // WriteBackCache are going to change upon flush, which
+                    // doesn't produce an invalidation if it changes only
+                    // the timestamps. Since the node state ref is held,
+                    // the nodes flushed during the request are detected
+                    // as well.
+                    //
+
+                    const ui64 nodeId = response.GetNode().GetId();
+                    const bool hasCachedData = self->WriteBackCache &&
+                        self->WriteBackCache.GetMaxWrittenOffset(nodeId);
+                    if (!hasCachedData) {
+                        self->UpdateCachedNodeAttrs(response, version);
+                    }
+
                     self->AdjustNodeSize(*response.MutableNode());
                     self->ReplyEntryWithCache(
                         *callContext,
@@ -131,6 +153,7 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -237,6 +260,7 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -324,6 +348,15 @@ void TFileSystem::Rename(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // Invalidates both NodeRefs, both parents' attrs and the
+                // attrs of the nodes the cached NodeRefs point to. The moved
+                // node itself doesn't need to be invalidated if its NodeRef
+                // isn't cached: the backend doesn't change its attrs upon
+                // rename. The replaced node (if any) is unlinked, its Links
+                // change produces an invalidation event.
+                //
+
                 self->InvalidateDirectoryEntryInCache(parent, name);
                 self->InvalidateDirectoryEntryInCache(newparent, newname);
                 // TODO: update tree
@@ -367,6 +400,7 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateCachedNode(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -412,6 +446,8 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+                self->InvalidateCachedNode(newparent);
+                self->InvalidateCachedNode(ino);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
