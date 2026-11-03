@@ -1161,7 +1161,8 @@ message TUnsafeChangeTabletStateRequest
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 3;
 
-    // Update shard creation state during large operations.
+    // Track shard creation progress across retries of throttled create/resize
+    // operations, potentially involving thousands of shards.
     TFileSystemShardCreationState ShardCreationState = 4;
 }
 
