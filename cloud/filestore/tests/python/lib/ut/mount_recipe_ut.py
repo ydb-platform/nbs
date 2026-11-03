@@ -93,7 +93,7 @@ def test_stop_shuts_down_clients_after_shared_listing_deadline(
             return self.returncode
 
         def kill(self):
-            assert clock[0] == pytest.approx(5)
+            assert clock[0] == pytest.approx(60)
             events.append(("kill", self.path))
             # Simulate SIGKILL pending on an uninterruptible FUSE request.
             assert self.returncode is None
@@ -112,7 +112,7 @@ def test_stop_shuts_down_clients_after_shared_listing_deadline(
         return listing
 
     def shutdown(pid):
-        assert clock[0] == pytest.approx(5)
+        assert clock[0] == pytest.approx(60)
         assert events == [
             ("start", "finished"), ("start", "blocked-1"), ("start", "blocked-2"),
             ("kill", "blocked-1"), ("kill", "blocked-2")]
@@ -141,16 +141,42 @@ def test_stop_shuts_down_clients_after_shared_listing_deadline(
     assert events == [
         ("start", "finished"), ("start", "blocked-1"), ("start", "blocked-2"),
         ("kill", "blocked-1"), ("kill", "blocked-2"), ("stop", 123)]
-    assert clock[0] == pytest.approx(5)
+    assert clock[0] == pytest.approx(60)
     assert all(listing.output.closed for listing in listings)
     assert "Mount listing tail:" in caplog.text
     assert "Stderr tail:" not in caplog.text
+    timeout_messages = [record.getMessage() for record in caplog.records
+                        if "exceeded the shared timeout" in record.getMessage()]
+    assert len(timeout_messages) == 2
+    for listing, message in zip(listings[1:], timeout_messages):
+        assert "pid {}".format(listing.pid) in message
+        assert "60 seconds" in message
+        assert "sending SIGKILL" in message
     for index, path in enumerate(("finished", "blocked-1", "blocked-2")):
         expected = "FileSystemId: custom-fs\nMount path: {}\n\nlisting diagnostic\n".format(tmp_path / path)
         if index:
             expected += "diagnostic during client shutdown\n"
         assert (tmp_path / "mount-ls-{}.log".format(index)).read_text() == expected
     assert ("still running after SIGKILL" in caplog.text) is not unblocks_on_shutdown
+
+
+def test_listing_can_finish_after_five_seconds(recipe, monkeypatch, caplog):
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    monkeypatch.setattr(recipe, "time", SimpleNamespace(
+        monotonic=lambda: clock[0], sleep=sleep))
+    monkeypatch.setattr(recipe.common, "execute", lambda *args, **kwargs: SimpleNamespace(
+        process=SimpleNamespace(poll=lambda: 0 if clock[0] >= 10 else None)))
+    listings = []
+
+    recipe.inspect_mounts("test-fs", ["mount"], listings)
+
+    assert len(listings) == 1
+    assert 10 <= clock[0] < 11
+    assert "exceeded the shared timeout" not in caplog.text
 
 
 def test_create_failure_discards_previous_startup_state(recipe, monkeypatch, tmp_path):

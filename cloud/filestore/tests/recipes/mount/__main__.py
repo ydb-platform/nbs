@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PID_FILE_NAME = "local_mount_nfs_share_recipe.pid"
 MOUNT_PATH_FILE_NAME = "local_mount_nfs_share_recipe.mount_path"
+MOUNT_LISTING_TIMEOUT_SECONDS = 60
 
 
 def parse_args(argv):
@@ -99,8 +100,9 @@ def stop(argv):
 
 
 def inspect_mounts(filesystem, paths, listings):
-    # Start all listings before waiting, while the clients are still running.
-    deadline = time.monotonic() + 5
+    # Attempt full listings in parallel, with one shared deadline so diagnostics
+    # cannot delay client shutdown indefinitely when a backend is unresponsive.
+    deadline = time.monotonic() + MOUNT_LISTING_TIMEOUT_SECONDS
     for index, path in enumerate(paths):
         log_path = common.output_path("mount-ls-{}.log".format(index))
         try:
@@ -118,6 +120,12 @@ def inspect_mounts(filesystem, paths, listings):
     while any(listing.process.poll() is None for listing, _ in listings):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            for listing, log_path in listings:
+                if listing.process.poll() is None:
+                    logger.warning(
+                        "Mount listing pid %s exceeded the shared timeout of %s seconds; "
+                        "sending SIGKILL before client shutdown; output may be incomplete: %s",
+                        listing.process.pid, MOUNT_LISTING_TIMEOUT_SECONDS, log_path)
             break
         time.sleep(min(0.1, remaining))
 
