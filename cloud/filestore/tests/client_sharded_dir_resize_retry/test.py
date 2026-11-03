@@ -33,14 +33,20 @@ def verify_filesystem_topology(
 ):
     topology = get_filesystem_topology(client, filesystem_id)
     shards = topology.get("ShardFileSystemIds", [])
+    strict_file_system_size_enforcement_enabled = topology.get(
+        "StrictFileSystemSizeEnforcementEnabled", False
+    )
     assert len(shards) == expected_shard_count
     for idx, shard_id in enumerate(shards):
         assert shard_id == f"{filesystem_id}_s{idx + 1}"
         shard_topology = get_filesystem_topology(client, shard_id)
         assert shard_topology.get("ShardNo", 0) == idx + 1
-        # ShardFileSystemIds should be empty for shards with directory
-        # sharding feature disabled and non-empty otherwise
-        if directory_sharding_enabled:
+        # Shards need the full topology for directory sharding or strict
+        # filesystem size enforcement.
+        if (
+            directory_sharding_enabled
+            or strict_file_system_size_enforcement_enabled
+        ):
             assert shard_topology.get("ShardFileSystemIds", []) == shards
         else:
             assert len(shard_topology.get("ShardFileSystemIds", [])) == 0
@@ -78,11 +84,11 @@ def get_shard_creation_state_version(
 def verify_shard_creation_state_range(
     client: FilestoreCliClient,
     filesystem_id: str,
-    expected_base_shard_count: int,
+    expected_topology_shard_count: int,
     expected_target_shard_count: int,
 ):
     state = get_shard_creation_state(client, filesystem_id)
-    assert state.get("BaseShardCount", 0) == expected_base_shard_count, state
+    assert state.get("TopologyShardCount", 0) == expected_topology_shard_count, state
     assert state.get("TargetShardCount", 0) == expected_target_shard_count, state
 
 
@@ -90,7 +96,7 @@ def wait_for_shard_creation_state_update(
     client: FilestoreCliClient,
     filesystem_id: str,
     initial_version: int,
-    expected_base_shard_count: int,
+    expected_topology_shard_count: int,
     expected_target_shard_count: int,
     resize_future,
 ):
@@ -119,7 +125,8 @@ def wait_for_shard_creation_state_update(
         version = state.get("Version", 0)
         return (
             version > initial_version
-            and state.get("BaseShardCount", 0) == expected_base_shard_count
+            and state.get("TopologyShardCount", 0)
+            == expected_topology_shard_count
             and state.get("TargetShardCount", 0) == expected_target_shard_count
         )
 
@@ -131,7 +138,7 @@ def wait_for_shard_creation_state_update(
     ), (
         "timed out waiting for partial shard creation progress: "
         f"version did not advance past {initial_version} for range "
-        f"[{expected_base_shard_count}, {expected_target_shard_count})"
+        f"[{expected_topology_shard_count}, {expected_target_shard_count})"
     )
 
 

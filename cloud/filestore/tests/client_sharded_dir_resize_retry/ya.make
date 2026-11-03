@@ -21,6 +21,7 @@ SET(NFS_RESTART_INTERVAL 20)
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
     cloud/filestore/tests/client_sharded_dir_resize_retry/nfs-storage.txt
 )
 
