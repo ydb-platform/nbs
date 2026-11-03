@@ -79,6 +79,7 @@ struct TEvServicePrivate
         EvReleaseReadDataActor,
         EvFastShardsAllocated,
         EvFastShardsDeallocated,
+        EvStartWriteData,
 
         EvEnd
     };
