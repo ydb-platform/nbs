@@ -1034,6 +1034,7 @@ message TStorageConfig
     // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
     optional uint32 MaxRequestSize = 566;
 
-    // Enables pre-allocated actors for reading data in storage service
+    // Enables pre-allocated actors for reading / writing data in storage
+    // service
     optional bool PermanentReadWriteDataActorsEnabled = 567;
 }

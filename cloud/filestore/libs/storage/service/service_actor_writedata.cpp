@@ -234,16 +234,21 @@ private:
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
     const std::optional<TWriteDataZeroCounters> ZeroCounters;
+
+    // Empty for one-shot actors and when shutting down.
+    TActorId ServiceActorId;
     std::optional<TRequestState> RequestState;
 
 public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        std::optional<TWriteDataZeroCounters> zeroCounters)
+        std::optional<TWriteDataZeroCounters> zeroCounters,
+        TActorId serviceActorId)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , ZeroCounters(std::move(zeroCounters))
+        , ServiceActorId(serviceActorId)
     {}
 
     void Initialize(TWriteRequestContext params)
@@ -1125,14 +1130,19 @@ private:
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(record);
-        NCloud::Reply(
-            ctx,
-            *state.RequestContext.RequestInfo,
-            std::move(response));
-        Die(ctx);
+        SendResponseAndDie(ctx, std::move(response));
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
+    {
+        SendResponseAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvWriteDataResponse>(error));
+    }
+
+    void SendResponseAndDie(
+        const TActorContext& ctx,
+        std::unique_ptr<TEvService::TEvWriteDataResponse> response)
     {
         auto& state = GetState();
 
@@ -1141,13 +1151,16 @@ private:
             state.RequestContext.RequestInfo->CallContext,
             "WriteData");
 
-        auto response =
-            std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        NCloud::Reply(
-            ctx,
-            *state.RequestContext.RequestInfo,
-            std::move(response));
-        Die(ctx);
+        NCloud::Reply(ctx, *state.RequestContext.RequestInfo, std::move(response));
+        RequestState.reset();
+        if (ServiceActorId) {
+            Become(&TThis::StateIdle);
+            NCloud::Send<TEvServicePrivate::TEvReleaseWriteDataActor>(
+                ctx,
+                ServiceActorId);
+        } else {
+            Die(ctx);
+        }
     }
 
     void HandlePoisonPill(
@@ -1155,6 +1168,8 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
+        // A poisoned actor must terminate instead of returning to the pool.
+        ServiceActorId = {};
         if (!RequestState) {
             Die(ctx);
             return;
@@ -1215,6 +1230,29 @@ private:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TWriteDataActorPool::TWriteDataActorPool(
+    IProfileLogPtr profileLog,
+    ITraceSerializerPtr traceSerializer)
+    : TWorkerActorPool(
+          [profileLog = std::move(profileLog),
+           traceSerializer = std::move(traceSerializer)](TActorId parentActorId)
+          {
+              return new TWriteDataActor(
+                  profileLog,
+                  traceSerializer,
+                  parentActorId);
+          })
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TStorageServiceActor::HandleReleaseWriteDataActor(
+    const TEvServicePrivate::TEvReleaseWriteDataActor::TPtr& ev,
+    const TActorContext&)
+{
+    WriteDataActorPool.ReleaseActor(ev->Sender);
+}
 
 void TStorageServiceActor::HandleWriteData(
     const TEvService::TEvWriteDataRequest::TPtr& ev,
@@ -1315,11 +1353,7 @@ void TStorageServiceActor::HandleWriteData(
         zeroCounters = WriteDataZeroCounters;
     }
 
-    auto actor = std::make_unique<TWriteDataActor>(
-        ProfileLog,
-        TraceSerializer,
-        std::move(zeroCounters));
-    actor->Initialize(TWriteRequestContext(
+    TWriteRequestContext context(
         std::move(msg->Record),
         range,
         std::move(requestInfo),
@@ -1330,8 +1364,23 @@ void TStorageServiceActor::HandleWriteData(
         session->MediaKind,
         threeStageWriteEnabled,
         filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites()));
-    NCloud::Register(ctx, std::move(actor));
+        filestore.GetFeatures().GetEnableRdmaForWrites());
+
+    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+        auto request = std::make_unique<TEvStartWriteData>(std::move(context));
+        NCloud::Send(
+            ctx,
+            WriteDataActorPool.GetOrCreateActor(ctx),
+            std::move(request));
+    } else {
+        auto actor = std::make_unique<TWriteDataActor>(
+            ProfileLog,
+            TraceSerializer,
+            std::move(zeroCounters),
+            TActorId{});
+        actor->Initialize(std::move(context));
+        NCloud::Register(ctx, std::move(actor));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
