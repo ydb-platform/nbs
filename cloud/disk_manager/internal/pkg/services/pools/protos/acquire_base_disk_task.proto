@@ -18,8 +18,8 @@ message AcquireBaseDiskRequest {
     // (OverlayDiskSize and OverlayDiskKind are ignored): as many base disk
     // allocation units as needed to provide this bandwidth, without any
     // oversubscription. Meant for overlay disks that read the base disk at
-    // full speed regardless of their own size, e.g. proxy overlay disks of
-    // disks.CreateDiskFromBaseDisk task.
+    // full speed, e.g. proxy overlay disks of disks.CreateDiskFromBaseDisk
+    // task.
     uint64 ExpectedReadBandwidthMiBs = 5;
 }
 

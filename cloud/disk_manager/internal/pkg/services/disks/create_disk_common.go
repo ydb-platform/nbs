@@ -21,7 +21,7 @@ type CreateDiskTaskState interface {
 
 // Selects the cell where the disk should be created and returns the client of
 // this cell. Not idempotent, see SelectCellForDisk.
-func selectClientForDisk(
+func selectCellClientForDisk(
 	ctx context.Context,
 	params *protos.CreateDiskParams,
 	cellSelector cells.CellSelector,
@@ -129,7 +129,7 @@ func SelectCellForDisk(
 		return nbsFactory.GetClient(ctx, state.GetSelectedCellId())
 	}
 
-	client, err := selectClientForDisk(
+	client, err := selectCellClientForDisk(
 		ctx,
 		params,
 		cellSelector,

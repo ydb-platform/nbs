@@ -812,10 +812,10 @@ func computeAllottedUnitsBySize(s *slot) uint64 {
 	return max(1, res)
 }
 
-// Units charged for an overlay disk that reads the base disk at the expected
-// bandwidth regardless of its own size (e.g. a proxy overlay disk of
-// disks.CreateDiskFromBaseDisk): as many base disk (SSD) allocation units as
-// needed to provide this bandwidth, without any oversubscription.
+// Units charged for an overlay disk by its expected read bandwidth (e.g. a
+// proxy overlay disk of disks.CreateDiskFromBaseDisk): as many base disk (SSD)
+// allocation units as needed to provide this bandwidth, without any
+// oversubscription.
 func computeAllottedUnitsByBandwidth(
 	expectedReadBandwidthMiBs uint64,
 	baseDiskUnitMaxReadBandwidthMiBs uint64,
