@@ -28,6 +28,7 @@ void TMixedBlobBuilder::AddBlock(
     const TBlockDataHolder& blockData)
 {
     if (!range.BlobContent) {
+        range.Blocks.reserve(MaxBlocksInBlob);
         range.BlobContent.reserve(MaxBlocksInBlob);
     }
 
