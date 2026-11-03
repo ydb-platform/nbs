@@ -170,6 +170,7 @@ void TVolumeActor::OnPartitionStateChanged(
                 WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
             State->SetMultiPartitionWrapperActor(std::move(actorStack));
+            SendDynamicConfigUpdateToChildActors(ctx);
         }
     } else {
         if (State->GetMultiPartitionWrapperActor()) {
@@ -364,6 +365,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
         nonreplicatedConfig);
+    SendDynamicConfigUpdateToChildActors(ctx);
 }
 
 TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
@@ -954,6 +956,7 @@ void TVolumeActor::HandleTabletStatus(
                     WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
+            SendDynamicConfigUpdateToChildActors(ctx);
 
             if (freshBlocksWriterId) {
                 NCloud::Send<NFreshBlocksWriter::TEvFreshBlocksWriter::

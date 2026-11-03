@@ -23,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
@@ -112,7 +113,8 @@ class TPartitionActor final
 
 private:
     const ui64 StartTime = GetCycleCount();
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const NProto::TPartitionConfig PartitionConfig;
     const bool FreshBlocksWriterEnabled;
     const TVolumeLabelsConstPtr VolumeLabels;
@@ -821,6 +823,10 @@ private:
 
     void HandleResumeFlush(
         const TEvPartitionPrivate::TEvResumeFlush::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)

@@ -1,5 +1,6 @@
 #include "volume_as_partition_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -629,6 +630,8 @@ STFUNC(TVolumeAsPartitionActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.HandleGetDeviceForRange);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             HandleUnexpectedEvent(

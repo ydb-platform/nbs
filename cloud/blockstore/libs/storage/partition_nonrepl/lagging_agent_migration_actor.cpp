@@ -70,6 +70,12 @@ void TLaggingAgentMigrationActor::OnBootstrap(const TActorContext& ctx)
                 PartConfig)});
 }
 
+void TLaggingAgentMigrationActor::OnDynamicConfigUpdate(
+    TStorageConfigConstPtr config)
+{
+    Config = std::move(config);
+}
+
 bool TLaggingAgentMigrationActor::OnMessage(
     const TActorContext& ctx,
     TAutoPtr<IEventHandle>& ev)

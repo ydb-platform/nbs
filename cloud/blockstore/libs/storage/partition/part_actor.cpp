@@ -1136,6 +1136,20 @@ bool TPartitionActor::IsCheckpointAwareCleanupEnabled() const
                PartitionConfig.GetDiskId());
 }
 
+// Apply a dynamic configuration update.
+void TPartitionActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1202,6 +1216,10 @@ STFUNC(TPartitionActor::StateInit)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCountersRequest);
+
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
@@ -1313,6 +1331,10 @@ STFUNC(TPartitionActor::StateWork)
         // TPartitionActor::BootWakeupEventTag tag.
         IgnoreFunc(TEvents::TEvWakeup)
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             if (!HandleRequests(ev) &&
                 !HandleDefaultEvents(ev, SelfId()))
@@ -1394,6 +1416,8 @@ STFUNC(TPartitionActor::StateZombie)
         // there is wakeup event scheduled during boot stage with
         // TPartitionActor::BootWakeupEventTag tag.
         IgnoreFunc(TEvents::TEvWakeup)
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             if (!RejectRequests(ev)) {

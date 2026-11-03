@@ -497,6 +497,10 @@ public:
 
     TString GetPartitionsError() const;
 
+    // Return child actors that receive dynamic configuration updates directly
+    // from Volume.
+    TVector<NActors::TActorId> GetDynamicConfigUpdateRecipients() const;
+
     void SetDiskRegistryBasedPartitionActor(
         TActorsStack actors,
         TNonreplicatedPartitionConfigPtr config);

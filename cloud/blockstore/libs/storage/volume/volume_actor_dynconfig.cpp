@@ -26,12 +26,13 @@ void TVolumeActor::ApplyDynamicConfigUpdate(
     const IBlockstoreConfigConstPtr& config,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
-    // Save the received global configuration even if the per-volume patch hides
+    // Save the received configuration even if the per-volume patch hides
     // its changes. Later patch updates must use this configuration.
     GlobalStorageConfig = config->GetStorageConfig();
-    ApplyStorageConfig();
+    if (ApplyStorageConfig()) {
+        DynamicConfigRevision++;
+        SendDynamicConfigUpdateToChildActors(ctx);
+    }
 }
 
 bool TVolumeActor::ApplyStorageConfig()
@@ -54,6 +55,22 @@ bool TVolumeActor::ApplyStorageConfig()
         State->UpdateStorageConfig(Config);
     }
     return true;
+}
+
+void TVolumeActor::SendDynamicConfigUpdateToChildActors(const TActorContext& ctx)
+{
+    // Send only after an effective dynamic update and once Volume is working.
+    // Partition startup paths call this method again to update new child actors.
+    if (!State || !DynamicConfigRevision || CurrentState != STATE_WORK) {
+        return;
+    }
+
+    for (const auto actorId: State->GetDynamicConfigUpdateRecipients()) {
+        ctx.Send(
+            actorId,
+            new TEvVolume::TEvDynamicConfigUpdate(
+                Config, SelfId(), DynamicConfigRevision));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
