@@ -68,6 +68,7 @@ struct TEvServicePrivate
         EvStartReadData,
         EvReleaseReadDataActor,
         EvStartWriteData,
+        EvReleaseWriteDataActor,
 
         EvEnd
     };
@@ -78,6 +79,12 @@ struct TEvServicePrivate
     struct TEvReleaseReadDataActor final
         : public NActors::
               TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
     {
     };
 
