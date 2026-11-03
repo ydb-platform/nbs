@@ -73,6 +73,15 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
 {
     SIMPLE_UNIT_FORKED_TEST(ReturnsErrorWhenServiceDescriptorsAreExhausted)
     {
+        // Initialize UBSan vptr checks while descriptors are still available.
+        {
+            TSystemError error(EMFILE);
+            auto listener = CreateListener(
+                NInterconnect::TAddress("127.0.0.1", 0),
+                std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+            UNIT_ASSERT(!HasError(listener.GetError()));
+        }
+
         rlimit original;
         UNIT_ASSERT_VALUES_EQUAL(getrlimit(RLIMIT_NOFILE, &original), 0);
         auto limited = original;

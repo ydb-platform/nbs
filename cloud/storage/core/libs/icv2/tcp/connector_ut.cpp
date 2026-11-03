@@ -80,6 +80,13 @@ Y_UNIT_TEST_SUITE(TIcV2ConnectorTest)
 {
     SIMPLE_UNIT_FORKED_TEST(ReturnsErrorWhenWakeupDescriptorsAreExhausted)
     {
+        // Initialize UBSan vptr checks while descriptors are still available.
+        {
+            TSystemError error(EMFILE);
+            auto connector = CreateConnector();
+            UNIT_ASSERT(!HasError(connector.GetError()));
+        }
+
         rlimit original;
         UNIT_ASSERT_VALUES_EQUAL(getrlimit(RLIMIT_NOFILE, &original), 0);
         auto limited = original;
