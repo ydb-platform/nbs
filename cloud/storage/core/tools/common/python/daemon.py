@@ -127,7 +127,7 @@ def _wait_process(ex):
 class DaemonError(RuntimeError):
 
     def __init__(self, message, exit_code=None, stdout=None, stderr=None,
-                 max_stderr_lines=0, stderr_tail=False):
+                 max_stderr_lines_in_error_message=0, stderr_tail=False):
         """Describe a daemon failure with optional process and log details.
 
         Args:
@@ -135,7 +135,8 @@ class DaemonError(RuntimeError):
             exit_code: Process exit status, if known.
             stdout: Path to the stdout log, if available.
             stderr: Path to the stderr log, if available.
-            max_stderr_lines: Maximum number of stderr log lines; zero omits them.
+            max_stderr_lines_in_error_message: Maximum number of stderr log lines
+                included in the exception message; non-positive values omit them.
             stderr_tail: Include the last stderr lines instead of the first.
         """
         message = "Daemon failed with message: {}.".format(message)
@@ -145,8 +146,8 @@ class DaemonError(RuntimeError):
             message += "\nStdout file name: \n{}".format(stdout)
         if stderr is not None:
             message += "\nStderr file name: \n{}".format(stderr)
-        if max_stderr_lines > 0 and stderr is not None:
-            details = extract_log(stderr, max_stderr_lines, tail=stderr_tail)
+        if max_stderr_lines_in_error_message > 0 and stderr is not None:
+            details = extract_log(stderr, max_stderr_lines_in_error_message, tail=stderr_tail)
             if details:
                 message += "\n" + "\n".join(details)
         super(DaemonError, self).__init__(message)
@@ -159,7 +160,7 @@ class Daemon(object):
                  ping_success_codes=None, ping_timeout=2,
                  ping_attempts=0, core_pattern=None, service_name=None,
                  stdout_file=None, stderr_file=None,
-                 stderr_on_error_lines=0, stderr_tail=False,
+                 max_stderr_lines_in_error_message=0, stderr_tail=False,
                  cleanup_timeout=10):
 
         self.__commands = commands
@@ -172,7 +173,7 @@ class Daemon(object):
         self.__ping_timeout = ping_timeout
         self.__ping_attempts = ping_attempts
         self.__core_pattern = core_pattern
-        self.__stderr_on_error_lines = stderr_on_error_lines
+        self.__max_stderr_lines_in_error_message = max_stderr_lines_in_error_message
         self.__stderr_tail = stderr_tail
         self.__cleanup_timeout = cleanup_timeout
 
@@ -311,7 +312,7 @@ class Daemon(object):
             exit_code=exit_code,
             stdout=self.stdout_file_name,
             stderr=self.stderr_file_name,
-            max_stderr_lines=self.__stderr_on_error_lines,
+            max_stderr_lines_in_error_message=self.__max_stderr_lines_in_error_message,
             stderr_tail=self.__stderr_tail)
 
     # Should be guarded by self.__lock.

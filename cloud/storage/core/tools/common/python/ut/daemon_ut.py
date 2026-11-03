@@ -364,7 +364,7 @@ def test_start_failure_includes_stderr_and_exit_code(tmp_path, monkeypatch):
     daemon = Daemon(
         commands=[[common.python_path(), "-c",
                    "import sys; sys.stderr.write('startup failed\\n'); sys.exit(1)"]],
-        cwd=str(tmp_path), stderr_on_error_lines=5, stderr_tail=True)
+        cwd=str(tmp_path), max_stderr_lines_in_error_message=5, stderr_tail=True)
 
     with pytest.raises(DaemonError) as caught:
         with daemon:
@@ -384,7 +384,7 @@ def test_ping_failure_includes_stderr(tmp_path, monkeypatch):
         commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
         ping_port=12345, ping_path="/ping", ping_success_codes=[200],
         ping_attempts=1, ping_timeout=0,
-        stderr_on_error_lines=5, stderr_tail=True)
+        max_stderr_lines_in_error_message=5, stderr_tail=True)
     execution = mock.Mock(returncode=None)
     execution.process.poll.return_value = None
     monkeypatch.setattr(daemon_module.common, "execute", lambda **kwargs: execution)
@@ -498,7 +498,7 @@ def test_failure_includes_stderr_tail_and_exit_code(tmp_path):
     daemon = Daemon(
         commands=[["unused"]], cwd=str(tmp_path),
         stdout_file=str(stdout), stderr_file=str(stderr),
-        stderr_on_error_lines=100, stderr_tail=True)
+        max_stderr_lines_in_error_message=100, stderr_tail=True)
     daemon._Daemon__process = mock.Mock(returncode=1)
     try:
         stderr.write_text("old\n" * 150 + "last error\n")
@@ -517,7 +517,7 @@ def test_failure_handles_missing_stderr(tmp_path, stderr_tail):
     stderr = tmp_path / "stderr"
     daemon = Daemon(
         commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
-        stderr_on_error_lines=10, stderr_tail=stderr_tail)
+        max_stderr_lines_in_error_message=10, stderr_tail=stderr_tail)
     daemon._Daemon__process = mock.Mock(returncode=1)
     try:
         stderr.unlink()
@@ -534,7 +534,7 @@ def test_failure_uses_head_of_stderr_by_default(tmp_path):
     stderr = tmp_path / "stderr"
     daemon = Daemon(
         commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
-        stderr_on_error_lines=4)
+        max_stderr_lines_in_error_message=4)
     try:
         stderr.write_text("first\nsecond\nlast\n")
         error = daemon.failure("failed")
@@ -545,25 +545,25 @@ def test_failure_uses_head_of_stderr_by_default(tmp_path):
 
 
 @pytest.mark.parametrize("stderr_tail", [False, True])
-@pytest.mark.parametrize("max_stderr_lines", [-1, 0, 1, 2, 3])
-def test_failure_limits_stderr_log_lines(tmp_path, stderr_tail, max_stderr_lines):
+@pytest.mark.parametrize("max_stderr_lines_in_error_message", [-1, 0, 1, 2, 3])
+def test_failure_limits_stderr_log_lines(tmp_path, stderr_tail, max_stderr_lines_in_error_message):
     stderr = tmp_path / "stderr"
     daemon = Daemon(
         commands=[["unused"]], cwd=str(tmp_path), stderr_file=str(stderr),
-        stderr_on_error_lines=max_stderr_lines, stderr_tail=stderr_tail)
+        max_stderr_lines_in_error_message=max_stderr_lines_in_error_message, stderr_tail=stderr_tail)
     try:
         stderr.write_text("first\nsecond\nlast\n")
         error = daemon.failure("failed")
         label = "Stderr tail:" if stderr_tail else "Stderr content:"
-        if max_stderr_lines <= 0:
+        if max_stderr_lines_in_error_message <= 0:
             assert label not in str(error)
         else:
             details = str(error).split(label + "\n\n", 1)[1].splitlines()
             expected = ["first", "second", "last"]
             if stderr_tail:
-                expected = expected[-max_stderr_lines:]
+                expected = expected[-max_stderr_lines_in_error_message:]
             else:
-                expected = expected[:max_stderr_lines]
+                expected = expected[:max_stderr_lines_in_error_message]
             assert details == expected
     finally:
         daemon._Daemon__files.close()
