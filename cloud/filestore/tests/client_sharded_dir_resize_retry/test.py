@@ -33,14 +33,20 @@ def verify_filesystem_topology(
 ):
     topology = get_filesystem_topology(client, filesystem_id)
     shards = topology.get("ShardFileSystemIds", [])
+    strict_file_system_size_enforcement_enabled = topology.get(
+        "StrictFileSystemSizeEnforcementEnabled", False
+    )
     assert len(shards) == expected_shard_count
     for idx, shard_id in enumerate(shards):
         assert shard_id == f"{filesystem_id}_s{idx + 1}"
         shard_topology = get_filesystem_topology(client, shard_id)
         assert shard_topology.get("ShardNo", 0) == idx + 1
-        # ShardFileSystemIds should be empty for shards with directory
-        # sharding feature disabled and non-empty otherwise
-        if directory_sharding_enabled:
+        # Shards need the full topology for directory sharding or strict
+        # filesystem size enforcement.
+        if (
+            directory_sharding_enabled
+            or strict_file_system_size_enforcement_enabled
+        ):
             assert shard_topology.get("ShardFileSystemIds", []) == shards
         else:
             assert len(shard_topology.get("ShardFileSystemIds", [])) == 0
