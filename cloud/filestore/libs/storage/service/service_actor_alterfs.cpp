@@ -2,6 +2,7 @@
 
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -454,17 +455,20 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
             ShardCreationState.MarkPersistentStateUnsupported();
             GetStorageStats(ctx);
         } else if (ShardCreationState.IsPersistentStateSupported()) {
+            ReportShardCreationStateResponseMissing(
+                TStringBuilder() << "Filesystem " << FileSystemId.Quote()
+                                 << ": response is missing shard creation state"
+                                 << " after persistent state support was confirmed");
             ReplyAndDie(
                 ctx,
                 MakeError(
                     E_REJECTED,
                     "shard creation state response is missing"));
         } else {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] UnsafeChangeTabletState returned no shard creation state",
-                FileSystemId.c_str());
+            ReportShardCreationStateResponseMissing(
+                TStringBuilder() << "Filesystem " << FileSystemId.Quote()
+                                 << ": unexpected response without shard creation"
+                                 << " state after switching to non-persistent flow");
         }
 
         return;
@@ -478,15 +482,25 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
     }
 
     if (!ShardCreationState.HasCreatedShardBitmap()) {
-        ShardCreationState.LogStateUnavailable(ctx);
+        // The initial read is complete, and updates are only sent after the
+        // topology response initializes the bitmap. Another state response
+        // before bitmap initialization is therefore unexpected.
+        ReportShardCreationBitmapMissing(
+            TStringBuilder() << "Filesystem " << FileSystemId.Quote()
+                             << ": shard creation state response received"
+                             << " without an initialized shard bitmap");
+        ReplyAndDie(
+            ctx,
+            MakeError(E_INVALID_STATE, "shard creation bitmap is not initialized"));
         return;
     }
 
     if (shardCreationState.GetVersion() <
         ShardCreationState.GetShardCreationStateVersion())
     {
-        // Older update replies can arrive after a newer response has already
-        // advanced the local shard creation state.
+        // A newer response has already advanced the local shard creation state.
+        // Ignoring this stale reply is intentional: progress has already been
+        // made, so returning here does not stall the operation.
         return;
     }
 
@@ -505,6 +519,12 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
     }
 
     if (mergeResult.GetResult()) {
+        // Concurrent updates can race on the state version, leaving local
+        // creation bits absent from the returned persistent bitmap. The
+        // companion retries the CAS update with the merged bitmap and the
+        // returned version so these bits are persisted before configuration.
+        // It sends a new request whose response will resume processing, so
+        // returning here does not stall the operation.
         ShardCreationState.UpdateShardCreationState(ctx);
         return;
     }
