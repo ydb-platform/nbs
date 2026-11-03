@@ -81,6 +81,25 @@ struct TEnv
 
 Y_UNIT_TEST_SUITE(FetchTest)
 {
+    Y_UNIT_TEST(ShouldReturnEmptyInstancesFromDefaultStub)
+    {
+        auto fetcher = CreateInstanceFetcherStub();
+        fetcher->Start();
+
+        TInstanceList instances;
+        TInstanceInfo instance;
+        instance.Host = "stale.example.net";
+        instance.Port = 9766;
+        instances.Instances.push_back(std::move(instance));
+
+        auto future = fetcher->FetchInstances(instances);
+        UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
+        future.GetValueSync();
+        UNIT_ASSERT(instances.Instances.empty());
+
+        fetcher->Stop();
+    }
+
     struct TInstanceSpec
     {
         TString Host;

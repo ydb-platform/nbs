@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
+#include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/logbroker/iface/public.h>
@@ -22,6 +23,7 @@
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
 namespace NCloud::NBlockStore::NProto {
+    class TEdsDiscoveryConfig;
     class TGrpcClientConfig;
     class TRootKmsConfig;
 }   // namespace NCloud::NBlockStore::NProto
@@ -50,6 +52,11 @@ struct TServerModuleFactories
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
+
+    std::function<NDiscovery::IInstanceFetcherPtr(
+        const NProto::TEdsDiscoveryConfig& config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring)> EdsInstanceFetcherFactory;
 
     std::function<IComputeClientPtr(
         NProto::TGrpcClientConfig config,

@@ -6,6 +6,31 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TEdsDiscoveryConfig
+{
+    // Cloud DNS EDS plaintext gRPC endpoint, including port.
+    optional string Endpoint = 1;
+
+    // Host masks passed to EDS as resource names.
+    repeated string HostPatterns = 2;
+
+    // EDS request timeout (in milliseconds); defaults to 15000.
+    optional uint32 RequestTimeout = 3;
+
+    // Interval between EDS requests (in milliseconds); defaults to 300000.
+    optional uint32 RequestInterval = 4;
+
+    // Ports for NBS instances obtained from EDS; defaults to 9766 and 0.
+    // An explicitly configured zero disables the corresponding port.
+    optional uint32 InstancePort = 5;
+    optional uint32 SecureInstancePort = 6;
+
+    // Node identifier sent in EDS requests; defaults to "nbs".
+    optional string ClientId = 7;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiscoveryServiceConfig
 {
     // Conductor api url.
@@ -41,4 +66,7 @@ message TDiscoveryServiceConfig
 
     // Max ping requests per one healthcheck cycle
     optional uint32 MaxPingRequestsPerHealthCheck = 12;
+
+    // Cloud DNS EDS discovery settings.
+    optional TEdsDiscoveryConfig Eds = 13;
 }

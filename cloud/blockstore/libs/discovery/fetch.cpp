@@ -479,7 +479,7 @@ public:
     TFuture<void> FetchInstances(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
-            if (instances.Instances.empty()) {
+            if (Instances.empty() || instances.Instances.empty()) {
                 instances.Instances = Instances;
             }
         }
