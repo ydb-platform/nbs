@@ -45,6 +45,11 @@ TIOCompanion::TIOCompanion(
     , PartCounters(std::move(partCounters))
 {}
 
+void TIOCompanion::UpdateStorageConfig(TStorageConfigConstPtr config)
+{
+    Config = std::move(config);
+}
+
 void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto request = ChannelsState.DequeueIORequest(channel)) {

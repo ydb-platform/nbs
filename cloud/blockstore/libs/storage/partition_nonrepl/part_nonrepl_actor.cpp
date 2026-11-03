@@ -715,6 +715,7 @@ void TNonreplicatedPartitionActor::HandleDynamicConfigUpdate(
         return;
     }
     Config = msg->StorageConfig;
+    GetDeviceForRangeCompanion.UpdateStorageConfig(Config);
 }
 
 STFUNC(TNonreplicatedPartitionActor::StateWork)

@@ -513,6 +513,9 @@ void TFreshBlocksWriterActor::HandleDynamicConfigUpdate(
         return;
     }
     Config = msg->StorageConfig;
+    if (IOCompanion) {
+        IOCompanion->UpdateStorageConfig(Config);
+    }
 }
 
 STFUNC(TFreshBlocksWriterActor::StateWaitPartition)

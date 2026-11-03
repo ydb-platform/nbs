@@ -873,6 +873,7 @@ void TNonreplicatedPartitionRdmaActor::HandleDynamicConfigUpdate(
         return;
     }
     Config = msg->StorageConfig;
+    GetDeviceForRangeCompanion.UpdateStorageConfig(Config);
 }
 
 STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
