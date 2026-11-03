@@ -1,10 +1,24 @@
 #pragma once
 
-#include "tls_certificate_provider.h"
-
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/strbuf.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+
+namespace NCloud {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCertificateFiles
+{
+    TString PrivateKeyPath;
+    TString CertChainPath;
+
+    bool operator==(const TCertificateFiles& other) const = default;
+};
+
+}   // namespace NCloud
 
 namespace NCloud::NTlsUtils {
 
