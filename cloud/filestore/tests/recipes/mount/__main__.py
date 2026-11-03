@@ -84,7 +84,7 @@ def stop(argv):
         if os.path.exists(MOUNT_PATH_FILE_NAME):
             with open(MOUNT_PATH_FILE_NAME) as f:
                 paths = [path.strip() for path in f if path.strip()]
-            inspect_mounts(args.filesystem, paths, listings)
+            run_mount_listings(args.filesystem, paths, listings)
     finally:
         # SIGKILL may remain pending on a blocked FUSE request. Do not wait.
         for listing, log_path in listings:
@@ -94,12 +94,12 @@ def stop(argv):
                 except OSError:
                     logger.exception("failed to kill mount listing; output: %s", log_path)
         try:
-            stop_clients()
+            stop_mount_clients()
         finally:
-            collect_listings(listings)
+            log_mount_listing_results(listings)
 
 
-def inspect_mounts(filesystem, paths, listings):
+def run_mount_listings(filesystem, paths, listings):
     # Attempt full listings in parallel, with one shared deadline so diagnostics
     # cannot delay client shutdown indefinitely when a backend is unresponsive.
     deadline = time.monotonic() + MOUNT_LISTING_TIMEOUT_SECONDS
@@ -130,7 +130,7 @@ def inspect_mounts(filesystem, paths, listings):
         time.sleep(min(0.1, remaining))
 
 
-def collect_listings(listings):
+def log_mount_listing_results(listings):
     for listing, log_path in listings:
         exit_code = listing.process.poll()
         if exit_code is None:
@@ -142,7 +142,7 @@ def collect_listings(listings):
         logger.info("Mount listing (%s):\n%s", log_path, "\n".join(tail))
 
 
-def stop_clients():
+def stop_mount_clients():
     if os.path.exists(PID_FILE_NAME):
         with open(PID_FILE_NAME) as f:
             for pid in f:

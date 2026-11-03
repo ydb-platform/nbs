@@ -8,12 +8,12 @@ from cloud.storage.core.tools.common.python import daemon as daemon_module
 
 
 @pytest.fixture
-def launch_client(monkeypatch, tmp_path):
+def client_factory(monkeypatch, tmp_path):
     processes = []
     streams = []
     execute_process = daemon_module.common.execute
 
-    def launch(script, timeout=5, finish_before_return=False):
+    def create_client(script, timeout=5, finish_before_return=False):
         def execute(command, **kwargs):
             streams.extend([kwargs["stdin"], kwargs["stdout"], kwargs["stderr"]])
             execution = execute_process(
@@ -28,7 +28,7 @@ def launch_client(monkeypatch, tmp_path):
         return client_module.FilestoreCliClient(
             "unused-client", 1, cwd=str(tmp_path), timeout=timeout)
 
-    yield launch, processes, streams
+    yield create_client, processes, streams
 
     for process in processes:
         if process.poll() is None:
@@ -37,9 +37,9 @@ def launch_client(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("exit_code", [0, 1])
-def test_mount_reports_early_exit(launch_client, tmp_path, exit_code):
-    launch, processes, streams = launch_client
-    client = launch(
+def test_mount_reports_early_exit(client_factory, tmp_path, exit_code):
+    create_client, processes, streams = client_factory
+    client = create_client(
         "import sys; sys.stderr.write('mount diagnostic\\n'); "
         "sys.exit({})".format(exit_code), timeout=30)
 
@@ -56,9 +56,9 @@ def test_mount_reports_early_exit(launch_client, tmp_path, exit_code):
     assert all(stream.closed for stream in streams)
 
 
-def test_mount_timeout_stops_client(launch_client, tmp_path):
-    launch, processes, streams = launch_client
-    client = launch("import time; time.sleep(60)", timeout=0.01)
+def test_mount_timeout_stops_client(client_factory, tmp_path):
+    create_client, processes, streams = client_factory
+    client = create_client("import time; time.sleep(60)", timeout=0.01)
 
     with pytest.raises(RuntimeError, match="mount was not ready") as error:
         client.mount("test-fs", str(tmp_path / "mount"))
@@ -69,9 +69,9 @@ def test_mount_timeout_stops_client(launch_client, tmp_path):
 
 
 @pytest.mark.parametrize("finish_before_return", [False, True])
-def test_mount_error_limits_stderr_to_100_log_lines(launch_client, tmp_path, finish_before_return):
-    launch, processes, streams = launch_client
-    client = launch(
+def test_mount_error_limits_stderr_to_100_log_lines(client_factory, tmp_path, finish_before_return):
+    create_client, processes, streams = client_factory
+    client = create_client(
         "import sys; sys.stderr.write('startup log\\n' * 150 + 'mount failed\\n'); sys.exit(1)",
         finish_before_return=finish_before_return)
 
@@ -85,9 +85,9 @@ def test_mount_error_limits_stderr_to_100_log_lines(launch_client, tmp_path, fin
     assert all(stream.closed for stream in streams)
 
 
-def test_mount_success_keeps_client_running(launch_client, monkeypatch, tmp_path):
-    launch, processes, streams = launch_client
-    client = launch("import time; time.sleep(60)")
+def test_mount_success_keeps_client_running(client_factory, monkeypatch, tmp_path):
+    create_client, processes, streams = client_factory
+    client = create_client("import time; time.sleep(60)")
     monkeypatch.setattr(client_module.os.path, "ismount", lambda path: True)
 
     assert client.mount("test-fs", str(tmp_path / "mount")) == processes[0].pid
@@ -95,9 +95,9 @@ def test_mount_success_keeps_client_running(launch_client, monkeypatch, tmp_path
     assert all(stream.closed for stream in streams)
 
 
-def test_mount_readiness_error_stops_client(launch_client, monkeypatch, tmp_path):
-    launch, processes, streams = launch_client
-    client = launch("import time; time.sleep(60)")
+def test_mount_readiness_error_stops_client(client_factory, monkeypatch, tmp_path):
+    create_client, processes, streams = client_factory
+    client = create_client("import time; time.sleep(60)")
 
     def fail_readiness(path):
         raise OSError("readiness check failed")
@@ -110,10 +110,10 @@ def test_mount_readiness_error_stops_client(launch_client, monkeypatch, tmp_path
     assert all(stream.closed for stream in streams)
 
 
-def test_mount_timeout_kills_client_ignoring_sigterm(launch_client, monkeypatch, tmp_path):
-    launch, processes, streams = launch_client
+def test_mount_timeout_kills_client_ignoring_sigterm(client_factory, monkeypatch, tmp_path):
+    create_client, processes, streams = client_factory
     ready = tmp_path / "client-ready"
-    client = launch(
+    client = create_client(
         "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
         "open({!r}, 'w').close(); time.sleep(60)".format(str(ready)), timeout=0.1)
 
@@ -132,16 +132,17 @@ def test_mount_timeout_kills_client_ignoring_sigterm(launch_client, monkeypatch,
 
 @pytest.mark.parametrize("finish_before_return", [False, True])
 def test_mount_failure_runs_coredump_and_sanitizer_checks(
-        launch_client, monkeypatch, tmp_path, finish_before_return):
-    launch, processes, streams = launch_client
+        client_factory, monkeypatch, tmp_path, finish_before_return):
+    create_client, processes, streams = client_factory
     checked = []
     execution_type = common.process._Execution
     monkeypatch.setattr(execution_type, "verify_no_coredumps",
                         lambda self: checked.append("coredumps"))
     monkeypatch.setattr(execution_type, "verify_sanitize_errors",
                         lambda self: checked.append("sanitizers"))
-    client = launch("import sys; sys.exit(1)", timeout=30,
-                    finish_before_return=finish_before_return)
+    client = create_client(
+        "import sys; sys.exit(1)", timeout=30,
+        finish_before_return=finish_before_return)
 
     started = time.monotonic()
     with pytest.raises(RuntimeError):

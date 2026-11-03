@@ -56,12 +56,12 @@ def test_stop_without_startup_state(recipe, monkeypatch):
     recipe.stop([])
 
 
-def test_stop_clients_skips_blank_lines(recipe, monkeypatch, tmp_path):
+def test_stop_mount_clients_skips_blank_lines(recipe, monkeypatch, tmp_path):
     (tmp_path / recipe.PID_FILE_NAME).write_text("\n123\n  \n456\n\n")
     stopped = []
     monkeypatch.setattr(recipe, "shutdown", stopped.append)
 
-    recipe.stop_clients()
+    recipe.stop_mount_clients()
 
     assert stopped == [123, 456]
 
@@ -172,7 +172,7 @@ def test_listing_can_finish_after_five_seconds(recipe, monkeypatch, caplog):
         process=SimpleNamespace(poll=lambda: 0 if clock[0] >= 10 else None)))
     listings = []
 
-    recipe.inspect_mounts("test-fs", ["mount"], listings)
+    recipe.run_mount_listings("test-fs", ["mount"], listings)
 
     assert len(listings) == 1
     assert 10 <= clock[0] < 11
