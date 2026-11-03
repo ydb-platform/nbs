@@ -305,9 +305,10 @@ struct TTestEnv
             NProto::CELL_DATA_TRANSPORT_GRPC,
         bool grpcDataFallback = false,
         ui32 rdmaSettleTimeMs = 0,
-        bool hostMigrationEnabled = false,
-        // a second place to move to, so that a test can tell "stay where the
-        // move put you" from "move again"
+        // a place to move to once a host is declared dead
+        bool secondHost = false,
+        // and another, so that a test can tell "stay where the move put you"
+        // from "move again"
         bool spareHost = false)
     {
         NProto::TCellConfig proto;
@@ -316,10 +317,8 @@ struct TTestEnv
         proto.SetTransport(transport);
         proto.SetGrpcDataFallbackEnabled(grpcDataFallback);
         proto.SetRdmaSettleTime(rdmaSettleTimeMs);
-        proto.SetHostMigrationEnabled(hostMigrationEnabled);
         proto.AddHosts()->SetFqdn("host-a");
-        if (hostMigrationEnabled) {
-            // a place to move to once a host is declared dead
+        if (secondHost) {
             proto.AddHosts()->SetFqdn("host-b");
         }
         if (spareHost) {
@@ -470,18 +469,6 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.EndpointsSetup->RdmaHandler->HandleUnavailable();
 
         UNIT_ASSERT_VALUES_EQUAL("host-b", connection->GetHost());
-    }
-
-    Y_UNIT_TEST(ShouldStayOnRdmaOnlyHostWhenMigrationIsDisabled)
-    {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, false, 0, false);
-
-        auto connection = env.Connect("host-a");
-        UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
-
-        env.EndpointsSetup->RdmaHandler->HandleUnavailable();
-
-        UNIT_ASSERT_VALUES_EQUAL("host-a", connection->GetHost());
     }
 
     Y_UNIT_TEST(ShouldMoveDataBackToGrpcWhenRdmaBreaks)
@@ -667,20 +654,6 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         auto connection = env.Connect("host-a");
 
         env.GrpcClient->Service->TabletHostToReport = "host-a";
-        connection->GetService()->MountVolume(
-            MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TMountVolumeRequest>());
-
-        UNIT_ASSERT_VALUES_EQUAL("host-a", connection->GetHost());
-    }
-
-    Y_UNIT_TEST(ShouldNotFollowTheTabletHostWhenMigrationIsDisabled)
-    {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, false);
-
-        auto connection = env.Connect("host-a");
-
-        env.GrpcClient->Service->TabletHostToReport = "host-b";
         connection->GetService()->MountVolume(
             MakeIntrusive<TCallContext>(),
             std::make_shared<NProto::TMountVolumeRequest>());

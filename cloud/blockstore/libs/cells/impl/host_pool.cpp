@@ -65,18 +65,14 @@ TCellHostPool::TCellHostPool(TCellConfigPtr config, TBootstrap bootstrap)
         Log = Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS");
     }
 
-    if (Config->GetHostMigrationEnabled()) {
-        // the pinger reschedules itself HostPingPeriod ahead every sweep, so
-        // a zero period would busy-loop the scheduler thread; a zero timeout
-        // would fail every ping outright. Neither is a running state to
-        // recover from - fail at start rather than limp
-        Y_ABORT_UNLESS(
-            Config->GetHostPingPeriod(),
-            "HostPingPeriod must be non-zero when host migration is enabled");
-        Y_ABORT_UNLESS(
-            Config->GetHostPingTimeout(),
-            "HostPingTimeout must be non-zero when host migration is enabled");
-    }
+    // the pinger reschedules itself HostPingPeriod ahead every sweep, so a
+    // zero period would busy-loop the scheduler thread; a zero timeout would
+    // fail every ping outright. Neither is a running state to recover from -
+    // fail at start rather than limp
+    Y_ABORT_UNLESS(Config->GetHostPingPeriod(), "HostPingPeriod must be non-zero");
+    Y_ABORT_UNLESS(
+        Config->GetHostPingTimeout(),
+        "HostPingTimeout must be non-zero");
 
     for (const auto& [fqdn, hostConfig]: Config->GetHosts()) {
         Y_UNUSED(hostConfig);
@@ -335,10 +331,8 @@ TVector<TCellHostPool::THostStatus> TCellHostPool::GetHostStatuses() const
     with_lock (Lock) {
         result.reserve(Channels.size());
         for (const auto& [fqdn, channel]: Channels) {
-            // RefCount, not the watcher count: a connection holds a reference
-            // to its channel always, while it watches the host only when host
-            // migration is on. So watchers would read zero for real
-            // connections whenever migration is disabled
+            // RefCount, not the watcher count: watchers are weak and only
+            // pruned on the next liveness verdict, so they overcount
             result.push_back(THostStatus{
                 .Fqdn = fqdn,
                 .Liveness = channel.Liveness,
@@ -514,9 +508,7 @@ void TCellHostPool::Start()
         TopUpWarmChannelsLocked();
     }
 
-    if (Config->GetHostMigrationEnabled()) {
-        SchedulePingSweep();
-    }
+    SchedulePingSweep();
 }
 
 void TCellHostPool::Stop()
