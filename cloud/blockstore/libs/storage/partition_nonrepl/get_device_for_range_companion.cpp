@@ -30,6 +30,12 @@ TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
     , AllowedOperation(allowedOperation)
 {}
 
+void TGetDeviceForRangeCompanion::UpdateStorageConfig(
+    TStorageConfigConstPtr config)
+{
+    Config = std::move(config);
+}
+
 void TGetDeviceForRangeCompanion::SetAllowedOperation(
     EAllowedOperation allowedOperation)
 {
