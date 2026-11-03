@@ -429,10 +429,14 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         TCellsSnapshot snapshot;
         snapshot.HostStatuses["xyz"].push_back(
-            {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
+            {.Fqdn = "host-alpha",
+             .Liveness = EHostLiveness::Alive,
+             .Warm = false,
              .Connections = 0});
         snapshot.HostStatuses["uvw"].push_back(
-            {.Fqdn = "host-gamma", .Alive = true, .Warm = false,
+            {.Fqdn = "host-gamma",
+             .Liveness = EHostLiveness::Unknown,
+             .Warm = false,
              .Connections = 0});
         snapshot.Mounts.push_back(
             {.DiskId = "disk-1",
@@ -455,7 +459,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             html,
             "<details class='panel panel-success'>"
             "<summary class='panel-heading'><strong>xyz</strong>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "1 / 1 alive");
+        UNIT_ASSERT_STRING_CONTAINS(html, "1 alive</span>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<span class='label label-default'>default: rdma</span>");
@@ -888,6 +892,41 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(2, cell->GetCounter("HostsConfigured")->Val());
         UNIT_ASSERT(cell->FindCounter("HostsUnavailable"));
         UNIT_ASSERT(cell->FindCounter("Migrations"));
+    }
+
+    Y_UNIT_TEST(ShouldSummarizeHostLivenessInCellHeading)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-1", "host-2", "host-3"})
+            .Build();
+        cfg.MutableCells(0)->SetHostMigrationEnabled(true);
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        TCellsSnapshot snapshot;
+        auto& hosts = snapshot.HostStatuses["xyz"];
+        hosts.push_back({.Fqdn = "host-1", .Liveness = EHostLiveness::Dead});
+        hosts.push_back({.Fqdn = "host-2", .Liveness = EHostLiveness::Alive});
+        hosts.push_back(
+            {.Fqdn = "host-3", .Liveness = EHostLiveness::Unknown});
+
+        TStringStream out;
+        RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+
+        // one host found dead: the cell is open and amber, and the heading
+        // tells the three populations apart
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<details class='panel panel-warning' open>"
+            "<summary class='panel-heading'><strong>xyz</strong>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-warning'>"
+            "1 down, 1 alive, 1 not probed</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td>host-3</td><td><span class='label label-default'>"
+            "not probed</span></td>");
     }
 }
 

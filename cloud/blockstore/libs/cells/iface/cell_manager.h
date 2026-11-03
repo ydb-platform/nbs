@@ -51,7 +51,7 @@ struct TCellDescribeResult
 struct TCellHostStatus
 {
     TString Fqdn;
-    bool Alive = false;
+    EHostLiveness Liveness = EHostLiveness::Unknown;
     bool Warm = false;
     ui32 Connections = 0;
 };
