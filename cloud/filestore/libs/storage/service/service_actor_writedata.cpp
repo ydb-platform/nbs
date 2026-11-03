@@ -253,6 +253,9 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     // Empty for one-shot actors and when shutting down.
     TActorId ServiceActorId;
+
+    // Preserved across cleanup to reject replies from previous requests.
+    ui64 RequestGeneration = 0;
     std::optional<TRequestState> RequestState;
 
 public:
@@ -335,6 +338,7 @@ private:
     {
         Y_ABORT_UNLESS(RequestState);
         Become(&TThis::StateWork);
+        ++RequestGeneration;
         auto& state = *RequestState;
 
         if (!state.UseThreeStageWrite) {
@@ -396,7 +400,11 @@ private:
             state.BlobRange.Length,
             state.BlobRange.Offset);
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void Cleanup()
@@ -466,6 +474,10 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
         const auto& LogTag = state.LogTag;
 
@@ -639,7 +651,7 @@ private:
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str(),
                 state.WriteRequest.GetIovecs().size());
-            SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
+            SendToBSProxy(ctx, proxy, request.release(), RequestGeneration);
         }
     }
 
@@ -647,6 +659,10 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
         const auto& LogTag = state.LogTag;
 
@@ -829,13 +845,21 @@ private:
             state.LogTag.c_str(),
             request->Record.DebugString().Quote().c_str());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleAddDataResponse(
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
         const auto& LogTag = state.LogTag;
 
@@ -893,7 +917,11 @@ private:
             state.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void CancelAddData(const TActorContext& ctx)
@@ -928,13 +956,21 @@ private:
             state.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleConfirmAddDataResponse(
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
         const auto& LogTag = state.LogTag;
 
@@ -970,6 +1006,10 @@ private:
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
         const auto& LogTag = state.LogTag;
 
@@ -1002,9 +1042,12 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Get()->Tag != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
 
-        Y_UNUSED(ev);
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
             return;
         }
@@ -1054,7 +1097,7 @@ private:
         }
 
         state.TabletRetryRequest = retryRequest;
-        ctx.Schedule(delay, new TEvents::TEvWakeup());
+        ctx.Schedule(delay, new TEvents::TEvWakeup(RequestGeneration));
     }
 
     void ResetTabletProxyRetryState()
@@ -1116,13 +1159,21 @@ private:
             state.RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleWriteDataResponse(
         const TEvService::TEvWriteDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = *RequestState;
 
         auto* msg = ev->Get();
