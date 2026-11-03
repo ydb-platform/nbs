@@ -97,8 +97,8 @@ struct TNoBackpressurePolicy: ICompactionPolicy
 struct TPartitionStateOptions
 {
     bool CheckpointAwareCleanupEnabled = false;
-    bool UseBlobChannelDataKindForCounters = false;
     bool CompactionStatsTrackerEnabled = false;
+    bool ExtendedBlobCountersEnabled = false;
     ICompactionPolicyPtr CompactionPolicy =
         BuildDefaultCompactionPolicy(5, 0, false);
     ui32 MixedIndexCacheSize = 0;
@@ -134,8 +134,8 @@ TPartitionState MakeState(
         0,              // tabletId
         std::nullopt,   // mixedBlocksFilterConfig
         options.CheckpointAwareCleanupEnabled,
-        options.UseBlobChannelDataKindForCounters,
-        options.CompactionStatsTrackerEnabled);
+        options.CompactionStatsTrackerEnabled,
+        options.ExtendedBlobCountersEnabled);
 }
 
 TPartitionState MakeState(
@@ -145,60 +145,189 @@ TPartitionState MakeState(
     return MakeState(DefaultConfig(1, blockCount), std::move(options));
 }
 
-struct TBlobAndBlockCounts
-{
-    ui64 MixedBlobs = 0;
-    ui64 MergedBlobs = 0;
-    ui64 MixedBlocks = 0;
-    ui64 MergedBlocks = 0;
-};
-
-void AssertBlobAndBlockCounts(
-    const NProto::TPartitionStats& stats,
-    const TBlobAndBlockCounts& channel,
-    const TBlobAndBlockCounts& index,
-    const TString& context = {})
-{
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MixedBlobs,
-        stats.GetMixedBlobsCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MergedBlobs,
-        stats.GetMergedBlobsCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MixedBlocks,
-        stats.GetMixedBlocksCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MergedBlocks,
-        stats.GetMergedBlocksCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MixedBlobs,
-        stats.GetMixedIndexBlobsCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MergedBlobs,
-        stats.GetMergedIndexBlobsCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MixedBlocks,
-        stats.GetMixedIndexBlocksCount(),
-        context);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MergedBlocks,
-        stats.GetMergedIndexBlocksCount(),
-        context);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldAccountForBlobCountersByChannelAndIndex)
+    {
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        meta.MutableConfig()->AddExplicitChannelProfiles()->SetDataKind(
+            static_cast<ui32>(EChannelDataKind::Mixed));
+        auto state = MakeState(meta, {.ExtendedBlobCountersEnabled = true});
+        const TPartialBlobId mixedBlob(1, 1, 3, 123, 0, 0);
+        const TPartialBlobId mergedBlob(1, 2, 5, 456, 0, 0);
+        const TPartialBlobId deletionMarker(1, 3, 0, 0, 0, 0);
+
+        state.UpdateBlobCounters(mixedBlob, EChannelDataKind::Mixed, 3, true);
+        state.UpdateBlobCounters(mergedBlob, EChannelDataKind::Merged, 7, true);
+        state.UpdateBlobCounters(
+            deletionMarker,
+            EChannelDataKind::Mixed,
+            5,
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, state.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetMixedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetMergedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetMixedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, state.GetMergedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetMixedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetMergedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(7, state.GetMixedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetMergedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(456, state.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(123, state.GetMergedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            123,
+            state.GetStats().GetBlobByteCounters().GetMixedIndexBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            456,
+            state.GetStats().GetBlobByteCounters().GetMergedIndexBytesCount());
+
+        auto restored =
+            MakeState(state.GetMeta(), {.ExtendedBlobCountersEnabled = true});
+        UNIT_ASSERT_VALUES_EQUAL(456, restored.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(123, restored.GetMergedBytesCount());
+        restored
+            .UpdateBlobCounters(mixedBlob, EChannelDataKind::Mixed, 3, false);
+        restored
+            .UpdateBlobCounters(mergedBlob, EChannelDataKind::Merged, 7, false);
+        UNIT_ASSERT_VALUES_EQUAL(1, restored.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, restored.GetMixedIndexBlobsCount());
+        restored.UpdateBlobCounters(
+            deletionMarker,
+            EChannelDataKind::Mixed,
+            5,
+            false);
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedIndexBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMergedBytesCount());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveInitializedBlobCountersIncludingZero)
+    {
+        for (const ui64 count: {0ULL, 123ULL}) {
+            auto meta = DefaultConfig(1, DefaultBlockCount);
+            auto& stats = *meta.MutableStats();
+            stats.SetMixedBlocksCount(20);
+            stats.SetMergedBlocksCount(60);
+            stats.SetMixedBlobsCount(2);
+            stats.SetMergedBlobsCount(3);
+            stats.SetMixedChannelBlobsCount(count);
+            stats.SetMergedChannelBlobsCount(count);
+            stats.SetMixedChannelBlocksCount(count);
+            stats.SetMergedChannelBlocksCount(count);
+            auto& counters = *stats.MutableBlobByteCounters();
+            counters.SetMixedBytesCount(count);
+            counters.SetMergedBytesCount(count);
+            counters.SetMixedIndexBytesCount(count);
+            counters.SetMergedIndexBytesCount(count);
+
+            auto state = MakeState(meta, {.ExtendedBlobCountersEnabled = true});
+            const auto& restored = state.GetStats().GetBlobByteCounters();
+            UNIT_ASSERT_VALUES_EQUAL(count, restored.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(count, restored.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(count, restored.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                count,
+                restored.GetMergedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(count, state.GetMixedChannelBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                count,
+                state.GetMergedChannelBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(count, state.GetMixedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(count, state.GetMergedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(3, state.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(20, state.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(60, state.GetMergedBlocksCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldOnlyUpdateLegacyBlobCountersWhenDisabled)
+    {
+        const TPartialBlobId blob(1, 1, 3, 123, 0, 0);
+        auto state = MakeState();
+        state.UpdateBlobCounters(blob, EChannelDataKind::Mixed, 3, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetMixedBlocksCount());
+        state.UpdateBlobCounters(blob, EChannelDataKind::Mixed, 3, false);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedIndexBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedIndexBlocksCount());
+        UNIT_ASSERT(!state.GetStats().HasBlobByteCounters());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedChannelBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldReinitializeBlobCountersAfterDisabledWrites)
+    {
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        auto state = MakeState(meta, {.ExtendedBlobCountersEnabled = true});
+        state.UpdateBlobCounters(
+            TPartialBlobId(1, 1, 3, 123, 0, 0),
+            EChannelDataKind::Mixed,
+            1,
+            true);
+
+        auto disabled = MakeState(state.GetMeta());
+        UNIT_ASSERT(!disabled.GetStats().HasBlobByteCounters());
+        UNIT_ASSERT_VALUES_EQUAL(0, disabled.GetMixedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, disabled.GetMergedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, disabled.GetMixedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, disabled.GetMergedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, disabled.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, disabled.GetMixedBlobsCount());
+        disabled.IncrementMixedBlocksCount(1);
+        disabled.IncrementMergedBlocksCount(3);
+        disabled.IncrementMergedBlobsCount(1);
+
+        // Repeated disabled restarts must preserve writes and cleared counters.
+        auto restarted = MakeState(disabled.GetMeta());
+        auto restored = MakeState(
+            restarted.GetMeta(),
+            {.ExtendedBlobCountersEnabled = true});
+        UNIT_ASSERT_VALUES_EQUAL(1, restored.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, restored.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, restored.GetMergedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, restored.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, restored.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(5, restored.GetMergedChannelBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, restored.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5 * DefaultBlockSize,
+            restored.GetMergedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * DefaultBlockSize,
+            restored.GetStats()
+                .GetBlobByteCounters()
+                .GetMixedIndexBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * DefaultBlockSize,
+            restored.GetStats()
+                .GetBlobByteCounters()
+                .GetMergedIndexBytesCount());
+    }
+
     Y_UNIT_TEST(ShouldOnlyCreateCompactionStatsTrackerWhenEnabled)
     {
         auto disabledState = MakeState();
@@ -210,263 +339,102 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT(enabledState.AccessCompactionStatsTracker());
     }
 
-    Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
+    Y_UNIT_TEST(ShouldInitializeAndClearChannelCountersAcrossRestarts)
     {
-        struct TTestCase
-        {
-            TString Name;
-            TBlobAndBlockCounts Channel;
-            TBlobAndBlockCounts Index;
-            TBlobAndBlockCounts ExpectedIndex;
-            TBlobAndBlockCounts ExpectedChannelWhenDisabled;
-            TBlobAndBlockCounts ExpectedChannelWithMixed;
-            TBlobAndBlockCounts ExpectedChannelWithoutMixed;
-        };
+        for (bool hasMixedChannel: {false, true}) {
+            auto meta = DefaultConfig(1, DefaultBlockCount);
+            if (hasMixedChannel) {
+                meta.MutableConfig()->AddExplicitChannelProfiles()->SetDataKind(
+                    static_cast<ui32>(EChannelDataKind::Mixed));
+            }
+            auto& stats = *meta.MutableStats();
+            stats.SetMixedBlobsCount(2);
+            stats.SetMergedBlobsCount(3);
+            stats.SetMixedBlocksCount(20);
+            stats.SetMergedBlocksCount(60);
 
-        const TTestCase testCases[] = {
-            {
-                .Name = "empty",
-                .Channel = {},
-                .Index = {},
-                .ExpectedIndex = {},
-                .ExpectedChannelWhenDisabled = {},
-                .ExpectedChannelWithMixed = {},
-                .ExpectedChannelWithoutMixed = {},
-            },
-            {
-                .Name = "legacy mixed and merged",
-                .Channel = {2, 3, 20, 60},
-                .Index = {},
-                .ExpectedIndex = {2, 3, 20, 60},
-                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
-                .ExpectedChannelWithMixed = {2, 3, 20, 60},
-                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
-            },
-            {
-                .Name = "legacy mixed only",
-                .Channel = {2, 0, 20, 0},
-                .Index = {},
-                .ExpectedIndex = {2, 0, 20, 0},
-                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
-                .ExpectedChannelWithMixed = {2, 0, 20, 0},
-                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
-            },
-            {
-                .Name = "legacy merged only",
-                .Channel = {0, 3, 0, 60},
-                .Index = {},
-                .ExpectedIndex = {0, 3, 0, 60},
-                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
-                .ExpectedChannelWithMixed = {0, 3, 0, 60},
-                .ExpectedChannelWithoutMixed = {0, 3, 0, 60},
-            },
-            {
-                .Name = "initialized",
-                .Channel = {1, 4, 10, 70},
-                .Index = {2, 3, 20, 60},
-                .ExpectedIndex = {2, 3, 20, 60},
-                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
-                .ExpectedChannelWithMixed = {1, 4, 10, 70},
-                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
-            },
-            {
-                .Name = "mixed index only",
-                .Channel = {0, 2, 0, 20},
-                .Index = {2, 0, 20, 0},
-                .ExpectedIndex = {2, 0, 20, 0},
-                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
-                .ExpectedChannelWithMixed = {0, 2, 0, 20},
-                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
-            },
-            {
-                .Name = "merged index only",
-                .Channel = {},
-                .Index = {0, 3, 0, 60},
-                .ExpectedIndex = {0, 3, 0, 60},
-                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
-                .ExpectedChannelWithMixed = {},
-                .ExpectedChannelWithoutMixed = {},
-            },
-            {
-                .Name = "empty channel counters",
-                .Channel = {},
-                .Index = {2, 3, 20, 60},
-                .ExpectedIndex = {2, 3, 20, 60},
-                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
-                .ExpectedChannelWithMixed = {},
-                .ExpectedChannelWithoutMixed = {},
-            },
-            {
-                .Name = "missing index blocks",
-                .Channel = {2, 3, 20, 60},
-                .Index = {1, 4, 0, 0},
-                .ExpectedIndex = {1, 4, 0, 0},
-                .ExpectedChannelWhenDisabled = {1, 4, 0, 0},
-                .ExpectedChannelWithMixed = {2, 3, 20, 60},
-                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
-            },
-            {
-                .Name = "missing index blobs",
-                .Channel = {2, 3, 20, 60},
-                .Index = {0, 0, 10, 70},
-                .ExpectedIndex = {0, 0, 10, 70},
-                .ExpectedChannelWhenDisabled = {0, 0, 10, 70},
-                .ExpectedChannelWithMixed = {2, 3, 20, 60},
-                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
-            },
-            {
-                .Name = "mixed deletion markers only",
-                .Channel = {},
-                .Index = {2, 0, 0, 0},
-                .ExpectedIndex = {2, 0, 0, 0},
-                .ExpectedChannelWhenDisabled = {2, 0, 0, 0},
-                .ExpectedChannelWithMixed = {},
-                .ExpectedChannelWithoutMixed = {},
-            },
-            {
-                .Name = "merged deletion markers only",
-                .Channel = {},
-                .Index = {0, 3, 0, 0},
-                .ExpectedIndex = {0, 3, 0, 0},
-                .ExpectedChannelWhenDisabled = {0, 3, 0, 0},
-                .ExpectedChannelWithMixed = {},
-                .ExpectedChannelWithoutMixed = {},
-            },
-        };
-
-        for (const auto& test: testCases) {
-            for (bool hasMixedChannel: {false, true}) {
-                for (bool useChannelCounters: {false, true}) {
-                    auto meta = DefaultConfig(1, DefaultBlockCount);
-                    if (hasMixedChannel) {
-                        meta.MutableConfig()
-                            ->AddExplicitChannelProfiles()
-                            ->SetDataKind(
-                                static_cast<ui32>(EChannelDataKind::Mixed));
-                    }
-
-                    auto& stats = *meta.MutableStats();
-                    stats.SetMixedBlobsCount(test.Channel.MixedBlobs);
-                    stats.SetMergedBlobsCount(test.Channel.MergedBlobs);
-                    stats.SetMixedBlocksCount(test.Channel.MixedBlocks);
-                    stats.SetMergedBlocksCount(test.Channel.MergedBlocks);
-                    stats.SetMixedIndexBlobsCount(test.Index.MixedBlobs);
-                    stats.SetMergedIndexBlobsCount(test.Index.MergedBlobs);
-                    stats.SetMixedIndexBlocksCount(test.Index.MixedBlocks);
-                    stats.SetMergedIndexBlocksCount(test.Index.MergedBlocks);
-
-                    const auto& expectedChannel =
-                        !useChannelCounters
-                            ? test.ExpectedChannelWhenDisabled
-                            : (hasMixedChannel
-                                   ? test.ExpectedChannelWithMixed
-                                   : test.ExpectedChannelWithoutMixed);
-
-                    const auto context =
-                        TStringBuilder()
-                        << test.Name << ", hasMixedChannel=" << hasMixedChannel
-                        << ", useChannelCounters=" << useChannelCounters;
-                    auto state = MakeState(
-                        meta,
-                        {.UseBlobChannelDataKindForCounters =
-                             useChannelCounters});
-                    AssertBlobAndBlockCounts(
-                        state.GetStats(),
-                        expectedChannel,
-                        useChannelCounters ? test.ExpectedIndex
-                                           : TBlobAndBlockCounts{},
-                        context);
-                }
+            for (bool enabled: {true, true, false, false, true, true}) {
+                auto state =
+                    MakeState(meta, {.ExtendedBlobCountersEnabled = enabled});
+                UNIT_ASSERT_VALUES_EQUAL(20, state.GetMixedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(60, state.GetMergedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled && hasMixedChannel ? 20 : 0,
+                    state.GetMixedChannelBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? (hasMixedChannel ? 60 : 80) : 0,
+                    state.GetMergedChannelBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(2, state.GetMixedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(3, state.GetMergedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled && hasMixedChannel ? 2 : 0,
+                    state.GetMixedChannelBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? (hasMixedChannel ? 3 : 5) : 0,
+                    state.GetMergedChannelBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 20 : 0,
+                    state.GetMixedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 60 : 0,
+                    state.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 2 : 0,
+                    state.GetMixedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 3 : 0,
+                    state.GetMergedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled,
+                    state.GetStats().HasBlobByteCounters());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    state.GetMixedChannelBlocksCount() * DefaultBlockSize,
+                    state.GetMixedBytesCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    state.GetMergedChannelBlocksCount() * DefaultBlockSize,
+                    state.GetMergedBytesCount());
+                meta = state.GetMeta();
             }
         }
     }
 
-    Y_UNIT_TEST(ShouldPreserveBlobAndBlockCountsAcrossCounterModeChanges)
+    Y_UNIT_TEST(ShouldUpdateChannelBlockCountersAfterRebuildOnlyWhenEnabled)
     {
-        auto meta = DefaultConfig(1, DefaultBlockCount);
-        auto& stats = *meta.MutableStats();
-        stats.SetMixedBlobsCount(2);
-        stats.SetMergedBlobsCount(3);
-        stats.SetMixedBlocksCount(20);
-        stats.SetMergedBlocksCount(60);
-
-        // With no mixed channels, enabling channel counters moves mixed counts
-        // to merged. Disabling restores counts by index kind and clears index
-        // counters.
-        for (bool useChannelCounters: {true, true, false, false, true, true}) {
-            auto state = MakeState(
-                std::move(meta),
-                {.UseBlobChannelDataKindForCounters = useChannelCounters});
-            AssertBlobAndBlockCounts(
-                state.GetStats(),
-                useChannelCounters ? TBlobAndBlockCounts{0, 5, 0, 80}
-                                   : TBlobAndBlockCounts{2, 3, 20, 60},
-                useChannelCounters ? TBlobAndBlockCounts{2, 3, 20, 60}
-                                   : TBlobAndBlockCounts{});
-            meta = state.GetMeta();
-        }
-    }
-
-    Y_UNIT_TEST(ShouldResetIndexCountersWhenDisabledAfterRollback)
-    {
-        auto meta = DefaultConfig(1, DefaultBlockCount);
-        auto& stats = *meta.MutableStats();
-        stats.SetMixedBlobsCount(0);
-        stats.SetMergedBlobsCount(5);
-        stats.SetMixedBlocksCount(0);
-        stats.SetMergedBlocksCount(80);
-
-        stats.SetMixedIndexBlobsCount(2);
-        stats.SetMergedIndexBlobsCount(3);
-        stats.SetMixedIndexBlocksCount(20);
-        stats.SetMergedIndexBlocksCount(60);
-
-        for (ui64 restart = 0; restart < 3; ++restart) {
-            auto state = MakeState(std::move(meta));
-            AssertBlobAndBlockCounts(
-                state.GetStats(),
-                {2 + restart, 3, 20 + 10 * restart, 60},
-                {});
-
-            state.IncrementMixedBlobsCount(1);
-            state.IncrementMixedBlocksCount(10);
-            meta = state.GetMeta();
-        }
-    }
-
-    Y_UNIT_TEST(ShouldUpdateIndexBlockCountersAfterRebuildOnlyWhenEnabled)
-    {
-        for (bool useChannelCounters: {false, true}) {
+        for (bool enabled: {false, true}) {
             auto state = MakeState(
                 DefaultBlockCount,
-                {.UseBlobChannelDataKindForCounters = useChannelCounters});
-            auto& stats = state.AccessStats();
-            stats.SetMixedIndexBlocksCount(7);
-            stats.SetMergedIndexBlocksCount(11);
-
+                {.ExtendedBlobCountersEnabled = enabled});
             state.UpdateBlocksCountersAfterMetadataRebuild(20, 60, 10, 70);
-
-            AssertBlobAndBlockCounts(
-                state.GetStats(),
-                {0, 0, 10, 70},
-                useChannelCounters ? TBlobAndBlockCounts{0, 0, 20, 60}
-                                   : TBlobAndBlockCounts{0, 0, 7, 11});
+            UNIT_ASSERT_VALUES_EQUAL(20, state.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(60, state.GetMergedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 20 : 0,
+                state.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 60 : 0,
+                state.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 10 : 0,
+                state.GetMixedChannelBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 70 : 0,
+                state.GetMergedChannelBlocksCount());
         }
     }
 
-    Y_UNIT_TEST(ShouldUseChannelBlobTotalsWhenIndexCountersAreDisabled)
+    Y_UNIT_TEST(ShouldUseIndexBlobTotalsRegardlessOfCounterMode)
     {
         for (bool useChannelCounters: {false, true}) {
             auto state = MakeState(
                 DefaultBlockCount,
-                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+                {.ExtendedBlobCountersEnabled = useChannelCounters});
             auto& stats = state.AccessStats();
             stats.SetMixedBlobsCount(1);
             stats.SetMergedBlobsCount(7);
-            stats.SetMixedIndexBlobsCount(2);
-            stats.SetMergedIndexBlobsCount(3);
+            stats.SetMixedChannelBlobsCount(2);
+            stats.SetMergedChannelBlobsCount(3);
 
-            const ui64 expectedTotal = useChannelCounters ? 5 : 8;
+            const ui64 expectedTotal = 8;
             UNIT_ASSERT_VALUES_EQUAL(expectedTotal, state.GetTotalBlobsCount());
             state.StartRebuildBlockCount();
             UNIT_ASSERT_VALUES_EQUAL(

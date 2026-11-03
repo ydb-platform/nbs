@@ -62,7 +62,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
 
 TPartitionState MakeState(
     size_t blockCount = 2048,
-    bool useBlobChannelDataKindForCounters = true)
+    bool extendedBlobCountersEnabled = true)
 {
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
@@ -87,9 +87,8 @@ TPartitionState MakeState(
         TTestExecutor::TabletId,
         std::nullopt,   // mixedBlocksFilterConfig
         false,          // checkpointAwareCleanupEnabled
-        useBlobChannelDataKindForCounters,
-        false   // compactionStatsTrackerEnabled
-    );
+        false,          // compactionStatsTrackerEnabled
+        extendedBlobCountersEnabled);
 }
 
 TPartialBlobId MoveToDataChannel(TPartialBlobId blobId)
@@ -167,19 +166,16 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
     state.GetCleanupQueue().Add({setup.MergedBlobId, deletionCommitId, {}});
 
-    if (state.ShouldUseBlobChannelDataKindForCounters()) {
-        state.IncrementMergedBlocksCount(7);
-        state.IncrementMergedBlobsCount(2);
-    } else {
-        state.IncrementMixedBlocksCount(3);
-        state.IncrementMixedBlobsCount(1);
-        state.IncrementMergedBlocksCount(4);
-        state.IncrementMergedBlobsCount(1);
-    }
-    state.IncrementMixedIndexBlocksCount(3);
-    state.IncrementMixedIndexBlobsCount(1);
-    state.IncrementMergedIndexBlocksCount(4);
-    state.IncrementMergedIndexBlobsCount(1);
+    state.UpdateBlobCounters(
+        setup.MixedBlobId,
+        EChannelDataKind::Mixed,
+        3,
+        true);
+    state.UpdateBlobCounters(
+        setup.MergedBlobId,
+        EChannelDataKind::Merged,
+        4,
+        true);
 
     return setup;
 }
@@ -618,7 +614,7 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
 
 Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 {
-    Y_UNIT_TEST(ShouldDecrementIndexCountersOnlyWhenEnabled)
+    Y_UNIT_TEST(ShouldCleanupCountersInBothFeatureModes)
     {
         for (bool useChannelCounters: {false, true}) {
             auto state = MakeState(2048, useChannelCounters);
@@ -639,23 +635,25 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
 
             RunPrepareAndExecute(executor, env, state, args);
 
+            const auto& bytes = state.GetStats().GetBlobByteCounters();
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, bytes.GetMergedIndexBytesCount());
+
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedChannelBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedChannelBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                useChannelCounters ? 0 : 1,
-                state.GetMixedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                useChannelCounters ? 0 : 3,
-                state.GetMixedIndexBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                useChannelCounters ? 0 : 1,
-                state.GetMergedIndexBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                useChannelCounters ? 0 : 4,
-                state.GetMergedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedIndexBlocksCount());
         }
     }
 
@@ -864,6 +862,9 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMergedBytesCount());
 
         // No blob metas were read from the database
         UNIT_ASSERT_VALUES_EQUAL(0, args.ReadBlobMetasCount);
@@ -1082,8 +1083,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
             }
         }
 
-        state.IncrementMergedBlocksCount(mergedBlocksCount + mixedBlocksCount);
-        state.IncrementMergedBlobsCount(
+        state.IncrementMixedBlocksCount(mixedBlocksCount);
+        state.IncrementMergedBlocksCount(mergedBlocksCount);
+        state.IncrementMergedChannelBlocksCount(
+            mergedBlocksCount + mixedBlocksCount);
+        state.IncrementMixedBlobsCount(mixedTestCases.size());
+        state.IncrementMergedBlobsCount(mergedTestCases.size());
+        state.IncrementMergedChannelBlobsCount(
             mergedTestCases.size() + mixedTestCases.size());
         state.IncrementMergedIndexBlocksCount(mergedBlocksCount);
         state.IncrementMergedIndexBlobsCount(mergedTestCases.size());
@@ -1108,8 +1114,16 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             remainingCount,
             state.GetCleanupQueue().GetCount());
-        UNIT_ASSERT_VALUES_EQUAL(remainingCount, state.GetMergedBlobsCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingCount,
+            state.GetMergedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedChannelBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingMergedBlobs,
+            state.GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            remainingMixedBlobs,
+            state.GetMixedBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(
             remainingMergedBlobs, state.GetMergedIndexBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(

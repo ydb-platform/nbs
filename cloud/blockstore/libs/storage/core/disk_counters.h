@@ -141,11 +141,27 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMixedBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMergedBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter MixedIndexBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MergedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMixedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMergedIndexBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -274,8 +290,12 @@ struct TSimpleDiskCounters
 
         MakeMeta<&TSimpleDiskCounters::MixedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMixedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMergedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedIndexBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMixedIndexBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMergedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),

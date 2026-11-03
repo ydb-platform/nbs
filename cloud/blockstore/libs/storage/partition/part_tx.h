@@ -590,6 +590,11 @@ struct TTxPartition
         ui64 MixedChannelBlockCount = 0;
         ui64 MergedChannelBlockCount = 0;
 
+        ui64 MixedIndexByteCount = 0;
+        ui64 MergedIndexByteCount = 0;
+        ui64 MixedChannelByteCount = 0;
+        ui64 MergedChannelByteCount = 0;
+
         TPartialBlobId LastReadBlobId;
 
         TBlockCountRebuildState RebuildState;
@@ -614,6 +619,10 @@ struct TTxPartition
             MergedIndexBlockCount = 0;
             MixedChannelBlockCount = 0;
             MergedChannelBlockCount = 0;
+            MixedIndexByteCount = 0;
+            MergedIndexByteCount = 0;
+            MixedChannelByteCount = 0;
+            MergedChannelByteCount = 0;
             LastReadBlobId = {};
         }
     };

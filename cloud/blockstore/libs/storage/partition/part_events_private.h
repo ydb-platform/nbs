@@ -277,10 +277,17 @@ struct TBlockCountRebuildState
     ui64 MixedChannelBlocks = 0;
     ui64 MergedChannelBlocks = 0;
 
+    ui64 MixedIndexBytes = 0;
+    ui64 MergedIndexBytes = 0;
+    ui64 MixedChannelBytes = 0;
+    ui64 MergedChannelBytes = 0;
+
     ui64 InitialMixedIndexBlocks = 0;
     ui64 InitialMergedIndexBlocks = 0;
     ui64 InitialMixedChannelBlocks = 0;
     ui64 InitialMergedChannelBlocks = 0;
+
+    NProto::TPartitionStats::TBlobByteCounters InitialBlobByteCounters;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
