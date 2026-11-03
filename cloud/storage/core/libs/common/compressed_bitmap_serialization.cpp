@@ -20,6 +20,16 @@ ui64 GetCompressedBitmapChunkCount(const ui64 bitCount)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 GetCompressedBitmapChunkDataSize(const NProto::TCompressedBitmapData& bitmap)
+{
+    ui64 dataSize = 0;
+    for (const auto& chunk: bitmap.GetChunks()) {
+        dataSize += chunk.GetData().size();
+    }
+
+    return dataSize;
+}
+
 TResultOrError<std::unique_ptr<TCompressedBitmap>> LoadCompressedBitmap(
     const NProto::TCompressedBitmapData& proto,
     const ui64 minBitCount,

@@ -15,6 +15,10 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Total serialized chunk payload size, excluding protobuf metadata.
+ui64 GetCompressedBitmapChunkDataSize(
+    const NProto::TCompressedBitmapData& bitmap);
+
 TResultOrError<std::unique_ptr<TCompressedBitmap>> LoadCompressedBitmap(
     const NProto::TCompressedBitmapData& proto,
     ui64 minBitCount,
