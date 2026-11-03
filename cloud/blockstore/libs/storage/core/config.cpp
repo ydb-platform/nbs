@@ -1584,6 +1584,21 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
+// Compare raw configuration data and ICB control identities without reading
+// live ICB values.
+bool TStorageConfig::IsSame(const TStorageConfig& other) const
+{
+    const auto& features = Impl->FeaturesConfig;
+    const auto& otherFeatures = other.Impl->FeaturesConfig;
+    return Impl->Controls == other.Impl->Controls &&
+           google::protobuf::util::MessageDifferencer::Equals(
+               Impl->StorageServiceConfig, other.Impl->StorageServiceConfig) &&
+           (features == otherFeatures ||
+            (features && otherFeatures &&
+             google::protobuf::util::MessageDifferencer::Equals(
+                 features->GetConfigProto(), otherFeatures->GetConfigProto())));
+}
+
 // Apply the patch without materializing ICB overrides into the raw proto.
 // Reuse unchanged configurations and retain live controls when creating a copy.
 TStorageConfigConstPtr TStorageConfig::Merge(

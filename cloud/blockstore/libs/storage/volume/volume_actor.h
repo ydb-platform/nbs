@@ -9,6 +9,7 @@
 #include "volume_throttler_logger.h"
 #include "volume_tx.h"
 
+#include <cloud/blockstore/libs/configs_manager/events.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -38,8 +39,8 @@
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/protos/trace.pb.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
+#include <cloud/storage/core/protos/trace.pb.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
@@ -206,6 +207,8 @@ private:
     const ui64 StartTime = GetCycleCount();
     const TInstant VolumeStartTime = TInstant::Now();
     TStorageConfigConstPtr GlobalStorageConfig;
+    // The last committed per-volume patch, independent of global publications.
+    NProto::TStorageServiceConfig StorageConfigPatch;
     TStorageConfigConstPtr Config;
     bool HasStorageConfigPatch = false;
     bool HasPerformanceProfileModifications = false;
@@ -587,6 +590,15 @@ private:
 
     ui32 GetCurrentConfigVersion() const;
 
+    // Apply the current global configuration with the per-volume patch.
+    void ApplyDynamicConfigUpdate(
+        const IBlockstoreConfigProviderPtr& configProvider,
+        const NActors::TActorContext& ctx);
+
+    // Merge the current global configuration and per-volume patch; return true
+    // if Volume's effective configuration changes.
+    bool ApplyStorageConfig();
+
     bool SendBootExternalRequest(
         const NActors::TActorContext& ctx,
         TPartitionInfo& partition);
@@ -943,6 +955,14 @@ private:
 
     void HandleTabletStatus(
         const TEvBootstrapper::TEvStatus::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleConfigSubscriptionResponse(
+        const TEvConfigsManager::TEvSetConfigSubscriptionResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvConfigsManager::TEvConfigChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolumeConfig(
