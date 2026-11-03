@@ -30,10 +30,17 @@ namespace {
 
 constexpr ui64 InvalidPageNo = Max<ui64>();
 constexpr ui64 SuperblockSlotCount = 2;
+constexpr ui64 MaxPagesPerReadRequest = 1024;
 
 TStringBuf AsStringBuf(const TBuffer& buffer)
 {
     return {buffer.Data(), buffer.Size()};
+}
+
+bool IsEmptyPage(TStringBuf page, ui32 pageSize)
+{
+    return page.size() == pageSize && !page[0] &&
+           !memcmp(page.data(), page.data() + 1, page.size() - 1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,102 +126,7 @@ using TAppendablePagePtr = std::shared_ptr<TAppendablePage>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IPageManager
-{
-    virtual ~IPageManager() = default;
-
-    virtual void AddEmptyPage(ui64 pageNo) = 0;
-    virtual ui64 PopEmptyPage() = 0;
-
-    virtual void ReturnPage(TAppendablePagePtr page) = 0;
-    virtual TAppendablePagePtr PopAppendablePage(ui32 entryBufferSize) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TWriteController
-{
-private:
-    IPageManager& PageManager;
-    const TEntry NewEntry;
-    const ui32 PageSize;
-
-    TAppendablePagePtr OldPage;
-    TAppendablePage NewPage;
-
-    bool Written = false;
-
-public:
-    TWriteController(IPageManager& pageManager, TEntry entry, ui32 pageSize)
-        : PageManager(pageManager)
-        , NewEntry(std::move(entry))
-        , PageSize(pageSize)
-    {}
-
-    ~TWriteController()
-    {
-        if (Written) {
-            if (OldPage) {
-                PageManager.AddEmptyPage(OldPage->PageNo);
-            }
-
-            PageManager.ReturnPage(
-                std::make_shared<TAppendablePage>(std::move(NewPage)));
-        } else {
-            PageManager.AddEmptyPage(NewPage.PageNo);
-            PageManager.ReturnPage(std::move(OldPage));
-        }
-    }
-
-    TResultOrError<TPageRange> GeneratePageRange()
-    {
-        ui32 entryBufferSize = static_cast<ui32>(NewEntry.Data.size());
-
-        NewPage.PageNo = PageManager.PopEmptyPage();
-        if (NewPage.PageNo == InvalidPageNo) {
-            return MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "not enough free pages to store " << entryBufferSize
-                    << " bytes under key " << NewEntry.Key);
-        }
-
-        OldPage = PageManager.PopAppendablePage(entryBufferSize);
-        if (OldPage) {
-            NewPage.Entries.reserve(OldPage->Entries.size() + 1);
-            NewPage.Entries = OldPage->Entries;
-        }
-
-        NewPage.Entries.push_back(NewEntry);
-
-        auto result = MakePageBuffer(PageSize, NewPage.Entries);
-        if (HasError(result)) {
-            return result.GetError();
-        }
-        NewPage.PageBuffer = result.ExtractResult();
-
-        TPageRange pageRange;
-        pageRange.FirstPageNo = NewPage.PageNo;
-        pageRange.Pages.push_back(NewPage.PageBuffer);
-        return pageRange;
-    }
-
-    ui64 Key() const
-    {
-        return NewEntry.Key;
-    }
-
-    void SetAsWritten()
-    {
-        Written = true;
-    }
-};
-
-using TWriteControllerPtr = std::shared_ptr<TWriteController>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TPageManager: private IPageManager
+class TPageManager
 {
 private:
     static constexpr size_t MaxAppendablePageCount = 128;
@@ -267,14 +179,6 @@ public:
         }
     }
 
-    TWriteControllerPtr CreateWriteController(TEntry entry)
-    {
-        return std::make_shared<TWriteController>(
-            static_cast<IPageManager&>(*this),
-            std::move(entry),
-            PageSize);
-    }
-
     void EraseBelowKey(ui64 key)
     {
         auto dirtyPages = ErasePagesBelowKeyAndReturnDirtyPages(key);
@@ -282,6 +186,81 @@ public:
         for (auto& page: dirtyPages) {
             ReturnPage(std::move(page));
         }
+    }
+
+    void AddEmptyPage(ui64 pageNo)
+    {
+        if (pageNo == InvalidPageNo) {
+            return;
+        }
+
+        std::lock_guard lock(Lock);
+        EmptyPages.push_back(pageNo);
+    }
+
+    ui64 PopEmptyPage()
+    {
+        std::lock_guard lock(Lock);
+
+        if (EmptyPages.empty()) {
+            return InvalidPageNo;
+        }
+
+        ui64 page = EmptyPages.back();
+        EmptyPages.pop_back();
+        return page;
+    }
+
+    void ReturnPage(TAppendablePagePtr page)
+    {
+        if (!page || page->PageNo == InvalidPageNo) {
+            return;
+        }
+
+        std::lock_guard lock(Lock);
+
+        const ui32 dataSize = DropErasedEntries(*page, ErasedBelowKey);
+
+        if (page->Entries.empty()) {
+            EmptyPages.push_back(page->PageNo);
+            return;
+        }
+
+        if (PageSize <= dataSize || PageSize - dataSize < MinEntrySize) {
+            FullPages.emplace(page->MaxKey, page->PageNo);
+            return;
+        }
+
+        const ui64 availableSize = PageSize - dataSize;
+
+        if (AppendablePages.size() >= MaxAppendablePageCount) {
+            if (availableSize < AppendablePages.begin()->first) {
+                FullPages.emplace(page->MaxKey, page->PageNo);
+                return;
+            }
+
+            const auto& firstPage = *AppendablePages.begin()->second;
+            FullPages.emplace(firstPage.MaxKey, firstPage.PageNo);
+            AppendablePages.erase(AppendablePages.begin());
+        }
+
+        AppendablePages.emplace(availableSize, std::move(page));
+    }
+
+    TAppendablePagePtr PopAppendablePage(ui32 entryBufferSize)
+    {
+        std::lock_guard lock(Lock);
+
+        auto it = AppendablePages.lower_bound(
+            GetSerializedEntrySize(entryBufferSize));
+
+        if (it == AppendablePages.end()) {
+            return nullptr;
+        }
+
+        auto page = std::move(it->second);
+        AppendablePages.erase(it);
+        return page;
     }
 
 private:
@@ -321,81 +300,6 @@ private:
         return dirtyPages;
     }
 
-    void AddEmptyPage(ui64 pageNo) override
-    {
-        if (pageNo == InvalidPageNo) {
-            return;
-        }
-
-        std::lock_guard lock(Lock);
-        EmptyPages.push_back(pageNo);
-    }
-
-    ui64 PopEmptyPage() override
-    {
-        std::lock_guard lock(Lock);
-
-        if (EmptyPages.empty()) {
-            return InvalidPageNo;
-        }
-
-        ui64 page = EmptyPages.back();
-        EmptyPages.pop_back();
-        return page;
-    }
-
-    void ReturnPage(TAppendablePagePtr page) override
-    {
-        if (!page || page->PageNo == InvalidPageNo) {
-            return;
-        }
-
-        std::lock_guard lock(Lock);
-
-        const ui32 dataSize = DropErasedEntries(*page, ErasedBelowKey);
-
-        if (page->Entries.empty()) {
-            EmptyPages.push_back(page->PageNo);
-            return;
-        }
-
-        if (PageSize <= dataSize || PageSize - dataSize < MinEntrySize) {
-            FullPages.emplace(page->MaxKey, page->PageNo);
-            return;
-        }
-
-        const ui64 availableSize = PageSize - dataSize;
-
-        if (AppendablePages.size() >= MaxAppendablePageCount) {
-            if (availableSize < AppendablePages.begin()->first) {
-                FullPages.emplace(page->MaxKey, page->PageNo);
-                return;
-            }
-
-            const auto& firstPage = *AppendablePages.begin()->second;
-            FullPages.emplace(firstPage.MaxKey, firstPage.PageNo);
-            AppendablePages.erase(AppendablePages.begin());
-        }
-
-        AppendablePages.emplace(availableSize, std::move(page));
-    }
-
-    TAppendablePagePtr PopAppendablePage(ui32 entryBufferSize) override
-    {
-        std::lock_guard lock(Lock);
-
-        auto it = AppendablePages.lower_bound(
-            GetSerializedEntrySize(entryBufferSize));
-
-        if (it == AppendablePages.end()) {
-            return nullptr;
-        }
-
-        auto page = std::move(it->second);
-        AppendablePages.erase(it);
-        return page;
-    }
-
     // Drops the erased entries of the page and recomputes the bounds, returns
     // the size the entries left take in a page - they keep pointing into the
     // page buffer, which stays as it is until the page is rewritten.
@@ -420,13 +324,91 @@ private:
     }
 };
 
-constexpr ui64 MaxPagesPerReadRequest = 1024;
+////////////////////////////////////////////////////////////////////////////////
 
-bool IsEmptyPage(TStringBuf page, ui32 pageSize)
+class TWriteController
 {
-    return page.size() == pageSize && !page[0] &&
-           !memcmp(page.data(), page.data() + 1, page.size() - 1);
-}
+private:
+    const std::weak_ptr<TPageManager> PageManager;
+    ui64 Key = 0;
+
+    TAppendablePagePtr OldPage;
+    TAppendablePage NewPage;
+
+    bool Written = false;
+
+public:
+    TWriteController(std::weak_ptr<TPageManager> pageManager)
+        : PageManager(pageManager)
+    {}
+
+    ~TWriteController()
+    {
+        auto pageManager = PageManager.lock();
+        if (!pageManager) {
+            return;
+        }
+
+        if (Written) {
+            if (OldPage) {
+                pageManager->AddEmptyPage(OldPage->PageNo);
+            }
+
+            pageManager->ReturnPage(
+                std::make_shared<TAppendablePage>(std::move(NewPage)));
+        } else {
+            pageManager->AddEmptyPage(NewPage.PageNo);
+            pageManager->ReturnPage(std::move(OldPage));
+        }
+    }
+
+    TResultOrError<TPageRange> GeneratePageRange(TEntry entry, ui32 pageSize)
+    {
+        auto pageManager = PageManager.lock();
+        Y_ABORT_UNLESS(pageManager);
+
+        Key = entry.Key;
+        ui32 entryBufferSize = static_cast<ui32>(entry.Data.size());
+
+        NewPage.PageNo = pageManager->PopEmptyPage();
+        if (NewPage.PageNo == InvalidPageNo) {
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "not enough free pages to store " << entryBufferSize
+                    << " bytes under key " << entry.Key);
+        }
+
+        OldPage = pageManager->PopAppendablePage(entryBufferSize);
+        if (OldPage) {
+            NewPage.Entries.reserve(OldPage->Entries.size() + 1);
+            NewPage.Entries = OldPage->Entries;
+        }
+
+        NewPage.Entries.push_back(entry);
+
+        auto result = MakePageBuffer(pageSize, NewPage.Entries);
+        if (HasError(result)) {
+            return result.GetError();
+        }
+        NewPage.PageBuffer = result.ExtractResult();
+
+        TPageRange pageRange;
+        pageRange.FirstPageNo = NewPage.PageNo;
+        pageRange.Pages.push_back(NewPage.PageBuffer);
+        return pageRange;
+    }
+
+    ui64 GetKey() const
+    {
+        return Key;
+    }
+
+    void SetAsWritten()
+    {
+        Written = true;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -445,7 +427,7 @@ class TDeviceKeyBufferStore final
 {
 private:
     const IDevicePtr Device;
-    TPageManager PageManager;
+    std::shared_ptr<TPageManager> PageManager;
     const ui64 PageCount;
     const ui32 PageSize;
     const ui32 MinKeyBufferSize;
@@ -489,7 +471,7 @@ private:
         const std::function<NProto::TError(TSuperblock&)>& update);
 
     NProto::TError OnEntryWritten(
-        TWriteControllerPtr writeController,
+        std::shared_ptr<TWriteController> writeController,
         const TFuture<NProto::TError>& future);
 
     NProto::TError OnSuperblockWritten(
@@ -506,7 +488,7 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
     ui32 pageSize,
     ui32 minKeyBufferSize)
     : Device(std::move(device))
-    , PageManager(pageSize, minKeyBufferSize)
+    , PageManager(std::make_shared<TPageManager>(pageSize, minKeyBufferSize))
     , PageCount(pageCount)
     , PageSize(pageSize)
     , MinKeyBufferSize(minKeyBufferSize)
@@ -617,14 +599,16 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
         seq = NextSeq++;
     }
 
-    auto writeController = PageManager.CreateWriteController(
+    auto writeController = std::make_shared<TWriteController>(PageManager);
+
+    auto result = writeController->GeneratePageRange(
         TEntry{
             .Key = key,
             .Seq = seq,
-            .Data = TStringBuf(buffer.Data(), buffer.Size()),
-        });
+            .Data = AsStringBuf(buffer),
+        },
+        PageSize);
 
-    auto result = writeController->GeneratePageRange();
     if (HasError(result)) {
         return MakeFuture(result.GetError());
     }
@@ -817,7 +801,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         });
     }
 
-    PageManager.Init(
+    PageManager->Init(
         SuperblockSlotCount,
         pages.size() - SuperblockSlotCount,
         superblock ? superblock->ErasedBelowKey : 0,
@@ -847,7 +831,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 }
 
 NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
-    TWriteControllerPtr writeController,
+    std::shared_ptr<TWriteController> writeController,
     const TFuture<NProto::TError>& future)
 {
     auto error = future.GetValue();
@@ -856,7 +840,7 @@ NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
         std::lock_guard lock(Lock);
 
         if (!HasError(error)) {
-            const ui64 key = writeController->Key();
+            const ui64 key = writeController->GetKey();
             if (key < Superblock.ErasedBelowKey) {
                 // erased while being written - a restore would drop it
                 error = MakeError(
@@ -891,7 +875,7 @@ NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     Superblock = std::move(superblock);
     NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
 
-    PageManager.EraseBelowKey(Superblock.ErasedBelowKey);
+    PageManager->EraseBelowKey(Superblock.ErasedBelowKey);
     return MakeError(S_OK);
 }
 
