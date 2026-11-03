@@ -1155,6 +1155,11 @@ void TPartitionActor::HandleDynamicConfigUpdate(
         return;
     }
     Config = msg->StorageConfig;
+
+    // Update the configuration of owned objects.
+    if (IOCompanion) {
+        IOCompanion->UpdateStorageConfig(Config);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
