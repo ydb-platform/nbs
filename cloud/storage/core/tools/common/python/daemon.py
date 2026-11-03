@@ -248,6 +248,29 @@ class Daemon(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """Clean up when leaving a with block that uses this daemon.
+
+        Python calls this method on normal block exit or when an exception
+        escapes the block. The context manager protocol supplies three arguments
+        describing that exception; all three are None on normal exit.
+
+        Call close() to stop the owned process and close its streams.
+        If the with block finishes without an exception, any exception from
+        close() is propagated to the caller.
+        If the with  block raised an exception, log possible errors during
+        close() instead of replacing the original error.
+        Also log daemon diagnostics for exceptions other than DaemonError,
+        which already carries those details.
+
+        Args:
+            exc_type: Type of the exception escaping the block, or None.
+            exc_value: Exception instance, or None.
+            traceback: Exception traceback, or None; required by the protocol
+                but not used here.
+
+        Returns:
+            False so Python propagates the original exception, if any.
+        """
         if exc_type is None:
             self.close()
         else:
