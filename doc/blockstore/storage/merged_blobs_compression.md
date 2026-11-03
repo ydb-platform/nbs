@@ -22,14 +22,7 @@ message TCompressionMetadata
     // Codec families provided by library/cpp/blockcodecs.
     enum ECompressionType
     {
-        COMPRESSION_LZ4 = 0;
-        COMPRESSION_SNAPPY = 1;
-        COMPRESSION_ZLIB = 2;
-        COMPRESSION_LZMA = 3;
-        COMPRESSION_BZIP2 = 4;
-        COMPRESSION_FASTLZ = 5;
-        COMPRESSION_ZSTD = 6;    // zstd08_* and zstd_*.
-        COMPRESSION_BROTLI = 7;
+        ...
     }
     ECompressionType Codec = 1;
 
