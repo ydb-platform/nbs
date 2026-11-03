@@ -11,6 +11,7 @@ SRCS(
     part_ut.cpp
     part_ut_compaction.cpp
     part_ut_compaction_policy.cpp
+    part_ut_dynconfig.cpp
     part_ut_fresh_blocks.cpp
     part_ut_rebuild_metadata.cpp
     part_ut_trim_fresh_log.cpp
