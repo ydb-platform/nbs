@@ -278,6 +278,7 @@ func (t *createSnapshotFromDiskTask) run(
 		nbsClient,
 		t.request.SrcDisk.DiskId,
 		proxyOverlayDiskID,
+		len(proxyOverlayDiskID) != 0, // mountLocally
 		t.state.BaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,
@@ -285,6 +286,7 @@ func (t *createSnapshotFromDiskTask) run(
 		incremental, // duplicateChunkIndices
 		false,       // ignoreBaseDisk
 		false,       // dontReadFromCheckpoint
+		0,           // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return err
