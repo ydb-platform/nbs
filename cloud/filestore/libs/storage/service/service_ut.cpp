@@ -1846,8 +1846,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                  .GetFeatures()
                  .GetGuestPosixAclEnabled());
 
-        // If SessionSeqNo increases, the session should get params from
-        // the filestore config.
+        // If SessionSeqNo increases, the GuestPosixAclEnabled value should be
+        // preserved as well.
         headers.SessionSeqNo = 1;
         const auto session3 = service.CreateSession(
             headers,
@@ -1857,7 +1857,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             readOnly);
 
         UNIT_ASSERT(
-            session3->Record.GetFileStore()
+            !session3->Record.GetFileStore()
                  .GetFeatures()
                  .GetGuestPosixAclEnabled());
     }

@@ -156,7 +156,6 @@ TActorId DoRecoverSession(
     ui64 sessionSeqNo,
     bool readOnly,
     const TActorId& owner,
-    const TStorageConfig& config,
     const TActorContext& ctx)
 {
     auto oldSessionSeqNo = session->GetSessionSeqNo();
@@ -189,11 +188,6 @@ TActorId DoRecoverSession(
         proto.SetSessionState(session->GetSessionState());
         proto.SetMaxSeqNo(session->GetSessionSeqNo());
         proto.SetMaxRwSeqNo(session->GetSessionRwSeqNo());
-
-        *session->MutablePersistentOptions() =
-            TSession::CreatePersistentSessionOptions(config);
-        *proto.MutablePersistentOptions() = session->GetPersistentOptions();
-
         db.WriteSession(proto);
     }
 
@@ -369,7 +363,6 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 seqNo,
                 readOnly,
                 owner,
-                *Config,
                 ctx);
             args.SessionInterrupted = true;
             if (toKill != owner) {
@@ -430,7 +423,6 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 seqNo,
                 readOnly,
                 owner,
-                *Config,
                 ctx);
             const auto subSession =
                 session->SubSessions.GetSubSessionBySeqNo(seqNo);
