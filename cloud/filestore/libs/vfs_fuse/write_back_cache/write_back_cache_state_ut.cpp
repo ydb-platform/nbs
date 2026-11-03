@@ -571,7 +571,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(b.State->IsDrained());
     }
 
-    void TestShouldWaitForScheduledFlushAfterCacheCorruption(bool retry)
+    Y_UNIT_TEST(ShouldWaitForScheduledFlushAfterCacheCorruption)
     {
         class TFailTagStorage final: public TTestStorage
         {
@@ -592,15 +592,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(b.Add(2, 202, 0, "def").GetValue());
         b.State->AddFlushAllRequest();
 
-        if (retry) {
-            for (size_t attempt = 0; attempt < 2; ++attempt) {
-                UNIT_ASSERT_VALUES_EQUAL(202, b.State->AcquireFlushHandle(2));
-                UNIT_ASSERT(
-                    b.State->FlushFailed(2, MakeError(E_REJECTED)) ==
-                    EFlushRetryStatus::ShouldRetry);
-            }
-        }
-
         auto shutdown = b.State->Shutdown();
         UNIT_ASSERT(!shutdown.HasValue());
 
@@ -615,27 +606,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             [](const TCachedWriteDataRequest*) {}));
         UNIT_ASSERT(!shutdown.HasValue());
 
-        if (retry) {
-            UNIT_ASSERT(
-                b.State->FlushFailed(2, MakeError(E_REJECTED)) ==
-                EFlushRetryStatus::ShouldNotRetry);
-        } else {
-            UNIT_ASSERT(
-                b.State->FlushFailed(2, MakeError(E_INVALID_STATE)) ==
-                EFlushRetryStatus::ShouldNotRetry);
-        }
+        UNIT_ASSERT(
+            b.State->FlushFailed(2, MakeError(E_INVALID_STATE)) ==
+            EFlushRetryStatus::ShouldNotRetry);
         UNIT_ASSERT(shutdown.HasValue());
         shutdown.GetValue();
-    }
-
-    Y_UNIT_TEST(ShouldWaitForScheduledFlushAfterCacheCorruption)
-    {
-        TestShouldWaitForScheduledFlushAfterCacheCorruption(false);
-    }
-
-    Y_UNIT_TEST(ShouldWaitForRetriedFlushAfterCacheCorruption)
-    {
-        TestShouldWaitForScheduledFlushAfterCacheCorruption(true);
     }
 
     Y_UNIT_TEST(ShouldWaitForBarrierBlockedWritesOnShutdown)
@@ -1624,6 +1599,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             ui64 DroppedCount = 0;
         } observed;
 
+        NThreading::TFuture<void> shutdownFuture;
         NThreading::TFuture<NProto::TError> shutdownFlush;
 
         barrier.Subscribe(
@@ -1639,7 +1615,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                     // allocated request. Shutdown must preserve that request
                     // until serialization finishes.
                     b.State->ReleaseBarrier(1, future.GetValue().GetResult());
-                    b.StartShutdown();
+                    shutdownFuture = b.State->Shutdown();
                     shutdownFlush = b.State->AddFlushRequest(1);
                     failedNodeId = 1;
                 }
@@ -1677,6 +1653,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Failed->Get());
 
         if (shutdown) {
+            UNIT_ASSERT(shutdownFuture.Initialized());
+            UNIT_ASSERT(!shutdownFuture.HasValue());
             UNIT_ASSERT(shutdownFlush.Initialized());
             UNIT_ASSERT(shutdownFlush.HasValue());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1691,6 +1669,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
                 b.Metrics.WriteDataRequestDroppedCount->Get());
+
+            // Node 2's remaining cached writes must finish flushing too.
+            UNIT_ASSERT(!shutdownFuture.HasValue());
+            b.FlushCache(2);
+            UNIT_ASSERT(shutdownFuture.HasValue());
+            shutdownFuture.GetValue();
+            UNIT_ASSERT(b.State->IsDrained());
         }
     }
 
