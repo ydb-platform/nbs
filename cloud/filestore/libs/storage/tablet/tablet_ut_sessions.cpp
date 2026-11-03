@@ -1519,6 +1519,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1559,6 +1560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(2_MB);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
@@ -1580,6 +1582,42 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::Seconds(15).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReturnServerWriteBackCacheStateFileSizeFromStorageConfigOverride)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const auto checkStateFileSize = [&](ui64 expectedStateFileSize)
+        {
+            auto response = tablet.CreateSession("client", "session");
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedStateFileSize,
+                response->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetServerWriteBackCacheStateFileSize());
+        };
+
+        checkStateFileSize(2_MB);
+
+        NProto::TStorageConfig patch;
+        patch.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkStateFileSize(4_GB + 100500);
+
+        // Explicit zero uses the client default instead of the server-wide size.
+        patch.SetServerWriteBackCacheStateFileSize(0);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkStateFileSize(0);
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)

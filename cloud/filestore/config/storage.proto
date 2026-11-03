@@ -1002,4 +1002,9 @@ message TStorageConfig
     // nonzero NodeCacheTTL (and NodeRefCacheTTL). FileSystemEventsEnabled
     // alone enables this for GetNodeAttr only.
     optional bool FileSystemListingEventsEnabled = 561;
+
+    // Server WriteBackCache state file size in bytes per session.
+    // Zero uses the client's default size (currently 256 MiB).
+    // New files are subject to the vhost minimum size and total size limit.
+    optional uint64 ServerWriteBackCacheStateFileSize = 562;
 }
