@@ -853,6 +853,7 @@ void TWriteBackCacheState::CheckShutdownCompletion()
         NodesFlushRequestedCount == 0 &&
         (IsFailed || !RequestManager.HasPendingOrUnflushedRequests()))
     {
+        QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
         ShutdownCompletionQueued = true;
         if (!IsFailed && ShutdownDroppedRequestCount) {
             ReportWriteBackCacheDataLossError(
@@ -861,7 +862,6 @@ void TWriteBackCacheState::CheckShutdownCompletion()
                 << " Dropped unflushed WriteData requests during shutdown"
                 << " RequestCount=" << ShutdownDroppedRequestCount);
         }
-        QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
     }
 }
 

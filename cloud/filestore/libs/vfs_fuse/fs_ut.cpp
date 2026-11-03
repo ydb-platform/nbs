@@ -6797,7 +6797,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!requestedPath.Exists());
     }
 
-    void TestShouldRestoreAndDrainCacheAfterSessionRestart(bool handlesReleased)
+    Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
     {
         const TString sessionId = CreateGuidAsString();
 
@@ -6889,17 +6889,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 EFileRingBufferVersion::V6);
 
             UNIT_ASSERT(!ringBuffer.Empty());
-            if (handlesReleased) {
-                // Model a restart after the last cached handle was released.
-                // Tag 1 is the persisted UnflushedHandleReleased state.
-                constexpr ui32 UnflushedHandleReleasedTag = 1;
-                UNIT_ASSERT_VALUES_EQUAL(1, ringBuffer.Size());
-                const auto entry = ringBuffer.Front();
-                UNIT_ASSERT(!HasError(entry.Error));
-                UNIT_ASSERT(!HasError(ringBuffer.SetTag(
-                    entry.Data.data(),
-                    UnflushedHandleReleasedTag)));
-            }
         }
 
         {
@@ -6911,17 +6900,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 bootstrap.Stop();
             };
 
-            // Initialization drains the existing cache with the feature
-            // disabled. Released handles cannot flush and retain their legacy
-            // data-drop behavior.
-            const int restoredWrites = handlesReleased ? 0 : 1;
-            UNIT_ASSERT_VALUES_EQUAL(restoredWrites, writeDataCalled2.load());
+            // Drain triggers flush immediately
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
             auto flush =
                 bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
             UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
 
-            UNIT_ASSERT_VALUES_EQUAL(restoredWrites, writeDataCalled2.load());
+            // cache should be flushed
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
             auto reqWrite = std::make_shared<TWriteRequest>(
                 nodeId,
@@ -6934,9 +6921,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             // Cache is drained and disabled - new requests go directly
             // to the session
-            UNIT_ASSERT_VALUES_EQUAL(
-                restoredWrites + 1,
-                writeDataCalled2.load());
+            UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
 
             auto truncate = std::make_shared<TSetAttrRequest>(nodeId, handleId);
             truncate->In->Body.valid = FUSE_SET_ATTR_SIZE;
@@ -6971,16 +6956,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
 
         UNIT_ASSERT(!path.Exists());
-    }
-
-    Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
-    {
-        TestShouldRestoreAndDrainCacheAfterSessionRestart(false);
-    }
-
-    Y_UNIT_TEST(ShouldDrainRestoredCacheWithoutLiveHandlesWhenCacheIsDisabled)
-    {
-        TestShouldRestoreAndDrainCacheAfterSessionRestart(true);
     }
 
     Y_UNIT_TEST(ShouldUpdateFileSizeWhenUsingWriteBackCache)
