@@ -35,6 +35,7 @@ struct TLogRecord
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
     TVector<TPageMapping> PageMappings;
+    ui32 PagesCrc = 0;
 
     NThreading::TPromise<NCloud::NProto::TWriteLogRecordResponse> Promise;
 };
@@ -48,6 +49,8 @@ struct TJournalMetadata
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculatePagesCrc(const TVector<TBuffer>& pages);
 
 TBuffer SerializeRecord(const TLogRecord& record);
 TLogRecordPtr DeserializeRecord(const TBuffer& buffer);
