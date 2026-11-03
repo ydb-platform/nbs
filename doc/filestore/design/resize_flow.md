@@ -15,7 +15,15 @@ In the diagrams, `Throttled?` means the second condition. Nodes labeled
   `MaxShardManagementRequestsInFlight` requests and sends one more request when
   a response arrives.
 
+The diagrams focus on successful responses and CAS conflicts. Request errors
+and unexpected state responses are described in the error-handling sections.
 Mermaid labels use `<br/>` to keep nodes readable.
+
+Implementation references:
+
+* [Resize actor](../../../cloud/filestore/libs/storage/service/service_actor_alterfs.cpp)
+* [Shard creation state companion](../../../cloud/filestore/libs/storage/service/shard_creation_state_companion.cpp)
+* [Tablet state transaction](../../../cloud/filestore/libs/storage/tablet/tablet_actor_unsafe_node_ops.cpp)
 
 ## Shared Concepts
 
@@ -29,8 +37,9 @@ the current resize attempt. `FileStoreConfig.ShardConfigs` is the target shard
 configuration calculated from the resize request, current topology, storage
 config, and current main filesystem config.
 
-`ShardsToCreate` is the number of target shards absent from
-`ExistingShardIds`. New shard creation starts at index
+`ShardsToCreate` initially counts target shards absent from `ExistingShardIds`.
+It decreases for each skipped recorded shard and each successful create response.
+New shard creation starts at index
 `ExistingShardIds.size()`.
 
 `Prepare target layout` is a diagram phase, not a single method. It groups:
@@ -125,7 +134,9 @@ flowchart TD
     OneResponse --> MoreItems{More items<br/>in range?}
     MoreItems -->|yes| SendOne["Send one<br/>more"]
     SendOne --> OneResponse
-    MoreItems -->|no| BatchDone
+    MoreItems -->|no| AllReplied{All responses<br/>received?}
+    AllReplied -->|no| OneResponse
+    AllReplied -->|yes| BatchDone
 ```
 
 ## Throttled Shard Create Range
@@ -152,14 +163,14 @@ flowchart TD
     CanSend -->|yes| Created{IsShardCreated?}
     Created -->|yes| SkipCreate["Skip create<br/>advance index<br/>decrement counter"]
     SkipCreate --> MoreIndex
-    Created -->|no| SendCreate
+    Created -->|no| SendCreate["CreateShard"]
     SendCreate --> Advance["Advance index<br/>count request"]
     Advance --> MoreIndex
 
     StartResponse([Handle create<br/>response]) --> Decrement["Decrement<br/>ShardsToCreate"]
     Decrement --> HasBitmap{CreatedShardBitmap?}
 
-    HasBitmap -->|yes| UpdateBits["UpdateShardCreatedState"]
+    HasBitmap -->|yes| UpdateBits["OnShardCreated"]
     UpdateBits --> MaybeRefillPersistent{NextShardToCreate<br/>< target shards?}
     MaybeRefillPersistent -->|yes| ContinueOnePersistent{{ContinueCreateShards<br/>limit 1}}
     MaybeRefillPersistent -->|no| Return
@@ -188,7 +199,9 @@ flowchart TD
     UpdateState --> StateResp["Handle state<br/>response"]
     StateResp --> StaleState{Stale<br/>version?}
     StaleState -->|yes| Done([Return])
-    StaleState -->|no| MergeState["Merge returned<br/>bitmap"]
+    StaleState -->|no| SameTarget{Same range<br/>and config hash?}
+    SameTarget -->|no| InvalidTarget([E_INVALID_STATE])
+    SameTarget -->|yes| MergeState["Merge returned<br/>bitmap"]
     MergeState --> BitsPersisted{Local bits<br/>persisted?}
     BitsPersisted -->|no| UpdateState
     BitsPersisted -->|yes| CanConfigure{Can configure<br/>shards?}
@@ -201,15 +214,15 @@ flowchart TD
 | Phase | Actor methods | What happens on success |
 | --- | --- | --- |
 | Describe main FS | `DescribeMainFileStore`, `HandleDescribeFileStoreResponse` | Store the current main filesystem config in `MainFileStoreOriginalConfig`. In throttled mode continue to `ReadShardCreationState`; in legacy mode continue to `GetStorageStats`. |
-| Read initial shard creation state | `ReadShardCreationState`, `HandleShardCreationStateResponse` | Send `UnsafeChangeTabletState` with `ShardCreationState` present and unset `Version`. If the response has `ShardCreationState`, store it, mark persistent shard creation state as supported, set `InitialShardCreationStateRead`, then continue to storage stats. If the response has no `ShardCreationState`, keep persistent shard creation state disabled and continue to storage stats. |
+| Read initial shard creation state | `ReadShardCreationState`, `HandleShardCreationStateResponse` | Send `UnsafeChangeTabletState` with `ShardCreationState` present and unset `Version`. If the response has `ShardCreationState`, store it, mark persistent shard creation state as supported, then continue to storage stats. If the response has no `ShardCreationState`, keep persistent shard creation state disabled and continue to storage stats. |
 | Prepare target layout | `GetStorageStats`, `HandleGetStorageStatsResponse`, `GetFileSystemTopology`, `HandleGetFileSystemTopologyResponse` | Read storage stats and topology, build target main/shard configs, and initialize counters. If persistent shard creation state is supported, call `SetupCreatedShardBitmap` after the current topology and target shard configs are known. |
 | Describe shard configs | `DescribeShards`, `DescribeShard`, `HandleDescribeFileStoreResponse` | For existing shards that must be resized, read current config versions and channel layouts before altering them. |
 | Alter main FS | `AlterFileStore`, `HandleAlterFileStoreResponse` | Submit the new main filesystem scheme config, then continue to existing shard alteration. |
 | Alter existing shards | `AlterShards`, `AlterShard`, `HandleAlterFileStoreResponse` | Resize existing shard scheme objects when strict filesystem size enforcement requires it, then continue to shard creation. |
 | Create missing shards | `CreateShards`, `ContinueCreateShards`, `CreateShard`, `HandleCreateFileStoreResponse` | Create target shards absent from current topology. Legacy mode continues to shard configuration from the last create response. Throttled mode caps request count. If persistent shard creation state is supported, it persists created-shard bits and normally continues from `HandleShardCreationStateResponse`; otherwise it continues from create responses. |
-| Update shard creation state | `UpdateShardCreatedState`, `UpdateShardCreationState`, `HandleShardCreationStateResponse` | When persistent shard creation state is supported, set the created-shard bit locally, send it with current `ShardCreationState.Version`, merge the returned current bitmap, and resend if local bits are still not persisted. |
+| Update shard creation state | `OnShardCreated`, `UpdateShardCreationState`, `HandleShardCreationStateResponse` | When persistent shard creation state is supported, set the created-shard bit locally, send it with current `ShardCreationState.Version`, merge the returned current bitmap, and resend if local bits are still not persisted. |
 | Configure shard tablets | `ConfigureShards`, `ConfigureShardRange`, `ConfigureShard`, `HandleConfigureShardResponse` | Configure new shard tablets first, then existing shard tablets, using the same throttled/all scheduling. |
-| Configure main FS | `ConfigureMainFileStore`, optionally `HandleConfigureShardsResponse` | If `ShouldConfigureMainFileStore` is false, finish immediately. Otherwise, store the final shard list and topology flags in the main tablet; then the resize request succeeds. |
+| Configure main FS | `ConfigureMainFileStore`, optionally `HandleConfigureMainFileStoreResponse` | If `ShouldConfigureMainFileStore` is false, finish immediately. Otherwise, store the final shard list and topology flags in the main tablet; then the resize request succeeds. |
 
 ## Diagram Blocks
 
@@ -219,7 +232,7 @@ flowchart TD
 | --- | --- | --- |
 | `Describe main FS` | `DescribeMainFileStore`, main-filesystem branch of `HandleDescribeFileStoreResponse` | Read the current main filesystem config. The actor later uses it as the base for target config calculation. |
 | `Throttled?` | `StorageConfig->GetMaxShardManagementRequestsInFlight() != 0` | Select legacy or throttled resize execution. |
-| `Read initial shard creation state` | `ReadShardCreationState`, initial branch of `HandleShardCreationStateResponse` where `!InitialShardCreationStateRead` | In throttled mode, read persisted shard-creation progress before planning the retry. A response without `ShardCreationState` enables rolling-upgrade fallback: request throttling remains enabled, but bitmap persistence is disabled. |
+| `Read initial shard creation state` | `ReadShardCreationState`, initial branch of `HandleShardCreationStateResponse` where `!ShardCreationState.IsPersistentStateLoaded()` | In throttled mode, read persisted shard-creation progress before planning the retry. A response without `ShardCreationState` enables rolling-upgrade fallback: request throttling remains enabled, but bitmap persistence is disabled. |
 | `Prepare target layout` | `GetStorageStats`, `HandleGetStorageStatsResponse`, `GetFileSystemTopology`, `HandleGetFileSystemTopologyResponse`, optionally `SetupCreatedShardBitmap` | Read stats and topology, calculate target configs, determine shard ranges for describe/alter/create/configure, and initialize the created-shard bitmap after the current topology and target shard configs are known if persistence is supported. |
 | `Existing shards need resize?` | `ShardsToDescribe != 0` / `ShardsToAlter != 0`, initialized when `StrictFileSystemSizeEnforcementEnabled` is true | Decide whether existing shard configs must be described and altered before new shards are created. |
 | `Describe shard configs` | `DescribeShards`, `DescribeShard`, shard branch of `HandleDescribeFileStoreResponse` | Read current configs of existing shards that are going to be altered. The actor needs their config versions and real channel layouts before issuing shard alter requests. |
@@ -227,14 +240,14 @@ flowchart TD
 | `Alter existing shards` | `AlterShards`, `AlterShard`, shard branch of `HandleAlterFileStoreResponse` | Resize existing shard filestores through SchemeShard when strict filesystem size enforcement requires every shard to have the main filesystem size. |
 | `More shards to create?` | `CreateShards`; checks `ShardsToCreate == 0` before entering the create range | Decide whether the resize needs shard creation before shard configuration. |
 | `Create missing shards: all` | legacy `CreateShards` / `ContinueCreateShards` / `CreateShard` / `HandleCreateFileStoreResponse` path | Send create requests for all missing target shards without bitmap checks or request throttling. |
-| `Process create range with limit` | throttled `CreateShards` / `ContinueCreateShards` / `CreateShard` / `HandleCreateFileStoreResponse` path, plus `UpdateShardCreatedState`, `UpdateShardCreationState`, and non-initial `HandleShardCreationStateResponse` when persistence is supported | Process missing target shard indexes with the configured in-flight limit. If `CreatedShardBitmap` is available, skip recorded shards and persist newly created shard bits before shard configuration starts. |
+| `Process create range with limit` | throttled `CreateShards` / `ContinueCreateShards` / `CreateShard` / `HandleCreateFileStoreResponse` path, plus `OnShardCreated`, `UpdateShardCreationState`, and non-initial `HandleShardCreationStateResponse` when persistence is supported | Process missing target shard indexes with the configured in-flight limit. If `CreatedShardBitmap` is available, skip recorded shards and persist newly created shard bits before shard configuration starts. |
 | `Configure shards?` | `ConfigureShards`; checks `ShardsToConfigure == 0` | Decide whether shard tablets need configuration before the main tablet is configured. |
 | `New shards?` | `ConfigureShards`; checks `ExistingShardIds.size() < FileStoreConfig.ShardConfigs.size()` | Select whether the first configure phase is `NewShards` or only `OldShards`. |
 | `Configure new shards` | `ConfigureShardRange(existingShardCount, totalShardCount, EShardConfigPhase::NewShards)`, `ConfigureShard`, `HandleConfigureShardResponse` | Tell newly created shard tablets their shard number, main filesystem id, feature flags, and sometimes the full target shard list. |
 | `Existing shards?` | `HandleConfigureShardResponse`; checks `ShardConfigPhase == NewShards && !ExistingShardIds.empty()` | Decide whether the actor needs the second shard configure phase for pre-existing shards. |
 | `Configure old shards` | `ConfigureShardRange(0, ExistingShardIds.size(), EShardConfigPhase::OldShards)`, `ConfigureShard`, `HandleConfigureShardResponse` | Reconfigure pre-existing shard tablets after new shards are configured so they can pick up the full target shard list. |
 | `Configure main FS?` | `ConfigureMainFileStore`; checks `ShouldConfigureMainFileStore` | Decide whether to send the main-tablet topology update or finish immediately. |
-| `Configure main FS` | `ConfigureMainFileStore`, optionally `HandleConfigureShardsResponse` | If `ShouldConfigureMainFileStore` is false, finish immediately. Otherwise, publish the final shard list and topology flags in the main tablet. This is the point where main-tablet topology catches up with physical shard filestores. |
+| `Configure main FS` | `ConfigureMainFileStore`, optionally `HandleConfigureMainFileStoreResponse` | If `ShouldConfigureMainFileStore` is false, finish immediately. Otherwise, publish the final shard list and topology flags in the main tablet. This is the point where main-tablet topology catches up with physical shard filestores. |
 | `Response` | `ReplyAndDie` | Send the resize result to the caller and terminate the actor. |
 
 ### Throttled Shard Create Range Diagram
@@ -253,8 +266,8 @@ flowchart TD
 | `Advance index count request` | `ContinueCreateShards` after `CreateShard` | Advance `NextShardToCreate` and count the sent request against the current limit. |
 | `Handle create response` | throttled branch of `HandleCreateFileStoreResponse` | Handle a successful shard create response. |
 | `Decrement ShardsToCreate` | `--ShardsToCreate` in `HandleCreateFileStoreResponse` | Account for one successful shard creation. |
-| `CreatedShardBitmap?` | `CreatedShardBitmap != nullptr` in `HandleCreateFileStoreResponse` | Select whether this actor uses persistent shard creation state. |
-| `UpdateShardCreatedState` | `UpdateShardCreatedState` | In the persistent path, set the local created-shard bit and send a shard creation state update. |
+| `CreatedShardBitmap?` | `ShardCreationState.HasCreatedShardBitmap()` in `HandleCreateFileStoreResponse` | Select whether this actor uses persistent shard creation state. |
+| `OnShardCreated` | `OnShardCreated` | In the persistent path, set the local created-shard bit and send a shard creation state update. |
 | `ContinueCreateShards limit 1` | `ContinueCreateShards(ctx, 1)` in throttled `HandleCreateFileStoreResponse` | Refill one create request slot after one create response arrives. |
 | `Return` | handler returns to the actor event loop | Wait for later create or shard creation state responses. In the persistent path, shard configuration is started from `HandleShardCreationStateResponse`. |
 | `ConfigureShards` | `ConfigureShards` | Enter shard tablet configuration when create work is complete. |
@@ -264,10 +277,11 @@ flowchart TD
 | Diagram block | Method / condition | Purpose |
 | --- | --- | --- |
 | `Shard create handled` | input from throttled `HandleCreateFileStoreResponse` | Start durable recording for a shard create response. |
-| `Set local created bit` | `UpdateShardCreatedState` | Set the shard bit in the local `CreatedShardBitmap` for the shard whose create response was handled. |
+| `Set local created bit` | `OnShardCreated` | Set the shard bit in the local `CreatedShardBitmap` for the shard whose create response was handled. |
 | `Update shard creation state` | `UpdateShardCreationState` | Send the local created-shard bitmap to the main tablet using the current `ShardCreationState.Version`. |
 | `Handle state response` | non-initial branch of `HandleShardCreationStateResponse` | Handle the main tablet's current `ShardCreationState` after a shard creation state update request. |
-| `Stale version?` | `shardCreationState.GetVersion() < ShardCreationState.GetVersion()` | Ignore shard creation state responses older than the actor's current local version. |
+| `Stale version?` | `shardCreationState.GetVersion() < ShardCreationState.GetShardCreationStateVersion()` | Ignore shard creation state responses older than the actor's current local version. |
+| `Same range and config hash?` | `ShardCreationState.ValidateTarget` | Reject a response for a different target with `E_INVALID_STATE` before merging its bitmap. |
 | `Merge returned bitmap` | `MergeShardCreationState` | Reconcile the response from the main tablet with local state. |
 | `Local bits persisted?` | inverted `MergeShardCreationState` result | Compare local `CreatedShardBitmap` with the bitmap inside the last accepted `ShardCreationState`. If local contains bits missing from persisted state, send another update. |
 | `Can configure shards?` | `ShardsToCreate == 0 && !ShardConfigurationStarted` in `HandleShardCreationStateResponse` | Decide whether all create responses have been counted, local bits are persisted, and shard configuration has not already started. |
@@ -330,10 +344,12 @@ Shard creation has additional recovery state:
   for different resize parameters. The hash ignores volatile scheme fields such
   as config version and timestamps.
 * `ShardCreationState.Version` is the compare-and-swap guard for bitmap updates.
-* `InitialShardCreationStateRead` separates the initial read response from later
-  update responses.
-* `CreatedShardBitmap == nullptr` means that persistent shard creation state is
-  disabled for this actor.
+* The companion status is `Unknown` before the initial response, `Supported`
+  after a response with state, or `Unsupported` after rolling-upgrade fallback.
+  `IsPersistentStateLoaded()` is true for both `Supported` and `Unsupported`.
+* An absent bitmap can mean legacy mode, fallback, or that topology has not yet
+  been read. Use `IsPersistentStateSupported()` to distinguish support from
+  bitmap readiness (`HasCreatedShardBitmap()`).
 * There is no separate in-flight flag or request cookie for shard creation state
   updates. The actor reconciles state using the returned
   `ShardCreationState.Version` and bitmap.
@@ -353,7 +369,7 @@ it still does not know the current topology and target shard configs.
 
 If the initial response has no `ShardCreationState`,
 `HandleShardCreationStateResponse` treats the main tablet as an old version. It
-sets `InitialShardCreationStateRead`,
+calls `MarkPersistentStateUnsupported()`,
 keeps `CreatedShardBitmap == nullptr`, and continues to `GetStorageStats`.
 Request throttling remains enabled, but persistent bitmap reads and writes are
 disabled for this resize actor.
@@ -370,8 +386,9 @@ topology, setup treats it as completed stale state and resets the local state to
 the current range. If it contains uncommitted created-shard bits, the stored
 range and target hash must match the current target. Otherwise the actor fails
 the resize with `E_INVALID_STATE` instead of reusing shards that may have been
-created for a different operation. If `CreatedShardBitmap == nullptr`, setup is
-skipped.
+created for a different operation. Setup is skipped when persistent state is
+unsupported or the requested filesystem is itself a shard; an absent bitmap
+alone is not a reason to skip setup.
 
 ### Creation and Bitmap Persistence
 
@@ -391,9 +408,9 @@ For each target shard index in throttled mode:
   the non-persistent throttled path and can call `ConfigureShards` after the
   last create response;
 * if `CreatedShardBitmap` exists, `HandleCreateFileStoreResponse` calls
-  `UpdateShardCreatedState` and waits for shard creation state persistence before
+  `OnShardCreated` and waits for shard creation state persistence before
   shard configuration starts;
-* `UpdateShardCreatedState` sets the local bit by absolute shard index and
+* `OnShardCreated` sets the local bit by absolute shard index and
   immediately calls `UpdateShardCreationState`;
 * `UpdateShardCreationState` sends the current local bitmap with
   `ShardCreationState.Version`;
@@ -417,15 +434,20 @@ itself.
 
 The index tablet applies a shard creation state update only when the request
 contains `ShardCreationState.Version` and it equals the tablet's current shard
-creation state version. On success, the tablet stores the requested state with
-`Version + 1`.
+creation state version. It then validates the bitmap against `MaxShardCount`;
+validation failure returns an error without storing the new state. On success,
+the tablet stores the requested state with `Version + 1`.
 
-Whether the update was applied or rejected by the version check, the response
-contains the tablet's current `ShardCreationState`. The actor handles update
+A version mismatch is not an error. Whether the update was applied or skipped
+by the version check, the response contains the tablet's current
+`ShardCreationState`. The actor handles update
 responses as follows:
 * if `response.ShardCreationState.Version < ShardCreationState.Version`, the
   response is stale relative to local actor state and is ignored;
-* otherwise the actor merges
+* otherwise `ValidateTarget` checks the returned base, target and config hash
+  against the local target; a mismatch terminates the request with
+  `E_INVALID_STATE`;
+* for a matching target, the actor merges
   `response.ShardCreationState.CreatedShardBitmap` into the local bitmap, stores
   the returned state and version, and checks whether any local created-shard
   bits are still not persisted;
@@ -437,6 +459,72 @@ responses as follows:
 This makes duplicate or overlapping shard creation state update requests
 tolerable: progress is recovered from the tablet's returned state instead of
 from request cookies.
+
+## Persistence and Progress Invariants
+
+These rules apply to the persistent resize path. The companion tracks state;
+the actor receives events, schedules requests, and decides when to change phase.
+
+### State Readiness and Target Identity
+
+The initial read is the only state request sent before topology is known.
+`SetShardCreationState` marks support as confirmed, but does not initialize the
+local bitmap. After reading topology, `SetupCreatedShardBitmap` validates or
+resets the target and initializes the bitmap before shard creation begins.
+An initialization error terminates the request. Resizing a shard itself does
+not initialize a sub-shard bitmap or send shard creation updates.
+
+Every normal update response therefore has an initialized local bitmap. The
+bitmap is not cleared during the actor's lifetime. A non-initial state response
+without it is an invariant violation, not a reason to wait for topology; see
+the critical event handling below.
+
+Within an attempt, the creation target is identified by `BaseShardCount`,
+`TargetShardCount`, and `TargetShardConfigHash`. Non-stale update responses must
+match all three before their bitmaps are merged. These checks belong to the
+actor/companion; the Tablet's version check alone does not validate target
+identity or serialize entire resize operations.
+
+### Local Progress and Durable Progress
+
+The local bitmap contains both loaded progress and successful creates observed
+by this actor. Merging a response ORs its bits into the local bitmap, preserving
+local successes, while the companion's stored state/version become those of
+the response. Thus a successful merge does not necessarily mean all local bits
+are durable. `HasUnpersistedCreatedShards` checks for local bits absent from the
+returned persistent bitmap.
+
+For an active creation range, shard configuration requires both:
+
+* all target shards are accounted for (`ShardsToCreate == 0`);
+* all local creation bits are present in the accepted persistent state.
+
+The state response handler enforces this barrier and checks
+`!ShardConfigurationStarted` before starting configuration. The synchronous
+exception is an attempt that skips every missing shard using already persisted
+bits: `CreateShards` starts configuration directly because no create response
+or new persistence write is needed. With no creation work, it also proceeds
+directly. New shard configuration completes before old shards are configured,
+and main topology is published only after shard configuration completes.
+
+### Why Returning Does Not Stall Normal Processing
+
+* A stale state response is ignored because a newer response has already
+  advanced local state; it must not roll the version back.
+* If merged state still lacks local bits, `UpdateShardCreationState` sends a new
+  request before returning. Its response drives the next persistence check.
+* If bits are durable but `ShardsToCreate` is nonzero, outstanding shard creation
+  work continues to produce create responses and persistence requests.
+* If configuration has already started, further state responses must not start
+  it again; configuration responses drive the remaining phases.
+* If all creates are skipped synchronously, `CreateShards` explicitly advances
+  to configuration rather than waiting for a response that will never arrive.
+
+These are progress rules under normal request/response delivery, not a timeout
+guarantee. The actor has no dedicated state-update timeout or retry backoff.
+A state request error terminates the attempt with `E_REJECTED`; retrying the
+whole resize is the caller's responsibility. Repeated CAS conflicts can cause
+repeated updates, and a concurrent target change can reject the attempt.
 
 ## Configure Phases
 
@@ -458,6 +546,22 @@ finishes without sending `TEvIndexTablet::TEvConfigureShardsRequest`.
 Otherwise, the request updates the main tablet topology and makes the final
 shard list visible to the filesystem.
 
+## State Response Errors
+
+The initial response without state is a supported rolling-upgrade fallback and
+only logs a warning. Subsequent unexpected responses are handled differently:
+
+| Condition | Critical event | Actor action |
+| --- | --- | --- |
+| State missing after support was confirmed | `ShardCreationStateResponseMissing` | Reply with `E_REJECTED` and terminate. |
+| Another response without state after fallback | `ShardCreationStateResponseMissing` | Ignore the response; the non-persistent flow continues. |
+| Non-initial response with state but no local bitmap | `ShardCreationBitmapMissing` | Reply with `E_INVALID_STATE` and terminate. |
+
+In resize, the interval between the initial state read and topology setup
+normally has no bitmap. No additional state request is sent during that
+interval, so another state response there is unexpected. The companion does
+not receive actor events; the actor owns response handling and phase transitions.
+
 ## Failure and Retry Boundaries
 
 Physical shard creation and main topology update are separated by several
@@ -469,7 +573,8 @@ Legacy retry behavior:
 * the actor recalculates the same target shard list;
 * it reissues create requests for all missing-from-topology shards.
 
-Throttled retry behavior:
+Throttled retry behavior with persistent state support (fallback uses the legacy
+recovery behavior while retaining request throttling):
 * topology still reports the old shard list;
 * the actor reads `ShardCreationState.CreatedShardBitmap`, shard range, and
   target config hash;
@@ -485,3 +590,10 @@ Throttled retry behavior:
 * if all missing shards are skipped, `CreateShards` still proceeds to
   `ConfigureShards`, because no create response will arrive to drive the next
   transition.
+
+A bit is recorded only after a successful create response has been handled and
+its state update has persisted. A failure between physical creation and that
+write can therefore leave a created shard without a persisted bit; a retry may
+issue its create request again. The bitmap provides progress recovery, not an
+exactly-once guarantee for physical creation. The in-flight limit applies to
+shard management requests, not to the separate state update requests.
