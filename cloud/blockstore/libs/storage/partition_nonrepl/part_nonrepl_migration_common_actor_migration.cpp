@@ -28,6 +28,8 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     MigrationSrcActorId = initParams.MigrationSrcActorId;
     SrcActorId = initParams.SrcActorId;
     DstActorId = initParams.DstActorId;
+    OwnsSrcActor = initParams.TakeOwnershipOverSrcActor;
+    OwnsDstActor = initParams.TakeOwnershipOverDstActor;
     TimeoutCalculator = std::move(initParams.TimeoutCalculator);
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 

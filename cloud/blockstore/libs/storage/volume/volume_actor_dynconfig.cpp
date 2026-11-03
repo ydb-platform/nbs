@@ -22,15 +22,16 @@ void TVolumeActor::HandleDynamicConfigUpdate(
     ApplyDynamicConfigUpdate(ev->Get()->ConfigProvider, ctx);
 }
 
-// Refresh the global source and apply its per-volume patch.
+// Refresh the global source, merge its patch and notify consumers on change.
 void TVolumeActor::ApplyDynamicConfigUpdate(
     const IBlockstoreConfigProviderPtr& configProvider,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
-
     GlobalStorageConfig = configProvider->Get()->GetStorageConfig();
-    ApplyStorageConfig();
+    if (ApplyStorageConfig()) {
+        DynamicConfigRevision++;
+        SendDynamicConfigUpdateToPartitions(ctx);
+    }
 }
 
 // Replace configuration references while preserving loaded Volume state.
@@ -50,6 +51,21 @@ bool TVolumeActor::ApplyStorageConfig()
         State->UpdateStorageConfig(Config);
     }
     return true;
+}
+
+// Deliver the effective snapshot to direct consumers and their owned children.
+void TVolumeActor::SendDynamicConfigUpdateToPartitions(const TActorContext& ctx)
+{
+    if (!State || !DynamicConfigRevision || CurrentState != STATE_WORK) {
+        return;
+    }
+
+    for (const auto actorId: State->GetDynamicConfigUpdateRecipients()) {
+        ctx.Send(
+            actorId,
+            new TEvVolume::TEvDynamicConfigUpdate(
+                Config, SelfId(), DynamicConfigRevision));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

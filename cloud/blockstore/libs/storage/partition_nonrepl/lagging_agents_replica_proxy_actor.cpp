@@ -1149,6 +1149,33 @@ void TLaggingAgentsReplicaProxyActor::HandlePoisonPill(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Apply a dynamic configuration update and forward it to owned actors.
+void TLaggingAgentsReplicaProxyActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+
+    // Preserve source and destination ownership; update only proxy children.
+    for (const auto& [agentId, state]: AgentState) {
+        Y_UNUSED(agentId);
+        for (const auto actorId:
+             {state.AvailabilityMonitoringActorId, state.MigrationActorId})
+        {
+            if (actorId) {
+                ctx.Send(
+                    actorId,
+                    new TEvVolume::TEvDynamicConfigUpdate(
+                        msg->StorageConfig, msg->Owner, msg->Revision));
+            }
+        }
+    }
+}
+
 STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -1190,6 +1217,10 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -1224,6 +1255,8 @@ STFUNC(TLaggingAgentsReplicaProxyActor::StateZombie)
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvLaggingMigrationEnabled);
 
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             HandleUnexpectedEvent(

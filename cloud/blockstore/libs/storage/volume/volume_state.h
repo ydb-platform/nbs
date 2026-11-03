@@ -497,6 +497,9 @@ public:
 
     TString GetPartitionsError() const;
 
+    // Return snapshot recipients in the direct partition and wrapper stacks.
+    TVector<NActors::TActorId> GetDynamicConfigUpdateRecipients() const;
+
     void SetDiskRegistryBasedPartitionActor(
         TActorsStack actors,
         TNonreplicatedPartitionConfigPtr config);

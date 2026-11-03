@@ -861,6 +861,20 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Apply a dynamic configuration update without restarting the actor.
+void TNonreplicatedPartitionRdmaActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+}
+
 STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -930,6 +944,10 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
                 TEvGetDiskRegistryBasedPartCountersRequest,
             HandleGetDiskRegistryBasedPartCounters);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(
@@ -991,6 +1009,8 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateZombie)
         IgnoreFunc(TEvents::TEvPoisonPill);
         IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutResponse);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             if (!HandleRequests(ev)) {

@@ -501,6 +501,20 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
     return true;
 }
 
+// Apply a dynamic configuration update without restarting the actor.
+void TFreshBlocksWriterActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+}
+
 STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 {
     switch (ev->GetTypeRewrite()) {
@@ -514,6 +528,10 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
         HFunc(
             TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse,
             HandleFreshChannelsInfo);
+
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
 
         default:
             if (!RejectRequests(ev)) {
@@ -549,6 +567,10 @@ STFUNC(TFreshBlocksWriterActor::StateWork)
             TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted,
             HandleZeroBlocksCompleted);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             if (!IOCompanion->HandleRequests(ev, this->ActorContext()) &&
                 !HandleRequests(ev))
@@ -577,6 +599,8 @@ STFUNC(TFreshBlocksWriterActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvZeroFreshBlocksCompleted);
         IgnoreFunc(NKikimr::TEvTablet::TEvCheckBlobstorageStatusResult);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvProcessStorageStatusFlags);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             if (!RejectRequests(ev) &&

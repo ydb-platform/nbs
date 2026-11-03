@@ -112,6 +112,9 @@ public:
     [[nodiscard]] bool Empty() const;
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
+
+    // Return snapshot recipients, excluding wrappers without storage config.
+    TVector<NActors::TActorId> GetDynamicConfigUpdateRecipients() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
 
     void UpdateStartInfo(const TPartitionStartInfo& startInfo);
@@ -137,6 +140,9 @@ struct TPartitionInfo
 
     TRetryPolicy RetryPolicy;
     NActors::TSchedulerCookieHolder RetryCookie;
+
+    // Writer mode selected once for the current bootstrapper and its wrappers.
+    bool FreshBlocksWriterEnabled = false;
 
     bool RequestingBootExternal = false;
     ui32 SuggestedGeneration = 0;

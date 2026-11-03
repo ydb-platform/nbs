@@ -209,6 +209,8 @@ private:
     TStorageConfigConstPtr GlobalStorageConfig;
     // The last committed per-volume patch, independent of global publications.
     NProto::TStorageServiceConfig StorageConfigPatch;
+    // The Volume-local revision of configuration changes from ConfigsManager.
+    ui64 DynamicConfigRevision = 0;
     TStorageConfigConstPtr Config;
     bool HasStorageConfigPatch = false;
     bool HasPerformanceProfileModifications = false;
@@ -590,13 +592,17 @@ private:
 
     ui32 GetCurrentConfigVersion() const;
 
-    // Apply the provider's current snapshot.
+    // Apply the provider's current snapshot and notify consumers on change.
     void ApplyDynamicConfigUpdate(
         const IBlockstoreConfigProviderPtr& configProvider,
         const NActors::TActorContext& ctx);
 
     // Refresh effective configuration and report whether the snapshot changed.
     bool ApplyStorageConfig();
+
+    // Send the current snapshot to running consumers and newly started
+    // children.
+    void SendDynamicConfigUpdateToPartitions(const NActors::TActorContext& ctx);
 
     bool SendBootExternalRequest(
         const NActors::TActorContext& ctx,

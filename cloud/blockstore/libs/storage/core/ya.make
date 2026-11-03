@@ -12,6 +12,7 @@ SRCS(
     compaction_policy.cpp
     compaction_type.cpp
     config.cpp
+    dynamic_config_update.cpp
     disk_counters.cpp
     disk_validation.cpp
     forward_helpers.cpp

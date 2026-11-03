@@ -8,6 +8,8 @@
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,6 +26,7 @@ NActors::IActorPtr CreatePartitionTablet(
     ui32 partitionIndex,
     ui32 siblingCount,
     const NActors::TActorId& volumeActorId,
-    ui64 volumeTabletId);
+    ui64 volumeTabletId,
+    std::optional<bool> freshBlocksWriterEnabled = std::nullopt);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
