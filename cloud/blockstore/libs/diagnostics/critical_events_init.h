@@ -15,6 +15,11 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Enable GAUGE reporting for AppCriticalEvents, AppImpossibleEvents and
+// DiskAgentCriticalEvents.
+// Call before startup work to retain event counts until monitoring is ready.
+void InitProcessCriticalEventsReporting();
+
 void InitVolumeCriticalEventsReportingMode(
     NProto::EVolumeCriticalEventsReportingMode reportingMode);
 
@@ -23,7 +28,7 @@ void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler();
 
-// For unit test purposes
-void ResetVolumeCriticalEventsCounter();
+// Clear pending events and roots and restore default reporting for tests.
+void ResetCriticalEventsCounter();
 
 }   // namespace NCloud::NBlockStore

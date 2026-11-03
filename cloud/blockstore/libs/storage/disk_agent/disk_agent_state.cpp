@@ -583,7 +583,6 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                     .Configs = std::move(r.Configs),
                     .Devices = std::move(r.Devices),
                     .Errors = std::move(r.Errors),
-                    .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
                     .DevicesWithSuspendedIO =
                         std::move(r.DevicesWithSuspendedIO),
                     .LostDevicesIds = std::move(r.LostDevicesIds),
