@@ -345,6 +345,7 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
+            ui32 maxWrite,
             void* context)
         : Args(config, threadsCount)
     {
@@ -352,6 +353,10 @@ public:
         Y_ENSURE(Session, "fuse_session_new() failed");
 
         TryLoadSessionState(state);
+        // After the restore: bufsize = max(restored, maxWrite + header), so
+        // the size negotiated before restart keeps being accepted and a
+        // future FUSE_INIT can still offer maxWrite
+        fuse_session_set_max_write(Session, maxWrite);
 
         int error = fuse_session_mount(Session);
         Y_ENSURE(!error, "fuse_session_mount() failed");
@@ -379,6 +384,18 @@ public:
         fuse_session_setparams(Session, &params);
     }
 
+    // max_write negotiated with the guest before a vhost restart, 0 if there
+    // is no saved state
+    static ui32 GetRestoredMaxWrite(const TString& state)
+    {
+        NProto::TVfsSessionState proto;
+        if (!state || !proto.ParseFromString(state)) {
+            return 0;
+        }
+
+        return fuse_bufsize_to_max_write(proto.GetBufferSize());
+    }
+
     void Exit()
     {
         if (Session) {
@@ -400,7 +417,10 @@ public:
         return Session;
     }
 
-    TString Dump() const
+    // Called from FUSE_INIT before libfuse shrinks the session buffer to the
+    // negotiated maxWrite, so the buffer size is shrunk here explicitly:
+    // otherwise a larger size offered before would be restored after restart
+    TString Dump(ui32 maxWrite) const
     {
         Y_ABORT_UNLESS(Session);
 
@@ -412,7 +432,8 @@ public:
         session.SetProtoMinor(params.proto_minor);
         session.SetCapable(params.capable);
         session.SetWant(params.want);
-        session.SetBufferSize(params.bufsize);
+        session.SetBufferSize(
+            fuse_negotiated_bufsize(params.bufsize, maxWrite));
 
         TString result;
         Y_PROTOBUF_SUPPRESS_NODISCARD session.SerializeToString(&result);
@@ -446,11 +467,13 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
+            ui32 maxWrite,
             void* context)
         : Args(config, threadsCount)
         , MountPath(config.GetMountPath())
     {
         Y_UNUSED(state);
+        Y_UNUSED(maxWrite);
 
         Channel = fuse_mount(MountPath.c_str(), Args);
         Y_ENSURE(Channel, "fuse_mount() failed");
@@ -481,9 +504,16 @@ public:
         return Session;
     }
 
-    TString Dump() const
+    TString Dump(ui32 maxWrite) const
     {
+        Y_UNUSED(maxWrite);
         return {};
+    }
+
+    static ui32 GetRestoredMaxWrite(const TString& state)
+    {
+        Y_UNUSED(state);
+        return 0;
     }
 
     void Suspend()
@@ -591,9 +621,10 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
+            ui32 maxWrite,
             void* context)
         : Log(std::move(log))
-        , Session(config, threadsCount, ops, state, context)
+        , Session(config, threadsCount, ops, state, maxWrite, context)
         , BackendQueueThreads(threadsCount)
     {
         static std::atomic<ui64> NextFuseLoopIndex = 0;
@@ -992,7 +1023,9 @@ private:
                 Log,
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
-            FileSystemConfig = MakeFileSystemConfig(filestore);
+            FileSystemConfig = MakeFileSystemConfig(
+                filestore,
+                response.GetSession().GetSessionState());
             RegisterFileSystemEventHandler();
             if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
                 RequestStats->EnableAvailabilityTracking(
@@ -1151,7 +1184,9 @@ private:
                          FileSystemConfig->GetZeroCopyWriteEnabled(),
                      .FlushWritesInParallelEnabled =
                          FileSystemConfig
-                             ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
+                             ->GetServerWriteBackCacheFlushWritesInParallelEnabled(),
+                     .MaxCachedWriteRequestSize =
+                         FileSystemConfig->GetMaxBufferSize()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                     auto future = WriteBackCache.Drain();
@@ -1203,7 +1238,7 @@ private:
                          .MaxDataAreaStepSize =
                              Config->GetDirectoryHandlesMaxDataAreaStepSize(),
                          .InitialDataMoveBufferSize =
-                             FileSystemConfig->GetMaxBufferSize(),
+                             FileSystemConfig->GetMaxMetadataBufferSize(),
                          .PersistentHandleMaxSize =
                              FileSystemConfig
                                  ->GetDirectoryHandlesPersistentHandleMaxSize()});
@@ -1311,6 +1346,8 @@ private:
                 fuseLoopThreadCount,
                 ops,
                 SessionState,
+                FileSystemConfig->GetMaxWritePages() *
+                    NSystemInfo::GetPageSize(),
                 this);
 
             FileSystem->Init();
@@ -1333,17 +1370,31 @@ private:
         return error;
     }
 
-    TFileSystemConfigPtr MakeFileSystemConfig(const NProto::TFileStore& filestore)
+    TFileSystemConfigPtr MakeFileSystemConfig(
+        const NProto::TFileStore& filestore,
+        const TString& sessionState)
     {
         NProto::TFileSystemConfig config;
         config.SetFileSystemId(filestore.GetFileSystemId());
         config.SetBlockSize(filestore.GetBlockSize());
 
-        if (auto pages = Config->GetMaxWritePages()) {
-            config.SetMaxBufferSize(pages * NSystemInfo::GetPageSize());
+        const auto& features = filestore.GetFeatures();
+
+        const ui32 pages = features.GetMaxWritePages()
+                               ? features.GetMaxWritePages()
+                               : Config->GetMaxWritePages();
+        if (pages) {
+            config.SetMaxWritePages(pages);
+
+            // The guest keeps the max_write negotiated before a vhost restart
+            // (no new FUSE_INIT), so accept max(config, restored).
+            const ui32 restoredMaxWrite =
+                TSession::GetRestoredMaxWrite(sessionState);
+            config.SetMaxBufferSize(Max<ui32>(
+                pages * NSystemInfo::GetPageSize(),
+                restoredMaxWrite));
         }
 
-        const auto& features = filestore.GetFeatures();
         if (features.GetPreferredBlockSize()) {
             config.SetPreferredBlockSize(features.GetPreferredBlockSize());
         } else {
@@ -1459,7 +1510,7 @@ private:
         // Cap the number of scatter-gather segments per request to virtqueue
         // size, taking FUSE own headers into account (see FUSE_HEADER_OVERHEAD
         // in linux:fs/fuse/virtio_fs.c)
-        const size_t maxPages = Config->GetMaxWritePages();
+        const size_t maxPages = FileSystemConfig->GetMaxWritePages();
 
         // libfuse doesn't allow to configure max_pages directly but infers it
         // from fuse_conn_info.max_write, dividing it by page size.
@@ -1482,7 +1533,7 @@ private:
 
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode
-        ResetSessionState(FuseLoop->GetSession().Dump());
+        ResetSessionState(FuseLoop->GetSession().Dump(conn->max_write));
 
         if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;

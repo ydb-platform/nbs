@@ -28,11 +28,16 @@ private:
     ITaskQueuePtr ThreadPool;
 
 public:
-    TFuseVirtioClient(const TString& SocketPath, const TDuration& timeout = TDuration::MilliSeconds(1000))
+    // queueBufferSize limits the size of a single request / response buffer
+    TFuseVirtioClient(
+            const TString& SocketPath,
+            const TDuration& timeout = TDuration::MilliSeconds(1000),
+            ui64 queueBufferSize = 8192)
         : WaitTimeout(timeout)
         , ThreadPool(CreateThreadPool("reqs", 4))
     {
         NVHost::TBufferedClientParams clientParams = {
+            .QueueBufferSize = queueBufferSize,
             .WriteTimeout = WaitTimeout
         };
         Client = std::make_unique<NVHost::TBufferedClient>(

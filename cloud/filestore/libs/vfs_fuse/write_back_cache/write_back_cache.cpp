@@ -117,6 +117,7 @@ public:
         , State(
               *this,
               PersistentStorage,
+              args.MaxCachedWriteRequestSize,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
