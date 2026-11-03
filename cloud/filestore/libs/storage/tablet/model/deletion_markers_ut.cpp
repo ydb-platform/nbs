@@ -4,6 +4,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <algorithm>
+#include <random>
+
 #include <util/random/fast.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -254,6 +257,110 @@ Y_UNIT_TEST_SUITE(TDeletionMarkersTest)
             m.Add({ DefaultNodeId, commitId++, left, right - left + 1 });
             CHECK_DELETION_MARKERS(maxN, m, DefaultNodeId);
         }
+    }
+
+    Y_UNIT_TEST(ShouldBeOrderIndependent)
+    {
+        constexpr ui64 nodeId = 1;
+
+        const TVector<TDeletionMarker> deletionMarkers = {
+            {nodeId, 10, 5, 4},    // [5, 9)
+            {nodeId, 20, 2, 6},    // [2, 8)
+            {nodeId, 25, 7, 2},    // [7, 9)
+            {nodeId, 30, 0, 3},    // [0, 3) latest
+        };
+
+        TDeletionMarkers inOrder(TDefaultAllocator::Instance());
+        TDeletionMarkers outOfOrder1(TDefaultAllocator::Instance());
+        TDeletionMarkers outOfOrder2(TDefaultAllocator::Instance());
+
+        // in-order insertion: every next marker has the latest commit id.
+        inOrder.Add(deletionMarkers[0]);
+        inOrder.Add(deletionMarkers[1]);
+        inOrder.Add(deletionMarkers[2]);
+        inOrder.Add(deletionMarkers[3]);
+
+        // out-of-order insertion: mark only running-max commit ids as latest.
+        outOfOrder1.Add(deletionMarkers[1]);
+        outOfOrder1.Add(deletionMarkers[2]);
+        outOfOrder1.AddOutOfOrder(deletionMarkers[0]);
+        outOfOrder1.Add(deletionMarkers[3]);
+
+        outOfOrder2.Add(deletionMarkers[2]);
+        outOfOrder2.AddOutOfOrder(deletionMarkers[0]);
+        outOfOrder2.AddOutOfOrder(deletionMarkers[1]);
+        outOfOrder2.Add(deletionMarkers[3]);
+
+        auto blocksInOrder = GenerateBlocks(10, nodeId);
+        auto blocksOutOfOrder1 = GenerateBlocks(10, nodeId);
+        auto blocksOutOfOrder2 = GenerateBlocks(10, nodeId);
+
+        inOrder.Apply(MakeArrayRef(blocksInOrder));
+        outOfOrder1.Apply(MakeArrayRef(blocksOutOfOrder1));
+        outOfOrder2.Apply(MakeArrayRef(blocksOutOfOrder2));
+
+        ASSERT_VECTORS_EQUAL(blocksInOrder, blocksOutOfOrder1);
+        ASSERT_VECTORS_EQUAL(blocksInOrder, blocksOutOfOrder2);
+
+        UNIT_ASSERT_VALUES_EQUAL(30, blocksInOrder[0].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(30, blocksInOrder[1].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(30, blocksInOrder[2].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocksInOrder[3].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocksInOrder[4].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocksInOrder[5].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocksInOrder[6].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(25, blocksInOrder[7].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(25, blocksInOrder[8].MaxCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, blocksInOrder[9].MaxCommitId);
+    }
+
+    Y_UNIT_TEST(ShouldBeOrderIndependentWithRandomlyDistributedDeletionMarkers)
+    {
+        const ui32 markerCount = 32 * 1024;
+
+        TVector<TDeletionMarker> deletionMarkers;
+        deletionMarkers.reserve(markerCount);
+
+        ui64 commitId = 1;
+        TFastRng<ui32> gen(12345);
+
+        for (ui32 step = 0; step < markerCount; ++step) {
+            ui32 left = gen.GenRand64() % 1024;
+            ui32 right = gen.GenRand64() % 1024;
+            if (left > right) {
+                std::swap(left, right);
+            }
+
+            deletionMarkers.push_back({
+                DefaultNodeId,
+                commitId++,
+                left,
+                right - left + 1
+            });
+        }
+
+        TDeletionMarkers inOrder(TDefaultAllocator::Instance());
+        TDeletionMarkers outOfOrder(TDefaultAllocator::Instance());
+
+        for (const auto& marker: deletionMarkers) {
+            inOrder.Add(marker);
+        }
+
+        std::mt19937_64 shuffleGen(12345);
+        std::shuffle(deletionMarkers.begin(), deletionMarkers.end(), shuffleGen);
+
+        for (const auto& marker: deletionMarkers) {
+            outOfOrder.AddOutOfOrder(marker);
+        }
+
+        auto blocksInOrder = GenerateBlocks(1024, DefaultNodeId);
+        auto blocksOutOfOrder = GenerateBlocks(1024, DefaultNodeId);
+
+        const ui32 updateCountInOrder = inOrder.Apply(MakeArrayRef(blocksInOrder));
+        const ui32 updateCountOutOfOrder = outOfOrder.Apply(MakeArrayRef(blocksOutOfOrder));
+
+        UNIT_ASSERT_VALUES_EQUAL(updateCountInOrder, updateCountOutOfOrder);
+        ASSERT_VECTORS_EQUAL(blocksInOrder, blocksOutOfOrder);
     }
 }
 

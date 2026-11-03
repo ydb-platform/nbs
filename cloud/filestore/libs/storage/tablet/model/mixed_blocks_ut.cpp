@@ -190,6 +190,177 @@ Y_UNIT_TEST_SUITE(TMixedBlocksTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldApplyDeletionMarkersForOutOfOrderBlockInsertion)
+    {
+        constexpr ui32 rangeId = 0;
+        constexpr ui64 nodeId = 1;
+        constexpr ui32 blockIndex = 123456;
+        constexpr ui32 blocksCount = 3;
+
+        TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
+        mixedBlocks.RefRange(rangeId);
+
+        // Existing index state: a newer write is already present.
+        mixedBlocks.AddDeletionMarker(
+            rangeId,
+            TDeletionMarker(nodeId, 20, blockIndex, blocksCount));
+
+        {
+            const TBlock block(nodeId, blockIndex, 20, InvalidCommitId);
+            auto list = TBlockList::EncodeBlocks(
+                block,
+                blocksCount,
+                TDefaultAllocator::Instance());
+            UNIT_ASSERT(mixedBlocks.AddBlocks(
+                rangeId,
+                TPartialBlobId(20, 1),
+                std::move(list)));
+        }
+
+        // Out-of-order insertion path for older write.
+        // Older marker must not downgrade already known newer commit ids.
+        mixedBlocks.AddDeletionMarkerOutOfOrder(
+            rangeId,
+            TDeletionMarker(nodeId, 10, blockIndex, blocksCount));
+
+        {
+            const TBlock block(nodeId, blockIndex, 10, InvalidCommitId);
+            auto list = TBlockList::EncodeBlocks(
+                block,
+                blocksCount,
+                TDefaultAllocator::Instance());
+            UNIT_ASSERT(mixedBlocks.AddBlocks(
+                rangeId,
+                TPartialBlobId(10, 1),
+                std::move(list)));
+        }
+
+        {
+            TMixedBlockVisitor visitor;
+            mixedBlocks.FindBlocks(
+                visitor,
+                rangeId,
+                nodeId,
+                17,
+                blockIndex,
+                blocksCount);
+
+            auto blocks = visitor.Finish();
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
+
+            for (ui32 i = 0; i < blocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, blocks[i].NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, blocks[i].BlockIndex);
+                UNIT_ASSERT_VALUES_EQUAL(10, blocks[i].MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(20, blocks[i].MaxCommitId);
+            }
+        }
+
+        {
+            TMixedBlockVisitor visitor;
+            mixedBlocks.FindBlocks(
+                visitor,
+                rangeId,
+                nodeId,
+                20,
+                blockIndex,
+                blocksCount);
+
+            auto blocks = visitor.Finish();
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
+
+            for (ui32 i = 0; i < blocksCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(nodeId, blocks[i].NodeId);
+                UNIT_ASSERT_VALUES_EQUAL(blockIndex + i, blocks[i].BlockIndex);
+                UNIT_ASSERT_VALUES_EQUAL(20, blocks[i].MinCommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    InvalidCommitId,
+                    blocks[i].MaxCommitId);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepNonOverlappedPartVisibleForOutOfOrderInsertion)
+    {
+        constexpr ui32 rangeId = 0;
+        constexpr ui64 nodeId = 1;
+        constexpr ui32 blockIndex = 123456;
+        constexpr ui32 blocksCount = 4;
+
+        TMixedBlocks mixedBlocks(TDefaultAllocator::Instance());
+        mixedBlocks.RefRange(rangeId);
+
+        // Existing newer write covers only middle sub-range [1, 3).
+        mixedBlocks.AddDeletionMarker(
+            rangeId,
+            TDeletionMarker(nodeId, 20, blockIndex + 1, 2));
+
+        {
+            const TBlock block(nodeId, blockIndex + 1, 20, InvalidCommitId);
+            auto list = TBlockList::EncodeBlocks(
+                block,
+                2,
+                TDefaultAllocator::Instance());
+            UNIT_ASSERT(mixedBlocks.AddBlocks(
+                rangeId,
+                TPartialBlobId(20, 2),
+                std::move(list)));
+        }
+
+        // Older write is inserted after newer state is already in the index.
+        mixedBlocks.AddDeletionMarkerOutOfOrder(
+            rangeId,
+            TDeletionMarker(nodeId, 10, blockIndex, blocksCount));
+
+        {
+            const TBlock block(nodeId, blockIndex, 10, InvalidCommitId);
+            auto list = TBlockList::EncodeBlocks(
+                block,
+                blocksCount,
+                TDefaultAllocator::Instance());
+            UNIT_ASSERT(mixedBlocks.AddBlocks(
+                rangeId,
+                TPartialBlobId(10, 2),
+                std::move(list)));
+        }
+
+        TMixedBlockVisitor visitor;
+        mixedBlocks
+            .FindBlocks(visitor, rangeId, nodeId, 20, blockIndex, blocksCount);
+
+        auto blocks = visitor.Finish();
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.size());
+
+        bool seen[blocksCount] = {};
+        ui64 minCommitId[blocksCount] = {};
+        ui64 maxCommitId[blocksCount] = {};
+
+        for (const auto& block: blocks) {
+            UNIT_ASSERT_VALUES_EQUAL(nodeId, block.NodeId);
+            UNIT_ASSERT_GE(block.BlockIndex, blockIndex);
+            UNIT_ASSERT_LT(block.BlockIndex, blockIndex + blocksCount);
+
+            const ui32 idx = block.BlockIndex - blockIndex;
+            UNIT_ASSERT(!seen[idx]);
+            seen[idx] = true;
+            minCommitId[idx] = block.MinCommitId;
+            maxCommitId[idx] = block.MaxCommitId;
+        }
+
+        for (ui32 i = 0; i < blocksCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(true, seen[i]);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(10, minCommitId[0]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[0]);
+        UNIT_ASSERT_VALUES_EQUAL(20, minCommitId[1]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[1]);
+        UNIT_ASSERT_VALUES_EQUAL(20, minCommitId[2]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[2]);
+        UNIT_ASSERT_VALUES_EQUAL(10, minCommitId[3]);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, maxCommitId[3]);
+    }
+
     Y_UNIT_TEST(ShouldRefCountRanges)
     {
         constexpr ui32 rangeId = 0;

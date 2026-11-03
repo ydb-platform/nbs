@@ -59,6 +59,7 @@ public:
     bool Empty() const;
 
     void Add(TDeletionMarker deletionMarker);
+    void AddOutOfOrder(TDeletionMarker deletionMarker);
     ui32 Apply(TBlock& block) const;
     ui32 Apply(TArrayRef<TBlock> blocks) const;
     TVector<TDeletionMarker> Extract();
