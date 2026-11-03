@@ -214,6 +214,8 @@ class Daemon(object):
             stdout_prefix = "{}_{}".format(service_name, stdout_prefix)
             stderr_prefix = "{}_{}".format(service_name, stderr_prefix)
 
+        # Register each opened stream so an error while opening a later stream
+        # closes all streams acquired so far.
         with contextlib.ExitStack() as files:
             self.__stdin_file = files.enter_context(tempfile.NamedTemporaryFile(
                 dir=self.__cwd, prefix=stdin_prefix, delete=False))
@@ -227,6 +229,10 @@ class Daemon(object):
                 self.__stderr_file = files.enter_context(
                     open(stderr_file, 'wb') if stderr_file is not None else
                     tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False))
+            # Transfer the cleanup callbacks to a new stack without closing the
+            # streams when this with block exits. Keep them open for the daemon;
+            # close() and detach() call self.__files.close() to close the parent
+            # streams while preserving the files on disk.
             self.__files = files.pop_all()
 
         self.__lock = threading.Lock()
