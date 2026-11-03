@@ -21,7 +21,6 @@
 #include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/actorsystem.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <memory>
@@ -1335,63 +1334,20 @@ TReadDataActorPool::TReadDataActorPool(
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
     TInFlightRequestStoragePtr inFlightRequests)
-    : ProfileLog(std::move(profileLog))
-    , TraceSerializer(std::move(traceSerializer))
-    , InFlightRequests(std::move(inFlightRequests))
+    : TWorkerActorPool(
+          [profileLog = std::move(profileLog),
+           traceSerializer = std::move(traceSerializer),
+           inFlightRequests = std::move(inFlightRequests)](
+              const TActorContext& ctx)
+          {
+              return NCloud::Register<TReadDataActor>(
+                  ctx,
+                  profileLog,
+                  traceSerializer,
+                  inFlightRequests,
+                  ctx.SelfID);
+          })
 {}
-
-TReadDataActorPool::~TReadDataActorPool()
-{
-    if (!ActorSystem) {
-        return;
-    }
-
-    for (const auto& actorId: AllActors) {
-        ActorSystem->Send(actorId, new TEvents::TEvPoisonPill());
-    }
-}
-
-void TReadDataActorPool::Initialize(const TActorContext& ctx, ui32 initialSize)
-{
-    Y_ABORT_UNLESS(!ActorSystem);
-    ActorSystem = ctx.ActorSystem();
-    AllActors.reserve(initialSize);
-    FreeActors.reserve(initialSize);
-    for (ui32 i = 0; i < initialSize; ++i) {
-        CreateActor(ctx);
-    }
-}
-
-void TReadDataActorPool::CreateActor(const TActorContext& ctx)
-{
-    Y_ABORT_UNLESS(ActorSystem == ctx.ActorSystem());
-    const auto actorId = NCloud::Register<TReadDataActor>(
-        ctx,
-        ProfileLog,
-        TraceSerializer,
-        InFlightRequests,
-        ctx.SelfID);
-
-    AllActors.push_back(actorId);
-    FreeActors.push_back(actorId);
-}
-
-TActorId TReadDataActorPool::GetOrCreateActor(const TActorContext& ctx)
-{
-    if (FreeActors.empty()) {
-        CreateActor(ctx);
-    }
-
-    const auto actorId = FreeActors.back();
-    FreeActors.pop_back();
-    return actorId;
-}
-
-void TReadDataActorPool::ReleaseActor(const TActorId& actorId)
-{
-    // Reuse the most recently released actor for better cache locality.
-    FreeActors.push_back(actorId);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
