@@ -14,6 +14,7 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
+	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -96,6 +97,187 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
 	))
+}
+
+func TestIsCreationFromBaseDiskSupportedForDiskKind(t *testing.T) {
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	// Disabled by default.
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+
+	diskService.config.DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList =
+		[]string{"folder-id"}
+
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "folder-id",
+		},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+			FolderId: "another-folder-id",
+		},
+	))
+	// Only Disk Registry based disks.
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{
+			Kind:     types.DiskKind_DISK_KIND_SSD,
+			FolderId: "folder-id",
+		},
+	))
+
+	diskService.config.EnableDiskRegistryBasedDisksCreationFromBaseDisks = proto.Bool(true)
+
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_NONREPLICATED},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR2},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_MIRROR3},
+	))
+	require.True(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_NONREPLICATED},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_LOCAL},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+	require.False(t, diskService.isCreationFromBaseDiskSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
+	))
+}
+
+// Cell selection is not idempotent (with the MAX_FREE_BYTES policy it depends
+// on the current capacities), and a retried request must schedule the very
+// same task, so the cell is selected by the task (and persisted in its state),
+// not by the service: the service only checks that a pool is configured for
+// the requested zone.
+func TestDiskServiceCreateDiskFromBaseDiskDoesNotSelectCell(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	diskService := &service{
+		config: &disks_config.DisksConfig{
+			EnableDiskRegistryBasedDisksCreationFromBaseDisks: proto.Bool(true),
+		},
+		taskScheduler:   scheduler,
+		resourceStorage: storage,
+		poolService:     poolService,
+		cellSelector:    cellSelector,
+	}
+
+	storage.On("GetImageMeta", ctx, "image").Return(&resources.ImageMeta{
+		ID:   "image",
+		Size: 1 << 30,
+	}, nil)
+
+	poolService.On("IsPoolConfigured", ctx, "image", "zone").Return(true, nil)
+
+	scheduler.On(
+		"ScheduleTask",
+		ctx,
+		"disks.CreateDiskFromBaseDisk",
+		"",
+		mock.MatchedBy(func(request proto.Message) bool {
+			typedRequest, ok := request.(*protos.CreateDiskFromBaseDiskRequest)
+			return ok &&
+				typedRequest.SrcImageId == "image" &&
+				typedRequest.Params.Disk.DiskId == "disk" &&
+				typedRequest.Params.Disk.ZoneId == "zone"
+		}),
+	).Return("task", nil)
+
+	taskID, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: "image",
+		},
+		Size: 262144 * 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CloudId:  "cloud",
+		FolderId: "folder",
+	})
+	// No calls to the cell selector are expected.
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		scheduler,
+		poolService,
+		cellSelector,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "task", taskID)
+}
+
+func TestIsEncryptionSupportedForCreationFromBaseDisk(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		encryptionDesc *types.EncryptionDesc
+		allowed        bool
+	}{
+		{
+			name:           "no encryption desc",
+			encryptionDesc: nil,
+			allowed:        true,
+		},
+		{
+			name: "no encryption",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_NO_ENCRYPTION,
+			},
+			allowed: true,
+		},
+		{
+			// NBS encrypts the data on its side.
+			name: "encryption at rest",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+			},
+			allowed: true,
+		},
+		{
+			// The data read from the proxy overlay disk would need to be
+			// encrypted by the transfer.
+			name: "client-side encryption",
+			encryptionDesc: &types.EncryptionDesc{
+				Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+				Key: &types.EncryptionDesc_KeyHash{
+					KeyHash: []byte("hash"),
+				},
+			},
+			allowed: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(
+				t,
+				tc.allowed,
+				isEncryptionSupportedForCreationFromBaseDisk(tc.encryptionDesc),
+			)
+		})
+	}
 }
 
 func TestDiskServicegetZoneIDForExistingDisk(
