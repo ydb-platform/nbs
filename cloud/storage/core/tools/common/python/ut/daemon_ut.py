@@ -437,7 +437,7 @@ def test_context_failure_does_not_wait_for_stuck_process(tmp_path, caplog, monke
     child.kill.side_effect = lambda: signals.append("KILL")
     execution = mock.Mock()
     execution.process = child
-    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path), cleanup_timeout=1)
+    daemon = Daemon(commands=[["unused"]], cwd=str(tmp_path), process_exit_timeout=1)
 
     def sleep(seconds):
         clock[0] += seconds

@@ -161,7 +161,7 @@ class Daemon(object):
                  ping_attempts=0, core_pattern=None, service_name=None,
                  stdout_file=None, stderr_file=None,
                  max_stderr_lines_in_error_message=0, stderr_tail=False,
-                 cleanup_timeout=10):
+                 process_exit_timeout=10):
         """Configure the daemon and open its streams without starting a process.
 
         Call start() explicitly, including when using the context manager.
@@ -188,7 +188,7 @@ class Daemon(object):
             max_stderr_lines_in_error_message: Maximum number of stderr log lines
                 included in exception messages; non-positive values omit them.
             stderr_tail: Include the last stderr lines instead of the first.
-            cleanup_timeout: Maximum wait in seconds after each of SIGTERM and
+            process_exit_timeout: Maximum wait in seconds after each of SIGTERM and
                 SIGKILL during close(); excludes lock waits and diagnostics.
         """
 
@@ -204,7 +204,7 @@ class Daemon(object):
         self.__core_pattern = core_pattern
         self.__max_stderr_lines_in_error_message = max_stderr_lines_in_error_message
         self.__stderr_tail = stderr_tail
-        self.__cleanup_timeout = cleanup_timeout
+        self.__process_exit_timeout = process_exit_timeout
 
         stdin_prefix = "stdin_"
         stdout_prefix = "stdout_"
@@ -310,7 +310,7 @@ class Daemon(object):
             except OSError:
                 if child.poll() is None:
                     logger.exception("Could not signal daemon pid %s", child.pid)
-            deadline = time.monotonic() + self.__cleanup_timeout
+            deadline = time.monotonic() + self.__process_exit_timeout
             while child.poll() is None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
