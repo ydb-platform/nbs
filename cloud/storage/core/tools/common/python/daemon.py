@@ -162,6 +162,35 @@ class Daemon(object):
                  stdout_file=None, stderr_file=None,
                  max_stderr_lines_in_error_message=0, stderr_tail=False,
                  cleanup_timeout=10):
+        """Configure the daemon and open its streams without starting a process.
+
+        Call start() explicitly, including when using the context manager.
+        Context exit calls close(); log files are preserved after cleanup.
+
+        Args:
+            commands: Sequence of commands to cycle through on successive starts.
+            cwd: Process working directory and directory for temporary streams.
+            restart_allowed: Enable periodic process restarts after start().
+            restart_interval: Delay in seconds between scheduled restarts.
+            ping_port: Local HTTP port for readiness checks; None disables them.
+            ping_path: HTTP path used for readiness checks.
+            ping_success_codes: Accepted HTTP status codes; an empty collection
+                or None accepts any HTTP response.
+            ping_timeout: Delay in seconds between failed readiness checks,
+                not an HTTP request timeout.
+            ping_attempts: Maximum readiness attempts; zero retries indefinitely.
+            core_pattern: Core dump pattern passed to yatest.common.execute.
+            service_name: Optional prefix for temporary stream file names.
+            stdout_file: Optional stdout path, opened in binary write mode and
+                truncated; otherwise a temporary file is created in cwd.
+            stderr_file: Optional stderr path, opened like stdout_file; identical
+                absolute paths share one stream.
+            max_stderr_lines_in_error_message: Maximum number of stderr log lines
+                included in exception messages; non-positive values omit them.
+            stderr_tail: Include the last stderr lines instead of the first.
+            cleanup_timeout: Maximum wait in seconds after each of SIGTERM and
+                SIGKILL during close(); excludes lock waits and diagnostics.
+        """
 
         self.__commands = commands
         self.__cwd = cwd
