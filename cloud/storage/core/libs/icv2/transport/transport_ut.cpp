@@ -685,6 +685,71 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         CheckReservationAfterHandleRelease(false);
     }
 
+    Y_UNIT_TEST(PreservesEventSerializationInfo)
+    {
+        auto event = std::make_unique<TEvTest>();
+        event->Record.SetMeta("tracked event");
+        event->AddPayload(TRope(TString(64_KB, 'p')));
+        const IEventBase* original = event.get();
+
+        TFixture f;
+        UNIT_ASSERT(f.Connection->Activate());
+        f.Engine->HoldEvents = true;
+        UNIT_ASSERT(f.Connection->Send(
+            std::make_unique<IEventHandle>(ActorId, ActorId, event.release())));
+        auto pending = f.Engine->TakePendingEvent(0);
+        UNIT_ASSERT(!pending->HasBuffer());
+
+        const auto checkSerializationInfo =
+            [](const auto* expected, const auto* actual)
+        {
+            const auto check = [&](auto... args)
+            {
+                const auto expectedInfo =
+                    expected->CreateSerializationInfo(args...);
+                const auto actualInfo =
+                    actual->CreateSerializationInfo(args...);
+                UNIT_ASSERT_VALUES_EQUAL(actualInfo.IsExtendedFormat,
+                                         expectedInfo.IsExtendedFormat);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    actualInfo.Sections.size(),
+                    expectedInfo.Sections.size());
+                for (size_t i = 0; i < expectedInfo.Sections.size(); ++i) {
+                    const auto& expectedSection = expectedInfo.Sections[i];
+                    const auto& actualSection = actualInfo.Sections[i];
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.Headroom,
+                        expectedSection.Headroom);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.Size,
+                        expectedSection.Size);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.Tailroom,
+                        expectedSection.Tailroom);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.Alignment,
+                        expectedSection.Alignment);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.IsInline,
+                        expectedSection.IsInline);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        actualSection.IsRdmaCapable,
+                        expectedSection.IsRdmaCapable);
+                }
+            };
+
+            if constexpr (
+                requires { expected->CreateSerializationInfo(false); })
+            {
+                check(false);
+                check(true);
+            } else {
+                check();
+            }
+        };
+        checkSerializationInfo(original, pending->GetBase());
+    }
+
     Y_UNIT_TEST(ExchangeTrackedEvents)
     {
         CheckTransportExchange(false, false);

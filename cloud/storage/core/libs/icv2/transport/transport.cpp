@@ -115,14 +115,23 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 // Keeps the reservation until the engine releases an unserialized event.
-class TQueuedEvent final: public NActors::IEventBase
+// YDB releases differ in the allocator type and serialization-info arguments.
+template <typename TRopeSerializer, typename TSerializationInfoFactory>
+class TQueuedEventImpl;
+
+template <typename TAllocator, typename... TSerializationArgs>
+class TQueuedEventImpl<
+    std::optional<TRope> (NActors::IEventBase::*)(TAllocator*) const,
+    NActors::TEventSerializationInfo (NActors::IEventBase::*)(
+        TSerializationArgs...) const>
+    final: public NActors::IEventBase
 {
 private:
     TOutputQueueReservation Reservation;
     std::unique_ptr<NActors::IEventHandle> Event;
 
 public:
-    TQueuedEvent(
+    TQueuedEventImpl(
         std::unique_ptr<NActors::IEventHandle> event,
         TOutputQueueReservation reservation)
         : Reservation(std::move(reservation))
@@ -161,7 +170,7 @@ public:
     }
 
     std::optional<TRope> SerializeToRope(
-        IRcBufAllocator* allocator) const override
+        TAllocator* allocator) const override
     {
         return Event->GetBase()->SerializeToRope(allocator);
     }
@@ -171,11 +180,17 @@ public:
         return Event->GetBase()->IsSerializable();
     }
 
-    NActors::TEventSerializationInfo CreateSerializationInfo() const override
+    NActors::TEventSerializationInfo CreateSerializationInfo(
+        TSerializationArgs... args) const override
     {
-        return Event->GetBase()->CreateSerializationInfo();
+        return Event->GetBase()->CreateSerializationInfo(
+            std::forward<TSerializationArgs>(args)...);
     }
 };
+
+using TQueuedEvent =
+    TQueuedEventImpl<decltype(&NActors::IEventBase::SerializeToRope),
+                     decltype(&NActors::IEventBase::CreateSerializationInfo)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
