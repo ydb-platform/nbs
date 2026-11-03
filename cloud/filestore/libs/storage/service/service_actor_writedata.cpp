@@ -20,6 +20,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <library/cpp/iterator/enumerate.h>
 
@@ -173,6 +174,18 @@ struct TWriteRequestContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEvStartWriteData final
+    : public TEventLocal<TEvStartWriteData, TEvServicePrivate::EvStartWriteData>
+{
+    TWriteRequestContext RequestContext;
+
+    TEvStartWriteData(TWriteRequestContext&& context)
+        : RequestContext(std::move(context))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -241,6 +254,26 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
+        if (RequestState) {
+            StartRequest(ctx);
+        } else {
+            Become(&TThis::StateIdle);
+        }
+    }
+
+private:
+    void HandleStartWriteData(
+        const TEvStartWriteData::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+        Initialize(std::move(msg->RequestContext));
+        StartRequest(ctx);
+    }
+
+    void StartRequest(const TActorContext& ctx)
+    {
+        Become(&TThis::StateWork);
         auto& state = GetState();
 
         if (ZeroCounters) {
@@ -256,7 +289,6 @@ public:
                 "Forwarding WriteData request to tablet");
 
             WriteData(ctx, false /* isFallback */);
-            Become(&TThis::StateWork);
             return;
         }
 
@@ -312,8 +344,6 @@ public:
             state.BlobRange.Offset);
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
-
-        Become(&TThis::StateWork);
     }
 
 private:
@@ -334,9 +364,35 @@ private:
         }
     }
 
+    STFUNC(StateIdle)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvStartWriteData, HandleStartWriteData);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            // Ignore responses and retries left over from a completed request.
+            case TEvIndexTablet::TEvGenerateBlobIdsResponse::EventType:
+            case TEvBlobStorage::TEvPutResult::EventType:
+            case TEvIndexTablet::TEvAddDataResponse::EventType:
+            case TEvIndexTablet::TEvConfirmAddDataResponse::EventType:
+            case TEvIndexTablet::TEvCancelAddDataResponse::EventType:
+            case TEvService::TEvWriteDataResponse::EventType:
+            case TEvents::TEvWakeup::EventType:
+                break;
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_WORKER,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
+            HFunc(TEvStartWriteData, HandleStartWriteData);
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -1099,6 +1155,11 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
+        if (!RequestState) {
+            Die(ctx);
+            return;
+        }
+
         HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
     }
 
