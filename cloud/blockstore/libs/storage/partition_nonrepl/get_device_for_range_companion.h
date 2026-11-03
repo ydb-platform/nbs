@@ -29,7 +29,7 @@ public:
     };
 
 private:
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TVector<TDeviceStat>* const DeviceStats = nullptr;
 
@@ -44,6 +44,10 @@ public:
         TStorageConfigConstPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TVector<TDeviceStat>* const deviceStats);
+
+    // Replace the configuration reference while preserving the object's other
+    // state.
+    void UpdateStorageConfig(TStorageConfigConstPtr config);
 
     void SetAllowedOperation(EAllowedOperation allowedOperation);
     void SetDelegate(NActors::TActorId delegate);
