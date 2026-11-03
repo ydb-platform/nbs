@@ -61,26 +61,37 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
         std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
 
-    const ui64 logicalMixedBytes =
-        State->GetMixedBlocksCount() * State->GetBlockSize();
-    const ui64 logicalMergedBytes =
-        State->GetMergedBlocksCount() * State->GetBlockSize();
+    const ui64 logicalMixedBytes = (State->AreExtendedBlobCountersEnabled()
+                                        ? State->GetMixedChannelBlocksCount()
+                                        : State->GetMixedBlocksCount()) *
+                                   State->GetBlockSize();
+    const ui64 logicalMergedBytes = (State->AreExtendedBlobCountersEnabled()
+                                         ? State->GetMergedChannelBlocksCount()
+                                         : State->GetMergedBlocksCount()) *
+                                    State->GetBlockSize();
     PartCounters->Simple.LogicalMixedBytesCount.Set(logicalMixedBytes);
     PartCounters->Simple.LogicalMergedBytesCount.Set(logicalMergedBytes);
 
-    if (State->AreBlobByteCountersEnabled()) {
+    const ui64 logicalMixedIndexBytes =
+        State->GetMixedIndexBlocksCount() * State->GetBlockSize();
+    const ui64 logicalMergedIndexBytes =
+        State->GetMergedIndexBlocksCount() * State->GetBlockSize();
+    PartCounters->Simple.LogicalMixedIndexBytesCount.Set(logicalMixedIndexBytes);
+    PartCounters->Simple.LogicalMergedIndexBytesCount.Set(logicalMergedIndexBytes);
+
+    if (State->AreExtendedBlobCountersEnabled()) {
         PartCounters->Simple.MixedBytesCount.Set(State->GetMixedBytesCount());
         PartCounters->Simple.MergedBytesCount.Set(State->GetMergedBytesCount());
+        PartCounters->Simple.MixedIndexBytesCount.Set(
+            State->GetMixedIndexBytesCount());
+        PartCounters->Simple.MergedIndexBytesCount.Set(
+            State->GetMergedIndexBytesCount());
     } else {
         PartCounters->Simple.MixedBytesCount.Set(logicalMixedBytes);
         PartCounters->Simple.MergedBytesCount.Set(logicalMergedBytes);
+        PartCounters->Simple.MixedIndexBytesCount.Set(logicalMixedIndexBytes);
+        PartCounters->Simple.MergedIndexBytesCount.Set(logicalMergedIndexBytes);
     }
-
-    PartCounters->Simple.MixedIndexBytesCount.Set(
-        State->GetMixedIndexBlocksCount() * State->GetBlockSize());
-
-    PartCounters->Simple.MergedIndexBytesCount.Set(
-        State->GetMergedIndexBlocksCount() * State->GetBlockSize());
 
     PartCounters->Simple.FreshBytesCount.Set(
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize());

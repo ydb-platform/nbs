@@ -1685,11 +1685,7 @@ message TStorageServiceConfig
     // cleanup queue before all checkpoints.
     optional bool CheckpointAwareCleanupEnabled = 526;
 
-    // If true, the legacy mixed/merged blob and block counters are classified
-    // by the data kind of the channel where a blob is stored, and index counters
-    // are maintained separately by index kind. If false, legacy counters are
-    // classified by index kind and index counters are cleared on partition load.
-    optional bool UseBlobChannelDataKindForCounters = 527;
+    reserved 527; // Former UseBlobChannelDataKindForCounters.
 
     // If true, QueryAvailableStorage includes suspended devices that are
     // resuming after secure erase.
@@ -1779,7 +1775,8 @@ message TStorageServiceConfig
     // Allows changing the throttling policy through the volume monitoring page.
     optional bool ChangeThrottlingPolicyEnabled = 552;
 
-    // Track stored and logical blob byte counters for the disk.
+    // Track stored blob bytes and logical block/blob counts by channel data kind.
+    // When disabled, clear these counters and report legacy index-based counts.
     // Enable before compression: missing counters are initialized from block counts.
-    optional bool BlobByteCountersEnabled = 553;
+    optional bool ExtendedBlobCountersEnabled = 553;
 }

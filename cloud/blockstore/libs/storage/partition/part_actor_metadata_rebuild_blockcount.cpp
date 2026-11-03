@@ -422,30 +422,22 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
     if (args.LastReadBlobId == args.FinalBlobId) {
         TPartitionDatabase db(tx.DB);
 
-        ui64 mixedIndexBlocks = State->GetMixedIndexBlocksCount() -
-                     args.RebuildState.InitialMixedIndexBlocks +
-                     args.RebuildState.MixedIndexBlocks;
-
-        ui64 mergedIndexBlocks = State->GetMergedIndexBlocksCount() -
-                      args.RebuildState.InitialMergedIndexBlocks +
-                      args.RebuildState.MergedIndexBlocks;
-
-        ui64 mixedChannelBlocks = State->GetMixedBlocksCount() -
-                            args.RebuildState.InitialMixedChannelBlocks +
-                            args.RebuildState.MixedChannelBlocks;
-
-        ui64 mergedChannelBlocks = State->GetMergedBlocksCount() -
-                             args.RebuildState.InitialMergedChannelBlocks +
-                             args.RebuildState.MergedChannelBlocks;
-
-        if (!State->ShouldUseBlobChannelDataKindForCounters()) {
-            mixedChannelBlocks = State->GetMixedBlocksCount() -
-                args.RebuildState.InitialMixedChannelBlocks +
-                args.RebuildState.MixedIndexBlocks;
-            mergedChannelBlocks = State->GetMergedBlocksCount() -
-                args.RebuildState.InitialMergedChannelBlocks +
-                args.RebuildState.MergedIndexBlocks;
-        }
+        const ui64 mixedIndexBlocks =
+            State->GetMixedBlocksCount() -
+            args.RebuildState.InitialMixedIndexBlocks +
+            args.RebuildState.MixedIndexBlocks;
+        const ui64 mergedIndexBlocks =
+            State->GetMergedBlocksCount() -
+            args.RebuildState.InitialMergedIndexBlocks +
+            args.RebuildState.MergedIndexBlocks;
+        const ui64 mixedChannelBlocks =
+            State->GetMixedChannelBlocksCount() -
+            args.RebuildState.InitialMixedChannelBlocks +
+            args.RebuildState.MixedChannelBlocks;
+        const ui64 mergedChannelBlocks =
+            State->GetMergedChannelBlocksCount() -
+            args.RebuildState.InitialMergedChannelBlocks +
+            args.RebuildState.MergedChannelBlocks;
 
         State->UpdateBlocksCountersAfterMetadataRebuild(
             mixedIndexBlocks,
@@ -453,9 +445,8 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
             mixedChannelBlocks,
             mergedChannelBlocks);
 
-        if (State->AreBlobByteCountersEnabled()) {
-            // Keep both classifications regardless of the reporting mode, and
-            // retain bytes added since the rebuild started.
+        if (State->AreExtendedBlobCountersEnabled()) {
+            // Retain bytes added since the rebuild started.
             auto& counters = *State->AccessStats().MutableBlobByteCounters();
             const auto& initial = args.RebuildState.InitialBlobByteCounters;
             counters.SetMixedBytesCount(
