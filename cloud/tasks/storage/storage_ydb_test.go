@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -5462,4 +5463,60 @@ func TestStorageYDBIsTaskEnded(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewNotFoundErrorWithTaskID(
 		nonExistentTaskID,
 	)))
+}
+
+func TestStorageYDBListUnfinishedTasks(t *testing.T) {
+	ctx := newContext()
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, empty.NewRegistry())
+	require.NoError(t, err)
+	before := time.Now().UTC().Truncate(time.Microsecond)
+	var expected []string
+	for _, status := range []TaskStatus{TaskStatusReadyToRun, TaskStatusWaitingToRun, TaskStatusRunning,
+		TaskStatusFinished, TaskStatusReadyToCancel, TaskStatusWaitingToCancel, TaskStatusCancelling, TaskStatusCancelled} {
+		id, err := storage.CreateTask(ctx, TaskState{IdempotencyKey: getIdempotencyKeyForTest(t),
+			TaskType: "delete", CreatedAt: before.Add(-time.Hour), ModifiedAt: before, Status: status,
+			Request: []byte("request"), State: []byte("state")})
+		require.NoError(t, err)
+		if !IsEnded(status) {
+			expected = append(expected, id)
+		}
+	}
+	for _, task := range []TaskState{
+		{TaskType: "other", CreatedAt: before.Add(-time.Hour)},
+		{TaskType: "delete", CreatedAt: before},
+		{TaskType: "delete", CreatedAt: before.Add(time.Hour)},
+	} {
+		task.IdempotencyKey = getIdempotencyKeyForTest(t)
+		task.Request = []byte("request")
+		task.State = []byte("state")
+		id, err := storage.CreateTask(ctx, task)
+		require.NoError(t, err)
+		if task.TaskType == "delete" {
+			expected = append(expected, id)
+		}
+	}
+	sort.Strings(expected)
+	var actual []string
+	cursor := ""
+	for {
+		page, err := storage.ListUnfinishedTasks(ctx, "delete", cursor, 2)
+		require.NoError(t, err)
+		if len(page) == 0 {
+			break
+		}
+		require.LessOrEqual(t, len(page), 2)
+		for _, task := range page {
+			require.Equal(t, []byte("request"), task.Request)
+			require.Equal(t, []byte("state"), task.State)
+			require.False(t, IsEnded(task.Status))
+			actual = append(actual, task.ID)
+		}
+		cursor = page[len(page)-1].ID
+	}
+	require.Equal(t, expected, actual)
+	_, err = storage.ListUnfinishedTasks(ctx, "delete", "", 0)
+	require.Error(t, err)
 }

@@ -491,6 +491,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	ignoreMissing bool,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -534,7 +535,7 @@ func (s *storageYDB) deleteDisk(
 			}
 
 			// Should be idempotent.
-			if state.status == diskStatusDeleted {
+			if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 				return nil, nil
 			}
 
@@ -543,9 +544,15 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
+		if ignoreMissing {
+			// Background cleanup creates its reservation atomically with the
+			// full cleanup ID set after the parent has saved its target cells.
+			return nil, tx.Commit(ctx)
+		}
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
+		// Preserve the legacy behavior for callers that do not use background cleanup.
 		state.status = diskStatusDeleted
 		state.tombstone = true
 	}
@@ -565,7 +572,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		return nil, nil
 	}
 
@@ -613,7 +620,7 @@ func (s *storageYDB) diskDeleted(
 
 	state := states[0]
 
-	if state.status == diskStatusDeleted {
+	if state.status == diskStatusDeleted || diskCleanupInProgress(state) {
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -991,6 +998,7 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	ignoreMissing bool,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -999,7 +1007,7 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, ignoreMissing)
 			return err
 		},
 	)

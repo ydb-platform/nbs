@@ -2,8 +2,8 @@ GO_LIBRARY()
 
 SRCS(
     common.go
-    disks.go
     disk_cleanup.go
+    disks.go
     filesystems.go
     filesystem_snapshots.go
     images.go
@@ -14,8 +14,9 @@ SRCS(
 
 GO_TEST_SRCS(
     common_test.go
-    disks_test.go
+    disk_cleanup_test.go
     disk_deletion_tracking_test.go
+    disks_test.go
     filesystems_test.go
     filesystem_snapshots_test.go
     images_test.go

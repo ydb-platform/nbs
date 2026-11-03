@@ -128,14 +128,24 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
+	// If ignoreMissing is false, reserve a missing disk ID with a tombstone.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
+		ignoreMissing bool,
 	) (*DiskMeta, error)
 
-	PrepareDiskCleanup(ctx context.Context, diskID string, cleanupID string) (bool, error)
+	IsDiskDeletionCompleted(ctx context.Context, diskID string) (bool, error)
+	IsDiskCleanupInProgress(ctx context.Context, diskID string) (bool, error)
+
+	// Reserve cleanup IDs atomically. Legacy mode accepts one parent ID and only
+	// joins a tombstone or resumes its existing reservation in background cleanup.
+	// Background mode reserves the full cell set, rejecting live or completed disks.
+	PrepareDiskCleanup(ctx context.Context, diskID string, cleanupIDs []string, legacy bool) (bool, error)
+	GetDiskCleanupIDs(ctx context.Context, diskID string) ([]string, error)
+	IsDiskCleanupPending(ctx context.Context, diskID string, cleanupID string) (bool, error)
 	CompleteDiskCleanup(ctx context.Context, tx *persistence.Transaction, diskID string, cleanupID string) error
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error

@@ -12,6 +12,7 @@ SRCS(
 
 GO_TEST_SRCS(
     storage_ydb_test.go
+    unfinished_tasks_test.go
 )
 
 END()

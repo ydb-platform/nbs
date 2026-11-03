@@ -38,6 +38,10 @@ type scheduler struct {
 	scheduleRegularTasksPeriodMax time.Duration
 }
 
+func (s *scheduler) ListUnfinishedTasks(ctx context.Context, taskType string, afterID string, limit uint64) ([]tasks_storage.TaskState, error) {
+	return s.storage.ListUnfinishedTasks(ctx, taskType, afterID, limit)
+}
+
 func (s *scheduler) ScheduleTask(
 	ctx context.Context,
 	taskType string,
