@@ -181,13 +181,10 @@ TActorId DoRecoverSession(
         sessionSeqNo);
 
     if (oldSessionSeqNo < session->GetSessionSeqNo()) {
-        NProto::TSession proto;
+        NProto::TSession proto = *session;
         proto.SetClientId(clientId);
         proto.SetSessionId(sessionId);
         proto.SetCheckpointId(checkpointId);
-        proto.SetSessionState(session->GetSessionState());
-        proto.SetMaxSeqNo(session->GetSessionSeqNo());
-        proto.SetMaxRwSeqNo(session->GetSessionRwSeqNo());
         db.WriteSession(proto);
     }
 

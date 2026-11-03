@@ -1790,7 +1790,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldRetainGuestPosixAclSettingWhenRecoveringSession)
     {
         NProto::TStorageConfig config;
-        config.SetGuestPosixAclEnabled(false);
+        config.SetGuestPosixAclEnabled(true);
         TTestEnv env({}, config);
 
         const ui32 nodeIdx = env.AddDynamicNode();
@@ -1816,16 +1816,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             readOnly);
 
         UNIT_ASSERT(
-            !session1->Record.GetFileStore()
-                 .GetFeatures()
-                 .GetGuestPosixAclEnabled());
+            session1->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
 
         NProto::TStorageConfig newConfig;
-        newConfig.SetGuestPosixAclEnabled(true);
+        newConfig.SetGuestPosixAclEnabled(false);
         const auto response =
             ExecuteChangeStorageConfig(std::move(newConfig), service);
         UNIT_ASSERT(
-            response.GetStorageConfig().GetGuestPosixAclEnabled());
+            !response.GetStorageConfig().GetGuestPosixAclEnabled());
 
         WaitForTabletStart(service);
 
@@ -1842,9 +1842,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // The restored session should preserve the GuestPosixAclEnabled value
         // from its creation.
         UNIT_ASSERT(
-            !session2->Record.GetFileStore()
-                 .GetFeatures()
-                 .GetGuestPosixAclEnabled());
+            session2->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
 
         // If SessionSeqNo increases, the GuestPosixAclEnabled value should be
         // preserved as well.
@@ -1857,9 +1857,29 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             readOnly);
 
         UNIT_ASSERT(
-            !session3->Record.GetFileStore()
-                 .GetFeatures()
-                 .GetGuestPosixAclEnabled());
+            session3->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+
+        // Recovering a session with a higher sequence number rewrites its DB
+        // record. Restart the tablet to ensure persistent options survived
+        // that rewrite.
+        NProto::TStorageConfig sameConfig;
+        sameConfig.SetGuestPosixAclEnabled(false);
+        ExecuteChangeStorageConfig(std::move(sameConfig), service);
+        WaitForTabletStart(service);
+
+        const auto session4 = service.CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            headers.SessionSeqNo,
+            readOnly);
+
+        UNIT_ASSERT(
+            session4->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
     }
 
     Y_UNIT_TEST(ShouldSetHasXAttrs)
