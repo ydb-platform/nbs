@@ -266,6 +266,53 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFreshLogTrimCounters
+{
+    ui32 TrimsCompleted = 0;
+    ui32 TrimsFailed = 0;
+    ui32 FlushesCompleted = 0;
+};
+
+TTestActorRuntime::TEventObserver CountFreshLogTrims(
+    TFreshLogTrimCounters& counters)
+{
+    return [&counters](TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                auto* msg = event->Get<
+                    TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                ++counters.TrimsCompleted;
+                if (FAILED(msg->GetStatus())) {
+                    ++counters.TrimsFailed;
+                }
+                break;
+            }
+            case TEvPartitionPrivate::EvFlushCompleted: {
+                ++counters.FlushesCompleted;
+                break;
+            }
+        }
+        return TTestActorRuntime::DefaultObserverFunc(event);
+    };
+}
+
+void WaitForTrimsCompleted(
+    TTestActorRuntime& runtime,
+    const TFreshLogTrimCounters& counters,
+    ui32 count)
+{
+    TDispatchOptions options;
+    options.CustomFinalCondition = [&]
+    {
+        return counters.TrimsCompleted >= count;
+    };
+    runtime.DispatchEvents(options, TDuration::Seconds(5));
+    UNIT_ASSERT_GE(counters.TrimsCompleted, count);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void InitTestActorRuntime(
     TTestActorRuntime& runtime,
     const NProto::TStorageServiceConfig& config,
@@ -2751,6 +2798,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         );
 
+        // With a zero dead blob trim threshold, killing the oldest blob
+        // doesn't trim; only a flush does.
+        partition.WriteBlocks(1, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(!trimSeen);
+
         partition.Flush();
 
         // wait for background operations completion
@@ -3203,6 +3256,250 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(3),
             GetBlockContent(partition.ReadBlocks(2)));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWhenDeadBlobBytesReachThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        // Each overwrite kills one blob.
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(1, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        partition.WriteBlocks(1, 4);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(4),
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        // A flush requests an ordinary trim too.
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithoutFlushWhenOverwritesKillBlobs)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobCountFlushThresholdHDD(20);
+        config.SetFreshByteCountHardLimitHDD(64_KB);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            partition.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_GT(counters.TrimsCompleted, 10);
+        UNIT_ASSERT_LT(
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount(),
+            10);
+
+        auto check = [&]
+        {
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlockContent(partition.ReadBlocks(i % RegionSize)));
+            }
+        };
+
+        check();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldTrimMultiBlockFreshBlobOnlyAfterAllBlocksAreOverwritten)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(2 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        partition.WriteBlocks(0, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        // A zero request kills it, and both its blocks reach the threshold.
+        partition.ZeroBlocks(1);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldNotTrimFreshLogWhileLiveBlobHoldsOrdinaryTrimToCommitId)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        // The live blob holds OrdinaryTrimToCommitId.
+        partition.WriteBlocks(0, 1);
+
+        // Dead blobs above it can't be trimmed.
+        for (ui32 i = 0; i < 7; ++i) {
+            partition.WriteBlocks(1, 2);
+        }
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        // Killing the live blob lets one trim collect every dead blob.
+        partition.WriteBlocks(0, 3);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFailedOrdinaryTrim)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool failTrim = true;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvBlobStorage::EvCollectGarbageResult)
+                {
+                    auto* msg =
+                        event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                    if (msg->Channel == 4 && failTrim) {
+                        failTrim = false;
+                        msg->Status = NKikimrProto::ERROR;
+                    }
+                }
+                return countTrims(event);
+            });
+
+        // The flush kills the only blob. It is smaller than the threshold, so
+        // only the flush's request starts the trim and only the failure's
+        // request restarts it.
+        partition.WriteBlocks(1, 1);
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsFailed);
+    }
+
+    Y_UNIT_TEST(ShouldUseDeadBlobTrimThresholdOfPartitionMediaKind)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+            for (const bool ownMediaKind: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetFreshChannelWriteRequestsEnabled(true);
+                if (isSSD == ownMediaKind) {
+                    config.SetFreshDeadBlobByteCountTrimThresholdSSD(
+                        3 * DefaultBlockSize);
+                } else {
+                    config.SetFreshDeadBlobByteCountTrimThresholdHDD(
+                        3 * DefaultBlockSize);
+                }
+
+                TTestPartitionInfo partitionInfo;
+                partitionInfo.MediaKind = mediaKind;
+                auto runtime =
+                    PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                TFreshLogTrimCounters counters;
+                runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+                for (ui32 i = 0; i < 4; ++i) {
+                    partition.WriteBlocks(1, 1);
+                }
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    ownMediaKind ? 1 : 0,
+                    counters.TrimsCompleted,
+                    "media kind: " << static_cast<int>(mediaKind)
+                                   << ", own: " << ownMediaKind);
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldNotAddSmallNonDeletionBlobsDuringFlush)
