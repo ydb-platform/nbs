@@ -67,6 +67,7 @@ struct TEvServicePrivate
         EvUpdateStats,
         EvStartReadData,
         EvReleaseReadDataActor,
+        EvStartWriteData,
 
         EvEnd
     };

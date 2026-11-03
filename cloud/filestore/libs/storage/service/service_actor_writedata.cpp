@@ -19,6 +19,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <library/cpp/iterator/enumerate.h>
 
@@ -121,6 +122,49 @@ void PrepareWriteDataRequestPayload(
         record.SetBuffer(std::move(buffer));
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEvStartWriteData final
+    : public TEventLocal<TEvStartWriteData, TEvServicePrivate::EvStartWriteData>
+{
+    NProto::TWriteDataRequest WriteRequest;
+    TByteRange Range;
+    TRequestInfoPtr RequestInfo;
+    TString LogTag;
+    bool WriteBlobDisabled;
+    bool UseUnconfirmedFlow;
+    IRequestStatsPtr RequestStats;
+    NCloud::NProto::EStorageMediaKind MediaKind;
+    bool UseThreeStageWrite;
+    bool ExternalWriteDataPayloadEnabled;
+    bool EnableRdmaForWrites;
+
+    TEvStartWriteData(
+        NProto::TWriteDataRequest request,
+        TByteRange range,
+        TRequestInfoPtr requestInfo,
+        TString logTag,
+        bool writeBlobDisabled,
+        bool useUnconfirmedFlow,
+        IRequestStatsPtr requestStats,
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useThreeStageWrite,
+        bool externalWriteDataPayloadEnabled,
+        bool enableRdmaForWrites)
+        : WriteRequest(std::move(request))
+        , Range(range)
+        , RequestInfo(std::move(requestInfo))
+        , LogTag(std::move(logTag))
+        , WriteBlobDisabled(writeBlobDisabled)
+        , UseUnconfirmedFlow(useUnconfirmedFlow)
+        , RequestStats(std::move(requestStats))
+        , MediaKind(mediaKind)
+        , UseThreeStageWrite(useThreeStageWrite)
+        , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
+        , EnableRdmaForWrites(enableRdmaForWrites)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -247,7 +291,46 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
+        if (RequestState) {
+            StartRequest(ctx);
+        } else {
+            Become(&TThis::StateIdle);
+        }
+    }
+
+private:
+    void HandleStartWriteData(
+        const TEvStartWriteData::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+        if (RequestState) {
+            auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
+                MakeError(E_REJECTED, "write worker is busy"));
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+            return;
+        }
+
+        Initialize(
+            std::move(msg->WriteRequest),
+            msg->Range,
+            std::move(msg->RequestInfo),
+            std::move(msg->LogTag),
+            msg->WriteBlobDisabled,
+            msg->UseUnconfirmedFlow,
+            std::move(msg->RequestStats),
+            msg->MediaKind,
+            msg->UseThreeStageWrite,
+            msg->ExternalWriteDataPayloadEnabled,
+            msg->EnableRdmaForWrites);
+
+        StartRequest(ctx);
+    }
+
+    void StartRequest(const TActorContext& ctx)
+    {
         Y_ABORT_UNLESS(RequestState);
+        Become(&TThis::StateWork);
         auto& state = *RequestState;
 
         if (!state.UseThreeStageWrite) {
@@ -257,7 +340,6 @@ public:
                 "Forwarding WriteData request to tablet");
 
             WriteData(ctx, false /* isFallback */);
-            Become(&TThis::StateWork);
             return;
         }
 
@@ -311,19 +393,42 @@ public:
             state.BlobRange.Offset);
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
-
-        Become(&TThis::StateWork);
     }
 
-private:
     void Cleanup()
     {
         RequestState.reset();
     }
 
+    STFUNC(StateIdle)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvStartWriteData, HandleStartWriteData);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            // Ignore responses and retries left over from a completed request.
+            case TEvIndexTablet::TEvGenerateBlobIdsResponse::EventType:
+            case TEvBlobStorage::TEvPutResult::EventType:
+            case TEvIndexTablet::TEvAddDataResponse::EventType:
+            case TEvIndexTablet::TEvConfirmAddDataResponse::EventType:
+            case TEvIndexTablet::TEvCancelAddDataResponse::EventType:
+            case TEvService::TEvWriteDataResponse::EventType:
+            case TEvents::TEvWakeup::EventType:
+                break;
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_WORKER,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
+            HFunc(TEvStartWriteData, HandleStartWriteData);
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -1071,6 +1176,11 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
+        if (!RequestState) {
+            Die(ctx);
+            return;
+        }
+
         HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
     }
 
