@@ -141,7 +141,9 @@ private:
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
-    TMap<ui64, TUnflushedFreshBlob> UnflushedFreshBlobsByCommitId;
+
+    using TUnflushedFreshBlobsByCommitId = TMap<ui64, TUnflushedFreshBlob>;
+    TUnflushedFreshBlobsByCommitId UnflushedFreshBlobsByCommitId;
 
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
@@ -172,8 +174,14 @@ public:
         ui64 trimFreshLogToCommitId) const;
 
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
-    void TrimFreshBlobs(ui64 commitId);
-    ui64 FlushFreshBlob(ui64 commitId);
+
+    // Returns the unflushed bytes removed.
+    [[nodiscard]] ui64 TrimFreshBlobs(ui64 commitId);
+
+    ui64 FlushFreshBlob(ui64 commitId, ui64 trimmedToCommitId);
+
+private:
+    ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
 };
 
 class TPartitionTrimFreshLogState
