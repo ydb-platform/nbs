@@ -994,9 +994,7 @@ public:
 
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 
-    [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
-
-    [[nodiscard]] bool GetBlobByteCountersEnabled() const;
+    [[nodiscard]] bool GetExtendedBlobCountersEnabled() const;
 
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledHDD() const;
 

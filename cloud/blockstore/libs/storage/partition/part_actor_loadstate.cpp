@@ -154,9 +154,18 @@ void TPartitionActor::ExecuteLoadState(
     // override config
     args.Meta->MutableConfig()->CopyFrom(PartitionConfig);
 
-    if (!Config->GetBlobByteCountersEnabled()) {
+    if (!Config->GetExtendedBlobCountersEnabled()) {
         // Reinitialize from block counts if enabled again later.
-        args.Meta->MutableStats()->ClearBlobByteCounters();
+        auto& stats = *args.Meta->MutableStats();
+        stats.ClearBlobByteCounters();
+        stats.SetMixedChannelBlobsCount(0);
+        stats.SetMergedChannelBlobsCount(0);
+        stats.SetMixedChannelBlocksCount(0);
+        stats.SetMergedChannelBlocksCount(0);
+        stats.SetMixedIndexBlobsCount(0);
+        stats.SetMergedIndexBlobsCount(0);
+        stats.SetMixedIndexBlocksCount(0);
+        stats.SetMergedIndexBlocksCount(0);
     }
 
     db.WriteMeta(*args.Meta);
@@ -284,13 +293,12 @@ void TPartitionActor::CompleteLoadState(
         TabletID(),
         mixedBlocksFilterConfig,
         IsCheckpointAwareCleanupEnabled(),
-        Config->GetUseBlobChannelDataKindForCounters(),
         Config->GetCompactionStatsTrackerEnabled() ||
             Config->IsCompactionStatsTrackerFeatureEnabled(
                 partitionConfig.GetCloudId(),
                 partitionConfig.GetFolderId(),
                 partitionConfig.GetDiskId()),
-        Config->GetBlobByteCountersEnabled());
+        Config->GetExtendedBlobCountersEnabled());
 
     CreateFreshBlocksCompanionClient();
 

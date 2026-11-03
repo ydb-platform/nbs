@@ -249,7 +249,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetMinChannelCount(4);
-        config.SetBlobByteCountersEnabled(true);
+        config.SetExtendedBlobCountersEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
         TVolumeClient volume(*runtime);
