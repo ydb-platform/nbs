@@ -48,8 +48,18 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         const std::weak_ptr<IBlockBuffer> weakBuffer = buffer;
 
         TFreshBlocks freshBlocks;
-        UNIT_ASSERT(freshBlocks.AddBlock(nodeId, blockIndex, {0, buffer}, 1));
-        UNIT_ASSERT(freshBlocks.AddBlock(nodeId, blockIndex + 1, {1, buffer}, 1));
+        UNIT_ASSERT(freshBlocks.AddBlock(
+            nodeId,
+            blockIndex,
+            {0, buffer},
+            1,
+            InvalidCommitId));
+        UNIT_ASSERT(freshBlocks.AddBlock(
+            nodeId,
+            blockIndex + 1,
+            {1, buffer},
+            1,
+            InvalidCommitId));
         buffer.reset();
 
         auto first = freshBlocks.FindBlock(nodeId, blockIndex, 1);
@@ -72,7 +82,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         ui32 blockIndex = 123;
 
         TFreshBlocks freshBlocks;
-        freshBlocks.AddBlock(nodeId, blockIndex, "x", 1, 1);
+        freshBlocks.AddBlock(nodeId, blockIndex, "x", 1, 1, InvalidCommitId);
 
         auto block = freshBlocks.FindBlock(nodeId, blockIndex, 1);
         UNIT_ASSERT(block);
@@ -86,7 +96,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 1);
         UNIT_ASSERT(!block);
 
-        freshBlocks.AddBlock(nodeId + 2, blockIndex, "y", 1, 1);
+        freshBlocks.AddBlock(nodeId + 2, blockIndex, "y", 1, 1, InvalidCommitId);
         block = freshBlocks.FindBlock(nodeId + 1, blockIndex, 1);
         UNIT_ASSERT(!block);
 
@@ -110,12 +120,12 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         ui32 blockIndex = 123;
 
         TFreshBlocks freshBlocks;
-        freshBlocks.AddBlock(nodeId, blockIndex, "x", 1, 1);
+        freshBlocks.AddBlock(nodeId, blockIndex, "x", 1, 1, InvalidCommitId);
 
         ui64 minCommitId = freshBlocks.MarkBlockDeleted(nodeId, blockIndex, 2);
         UNIT_ASSERT_VALUES_EQUAL(minCommitId, 1);
 
-        freshBlocks.AddBlock(nodeId, blockIndex, "y", 1, 2);
+        freshBlocks.AddBlock(nodeId, blockIndex, "y", 1, 2, InvalidCommitId);
 
         auto block = freshBlocks.FindBlock(nodeId, blockIndex, 1);
         UNIT_ASSERT(block);
@@ -143,7 +153,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
 
         TFreshBlocks freshBlocks;
         for (size_t i = 0; i < 10; ++i) {
-            freshBlocks.AddBlock(nodeId, blockIndex + i, "x", 1, 1 + i);
+            freshBlocks.AddBlock(
+                nodeId,
+                blockIndex + i,
+                "x",
+                1,
+                1 + i,
+                InvalidCommitId);
         }
 
         {
@@ -169,7 +185,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         ui32 blockIndex = 123;
 
         TFreshBlocks freshBlocks;
-        freshBlocks.AddBlock(nodeId, blockIndex, "x", DefaultBlockSize, 1);
+        freshBlocks.AddBlock(
+            nodeId,
+            blockIndex,
+            "x",
+            DefaultBlockSize,
+            1,
+            InvalidCommitId);
 
         auto block = freshBlocks.FindBlock(nodeId, blockIndex, 1);
         UNIT_ASSERT(block);
@@ -184,7 +206,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 1);
         UNIT_ASSERT(!block);
 
-        freshBlocks.AddBlock(nodeId + 2, blockIndex, "y", DefaultBlockSize, 1);
+        freshBlocks.AddBlock(
+            nodeId + 2,
+            blockIndex,
+            "y",
+            DefaultBlockSize,
+            1,
+            InvalidCommitId);
         block = freshBlocks.FindBlock(nodeId + 1, blockIndex, 1);
         UNIT_ASSERT(!block);
 

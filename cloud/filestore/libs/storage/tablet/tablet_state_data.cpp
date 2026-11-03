@@ -746,7 +746,8 @@ void TIndexTabletState::WriteFreshBlock(
         blockIndex,
         blockData,
         GetBlockSize(),
-        commitId);
+        commitId,
+        InvalidCommitId);
     TABLET_VERIFY(added);
 
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
@@ -768,7 +769,8 @@ void TIndexTabletState::WriteFreshBlock(
         nodeId,
         blockIndex,
         std::move(freshBlock),
-        commitId);
+        commitId,
+        InvalidCommitId);
     TABLET_VERIFY(added);
 
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);

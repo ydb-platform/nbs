@@ -31,7 +31,7 @@ public:
         ui32 blockIndex,
         TBlockDataHolder blockData,
         ui64 minCommitId,
-        ui64 maxCommitId = InvalidCommitId);
+        ui64 maxCommitId);
 
     bool AddBlock(
         ui64 nodeId,
@@ -39,7 +39,7 @@ public:
         TStringBuf blockData,
         ui32 blockSize,
         ui64 minCommitId,
-        ui64 maxCommitId = InvalidCommitId);
+        ui64 maxCommitId);
 
     ui64 MarkBlockDeleted(ui64 nodeId, ui32 blockIndex, ui64 commitId);
 
