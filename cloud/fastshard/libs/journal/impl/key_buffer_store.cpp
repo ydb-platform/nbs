@@ -11,6 +11,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/generic/noncopyable.h>
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
 
@@ -226,7 +227,7 @@ public:
             return;
         }
 
-        if (PageSize <= dataSize || PageSize - dataSize < MinEntrySize) {
+        if (dataSize + MinEntrySize > PageSize) {
             FullPages.emplace(page->MaxKey, page->PageNo);
             return;
         }
@@ -264,8 +265,9 @@ public:
     }
 
 private:
-    // Frees the pages below |key| and returns the appendable pages that
-    // straddle it, for the caller to put back refreshed.
+    // Frees the pages whose entries are all below |key|. Appendable pages with
+    // only some entries below |key| are returned instead: the caller drops the
+    // erased entries from them and puts them back.
     TVector<TAppendablePagePtr> ErasePagesBelowKeyAndReturnDirtyPages(ui64 key)
     {
         TVector<TAppendablePagePtr> dirtyPages;
@@ -326,7 +328,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteController
+class TWriteController: private TNonCopyable
 {
 private:
     const std::weak_ptr<TPageManager> PageManager;
@@ -338,7 +340,7 @@ private:
     bool Written = false;
 
 public:
-    TWriteController(std::weak_ptr<TPageManager> pageManager)
+    explicit TWriteController(std::weak_ptr<TPageManager> pageManager)
         : PageManager(pageManager)
     {}
 
@@ -362,10 +364,13 @@ public:
         }
     }
 
-    TResultOrError<TPageRange> GeneratePageRange(TEntry entry, ui32 pageSize)
+    TResultOrError<TPageRange> GeneratePage(TEntry entry, ui32 pageSize)
     {
         auto pageManager = PageManager.lock();
-        Y_ABORT_UNLESS(pageManager);
+        if (!pageManager) {
+            Y_DEBUG_ABORT_UNLESS(pageManager);
+            return MakeError(E_FAIL, "page manager is gone");
+        }
 
         Key = entry.Key;
         ui32 entryBufferSize = static_cast<ui32>(entry.Data.size());
@@ -393,10 +398,10 @@ public:
         }
         NewPage.PageBuffer = result.ExtractResult();
 
-        TPageRange pageRange;
-        pageRange.FirstPageNo = NewPage.PageNo;
-        pageRange.Pages.push_back(NewPage.PageBuffer);
-        return pageRange;
+        TPageRange page;
+        page.FirstPageNo = NewPage.PageNo;
+        page.Pages.push_back(NewPage.PageBuffer);
+        return page;
     }
 
     ui64 GetKey() const
@@ -601,7 +606,7 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
 
     auto writeController = std::make_shared<TWriteController>(PageManager);
 
-    auto result = writeController->GeneratePageRange(
+    auto result = writeController->GeneratePage(
         TEntry{
             .Key = key,
             .Seq = seq,
@@ -778,9 +783,9 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 
             auto [it, inserted] = winners.emplace(entry.Key, candidate);
 
-            if (!inserted && (it->second.Entry.Seq < candidate.Entry.Seq ||
-                              (it->second.Entry.Seq == candidate.Entry.Seq &&
-                               it->second.PageSeq < candidate.PageSeq)))
+            if (!inserted &&
+                std::pair{it->second.Entry.Seq, it->second.PageSeq} <
+                    std::pair{candidate.Entry.Seq, candidate.PageSeq})
             {
                 it->second = candidate;
             }
@@ -801,9 +806,11 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         });
     }
 
+    const ui64 entryPageCount = pages.size() - SuperblockSlotCount;
+
     PageManager->Init(
         SuperblockSlotCount,
-        pages.size() - SuperblockSlotCount,
+        entryPageCount,
         superblock ? superblock->ErasedBelowKey : 0,
         std::move(pageEntries),
         std::move(pages));
@@ -872,10 +879,16 @@ NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
         return error;
     }
 
+    const bool erasedBelowKeyChanged =
+        Superblock.ErasedBelowKey != superblock.ErasedBelowKey;
+
     Superblock = std::move(superblock);
     NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
 
-    PageManager->EraseBelowKey(Superblock.ErasedBelowKey);
+    if (erasedBelowKeyChanged) {
+        PageManager->EraseBelowKey(Superblock.ErasedBelowKey);
+    }
+
     return MakeError(S_OK);
 }
 
