@@ -28,6 +28,22 @@ func deleteImage(
 
 	selfTaskID := execCtx.GetTaskID()
 
+	// NOTE: image must be marked as deleting *before* pools.ImageDeleting is
+	// scheduled. pools.ConfigurePool re-checks the image after writing pool
+	// config and rolls the config back if the image is being deleted; that
+	// closes the race with a pools.ConfigurePool that pools.ImageDeleting
+	// has run too early to see, but only if the mark is already visible by
+	// then. See configurePoolTask.checkImage.
+	imageMeta, err := storage.DeleteImage(
+		ctx,
+		imageID,
+		selfTaskID,
+		time.Now(),
+	)
+	if err != nil {
+		return err
+	}
+
 	taskID, err := poolService.ImageDeleting(
 		headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_image_deleting"),
 		&pools_protos.ImageDeletingRequest{
@@ -39,16 +55,6 @@ func deleteImage(
 	}
 
 	_, err = scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return err
-	}
-
-	imageMeta, err := storage.DeleteImage(
-		ctx,
-		imageID,
-		selfTaskID,
-		time.Now(),
-	)
 	if err != nil {
 		return err
 	}

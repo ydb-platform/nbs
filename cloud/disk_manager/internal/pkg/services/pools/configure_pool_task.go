@@ -36,28 +36,34 @@ func (t *configurePoolTask) Load(request, state []byte) error {
 	return proto.Unmarshal(state, t.state)
 }
 
-// Returns image size.
-func (t *configurePoolTask) checkImage(ctx context.Context) (uint64, error) {
+// Returns image meta. Returns nil if image is deleted or is being deleted;
+// in that case pool config (if it has been written by this or by a previous
+// attempt of this task) is deleted.
+//
+// Together with the order of operations in images service (image is marked as
+// deleting *before* pools.ImageDeleting is scheduled) this closes the race
+// between image deletion and pool configuration: pools.ImageDeleting can only
+// delete pools that are already written, and a pool written after it has run
+// is always followed by a re-check that observes the "deleting" mark.
+func (t *configurePoolTask) checkImage(
+	ctx context.Context,
+) (*resources.ImageMeta, error) {
+
 	image, err := t.resourceStorage.GetImageMeta(ctx, t.request.ImageId)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	if image == nil {
-		return 0, errors.NewSilentNonRetriableErrorf(
-			"image with id %v is not found",
-			t.request.ImageId,
-		)
+	if image != nil && len(image.DeleteTaskID) == 0 {
+		return image, nil
 	}
 
-	if !image.Ready {
-		return 0, errors.NewSilentNonRetriableErrorf(
-			"image with id %v is not ready",
-			t.request.ImageId,
-		)
+	err = t.storage.DeletePool(ctx, t.request.ImageId, t.request.ZoneId)
+	if err != nil {
+		return nil, err
 	}
 
-	return image.Size, nil
+	return nil, nil
 }
 
 func (t *configurePoolTask) Run(
@@ -65,22 +71,56 @@ func (t *configurePoolTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	imageSize, err := t.checkImage(ctx)
+	image, err := t.checkImage(ctx)
 	if err != nil {
 		return err
 	}
 
-	if !t.request.UseImageSize {
-		imageSize = 0
+	if image == nil {
+		return errors.NewSilentNonRetriableErrorf(
+			"image with id %v is not found or is being deleted",
+			t.request.ImageId,
+		)
 	}
 
-	return t.storage.ConfigurePool(
+	if !image.Ready {
+		return errors.NewSilentNonRetriableErrorf(
+			"image with id %v is not ready",
+			t.request.ImageId,
+		)
+	}
+
+	var imageSize uint64
+	if t.request.UseImageSize {
+		imageSize = image.Size
+	}
+
+	err = t.storage.ConfigurePool(
 		ctx,
 		t.request.ImageId,
 		t.request.ZoneId,
 		t.request.Capacity,
 		imageSize,
 	)
+	if err != nil {
+		return err
+	}
+
+	// Image could have been deleted concurrently, between the check above and
+	// the config write. Roll the config back in that case (see |checkImage|).
+	image, err = t.checkImage(ctx)
+	if err != nil {
+		return err
+	}
+
+	if image == nil {
+		return errors.NewSilentNonRetriableErrorf(
+			"image with id %v has been deleted during pool configuration",
+			t.request.ImageId,
+		)
+	}
+
+	return nil
 }
 
 func (t *configurePoolTask) Cancel(
@@ -88,7 +128,9 @@ func (t *configurePoolTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	// Config may have been written by an interrupted Run.
+	_, err := t.checkImage(ctx)
+	return err
 }
 
 func (t *configurePoolTask) GetMetadata(
