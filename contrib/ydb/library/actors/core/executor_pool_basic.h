@@ -150,6 +150,7 @@ namespace NActors {
         TArrayHolder<NSchedulerQueue::TWriter> ScheduleWriters;
 
         const TString PoolName;
+        const TString CpuList;
         const TDuration TimePerMailbox;
         const ui64 TimePerMailboxTsValue;
         const ui32 EventsPerMailboxValue;
@@ -216,6 +217,7 @@ namespace NActors {
                            ui32 threads,
                            ui64 spinThreshold,
                            const TString& poolName = "",
+                           const TString& cpuList = "",
                            IHarmonizer *harmonizer = nullptr,
                            TAffinity* affinity = nullptr,
                            TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,

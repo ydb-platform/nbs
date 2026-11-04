@@ -116,7 +116,7 @@ namespace NActors {
         ScheduleQueue.Reset(new NSchedulerQueue::TQueueType());
 
         for (i16 i = 0; i != PoolThreads; ++i) {
-            Threads[i].Thread.reset(new TExecutorThread(i, actorSystem, this, PoolName));
+            Threads[i].Thread.reset(new TExecutorThread(i, actorSystem, this, PoolName, ""));
         }
 
         *scheduleReaders = &ScheduleQueue->Reader;

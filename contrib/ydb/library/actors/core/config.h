@@ -17,6 +17,7 @@ namespace NActors {
 
         ui32 PoolId = 0;
         TString PoolName;
+        TString CpuList;
         ui32 Threads = 1;
         ui64 SpinThreshold = 100;
         TCpuMask Affinity; // Executor thread affinity

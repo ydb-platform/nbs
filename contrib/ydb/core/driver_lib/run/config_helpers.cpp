@@ -86,6 +86,7 @@ void AddExecutorPool(
             NActors::TBasicExecutorPoolConfig basic;
             basic.PoolId = poolId;
             basic.PoolName = poolConfig.GetName();
+            basic.CpuList = poolConfig.GetCpuList();
             basic.UseRingQueue = systemConfig.HasUseRingQueue() && systemConfig.GetUseRingQueue();
             if (poolConfig.HasPlacement()) {
                 Y_ABORT_UNLESS(cpuTopology);
