@@ -176,7 +176,7 @@ message TMigrationSpec
     uint32 StateTransferDelay = 2;
 }
 
-message TGarbageCollectionValidation
+message TIndexConsistencyValidation
 {
     // Enables the forced cleanup and checks (false by default)
     bool Enabled = 1;
@@ -225,7 +225,7 @@ message TLoadTest
 
     // Enables final cleanup and validation of filesystem metrics, assuring
     // no garbage is left
-    TGarbageCollectionValidation GarbageCollectionValidation = 23;
+    TIndexConsistencyValidation IndexConsistencyValidation = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

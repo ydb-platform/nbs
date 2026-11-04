@@ -24,7 +24,7 @@ Tests {
             MigrationPeriod: 20
             StateTransferDelay: 10
         }
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }

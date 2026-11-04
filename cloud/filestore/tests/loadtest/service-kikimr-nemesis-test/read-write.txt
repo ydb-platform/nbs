@@ -20,7 +20,7 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
             TimeoutSeconds: 300
         }
@@ -53,7 +53,7 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
             TimeoutSeconds: 300
         }

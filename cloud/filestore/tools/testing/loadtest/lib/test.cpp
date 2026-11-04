@@ -2,7 +2,7 @@
 
 #include "client.h"
 #include "context.h"
-#include "filestore_cleanup.h"
+#include "filestore_index_operations.h"
 #include "request.h"
 #include "shm_client.h"
 
@@ -1138,9 +1138,9 @@ public:
         stopTest(SourceTest, SourceFuture);
         stopTest(TargetTest, TargetFuture);
 
-        const auto garbageCollectionValidation =
-            Config.GetGarbageCollectionValidation();
-        if (garbageCollectionValidation.GetEnabled()) {
+        const auto indexConsistencyValidation =
+            Config.GetIndexConsistencyValidation();
+        if (indexConsistencyValidation.GetEnabled()) {
             TString filesystemId;
             if (Config.HasFileSystemId()) {
                 filesystemId = Config.GetFileSystemId();
@@ -1148,8 +1148,8 @@ public:
                 filesystemId =
                     Config.GetCreateFileStoreRequest().GetFileSystemId();
             }
-            ValidateGarbageCollection(
-                garbageCollectionValidation,
+            ValidateIndexConsistency(
+                indexConsistencyValidation,
                 filesystemId);
         }
 
@@ -1243,12 +1243,12 @@ private:
         return TestTag;
     }
 
-    void ValidateGarbageCollection(
-        const NProto::TGarbageCollectionValidation& config,
+    void ValidateIndexConsistency(
+        const NProto::TIndexConsistencyValidation& config,
         const TString& filesystemId)
     {
         STORAGE_INFO(
-            "%s Starting forced garbage collection",
+            "%s Starting index consistency validation",
             MakeTestTag().c_str());
 
         const auto timeout =

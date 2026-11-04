@@ -20,7 +20,7 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }
@@ -52,7 +52,7 @@ Tests {
         }
         IODepth: 64
         TestDuration: 60
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }

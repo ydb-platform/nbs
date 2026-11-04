@@ -27,7 +27,7 @@ Tests {
         }
         IODepth: 4
         TestDuration: 30
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }

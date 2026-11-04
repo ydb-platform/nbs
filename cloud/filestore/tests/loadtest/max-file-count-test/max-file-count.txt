@@ -22,7 +22,7 @@ Tests {
             WriteBytes: 4096
             MinFileCount: 3
         }
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }

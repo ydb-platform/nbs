@@ -22,7 +22,7 @@ Tests {
         IODepth: 64
         RequestsCount: 4096
         TestDuration: 60
-        GarbageCollectionValidation: {
+        IndexConsistencyValidation: {
             Enabled: true
         }
     }
