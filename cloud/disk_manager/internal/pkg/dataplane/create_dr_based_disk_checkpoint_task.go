@@ -117,6 +117,10 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	if t.state.EstimateSaved {
+		return nil
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
@@ -134,7 +138,8 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
 	))
 
-	return nil
+	t.state.EstimateSaved = true
+	return execCtx.SaveState(ctx)
 }
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(
