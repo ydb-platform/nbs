@@ -200,6 +200,7 @@ function flattenTraceRows({
   sourceExpanded,
   sourceLimits = new Map(),
   sourceVisible = null,
+  autoExpandVisible = true,
   pageSize = PAGE_SIZE,
   maximumRows = INITIAL_ROW_BUDGET,
 }) {
@@ -226,7 +227,10 @@ function flattenTraceRows({
     const candidates = sourceVisible
       ? sourceChildren[index].filter((child) => sourceVisible.has(child))
       : sourceChildren[index];
-    if (!candidates.length || (!sourceVisible && !sourceExpanded.has(index))) {
+    if (
+      !candidates.length ||
+      (!(sourceVisible && autoExpandVisible) && !sourceExpanded.has(index))
+    ) {
       return;
     }
     const limit = sourceLimits.has(index) ? sourceLimits.get(index) : pageSize;

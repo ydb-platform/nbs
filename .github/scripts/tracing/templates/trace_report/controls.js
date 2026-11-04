@@ -109,6 +109,7 @@ function applyFilter() {
     searchCache,
     traceIndex,
   );
+  matchingSpans = result.matching;
   if (result.visible === null) {
     visible = null;
     filterStatus.textContent = "";
@@ -131,12 +132,31 @@ function currentRowOrder() {
   return rowOrderFromValue(rowOrderElement?.value);
 }
 
+function treeFilterIsActive() {
+  return Boolean(visible) && currentRowOrder() === ROW_ORDERS.TREE;
+}
+
 function updateOrderedRows() {
   const order = currentRowOrder();
   orderedRows =
     order === ROW_ORDERS.TREE
       ? []
       : durationOrderedIndexes(traceIndex, order, currentFilters());
+  orderedVisible = visible;
+  if (order !== ROW_ORDERS.TREE && !rowOrderIsFlat(order) && visible) {
+    orderedVisible = new Set([...visible, ...orderedRows]);
+    // A directly matching interval can expose its contents. Context ancestors
+    // must not expose unrelated branches that failed the duration selection.
+    const matchingGroups = [...matchingSpans].filter((index) =>
+      testPhaseDefinition(traceIndex.scope(index))?.expandable,
+    );
+    traceIndex.addDescendants(orderedVisible, matchingGroups);
+    // Start with matching paths open; subsequent expansion and collapse are
+    // controlled by the user, including when a duration filter is active.
+    visible.forEach((index) => {
+      if (children[index].some((child) => visible.has(child))) expanded.add(index);
+    });
+  }
   expandElement.disabled = rowOrderIsFlat(order);
   collapseElement.disabled = rowOrderIsFlat(order);
 }
@@ -158,14 +178,14 @@ function flattenRows() {
     sourceRoots: ordered ? orderedRows : roots,
     sourceExpanded: expanded,
     sourceLimits: limits,
-    sourceVisible:
-      ordered && visible ? new Set([...visible, ...orderedRows]) : visible,
+    sourceVisible: ordered ? orderedVisible : visible,
+    autoExpandVisible: !ordered,
     maximumRows: rowBudget,
   });
 }
 
 function toggleSpanGroup(index) {
-  if (visible || !children[index].length) return;
+  if (treeFilterIsActive() || !children[index].length) return;
   if (expanded.has(index)) {
     expanded.delete(index);
   } else {
@@ -190,5 +210,17 @@ function toggleSpanGroup(index) {
     }
     expanded.add(index);
   }
+  renderRows();
+}
+
+function expandAllGroups() {
+  spans.forEach((_span, index) => {
+    if (children[index].length) expanded.add(index);
+  });
+  renderRows();
+}
+
+function collapseAllGroups() {
+  expanded.clear();
   renderRows();
 }

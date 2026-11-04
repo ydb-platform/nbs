@@ -339,6 +339,97 @@ function testSharedWorkerDurationKeepsTestPredicates() {
   }
 }
 
+function testDurationFilteredGroupsCanExpandAndCollapse() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.chunk", "ya.test", "ya.test.worker.phase", "ya.test.stage"],
+    s: [
+      makeSpan({ id: "worker", name: "slow worker", duration: 90e9 }),
+      makeSpan({ id: "setup", name: "setup", parent: 0, scope: 3, duration: 5e9 }),
+      makeSpan({ id: "chunk", name: "slow chunk", parent: 0, scope: 1, duration: 80e9 }),
+      makeSpan({ id: "prepare", name: "prepare", parent: 2, scope: 4, duration: 10e9 }),
+      makeSpan({ id: "test-a", name: "case A", parent: 2, scope: 2, duration: 5e9 }),
+      makeSpan({ id: "test-b", name: "case B", parent: 2, scope: 2, duration: 7e9 }),
+      makeSpan({ id: "other-worker", name: "fast worker", duration: 10e9 }),
+      makeSpan({ id: "other-chunk", name: "fast chunk", parent: 6, scope: 1, duration: 8e9 }),
+      makeSpan({ id: "other-test", name: "case C", parent: 7, scope: 2, duration: 7e9 }),
+    ],
+  };
+  for (const [order, root, expandedRows] of [
+    ["ya.test.worker", 0, [0, 1, 2, 3, 4, 5]],
+    ["ya.chunk", 2, [2, 3, 4, 5]],
+  ]) {
+    const context = makeViewRuntime(
+      `?minimum-duration=60&phase=ya.test.worker&order=${order}`,
+      { traceModel },
+    );
+    const shown = () => Array.from(context.rendered.items, ({ index }) => index);
+    assert.deepStrictEqual(shown(), [root]);
+
+    // Exercise the rendered controls as well as the expansion handlers.
+    context.document.createElement = () => ({
+      children: [], dataset: {}, style: {}, attributes: {},
+      classList: { add() {} },
+      setAttribute(name, value) { this.attributes[name] = value; },
+      append(...children) { this.children.push(...children); },
+    });
+    const row = vm.runInContext("spanRow(rendered.items[0])", context);
+    const [toggle, name] = row.children[0].children;
+    assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(name.disabled, false);
+    assert.strictEqual(toggle.attributes["aria-expanded"], "false");
+
+    vm.runInContext(`toggleSpanGroup(${root});`, context);
+    assert.deepStrictEqual(shown(), root === 0 ? [0, 1, 2] : expandedRows);
+    if (root === 0) vm.runInContext("toggleSpanGroup(2);", context);
+    assert.deepStrictEqual(shown(), expandedRows);
+    vm.runInContext(`toggleSpanGroup(${root});`, context);
+    assert.deepStrictEqual(shown(), [root]);
+    vm.runInContext("expandAllGroups();", context);
+    assert.deepStrictEqual(shown(), expandedRows);
+    vm.runInContext("collapseAllGroups();", context);
+    assert.deepStrictEqual(shown(), [root]);
+  }
+
+  // A containing worker used only for context must not reveal siblings that
+  // fail the selected test duration, even after Expand all.
+  const context = makeViewRuntime(
+    "?minimum-duration=6&phase=ya.test&order=ya.test.worker", { traceModel },
+  );
+  vm.runInContext("expandAllGroups();", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index), [0, 2, 5, 6, 7, 8],
+  );
+  vm.runInContext("collapseAllGroups();", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index), [0, 6],
+  );
+}
+
+function testFilteredGroupExpansionOnAFullPagePreservesOtherGroups() {
+  const traceModel = { c: ["ya.test.worker", "ya.chunk", "ya.test"], s: [] };
+  for (let i = 0; i < 205; i += 1) {
+    const worker = traceModel.s.length;
+    traceModel.s.push(
+      makeSpan({ id: `worker-${i}`, name: `worker ${i}`, duration: 90e9 }),
+      makeSpan({ id: `chunk-${i}`, name: `chunk ${i}`, parent: worker,
+        scope: 1, duration: 80e9 }),
+      makeSpan({ id: `test-${i}`, name: `case ${i}`, parent: worker + 1,
+        scope: 2, duration: 5e9 }),
+    );
+  }
+  const context = makeViewRuntime(
+    "?minimum-duration=60&phase=ya.test.worker&order=ya.chunk", { traceModel },
+  );
+  const firstPage = Array.from(context.rendered.items, ({ index }) => index);
+  assert.strictEqual(firstPage.length, INITIAL_ROW_BUDGET);
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [firstPage[0], 2, ...firstPage.slice(1)],
+  );
+  assert.strictEqual(context.rendered.truncated, true);
+}
+
 for (const test of [
   testViewUrlRoundTripsEveryControl,
   testClearingViewRemovesOwnedParametersAndKeepsTheReportUrl,
@@ -354,6 +445,8 @@ for (const test of [
   testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
   testSharedWorkerDurationKeepsTestPredicates,
+  testDurationFilteredGroupsCanExpandAndCollapse,
+  testFilteredGroupExpansionOnAFullPagePreservesOtherGroups,
 ]) {
   test();
 }

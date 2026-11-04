@@ -88,16 +88,8 @@ function startTraceReport() {
     rowBudget = nextRowLimit(rowBudget, selectedLoadSize());
     renderRows();
   });
-  expandElement.addEventListener("click", () => {
-    spans.forEach((_span, index) => {
-      if (children[index].length) expanded.add(index);
-    });
-    renderRows();
-  });
-  collapseElement.addEventListener("click", () => {
-    expanded.clear();
-    renderRows();
-  });
+  expandElement.addEventListener("click", expandAllGroups);
+  collapseElement.addEventListener("click", collapseAllGroups);
   decodeModel()
     .then(initialize)
     .catch((error) => {

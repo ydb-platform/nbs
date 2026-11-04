@@ -17,9 +17,10 @@ function spanRow(item) {
   toggle.type = "button";
   toggle.dataset.rowAction = "group";
   const hasChildren = !item.flat && children[item.index].length > 0;
-  const isOpen = visible ? hasChildren : expanded.has(item.index);
+  const forcedOpen = treeFilterIsActive();
+  const isOpen = forcedOpen ? hasChildren : expanded.has(item.index);
   toggle.textContent = hasChildren ? (isOpen ? "▾" : "▸") : "";
-  toggle.disabled = !hasChildren || Boolean(visible);
+  toggle.disabled = !hasChildren || forcedOpen;
   toggle.setAttribute(
     "aria-label",
     isOpen ? "Collapse span group" : "Expand span group",
@@ -30,7 +31,7 @@ function spanRow(item) {
   if (hasChildren) {
     name.type = "button";
     name.dataset.rowAction = "group";
-    name.disabled = Boolean(visible);
+    name.disabled = forcedOpen;
     name.setAttribute("aria-expanded", String(isOpen));
   }
   name.textContent = span[NAME];
