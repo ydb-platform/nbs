@@ -213,11 +213,12 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
         .NodeId = daArgs.NodeId,
         .ScopeId = daArgs.ScopeId,
         .AppConfig = daArgs.AppConfig,
+        .Counters = daArgs.Counters,
         .AsyncLogger = daArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
         .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),
         .ServicesMask = servicesMask,
-        .OnStart = [] (IActorSystem&) {},
+        .OnStart = [](IActorSystem&) {},
     };
 
     auto actorSystem = MakeIntrusive<TActorSystem>(args);

@@ -31,6 +31,7 @@ struct TDiskAgentActorSystemArgs
     ui32 NodeId;
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
+    NMonitoring::TDynamicCountersPtr Counters;
 
     TStorageConfigPtr StorageConfig;
     TDiskAgentConfigPtr DiskAgentConfig;

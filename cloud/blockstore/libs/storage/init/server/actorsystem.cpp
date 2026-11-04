@@ -692,6 +692,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         .NodeId = sArgs.NodeId,
         .ScopeId = sArgs.ScopeId,
         .AppConfig = sArgs.AppConfig,
+        .Counters = sArgs.Counters,
         .AsyncLogger = sArgs.AsyncLogger,
         .OnInitialize = std::move(onInitialize),
         .PrepareKikimrRunConfig = std::move(prepareKikimrRunConfig),

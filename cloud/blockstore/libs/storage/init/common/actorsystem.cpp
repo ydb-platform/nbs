@@ -18,7 +18,13 @@ TActorSystem::TActorSystem(const TActorSystemArgs& args)
     : TKikimrRunner(args.ModuleFactories)
     , Args(args)
     , Running(false)
-{}
+{
+    if (Args.Counters) {
+        // Adopt the bootstrap root before monitoring and AppData publish it to
+        // services. Transport ownership stays entirely in bootstrap.
+        Counters = Args.Counters;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,6 +38,8 @@ void TActorSystem::Init()
     runConfig.AppConfig.MutableMonitoringConfig()->SetRedirectMainPageTo("");
 
     InitializeRegistries(runConfig);
+    // Construct the normal monitor from the final CMS configuration and normal
+    // MonitoringFactory. Only its counter root is shared with early reporting.
     InitializeMonitoring(runConfig);
     InitializeAppData(runConfig);
     InitializeLogSettings(runConfig);

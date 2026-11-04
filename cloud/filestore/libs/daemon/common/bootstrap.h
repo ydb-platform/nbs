@@ -56,6 +56,7 @@ private:
 
     TConfigInitializerCommonPtr Configs;
     ILoggingServicePtr BootstrapLogging;
+    NCloud::NStorage::TKikimrMonitoringPtr KikimrMonitoring;
     TProgramShouldContinue ProgramShouldContinue;
     std::shared_ptr<IUserCounterSupplier> UserCounters;
 
