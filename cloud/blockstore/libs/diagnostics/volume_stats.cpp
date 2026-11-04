@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -71,8 +72,11 @@ public:
 
 class TDowntimeCalculator
 {
+public:
+    static constexpr size_t BucketCount = DEFAULT_BUCKET_COUNT;
+
 private:
-    using TMaxTimeCalculator = TMaxCalculator<DEFAULT_BUCKET_COUNT>;
+    using TMaxTimeCalculator = TMaxCalculator<BucketCount>;
 
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const NProto::EStorageMediaKind MediaKind;
@@ -170,6 +174,7 @@ struct TVolumeInfoBase
     TDowntimeHistoryHolder DowntimeHistory;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
+    TMaxCalculator<TDowntimeCalculator::BucketCount> HardwareProblems;
     TDynamicCounters::TCounterPtr HasStorageConfigPatchCounter;
 
     TVolumeInfoBase(
@@ -186,6 +191,7 @@ struct TVolumeInfoBase
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
+        , HardwareProblems(timer)
         , HasStorageConfigPatchCounter(
             volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
@@ -437,6 +443,8 @@ public:
                 postponedTime + backoffTime + shapingTime),   // waitTime
             requestBytes);
         VolumeBase->PostponeTimePredictor->Register(postponedTime);
+
+        RecordHardwareProblems(errorKind, errorFlags);
         VolumeBase->DowntimeCalculator.RequestCompleted(
             TranslateLocalRequestType(requestType),
             requestStarted,
@@ -483,6 +491,7 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags) override
     {
+        RecordHardwareProblems(errorKind, errorFlags);
         if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
             VolumeBase->CheckpointRejects.Add(1);
         } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
@@ -547,6 +556,17 @@ public:
             errors,
             timeHist,
             sizeHist);
+    }
+private:
+    void RecordHardwareProblems(
+        EDiagnosticsErrorKind errorKind,
+        ui32 errorFlags)
+    {
+        if (errorKind != EDiagnosticsErrorKind::Success &&
+            HasProtoFlag(errorFlags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED))
+        {
+            VolumeBase->HardwareProblems.Add(1);
+        }
     }
 };
 
@@ -1018,8 +1038,13 @@ public:
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
 
-            const auto hasDowntime = volumeBase.DowntimeCalculator.OnUpdateStats();
-            if (hasDowntime) {
+            const bool hasDowntime =
+                volumeBase.DowntimeCalculator.OnUpdateStats();
+            const bool isNrd = IsNonReplicatedMediaKind(
+                volumeBase.Volume.GetStorageMediaKind());
+            const bool hasHwProblems =
+                volumeBase.HardwareProblems.NextValue() != 0;
+            if (hasDowntime && !(isNrd && hasHwProblems)) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];
             }
