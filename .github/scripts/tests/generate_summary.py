@@ -27,6 +27,7 @@ from ..helpers import (
     pull_request_from_event,
     setup_logger,
 )
+from ..set_build_and_test_targets import JOIN_GROUPS
 from .junit_utils import get_property_value, iter_xml_files
 
 LOGGER = logging.getLogger(__name__)
@@ -738,11 +739,12 @@ def comment_body_starts_with_header(
 
 
 def get_workload_label(component: str) -> str:
-    if component == "all":
-        return "all"
     if component == "none":
         return "sanitized"
-    return component.replace("_", " + ")
+    for group in JOIN_GROUPS:
+        if component == "_".join(group):
+            return " + ".join(group)
+    return component
 
 
 def get_workload_check_marker(component: str) -> str:
