@@ -75,8 +75,8 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
                             Cerr << "Invalid request timestamp in profile log "
                                  << path << ": " << time << " is before "
                                  << MinRecordTime
-                                 << "; excluding it from time bounds. Record:"
-                                 << Endl << record->DebugString() << Endl;
+                                 << "; excluding it from time bounds. Request:"
+                                 << Endl << request.DebugString() << Endl;
                         }
                         continue;
                     }
