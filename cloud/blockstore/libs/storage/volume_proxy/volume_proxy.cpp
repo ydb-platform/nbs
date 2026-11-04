@@ -570,6 +570,7 @@ void TVolumeProxyActor::ForwardRequest(
             conn.LogTitle.GetWithTime().c_str(),
             conn.TabletId);
 
+        CancelActiveRequests(ctx, conn);
         auto error = MakeTabletIsDeadError(E_REJECTED, __LOCATION__);
         DestroyConnection(ctx, conn, error);
         NCloud::Reply(
