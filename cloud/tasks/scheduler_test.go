@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -92,6 +93,11 @@ func (c *executionContextMock) AddTaskDependency(
 }
 
 func (c *executionContextMock) IsHanging() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
+func (c *executionContextMock) IsUnstartedDelayedTask() bool {
 	args := c.Called()
 	return args.Bool(0)
 }
@@ -725,4 +731,76 @@ func TestSchedulerGetOperationCancelled(t *testing.T) {
 			Error: taskError.Proto(),
 		},
 	})
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type timingStorageStub struct {
+	tasks_storage.Storage
+	state tasks_storage.TaskState
+}
+
+func (s *timingStorageStub) CreateTask(
+	_ context.Context,
+	state tasks_storage.TaskState,
+) (string, error) {
+
+	s.state = state
+	return "task-id", nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestScheduleTaskAtTiming(t *testing.T) {
+	store := &timingStorageStub{}
+	s := &scheduler{storage: store}
+	ctx := headers.SetIncomingIdempotencyKey(newContext(), "key")
+
+	receivedAt := time.Unix(1700000000, 0).UTC()
+	deadline := receivedAt.Add(time.Second + 123*time.Nanosecond)
+	_, err := s.ScheduleTaskAt(
+		ctx,
+		"task",
+		"",
+		TaskScheduleTiming{
+			ReceivedAt: receivedAt,
+			NotBefore:  deadline,
+		},
+		&empty.Empty{},
+	)
+	require.NoError(t, err)
+	require.True(t, receivedAt.Equal(store.state.ReceivedAt))
+	require.False(t, store.state.AvailableAt.Before(deadline))
+	require.Less(t, store.state.AvailableAt.Sub(deadline), time.Microsecond)
+
+	_, err = s.ScheduleTask(ctx, "task", "", &empty.Empty{})
+	require.NoError(t, err)
+	require.True(t, store.state.AvailableAt.IsZero())
+	require.True(t, store.state.ReceivedAt.IsZero())
+}
+
+func TestIsUnstartedDelayedTask(t *testing.T) {
+	now := time.Now()
+
+	for _, tc := range []struct {
+		name  string
+		state tasks_storage.TaskState
+		want  bool
+	}{
+		{"legacy", tasks_storage.TaskState{}, false},
+		{"delayed", tasks_storage.TaskState{AvailableAt: now}, true},
+		{
+			"started",
+			tasks_storage.TaskState{
+				AvailableAt:       now,
+				FirstRunStartedAt: now,
+			},
+			false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := &executionContext{taskState: tc.state}
+			require.Equal(t, tc.want, ctx.IsUnstartedDelayedTask())
+		})
+	}
 }

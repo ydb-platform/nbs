@@ -46,6 +46,7 @@ func (c *collectListerMetricsTask) Run(
 		storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
 		storage.TaskStatusToString(storage.TaskStatusCancelling),
 	}
+	c.registry.Gauge("delayedTaskStatsValid").Set(0)
 	defer c.cleanupMetrics(taskStatuses)
 
 	ticker := time.NewTicker(c.metricsCollectionInterval)
@@ -56,6 +57,7 @@ func (c *collectListerMetricsTask) Run(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			c.registry.Gauge("delayedTaskStatsValid").Set(0)
 			for _, taskStatus := range taskStatuses {
 				err := c.collectTasksMetrics(
 					ctx,
@@ -72,7 +74,12 @@ func (c *collectListerMetricsTask) Run(
 				}
 			}
 
-			err := c.collectHangingTasksMetrics(ctx)
+			err := c.collectDelayedTasksMetrics(ctx)
+			if err != nil {
+				return err
+			}
+
+			err = c.collectHangingTasksMetrics(ctx)
 			if err != nil {
 				return err
 			}
@@ -127,6 +134,30 @@ func (c *collectListerMetricsTask) collectTasksMetrics(
 		})
 		subRegistry.Gauge(sensor).Set(float64(count))
 	}
+
+	return nil
+}
+
+func (c *collectListerMetricsTask) collectDelayedTasksMetrics(
+	ctx context.Context,
+) error {
+
+	stats, err := c.storage.GetDelayedTaskStats(ctx, time.Now())
+	if err != nil {
+		c.registry.Gauge("delayedTaskStatsValid").Set(0)
+		return err
+	}
+
+	avg := 0.0
+	if stats.Due != 0 {
+		avg = stats.TotalOverdueSeconds / float64(stats.Due)
+	}
+
+	c.registry.Gauge("delayedTasks").Set(float64(stats.Total))
+	c.registry.Gauge("delayedTasksDue").Set(float64(stats.Due))
+	c.registry.Gauge("delayedTaskMaxOverdueSeconds").Set(stats.MaxOverdueSeconds)
+	c.registry.Gauge("delayedTaskAvgOverdueSeconds").Set(avg)
+	c.registry.Gauge("delayedTaskStatsValid").Set(1)
 
 	return nil
 }
@@ -213,4 +244,8 @@ func (c *collectListerMetricsTask) cleanupMetrics(taskStatuses []string) {
 	for _, gauge := range c.hangingTaskGaugesByID {
 		gauge.Set(float64(0))
 	}
+
+	// Preserve the last measured backlog on collection failure or task exit.
+	// Only a successful empty read may report an empty queue.
+	c.registry.Gauge("delayedTaskStatsValid").Set(0)
 }
