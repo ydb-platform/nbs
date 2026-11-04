@@ -243,6 +243,46 @@ function testOrderingDescendantsOfMatchingDurationGroups() {
   }), []);
 }
 
+function testGroupFiltersMustMatchTheSameTest() {
+  for (const testPhase of [workers, chunks]) {
+    for (const predicates of [{ failedOnly: true }, { topTestsOnly: true }]) {
+      const filters = {
+        testPhase, query: "case B", minimumDurationNs: 19 * second, ...predicates,
+      };
+      assert.strictEqual(filterVisibility(spans, { ...filters, scopes }).matches, 0);
+      for (const [order, expected] of [
+        [workers, [1]], [chunks, [3]], [tests, [5]],
+        [ROW_ORDERS.DURATION, testPhase === workers ? [1] : [3]],
+      ]) {
+        assert.deepStrictEqual(durationOrderedIndexes(index, order, filters), []);
+        assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+          ...filters, query: "case A",
+        }), expected);
+      }
+    }
+    // Stage attributes still use the owning group's failure and test size.
+    assert.deepStrictEqual(durationOrderedIndexes(index, testPhase, {
+      testPhase, query: "prepare_recipes", failedOnly: true,
+      testSizes: new Set(["medium"]), minimumDurationNs: 19 * second,
+    }), testPhase === workers ? [1] : [3]);
+  }
+
+  // Without a query, failure and rank must also belong to the same test.
+  const splitPredicates = spans.map((span) => span.slice());
+  splitPredicates[5][ATTRS] = { ...medium, "test.duration.reported_seconds": 2 };
+  splitPredicates[6][ATTRS] = { ...medium, "ya.test.duration.rank": 1 };
+  const splitIndex = new TraceIndex(splitPredicates, scopes);
+  for (const testPhase of [workers, chunks]) {
+    assert.deepStrictEqual(durationOrderedIndexes(splitIndex, testPhase, {
+      testPhase, failedOnly: true, topTestsOnly: true,
+    }), []);
+    // A directly matching failed group is still useful for infrastructure errors.
+    assert.deepStrictEqual(durationOrderedIndexes(splitIndex, testPhase, {
+      testPhase, query: "target A", failedOnly: true,
+    }), testPhase === workers ? [1] : [3]);
+  }
+}
+
 function testFlatOrderingPaginatesAndKeepsInlineMetadata() {
   const sorted = durationOrderedIndexes(index, tests);
   const first = flatOrderedRows(sorted, 2);
@@ -307,6 +347,7 @@ for (const test of [
   testFlatOrderingExcludesAncestorsAndUnmatchedChildren,
   testGroupDurationCanMatchContainedTestNames,
   testOrderingDescendantsOfMatchingDurationGroups,
+  testGroupFiltersMustMatchTheSameTest,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
   testExpandedTestsKeepNonDurationPredicates,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,

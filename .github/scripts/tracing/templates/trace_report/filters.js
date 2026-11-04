@@ -79,18 +79,39 @@ function filterVisibility(
   const matchesSize = (span) =>
     filters.testSizes.has(String(span[ATTRS]["test.size"] || "").toLowerCase());
   const matchesTopTest = (span) => longestTestRank(span) !== null;
-  const queryMatchAncestors = new Set();
-  if (filters.query && testPhaseDefinition(filters.testPhase?.scope)?.expandable) {
-    // A test-name search can identify the chunk or worker whose duration is
-    // being measured, even when that name is absent from the group metadata.
+  const matchesQueryContext = (spanIndex) =>
+    index.ancestors(spanIndex).some((candidate) =>
+      matchesQuery(sourceSpans[candidate], candidate),
+    );
+  const grouped = Boolean(
+    testPhaseDefinition(filters.testPhase?.scope)?.expandable,
+  );
+  let matchingGroupAncestors = null;
+  if (
+    grouped &&
+    (filters.query ||
+      filters.failedOnly ||
+      filters.topTestsOnly ||
+      filters.testSizes.size)
+  ) {
+    // Match all non-duration predicates on one span before selecting its
+    // containing groups. Different siblings cannot supply separate predicates.
+    matchingGroupAncestors = new Set();
     sourceSpans.forEach((span, spanIndex) => {
-      if (matchesQuery(span, spanIndex)) {
-        index.addAncestors(queryMatchAncestors, spanIndex);
-      }
+      if (filters.topTestsOnly && !matchesTopTest(span)) return;
+      const selection = { scope: index.scope(spanIndex) };
+      if (filters.failedOnly && !phaseOrOwnerMatches(
+        spanIndex, index, selection, (candidate) => candidate[STATUS] === 2,
+      )) return;
+      if (filters.testSizes.size && !phaseOrOwnerMatches(
+        spanIndex, index, selection, matchesSize,
+      )) return;
+      if (filters.query && !matchesQueryContext(spanIndex)) return;
+      index.addAncestors(matchingGroupAncestors, spanIndex);
     });
   }
   const topTestAncestors = new Set();
-  if (filters.topTestsOnly && filters.testPhase) {
+  if (!grouped && filters.topTestsOnly && filters.testPhase) {
     sourceSpans.forEach((span, spanIndex) => {
       if (matchesTopTest(span)) {
         index
@@ -104,17 +125,16 @@ function filterVisibility(
     filters.testPhase &&
       ((span) =>
         spanMatchesTestPhase(span, filters.scopes, filters.testPhase)),
-    filters.query &&
+    matchingGroupAncestors &&
+      ((_span, spanIndex) => matchingGroupAncestors.has(spanIndex)),
+    !grouped &&
+      filters.query &&
       ((span, spanIndex) =>
         filters.testPhase
-          ? queryMatchAncestors.has(spanIndex) ||
-            index
-              .ancestors(spanIndex)
-              .some((candidate) =>
-                matchesQuery(sourceSpans[candidate], candidate),
-              )
+          ? matchesQueryContext(spanIndex)
           : matchesQuery(span, spanIndex)),
-    filters.failedOnly &&
+    !grouped &&
+      filters.failedOnly &&
       ((span, spanIndex) =>
         filters.testPhase
           ? phaseOrOwnerMatches(
@@ -124,7 +144,8 @@ function filterVisibility(
               (candidate) => candidate[STATUS] === 2,
             )
           : span[STATUS] === 2),
-    filters.topTestsOnly &&
+    !grouped &&
+      filters.topTestsOnly &&
       ((span, spanIndex) =>
         filters.testPhase
           ? matchesTopTest(span) ||
@@ -137,7 +158,8 @@ function filterVisibility(
       ((span) =>
         displayedDurationNs(span, filters.scopes[span[SCOPE]]) >=
         filters.minimumDurationNs),
-    filters.testSizes.size &&
+    !grouped &&
+      filters.testSizes.size &&
       ((span, spanIndex) =>
         filters.testPhase
           ? phaseOrOwnerMatches(

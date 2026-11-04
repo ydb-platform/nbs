@@ -328,6 +328,15 @@ function testSharedWorkerDurationKeepsTestPredicates() {
       [1],
     );
   }
+  for (const order of ["tree", "duration", "ya.test.worker", "ya.test"]) {
+    for (const predicate of ["failed=1", "top-tests=1"]) {
+      const context = makeViewRuntime(
+        `?query=passing&phase=ya.test.worker&minimum-duration=60&order=${order}&${predicate}`,
+        { traceModel },
+      );
+      assert.strictEqual(context.rendered.spanRows, 0);
+    }
+  }
 }
 
 for (const test of [
