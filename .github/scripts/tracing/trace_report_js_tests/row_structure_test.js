@@ -335,7 +335,7 @@ function testMetadataMatchDoesNotIncludeUnrelatedBuildDescendants() {
   assert.deepStrictEqual(spanIndexes(rows), [0, 1, 4, 5, 6, 7, 8, 9]);
   assert.deepStrictEqual(
     durationOrderedIndexes(index, ROW_ORDERS.DURATION, { query: target }),
-    [0, 1, 4, 5, 6, 7, 8, 9],
+    [1, 4, 6, 9],
   );
 
   // Summary metadata remains searchable without expanding the build tree.

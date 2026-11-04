@@ -197,6 +197,16 @@ function testSharedGroupedOrderKeepsTestNameMatches() {
   }
 }
 
+function testSharedFlatOrderExcludesContextRows() {
+  const context = makeViewRuntime(
+    "?phase=ya.test&minimum-duration=4&order=duration",
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+}
+
 function testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable() {
   const context = makeViewRuntime("", { blockHistory: true });
   context.controls.query.value = "new filter + &";
@@ -218,6 +228,7 @@ for (const test of [
   testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering,
   testUnavailablePhasesFallBackWithoutBreakingTheReport,
   testSharedGroupedOrderKeepsTestNameMatches,
+  testSharedFlatOrderExcludesContextRows,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
 ]) {
   test();

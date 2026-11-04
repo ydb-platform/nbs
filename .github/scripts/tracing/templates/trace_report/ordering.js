@@ -27,10 +27,8 @@ function durationOrderedIndexes(sourceIndex, order, rawFilters = {}) {
   );
   // Ordered groups must keep ancestors of matching tests or phases. Applying
   // the order scope as a filter would discard those descendant matches.
-  const matching =
-    grouped || filters.testPhase || (!selection && !filters.hasSelection)
-      ? result.visible
-      : result.matching;
+  // Flat lists contain only matches; tree context must not become ranked rows.
+  const matching = grouped ? result.visible : result.matching;
   return sourceIndex.spans
     .flatMap((span, index) =>
       (!selection || spanMatchesTestPhase(span, sourceIndex.scopes, selection)) &&

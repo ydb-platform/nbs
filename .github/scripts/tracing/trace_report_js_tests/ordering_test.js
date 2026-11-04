@@ -173,6 +173,36 @@ function testOrderedGroupsContainMatchingTests() {
   }), [1, 12, 7]);
 }
 
+function testFlatOrderingExcludesAncestorsAndUnmatchedChildren() {
+  assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, {
+    testPhase: workers, query: "target A", minimumDurationNs: 25 * second,
+  }), [1]);
+  const filters = { testPhase: prepare, minimumDurationNs: 5 * second };
+  assert.deepStrictEqual(
+    durationOrderedIndexes(index, ROW_ORDERS.DURATION, filters),
+    [4],
+  );
+  // Ancestors remain available when explicitly ordering containing groups.
+  assert.deepStrictEqual(durationOrderedIndexes(index, chunks, filters), [3]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, workers, filters), [1]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, {
+    query: "case A",
+  }), [5]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, {
+    query: "target A",
+  }), [1, 3]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, {
+    query: "case",
+  }), [6, 14, 11, 5]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, {
+    query: "missing case",
+  }), []);
+  assert.strictEqual(
+    durationOrderedIndexes(index, ROW_ORDERS.DURATION).length,
+    spans.length,
+  );
+}
+
 function testFlatOrderingPaginatesAndKeepsInlineMetadata() {
   const sorted = durationOrderedIndexes(index, tests);
   const first = flatOrderedRows(sorted, 2);
@@ -208,6 +238,7 @@ for (const test of [
   testOrderedPhasesUseTheirOwnersForComposedFilters,
   testOrderedGroupsCanBeFilteredByAnotherDurationChoice,
   testOrderedGroupsContainMatchingTests,
+  testFlatOrderingExcludesAncestorsAndUnmatchedChildren,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,
 ]) {
