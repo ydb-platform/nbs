@@ -258,6 +258,29 @@ function testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable() {
   assert.strictEqual(context.window.location.search, "");
 }
 
+function testSharedWorkerDurationKeepsTestPredicates() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.test"],
+    s: [
+      makeSpan({ id: "worker", name: "worker", duration: 90e9, status: 2 }),
+      makeSpan({ id: "failed", name: "failed case", parent: 0, scope: 1,
+        duration: 5e9, status: 2, attributes: { "ya.test.duration.rank": 1 } }),
+      makeSpan({ id: "passed", name: "passing sibling", parent: 0, scope: 1,
+        duration: 7e9 }),
+    ],
+  };
+  for (const predicate of ["failed=1", "top-tests=1", "query=failed%20case"]) {
+    const context = makeViewRuntime(
+      `?phase=ya.test.worker&minimum-duration=60&order=ya.test&${predicate}`,
+      { traceModel },
+    );
+    assert.deepStrictEqual(
+      Array.from(context.rendered.items, ({ index }) => index),
+      [1],
+    );
+  }
+}
+
 for (const test of [
   testViewUrlRoundTripsEveryControl,
   testClearingViewRemovesOwnedParametersAndKeepsTheReportUrl,
@@ -270,6 +293,7 @@ for (const test of [
   testSharedWorkerDurationKeepsContainedTestNameSearch,
   testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
+  testSharedWorkerDurationKeepsTestPredicates,
 ]) {
   test();
 }

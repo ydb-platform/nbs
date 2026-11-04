@@ -258,6 +258,32 @@ function testFlatOrderingPaginatesAndKeepsInlineMetadata() {
   assert.strictEqual(all.truncated, false);
 }
 
+function testExpandedTestsKeepNonDurationPredicates() {
+  for (const testPhase of [workers, chunks]) {
+    const filters = { testPhase, minimumDurationNs: 19 * second };
+    for (const predicates of [
+      { query: "case A" },
+      { failedOnly: true },
+      { topTestsOnly: true },
+      { query: "case A", failedOnly: true, topTestsOnly: true },
+    ]) {
+      // The matching test takes only 2s; the 19s threshold measures its group.
+      assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+        ...filters, ...predicates,
+      }), [5]);
+    }
+    // A failing/ranked sibling cannot satisfy a predicate for the named test.
+    for (const predicates of [{ failedOnly: true }, { topTestsOnly: true }]) {
+      assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+        ...filters, query: "case B", ...predicates,
+      }), []);
+    }
+    assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+      ...filters, query: "case C", testSizes: new Set(["medium"]),
+    }), []);
+  }
+}
+
 function testOrderedChunkExpansionLeavesRoomOnAFullPage() {
   const sourceRoots = durationOrderedIndexes(index, chunks);
   const maximumRows = expandedGroupBudget(3, 3, index.children[13].length);
@@ -282,6 +308,7 @@ for (const test of [
   testGroupDurationCanMatchContainedTestNames,
   testOrderingDescendantsOfMatchingDurationGroups,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
+  testExpandedTestsKeepNonDurationPredicates,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,
 ]) {
   test();

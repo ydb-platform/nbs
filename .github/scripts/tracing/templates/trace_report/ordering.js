@@ -38,7 +38,20 @@ function durationOrderedIndexes(sourceIndex, order, rawFilters = {}) {
     // as tests in a worker over the duration threshold. Expand only matches,
     // since expanding their context ancestors would include unrelated work.
     matching = new Set(matching);
-    sourceIndex.addDescendants(matching, result.matching);
+    const descendants = new Set();
+    sourceIndex.addDescendants(descendants, result.matching);
+    // Keep predicates such as failure and rank on the output spans; a passing
+    // or unranked sibling must not qualify just because it shares a worker.
+    // Only the duration threshold stays on the selected duration scope.
+    const outputMatches = filterVisibility(
+      sourceIndex.spans,
+      { ...filters, testPhase: selection, minimumDurationNs: null },
+      sourceIndex.searchTexts,
+      sourceIndex,
+    ).matching;
+    outputMatches.forEach((index) => {
+      if (descendants.has(index)) matching.add(index);
+    });
   }
   return sourceIndex.spans
     .flatMap((span, index) =>
