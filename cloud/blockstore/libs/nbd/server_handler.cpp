@@ -537,7 +537,8 @@ void TServerHandler::ProcessRequests(
                     request,
                     EBlockStoreRequest::ReadBlocks);
 
-                if (!ctx->AcquireRequest(request.Length)) {
+                auto requestToken = ctx->AcquireRequest(request.Length);
+                if (!requestToken) {
                     // no need to reply, cause server is shutting down
                     UnregisterRequest(requestCtx, cancelError);
                     break;
@@ -547,7 +548,11 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=, this] () mutable {
+                ctx->ExecuteSimple(
+                    [=,
+                     this,
+                     requestToken = std::move(requestToken)] () mutable
+                {
                     ProcessReadRequest(
                         std::move(ctx),
                         std::move(requestCtx),
@@ -566,7 +571,8 @@ void TServerHandler::ProcessRequests(
                     request,
                     EBlockStoreRequest::WriteBlocks);
 
-                if (!ctx->AcquireRequest(request.Length)) {
+                auto requestToken = ctx->AcquireRequest(request.Length);
+                if (!requestToken) {
                     // no need to reply, cause server is shutting down
                     UnregisterRequest(requestCtx, cancelError);
                     break;
@@ -582,13 +588,17 @@ void TServerHandler::ProcessRequests(
                 }
 
                 ctx->ExecuteSimple(
-                    [=, this, data = std::move(requestData)] () mutable {
-                        ProcessWriteRequest(
-                            std::move(ctx),
-                            std::move(requestCtx),
-                            request,
-                            std::move(data));
-                    });
+                    [=,
+                     this,
+                     data = std::move(requestData),
+                     requestToken = std::move(requestToken)] () mutable
+                {
+                    ProcessWriteRequest(
+                        std::move(ctx),
+                        std::move(requestCtx),
+                        request,
+                        std::move(data));
+                });
                 break;
             }
 
@@ -603,7 +613,8 @@ void TServerHandler::ProcessRequests(
                     request,
                     EBlockStoreRequest::ZeroBlocks);
 
-                if (!ctx->AcquireRequest(request.Length)) {
+                auto requestToken = ctx->AcquireRequest(request.Length);
+                if (!requestToken) {
                     // no need to reply, cause server is shutting down
                     UnregisterRequest(requestCtx, cancelError);
                     break;
@@ -613,7 +624,11 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                ctx->ExecuteSimple([=, this] () mutable {
+                ctx->ExecuteSimple(
+                    [=,
+                     this,
+                     requestToken = std::move(requestToken)] () mutable
+                {
                     ProcessZeroRequest(
                         std::move(ctx),
                         std::move(requestCtx),

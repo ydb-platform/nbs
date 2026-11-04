@@ -102,10 +102,10 @@ public:
     {
     }
 
-    bool AcquireRequest(size_t requestBytes) override
+    TRequestToken AcquireRequest(size_t requestBytes) override
     {
         Y_UNUSED(requestBytes);
-        return true;
+        return TRequestToken(this);
     }
 
     void Enqueue(ITaskPtr task) override
@@ -139,6 +139,10 @@ public:
             Out.Write(response->DataBuffer.get(), response->RequestBytes);
         }
     }
+
+private:
+    void CompleteRequest() override
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
