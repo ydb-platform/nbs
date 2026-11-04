@@ -794,6 +794,8 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
 
 void TWriteBackCacheState::RequestNodeFlush(ui64 nodeId, TNodeState& nodeState)
 {
+    Y_ABORT_UNLESS(nodeState.FlushStatus != ENodeFlushStatus::FlushRequested);
+
     nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
     ++NodesFlushRequestedCount;
     Stats->FlushStarted();
@@ -855,7 +857,8 @@ void TWriteBackCacheState::CheckShutdownCompletion()
     {
         QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
         ShutdownCompletionQueued = true;
-        if (!IsFailed && ShutdownDroppedRequestCount) {
+
+        if (ShutdownDroppedRequestCount > 0) {
             ReportWriteBackCacheDataLossError(
                 TStringBuilder()
                 << LogTag
@@ -1154,12 +1157,11 @@ void TWriteBackCacheState::DropCachedData(
         ShutdownDroppedRequestCount += droppedRequestCount;
     }
 
-    if (droppedRequestCount) {
+    if (droppedRequestCount > 0) {
         STORAGE_WARN(
             LogTag << " Dropped unflushed WriteData requests"
-                   << " NodeId=" << nodeId
-                   << " RequestCount=" << droppedRequestCount
-                   << " Error=" << FormatError(error));
+                   << " NodeId=" << nodeId << " RequestCount="
+                   << droppedRequestCount << " Error=" << FormatError(error));
     }
 
     if (IsFailed) {

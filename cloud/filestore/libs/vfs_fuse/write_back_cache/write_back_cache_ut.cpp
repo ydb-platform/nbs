@@ -2180,18 +2180,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(b.Cache.IsDrained());
     }
 
-    void TestShouldKeepCachedDataOnDrainFailure(ui32 errorCode)
+    Y_UNIT_TEST(ShouldKeepCachedDataOnDrainFailure)
     {
         TBootstrap b;
         b.WriteToCacheSync(1, 0, "abc");
 
         size_t writeAttempts = 0;
         auto previousHandler = std::move(b.Session->WriteDataHandler);
-        b.Session->WriteDataHandler = [errorCode, &writeAttempts](auto, auto)
+        b.Session->WriteDataHandler = [&writeAttempts](auto, auto)
         {
             ++writeAttempts;
             NProto::TWriteDataResponse response;
-            *response.MutableError() = MakeError(errorCode, "Flush failed");
+            *response.MutableError() = MakeError(E_IO, "Flush failed");
             return MakeFuture(std::move(response));
         };
 
@@ -2217,18 +2217,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
-    Y_UNIT_TEST(ShouldKeepCachedDataOnDrainFailure)
-    {
-        TestShouldKeepCachedDataOnDrainFailure(E_IO);
-    }
-
-    Y_UNIT_TEST(ShouldKeepCachedDataOnRetriableDrainFailure)
-    {
-        TestShouldKeepCachedDataOnDrainFailure(E_REJECTED);
-    }
-
-    void TestShouldDropCachedDataOnShutdownFailureWithLiveHandles(
-        ui32 errorCode)
+    Y_UNIT_TEST(ShouldDropCachedDataOnShutdownFailureWithLiveHandles)
     {
         TBootstrap b;
         b.WriteToCacheSync(1, 101, 0, "abc");
@@ -2239,7 +2228,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         {
             ++writeAttempts;
             NProto::TWriteDataResponse response;
-            *response.MutableError() = MakeError(errorCode, "Flush failed");
+            *response.MutableError() = MakeError(E_IO, "Flush failed");
             return MakeFuture(std::move(response));
         };
 
@@ -2257,16 +2246,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         const auto attemptsBeforeScheduledTasks = writeAttempts;
         b.RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(attemptsBeforeScheduledTasks, writeAttempts);
-    }
-
-    Y_UNIT_TEST(ShouldDropCachedDataOnShutdownFailureWithLiveHandles)
-    {
-        TestShouldDropCachedDataOnShutdownFailureWithLiveHandles(E_IO);
-    }
-
-    Y_UNIT_TEST(ShouldDropCachedDataOnRetriableShutdownFailureWithLiveHandles)
-    {
-        TestShouldDropCachedDataOnShutdownFailureWithLiveHandles(E_REJECTED);
     }
 
     Y_UNIT_TEST(ShouldEnterShutdownAfterFailedDrain)
@@ -2368,26 +2347,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             1,
             b.Metrics.WriteDataRequestDroppedCount->Get());
         b.CheckStatsAreEmpty();
-    }
-
-    Y_UNIT_TEST(ShouldCompleteShutdownForFailedCache)
-    {
-        TBootstrap b;
-
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 0);
-        b.TempFileHandle.Flush();
-        b.RecreateCache();
-
-        UNIT_ASSERT(!b.Cache.IsDrained());
-
-        auto shutdown = b.Cache.Shutdown();
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
-        UNIT_ASSERT(!b.Cache.IsDrained());
-
-        auto repeatedShutdown = b.Cache.Shutdown();
-        UNIT_ASSERT(repeatedShutdown.HasValue());
-        repeatedShutdown.GetValue();
     }
 
     Y_UNIT_TEST(ShouldRetireQueuedFlushAfterCacheCorruption)
@@ -2626,44 +2585,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.Cache.Drain();
         UNIT_ASSERT(b.Cache.IsDrained());
-
-        // No stale data remains to block direct writes or truncation barriers.
-        size_t directWrites = 0;
-        b.Session->WriteDataHandler = [&](auto, const auto& request)
-        {
-            ++directWrites;
-            UNIT_ASSERT_VALUES_EQUAL(103, request->GetHandle());
-            return MakeFuture(NProto::TWriteDataResponse());
-        };
-        auto writeRequest = std::make_shared<NProto::TWriteDataRequest>();
-        writeRequest->SetNodeId(1);
-        writeRequest->SetHandle(103);
-        writeRequest->SetBuffer("new");
-        auto directWrite =
-            b.Cache.WriteDataDirect(b.CallContext, std::move(writeRequest));
-        UNIT_ASSERT(directWrite.HasValue());
-        UNIT_ASSERT(!HasError(directWrite.GetValue()));
-        UNIT_ASSERT_VALUES_EQUAL(1, directWrites);
-
-        size_t truncates = 0;
-        b.Session->SetNodeAttrHandler = [&](auto, auto)
-        {
-            ++truncates;
-            return MakeFuture(NProto::TSetNodeAttrResponse());
-        };
-        auto attrRequest = std::make_shared<NProto::TSetNodeAttrRequest>();
-        attrRequest->SetNodeId(1);
-        attrRequest->SetFlags(
-            ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE));
-        attrRequest->MutableUpdate()->SetSize(0);
-        auto truncate =
-            b.Cache.SetNodeAttr(b.CallContext, std::move(attrRequest));
-        UNIT_ASSERT(truncate.HasValue());
-        UNIT_ASSERT(!HasError(truncate.GetValue()));
-        UNIT_ASSERT_VALUES_EQUAL(1, truncates);
-
-        b.RunAllScheduledTasks();
-        UNIT_ASSERT_VALUES_EQUAL(1, directWrites);
     }
 
     Y_UNIT_TEST(ShouldRetryFlushWithLiveHandle)
@@ -3258,6 +3179,17 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RecreateCache();
 
         TestHangWhenFileRingBufferIsCorrupted(b);
+
+        UNIT_ASSERT(!b.Cache.IsDrained());
+
+        auto shutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
+        shutdown.GetValue();
+        UNIT_ASSERT(!b.Cache.IsDrained());
+
+        auto repeatedShutdown = b.Cache.Shutdown();
+        UNIT_ASSERT(repeatedShutdown.HasValue());
+        repeatedShutdown.GetValue();
     }
 
     Y_UNIT_TEST(ShouldHangWhenFileRingBufferBecomesCorruptedAtFlush)

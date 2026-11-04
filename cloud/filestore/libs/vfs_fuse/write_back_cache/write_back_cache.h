@@ -134,38 +134,23 @@ public:
      */
     EWriteBackCacheMode GetMode() const;
 
-    /* Starts asynchronous draining: prevents new WriteData requests from being
-     * added to the cache and triggers flushing of pending and unflushed writes
-     * (WriteDataDirect calls will still be allowed).
+    /* Irreversibly stops accepting cached writes and starts asynchronous
+     * flushing. WriteDataDirect remains allowed. Use IsDrained() to check when
+     * no pending or unflushed writes remain; a failed cache cannot drain.
      *
-     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
-     * no pending or unflushed writes remain - then it will become
-     * EWriteBackCacheMode::Drained.
-     *
-     * Use IsDrained() to check completion. A cache in failed state due to
-     * storage corruption or logic failure cannot complete draining.
-     *
-     * The call has no effect if WriteBackCache is already drained.
-     *
-     * Note: the call is not reversible (WriteBackCache cannot be returned to
-     * EWriteBackCacheMode::Normal mode without restart).
-     * Flush failures retain unflushed data for retries while a live handle
-     * remains. If no live handles remain, cached data is discarded as during
-     * normal operation.
+     * Flush failures retain data for retries while live handles remain.
+     * Without live handles, data is discarded as during normal operation.
      */
     void Drain();
 
-    /* Starts draining for session shutdown, allowing cached data with live
-     * handles to be dropped on flush failure once the node has no pending
-     * writes. This applies to any flush error, including retriable errors;
-     * dropping the node's data ends its flush retries.
+    /* Starts draining for session shutdown. On any flush error, cached writes
+     * may be dropped even with live handles once the node has no pending writes.
+     * Pending requests are not cancelled.
      *
-     * Pending requests are not cancelled. Shutdown has its own completion
-     * condition, independent of FlushAllData(). The returned future always
-     * succeeds after shutdown processing and active backend flushes finish;
-     * success does not guarantee that all cached writes were persisted.
-     * Use IsDrained() to check the terminal cache state.
-     * The caller must keep the cache alive until the returned future completes.
+     * The future always succeeds after all requested flushes retire, even for
+     * a failed cache. It is independent of FlushAllData(); success does not
+     * guarantee persistence. Use IsDrained() to check the terminal cache state.
+     * Keep the cache alive until the future completes.
      */
     [[nodiscard]] NThreading::TFuture<void> Shutdown();
 
