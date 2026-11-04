@@ -267,14 +267,10 @@ void RenderCell(
     const auto total = static_cast<ui32>(statuses.size());
     const auto unknown = total - alive - dead;
 
-    // without pings nothing is ever vouched for, so such a cell is never
-    // shown as healthy
-    const bool probed = cellConfig.GetHostMigrationEnabled();
-
     // only the warm hosts are pinged, so most of a cell is never asked;
     // healthy means nothing has been found dead
     TStringBuf health = "warning";
-    if (!total || !probed) {
+    if (!total) {
         health = "default";
     } else if (dead == total) {
         health = "danger";
@@ -295,21 +291,17 @@ void RenderCell(
                           cellConfig.GetTransport(),
                           cellConfig.GetGrpcDataFallbackEnabled()));
     out << " ";
-    if (probed) {
-        TStringBuilder label;
-        if (dead) {
-            label << dead << " down";
-        }
-        if (alive) {
-            label << (label.empty() ? "" : ", ") << alive << " alive";
-        }
-        if (unknown) {
-            label << (label.empty() ? "" : ", ") << unknown << " not probed";
-        }
-        RenderLabel(out, health, label);
-    } else {
-        RenderLabel(out, "default", "not probed");
+    TStringBuilder label;
+    if (dead) {
+        label << dead << " down";
     }
+    if (alive) {
+        label << (label.empty() ? "" : ", ") << alive << " alive";
+    }
+    if (unknown) {
+        label << (label.empty() ? "" : ", ") << unknown << " not probed";
+    }
+    RenderLabel(out, health, label);
     out << "</summary>";
 
     HTML(out) {

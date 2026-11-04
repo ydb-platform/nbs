@@ -418,8 +418,6 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
             .AddCell("uvw", 9001, 0, 1, 1, {"host-gamma"})
             .Build();
-        // pinged, so its hosts' liveness means something; uvw is not
-        cfg.MutableCells(0)->SetHostMigrationEnabled(true);
         // the host overrides the cell's transport
         cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
         cfg.MutableCells(0)->MutableHosts(0)->SetTransport(
@@ -469,11 +467,10 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "alive</span></td><td><span class='badge'>0</span></td>"
             "<td>grpc</td><td>9001</td>");
 
-        // a host nobody pings is not vouched for: its cell is neither green
-        // nor folded
+        // nothing found dead yet is healthy, even before anyone was asked
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<details class='panel panel-default' open>"
+            "<details class='panel panel-success'>"
             "<summary class='panel-heading'><strong>uvw</strong>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
@@ -899,7 +896,6 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-1", "host-2", "host-3"})
             .Build();
-        cfg.MutableCells(0)->SetHostMigrationEnabled(true);
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
 
         TCellsSnapshot snapshot;
