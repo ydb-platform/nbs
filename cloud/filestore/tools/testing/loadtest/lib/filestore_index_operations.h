@@ -10,7 +10,7 @@
 
 namespace NCloud::NFileStore::NLoadTest {
 
-class TFileStoreCleanup
+class TFileStoreIndexOperations
 {
     TLog& Log;
     IFileStoreServicePtr Client;
@@ -19,7 +19,7 @@ class TFileStoreCleanup
     TVector<TString> FilesystemIds;
 
 public:
-    TFileStoreCleanup(
+    TFileStoreIndexOperations(
         TLog& log,
         const IFileStoreServicePtr& client,
         const TString& filesystemId,

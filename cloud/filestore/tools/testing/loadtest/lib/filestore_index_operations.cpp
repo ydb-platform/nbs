@@ -13,7 +13,7 @@
 
 namespace NCloud::NFileStore::NLoadTest {
 
-TFileStoreCleanup::TFileStoreCleanup(
+TFileStoreIndexOperations::TFileStoreIndexOperations(
     TLog& log,
     const IFileStoreServicePtr& client,
     const TString& filesystemId,
@@ -28,7 +28,7 @@ TFileStoreCleanup::TFileStoreCleanup(
     FilesystemIds.insert(FilesystemIds.end(), shardIds.begin(), shardIds.end());
 }
 
-NProtoPrivate::TStorageStats TFileStoreCleanup::GetStorageStats()
+NProtoPrivate::TStorageStats TFileStoreIndexOperations::GetStorageStats()
 {
     NProtoPrivate::TGetStorageStatsRequest request;
     request.SetFileSystemId(FilesystemId);
@@ -43,7 +43,7 @@ NProtoPrivate::TStorageStats TFileStoreCleanup::GetStorageStats()
     return response.GetStats();
 }
 
-TVector<TString> TFileStoreCleanup::GetShardFileSystemIds()
+TVector<TString> TFileStoreIndexOperations::GetShardFileSystemIds()
 {
     NProtoPrivate::TGetFileSystemTopologyRequest request;
     request.SetFileSystemId(FilesystemId);
@@ -59,7 +59,7 @@ TVector<TString> TFileStoreCleanup::GetShardFileSystemIds()
     return {shardIds.begin(), shardIds.end()};
 }
 
-void TFileStoreCleanup::FlushBytes()
+void TFileStoreIndexOperations::FlushBytes()
 {
     // Each request processes one chunk and may reply before trimming finishes.
     ForcedOperationUntil(
@@ -71,22 +71,22 @@ void TFileStoreCleanup::FlushBytes()
         });
 }
 
-void TFileStoreCleanup::Flush()
+void TFileStoreIndexOperations::Flush()
 {
     ForcedOperation(NProtoPrivate::TForcedOperationRequest::E_FLUSH);
 }
 
-void TFileStoreCleanup::Compaction()
+void TFileStoreIndexOperations::Compaction()
 {
     ForcedOperation(NProtoPrivate::TForcedOperationRequest::E_COMPACTION);
 }
 
-void TFileStoreCleanup::Cleanup()
+void TFileStoreIndexOperations::Cleanup()
 {
     ForcedOperation(NProtoPrivate::TForcedOperationRequest::E_CLEANUP);
 }
 
-void TFileStoreCleanup::CollectGarbage()
+void TFileStoreIndexOperations::CollectGarbage()
 {
     // Pending barriers may prevent a request from draining the garbage queue.
     ForcedOperationUntil(
@@ -96,7 +96,7 @@ void TFileStoreCleanup::CollectGarbage()
 }
 
 template <typename TPredicate>
-void TFileStoreCleanup::ForcedOperationUntil(
+void TFileStoreIndexOperations::ForcedOperationUntil(
     NProtoPrivate::TForcedOperationRequest::EForcedOperationType type,
     TPredicate isCompleted)
 {
@@ -116,7 +116,7 @@ void TFileStoreCleanup::ForcedOperationUntil(
     }
 }
 
-void TFileStoreCleanup::ForcedOperation(
+void TFileStoreIndexOperations::ForcedOperation(
     NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
 {
     for (const auto& filesystemId: FilesystemIds) {
@@ -124,7 +124,7 @@ void TFileStoreCleanup::ForcedOperation(
     }
 }
 
-void TFileStoreCleanup::ForcedOperation(
+void TFileStoreIndexOperations::ForcedOperation(
     const TString& filesystemId,
     NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
 {
@@ -194,7 +194,7 @@ void TFileStoreCleanup::ForcedOperation(
     }
 }
 
-TString TFileStoreCleanup::RunForcedOperation(
+TString TFileStoreIndexOperations::RunForcedOperation(
     const TString& filesystemId,
     NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
 {
@@ -229,7 +229,7 @@ TString TFileStoreCleanup::RunForcedOperation(
 }
 
 template <typename TRequest, typename TResponse>
-void TFileStoreCleanup::ExecuteAction(
+void TFileStoreIndexOperations::ExecuteAction(
     const TString& action,
     const TRequest& requestProto,
     TResponse* responseProto)

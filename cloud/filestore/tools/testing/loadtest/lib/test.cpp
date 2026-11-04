@@ -1256,7 +1256,7 @@ private:
         const auto deadlineTs = TInstant::Now() + TDuration::Seconds(timeout);
 
         try {
-            TFileStoreCleanup filestoreCleanup(
+            TFileStoreIndexOperations filestoreCleanup(
                 Log,
                 Client,
                 filesystemId,
