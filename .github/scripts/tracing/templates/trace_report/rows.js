@@ -16,7 +16,7 @@ function spanRow(item) {
   toggle.className = "toggle";
   toggle.type = "button";
   toggle.dataset.rowAction = "group";
-  const hasChildren = children[item.index].length > 0;
+  const hasChildren = !item.flat && children[item.index].length > 0;
   const isOpen = visible ? hasChildren : expanded.has(item.index);
   toggle.textContent = hasChildren ? (isOpen ? "▾" : "▸") : "";
   toggle.disabled = !hasChildren || Boolean(visible);
@@ -35,6 +35,18 @@ function spanRow(item) {
   }
   name.textContent = span[NAME];
   name.title = span[NAME];
+  if (item.flat) {
+    const owner = traceIndex.ancestors(item.index, false).find((index) =>
+      LOCAL_TIMELINE_ROOT_SCOPES.has(traceIndex.scope(index)),
+    );
+    if (owner !== undefined) {
+      const context = document.createElement("span");
+      context.className = "span-context";
+      context.textContent = spans[owner][NAME];
+      name.append(context);
+      name.title += ` — ${context.textContent}`;
+    }
+  }
   const childCount = document.createElement("span");
   if (hasChildren) {
     childCount.className = "child-count";
@@ -94,7 +106,7 @@ function spanRow(item) {
   const duration = document.createElement("span");
   duration.className = "duration";
   const reportedDuration = reportedTestDurationNs(span, scope);
-  duration.textContent = formatDuration(reportedDuration ?? span[DURATION]);
+  duration.textContent = formatDuration(displayedDurationNs(span, scope));
   if (reportedDuration !== null) {
     duration.title = `Duration reported by ya; ${reportedTestTimingNote(
       span,
@@ -179,6 +191,7 @@ function handleRowsClick(event) {
 }
 
 function renderRows() {
+  syncTraceViewUrl();
   const flattened = flattenRows();
   const fragment = document.createDocumentFragment();
   if (!flattened.items.length) {

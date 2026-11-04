@@ -62,8 +62,12 @@ input,button,select { color:inherit; background:var(--panel); border:1px solid v
 .test-size-filter .filter-toggle { padding-inline:.55rem }
 .row-load-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
   white-space:nowrap }
-.timeline-mode-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
+.row-order-control,.timeline-mode-control { display:flex; align-items:center; gap:.35rem; color:var(--muted);
   white-space:nowrap }
+.row-order-control select { max-width:25rem }
+.share-link-control { display:flex; align-items:center; gap:.35rem;
+  color:var(--muted); flex:1 1 24rem }
+.share-link-control input { flex:1; min-width:0 }
 .page-navigation { position:fixed; right:1rem; bottom:1rem; z-index:3;
   display:flex; gap:.45rem }
 .page-navigation a { color:inherit; background:var(--panel); border:1px solid var(--line);
@@ -106,6 +110,8 @@ input,button,select { color:inherit; background:var(--panel); border:1px solid v
   white-space:nowrap; padding:.35rem .25rem; border:0; background:transparent;
   text-align:left; cursor:default }
 .group-name { cursor:pointer } .group-name:not(:disabled):hover { text-decoration:underline }
+.span-context { display:block; overflow:hidden; text-overflow:ellipsis;
+  color:var(--muted); font-size:.8rem }
 .child-count,.critical-badge,.longest-badge { flex:none; margin-left:.3rem; padding:.12rem .45rem;
   border-radius:999px; font-size:.75rem; white-space:nowrap }
 .child-count { color:var(--muted); background:var(--panel); border:1px solid var(--line) }
@@ -184,7 +190,7 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
   <label class="filter-toggle"><input id="top-tests-only" name="top-tests" type="checkbox" disabled>Top 10 tests</label>
   <label class="test-phase-filter" for="test-phase">Duration of
     <select id="test-phase" name="phase"
-      title="Measure an exact or any test stage or worker phase; text, failure, and test size may match its owning test"
+      title="Measure tests, chunks including recipes, full test workers including infrastructure, or individual stages and phases"
       disabled>
       <option value="">Any matching span</option>
     </select>
@@ -215,6 +221,13 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
       <option value="5000" selected>5,000</option>
     </select>
   </label>
+  <label class="row-order-control" for="row-order">Order
+    <select id="row-order"
+      title="Show the trace tree or order the selected spans longest first; expand chunks and full workers to see their tests and infrastructure"
+      disabled>
+      <option value="tree" selected>Trace tree</option>
+    </select>
+  </label>
   <label class="timeline-mode-control" for="timeline-mode">Timeline
     <select id="timeline-mode"
       title="Use the complete trace scale or expand each test worker, test operation, and test chunk to its own scale"
@@ -225,6 +238,12 @@ th,td { border-bottom:1px solid var(--line); padding:.25rem .5rem; text-align:le
   </label>
   <button id="expand" type="button" disabled>Expand all</button>
   <button id="collapse" type="button" disabled>Collapse all</button>
+  <button id="copy-view-link" type="button"
+    title="Copy a link with the current filters, ordering, and timeline settings" disabled>Copy link</button>
+  <label id="share-link-control" class="share-link-control" for="share-link" hidden>Share link
+    <input id="share-link" type="text" readonly>
+  </label>
+  <span id="share-status" class="muted" role="status" aria-live="polite"></span>
   <span id="filter-status" class="muted"></span>
 </div>
 <section id="trace" class="trace">

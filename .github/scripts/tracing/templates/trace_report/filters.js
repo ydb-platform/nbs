@@ -4,7 +4,9 @@ function normalizedTestPhase(testPhase) {
     !testPhase ||
     !testPhaseDefinition(testPhase.scope) ||
     (testPhase.name !== null &&
-      (typeof testPhase.name !== "string" || !testPhase.name))
+      (typeof testPhase.name !== "string" ||
+        !testPhase.name ||
+        !testPhaseDefinition(testPhase.scope).attribute))
   ) {
     return null;
   }
@@ -115,12 +117,15 @@ function filterVisibility(
       ((span, spanIndex) =>
         filters.testPhase
           ? matchesTopTest(span) ||
+            topTestAncestors.has(spanIndex) ||
             topTestAncestors.has(
               index.phaseOwner(spanIndex, filters.testPhase.scope),
             )
           : matchesTopTest(span)),
     filters.minimumDurationNs !== null &&
-      ((span) => span[DURATION] >= filters.minimumDurationNs),
+      ((span) =>
+        displayedDurationNs(span, filters.scopes[span[SCOPE]]) >=
+        filters.minimumDurationNs),
     filters.testSizes.size &&
       ((span, spanIndex) =>
         filters.testPhase
@@ -140,9 +145,19 @@ function filterVisibility(
   });
 
   if (filters.query && !filters.hasSelection) {
-    index.addDescendants(result, directMatches);
+    // A group's name identifies its subtree. Metadata (such as a build-wide
+    // critical-path summary) can mention one target without identifying every
+    // child as part of that target.
+    const matchingGroups = directMatches.filter((spanIndex) =>
+      sourceSpans[spanIndex][NAME].toLowerCase().includes(filters.query),
+    );
+    index.addDescendants(result, matchingGroups);
   }
-  return { visible: result, matches: directMatches.length };
+  return {
+    visible: result,
+    matching: new Set(directMatches),
+    matches: directMatches.length,
+  };
 }
 
 function flattenTraceRows({

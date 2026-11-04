@@ -53,20 +53,31 @@ function updateFilterClearControls() {
 }
 
 function populateTestPhaseOptions() {
-  const previousValue = testPhaseElement.value;
-  testPhaseElement.replaceChildren();
-  const anyPhase = document.createElement("option");
-  anyPhase.value = "";
-  anyPhase.textContent = "Any matching span";
-  testPhaseElement.append(anyPhase);
-  testPhaseOptions(spans, model.c).forEach(({ value, label }) => {
+  const options = [
+    { value: "", label: "Any matching span" },
+    ...testPhaseOptions(spans, model.c),
+  ];
+  populateSelectOptions(testPhaseElement, options);
+  populateSelectOptions(rowOrderElement, [
+    { value: ROW_ORDERS.TREE, label: "Trace tree" },
+    ...options.map(({ value, label }) => ({
+      value: value || ROW_ORDERS.DURATION,
+      label: `${label}, longest first`,
+    })),
+  ]);
+}
+
+function populateSelectOptions(element, options) {
+  const previousValue = element.value;
+  element.replaceChildren();
+  options.forEach(({ value, label }) => {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
-    testPhaseElement.append(option);
+    element.append(option);
   });
-  if ([...testPhaseElement.options].some(({ value }) => value === previousValue)) {
-    testPhaseElement.value = previousValue;
+  if (options.some(({ value }) => value === previousValue)) {
+    element.value = previousValue;
   }
 }
 
@@ -102,6 +113,7 @@ function applyFilter() {
     visible = null;
     filterStatus.textContent = "";
     resetDefaults();
+    updateOrderedRows();
     renderRows();
     return;
   }
@@ -111,17 +123,43 @@ function applyFilter() {
   filterStatus.textContent = `${result.matches.toLocaleString()} matching span${
     result.matches === 1 ? "" : "s"
   }`;
+  updateOrderedRows();
+  renderRows();
+}
+
+function currentRowOrder() {
+  return rowOrderFromValue(rowOrderElement?.value);
+}
+
+function updateOrderedRows() {
+  const order = currentRowOrder();
+  orderedRows =
+    order === ROW_ORDERS.TREE
+      ? []
+      : durationOrderedIndexes(traceIndex, order, currentFilters());
+  expandElement.disabled = rowOrderIsFlat(order);
+  collapseElement.disabled = rowOrderIsFlat(order);
+}
+
+function applyRowOrder() {
+  rowBudget = INITIAL_ROW_BUDGET;
+  limits = new Map();
+  updateOrderedRows();
   renderRows();
 }
 
 function flattenRows() {
+  const order = currentRowOrder();
+  if (rowOrderIsFlat(order)) return flatOrderedRows(orderedRows, rowBudget);
+  const ordered = order !== ROW_ORDERS.TREE;
   return flattenTraceRows({
     sourceSpans: spans,
     sourceChildren: children,
-    sourceRoots: roots,
+    sourceRoots: ordered ? orderedRows : roots,
     sourceExpanded: expanded,
     sourceLimits: limits,
-    sourceVisible: visible,
+    sourceVisible:
+      ordered && visible ? new Set([...visible, ...orderedRows]) : visible,
     maximumRows: rowBudget,
   });
 }
@@ -131,8 +169,16 @@ function toggleSpanGroup(index) {
   if (expanded.has(index)) {
     expanded.delete(index);
   } else {
+    const flattened = flattenRows();
+    if (currentRowOrder() !== ROW_ORDERS.TREE) {
+      // Leave room for children even when the sorted group list fills the page.
+      rowBudget = expandedGroupBudget(
+        rowBudget,
+        flattened.spanRows,
+        limits.get(index) ?? Math.min(PAGE_SIZE, children[index].length),
+      );
+    }
     if (!limits.has(index)) {
-      const flattened = flattenRows();
       limits.set(
         index,
         initialGroupLimit(
