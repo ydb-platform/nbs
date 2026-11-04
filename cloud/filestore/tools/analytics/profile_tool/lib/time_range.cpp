@@ -41,7 +41,8 @@ TVector<TStringBuf> FindCompleteFrames(TStringBuf data)
 TMaybe<TRecordBounds> ReadBoundaryFrame(
     const TVector<TStringBuf>& frames,
     bool last,
-    const TString& path)
+    const TString& path,
+    bool& reportedInvalidTimestamp)
 {
     // Ignore clock-relative timestamps interpreted as Unix timestamps.
     constexpr auto MinRecordTime = TInstant::Seconds(946684800); // 2000-01-01 UTC
@@ -69,6 +70,14 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
                     const auto time =
                         TInstant::MicroSeconds(request.GetTimestampMcs());
                     if (time < MinRecordTime) {
+                        if (!reportedInvalidTimestamp) {
+                            reportedInvalidTimestamp = true;
+                            Cerr << "Invalid request timestamp in profile log "
+                                 << path << ": " << time << " is before "
+                                 << MinRecordTime
+                                 << "; excluding it from time bounds. Record:"
+                                 << Endl << record->DebugString() << Endl;
+                        }
                         continue;
                     }
                     if (bounds) {
@@ -112,8 +121,11 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
                  << ": no complete eventlog frames" << Endl;
             return file;
         }
-        const auto first = ReadBoundaryFrame(frames, false, path);
-        const auto last = ReadBoundaryFrame(frames, true, path);
+        bool reportedInvalidTimestamp = false;
+        const auto first =
+            ReadBoundaryFrame(frames, false, path, reportedInvalidTimestamp);
+        const auto last =
+            ReadBoundaryFrame(frames, true, path, reportedInvalidTimestamp);
         if (first && last) {
             file.StartTime = Min(first->Start, last->Start);
             file.EndTime = Max(first->End, last->End);
