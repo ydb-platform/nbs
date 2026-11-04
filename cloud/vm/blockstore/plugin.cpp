@@ -226,6 +226,7 @@ BlockPlugin* BlockPlugin_GetPlugin(BlockPluginHost* host, const char* options)
 
             gBlockPlugin.state = bootstrap.release();
         } catch (...) {
+            --gBlockPluginRefCount;
             host->log_message(host, CurrentExceptionMessage().data());
             return nullptr;
         }
