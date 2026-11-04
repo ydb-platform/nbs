@@ -18,8 +18,9 @@ struct TProfileLogFile
 
 // Leave bounds unknown unless readRecords requests boundary-frame probing.
 // Inspect all records in first/last usable frames; filenames do not supply
-// times. Unreadable or empty logs have unknown bounds; filesystem mtime is not
-// used.
+// times. Timestamps before 2000-01-01 UTC are excluded from estimates.
+// Unreadable logs or logs without valid timestamps have unknown bounds.
+// Filesystem mtime is not used.
 TProfileLogFile GetProfileLogFile(
     const TString& path,
     bool readRecords = false);

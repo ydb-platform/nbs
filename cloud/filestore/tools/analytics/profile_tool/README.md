@@ -28,9 +28,11 @@ exact per-request `--since` and `--until` filters to its contents.
 
 With multiple files and either time bound set, the tool skips files outside the
 range estimated from their first and last usable profile frames. It scans frame
-headers using the eventlog library and decodes boundary records. The earliest
-request timestamp across all records in the first usable frame supplies the start;
-the latest across all records in the last usable frame supplies the end.
+headers using the eventlog library and decodes boundary records. The minimum and maximum
+request timestamps across both boundary frames supply the start and end.
+Timestamps before 2000-01-01 UTC are excluded from these estimates. If no valid
+timestamps are found, the bounds remain unknown. Stored records and exact
+per-request filtering are unchanged.
 Incomplete or corrupt boundary frames are ignored when estimating bounds. Files with unknown record bounds are retained.
 
 Multiple files are sorted by detected record end time, oldest first. Unknown

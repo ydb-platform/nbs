@@ -15,7 +15,8 @@ namespace {
 
 TInstant Time(ui64 seconds)
 {
-    return TInstant::Seconds(seconds);
+    return TInstant::ParseIso8601("2000-01-01T00:00:00Z") +
+           TDuration::Seconds(seconds);
 }
 
 void AssertPaths(
@@ -218,7 +219,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
         for (const auto wallTime: {start, end}) {
             TSelfFlushLogFrame frame(log);
             // Filesystem grouping does not order records by request timestamp.
-            for (const auto timestamp: {wallTime, Time(1000)}) {
+            for (const auto timestamp: {wallTime, TInstant::Seconds(1000)}) {
                 NProto::TProfileLogRecord record;
                 record.AddRequests()->SetTimestampMcs(timestamp.MicroSeconds());
                 frame.LogEvent(record);
@@ -229,7 +230,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
         const auto bounds = GetProfileLogFile(input.Name(), true);
         UNIT_ASSERT(bounds.StartTime);
         UNIT_ASSERT(bounds.EndTime);
-        UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(1000));
+        UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, start);
         UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, end);
         AssertPaths(
             SelectProfileLogFiles(
@@ -243,6 +244,67 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
                 start,
                 end),
             {input.Name(), empty.Name()});
+    }
+
+    Y_UNIT_TEST(ShouldIncludeBothBoundaryFramesInBounds)
+    {
+        for (const bool reverse: {false, true}) {
+            TTempFileHandle input;
+            TEventLog log(input.Name(), 0);
+            TVector<TVector<ui64>> timestamps = {{10, 1000}, {20}};
+            if (reverse) {
+                std::swap(timestamps[0], timestamps[1]);
+            }
+            for (const auto& frameTimes: timestamps) {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                for (const auto timestamp: frameTimes) {
+                    record.AddRequests()->SetTimestampMcs(Time(timestamp).MicroSeconds());
+                }
+                frame.LogEvent(record);
+                frame.Flush();
+            }
+            log.CloseLog();
+            const auto bounds = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT(bounds.StartTime);
+            UNIT_ASSERT(bounds.EndTime);
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(10));
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, Time(1000));
+            const TVector<TProfileLogFile> files = {
+                bounds, {"/outside", Time(2000), Time(2000)}};
+            AssertPaths(SelectProfileLogFiles(files, Time(999), Time(1001)),
+                {input.Name()});
+            AssertPaths(SelectProfileLogFiles(files, Time(10), Time(11)),
+                {input.Name()});
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreTimestampsBeforeYear2000)
+    {
+        const auto cutoff = Time(0);
+        for (const bool includeValid: {false, true}) {
+            TTempFileHandle input;
+            TEventLog log(input.Name(), 0);
+            {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                record.AddRequests()->SetTimestampMcs(0);
+                record.AddRequests()->SetTimestampMcs(cutoff.MicroSeconds() - 1);
+                if (includeValid) {
+                    record.AddRequests()->SetTimestampMcs(cutoff.MicroSeconds());
+                }
+                frame.LogEvent(record);
+                frame.Flush();
+            }
+            log.CloseLog();
+            const auto bounds = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT_VALUES_EQUAL(bounds.StartTime.Defined(), includeValid);
+            UNIT_ASSERT_VALUES_EQUAL(bounds.EndTime.Defined(), includeValid);
+            if (includeValid) {
+                UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, cutoff);
+                UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, cutoff);
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldKeepEmptyAndUnreadableBoundsUnknown)

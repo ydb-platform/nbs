@@ -1,7 +1,5 @@
 #include "time_range.h"
 
-#include "dump.h"
-
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 
 #include <library/cpp/eventlog/logparser.h>
@@ -45,6 +43,8 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
     bool last,
     const TString& path)
 {
+    // Ignore clock-relative timestamps interpreted as Unix timestamps.
+    constexpr auto MinRecordTime = TInstant::Seconds(946684800); // 2000-01-01 UTC
     bool reportedError = false;
     for (size_t i = 0; i < frames.size(); ++i) {
         TMemoryInput input(frames[last ? frames.size() - 1 - i : i]);
@@ -62,21 +62,21 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
                 if (!record || record->GetRequests().empty()) {
                     continue;
                 }
-                TRecordBounds current{TInstant::Max(), TInstant::Zero()};
                 for (const auto& request: record->GetRequests()) {
                     Y_ENSURE(
                         request.HasTimestampMcs(),
                         "Missing request timestamp");
                     const auto time =
                         TInstant::MicroSeconds(request.GetTimestampMcs());
-                    current.Start = Min(current.Start, time);
-                    current.End = Max(current.End, time);
-                }
-                if (bounds) {
-                    bounds->Start = Min(bounds->Start, current.Start);
-                    bounds->End = Max(bounds->End, current.End);
-                } else {
-                    bounds = current;
+                    if (time < MinRecordTime) {
+                        continue;
+                    }
+                    if (bounds) {
+                        bounds->Start = Min(bounds->Start, time);
+                        bounds->End = Max(bounds->End, time);
+                    } else {
+                        bounds = TRecordBounds{time, time};
+                    }
                 }
             }
             if (bounds) {
@@ -114,17 +114,13 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
         }
         const auto first = ReadBoundaryFrame(frames, false, path);
         const auto last = ReadBoundaryFrame(frames, true, path);
-        if (first && last && first->Start <= last->End) {
-            file.StartTime = first->Start;
-            file.EndTime = last->End;
-        } else if (!first || !last) {
+        if (first && last) {
+            file.StartTime = Min(first->Start, last->Start);
+            file.EndTime = Max(first->End, last->End);
+        } else {
             Cerr << "Cannot determine record range for " << path
                  << ": no usable profile records with request timestamps"
                  << Endl;
-        } else {
-            Cerr << "Cannot determine record range for " << path
-                 << ": first request timestamp " << first->Start
-                 << " is after last request timestamp " << last->End << Endl;
         }
     } catch (const yexception& error) {
         Cerr << "Cannot determine record range for " << path << ": "

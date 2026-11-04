@@ -6,6 +6,7 @@
 
 #include <util/folder/dirut.h>
 #include <util/generic/algorithm.h>
+#include <util/generic/hash_set.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -82,8 +83,7 @@ TCommand::TCommand()
             ProfileLogLabel.data(),
             "Path to profile log (repeat for multiple files; "
             "processed oldest first by record end time)")
-        .RequiredArgument("STR")
-        .AppendTo(&ProfileLogPaths);
+        .RequiredArgument("STR");
 
     Opts.AddLongOption(
             "ignore-errors",
@@ -94,10 +94,62 @@ TCommand::TCommand()
 
 int TCommand::Run(int argc, const char** argv)
 {
-    OptsParseResult.ConstructInPlace(&Opts, argc, argv);
+    // Give each argument its own storage so equal strings in different positions
+    // remain distinguishable. Getopt may permute the pointer array.
+    TVector<TString> arguments;
+    arguments.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        arguments.emplace_back(argv[i]);
+    }
+    TVector<const char*> parsedArguments;
+    for (const auto& argument: arguments) {
+        parsedArguments.push_back(argument.c_str());
+    }
+    OptsParseResult.ConstructInPlace(&Opts, argc, parsedArguments.data());
     if (!OptsParseResult.Defined()) {
         Cerr << "Failed to parse cmd parameters" << Endl;
         return 1;
+    }
+
+    const auto& parsed = OptsParseResult.GetRef();
+    THashSet<const char*> inputValues;
+    if (const auto* option = parsed.FindLongOptParseResult(ProfileLogLabel.data())) {
+        for (const auto* value: option->Values()) {
+            inputValues.insert(value);
+        }
+    }
+    for (size_t i = parsed.GetFreeArgsPos(); i < parsedArguments.size(); ++i) {
+        inputValues.insert(parsedArguments[i]);
+    }
+    // In PERMUTE mode getopt can leave the separator among free arguments.
+    // Exclude only the first standalone separator, not option values or later
+    // literal "--" paths.
+    THashSet<const char*> optionValues;
+    for (const auto* option: Opts.GetOpts()) {
+        if (const auto* result = parsed.FindOptParseResult(option)) {
+            for (const auto* value: result->Values()) {
+                optionValues.insert(value);
+            }
+        }
+    }
+    for (size_t i = 1; i < arguments.size(); ++i) {
+        const auto& argument = arguments[i];
+        if (argument == "--" && !optionValues.contains(argument.c_str())) {
+            inputValues.erase(argument.c_str());
+            break;
+        }
+    }
+    ProfileLogPaths.clear();
+    for (size_t i = 1; i < arguments.size(); ++i) {
+        const auto& argument = arguments[i];
+        // Inline option values point inside their argument (e.g. --profile-log=x).
+        for (size_t offset = 0; offset <= argument.size(); ++offset) {
+            const auto* value = argument.c_str() + offset;
+            if (inputValues.contains(value)) {
+                ProfileLogPaths.emplace_back(value);
+                break;
+            }
+        }
     }
 
     if (!TCommand::Init(OptsParseResult.GetRef()) ||
@@ -131,11 +183,8 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
 
 bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
 {
+    Y_UNUSED(parseResult);
     try {
-        for (const auto& path: parseResult.GetFreeArgs()) {
-            ProfileLogPaths.push_back(path);
-        }
-
         if (ProfileLogPaths.empty()) {
             ythrow NLastGetopt::TUsageException()
                 << "At least one profile log is required; use --profile-log "
@@ -156,6 +205,7 @@ bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
                 }
                 return lhs.EndTime < rhs.EndTime;
             });
+
     } catch (const TFileError& error) {
         Cerr << error.what() << Endl;
         return false;

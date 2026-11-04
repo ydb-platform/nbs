@@ -128,7 +128,8 @@ void WriteProfileLog(const TString& path, ui64 timestamp = 1000)
         TSelfFlushLogFrame frame(log);
         NProto::TProfileLogRecord record;
         record.SetFileSystemId(path);
-        record.AddRequests()->SetTimestampMcs(TInstant::Seconds(timestamp).MicroSeconds());
+        record.AddRequests()->SetTimestampMcs((TInstant::ParseIso8601("2000-01-01T00:00:00Z") +
+            TDuration::Seconds(timestamp)).MicroSeconds());
         frame.LogEvent(record);
         frame.Flush();
     }
@@ -195,9 +196,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 oldFile.Name().c_str(),
                 currentFile.Name().c_str(),
                 "--since",
-                "1970-01-01T00:38:21Z",
+                "2000-01-01T00:38:21Z",
                 "--until",
-                "1970-01-01T00:41:40Z"};
+                "2000-01-01T00:41:40Z"};
             if (TStringBuf(name) == "findbytesaccess") {
                 args.insert(args.end(), {"--start", "0", "--count", "1"});
             }
@@ -293,7 +294,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             TSelfFlushLogFrame frame(log);
             NProto::TProfileLogRecord record;
             record.SetFileSystemId("selected");
-            record.AddRequests()->SetTimestampMcs(TInstant::Seconds(2400).MicroSeconds());
+            record.AddRequests()->SetTimestampMcs(TInstant::ParseIso8601("2000-01-01T00:40:00Z").MicroSeconds());
             frame.LogEvent(record);
             frame.Flush();
             log.CloseLog();
@@ -305,9 +306,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             first.Name().c_str(),
             second.Name().c_str(),
             "--since",
-            "1970-01-01T00:38:21Z",
+            "2000-01-01T00:38:21Z",
             "--until",
-            "1970-01-01T00:41:40Z"};
+            "2000-01-01T00:41:40Z"};
         TReadTestCommand command;
         UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.FilesSelected, 1);
@@ -326,7 +327,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 TSelfFlushLogFrame frame(log);
                 NProto::TProfileLogRecord record;
                 record.SetFileSystemId(input->Name());
-                record.AddRequests()->SetTimestampMcs(100);
+                record.AddRequests()->SetTimestampMcs(TInstant::ParseIso8601("2000-01-01T00:00:00Z").MicroSeconds());
                 frame.LogEvent(record);
                 frame.Flush();
             }
@@ -389,6 +390,32 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(second.Name()));
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
+    }
+
+    Y_UNIT_TEST(ShouldPreserveInterleavedInputOrderForEqualTimes)
+    {
+        TTempFileHandle first;
+        TTempFileHandle second;
+        TTempFileHandle third;
+        for (const bool knownTimes: {false, true}) {
+            if (knownTimes) {
+                for (const auto* file: {&first, &second, &third}) {
+                    WriteProfileLog(file->Name(), 1000);
+                }
+            }
+            const TString inlineOption = "--profile-log=" + third.Name();
+            const char* args[] = {
+                "test", "--profile-log", first.Name().c_str(),
+                second.Name().c_str(), inlineOption.c_str(),
+                "--fs-id", second.Name().c_str(), "--", first.Name().c_str()};
+            TTestCommand command;
+            UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(second.Name()));
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(first.Name()));
+        }
     }
 
     Y_UNIT_TEST(ShouldSortByRecordEndRegardlessOfSkipping)
