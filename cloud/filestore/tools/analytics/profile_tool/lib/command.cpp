@@ -94,8 +94,8 @@ TCommand::TCommand()
 
 int TCommand::Run(int argc, const char** argv)
 {
-    // Give each argument its own storage so equal strings in different positions
-    // remain distinguishable. Getopt may permute the pointer array.
+    // Give each argument its own storage so equal strings in different
+    // positions remain distinguishable. Getopt may permute the pointer array.
     TVector<TString> arguments;
     arguments.reserve(argc);
     for (int i = 0; i < argc; ++i) {
@@ -113,7 +113,9 @@ int TCommand::Run(int argc, const char** argv)
 
     const auto& parsed = OptsParseResult.GetRef();
     THashSet<const char*> inputValues;
-    if (const auto* option = parsed.FindLongOptParseResult(ProfileLogLabel.data())) {
+    if (const auto* option =
+            parsed.FindLongOptParseResult(ProfileLogLabel.data()))
+    {
         for (const auto* value: option->Values()) {
             inputValues.insert(value);
         }
@@ -142,7 +144,8 @@ int TCommand::Run(int argc, const char** argv)
     ProfileLogPaths.clear();
     for (size_t i = 1; i < arguments.size(); ++i) {
         const auto& argument = arguments[i];
-        // Inline option values point inside their argument (e.g. --profile-log=x).
+        // Inline option values point inside their argument (e.g.
+        // --profile-log=x).
         for (size_t offset = 0; offset <= argument.size(); ++offset) {
             const auto* value = argument.c_str() + offset;
             if (inputValues.contains(value)) {
