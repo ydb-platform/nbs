@@ -73,7 +73,7 @@ function testLocalLinksAndExactPhaseNamesRoundTrip() {
   }
 }
 
-function makeViewRuntime(search, { blockHistory = false } = {}) {
+function makeViewRuntime(search, { blockHistory = false, traceModel = null } = {}) {
   const control = (name, value = "", type = "text") => ({
     name, value, type, checked: false, disabled: true, hidden: false,
     textContent: "", options: [],
@@ -97,7 +97,7 @@ function makeViewRuntime(search, { blockHistory = false } = {}) {
   const elements = [controls.query, controls.minimum, controls.phase,
     controls.failed, controls.top, controls.size];
   elements.namedItem = (name) => elements.find((element) => element.name === name);
-  const testModel = {
+  const testModel = traceModel || {
     c: ["ya.test.worker", "ya.chunk", "ya.test"],
     s: [
       makeSpan({ id: "worker", name: "target", duration: 10e9,
@@ -207,6 +207,34 @@ function testSharedFlatOrderExcludesContextRows() {
   );
 }
 
+function testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.chunk", "ya.test"],
+    s: [
+      makeSpan({ id: "slow-worker", name: "slow worker", duration: 90e9 }),
+      makeSpan({ id: "slow-chunk", name: "chunk", parent: 0, scope: 1, duration: 80e9 }),
+      makeSpan({ id: "short-test", name: "short test", parent: 1, scope: 2, duration: 5e9 }),
+      makeSpan({ id: "fast-worker", name: "fast worker", duration: 10e9 }),
+      makeSpan({ id: "fast-test", name: "another test", parent: 3, scope: 2, duration: 7e9 }),
+    ],
+  };
+  const context = makeViewRuntime(
+    "?minimum-duration=60&phase=ya.test.worker&order=ya.test&timeline=local",
+    { traceModel },
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+  assert.strictEqual(context.controls.minimum.value, "60");
+  assert.strictEqual(context.controls.timeline.value, TIMELINE_MODES.LOCAL);
+  const geometry = timelineBarGeometry(
+    2, traceModel.s, traceModel.c, 90e9, context.controls.timeline.value,
+  );
+  assert.strictEqual(geometry.relativeTo, 1);
+  assert.strictEqual(geometry.width, 6.25);
+}
+
 function testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable() {
   const context = makeViewRuntime("", { blockHistory: true });
   context.controls.query.value = "new filter + &";
@@ -229,6 +257,7 @@ for (const test of [
   testUnavailablePhasesFallBackWithoutBreakingTheReport,
   testSharedGroupedOrderKeepsTestNameMatches,
   testSharedFlatOrderExcludesContextRows,
+  testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
 ]) {
   test();

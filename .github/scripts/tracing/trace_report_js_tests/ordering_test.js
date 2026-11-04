@@ -203,6 +203,30 @@ function testFlatOrderingExcludesAncestorsAndUnmatchedChildren() {
   );
 }
 
+function testOrderingDescendantsOfMatchingDurationGroups() {
+  const filters = { testPhase: workers, minimumDurationNs: 29 * second };
+  // The threshold measures workers, so their shorter tests remain eligible.
+  assert.deepStrictEqual(durationOrderedIndexes(index, tests, filters), [6, 14, 5]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, chunks, filters), [13, 3]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, prepare, filters), [4, 15]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, setup, filters), [2]);
+  // Unqualified workers and their descendants must not enter through ancestors.
+  assert.deepStrictEqual(durationOrderedIndexes(index, workers, filters), [1, 12]);
+  assert.deepStrictEqual(
+    durationOrderedIndexes(index, ROW_ORDERS.DURATION, filters),
+    [1, 12],
+  );
+  assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+    ...filters, query: "target A", testSizes: new Set(["medium"]),
+  }), [6, 5]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+    testPhase: chunks, minimumDurationNs: 27 * second,
+  }), [14]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, tests, {
+    ...filters, minimumDurationNs: 31 * second,
+  }), []);
+}
+
 function testFlatOrderingPaginatesAndKeepsInlineMetadata() {
   const sorted = durationOrderedIndexes(index, tests);
   const first = flatOrderedRows(sorted, 2);
@@ -239,6 +263,7 @@ for (const test of [
   testOrderedGroupsCanBeFilteredByAnotherDurationChoice,
   testOrderedGroupsContainMatchingTests,
   testFlatOrderingExcludesAncestorsAndUnmatchedChildren,
+  testOrderingDescendantsOfMatchingDurationGroups,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,
 ]) {

@@ -27,8 +27,19 @@ function durationOrderedIndexes(sourceIndex, order, rawFilters = {}) {
   );
   // Ordered groups must keep ancestors of matching tests or phases. Applying
   // the order scope as a filter would discard those descendant matches.
-  // Flat lists contain only matches; tree context must not become ranked rows.
-  const matching = grouped ? result.visible : result.matching;
+  // Flat lists exclude ancestor context from the ranking.
+  let matching = grouped ? result.visible : result.matching;
+  if (
+    selection &&
+    filters.testPhase &&
+    selection.scope !== filters.testPhase.scope
+  ) {
+    // An explicit Order scope can select work inside a matching interval, such
+    // as tests in a worker over the duration threshold. Expand only matches,
+    // since expanding their context ancestors would include unrelated work.
+    matching = new Set(matching);
+    sourceIndex.addDescendants(matching, result.matching);
+  }
   return sourceIndex.spans
     .flatMap((span, index) =>
       (!selection || spanMatchesTestPhase(span, sourceIndex.scopes, selection)) &&
