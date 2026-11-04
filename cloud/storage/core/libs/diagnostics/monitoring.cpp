@@ -43,7 +43,7 @@ public:
 
         NLwTraceMonPage::RegisterPages(IndexMonPage.Get());
 
-        TBase::Start();
+        TBase::StartOrThrow();
     }
 
     void Stop() override
