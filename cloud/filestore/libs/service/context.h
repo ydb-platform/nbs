@@ -20,11 +20,6 @@ public:
 
     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
 
-    // The request type as accounted by the per-client availability
-    // metric (None for requests outside the availability SLA).
-    EFileStoreAvailabilityRequestType AvailabilityRequestType =
-        EFileStoreAvailabilityRequestType::None;
-
     ui64 RequestSize = 0;
     bool Unaligned = false;
 
