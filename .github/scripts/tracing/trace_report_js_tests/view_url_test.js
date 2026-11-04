@@ -207,6 +207,16 @@ function testSharedFlatOrderExcludesContextRows() {
   );
 }
 
+function testSharedWorkerDurationKeepsContainedTestNameSearch() {
+  const context = makeViewRuntime(
+    "?query=case&phase=ya.test.worker&minimum-duration=9&order=ya.test",
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+}
+
 function testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines() {
   const traceModel = {
     c: ["ya.test.worker", "ya.chunk", "ya.test"],
@@ -257,6 +267,7 @@ for (const test of [
   testUnavailablePhasesFallBackWithoutBreakingTheReport,
   testSharedGroupedOrderKeepsTestNameMatches,
   testSharedFlatOrderExcludesContextRows,
+  testSharedWorkerDurationKeepsContainedTestNameSearch,
   testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
 ]) {

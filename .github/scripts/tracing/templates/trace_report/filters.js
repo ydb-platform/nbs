@@ -79,6 +79,16 @@ function filterVisibility(
   const matchesSize = (span) =>
     filters.testSizes.has(String(span[ATTRS]["test.size"] || "").toLowerCase());
   const matchesTopTest = (span) => longestTestRank(span) !== null;
+  const queryMatchAncestors = new Set();
+  if (filters.query && testPhaseDefinition(filters.testPhase?.scope)?.expandable) {
+    // A test-name search can identify the chunk or worker whose duration is
+    // being measured, even when that name is absent from the group metadata.
+    sourceSpans.forEach((span, spanIndex) => {
+      if (matchesQuery(span, spanIndex)) {
+        index.addAncestors(queryMatchAncestors, spanIndex);
+      }
+    });
+  }
   const topTestAncestors = new Set();
   if (filters.topTestsOnly && filters.testPhase) {
     sourceSpans.forEach((span, spanIndex) => {
@@ -97,7 +107,8 @@ function filterVisibility(
     filters.query &&
       ((span, spanIndex) =>
         filters.testPhase
-          ? index
+          ? queryMatchAncestors.has(spanIndex) ||
+            index
               .ancestors(spanIndex)
               .some((candidate) =>
                 matchesQuery(sourceSpans[candidate], candidate),

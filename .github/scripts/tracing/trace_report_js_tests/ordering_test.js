@@ -203,6 +203,22 @@ function testFlatOrderingExcludesAncestorsAndUnmatchedChildren() {
   );
 }
 
+function testGroupDurationCanMatchContainedTestNames() {
+  for (const [testPhase, expected] of [[workers, [1]], [chunks, [3]]]) {
+    const filters = { testPhase, query: "case A", minimumDurationNs: 19 * second };
+    const result = filterVisibility(spans, { ...filters, scopes });
+    assert.deepStrictEqual([...result.matching], expected);
+    assert.deepStrictEqual(durationOrderedIndexes(index, testPhase, filters), expected);
+    assert.deepStrictEqual(durationOrderedIndexes(index, ROW_ORDERS.DURATION, filters), expected);
+    assert.deepStrictEqual(durationOrderedIndexes(index, testPhase, {
+      ...filters, minimumDurationNs: 31 * second,
+    }), []);
+    assert.deepStrictEqual(durationOrderedIndexes(index, testPhase, {
+      ...filters, query: "missing case",
+    }), []);
+  }
+}
+
 function testOrderingDescendantsOfMatchingDurationGroups() {
   const filters = { testPhase: workers, minimumDurationNs: 29 * second };
   // The threshold measures workers, so their shorter tests remain eligible.
@@ -263,6 +279,7 @@ for (const test of [
   testOrderedGroupsCanBeFilteredByAnotherDurationChoice,
   testOrderedGroupsContainMatchingTests,
   testFlatOrderingExcludesAncestorsAndUnmatchedChildren,
+  testGroupDurationCanMatchContainedTestNames,
   testOrderingDescendantsOfMatchingDurationGroups,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,
