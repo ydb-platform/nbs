@@ -17,6 +17,7 @@ let shareLinkControl;
 let shareLinkElement;
 let shareStatus;
 let lastViewUrl = "";
+let lastLocationSearch = "";
 let rowLoader;
 let rowLoadButton;
 let rowStatus;

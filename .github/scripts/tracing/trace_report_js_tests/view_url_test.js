@@ -169,7 +169,7 @@ function testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering() {
   assert.strictEqual(context.window.history.state.preserved, true);
 
   context.window.location = new URL("https://reports.example/trace.html?query=missing");
-  vm.runInContext("restoreTraceViewFromUrl(); applyFilterImmediately();", context);
+  vm.runInContext("restoreTraceViewOnNavigation();", context);
   assert.strictEqual(context.rendered.items.length, 0);
   assert.strictEqual(context.controls.order.value, ROW_ORDERS.TREE);
   assert.strictEqual(context.controls.size.checked, false);
@@ -182,6 +182,55 @@ function testUnavailablePhasesFallBackWithoutBreakingTheReport() {
   assert.strictEqual(context.controls.phase.value, "");
   assert.strictEqual(context.controls.order.value, ROW_ORDERS.TREE);
   assert(context.rendered.items.length > 0);
+}
+
+function testHashNavigationPreservesLoadedGroupsAndPendingInput() {
+  const context = makeViewRuntime("");
+  vm.runInContext(`
+    rowBudget = 1200;
+    limits.set(1, 1000);
+    expanded.add(0);
+    expanded.add(1);
+    renderRows();
+  `, context);
+  const rendered = context.rendered;
+  assert.strictEqual(rendered.spanRows, 3);
+  context.controls.query.value = "pending input";
+  for (const hash of ["#page-bottom", "#page-top", ""]) {
+    context.window.location.hash = hash;
+    vm.runInContext("restoreTraceViewOnNavigation();", context);
+    assert.strictEqual(context.rendered, rendered);
+    assert.strictEqual(vm.runInContext("rowBudget", context), 1200);
+    assert.strictEqual(vm.runInContext("limits.get(1)", context), 1000);
+    assert.strictEqual(vm.runInContext("expanded.has(0) && expanded.has(1)", context), true);
+    assert.strictEqual(context.controls.query.value, "pending input");
+  }
+  // Actual filter navigation still restores controls and resets pagination.
+  context.window.location.search = "?query=missing";
+  vm.runInContext("restoreTraceViewOnNavigation();", context);
+  assert.strictEqual(context.controls.query.value, "missing");
+  assert.strictEqual(vm.runInContext("rowBudget", context), INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("limits.size", context), 0);
+  assert.strictEqual(context.rendered.spanRows, 0);
+}
+
+function testHashNavigationPreservesFiltersAfterUrlSync() {
+  for (const blockHistory of [false, true]) {
+    const context = makeViewRuntime("", { blockHistory });
+    context.controls.query.value = "case";
+    vm.runInContext(`
+      applyFilterImmediately();
+      rowBudget = 1200;
+      renderRows();
+    `, context);
+    const rendered = context.rendered;
+    assert.strictEqual(context.window.location.search, blockHistory ? "" : "?query=case");
+    context.window.location.hash = "#page-bottom";
+    vm.runInContext("restoreTraceViewOnNavigation();", context);
+    assert.strictEqual(context.rendered, rendered);
+    assert.strictEqual(context.controls.query.value, "case");
+    assert.strictEqual(vm.runInContext("rowBudget", context), 1200);
+  }
 }
 
 function testSharedGroupedOrderKeepsTestNameMatches() {
@@ -288,6 +337,8 @@ for (const test of [
   testLocalLinksAndExactPhaseNamesRoundTrip,
   testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering,
   testUnavailablePhasesFallBackWithoutBreakingTheReport,
+  testHashNavigationPreservesLoadedGroupsAndPendingInput,
+  testHashNavigationPreservesFiltersAfterUrlSync,
   testSharedGroupedOrderKeepsTestNameMatches,
   testSharedFlatOrderExcludesContextRows,
   testSharedWorkerDurationKeepsContainedTestNameSearch,

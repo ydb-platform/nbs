@@ -82,11 +82,7 @@ function startTraceReport() {
   timelineModeElement.addEventListener("change", renderRows);
   rowOrderElement.addEventListener("change", applyRowOrder);
   copyViewLinkElement.addEventListener("click", copyTraceViewLink);
-  window.addEventListener("popstate", () => {
-    if (!model) return;
-    restoreTraceViewFromUrl();
-    applyFilterImmediately();
-  });
+  window.addEventListener("popstate", restoreTraceViewOnNavigation);
   rowsElement.addEventListener("click", handleRowsClick);
   rowLoadButton.addEventListener("click", () => {
     rowBudget = nextRowLimit(rowBudget, selectedLoadSize());

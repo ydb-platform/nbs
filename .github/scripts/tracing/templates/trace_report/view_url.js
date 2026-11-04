@@ -77,7 +77,8 @@ function traceViewUrl(href, view) {
 }
 
 function restoreTraceViewFromUrl() {
-  const view = readTraceView(window.location.search);
+  lastLocationSearch = window.location.search;
+  const view = readTraceView(lastLocationSearch);
   filterElement.value = view.query;
   minimumDurationElement.value =
     view.minimumDurationNs === null
@@ -102,6 +103,13 @@ function restoreTraceViewFromUrl() {
   }
 }
 
+function restoreTraceViewOnNavigation() {
+  // Fragment navigation must keep pagination, expansion, and pending input.
+  if (!model || window.location.search === lastLocationSearch) return;
+  restoreTraceViewFromUrl();
+  applyFilterImmediately();
+}
+
 function syncTraceViewUrl() {
   const href = traceViewUrl(window.location.href, {
     ...currentFilters(),
@@ -122,6 +130,8 @@ function syncTraceViewUrl() {
       // button can still provide the URL with the selected query parameters.
     }
   }
+  // Track the actual address, even if a local report cannot update history.
+  lastLocationSearch = window.location.search;
   return href;
 }
 
