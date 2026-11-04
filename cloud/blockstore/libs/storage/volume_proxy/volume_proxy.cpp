@@ -372,22 +372,16 @@ void TVolumeProxyActor::DetachFromTablet(
     conn.AttachedTabletId = 0;
     auto it = TabletConnections.find(tabletId);
     if (it == TabletConnections.end()) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "Connection %lu is attached to missing tablet %lu",
-            conn.Id,
-            tabletId);
+        ReportVolumeProxyInvalidState(
+            "Connection is attached to missing tablet",
+            {{"ConnectionId", conn.Id}, {"TabletId", tabletId}});
         return;
     }
 
     if (!it->second.ConnectionIds.erase(conn.Id)) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "Connection %lu is absent from tablet %lu",
-            conn.Id,
-            tabletId);
+        ReportVolumeProxyInvalidState(
+            "Connection is absent from tablet",
+            {{"ConnectionId", conn.Id}, {"TabletId", tabletId}});
     }
 
     if (it->second.ConnectionIds.empty()) {
@@ -523,12 +517,9 @@ void TVolumeProxyActor::CancelActiveRequests(
     for (ui64 requestId: requestIds) {
         auto it = ActiveRequests.find(requestId);
         if (it == ActiveRequests.end()) {
-            LOG_ERROR(
-                ctx,
-                TBlockStoreComponents::VOLUME_PROXY,
-                "Active request %lu is missing from connection %lu",
-                requestId,
-                conn.Id);
+            ReportVolumeProxyInvalidState(
+                "Connection references missing active request",
+                {{"RequestId", requestId}, {"ConnectionId", conn.Id}});
             continue;
         }
         TAutoPtr<IEventHandle> handle(it->second.Request.release());
@@ -563,12 +554,11 @@ void TVolumeProxyActor::ForwardRequest(
     if (tabletIt == TabletConnections.end() ||
         !tabletIt->second.ConnectionIds.contains(conn.Id))
     {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "%s Connection is not attached to tablet %lu",
-            conn.LogTitle.GetWithTime().c_str(),
-            conn.TabletId);
+        ReportVolumeProxyInvalidState(
+            "Connection is not attached to tablet",
+            {{"ConnectionId", conn.Id},
+             {"DiskId", conn.DiskId},
+             {"TabletId", conn.TabletId}});
 
         CancelActiveRequests(ctx, conn);
         auto error = MakeTabletIsDeadError(E_REJECTED, __LOCATION__);
@@ -882,12 +872,9 @@ void TVolumeProxyActor::HandleRequest(
             conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
                 if (!baseDisk->TabletId) {
-                    LOG_ERROR(
-                        ctx,
-                        TBlockStoreComponents::VOLUME_PROXY,
-                        "%s Base disk %s tablet id is not set",
-                        conn.LogTitle.GetWithTime().c_str(),
-                        diskId.c_str());
+                    ReportVolumeProxyInvalidState(
+                        "Base disk tablet id is not set",
+                        {{"ConnectionId", conn.Id}, {"DiskId", diskId}});
 
                     auto error = MakeError(
                         E_INVALID_STATE,
@@ -999,12 +986,10 @@ void TVolumeProxyActor::HandleResponse(
 
     auto* conn = GetConnectionById(it->second.ConnectionId);
     if (!conn) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "Connection %lu for active request %lu is missing",
-            it->second.ConnectionId,
-            ev->Cookie);
+        ReportVolumeProxyInvalidState(
+            "Connection for active request is missing",
+            {{"ConnectionId", it->second.ConnectionId},
+             {"RequestId", ev->Cookie}});
         ctx.Send(event.release());
         ActiveRequests.erase(it);
         return;
