@@ -105,7 +105,7 @@ private:
     bool ShutdownMode = false;
     ui64 ShutdownDroppedRequestCount = 0;
 
-    // Set before queuing promise completion to prevent duplicate events
+    // Prevents queuing shutdown completion more than once
     bool ShutdownCompletionQueued = false;
     NThreading::TPromise<void> ShutdownPromise =
         NThreading::NewPromise<void>();

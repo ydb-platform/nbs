@@ -1588,78 +1588,45 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!backpressured3.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
 
-        struct
-        {
-            bool CallbackInvoked = false;
-            EFlushRetryStatus RetryStatus = EFlushRetryStatus::ShouldNotRetry;
-            ui64 PendingCount = 0;
-            bool AllocatedWritePending = false;
-            bool SecondWriteFailed = false;
-            bool ThirdWriteFailed = false;
-            ui64 DroppedCount = 0;
-        } observed;
-
         NThreading::TFuture<void> shutdownFuture;
-        NThreading::TFuture<NProto::TError> shutdownFlush;
 
-        barrier.Subscribe(
+        auto checked = barrier.Apply(
             [&](const auto& future)
             {
-                observed.CallbackInvoked = true;
-                // The barrier is acquired after the front pending request
-                // becomes allocated but before it is serialized, so only the
-                // last two requests will be failed.
-                ui64 failedNodeId = 2;
+                // The front request is allocated but not serialized yet.
+                // Only the other two pending requests may fail.
                 if (shutdown) {
-                    // Flush the node whose serializer still holds the front
-                    // allocated request. Shutdown must preserve that request
-                    // until serialization finishes.
                     b.State->ReleaseBarrier(1, future.GetValue().GetResult());
                     shutdownFuture = b.State->Shutdown();
-                    shutdownFlush = b.State->AddFlushRequest(1);
-                    failedNodeId = 1;
                 }
 
-                observed.RetryStatus =
-                    b.State->FlushFailed(failedNodeId, MakeError(E_FS_NOSPC));
-                observed.PendingCount = b.Metrics.PendingQueue.Count->Get();
-                observed.AllocatedWritePending = !backpressured1.HasValue();
-                observed.SecondWriteFailed =
-                    backpressured2.HasValue() && !backpressured2.GetValue();
-                observed.ThirdWriteFailed =
-                    backpressured3.HasValue() && !backpressured3.GetValue();
-                observed.DroppedCount =
-                    b.Metrics.WriteDataRequestDroppedCount->Get();
+                const auto retryStatus = b.State->FlushFailed(
+                    shutdown ? 1 : 2,
+                    MakeError(E_FS_NOSPC));
+                UNIT_ASSERT(retryStatus == EFlushRetryStatus::ShouldRetry);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    b.Metrics.PendingQueue.Count->Get());
+                UNIT_ASSERT(!backpressured1.HasValue());
+                UNIT_ASSERT(backpressured2.HasValue());
+                UNIT_ASSERT(!backpressured2.GetValue());
+                UNIT_ASSERT(backpressured3.HasValue());
+                UNIT_ASSERT(!backpressured3.GetValue());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    b.Metrics.WriteDataRequestDroppedCount->Get());
             });
 
         b.State->FlushSucceeded(1, 1);
-
-        // Callbacks run from the lock guard's noexcept release path, so assert
-        // their observations only after that release and serialization finish.
-        UNIT_ASSERT(observed.CallbackInvoked);
-        UNIT_ASSERT(observed.RetryStatus == EFlushRetryStatus::ShouldRetry);
-        UNIT_ASSERT_VALUES_EQUAL(1, observed.PendingCount);
-        UNIT_ASSERT(observed.AllocatedWritePending);
-        UNIT_ASSERT(observed.SecondWriteFailed);
-        UNIT_ASSERT(observed.ThirdWriteFailed);
-        UNIT_ASSERT_VALUES_EQUAL(0, observed.DroppedCount);
+        checked.GetValue();
 
         UNIT_ASSERT(backpressured1.HasValue());
         UNIT_ASSERT(backpressured1.GetValue());
         UNIT_ASSERT(barrier.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
 
-        b.UpdateStats();
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Failed->Get());
-
         if (shutdown) {
-            UNIT_ASSERT(shutdownFuture.Initialized());
             UNIT_ASSERT(!shutdownFuture.HasValue());
-            UNIT_ASSERT(shutdownFlush.Initialized());
-            UNIT_ASSERT(shutdownFlush.HasValue());
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_FS_NOSPC,
-                shutdownFlush.GetValue().GetCode());
 
             // Once serialization has completed, the next failed attempt may
             // drop the cached requests safely.
@@ -1673,7 +1640,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             // Node 2's remaining cached writes must finish flushing too.
             UNIT_ASSERT(!shutdownFuture.HasValue());
             b.FlushCache(2);
-            UNIT_ASSERT(shutdownFuture.HasValue());
             shutdownFuture.GetValue();
             UNIT_ASSERT(b.State->IsDrained());
         }

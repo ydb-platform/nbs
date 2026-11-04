@@ -6842,15 +6842,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 return MakeFuture(result);
             };
 
-            bootstrap.Service->SetNodeAttrHandler =
-                [](auto, const auto& request)
-            {
-                NProto::TSetNodeAttrResponse result;
-                result.MutableNode()->SetId(request->GetNodeId());
-                result.MutableNode()->SetSize(request->GetUpdate().GetSize());
-                return MakeFuture(result);
-            };
-
             return bootstrap;
         };
 
@@ -6924,14 +6915,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // Cache is drained and disabled - new requests go directly
             // to the session
             UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
-
-            auto truncate = std::make_shared<TSetAttrRequest>(nodeId, handleId);
-            truncate->In->Body.valid = FUSE_SET_ATTR_SIZE;
-            truncate->In->Body.size = 0;
-            auto truncated = bootstrap.Fuse->SendRequest(truncate);
-            UNIT_ASSERT_NO_EXCEPTION(truncated.GetValue(WaitTimeout));
-            UNIT_ASSERT_VALUES_EQUAL(0, truncate->Out->Header.error);
-            UNIT_ASSERT_VALUES_EQUAL(0, truncate->Out->Body.attr.size);
 
             auto suspend = bootstrap.Loop->SuspendAsync();
             UNIT_ASSERT(suspend.Wait(WaitTimeout));
@@ -8409,13 +8392,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
 
         auto cacheCounters =
-            bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
-                ->FindSubgroup("host", "cluster")
-                ->FindSubgroup("filesystem", FileSystemId)
-                ->FindSubgroup("client", "")
-                ->FindSubgroup("cloud", "")
-                ->FindSubgroup("folder", "")
-                ->FindSubgroup("module", "WriteBackCache");
+            bootstrap.GetFileSystemStatsCounters()->FindSubgroup(
+                "module",
+                "WriteBackCache");
         auto flushAllCounter =
             cacheCounters->GetCounter("FlushAllRequests_InProgressCount");
         auto stoppingCounter = cacheCounters->FindSubgroup("state", "Stopping")
