@@ -141,6 +141,38 @@ function testOrderedGroupsCanBeFilteredByAnotherDurationChoice() {
   }), [1, 3]);
 }
 
+function testOrderedGroupsContainMatchingTests() {
+  for (const [order, expected] of [[chunks, [3]], [workers, [1]]]) {
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "case A",
+    }), expected);
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "case A", failedOnly: true,
+    }), expected);
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "case B", testSizes: new Set(["medium"]),
+      minimumDurationNs: 9 * second,
+    }), expected);
+    // A failed sibling must not make a matching passing test qualify.
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "case B", failedOnly: true,
+    }), []);
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "case A", minimumDurationNs: 5 * second,
+    }), []);
+    assert.deepStrictEqual(durationOrderedIndexes(index, order, {
+      query: "missing case",
+    }), []);
+  }
+  // Multiple matching tests in a group yield one group, in duration order.
+  assert.deepStrictEqual(durationOrderedIndexes(index, chunks, {
+    query: "case",
+  }), [13, 9, 3]);
+  assert.deepStrictEqual(durationOrderedIndexes(index, workers, {
+    query: "case",
+  }), [1, 12, 7]);
+}
+
 function testFlatOrderingPaginatesAndKeepsInlineMetadata() {
   const sorted = durationOrderedIndexes(index, tests);
   const first = flatOrderedRows(sorted, 2);
@@ -175,6 +207,7 @@ for (const test of [
   testFilteringAndOrderingAgreeOnReportedTestDuration,
   testOrderedPhasesUseTheirOwnersForComposedFilters,
   testOrderedGroupsCanBeFilteredByAnotherDurationChoice,
+  testOrderedGroupsContainMatchingTests,
   testFlatOrderingPaginatesAndKeepsInlineMetadata,
   testOrderedChunkExpansionLeavesRoomOnAFullPage,
 ]) {

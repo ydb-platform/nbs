@@ -14,20 +14,21 @@ function rowOrderIsFlat(value) {
 
 function durationOrderedIndexes(sourceIndex, order, rawFilters = {}) {
   const selection = parseTestPhaseSelection(order);
+  const grouped = Boolean(testPhaseDefinition(selection?.scope)?.expandable);
   const filters = normalizeFilterSpec({
     ...rawFilters,
     scopes: sourceIndex.scopes,
   });
   const result = filterVisibility(
     sourceIndex.spans,
-    { ...filters, testPhase: filters.testPhase || selection },
+    { ...filters, testPhase: filters.testPhase || (grouped ? null : selection) },
     sourceIndex.searchTexts,
     sourceIndex,
   );
-  // A separately selected duration filter may match descendants of an ordered
-  // group (for example, rank chunks containing a slow recipe stage).
+  // Ordered groups must keep ancestors of matching tests or phases. Applying
+  // the order scope as a filter would discard those descendant matches.
   const matching =
-    filters.testPhase || (!selection && !filters.hasSelection)
+    grouped || filters.testPhase || (!selection && !filters.hasSelection)
       ? result.visible
       : result.matching;
   return sourceIndex.spans

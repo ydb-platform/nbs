@@ -184,6 +184,19 @@ function testUnavailablePhasesFallBackWithoutBreakingTheReport() {
   assert(context.rendered.items.length > 0);
 }
 
+function testSharedGroupedOrderKeepsTestNameMatches() {
+  for (const [order, expected] of [
+    ["ya.chunk", [1, 2]],
+    ["ya.test.worker", [0, 1, 2]],
+  ]) {
+    const context = makeViewRuntime(`?query=case&order=${order}`);
+    assert.deepStrictEqual(
+      Array.from(context.rendered.items, ({ index }) => index),
+      expected,
+    );
+  }
+}
+
 function testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable() {
   const context = makeViewRuntime("", { blockHistory: true });
   context.controls.query.value = "new filter + &";
@@ -204,6 +217,7 @@ for (const test of [
   testLocalLinksAndExactPhaseNamesRoundTrip,
   testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering,
   testUnavailablePhasesFallBackWithoutBreakingTheReport,
+  testSharedGroupedOrderKeepsTestNameMatches,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
 ]) {
   test();
