@@ -61,6 +61,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		client,
 		t.request.SrcDisk.DiskId,
 		"", // proxyDiskID
+		t.request.MountSrcDiskLocally,
 		t.request.SrcDiskBaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,
@@ -68,6 +69,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
+		t.request.MaxSizeBytes,
 	)
 	if err != nil {
 		return err

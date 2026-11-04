@@ -41,6 +41,7 @@ namespace NCloud::NBlockStore {
     xxx(FRESH_BLOCKS_WRITER)                                                   \
     xxx(SERVICE_EXT)                                                           \
     xxx(CELLS)                                                                 \
+    xxx(CONFIGS_MANAGER)                                                       \
 // BLOCKSTORE_ACTORS
 
 #define BLOCKSTORE_COMPONENTS(xxx)                                             \

@@ -45,8 +45,8 @@ NProto::EStateFileType GetFileType(const TString& fileName)
 
 TResultOrError<NProto::TStateFileInfo> GetStateFileInfo(const TFsPath& path)
 {
-    // Probe with an exclusive lock so IsLocked also reflects concurrent
-    // read-only tool invocations, which hold shared locks.
+    // Probe with an exclusive lock to detect files locked by the service or
+    // another tool invocation.
     TFile file(
         path.GetPath(),
         EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);

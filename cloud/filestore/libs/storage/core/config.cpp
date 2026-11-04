@@ -182,6 +182,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(TabletBootInfoBackupFilePath,             TString,   ""               )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,   bool,      false            )\
     xxx(HiveProxyFallbackMode,                    bool,      false            )\
+    xxx(SystemTabletBackupDirPath,                TString,   ""               )\
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
                                                                                \
@@ -300,6 +301,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheStateFileSize,                ui64,     0         )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
@@ -317,9 +319,13 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
     xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
-    xxx(FileSystemEventSubscriptionsSealPeriod,                               \
-        TDuration,                                                            \
-        TDuration::Minutes(30))                                               \
+    xxx(FileSystemEventSubscriptionsSealPeriod,                                \
+        TDuration,                                                             \
+        TDuration::Minutes(30))                                                \
+    xxx(FileSystemEventSubscriptionsCacheTTLMargin,                            \
+        TDuration,                                                             \
+        TDuration::Minutes(1))                                                 \
+    xxx(FileSystemListingEventsEnabled,    bool,       false                  )\
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\

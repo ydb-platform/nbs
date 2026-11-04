@@ -62,8 +62,6 @@ void TIndexTabletActor::HandleCreateHandle(
     const TEvService::TEvCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TResponse = TEvService::TEvCreateHandleResponse;
 
     auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(
@@ -199,7 +197,6 @@ void TIndexTabletActor::HandleCreateHandle(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-    requestInfo->PipeServerId = ev->Recipient;
 
     AddInFlightRequest<TEvService::TCreateHandleMethod>(*requestInfo);
 
@@ -497,7 +494,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
             const bool keepCache =
-                session->HandleStatsByNode.IsAllowedToKeepCache(*node);
+                session->HandleStatsByNode.IsAllowedToKeepCache(
+                    *node,
+                    args.TargetNode->MinCommitId);
             args.Response.SetGuestKeepCache(keepCache);
 
             Metrics->CreateHandleExtra.GuestKeepCacheSet.fetch_add(
@@ -509,7 +508,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // user of a given session in order not to invalidate the cache the next
         // time if the file was not modified
         if (!args.Response.GetGuestKeepCache()) {
-            session->HandleStatsByNode.OnGuestCacheInvalidated(*node);
+            session->HandleStatsByNode.OnGuestCacheInvalidated(
+                *node,
+                args.WriteCommitId);
         }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
@@ -600,28 +601,6 @@ void TIndexTabletActor::CompleteCreateHandle(
 
     for (auto nodeId: args.UpdatedNodes) {
         InvalidateReadAheadCache(nodeId);
-    }
-
-    if (!HasError(args.Error)) {
-        //
-        // The client may cache the entry (open by name) and the attrs of the
-        // local node.
-        //
-
-        const auto& pipeServerId = args.RequestInfo->PipeServerId;
-        if (args.Name) {
-            AddFileSystemEventNodeRefSubscriber(
-                ctx,
-                pipeServerId,
-                args.NodeId,
-                args.Name);
-        }
-        if (!args.ShardId && args.TargetNodeId != InvalidNodeId) {
-            AddFileSystemEventNodeSubscriber(
-                ctx,
-                pipeServerId,
-                args.TargetNodeId);
-        }
     }
 
     if (args.Error.GetCode() == E_ARGUMENT) {

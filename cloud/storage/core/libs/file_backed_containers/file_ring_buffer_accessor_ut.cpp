@@ -60,9 +60,14 @@ struct TBootstrap
         EFileRingBufferVersion version)
     {
         {
+            const auto layout = TFileRingBufferLayout::FromCapacity(
+                DataCapacity,
+                MetadataCapacity);
+            UNIT_ASSERT(layout);
+
             TFileRingBuffer rb(
                 TempFileHandle.Name(),
-                DataCapacity,
+                layout->StateFileSize,
                 MetadataCapacity,
                 version);
 

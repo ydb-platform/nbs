@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
-#include <cloud/fastshard/journal/server/device_manager.h>
+#include <cloud/fastshard/libs/journal/server/device_manager.h>
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 

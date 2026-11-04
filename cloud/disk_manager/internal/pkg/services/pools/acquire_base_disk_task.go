@@ -52,9 +52,10 @@ func (t *acquireBaseDiskTask) Run(
 		ctx,
 		t.request.SrcImageId,
 		storage.Slot{
-			OverlayDisk:     t.request.OverlayDisk,
-			OverlayDiskKind: t.request.OverlayDiskKind,
-			OverlayDiskSize: t.request.OverlayDiskSize,
+			OverlayDisk:               t.request.OverlayDisk,
+			OverlayDiskKind:           t.request.OverlayDiskKind,
+			OverlayDiskSize:           t.request.OverlayDiskSize,
+			ExpectedReadBandwidthMiBs: t.request.ExpectedReadBandwidthMiBs,
 		},
 	)
 	if err != nil {

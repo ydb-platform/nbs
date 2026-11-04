@@ -228,6 +228,14 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
             "GetNodeAttr succeeded in shard: %lu",
             msg->Record.GetNode().GetId());
 
+        //
+        // The client caches the NodeRef from the leader and the Node attrs
+        // from the shard. The NodeRef looked up in the shard is shard-internal
+        // and the shard doesn't allow caching it.
+        //
+
+        msg->Record.SetNodeRefCacheTTL(LeaderResponse.GetNodeRefCacheTTL());
+
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
     }

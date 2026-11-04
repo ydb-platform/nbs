@@ -94,7 +94,13 @@ void TConfigInitializerYdbBase::ApplyCMSConfigs(
             ->Swap(cmsConfig.MutableDynamicNameserviceConfig());
     }
 
+    if (cmsConfig.HasSystemTabletBackupConfig()) {
+        CmsSystemTabletBackupConfig = cmsConfig.GetSystemTabletBackupConfig();
+    }
+
     ApplyCustomCMSConfigs(cmsConfig);
+
+    UpdateSystemTabletBackupConfig();
 }
 
 void TConfigInitializerYdbBase::InitKikimrConfig()
@@ -192,6 +198,36 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
             Options->ImmediateControlsConfig,
             immediateControlsConfig);
     }
+
+    UpdateSystemTabletBackupConfig();
+}
+
+void TConfigInitializerYdbBase::ApplySystemTabletBackupPath(
+    const TString& path,
+    bool enabled)
+{
+    SystemTabletBackupPath = path;
+    SystemTabletBackupEnabled = enabled;
+    UpdateSystemTabletBackupConfig();
+}
+
+void TConfigInitializerYdbBase::UpdateSystemTabletBackupConfig()
+{
+    if (!KikimrConfig) {
+        return;
+    }
+
+    KikimrConfig->ClearSystemTabletBackupConfig();
+    if (!SystemTabletBackupEnabled || !SystemTabletBackupPath) {
+        return;
+    }
+
+    auto& config = *KikimrConfig->MutableSystemTabletBackupConfig();
+    if (CmsSystemTabletBackupConfig) {
+        config = *CmsSystemTabletBackupConfig;
+    }
+    // Filesystem is a oneof branch, so the path replaces any other backend.
+    config.MutableFilesystem()->SetPath(SystemTabletBackupPath);
 }
 
 NKikimrConfig::TLogConfig TConfigInitializerYdbBase::GetLogConfig() const

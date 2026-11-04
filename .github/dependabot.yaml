@@ -8,3 +8,16 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "pip"
+    assignees:
+      - librarian
+      - WilyTiger
+    directories:
+      - "/.github/scripts"
+      - "/.github/packer/scripts"
+    exclude-paths:
+      - "github-release-tools.txt"
+    schedule:
+      interval: "weekly"
+    # Disable routine version updates; security updates use a separate limit.
+    open-pull-requests-limit: 0

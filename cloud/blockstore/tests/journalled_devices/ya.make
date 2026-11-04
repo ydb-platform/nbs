@@ -14,7 +14,7 @@ DEPENDS(
 
 PEERDIR(
     cloud/blockstore/tests/python/lib
-    cloud/fastshard/protos
+    cloud/fastshard/public/api/protos
 )
 
 END()

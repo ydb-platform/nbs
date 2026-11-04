@@ -81,6 +81,7 @@ protected:
     NStorage::NFastShard::IServerPtr FastShardServer;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr LongRunningTaskExecutor;
+    ICertificateWatcherPtr CertificateWatcher;
     ICertificateProviderPtr CertificateProvider;
     IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
 

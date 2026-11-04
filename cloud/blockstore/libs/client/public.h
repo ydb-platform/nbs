@@ -24,8 +24,8 @@ using IThrottlerProviderPtr = std::shared_ptr<IThrottlerProvider>;
 struct IClient;
 using IClientPtr = std::shared_ptr<IClient>;
 
-struct IMultiHostClient;
-using IMultiHostClientPtr = std::shared_ptr<IMultiHostClient>;
+struct IEndpointFactory;
+using IEndpointFactoryPtr = std::shared_ptr<IEndpointFactory>;
 
 struct IRetryPolicy;
 using IRetryPolicyPtr = std::shared_ptr<IRetryPolicy>;

@@ -1221,6 +1221,72 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             }
         }
 
+        auto& runtime = env.GetRuntime();
+        auto prevObserver = runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvGetStorageStatsRequest)
+                {
+                    const auto& request =
+                        event->Get<TEvIndexTablet::TEvGetStorageStatsRequest>()
+                            ->Record;
+                    const auto& id = request.GetFileSystemId();
+                    if (id == fileSystems[0].Id || id == fileSystems[1].Id) {
+                        const ui64 value = id == fileSystems[0].Id ? 1 : 2;
+                        auto response = std::make_unique<
+                            TEvIndexTablet::TEvGetStorageStatsResponse>();
+                        auto& stats = *response->Record.MutableStats();
+                        stats.SetFreshBytesItemCount(value);
+                        stats.SetUnconfirmedDataCount(10 * value);
+                        stats.SetConfirmedDataCount(100 * value);
+                        stats.SetUsedCompactionRanges(1000 * value);
+                        stats.SetAllocatedCompactionRanges(10000 * value);
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            const auto response = GetStorageStats(service, request);
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            const auto& stats = response.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(3, stats.GetFreshBytesItemCount());
+            UNIT_ASSERT_VALUES_EQUAL(30, stats.GetUnconfirmedDataCount());
+            UNIT_ASSERT_VALUES_EQUAL(300, stats.GetConfirmedDataCount());
+            UNIT_ASSERT_VALUES_EQUAL(3000, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(
+                30000,
+                stats.GetAllocatedCompactionRanges());
+        }
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF);
+            const auto response = GetStorageStats(service, request);
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            const auto& stats = response.GetStats();
+            // All file data is in the shards; the main tablet has none.
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedDataCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedDataCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetAllocatedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.ShardStatsSize());
+        }
+        runtime.SetObserverFunc(std::move(prevObserver));
+
         service.DestroySession(headers);
     }
 

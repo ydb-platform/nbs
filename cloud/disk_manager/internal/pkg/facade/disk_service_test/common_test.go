@@ -18,6 +18,11 @@ const (
 	shardedZoneID = "zone-d"
 	cellID1       = "zone-d"
 	cellID2       = "zone-d-shard1"
+
+	// Overlay Disk Registry based disks are disabled in the recipe (as in
+	// production) except for this folder, see
+	// OverlayDiskRegistryBasedDisksFolderIdAllowList in DisksConfig.
+	overlayDiskRegistryBasedDisksFolderID = "overlay-dr-folder"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,6 +72,7 @@ func testCreateDiskFromImageWithZoneID(
 	diskKind disk_manager.DiskKind,
 	imageSize uint64,
 	pooled bool,
+	expectOverlayDisk bool,
 	diskSize uint64,
 	diskFolderID string,
 	encryptionDesc *disk_manager.EncryptionDesc,
@@ -139,12 +145,25 @@ func testCreateDiskFromImageWithZoneID(
 
 	diskParams, err := nbsClient.Describe(ctx, diskID)
 	require.NoError(t, err)
-	if pooled {
+	if expectOverlayDisk {
 		// Check that disk is overlay.
 		require.NotEmpty(t, diskParams.BaseDiskID)
 	} else {
 		// Check that disk is not overlay.
 		require.Empty(t, diskParams.BaseDiskID)
+	}
+
+	if pooled && !expectOverlayDisk {
+		// Disk Registry based disk created from a pooled image should have
+		// been filled from the base disk via proxy overlay disk rather than
+		// from the snapshot storage. The proxy overlay disk and its base disk
+		// slot are checked by CheckConsistency.
+		taskState, err := testcommon.NewTaskStorage(t, ctx).GetTask(
+			ctx,
+			operation.Id,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "disks.CreateDiskFromBaseDisk", taskState.TaskType)
 	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)

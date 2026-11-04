@@ -711,6 +711,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     rc.BlobContent.GetGuardedSgList(),
                     0,           // blockSizeForChecksums
                     true,        // async
+                    rc.ChannelDataKind == EChannelDataKind::Merged,
                     deadline);   // deadline
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

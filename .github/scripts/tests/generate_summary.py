@@ -334,9 +334,10 @@ class TestSummaryLine:
 
 
 class TestSummary:
-    def __init__(self):
+    def __init__(self, build_error_log_url: str = ""):
         self.lines: list[TestSummaryLine] = []
         self.is_failed = False
+        self.build_error_log_url = build_error_log_url
 
     def add_line(self, line: TestSummaryLine) -> None:
         self.is_failed |= line.is_failed
@@ -378,6 +379,8 @@ class TestSummary:
             columns.insert(0, "")
 
         result = [self.render_line(columns)]
+        if self.build_error_log_url:
+            result = ["", f"[Build errors]({self.build_error_log_url})", "", *result]
 
         if need_first_column:
             result.append(self.render_line([":---"] + ["---:"] * (len(columns) - 1)))
@@ -398,6 +401,8 @@ class TestSummary:
                 status_url = (
                     f"{report_url}#{status.report_anchor}" if report_url else None
                 )
+                if status == TestStatus.FAIL_BUILD and not line.failed_build:
+                    status_url = self.build_error_log_url or None
                 cell = render_pm(count, status_url, 0)
                 row.append(cell)
             result.append(self.render_line(row))
@@ -454,6 +459,7 @@ def render_testlist_html(
     fn: str,
     summary_url: str,
     build_error_log_url: str = "",
+    trace_report_url: str = "",
 ) -> None:
     templates_path = Path(__file__).with_name("templates")
 
@@ -482,6 +488,7 @@ def render_testlist_html(
         summary_url=summary_url,
         build_error_log_url=build_error_log_url,
         build_error_target_url=build_error_target_url,
+        trace_report_url=trace_report_url,
     )
 
     with open(fn, "w") as fp:
@@ -557,8 +564,9 @@ def gen_summary(
     summary_out_folder: str,
     paths: list[TitlePathTriplet],
     build_error_log_url: str = "",
+    trace_report_url: str = "",
 ) -> TestSummary:
-    summary = TestSummary()
+    summary = TestSummary(build_error_log_url)
 
     for title, html_fn, path in paths:
         summary_line = TestSummaryLine(title)
@@ -577,6 +585,7 @@ def gen_summary(
             os.path.join(summary_out_folder, html_fn),
             summary_url=summary_url_prefix,
             build_error_log_url=build_error_log_url,
+            trace_report_url=trace_report_url,
         )
         summary_line.add_report(html_fn, report_url)
         summary.add_line(summary_line)
@@ -1377,6 +1386,7 @@ def main() -> None:
     )
     parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("--build-error-log-url", default="", required=False)
+    parser.add_argument("--trace-report-url", default="", required=False)
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1405,6 +1415,7 @@ def main() -> None:
             args.summary_out_path,
             title_path,
             build_error_log_url=args.build_error_log_url,
+            trace_report_url=args.trace_report_url,
         )
         write_summary(
             summary,

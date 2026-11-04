@@ -271,7 +271,7 @@ IClientPtr TTestClientBuilder::BuildClient()
     return client;
 }
 
-IMultiHostClientPtr TTestClientBuilder::BuildMultiHostClient()
+IEndpointFactoryPtr TTestClientBuilder::BuildEndpointFactory()
 {
     auto clientConfig = std::make_shared<TClientAppConfig>(ClientAppConfig);
 
@@ -285,7 +285,7 @@ IMultiHostClientPtr TTestClientBuilder::BuildMultiHostClient()
         clientConfig,
         TestContext.Logging);
 
-    auto [client, error] = CreateMultiHostClient(
+    auto [client, error] = CreateEndpointFactory(
         std::move(clientConfig),
         TestContext.Timer,
         TestContext.Scheduler,

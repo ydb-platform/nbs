@@ -358,6 +358,25 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(
         InvalidateNodeRefEventSendCount,
         EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        InvalidateNodeXAttrEventSendCount,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        FileSystemEventsSubscriberRegistryNodeCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        FileSystemEventsSubscriberRegistryNodeRefCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        FileSystemEventsSubscriberRegistryClientCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        FileSystemEventsSubscriberRegistryExtraPageCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        FileSystemEventsSubscriberRegistryNodeXAttrCount,
+        EMetricType::MT_ABSOLUTE);
 
     // Throttling
     REGISTER_LOCAL(MaxReadBandwidth, EMetricType::MT_ABSOLUTE);

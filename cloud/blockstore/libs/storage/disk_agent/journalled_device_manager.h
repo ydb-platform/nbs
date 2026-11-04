@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
-#include <cloud/fastshard/journal/server/public.h>
+#include <cloud/fastshard/libs/journal/server/public.h>
 #include <cloud/storage/core/libs/common/public.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>

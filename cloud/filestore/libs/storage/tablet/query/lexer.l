@@ -5,6 +5,7 @@
 #endif
 
 #include "parser.h"
+#include <cloud/filestore/libs/storage/tablet/query/lexer.h>
 
 #include <util/generic/string.h>
 #include <util/string/cast.h>
@@ -12,7 +13,12 @@
 
 #include <cctype>
 
-#define YY_DECL int yylex( \
+using std::cin;
+using std::cout;
+using std::cerr;
+
+#undef YY_DECL
+#define YY_DECL int NCloud::NFileStore::NStorage::NQuery::TQueryLexer::yylex( \
     YYSTYPE* value, \
     NCloud::NFileStore::NStorage::NQuery::TParseContext& context)
 
@@ -46,7 +52,8 @@ static TString Unquote(const char* text, size_t length)
 }
 %}
 
-%option noyywrap
+%option c++ noyywrap
+%option yyclass="TQueryLexer"
 
 %%
 

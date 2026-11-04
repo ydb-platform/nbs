@@ -194,12 +194,19 @@ DisksConfig: <
     DeletedDiskExpirationTimeout: "{deleted_disk_expiration_timeout}"
     ClearDeletedDisksTaskScheduleInterval: "2s"
     EndedMigrationExpirationTimeout: "30s"
-    EnableOverlayDiskRegistryBasedDisks: true
+    # Overlay Disk Registry based disks are disabled (as in production) except
+    # for a dedicated folder, see
+    # TestDiskServiceCreateOverlaySsdNonreplDiskFromPooledImage.
+    OverlayDiskRegistryBasedDisksFolderIdAllowList: "overlay-dr-folder"
+    # Disk Registry based disks created from pooled images are filled from base
+    # disks instead of snapshot storage.
+    EnableDiskRegistryBasedDisksCreationFromBaseDisks: true
     CreationAndDeletionAllowedOnlyForDisksWithIdPrefix: "{creation_and_deletion_allowed_only_for_disks_with_id_prefix}"
     DisableDiskRegistryBasedDisks: {disable_disk_registry_based_disks}
     DiskRegistryBasedDisksFolderIdAllowList: "folder"
     DiskRegistryBasedDisksFolderIdAllowList: "another-folder"
     DiskRegistryBasedDisksFolderIdAllowList: "encrypted-folder"
+    DiskRegistryBasedDisksFolderIdAllowList: "overlay-dr-folder"
 >
 PoolsConfig: <
     MaxActiveSlots: 10
@@ -288,6 +295,7 @@ PlacementGroupConfig: <
     DeletedPlacementGroupExpirationTimeout: "1s"
     ClearDeletedPlacementGroupsTaskScheduleInterval: "2s"
 >
+ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 """
 
 S3_CONFIG_TEMPLATE = """
@@ -414,10 +422,10 @@ DataplaneConfig: <
     SnapshotCollectionTimeout: "1s"
     CollectSnapshotsTaskScheduleInterval: "2s"
     SnapshotCollectionInflightLimit: 10
-    ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 {migration_config}
 {filesystem_dataplane_config}
 >
+ProxyOverlayDiskIdPrefix: "{proxy_overlay_disk_id_prefix}"
 """
 
 MIGRATION_CONFIG_TEMPLATE = """
@@ -581,7 +589,7 @@ class DiskManagerLauncher:
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
         base_disk_id_prefix="",
-        proxy_overlay_disk_id_prefix="",
+        proxy_overlay_disk_id_prefix="proxy-",
         creation_and_deletion_allowed_only_for_disks_with_id_prefix="",
         disable_disk_registry_based_disks=False,
         dataplane_ydb_port=None,
@@ -709,6 +717,7 @@ class DiskManagerLauncher:
                     access_service_port=access_service_port,
                     ydb_port=ydb_port,
                     base_disk_id_prefix=base_disk_id_prefix,
+                    proxy_overlay_disk_id_prefix=proxy_overlay_disk_id_prefix,
                     creation_and_deletion_allowed_only_for_disks_with_id_prefix=creation_and_deletion_allowed_only_for_disks_with_id_prefix,
                     disable_disk_registry_based_disks="true" if disable_disk_registry_based_disks else "false",
                     use_s3_percentage="0" if s3_port is None else "100",

@@ -175,14 +175,16 @@ func TestChunkIndices(t *testing.T) {
 			ctx,
 			client,
 			diskID,
-			"",
-			"",
+			"",    // proxyDiskID
+			false, // mountLocally
+			"",    // baseCheckpointID
 			"checkpoint",
 			nil, // encryption
 			chunkSize,
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
 			false, // dontReadFromCheckpoint
+			0,     // maxSizeBytes, whole disk
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -214,6 +216,150 @@ func TestChunkIndices(t *testing.T) {
 		require.Equal(t, expectedChunkIndices, actualChunkIndices)
 
 		milestoneChunkIndex++
+	}
+}
+
+// The source covers the first |maxSizeBytes| of the disk only (rounded up to
+// the chunk size): chunk count, chunk indices and the estimate are computed
+// for them.
+func TestMaxSizeBytes(t *testing.T) {
+	ctx := newContext()
+
+	factory := newFactory(t, ctx)
+	client, err := factory.GetClient(ctx, "zone")
+	require.NoError(t, err)
+
+	diskID := t.Name()
+	disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
+
+	err = client.Create(ctx, nbs_client.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: uint64(blocksInChunk * chunkCount),
+		BlockSize:   blockSize,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	target, err := nbs.NewDiskTarget(
+		ctx,
+		factory,
+		disk,
+		nil,
+		chunkSize,
+		false,
+		0, // fillGeneration
+		0, // fillSeqNumber
+	)
+	require.NoError(t, err)
+	defer target.Close(ctx)
+
+	// Every chunk is changed.
+	chunks := make([]dataplane_common.Chunk, 0)
+	for i := uint32(0); i < chunkCount; i++ {
+		data := make([]byte, chunkSize)
+		rand.Read(data)
+		chunk := dataplane_common.Chunk{Index: i, Data: data}
+
+		err = target.Write(ctx, chunk)
+		require.NoError(t, err)
+
+		chunks = append(chunks, chunk)
+	}
+
+	err = client.CreateCheckpoint(
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpoint",
+		},
+	)
+	require.NoError(t, err)
+
+	halfChunkCount := chunkCount / 2
+
+	for _, tc := range []struct {
+		name               string
+		maxSizeBytes       uint64
+		expectedChunkCount uint32
+	}{
+		{
+			name:               "chunk aligned",
+			maxSizeBytes:       uint64(halfChunkCount * chunkSize),
+			expectedChunkCount: halfChunkCount,
+		},
+		{
+			// Rounded up to the chunk size, not to the block size.
+			name:               "block aligned is rounded up to the chunk size",
+			maxSizeBytes:       uint64(halfChunkCount*chunkSize + blockSize),
+			expectedChunkCount: halfChunkCount + 1,
+		},
+		{
+			name:               "not aligned is rounded up to the chunk size",
+			maxSizeBytes:       uint64(halfChunkCount*chunkSize) - 1,
+			expectedChunkCount: halfChunkCount,
+		},
+		{
+			name:               "larger than the disk is clamped",
+			maxSizeBytes:       uint64(2 * chunkCount * chunkSize),
+			expectedChunkCount: chunkCount,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source, err := nbs.NewDiskSource(
+				ctx,
+				client,
+				diskID,
+				"",    // proxyDiskID
+				false, // mountLocally
+				"",    // baseCheckpointID
+				"checkpoint",
+				nil, // encryption
+				chunkSize,
+				false, // duplicateChunkIndices
+				false, // ignoreBaseDisk
+				false, // dontReadFromCheckpoint
+				tc.maxSizeBytes,
+			)
+			require.NoError(t, err)
+			defer source.Close(ctx)
+
+			sourceChunkCount, err := source.ChunkCount(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedChunkCount, sourceChunkCount)
+
+			estimatedBytesToRead, err := source.EstimatedBytesToRead(ctx)
+			require.NoError(t, err)
+			require.Equal(
+				t,
+				uint64(tc.expectedChunkCount*chunkSize),
+				estimatedBytesToRead,
+			)
+
+			processedChunkIndices := make(chan uint32, 1)
+			chunkIndices, _, errors := source.ChunkIndices(
+				ctx,
+				dataplane_common.Milestone{},
+				processedChunkIndices,
+				common.ChannelWithCancellation{}, // holeChunkIndices
+			)
+
+			var actualChunkIndices []uint32
+			for chunkIndex := range chunkIndices {
+				processedChunkIndices <- chunkIndex
+				actualChunkIndices = append(actualChunkIndices, chunkIndex)
+			}
+			for err := range errors {
+				require.NoError(t, err)
+			}
+
+			expectedChunkIndices := make([]uint32, 0)
+			for i := uint32(0); i < tc.expectedChunkCount; i++ {
+				expectedChunkIndices = append(expectedChunkIndices, i)
+			}
+			require.Equal(t, expectedChunkIndices, actualChunkIndices)
+
+			checkChunks(t, ctx, source, chunks[:tc.expectedChunkCount])
+		})
 	}
 }
 
@@ -280,14 +426,16 @@ func TestReadWrite(t *testing.T) {
 		ctx,
 		client,
 		diskID,
-		"",
-		"",
+		"",    // proxyDiskID
+		false, // mountLocally
+		"",    // baseCheckpointID
 		"checkpoint",
 		nil, // encryption
 		chunkSize,
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
+		0,     // maxSizeBytes, whole disk
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -368,14 +516,16 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 				ctx,
 				client,
 				diskID,
-				"",
-				"",
+				"",    // proxyDiskID
+				false, // mountLocally
+				"",    // baseCheckpointID
 				"checkpoint",
 				nil, // encryption
 				chunkSize,
 				false, // duplicateChunkIndices
 				false, // ignoreBaseDisk
 				dontReadFromCheckpoint,
+				0, // maxSizeBytes, whole disk
 			)
 			require.NoError(t, err)
 			defer source.Close(ctx)

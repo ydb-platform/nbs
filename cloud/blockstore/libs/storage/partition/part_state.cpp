@@ -264,32 +264,13 @@ bool TPartitionState::HasBlobCountToCleanupReachedThreshold(
     ui64 cleanupCommitId,
     ui32 threshold) const
 {
-    const ui64 milestoneCommitId = GetCleanupMilestoneCommitId();
-    const TPartialBlobId milestoneBlobId = GetCleanupMilestoneBlobId();
-    auto& estimate = BlobCountToCleanupEstimate;
-
-    const bool milestoneNotAdvanced =
-        std::forward_as_tuple(milestoneCommitId, milestoneBlobId) <=
-        std::forward_as_tuple(
-            estimate.MilestoneCommitId,
-            estimate.MilestoneBlobId);
-
-    if (estimate.BlobCount >= threshold &&
-        cleanupCommitId >= estimate.CleanupCommitId && milestoneNotAdvanced)
-    {
-        // No need to recalculate the blob count: it is definitely greater
-        // than or equal to the threshold.
-        return true;
-    }
-
-    estimate = TBlobCountToCleanupEstimate(
-        CleanupQueue
-            .GetCount(milestoneCommitId, milestoneBlobId, cleanupCommitId),
+    const size_t blobCount = CleanupQueue.GetCount(
+        GetCleanupMilestoneCommitId(),
+        GetCleanupMilestoneBlobId(),
         cleanupCommitId,
-        milestoneCommitId,
-        milestoneBlobId);
+        threshold);
 
-    return estimate.BlobCount >= threshold;
+    return blobCount >= threshold;
 }
 
 void TPartitionState::UpdateOrResetCleanupMilestone(
@@ -966,9 +947,11 @@ TJsonValue TPartitionState::AsJson() const
         state["FreshBlocksInFlight"] = GetFreshBlocksInFlight();
         state["FreshBlocksQueued"] = GetFreshBlocksQueued();
         state["FreshBlobUntrimmedBytes"] = GetUntrimmedFreshBlobByteCount();
-        if (GetUntrimmedFreshBlobByteCount() > 0) {
-            state["FirstUntrimmedFreshBlobTimestamp"] =
-                GetFirstUntrimmedFreshBlobTimestamp().MicroSeconds();
+        const auto firstUnflushedFreshBlobTimestamp =
+            GetFirstUnflushedFreshBlobTimestamp(GetTrimFreshLogToCommitId());
+        if (firstUnflushedFreshBlobTimestamp != TInstant::Max()) {
+            state["FirstUnflushedFreshBlobTimestamp"] =
+                firstUnflushedFreshBlobTimestamp.MicroSeconds();
         }
         state["FlushState"] = ToJson(GetFlushState().GetOperationState());
         state["Compaction"] = ToJson(CompactionState);

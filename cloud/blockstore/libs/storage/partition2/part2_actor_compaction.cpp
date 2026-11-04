@@ -342,7 +342,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobId,
                 BuildBlobContent(req),
                 0,        // blockSizeForChecksums
-                true);   // async
+                true,   // async
+                true);  // compressedSizeEstimationCandidate
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(

@@ -15,7 +15,7 @@ TIOCompanion::TIOCompanion(
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
-        const NBlockCodecs::ICodec* blobCodec,
+        std::shared_ptr<TBlobsCompressor> blobsCompressor,
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigConstPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
@@ -31,7 +31,7 @@ TIOCompanion::TIOCompanion(
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))
     , TabletID(tabletID)
-    , BlobCodec(blobCodec)
+    , BlobsCompressor(std::move(blobsCompressor))
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StorageAccessMode(storageAccessMode)

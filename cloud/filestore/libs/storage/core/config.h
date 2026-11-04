@@ -201,6 +201,7 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;
@@ -360,6 +361,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    ui64 GetServerWriteBackCacheStateFileSize() const;
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
@@ -377,6 +379,8 @@ public:
     bool GetFileSystemEventsEnabled() const;
     bool GetFileSystemEventsDryRunModeEnabled() const;
     TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
+    TDuration GetFileSystemEventSubscriptionsCacheTTLMargin() const;
+    bool GetFileSystemListingEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 

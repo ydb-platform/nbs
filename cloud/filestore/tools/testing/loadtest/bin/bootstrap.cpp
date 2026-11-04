@@ -9,7 +9,7 @@
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
