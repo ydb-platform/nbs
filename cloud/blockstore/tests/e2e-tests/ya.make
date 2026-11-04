@@ -6,7 +6,7 @@ ELSE()
     INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 ENDIF()
 
-SPLIT_FACTOR(2)
+SPLIT_FACTOR(4)
 
 TEST_SRCS(
     conftest.py
