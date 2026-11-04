@@ -954,6 +954,107 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             });
     }
 
+    Y_UNIT_TEST(ShouldRejectMirroredDiskFromDevicesWithDuplicateDeviceInReplica)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = MakeDefaultState();
+        TDiskRegistryState& state = *statePtr;
+
+        const TVector<TVector<TString>> replicas = {
+            {"uuid-1", "uuid-1"},
+            {"uuid-3", "uuid-4"},
+        };
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const auto error = CreateMirroredDiskFromDevices(
+                    state,
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(/*force=*/false),
+                    replicas);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    error.GetCode(),
+                    FormatError(error));
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    replicas);
+
+                for (const auto* uuid: {"uuid-1", "uuid-3", "uuid-4"}) {
+                    UNIT_ASSERT_VALUES_EQUAL_C("", state.FindDisk(uuid), uuid);
+                    UNIT_ASSERT_C(!state.IsDirtyDevice(uuid), uuid);
+                }
+            });
+    }
+
+    Y_UNIT_TEST(ShouldRejectMirroredDiskFromDevicesWithDifferentReplicaSizes)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto largeDevice = Device(
+            "dev-1",
+            "uuid-1",
+            "rack-1",
+            DefaultBlockSize,
+            2 * DefaultDeviceSize);
+        largeDevice.SetPoolName("large");
+        largeDevice.SetPoolKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+
+        const TVector agents{
+            AgentConfig(1, {largeDevice}),
+            AgentConfig(2, {Device("dev-1", "uuid-2", "rack-2")}),
+        };
+
+        auto config = MakeConfig(agents);
+        auto& pool = *config.AddDevicePoolConfigs();
+        pool.SetName("large");
+        pool.SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+        pool.SetAllocationUnit(2 * DefaultDeviceSize);
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents(agents)
+                            .WithConfig(std::move(config))
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        const TVector<TVector<TString>> replicas = {
+            {"uuid-1"},
+            {"uuid-2"},
+        };
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const auto error = CreateMirroredDiskFromDevices(
+                    state,
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(/*force=*/false),
+                    replicas);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    error.GetCode(),
+                    FormatError(error));
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    replicas);
+
+                for (const auto* uuid: {"uuid-1", "uuid-2"}) {
+                    UNIT_ASSERT_VALUES_EQUAL_C("", state.FindDisk(uuid), uuid);
+                    UNIT_ASSERT_C(!state.IsDirtyDevice(uuid), uuid);
+                }
+            });
+    }
+
     Y_UNIT_TEST(ShouldCreateMirroredDiskFromDevices)
     {
         TTestExecutor executor;
@@ -1268,6 +1369,69 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         UNIT_ASSERT_VALUES_EQUAL("", state.FindDisk("uuid-1"));
         UNIT_ASSERT(!state.IsDirtyDevice("uuid-1"));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDisks().size());
+    }
+
+    Y_UNIT_TEST(ShouldNotMarkSourceDevicesDirtyWhenMirroredCreationRunsOutOfDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                AgentConfig(
+                                    1,
+                                    {
+                                        Device("dev-1", "uuid-1", "rack-1"),
+                                        Device("dev-2", "uuid-2", "rack-1"),
+                                    }),
+                                AgentConfig(
+                                    2,
+                                    {
+                                        Device("dev-1", "uuid-3", "rack-2"),
+                                    }),
+                            })
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        for (const auto* uuid: {"uuid-1", "uuid-2", "uuid-3"}) {
+            UNIT_ASSERT_C(!state.IsDirtyDevice(uuid), uuid);
+        }
+
+        const TVector<TVector<TString>> replicas = {
+            {"uuid-1", "uuid-2"},
+            {"uuid-3", ""},
+        };
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                // Replica 0 can be created, but replica 1 has no free device
+                // for its second slot. Rolling back must preserve source data.
+                const auto error = CreateMirroredDiskFromDevices(
+                    state,
+                    db,
+                    "disk-1",
+                    MakeMirror2Params(/*force=*/false),
+                    replicas);
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_BS_DISK_ALLOCATION_FAILED,
+                    error.GetCode(),
+                    FormatError(error));
+                AssertMirrorCreateFromDevicesFailedClean(
+                    state,
+                    "disk-1",
+                    replicas);
+
+                for (const auto* uuid: {"uuid-1", "uuid-2", "uuid-3"}) {
+                    UNIT_ASSERT_VALUES_EQUAL_C("", state.FindDisk(uuid), uuid);
+                    UNIT_ASSERT_C(!state.IsDirtyDevice(uuid), uuid);
+                }
+
+                TVector<TDirtyDevice> dirtyDevices;
+                UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+                UNIT_ASSERT_VALUES_EQUAL(0, dirtyDevices.size());
+            });
     }
 
     Y_UNIT_TEST(ShouldNotEraseDevicesWhenMirroredRequestIsInvalid)
