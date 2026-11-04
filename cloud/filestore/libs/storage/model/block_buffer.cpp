@@ -4,6 +4,8 @@
 
 #include <cloud/storage/core/libs/common/verify.h>
 
+#include <util/system/spinlock.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -50,20 +52,20 @@ public:
         , Buffer(std::move(buffer))
     {}
 
-    TStringBuf GetUnalignedHead() override
+    TStringBuf GetUnalignedHead() const override
     {
         const char* ptr = Buffer.data();
         return {ptr, ByteRange.UnalignedHeadLength()};
     }
 
-    TStringBuf GetUnalignedTail() override
+    TStringBuf GetUnalignedTail() const override
     {
         const auto offset = ByteRange.RelativeUnalignedTailOffset();
         const char* ptr = Buffer.data() + offset;
         return {ptr, ByteRange.UnalignedTailLength()};
     }
 
-    TStringBuf GetBlock(size_t index) override
+    TStringBuf GetBlock(size_t index) const override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         const char* ptr = Buffer.data() + offset;
@@ -94,9 +96,10 @@ class TLazyBlockBuffer final
 {
 private:
     const TByteRange ByteRange;
-    TString UnalignedHead;
-    TVector<TString> Blocks;
-    TString UnalignedTail;
+    mutable TString UnalignedHead;
+    mutable TVector<TString> Blocks;
+    mutable TString UnalignedTail;
+    TAdaptiveLock Lock;
 
 public:
     explicit TLazyBlockBuffer(TByteRange byteRange)
@@ -105,43 +108,61 @@ public:
     {
     }
 
-    TStringBuf GetUnalignedHead() override
+    TStringBuf GetUnalignedHead() const override
     {
-        if (!UnalignedHead) {
-            UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
+        TStringBuf ret;
+        with_lock (Lock) {
+            if (!UnalignedHead) {
+                UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
+            }
+
+            ret = UnalignedHead;
         }
 
-        return UnalignedHead;
+        return ret;
     }
 
-    TStringBuf GetUnalignedTail() override
+    TStringBuf GetUnalignedTail() const override
     {
-        if (!UnalignedTail) {
-            UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
+        TStringBuf ret;
+        with_lock (Lock) {
+            if (!UnalignedTail) {
+                UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
+            }
+
+            ret = UnalignedTail;
         }
 
-        return UnalignedTail;
+        return ret;
     }
 
-    TStringBuf GetBlock(size_t index) override
+    TStringBuf GetBlock(size_t index) const override
     {
-        auto& block = Blocks[index];
-        if (!block) {
-            block.ReserveAndResize(ByteRange.BlockSize);
+        TStringBuf ret;
+        with_lock (Lock) {
+            auto& block = Blocks[index];
+            if (!block) {
+                block.ReserveAndResize(ByteRange.BlockSize);
+            }
+            ret = block;
         }
 
-        return block;
+        return ret;
     }
 
     void SetBlock(size_t index, TStringBuf block) override
     {
-        Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
-        Blocks[index] = block;
+        with_lock (Lock) {
+            Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
+            Blocks[index] = block;
+        }
     }
 
     void ClearBlock(size_t index) override
     {
-        Blocks[index].clear();
+        with_lock (Lock) {
+            Blocks[index].clear();
+        }
     }
 };
 
