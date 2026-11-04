@@ -21,6 +21,7 @@ RECURSE(
     rdma
     ss_proxy
     tablet
+    tablet_proxy
     throttling
     uds
     user_stats
