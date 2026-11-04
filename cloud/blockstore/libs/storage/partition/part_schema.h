@@ -265,11 +265,18 @@ struct TPartitionSchema
         {
         };
 
+        struct AdditionalFields
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TCleanupQueueAdditionalFields;
+        };
+
         using TKey = TableKey<DeletionCommitId, CommitId, BlobId>;
         using TColumns = TableColumns<
             DeletionCommitId,
             CommitId,
-            BlobId
+            BlobId,
+            AdditionalFields
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
