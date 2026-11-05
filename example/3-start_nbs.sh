@@ -55,10 +55,6 @@ MON_PORT=${MON_PORT:-8766}
 source ./prepare_binaries.sh || exit 1
 
 if [[ "$start_nbs_enabled" == true ]]; then
-    if [[ ! -f nbs/nbs-cells.txt ]]; then
-        echo "Missing nbs/nbs-cells.txt; run python3 ./prepare_cells.py before starting NBS" >&2
-        exit 1
-    fi
     require_bins "$NBSD_BIN" || exit 1
 fi
 if [[ "$start_da_enabled" == true ]]; then
@@ -73,6 +69,12 @@ start_nbs() {
     local suffix=""
     [[ "$index" == 1 ]] || suffix=2
     shift
+
+    local cells_file="nbs/nbs-cells$suffix.txt"
+    if [[ ! -f "$cells_file" ]]; then
+        echo "Missing $cells_file; run python3 ./prepare_cells.py before starting NBS" >&2
+        return 1
+    fi
 
     echo "NBS $index http://localhost:$(( MON_PORT + offset ))/blockstore/service"
 
@@ -94,7 +96,7 @@ start_nbs() {
         --storage-file       "nbs/nbs-storage$suffix.txt" \
         --naming-file        nbs/nbs-names.txt \
         --diag-file          nbs/nbs-diag.txt \
-        --cells-file         nbs/nbs-cells.txt \
+        --cells-file         "$cells_file" \
         --features-file      nbs/nbs-features.txt \
         --auth-file          nbs/nbs-auth.txt \
         --dr-proxy-file      nbs/nbs-dr-proxy.txt \
