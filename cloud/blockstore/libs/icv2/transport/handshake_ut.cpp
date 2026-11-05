@@ -10,6 +10,7 @@
 #include <util/system/error.h>
 
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <poll.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -153,8 +154,17 @@ struct TFixture
         UNIT_ASSERT_C(!HasError(serverError), FormatError(serverError));
         Client = std::move(client);
         Server = std::move(server);
+        bool started = false;
+        Y_DEFER
+        {
+            if (!started) {
+                Client->Stop();
+                Server->Stop();
+            }
+        };
         Client->Start();
         Server->Start();
+        started = true;
     }
 
     ~TFixture()
@@ -260,6 +270,15 @@ void CheckXdcLocalAddress(const char* host, const char* localHost)
     CheckIncomplete(auxiliary);
     const auto clientConnection = GetConnection(client);
     const auto serverConnection = GetConnection(server);
+    int noPort = 0;
+    UNIT_ASSERT_VALUES_EQUAL(
+        GetSockOpt(
+            *clientConnection.XdcSocket,
+            IPPROTO_IP,
+            IP_BIND_ADDRESS_NO_PORT,
+            noPort),
+        0);
+    UNIT_ASSERT_VALUES_EQUAL(noPort, 1);
     const auto mainAddress = clientConnection.Socket->GetSockName();
     const auto xdcAddress = clientConnection.XdcSocket->GetSockName();
     UNIT_ASSERT(std::holds_alternative<NInterconnect::TAddress>(mainAddress));
@@ -966,6 +985,62 @@ Y_UNIT_TEST_SUITE(TIcV2HandshakeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             WaitHello(rejected).GetError().GetCode(),
             E_REJECTED);
+    }
+
+    Y_UNIT_TEST(OwnerKeepsProviderAliveUntilStopReturns)
+    {
+        auto sockets = TFixture::MakeSockets();
+        auto [provider, error] = CreateHandshakeProvider({});
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        std::weak_ptr<IHandshakeProvider> weak = provider;
+        auto entered = NThreading::NewPromise<void>();
+        auto release = NThreading::NewPromise<void>();
+        std::future<void> subscription;
+        std::future<void> stopped;
+        Y_DEFER
+        {
+            release.TrySetValue();
+            if (provider) {
+                provider->Stop();
+            }
+        };
+
+        provider->Start();
+        auto pending =
+            provider->Accept(std::move(sockets[1]), TDuration::Seconds(30));
+        subscription = std::async(
+            std::launch::async,
+            [pending, provider, entered, release]() mutable
+            {
+                pending.Subscribe(
+                    [provider, entered, release](
+                        const TAcceptHandshakeFuture&) mutable
+                    {
+                        Y_UNUSED(provider);
+                        entered.SetValue();
+                        release.GetFuture().GetValueSync();
+                    });
+            });
+        UNIT_ASSERT(subscription.wait_for(5s) == std::future_status::ready);
+        subscription.get();
+        sockets[0].Reset();
+        UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
+
+        auto stopStarted = NThreading::NewPromise<void>();
+        stopped = std::async(
+            std::launch::async,
+            [provider, stopStarted]() mutable
+            {
+                stopStarted.SetValue();
+                provider->Stop();
+            });
+        UNIT_ASSERT(stopStarted.GetFuture().Wait(TDuration::Seconds(5)));
+        provider.reset();
+        UNIT_ASSERT(!weak.expired());
+        UNIT_ASSERT(stopped.wait_for(30ms) == std::future_status::timeout);
+        release.SetValue();
+        stopped.get();
+        UNIT_ASSERT(weak.expired());
     }
 
     Y_UNIT_TEST(DeadlineIncludesQueueTime)

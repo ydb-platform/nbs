@@ -14,6 +14,7 @@
 #include <util/system/guard.h>
 
 #include <fcntl.h>
+#include <netinet/in.h>
 
 #include <climits>
 
@@ -244,11 +245,6 @@ public:
         , Config(config)
     {}
 
-    ~THandshakeProvider() override
-    {
-        Stop();
-    }
-
     void Start() override
     {
         TGuard<TMutex> guard(Mutex);
@@ -463,6 +459,16 @@ private:
             localAddress.Addr.Ipv4.sin_port = 0;
         } else {
             localAddress.Addr.Ipv6.sin6_port = 0;
+        }
+        const int enable = 1;
+        if (setsockopt(
+                *socket,
+                IPPROTO_IP,
+                IP_BIND_ADDRESS_NO_PORT,
+                &enable,
+                sizeof(enable)))
+        {
+            return MakeSocketError(errno, "set IP_BIND_ADDRESS_NO_PORT");
         }
         if (bind(*socket, localAddress.SockAddr(), localAddress.Size())) {
             return MakeSocketError(errno, "bind IC V2 XDC local address");

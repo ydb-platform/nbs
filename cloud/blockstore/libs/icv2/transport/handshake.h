@@ -39,8 +39,9 @@ using TAcceptHandshakeFuture = NThreading::TFuture<TAcceptHandshakeResult>;
 // handshakes already completing may succeed. Restart is not supported, and
 // completed connections survive Stop. Submit connected, nonblocking sockets
 // and do not use them elsewhere; a failed handshake closes its socket.
-// Each timeout starts at the call and includes queue time. Continuations must
-// not throw, call Stop, or destroy the provider.
+// Each timeout starts at the call and includes queue time. After Start, the
+// owner must keep a strong reference until Stop returns. Call Stop outside a
+// continuation; RequestStop alone is not enough. Continuations must not throw.
 struct IHandshakeProvider: public IStartable
 {
     // Use for outgoing sockets. If both peers enable XDC, opens a second socket
