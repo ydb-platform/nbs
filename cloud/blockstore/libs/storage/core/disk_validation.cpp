@@ -30,14 +30,13 @@ NCloud::NProto::TError ValidateBlockSize(
 NProto::TError ValidateMediaKindForDiskFromDevices(
     NProto::EStorageMediaKind mediaKind)
 {
-    if (!IsDiskRegistryMediaKind(mediaKind))
-    {
+    if (!IsDiskRegistryMediaKind(mediaKind)) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "storage media kind " << MediaKindToString(mediaKind)
-                << " is not allowed, expected one of: ssd_nonrepl, "
-                   "hdd_nonrepl, ssd_local, hdd_local");
+                << " is not allowed, expected one of: ssd_nonrepl, hdd_nonrepl,"
+                   "ssd_local, hdd_local, ssd_mirror2, ssd_mirror3");
     }
 
     return {};
