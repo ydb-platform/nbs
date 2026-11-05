@@ -50,7 +50,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    const TBlobCompressorPtr BlobCompressor
+    const TBlobCompressorPtr BlobCompressor;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
