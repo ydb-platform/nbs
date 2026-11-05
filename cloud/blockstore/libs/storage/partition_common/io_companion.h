@@ -39,7 +39,7 @@ public:
 class TIOCompanion
 {
 private:
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig& PartitionConfig;
     const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
     const ui64 TabletID;
@@ -86,6 +86,9 @@ public:
         std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
         std::shared_ptr<TGroupDowntimes> groupDowntimes,
         std::shared_ptr<TThreadSafePartCounters> partCounters);
+
+    // Replace the snapshot without resetting queues, counters or blob workers.
+    void UpdateStorageConfig(TStorageConfigConstPtr config);
 
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,

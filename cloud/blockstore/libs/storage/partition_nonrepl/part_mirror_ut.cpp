@@ -433,6 +433,70 @@ void TestAgentData(
 
 Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 {
+    // Verify snapshot delivery through the mirror into all replicas, including
+    // RDMA, and preserve the newer behavior after duplicate or foreign updates.
+    Y_UNIT_TEST(ShouldUpdateReplicaSnapshotsWithoutRestart)
+    {
+        for (const bool useRdma: {false, true}) {
+            // Read unwritten data before enabling zero-block detection.
+            TTestRuntime runtime;
+            TTestEnv env(runtime, {}, useRdma);
+            if (useRdma) {
+                env.Rdma().InitAllEndpoints();
+            }
+            TPartitionClient client(runtime, env.ActorId);
+            const auto range = TBlockRange64::MakeOneBlock(0);
+            for (ui32 replica = 0; replica != 3; ++replica) {
+                const auto response = client.ReadBlocks(range, replica);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    DefaultBlockSize,
+                    response->Record.GetBlocks().GetBuffers(0).size());
+            }
+
+            // Publish a new policy through the coordinator to its existing
+            // replicas.
+            NProto::TStorageServiceConfig patch;
+            patch.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+            const auto updated = TStorageConfig::Merge(env.Config, patch);
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvVolume::TEvDynamicConfigUpdate>(
+                    updated, env.VolumeActorId, 1));
+            for (ui32 replica = 0; replica != 3; ++replica) {
+                const auto response = client.ReadBlocks(range, replica);
+                UNIT_ASSERT(response->Record.GetAllZeroes());
+            }
+
+            // Keep that policy when duplicate or foreign messages carry old
+            // values.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvVolume::TEvDynamicConfigUpdate>(
+                    env.Config, env.VolumeActorId, 1));
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvVolume::TEvDynamicConfigUpdate>(
+                    env.Config, NActors::TActorId(0, "foreign"), 100));
+            UNIT_ASSERT(client.ReadBlocks(range, 0)->Record.GetAllZeroes());
+
+            // Apply a subsequent valid revision without replacing replica
+            // actors.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvVolume::TEvDynamicConfigUpdate>(
+                    env.Config, env.VolumeActorId, 2));
+            for (ui32 replica = 0; replica != 3; ++replica) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    false,
+                    client.ReadBlocks(range, replica)->Record.GetAllZeroes());
+            }
+        }
+    }
+
     // TODO: reduce code duplication (see part_nonrepl_ut.cpp)
 
     Y_UNIT_TEST(ShouldReadWriteZero)

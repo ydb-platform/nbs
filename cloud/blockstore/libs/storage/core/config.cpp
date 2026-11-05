@@ -233,6 +233,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonReplicatedVolumeAcquireDiskAfterAddClientEnabled, bool, false      )\
     xxx(UseRecreatedBlobMetasOnCleanup,                      bool, false      )\
     xxx(WaitForFreshWritesBeforeFlushEnabled,                bool, false      )\
+    xxx(UsePullSchemeForVolumeStatistics,                    bool, false      )\
     xxx(OverlappingRequestsPolicy,                                             \
         NProto::EOverlappingRequestsPolicy,                                    \
         NProto::EOverlappingRequestsPolicy::ORP_ENABLE                        )\
@@ -729,7 +730,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(PartitionBootTimeout,                 TDuration,   Seconds(0)         )\
     xxx(DirectWriteBandwidthQuota,            ui64,        0                  )\
-    xxx(UsePullSchemeForVolumeStatistics,                  bool,   false      )\
     xxx(InitialRetryDelayForServiceRequests,  TDuration,   MSeconds(500)      )\
     xxx(MaxRetryDelayForServiceRequests,      TDuration,   Seconds(30)        )\
     xxx(VolumeThrottlingManagerEnabled,             bool,        false        )\
@@ -1583,6 +1583,20 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
     BLOCKSTORE_STRING_FEATURES(BLOCKSTORE_STRING_FEATURE_GETTER)
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
+
+// Compare immutable snapshot contents without observing live ICB values.
+bool TStorageConfig::IsSame(const TStorageConfig& other) const
+{
+    const auto& features = Impl->FeaturesConfig;
+    const auto& otherFeatures = other.Impl->FeaturesConfig;
+    return Impl->Controls == other.Impl->Controls &&
+           google::protobuf::util::MessageDifferencer::Equals(
+               Impl->StorageServiceConfig, other.Impl->StorageServiceConfig) &&
+           (features == otherFeatures ||
+            (features && otherFeatures &&
+             google::protobuf::util::MessageDifferencer::Equals(
+                 features->GetConfigProto(), otherFeatures->GetConfigProto())));
+}
 
 // Apply the patch without materializing ICB overrides into the raw proto.
 // Reuse unchanged configurations and retain live controls when creating a copy.

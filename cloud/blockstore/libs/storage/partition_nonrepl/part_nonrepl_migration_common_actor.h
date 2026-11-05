@@ -4,6 +4,8 @@
 
 #include "config.h"
 
+#include <cloud/blockstore/libs/storage/api/partition.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -57,6 +59,12 @@ public:
     virtual bool OnMessage(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
+
+    // Refresh additional configuration references held by the migration owner.
+    virtual void OnDynamicConfigUpdate(TStorageConfigConstPtr config)
+    {
+        Y_UNUSED(config);
+    }
 
     // Notifies that block range was migrated.
     virtual void OnRangeMigrated(
@@ -126,7 +134,8 @@ private:
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
     IMigrationOwner* const MigrationOwner = nullptr;
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
@@ -144,6 +153,10 @@ private:
     NActors::TActorId MigrationSrcActorId;
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
+    // Source actor ownership selected by the most recent InitWork call.
+    bool OwnsSrcActor = false;
+    // Destination actor ownership selected by the most recent InitWork call.
+    bool OwnsDstActor = false;
     bool SendWritesToSrc = true;
     std::unique_ptr<TMigrationTimeoutCalculator> TimeoutCalculator;
 
@@ -367,6 +380,10 @@ private:
     void RejectGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

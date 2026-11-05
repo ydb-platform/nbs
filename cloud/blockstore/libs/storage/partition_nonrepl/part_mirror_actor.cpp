@@ -809,6 +809,26 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus,        TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Apply a dynamic configuration update and forward it to owned actors.
+void TMirrorPartitionActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+
+    // Reach both replica actors and lagging proxies owned by this mirror.
+    for (const auto actorId: State.GetAllActors()) {
+        ctx.Send(
+            actorId,
+            new TEvVolume::TEvDynamicConfigUpdate(
+                msg->StorageConfig, msg->Owner, msg->Revision));
+    }
+}
+
 STFUNC(TMirrorPartitionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -899,6 +919,10 @@ STFUNC(TMirrorPartitionActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         IgnoreFunc(TEvents::TEvPoisonTaken);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -963,6 +987,8 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             HandleUnexpectedEvent(

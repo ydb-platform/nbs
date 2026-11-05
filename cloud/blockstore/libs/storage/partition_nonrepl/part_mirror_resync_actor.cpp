@@ -267,6 +267,34 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Apply a dynamic configuration update and forward it to owned actors.
+void TMirrorPartitionResyncActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+
+    // Update both the serving mirror and replicas used for resync.
+    if (MirrorActorId) {
+        ctx.Send(
+            MirrorActorId,
+            new TEvVolume::TEvDynamicConfigUpdate(
+                msg->StorageConfig, msg->Owner, msg->Revision));
+    }
+    for (const auto& replica: Replicas) {
+        if (replica.ActorId) {
+            ctx.Send(
+                replica.ActorId,
+                new TEvVolume::TEvDynamicConfigUpdate(
+                    msg->StorageConfig, msg->Owner, msg->Revision));
+        }
+    }
+}
+
 STFUNC(TMirrorPartitionResyncActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
@@ -332,6 +360,10 @@ STFUNC(TMirrorPartitionResyncActor::StateWork)
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -386,6 +418,8 @@ STFUNC(TMirrorPartitionResyncActor::StateZombie)
 
         IgnoreFunc(TEvents::TEvPoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             HandleUnexpectedEvent(

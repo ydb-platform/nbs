@@ -55,6 +55,18 @@ NActors::TActorId TActorsStack::GetTop() const
     return Actors.empty() ? NActors::TActorId() : Actors.front().ActorId;
 }
 
+// Enumerate config-consuming actors without exposing the mutable stack.
+TVector<NActors::TActorId> TActorsStack::GetDynamicConfigUpdateRecipients() const
+{
+    TVector<NActors::TActorId> result;
+    for (const auto& actor: Actors) {
+        if (actor.ActorPurpose != EActorPurpose::MultiPartitionWrapper) {
+            result.push_back(actor.ActorId);
+        }
+    }
+    return result;
+}
+
 NActors::TActorId TActorsStack::GetTopWrapper() const
 {
     TVector<NActors::TActorId> result;

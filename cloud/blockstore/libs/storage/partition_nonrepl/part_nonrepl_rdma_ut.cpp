@@ -235,6 +235,53 @@ enum class EDataPlaneRequestType
 
 Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 {
+    // Verify that snapshot replacement updates the companion's timeout reads
+    // while preserving its device mapping and availability state.
+    Y_UNIT_TEST(ShouldUpdateDeviceRangeTimeoutFromSnapshot)
+    {
+        using TRequest =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest;
+        using TResponse =
+            TEvNonreplPartitionPrivate::TEvGetDeviceForRangeResponse;
+
+        // Resolve an available device using the original timeout.
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+        const auto readDevice = [&]
+        {
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<TRequest>(
+                    TRequest::EPurpose::ForReading,
+                    TBlockRange64::MakeOneBlock(0)));
+            return client.RecvResponse<TResponse>();
+        };
+        const auto original = readDevice();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, original->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1), original->RequestTimeout);
+
+        // Update the owner's snapshot and retain the existing device map.
+        NProto::TStorageServiceConfig config;
+        config.SetNonReplicatedMinRequestTimeoutSSD(2'000);
+        config.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvVolume::TEvDynamicConfigUpdate>(
+                std::make_shared<TStorageConfig>(
+                    config, std::make_shared<NFeatures::TFeaturesConfig>()),
+                env.VolumeActorId,
+                1));
+
+        // Return the same device with the new minimum request timeout.
+        const auto updated = readDevice();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, updated->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(original->DeviceUUID, updated->DeviceUUID);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(2), updated->RequestTimeout);
+    }
+
     Y_UNIT_TEST(ShouldLocalReadWrite)
     {
         TTestBasicRuntime runtime;

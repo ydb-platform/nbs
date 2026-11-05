@@ -170,6 +170,7 @@ void TVolumeActor::OnPartitionStateChanged(
                 WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
 
             State->SetMultiPartitionWrapperActor(std::move(actorStack));
+            SendDynamicConfigUpdateToPartitions(ctx);
         }
     } else {
         if (State->GetMultiPartitionWrapperActor()) {
@@ -364,6 +365,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
         nonreplicatedConfig);
+    SendDynamicConfigUpdateToPartitions(ctx);
 }
 
 TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
@@ -817,6 +819,15 @@ void TVolumeActor::HandleBootExternalResponse(
 
     const auto* appData = AppData(ctx);
 
+    // Keep the partition and its future writer wrapper in the same boot mode.
+    part->FreshBlocksWriterEnabled =
+        part->StorageInfo->TabletType == TTabletTypes::BlockStorePartition &&
+        (Config->GetFreshBlocksWriterEnabled() ||
+         Config->IsFreshBlocksWriterFeatureEnabled(
+             part->PartitionConfig.GetCloudId(),
+             part->PartitionConfig.GetFolderId(),
+             part->PartitionConfig.GetDiskId()));
+    const bool freshBlocksWriterEnabled = part->FreshBlocksWriterEnabled;
     auto config = Config;
     auto partitionConfig = part->PartitionConfig;
     auto diagnosticsConfig = DiagnosticsConfig;
@@ -849,7 +860,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        partitionIndex,
                        siblingCount,
                        selfId,
-                       volumeTabletId)
+                       volumeTabletId,
+                       freshBlocksWriterEnabled)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(
@@ -954,6 +966,7 @@ void TVolumeActor::HandleTabletStatus(
                     WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
+            SendDynamicConfigUpdateToPartitions(ctx);
 
             if (freshBlocksWriterId) {
                 NCloud::Send<NFreshBlocksWriter::TEvFreshBlocksWriter::

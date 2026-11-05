@@ -2,6 +2,7 @@
 
 #include "volume_database.h"
 
+#include <cloud/blockstore/libs/configs_manager/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -310,6 +311,10 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         "%s Activated executor",
         LogTitle.GetWithTime().c_str());
 
+    ctx.Send(
+        MakeConfigsManagerServiceId(),
+        new TEvConfigsManager::TEvSetConfigSubscriptionRequest());
+
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower()) {
@@ -362,6 +367,10 @@ void TVolumeActor::OnTabletDead(
 
 void TVolumeActor::BeforeDie(const TActorContext& ctx)
 {
+    ctx.Send(
+        MakeConfigsManagerServiceId(),
+        new TEvConfigsManager::TEvRemoveConfigSubscriptionRequest());
+
     UnregisterVolume(ctx);
     StopPartitions(ctx, {});
     TerminateTransactions(ctx);
@@ -644,11 +653,7 @@ bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
         return false;
     }
 
-    return Config->GetFreshBlocksWriterEnabled() ||
-           Config->IsFreshBlocksWriterFeatureEnabled(
-               State->GetConfig().GetCloudId(),
-               State->GetConfig().GetFolderId(),
-               State->GetConfig().GetDiskId());
+    return part->FreshBlocksWriterEnabled;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1051,6 +1056,12 @@ STFUNC(TVolumeActor::StateInit)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(
+            TEvConfigsManager::TEvSetConfigSubscriptionResponse,
+            HandleConfigSubscriptionResponse);
+        HFunc(TEvConfigsManager::TEvConfigChanged, HandleDynamicConfigUpdate);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+
+        HFunc(
             TEvVolumePrivate::TEvProcessUpdateVolumeConfig,
             HandleProcessUpdateVolumeConfig);
         HFunc(
@@ -1116,6 +1127,13 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvTabletPipe::TEvServerDestroyed, HandleServerDestroyed);
 
         HFunc(TEvBootstrapper::TEvStatus, HandleTabletStatus);
+
+        HFunc(
+            TEvConfigsManager::TEvSetConfigSubscriptionResponse,
+            HandleConfigSubscriptionResponse);
+        HFunc(TEvConfigsManager::TEvConfigChanged, HandleDynamicConfigUpdate);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+
         HFunc(
             TEvVolumePrivate::TEvProcessUpdateVolumeConfig,
             HandleProcessUpdateVolumeConfig);
@@ -1284,6 +1302,10 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
+
+        IgnoreFunc(TEvConfigsManager::TEvSetConfigSubscriptionResponse);
+        IgnoreFunc(TEvConfigsManager::TEvConfigChanged);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
 
         IgnoreFunc(TEvVolumePrivate::TEvAllocateDiskIfNeeded);
         IgnoreFunc(TEvVolumePrivate::TEvUpdateCounters);

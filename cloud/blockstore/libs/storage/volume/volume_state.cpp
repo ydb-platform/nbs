@@ -278,6 +278,23 @@ auto TVolumeState::GetLaggingAgentsMigrationInfo() const
     return CurrentlyMigratingLaggingAgents;
 }
 
+// Collect direct consumers while nested coordinators own delivery to children.
+TVector<NActors::TActorId> TVolumeState::GetDynamicConfigUpdateRecipients() const
+{
+    TVector<NActors::TActorId> result;
+    const auto append = [&result](const TActorsStack& actors)
+    {
+        const auto consumers = actors.GetDynamicConfigUpdateRecipients();
+        result.insert(result.end(), consumers.begin(), consumers.end());
+    };
+    append(DiskRegistryBasedPartitionActor);
+    append(MultiPartitionWrapper);
+    for (const auto& partition: Partitions) {
+        append(partition.RelatedActors);
+    }
+    return result;
+}
+
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 {
     Meta = std::move(meta);
