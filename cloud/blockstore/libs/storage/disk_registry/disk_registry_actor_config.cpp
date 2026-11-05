@@ -92,6 +92,7 @@ void TDiskRegistryActor::CompleteUpdateConfig(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
