@@ -3,16 +3,13 @@
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 
+#include <util/generic/maybe.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/yexception.h>
+#include <util/network/sock.h>
 #include <util/string/builder.h>
-#include <util/string/cast.h>
 #include <util/system/byteorder.h>
 #include <util/system/error.h>
-
-#include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
 
 namespace NCloud::NFileStore {
 
@@ -22,9 +19,8 @@ namespace {
 
 constexpr ui32 MaxFrameSize = 256_MB;
 
-NProto::TError MakeSystemError(const TString& what)
+NProto::TError MakeSystemError(const TString& what, int error)
 {
-    const int error = LastSystemError();
     return MakeError(
         E_IO,
         TStringBuilder() << what << ": " << LastSystemErrorText(error));
@@ -32,45 +28,34 @@ NProto::TError MakeSystemError(const TString& what)
 
 NProto::TError WaitFor(SOCKET fd, short events, TInstant deadline)
 {
-    for (;;) {
-        const TInstant now = TInstant::Now();
-        if (now >= deadline) {
-            return MakeError(E_TIMEOUT, "timed out");
-        }
-
-        pollfd pfd = {.fd = fd, .events = events, .revents = 0};
-        const int timeoutMs = static_cast<int>(
-            Min<ui64>((deadline - now).MilliSeconds() + 1, Max<int>()));
-        const int res = poll(&pfd, 1, timeoutMs);
-        if (res < 0) {
-            if (LastSystemError() == EINTR) {
-                continue;
-            }
-            return MakeSystemError("poll");
-        }
-        if (res > 0) {
-            return {};
-        }
+    pollfd pfd = {.fd = fd, .events = events, .revents = 0};
+    const ssize_t res = PollD(&pfd, 1, deadline);
+    if (res == -ETIMEDOUT) {
+        return MakeError(E_TIMEOUT, "timed out");
     }
+    if (res < 0) {
+        return MakeSystemError("poll", -res);
+    }
+    return {};
 }
 
 NProto::TError SendAll(
-    SOCKET fd,
+    TSocket& socket,
     const char* data,
     size_t size,
     TInstant deadline)
 {
     while (size) {
-        if (auto error = WaitFor(fd, POLLOUT, deadline); HasError(error)) {
+        if (auto error = WaitFor(socket, POLLOUT, deadline); HasError(error)) {
             return error;
         }
 
-        const ssize_t res = send(fd, data, size, MSG_NOSIGNAL);
+        const ssize_t res = socket.Send(data, size);
         if (res < 0) {
-            if (LastSystemError() == EINTR || LastSystemError() == EAGAIN) {
+            if (-res == EAGAIN) {
                 continue;
             }
-            return MakeSystemError("send");
+            return MakeSystemError("send", -res);
         }
 
         data += res;
@@ -80,19 +65,23 @@ NProto::TError SendAll(
     return {};
 }
 
-NProto::TError RecvAll(SOCKET fd, char* data, size_t size, TInstant deadline)
+NProto::TError RecvAll(
+    TSocket& socket,
+    char* data,
+    size_t size,
+    TInstant deadline)
 {
     while (size) {
-        if (auto error = WaitFor(fd, POLLIN, deadline); HasError(error)) {
+        if (auto error = WaitFor(socket, POLLIN, deadline); HasError(error)) {
             return error;
         }
 
-        const ssize_t res = recv(fd, data, size, 0);
+        const ssize_t res = socket.Recv(data, size);
         if (res < 0) {
-            if (LastSystemError() == EINTR || LastSystemError() == EAGAIN) {
+            if (-res == EAGAIN) {
                 continue;
             }
-            return MakeSystemError("recv");
+            return MakeSystemError("recv", -res);
         }
         if (res == 0) {
             return MakeError(E_IO, "connection closed");
@@ -106,14 +95,14 @@ NProto::TError RecvAll(SOCKET fd, char* data, size_t size, TInstant deadline)
 }
 
 NProto::TError SendFrame(
-    SOCKET fd,
+    TSocket& socket,
     const NJson::TJsonValue& message,
     TInstant deadline)
 {
     const TString body = NJson::WriteJson(message, false /* formatOutput */);
     const ui32 size = HostToLittle(static_cast<ui32>(body.size()));
     auto error = SendAll(
-        fd,
+        socket,
         reinterpret_cast<const char*>(&size),
         sizeof(size),
         deadline);
@@ -121,14 +110,16 @@ NProto::TError SendFrame(
         return error;
     }
 
-    return SendAll(fd, body.data(), body.size(), deadline);
+    return SendAll(socket, body.data(), body.size(), deadline);
 }
 
-TResultOrError<NJson::TJsonValue> RecvFrame(SOCKET fd, TInstant deadline)
+TResultOrError<NJson::TJsonValue> RecvFrame(
+    TSocket& socket,
+    TInstant deadline)
 {
     ui32 size = 0;
     auto error = RecvAll(
-        fd,
+        socket,
         reinterpret_cast<char*>(&size),
         sizeof(size),
         deadline);
@@ -144,7 +135,7 @@ TResultOrError<NJson::TJsonValue> RecvFrame(SOCKET fd, TInstant deadline)
     }
 
     TString body = TString::Uninitialized(size);
-    error = RecvAll(fd, body.begin(), size, deadline);
+    error = RecvAll(socket, body.begin(), size, deadline);
     if (HasError(error)) {
         return error;
     }
@@ -168,7 +159,7 @@ private:
     const TDuration Timeout;
 
     // Indexed by instance id.
-    TVector<TSocketHolder> Instances;
+    TVector<TMaybe<TSocket>> Instances;
 
 public:
     TSyncHub(TLog& log, ui16 port, ui32 instanceCount, TDuration timeout)
@@ -210,41 +201,28 @@ public:
 private:
     NProto::TError AcceptInstances()
     {
-        TSocketHolder listener(socket(AF_INET6, SOCK_STREAM, 0));
-        if (listener.Closed()) {
-            return MakeSystemError("socket");
-        }
-
         //
         // Dual-stack socket - accepts both IPv4 and IPv6 connections on all
         // addresses.
         //
 
-        const int off = 0;
-        const int on = 1;
-        if (setsockopt(
-                listener,
-                IPPROTO_IPV6,
-                IPV6_V6ONLY,
-                &off,
-                sizeof(off)))
-        {
-            return MakeSystemError("setsockopt(IPV6_V6ONLY)");
+        TInet6StreamSocket listener;
+        if (listener.Closed()) {
+            return MakeSystemError("socket", LastSystemError());
         }
-        if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))) {
-            return MakeSystemError("setsockopt(SO_REUSEADDR)");
+        if (SetSockOpt(listener, IPPROTO_IPV6, IPV6_V6ONLY, 0)) {
+            return MakeSystemError("IPV6_V6ONLY", LastSystemError());
+        }
+        if (SetSockOpt(listener, SOL_SOCKET, SO_REUSEADDR, 1)) {
+            return MakeSystemError("SO_REUSEADDR", LastSystemError());
         }
 
-        sockaddr_in6 addr = {};
-        addr.sin6_family = AF_INET6;
-        addr.sin6_addr = in6addr_any;
-        addr.sin6_port = htons(Port);
-        if (bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
-        {
-            return MakeSystemError("bind");
+        TSockAddrInet6 addr("::", Port);
+        if (const int res = listener.Bind(&addr); res < 0) {
+            return MakeSystemError("bind", -res);
         }
-        if (listen(listener, static_cast<int>(InstanceCount))) {
-            return MakeSystemError("listen");
+        if (const int res = listener.Listen(InstanceCount); res < 0) {
+            return MakeSystemError("listen", -res);
         }
 
         STORAGE_INFO("Listening on port " << Port);
@@ -257,10 +235,11 @@ private:
                 return error;
             }
 
-            TSocketHolder connection(accept(listener, nullptr, nullptr));
-            if (connection.Closed()) {
-                return MakeSystemError("accept");
+            TStreamSocket accepted;
+            if (const int res = listener.Accept(&accepted); res < 0) {
+                return MakeSystemError("accept", -res);
             }
+            TSocket connection(accepted.Release());
 
             auto [hello, recvError] = RecvFrame(connection, deadline);
             if (HasError(recvError)) {
@@ -271,7 +250,7 @@ private:
                 hello["instance"].GetUIntegerSafe(Max<ui64>());
             if (hello["type"].GetStringSafe("") != "hello" ||
                 instanceId >= InstanceCount ||
-                !Instances[instanceId].Closed())
+                Instances[instanceId])
             {
                 return MakeError(
                     E_ARGUMENT,
@@ -280,7 +259,7 @@ private:
             }
 
             STORAGE_INFO("Instance " << instanceId << " connected");
-            Instances[instanceId].Swap(connection);
+            Instances[instanceId] = std::move(connection);
         }
 
         return {};
@@ -296,7 +275,7 @@ private:
         TVector<NJson::TJsonValue> messages;
         const TInstant deadline = Timeout.ToDeadLine();
         for (ui32 i = 0; i < InstanceCount; ++i) {
-            auto [message, error] = RecvFrame(Instances[i], deadline);
+            auto [message, error] = RecvFrame(*Instances[i], deadline);
             if (HasError(error)) {
                 return MakeError(
                     error.GetCode(),
@@ -342,7 +321,7 @@ private:
         }
 
         for (ui32 i = 0; i < InstanceCount; ++i) {
-            auto error = SendFrame(Instances[i], result, deadline);
+            auto error = SendFrame(*Instances[i], result, deadline);
             if (HasError(error)) {
                 return MakeError(
                     error.GetCode(),
@@ -359,7 +338,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSyncClient::TSyncClient(TSocketHolder socket, TDuration timeout)
+TSyncClient::TSyncClient(TSocket socket, TDuration timeout)
     : Socket(std::move(socket))
     , Timeout(timeout)
 {}
@@ -370,51 +349,30 @@ TResultOrError<std::unique_ptr<TSyncClient>> TSyncClient::Connect(
     ui32 instanceId,
     TDuration timeout)
 {
-    addrinfo hints = {};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    addrinfo* addrs = nullptr;
-    const TString service = ToString(port);
-    const int res =
-        getaddrinfo(host.c_str(), service.c_str(), &hints, &addrs);
-    if (res != 0) {
+    //
+    // The util networking API reports the resolution and connection errors
+    // via exceptions.
+    //
+
+    TMaybe<TSocket> socket;
+    try {
+        socket.ConstructInPlace(TNetworkAddress(host, port), timeout);
+    } catch (...) {
         return MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "getaddrinfo " << host << ": "
-                << gai_strerror(res));
-    }
-
-    TSocketHolder socket;
-    NProto::TError error = MakeError(E_IO, "no addresses");
-    for (addrinfo* ai = addrs; ai; ai = ai->ai_next) {
-        TSocketHolder candidate(
-            ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol));
-        if (candidate.Closed()) {
-            error = MakeSystemError("socket");
-            continue;
-        }
-        if (connect(candidate, ai->ai_addr, ai->ai_addrlen)) {
-            error = MakeSystemError("connect");
-            continue;
-        }
-        socket.Swap(candidate);
-        break;
-    }
-    freeaddrinfo(addrs);
-
-    if (socket.Closed()) {
-        return error;
+            E_IO,
+            TStringBuilder() << "connect to " << host << ":" << port << ": "
+                << CurrentExceptionMessage());
     }
 
     NJson::TJsonValue hello(NJson::JSON_MAP);
     hello["type"] = "hello";
     hello["instance"] = instanceId;
-    error = SendFrame(socket, hello, timeout.ToDeadLine());
+    auto error = SendFrame(*socket, hello, timeout.ToDeadLine());
     if (HasError(error)) {
         return error;
     }
 
-    return std::make_unique<TSyncClient>(std::move(socket), timeout);
+    return std::make_unique<TSyncClient>(std::move(*socket), timeout);
 }
 
 TResultOrError<TVector<NJson::TJsonValue>> TSyncClient::Exchange(

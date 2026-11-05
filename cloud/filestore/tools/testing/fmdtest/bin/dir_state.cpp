@@ -1,5 +1,7 @@
 #include "dir_state.h"
 
+#include <library/cpp/json/writer/json.h>
+
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
@@ -39,10 +41,18 @@ bool NamesFromJson(const NJson::TJsonValue& json, TVector<TString>& names)
 
 TString FormatAttrs(const TFileAttrs& attrs)
 {
-    return TStringBuilder() << "{ino=" << attrs.Ino
-        << ", mode=" << Sprintf("%o", attrs.Mode)
-        << ", size=" << attrs.Size
-        << ", links=" << attrs.Links << "}";
+    NJsonWriter::TBuf buf;
+    buf.BeginObject();
+    buf.WriteKey("ino");
+    buf.WriteULongLong(attrs.Ino);
+    buf.WriteKey("mode");
+    buf.WriteString(Sprintf("%o", attrs.Mode));
+    buf.WriteKey("size");
+    buf.WriteULongLong(attrs.Size);
+    buf.WriteKey("links");
+    buf.WriteULongLong(attrs.Links);
+    buf.EndObject();
+    return buf.Str();
 }
 
 NJson::TJsonValue TDirState::ToJson() const
