@@ -120,45 +120,38 @@ void CheckFileSystemEventsAreSentToSubscribersOnly(bool dryRun)
 
     //
     // UnlinkNode produces InvalidateNodeRef for the entry and InvalidateNode
-    // for the removed node: both go to client 2 only. The root's MTime/CTime
-    // changes produce nothing, so client 3 gets nothing.
+    // for the removed node - both go to client 2. The root's MTime/CTime
+    // change produces InvalidateNode for the root - it goes to client 3.
     //
 
     tablet1->UnlinkNode(RootNodeId, "f", false /* unlinkDirectory */);
 
     UNIT_ASSERT_VALUES_EQUAL(
-        1,
+        2,
         env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
     UNIT_ASSERT_VALUES_EQUAL(
         1,
         env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 2, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
 
     //
-    // GenerateFileSystemEvent goes through the same path: InvalidateNode for
-    // the root goes to client 3 only.
+    // Subscriptions are one-shot - the root subscription of client 3 has been
+    // consumed by the root's MTime/CTime change, client 3 has to read the root
+    // again to get the next event. GenerateFileSystemEvent goes through the
+    // same path.
     //
 
     NProto::TFileSystemEvent event;
     event.MutableInvalidateNode()->SetNodeId(RootNodeId);
     auto response = tablet1->GenerateFileSystemEvent(event);
-    UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
-    UNIT_ASSERT_VALUES_EQUAL(
-        2,
-        env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
-
-    //
-    // Subscriptions are one-shot - client 3 has to read the root again to get
-    // the next event.
-    //
-
-    response = tablet1->GenerateFileSystemEvent(event);
     UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetClientCount());
 
     tablet3->GetNodeAttr(RootNodeId);
     response = tablet1->GenerateFileSystemEvent(event);
     UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
+    UNIT_ASSERT_VALUES_EQUAL(
+        3,
+        env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
     UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
 }
 
@@ -374,6 +367,58 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
     Y_UNIT_TEST(ShouldCountButNotSendFileSystemEventsInDryRunMode)
     {
         CheckFileSystemEventsAreSentToSubscribersOnly(true /* dryRun */);
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateNodeUponTimeOnlyChanges)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        auto tablet2 = env.CreateClient("client2", "session2");
+
+        //
+        // Creating an entry changes only the parent's MTime/CTime.
+        //
+
+        tablet2->GetNodeAttr(RootNodeId);
+        const auto nodeId =
+            tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        //
+        // A write that extends the file changes its size and MTime, an
+        // overwrite within the file size changes only its MTime.
+        //
+
+        const ui64 handle = CreateHandle(*tablet1, nodeId);
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->WriteData(handle, 0, 10, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->WriteData(handle, 0, 5, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        //
+        // An explicit time change.
+        //
+
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->SetNodeAttr(TSetNodeAttrArgs(nodeId).SetMTime(42));
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+        UNIT_ASSERT_VALUES_EQUAL(4, env.SentEventCount);
     }
 
     Y_UNIT_TEST(ShouldSubscribeUponListNodes)

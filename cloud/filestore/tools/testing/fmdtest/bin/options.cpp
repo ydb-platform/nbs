@@ -174,6 +174,14 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&RenamePercentage);
 
     opts.AddLongOption(
+            "overwrite-percentage",
+            "the probability (in %) to overwrite each existing file in a round"
+            " without changing its size (i.e. to change only its MTime)")
+        .RequiredArgument("NUM")
+        .DefaultValue(20)
+        .StoreResult(&OverwritePercentage);
+
+    opts.AddLongOption(
             "check-delay",
             "min delay between the end of a modification phase and the"
             " following check phase")

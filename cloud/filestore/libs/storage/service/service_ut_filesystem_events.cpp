@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         UNIT_ASSERT(handler->HasInvalidateNode(nodeId));
     }
 
-    Y_UNIT_TEST(ShouldGenerateInvalidateNodeUponWriteOnlyIfSizeChanges)
+    Y_UNIT_TEST(ShouldGenerateInvalidateNodeUponWrite)
     {
         NProto::TStorageConfig config;
         config.SetFileSystemEventsEnabled(true);
@@ -465,14 +465,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 
         //
         // Overwrites the data within the file size - only MTime changes,
-        // no InvalidateNode is expected. The subscription has been consumed
-        // by the previous event, so the client reads the node again.
+        // InvalidateNode is expected as well. The subscription has been
+        // consumed by the previous event, so the client reads the node again.
         //
 
         handler->Events.clear();
         service.GetNodeAttr(headers, "test", nodeId, "");
         service.WriteData(headers, "test", nodeId, handle, 0, TString(5, 'b'));
-        UNIT_ASSERT(!handler->HasInvalidateNode(nodeId));
+        UNIT_ASSERT(handler->HasInvalidateNode(nodeId));
 
         //
         // Explicit time change via SetNodeAttr - InvalidateNode is expected.
