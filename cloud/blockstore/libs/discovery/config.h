@@ -14,10 +14,10 @@ namespace NCloud::NBlockStore::NDiscovery {
 class TEdsConfig
 {
 private:
-    const NProto::TEdsDiscoveryConfig Config;
+    const NProto::TEdsConfig Config;
 
 public:
-    explicit TEdsConfig(NProto::TEdsDiscoveryConfig config = {});
+    explicit TEdsConfig(NProto::TEdsConfig config = {});
 
     TString GetEndpoint() const;
     TVector<TString> GetHostPatterns() const;

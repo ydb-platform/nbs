@@ -6,7 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TEdsDiscoveryConfig
+message TEdsConfig
 {
     // Cloud DNS EDS plaintext gRPC endpoint, including port.
     optional string Endpoint = 1;
@@ -68,5 +68,5 @@ message TDiscoveryServiceConfig
     optional uint32 MaxPingRequestsPerHealthCheck = 12;
 
     // Cloud DNS EDS discovery settings.
-    optional TEdsDiscoveryConfig Eds = 13;
+    optional TEdsConfig Eds = 13;
 }

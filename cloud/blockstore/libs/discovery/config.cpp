@@ -126,7 +126,7 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEdsConfig::TEdsConfig(NProto::TEdsDiscoveryConfig config)
+TEdsConfig::TEdsConfig(NProto::TEdsConfig config)
     : Config(std::move(config))
 {
 }

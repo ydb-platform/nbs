@@ -23,7 +23,7 @@
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
 namespace NCloud::NBlockStore::NProto {
-    class TEdsDiscoveryConfig;
+    class TEdsConfig;
     class TGrpcClientConfig;
     class TRootKmsConfig;
 }   // namespace NCloud::NBlockStore::NProto
@@ -54,7 +54,7 @@ struct TServerModuleFactories
         ITimerPtr timer)> IamClientFactory;
 
     std::function<NDiscovery::IInstanceFetcherPtr(
-        const NProto::TEdsDiscoveryConfig& config,
+        const NProto::TEdsConfig& config,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring)> EdsInstanceFetcherFactory;
 
