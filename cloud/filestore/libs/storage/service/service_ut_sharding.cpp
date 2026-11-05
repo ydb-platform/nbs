@@ -7842,7 +7842,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false /* forceDirectoryCreationInShards */);
         WaitForTabletStart(service);
 
-        headers = service.InitSession(fsId, "client");
+        headers = service.InitSession(
+            fsId,
+            "client",
+            "" /*checkpointId*/,
+            true /* restoreClientSession*/);
 
         //
         // Creating a dir directly in shard - it's not possible to create it
@@ -7853,7 +7857,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // the recent changes - that's why we have this test.
         //
         const auto shardId = fsId + "_s1";
-        auto shardHeaders = service.InitSession(shardId, "client");
+        auto shardHeaders = service.InitSession(
+            shardId,
+            "client",
+            "" /*checkpointId*/,
+            true /* restoreClientSession*/);
         const auto uuid = CreateGuidAsString();
 
         const auto dir2Id =service.CreateNode(

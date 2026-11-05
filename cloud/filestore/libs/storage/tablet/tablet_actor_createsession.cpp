@@ -415,6 +415,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 session->GetSessionId().c_str());
 
             args.SessionId = session->GetSessionId();
+            args.Request.MutableHeaders()->SetSessionId(
+                session->GetSessionId());
 
             DoRecoverSession(
                 *db,
