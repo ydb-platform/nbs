@@ -500,6 +500,12 @@ message TInterconnectConfig {
     optional uint32 RdmaPayloadCopySizeThreshold = 60 [default = 65536]; // 0 disables copying RDMA payload to regular memory
     optional uint32 MaxRdmaRetryBackoffLevel = 61 [default = 8]; // 5s * 2^8 = 1280s, about 21 minutes by default
     optional bool EnableRdmaSendReceive = 69 [default = false];
+    // Prefer the RDMA context whose GID corresponds to this local IP address.
+    // Falls back to the local TCP interconnect address when no matching context is found.
+    optional string RdmaAddress = 73;
+    // Prefer the first address of this network interface that has a matching RDMA context.
+    // RdmaAddress has priority. Falls back to the local TCP interconnect address when no match is found.
+    optional string RdmaInterface = 74;
 
     // ballast is added to IC handshake frames to ensure correctness of jumbo frames transmission over network
     optional uint32 HandshakeBallastSize = 14;

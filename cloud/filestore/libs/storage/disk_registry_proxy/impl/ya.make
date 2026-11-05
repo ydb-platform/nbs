@@ -14,7 +14,6 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
 
     contrib/ydb/core/base
-    contrib/ydb/core/tablet
     contrib/ydb/library/actors/core
 )
 
