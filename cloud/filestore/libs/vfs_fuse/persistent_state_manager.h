@@ -95,9 +95,9 @@ struct IPersistentStateManager
         const TString& fileSystemId,
         const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
-    // returns the file, otherwise creates the file first, unless the total
-    // size limit of the component is reached. That is the only case in which
-    // an empty guard is returned without an error: it means the component is
+    // returns the file, otherwise creates the file first, unless the requested
+    // size is below the minimum or the total size limit would be exceeded.
+    // These cases return an empty guard without an error: the component is
     // not to be used, since there is no state file for it.
     // stateFileSize must be positive and is used to create and account a
     // new file. Zero returns E_ARGUMENT even if the file already exists.

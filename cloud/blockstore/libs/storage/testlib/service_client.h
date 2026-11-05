@@ -212,6 +212,8 @@ public:
         const TString& diskId,
         const TString& agentId,
         const TString& path,
+        NCloud::NProto::EStorageMediaKind mediaKind =
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
         const TString& folderId = "yc.nbs",
         const TString& cloudId = "yc.nbs-test")
             -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>;

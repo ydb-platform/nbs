@@ -2329,7 +2329,7 @@ struct TTxIndexTablet
         const ui32 WriteBlobThreshold;
         const ui64 Handle;
         const TByteRange ByteRange;
-        /*const*/ IBlockBufferPtr Buffer;
+        /*const*/ IConstBlockBufferPtr Buffer;
         // Used when we want to write data to a specific node, not the node
         // inferred from the handle.
         const ui64 ExplicitNodeId = InvalidNodeId;
@@ -2343,7 +2343,7 @@ struct TTxIndexTablet
                 const ui32 writeBlobThreshold,
                 const NProto::TWriteDataRequest& request,
                 TByteRange byteRange,
-                IBlockBufferPtr buffer,
+                IConstBlockBufferPtr buffer,
                 NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))

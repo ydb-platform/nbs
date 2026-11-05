@@ -1263,7 +1263,7 @@ TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
     clientConfig->MaxResponseDelay = 4s;
-    clientConfig->MaxEagerRequestBytes = 32_KB;
+    clientConfig->MaxEagerRequestBytes = 128_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1328,9 +1328,9 @@ TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
     };
     const TCase cases[] = {
         {1024, true},
-        {32_KB, true},
-        {32_KB + 1, false},
-        {64_KB, false},
+        {128_KB, true},
+        {128_KB + 1, false},
+        {256_KB, false},
     };
 
     for (const auto& testCase: cases) {
@@ -1389,7 +1389,7 @@ TEST(TRdmaClientTest, ShouldNotSendEagerRequestsAboveServerLimit)
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
     clientConfig->MaxResponseDelay = 4s;
-    clientConfig->MaxEagerRequestBytes = 32_KB;
+    clientConfig->MaxEagerRequestBytes = 512_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1406,7 +1406,7 @@ TEST(TRdmaClientTest, ShouldNotSendEagerRequestsAboveServerLimit)
 
         TAcceptMessage acceptMsg{};
         InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
-        acceptMsg.MaxEagerRequestBytes = 8_KB;
+        acceptMsg.MaxEagerRequestBytes = 128_KB;
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1451,9 +1451,9 @@ TEST(TRdmaClientTest, ShouldNotSendEagerRequestsAboveServerLimit)
         int NumSge;
     };
     const TCase cases[] = {
-        {4_KB, 2},
-        {8_KB, 2},
-        {16_KB, 1},
+        {64_KB, 2},
+        {128_KB, 2},
+        {256_KB, 1},
     };
 
     for (const auto& testCase: cases) {
@@ -1494,10 +1494,10 @@ TEST(TRdmaClientTest, ShouldHoldEagerBufferUntilSendCompletes)
     auto clientConfig = std::make_shared<TClientConfig>();
     clientConfig->MaxReconnectDelay = 5s;
     clientConfig->MaxResponseDelay = 2s;
-    clientConfig->MaxEagerRequestBytes = 4_KB;
+    clientConfig->MaxEagerRequestBytes = 64_KB;
     // one buffer per chunk, so chunk reuse is visible in registrations
-    clientConfig->BufferPool.ChunkSize = 4_KB;
-    clientConfig->BufferPool.MaxChunkAlloc = 4_KB;
+    clientConfig->BufferPool.ChunkSize = 64_KB;
+    clientConfig->BufferPool.MaxChunkAlloc = 64_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
@@ -1551,8 +1551,8 @@ TEST(TRdmaClientTest, ShouldHoldEagerBufferUntilSendCompletes)
         auto request = endpoint->AllocateRequest(
             std::move(handler),
             std::make_unique<TNullContext>(),
-            4_KB,
-            4_KB);
+            64_KB,
+            64_KB);
         EXPECT_FALSE(HasError(request.GetError()));
         return request.ExtractResult();
     };
@@ -1602,21 +1602,21 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
     clientConfig->UseMemoryWindows = true;
     clientConfig->MaxReconnectDelay = 5s;
     clientConfig->MaxResponseDelay = 4s;
-    clientConfig->MaxEagerRequestBytes = 32_KB;
+    clientConfig->MaxEagerRequestBytes = 128_KB;
 
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    std::atomic<int> bound = 0;
+    std::atomic<int> invalidated = 0;
+    std::atomic<int> destroyed = 0;
+    std::atomic<int> sentSges = 0;
 
     auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
     client->Start();
     Y_DEFER {
         client->Stop();
     };
-
-    std::atomic<int> bound = 0;
-    std::atomic<int> invalidated = 0;
-    std::atomic<int> destroyed = 0;
-    std::atomic<int> sentSges = 0;
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -1726,7 +1726,7 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
 
     // eager request binds and invalidates the response buffer only
     auto response1 = std::make_shared<TResponse>();
-    send(response1, 4_KB);
+    send(response1, 64_KB);
     handleRequest();
 
     ASSERT_TRUE(response1->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
@@ -1746,7 +1746,7 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
 
     // timed out eager request destroys its single memory window
     auto response2 = std::make_shared<TResponse>();
-    send(response2, 4_KB);
+    send(response2, 64_KB);
 
     ASSERT_TRUE(response2->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
     ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2->Status);
@@ -1764,7 +1764,7 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
 
     // request above the eager limit binds both buffers
     auto response3 = std::make_shared<TResponse>();
-    send(response3, 64_KB);
+    send(response3, 256_KB);
     handleRequest();
 
     ASSERT_TRUE(response3->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
@@ -2361,15 +2361,15 @@ TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
     auto logging =
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
+    std::atomic<int> bound = 0;
+    std::atomic<int> destroyed = 0;
+
     auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
 
     client->Start();
     Y_DEFER {
         client->Stop();
     };
-
-    std::atomic<int> bound = 0;
-    std::atomic<int> destroyed = 0;
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {

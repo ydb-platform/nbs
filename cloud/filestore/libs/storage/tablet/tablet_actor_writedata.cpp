@@ -153,9 +153,9 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = externalPayload
-                           ? CreateBlockBuffer(range, std::move(payload))
-                           : CreateBlockBuffer(range, std::move(buffer));
+    IConstBlockBufferPtr blockBuffer =
+        externalPayload ? CreateBlockBuffer(range, std::move(payload))
+                        : CreateBlockBuffer(range, std::move(buffer));
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
@@ -321,15 +321,18 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         });
 
     for (ui64 b = args.ByteRange.FirstAlignedBlock();
-            b < args.ByteRange.FirstAlignedBlock() + args.ByteRange.AlignedBlockCount();
-            ++b)
+         b < args.ByteRange.FirstAlignedBlock() +
+                 args.ByteRange.AlignedBlockCount();
+         ++b)
     {
         WriteFreshBlock(
             *db,
             args.NodeId,
             args.CommitId,
             b,
-            args.Buffer->GetBlock(b - args.ByteRange.FirstAlignedBlock()));
+            TBlockDataHolder{
+                b - args.ByteRange.FirstAlignedBlock(),
+                args.Buffer});
     }
 
     if (args.ByteRange.UnalignedHeadLength()) {

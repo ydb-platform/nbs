@@ -4,6 +4,9 @@
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
+#include <library/cpp/protobuf/json/config.h>
+#include <library/cpp/protobuf/json/json2proto.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
@@ -12,8 +15,11 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/generic/ylimits.h>
+#include <util/string/builder.h>
 #include <util/system/tempfile.h>
 
+#include <cstring>
 #include <span>
 
 namespace NCloud::NFileStore::NStateFileTool {
@@ -35,8 +41,6 @@ using EVersion = EFileRingBufferVersion;
         TestImpl##name(EVersion::V6);                                          \
     }                                                                          \
     void TestImpl##name(EVersion version)
-
-// FILE_RING_BUFFER_TEST
 
 const void* Alloc(TFileRingBuffer& ringBuffer, const TString& entry)
 {
@@ -64,6 +68,22 @@ bool PopFront(TFileRingBuffer& ringBuffer)
     return result.Removed;
 }
 
+TString Dump(TFileRingBuffer& ringBuffer)
+{
+    TStringBuilder result;
+    const auto error = ringBuffer.Visit(
+        [&](ui32 checksum, ui32 tag, TStringBuf entry)
+        {
+            Y_UNUSED(checksum);
+            if (!result.empty()) {
+                result << ",";
+            }
+            result << entry << ":" << tag;
+        });
+    UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TBootstrap
@@ -88,10 +108,11 @@ struct TBootstrap
 
     void Execute(
         const TFunctionRef<void(TFileRingBuffer&)>& fn,
-        EFileRingBufferVersion version)
+        EFileRingBufferVersion version,
+        ui64 dataCapacity = DataCapacity)
     {
         const auto layout =
-            TFileRingBufferLayout::FromCapacity(DataCapacity, MetadataCapacity);
+            TFileRingBufferLayout::FromCapacity(dataCapacity, MetadataCapacity);
         UNIT_ASSERT(layout);
 
         TFileRingBuffer ringBuffer(
@@ -115,9 +136,42 @@ struct TBootstrap
         RawData = Accessor.GetRawData();
     }
 
+    void Reopen()
+    {
+        Accessor.Close();
+        Remap();
+    }
+
     NProto::TStateFileDump Dump(NProto::EStateFileType fileType)
     {
         return TStateFileEditor::DumpStateFile(Accessor, fileType);
+    }
+
+    NCloud::NProto::TError Patch(
+        const NProto::TStateFileDump& newState,
+        NProto::EStateFileType fileType)
+    {
+        return TStateFileEditor::PatchStateFile(Accessor, newState, fileType);
+    }
+
+    void CheckPatchRejected(
+        const NProto::TStateFileDump& state,
+        NProto::EStateFileType fileType,
+        ui32 expectedCode,
+        TStringBuf expectedMessage)
+    {
+        const TString before(
+            RawData.empty() ? "" : RawData.data(),
+            RawData.size());
+        const auto error = Patch(state, fileType);
+        UNIT_ASSERT_VALUES_EQUAL(expectedCode, error.GetCode());
+        UNIT_ASSERT_C(
+            error.GetMessage().Contains(expectedMessage),
+            error.GetMessage());
+        UNIT_ASSERT_EQUAL_C(
+            before,
+            TString(RawData.empty() ? "" : RawData.data(), RawData.size()),
+            "State file was modified despite patch failure");
     }
 
 private:
@@ -128,6 +182,13 @@ private:
         RawData = Accessor.GetRawData();
     }
 };
+
+TStringBuf AsBytes(const TVector<ui64>& words)
+{
+    return {
+        reinterpret_cast<const char*>(words.data()),
+        words.size() * sizeof(ui64)};
+}
 
 }   // namespace
 
@@ -867,6 +928,1047 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
             UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
             UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestMetadata());
         }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRepairMetadataChecksum)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                const auto result = ringBuffer.SetMetadata("meta");
+                UNIT_ASSERT_C(
+                    !HasError(result.Error),
+                    FormatError(result.Error));
+                UNIT_ASSERT(result.Updated);
+            },
+            version);
+
+        UNIT_ASSERT(
+            !bootstrap.Dump(NProto::EStateFileType::Unknown).GetIsCorrupted());
+        bootstrap.Accessor.ValidateAndInitialize();
+        bootstrap.Accessor.GetRawMetadata()[0] ^= 1;
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(dump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            dump.GetHeader().GetMetadataChecksum(),
+            dump.GetActualMetadataChecksum());
+
+        dump.MutableHeader()->SetMetadataChecksum(
+            dump.GetActualMetadataChecksum());
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(dump, NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        const auto repairedDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!repairedDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            repairedDump.GetHeader().GetMetadataChecksum(),
+            repairedDump.GetActualMetadataChecksum());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchHeader)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(PushBack(ringBuffer, "Hello"));
+                UNIT_ASSERT(PushBack(ringBuffer, "What"));
+                UNIT_ASSERT(PushBack(ringBuffer, "Bye"));
+            },
+            version);
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT(dump.HasHeader());
+        UNIT_ASSERT_VALUES_EQUAL(3, dump.GetEntries().size());
+
+        dump.MutableHeader()->SetReadPos(dump.GetEntries(1).GetEntryPos());
+        dump.MutableHeader()->SetWritePos(dump.GetEntries(2).GetEntryPos());
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(dump, NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        const auto newDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!newDump.GetIsCorrupted());
+        UNIT_ASSERT(newDump.HasHeader());
+        UNIT_ASSERT_VALUES_EQUAL(1, newDump.GetEntries().size());
+
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(!ringBuffer.IsCorrupted());
+                UNIT_ASSERT_VALUES_EQUAL("What:0", Dump(ringBuffer));
+            },
+            version);
+
+        auto clearDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        clearDump.MutableHeader()->SetReadPos(0);
+        clearDump.MutableHeader()->SetWritePos(0);
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(
+                clearDump,
+                NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(!ringBuffer.IsCorrupted());
+                UNIT_ASSERT(ringBuffer.Empty());
+            },
+            version);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldClearWrappedStateFile)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                while (PushBack(ringBuffer, "123")) {
+                }
+                UNIT_ASSERT(PopFront(ringBuffer));
+                UNIT_ASSERT(PopFront(ringBuffer));
+                UNIT_ASSERT(PushBack(ringBuffer, "ABCD"));
+            },
+            version);
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!patch.GetIsCorrupted());
+        UNIT_ASSERT_LT(
+            patch.GetHeader().GetWritePos(),
+            patch.GetHeader().GetReadPos());
+        patch.MutableHeader()->SetReadPos(0);
+        patch.MutableHeader()->SetWritePos(0);
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(patch, NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(!ringBuffer.IsCorrupted());
+                UNIT_ASSERT(ringBuffer.Empty());
+            },
+            version);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldClearStateFileWithOutOfRangeCursor)
+    {
+        auto test = [&](auto corruptCursor)
+        {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+                version);
+
+            bootstrap.Accessor.ValidateAndInitialize();
+            auto* header = bootstrap.Accessor.GetHeader();
+            UNIT_ASSERT(header != nullptr);
+            corruptCursor(*header);
+
+            auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT(patch.GetIsCorrupted());
+            patch.MutableHeader()->SetReadPos(0);
+            patch.MutableHeader()->SetWritePos(0);
+
+            UNIT_ASSERT_C(
+                !HasError(bootstrap.Patch(
+                    patch,
+                    NProto::EStateFileType::Unknown)),
+                "Patch failed");
+
+            bootstrap.Execute(
+                [](TFileRingBuffer& ringBuffer)
+                {
+                    UNIT_ASSERT(!ringBuffer.IsCorrupted());
+                    UNIT_ASSERT(ringBuffer.Empty());
+                    UNIT_ASSERT(PushBack(ringBuffer, "Recovered"));
+                    UNIT_ASSERT_VALUES_EQUAL("Recovered:0", Dump(ringBuffer));
+                },
+                version);
+        };
+
+        test([](auto& header) {
+            header.ReadPos = header.DataCapacity + 1;
+        });
+        test([](auto& header) {
+            header.WritePos = header.DataCapacity + 1;
+        });
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectOverlappingEntryRepairs)
+    {
+        constexpr ui64 dataCapacity = 128;
+        constexpr ui64 highEntryPos = 64;
+        constexpr ui32 highEntryDataSize = 32;
+        constexpr ui64 slackPos = 104;
+        constexpr ui64 lowEntryPos = 0;
+        constexpr ui32 lowEntryDataSize = 88;
+        constexpr ui64 lowEntryEnd = 96;
+
+        TBootstrap bootstrap;
+        bootstrap.Execute([](TFileRingBuffer&) {}, version, dataCapacity);
+        bootstrap.Accessor.ValidateAndInitialize();
+
+        auto* dataProcessor = bootstrap.Accessor.GetDataProcessor();
+        auto* header = bootstrap.Accessor.GetHeader();
+        UNIT_ASSERT(dataProcessor != nullptr);
+        UNIT_ASSERT(header != nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            slackPos,
+            highEntryPos + dataProcessor->GetEntrySize(highEntryDataSize));
+        UNIT_ASSERT_VALUES_EQUAL(
+            lowEntryEnd,
+            lowEntryPos + dataProcessor->GetEntrySize(lowEntryDataSize));
+
+        char* lowData =
+            dataProcessor->GetEntryDataPtr(lowEntryPos, lowEntryDataSize);
+        char* highData =
+            dataProcessor->GetEntryDataPtr(highEntryPos, highEntryDataSize);
+        UNIT_ASSERT(lowData != nullptr);
+        UNIT_ASSERT(highData != nullptr);
+        std::memset(lowData, 'B', lowEntryDataSize);
+        std::memset(highData, 'A', highEntryDataSize);
+
+        TFileRingBufferEntryHeader highEntryHeader{
+            .DataSize = highEntryDataSize,
+            .DataChecksum = Crc32c(highData, highEntryDataSize)};
+        UNIT_ASSERT(
+            dataProcessor->WriteEntryHeader(highEntryPos, highEntryHeader));
+        UNIT_ASSERT(dataProcessor->WriteEntryHeader(slackPos, {}));
+
+        const TFileRingBufferEntryHeader lowEntryHeader{
+            .DataSize = lowEntryDataSize,
+            .DataChecksum = Crc32c(lowData, lowEntryDataSize)};
+        UNIT_ASSERT(
+            dataProcessor->WriteEntryHeader(lowEntryPos, lowEntryHeader));
+
+        // Corrupting A's checksum also changes bytes in B's overlapping
+        // payload, so both entries need a checksum repair.
+        highEntryHeader.DataChecksum ^= 1;
+        UNIT_ASSERT(
+            dataProcessor->WriteEntryHeader(highEntryPos, highEntryHeader));
+        header->ReadPos = highEntryPos;
+        header->WritePos = 32;
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(patch.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(2, patch.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            highEntryPos,
+            patch.GetEntries(0).GetEntryPos());
+        UNIT_ASSERT_VALUES_EQUAL(
+            lowEntryPos,
+            patch.GetEntries(1).GetEntryPos());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            patch.GetEntries(0).GetDataChecksum(),
+            patch.GetEntries(0).GetActualDataChecksum());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            patch.GetEntries(1).GetDataChecksum(),
+            patch.GetEntries(1).GetActualDataChecksum());
+
+        patch.MutableHeader()->SetReadPos(lowEntryPos);
+        patch.MutableHeader()->SetWritePos(lowEntryEnd);
+        for (auto& entry: *patch.MutableEntries()) {
+            entry.SetDataChecksum(entry.GetActualDataChecksum());
+        }
+
+        bootstrap.CheckPatchRejected(
+            patch,
+            NProto::EStateFileType::Unknown,
+            E_ARGUMENT,
+            "overwrite retained entry");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRetainFirstMatchingEntryBoundary)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute([](TFileRingBuffer&) {}, version, 128);
+        bootstrap.Accessor.ValidateAndInitialize();
+        auto* processor = bootstrap.Accessor.GetDataProcessor();
+        auto* header = bootstrap.Accessor.GetHeader();
+        auto writeEntry = [&](ui64 pos, ui32 size, char fill)
+        {
+            auto* data = processor->GetEntryDataPtr(pos, size);
+            UNIT_ASSERT(data != nullptr);
+            std::memset(data, fill, size);
+            UNIT_ASSERT(processor->WriteEntryHeader(
+                pos,
+                {.DataSize = size, .DataChecksum = Crc32c(data, size)}));
+        };
+
+        writeEntry(0, 32, 'W');
+        writeEntry(40, 56, 'Y');
+        writeEntry(64, 32, 'X');
+        UNIT_ASSERT(processor->WriteEntryHeader(104, {}));
+        header->ReadPos = 64;
+        header->WritePos = 48;
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(patch.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(3, patch.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(40, patch.GetEntries(2).GetEntryPos());
+        patch.MutableHeader()->SetWritePos(104);
+
+        auto overlappingPatch = patch;
+        auto* overlappingEntry = overlappingPatch.MutableEntries(2);
+        overlappingEntry->MutableWriteDataRequestMetadata()->SetOffset(0);
+        overlappingEntry->SetDataChecksum(
+            overlappingEntry->GetActualDataChecksum());
+
+        bootstrap.CheckPatchRejected(
+            overlappingPatch,
+            NProto::EStateFileType::WriteBackCache,
+            E_ARGUMENT,
+            "overwrite retained entry");
+
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(
+                patch,
+                NProto::EStateFileType::WriteBackCache)),
+            "Patch failed");
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(64, dump.GetEntries(0).GetEntryPos());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchWrappedHighSegmentBoundary)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                while (PushBack(ringBuffer, "123")) {
+                }
+
+                UNIT_ASSERT(PopFront(ringBuffer));
+                UNIT_ASSERT(PopFront(ringBuffer));
+                UNIT_ASSERT(PushBack(ringBuffer, "ABCD"));
+            },
+            version);
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+
+        int firstLowEntry = -1;
+        for (int i = 0; i < dump.GetEntries().size(); ++i) {
+            if (dump.GetEntries(i).GetEntryPos() == 0) {
+                firstLowEntry = i;
+                break;
+            }
+        }
+        UNIT_ASSERT_LT(0, firstLowEntry);
+
+        bootstrap.Accessor.ValidateAndInitialize();
+        const auto& lastHighEntry = dump.GetEntries(firstLowEntry - 1);
+        const ui64 highSegmentEnd =
+            lastHighEntry.GetEntryPos() +
+            bootstrap.Accessor.GetDataProcessor()->GetEntrySize(
+                lastHighEntry.GetDataSize());
+        dump.MutableHeader()->SetWritePos(highSegmentEnd);
+
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(dump, NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        const auto patchedDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!patchedDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            firstLowEntry,
+            patchedDump.GetEntries().size());
+        for (int i = 0; i < firstLowEntry; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                dump.GetEntries(i).GetEntryPos(),
+                patchedDump.GetEntries(i).GetEntryPos());
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchEntries)
+    {
+        ui32 tag = 0;
+
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [&](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(PushBack(ringBuffer, "Hello"));
+                UNIT_ASSERT(PushBack(ringBuffer, "What"));
+                UNIT_ASSERT(PushBack(ringBuffer, "Bye"));
+                tag = Min(2U, ringBuffer.GetMaxTag());
+            },
+            version);
+
+        bootstrap.Accessor.ValidateAndInitialize();
+        auto entryHeader =
+            bootstrap.Accessor.GetDataProcessor()->ReadEntryHeader(0);
+        entryHeader.DataChecksum ^= 1;
+        UNIT_ASSERT(bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
+            0,
+            entryHeader));
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(dump.GetIsCorrupted());
+        UNIT_ASSERT(dump.HasHeader());
+        UNIT_ASSERT_VALUES_EQUAL(3, dump.GetEntries().size());
+
+        dump.MutableEntries(0)->SetDataChecksum(
+            dump.GetEntries(0).GetActualDataChecksum());
+        dump.MutableEntries(1)->SetTag(tag);
+        dump.MutableEntries(2)->SetFreeFlag(true);
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(dump, NProto::EStateFileType::Unknown)),
+            "Patch failed");
+
+        bootstrap.Execute(
+            [&](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(ringBuffer.Validate());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TStringBuilder() << "Hello:0,What:" << tag,
+                    Dump(ringBuffer));
+            },
+            version);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchOpaqueEntryPayloads)
+    {
+        for (const auto fileType: {NProto::EStateFileType::Unknown,
+                                  NProto::EStateFileType::HandleOpsQueue})
+        {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, TString(32, 'x'))); },
+                version);
+
+            auto patch = bootstrap.Dump(fileType);
+            UNIT_ASSERT(!patch.GetEntries(0).HasWriteDataRequestMetadata());
+            patch.MutableEntries(0)->SetTag(3);
+            UNIT_ASSERT_C(
+                !HasError(bootstrap.Patch(patch, fileType)),
+                "Patch failed");
+            const auto dump = bootstrap.Dump(fileType);
+            UNIT_ASSERT(!dump.GetIsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(3, dump.GetEntries(0).GetTag());
+            UNIT_ASSERT(!dump.GetEntries(0).HasWriteDataRequestMetadata());
+
+            auto wrongPayloadPatch = dump;
+            wrongPayloadPatch.MutableEntries(0)
+                ->MutableDestroyHandleRequest()
+                ->SetNodeId(1);
+            bootstrap.CheckPatchRejected(
+                wrongPayloadPatch,
+                fileType,
+                E_ARGUMENT,
+                "request data presence or type");
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectDirectoryHandlesStateFile)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute([](TFileRingBuffer&) {}, version);
+        const auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        bootstrap.CheckPatchRejected(
+            patch,
+            NProto::EStateFileType::DirectoryHandles,
+            E_ARGUMENT,
+            "DirectoryHandles state files are not ring buffers");
+    }
+
+    Y_UNIT_TEST(ShouldRejectChangingZeroSizeEntry)
+    {
+        for (const auto fileType:
+             {NProto::EStateFileType::Unknown,
+              NProto::EStateFileType::WriteBackCache})
+        {
+            TBootstrap bootstrap;
+            bootstrap.Execute([](TFileRingBuffer&) {}, EVersion::V6, 128);
+            bootstrap.Accessor.ValidateAndInitialize();
+            auto* processor = bootstrap.Accessor.GetDataProcessor();
+            auto* header = bootstrap.Accessor.GetHeader();
+            for (const ui64 pos: {0, 64}) {
+                auto* data = processor->GetEntryDataPtr(pos, 32);
+                UNIT_ASSERT(data != nullptr);
+                std::memset(data, 'x', 32);
+                UNIT_ASSERT(processor->WriteEntryHeader(
+                    pos,
+                    {.DataSize = 32, .DataChecksum = Crc32c(data, 32)}));
+            }
+            UNIT_ASSERT(processor->WriteEntryHeader(104, {.DataChecksum = 1}));
+            header->ReadPos = 64;
+            header->WritePos = 40;
+
+            const auto dump = bootstrap.Dump(fileType);
+            UNIT_ASSERT(dump.GetIsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(2, dump.GetEntries().size());
+            UNIT_ASSERT_VALUES_EQUAL(104, dump.GetEntries(1).GetEntryPos());
+            UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries(1).GetDataSize());
+            UNIT_ASSERT(!dump.GetEntries(1).HasActualDataChecksum());
+
+            auto patch = dump;
+            auto* entry = patch.MutableEntries(1);
+            entry->SetDataChecksum(0);
+            if (fileType == NProto::EStateFileType::WriteBackCache) {
+                entry->SetFreeFlag(true);
+            } else {
+                entry->SetTag(1);
+            }
+
+            bootstrap.CheckPatchRejected(
+                patch,
+                fileType,
+                E_ARGUMENT,
+                "Changing a zero-size entry is not allowed");
+
+            patch = dump;
+            patch.MutableHeader()->SetReadPos(0);
+            patch.MutableHeader()->SetWritePos(0);
+            UNIT_ASSERT_C(
+                !HasError(bootstrap.Patch(patch, fileType)),
+                "Patch failed");
+            const auto clearedDump = bootstrap.Dump(fileType);
+            UNIT_ASSERT(!clearedDump.GetIsCorrupted());
+            UNIT_ASSERT_VALUES_EQUAL(0, clearedDump.GetEntries().size());
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectMakingFreeEntryLive)
+    {
+        for (const bool committed: {false, true}) {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [&](TFileRingBuffer& ringBuffer)
+                {
+                    UNIT_ASSERT(PushBack(ringBuffer, "Hello"));
+                    const auto allocation = ringBuffer.Alloc(32);
+                    UNIT_ASSERT(!HasError(allocation.Error));
+                    UNIT_ASSERT(allocation.AllocationPtr != nullptr);
+                    if (committed) {
+                        std::memset(allocation.AllocationPtr, 'x', 32);
+                        UNIT_ASSERT(!HasError(
+                            ringBuffer.Commit(allocation.AllocationPtr)));
+                        UNIT_ASSERT(!HasError(
+                            ringBuffer.Free(allocation.AllocationPtr)));
+                    }
+                },
+                version);
+
+            auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+            UNIT_ASSERT_VALUES_EQUAL(2, patch.GetEntries().size());
+            UNIT_ASSERT(patch.GetEntries(1).GetFreeFlag());
+            UNIT_ASSERT(!patch.GetEntries(1).HasActualDataChecksum());
+            patch.MutableEntries(1)->SetFreeFlag(false);
+
+            bootstrap.CheckPatchRejected(
+                patch,
+                NProto::EStateFileType::Unknown,
+                E_ARGUMENT,
+                "Making a free entry live is not allowed");
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectShortWriteBackCachePayloads)
+    {
+        for (const ui32 size: {1U, 24U}) {
+            TBootstrap bootstrap;
+            bootstrap.Execute(
+                [&](TFileRingBuffer& ringBuffer)
+                { UNIT_ASSERT(PushBack(ringBuffer, TString(size, 'x'))); },
+                version);
+
+            auto patch = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+            bootstrap.CheckPatchRejected(
+                patch,
+                NProto::EStateFileType::WriteBackCache,
+                E_ARGUMENT,
+                "Invalid write request payload size");
+
+            patch.MutableEntries(0)->SetFreeFlag(true);
+            UNIT_ASSERT_C(
+                !HasError(bootstrap.Patch(
+                    patch,
+                    NProto::EStateFileType::WriteBackCache)),
+                "Patch failed");
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectHeaderChangeWithUnrepairedChecksum)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+        bootstrap.Accessor.ValidateAndInitialize();
+        auto* processor = bootstrap.Accessor.GetDataProcessor();
+        auto header = processor->ReadEntryHeader(0);
+        header.DataChecksum ^= 1;
+        UNIT_ASSERT(processor->WriteEntryHeader(0, header));
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        patch.MutableEntries(0)->SetTag(1);
+        bootstrap.CheckPatchRejected(
+            patch,
+            NProto::EStateFileType::Unknown,
+            E_ARGUMENT,
+            "Changing entry header or data");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchWriteDataRequestFields)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                const TVector<ui64> requestWithPayload{1, 2, 3, 4};
+                UNIT_ASSERT(PushBack(ringBuffer, AsBytes(requestWithPayload)));
+            },
+            version);
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+
+        {
+            auto overflowingPatch = dump;
+            auto* requestInfo = overflowingPatch.MutableEntries(0)
+                                    ->MutableWriteDataRequestMetadata();
+            requestInfo->SetOffset(Max<ui64>() - requestInfo->GetSize() + 1);
+
+            bootstrap.CheckPatchRejected(
+                overflowingPatch,
+                NProto::EStateFileType::WriteBackCache,
+                E_ARGUMENT,
+                "offset and size overflow");
+        }
+
+        auto& requestInfo =
+            *dump.MutableEntries(0)->MutableWriteDataRequestMetadata();
+        requestInfo.SetNodeId(10);
+        requestInfo.SetHandle(20);
+        requestInfo.SetOffset(Max<ui64>() - requestInfo.GetSize());
+
+        // PatchStateFile must initialize a freshly mapped accessor itself.
+        bootstrap.Reopen();
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(
+                dump,
+                NProto::EStateFileType::WriteBackCache)),
+            "Patch failed");
+
+        const auto patchedDump = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(!patchedDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(1, patchedDump.GetEntries().size());
+
+        const auto& patchedInfo =
+            patchedDump.GetEntries(0).GetWriteDataRequestMetadata();
+        UNIT_ASSERT_VALUES_EQUAL(10, patchedInfo.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(20, patchedInfo.GetHandle());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<ui64>() - patchedInfo.GetSize(),
+            patchedInfo.GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(sizeof(ui64), patchedInfo.GetSize());
+
+        bootstrap.Accessor.ValidateAndInitialize();
+        const auto& entry = patchedDump.GetEntries(0);
+        const char* data = bootstrap.Accessor.GetDataProcessor()->GetEntryDataPtr(
+            entry.GetEntryPos(),
+            entry.GetDataSize());
+        UNIT_ASSERT(data != nullptr);
+        const TVector<ui64> expectedPayload{4};
+        UNIT_ASSERT_VALUES_EQUAL(
+            AsBytes(expectedPayload),
+            TStringBuf(
+                data + entry.GetDataSize() - patchedInfo.GetSize(),
+                patchedInfo.GetSize()));
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldAllowFreeingRequestWithOverflowingRange)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                const TVector<ui64> requestWithPayload{
+                    1,
+                    2,
+                    Max<ui64>(),
+                    4};
+                UNIT_ASSERT(PushBack(ringBuffer, AsBytes(requestWithPayload)));
+            },
+            version);
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(!patch.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(1, patch.GetEntries().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<ui64>(),
+            patch.GetEntries(0).GetWriteDataRequestMetadata().GetOffset());
+        patch.MutableEntries(0)->SetFreeFlag(true);
+
+        UNIT_ASSERT_C(
+            !HasError(bootstrap.Patch(
+                patch,
+                NProto::EStateFileType::WriteBackCache)),
+            "Patch failed");
+
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+        UNIT_ASSERT(dump.GetEntries(0).GetFreeFlag());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldPatchJsonRoundTrip)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        dump.MutableEntries(0)->SetTag(1);
+
+        using EMissingKeyMode =
+            NProtobufJson::TProto2JsonConfig::MissingKeyMode;
+
+        NProtobufJson::TProto2JsonConfig config;
+        config.SetEnumMode(NProtobufJson::TProto2JsonConfig::EnumName)
+            .SetFormatOutput(true)
+            .SetMissingSingleKeyMode(EMissingKeyMode::MissingKeySkip);
+
+        const auto json = NProtobufJson::Proto2Json(dump, config);
+        NProto::TStateFileDump parsedDump;
+        NProtobufJson::Json2Proto(TStringBuf(json), parsedDump);
+
+        const auto error = bootstrap.Patch(
+            parsedDump,
+            NProto::EStateFileType::Unknown);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT_VALUES_EQUAL("Hello:1", Dump(ringBuffer)); },
+            version);
+    }
+
+    Y_UNIT_TEST(ShouldRejectPatchForUninitializedStateFile)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.CheckPatchRejected(
+            {},
+            NProto::EStateFileType::Unknown,
+            E_INVALID_STATE,
+            "State file is not initialized");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectStaleState)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Bye")); },
+            version);
+
+        bootstrap.CheckPatchRejected(
+            dump,
+            NProto::EStateFileType::Unknown,
+            E_INVALID_STATE,
+            "State file checksum mismatch");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectOnFieldsMismatch)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            { UNIT_ASSERT(PushBack(ringBuffer, "Hello")); },
+            version);
+
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        auto check = [&](auto mutator, TStringBuf expectedMessage)
+        {
+            auto newState = dump;
+            mutator(newState);
+
+            bootstrap.CheckPatchRejected(
+                newState,
+                NProto::EStateFileType::Unknown,
+                E_INVALID_STATE,
+                expectedMessage);
+        };
+
+        check(
+            [](auto& state) { state.SetChecksum(state.GetChecksum() + 1); },
+            "State file checksum mismatch");
+        check(
+            [](auto& state) { state.MutableEntries()->RemoveLast(); },
+            "Entry count mismatch");
+        check(
+            [](auto& state)
+            {
+                auto* entry = state.MutableEntries(0);
+                entry->SetEntryPos(entry->GetEntryPos() + 1);
+            },
+            "Entry pos mismatch");
+        check(
+            [](auto& state)
+            {
+                auto* entry = state.MutableEntries(0);
+                entry->SetActualDataChecksum(
+                    entry->GetActualDataChecksum() + 1);
+            },
+            "Entry ActualDataChecksum mismatch");
+        check(
+            [](auto& state)
+            {
+                state.SetActualMetadataChecksum(
+                    state.GetActualMetadataChecksum() + 1);
+            },
+            "Actual metadata checksum mismatch");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectPoppedEntryResurrection)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(PushBack(ringBuffer, "Hello"));
+                UNIT_ASSERT(PushBack(ringBuffer, "Bye"));
+                UNIT_ASSERT(PopFront(ringBuffer));
+            },
+            version);
+
+        auto dump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT_VALUES_EQUAL(1, dump.GetEntries().size());
+        UNIT_ASSERT_LT(0, dump.GetEntries(0).GetEntryPos());
+        dump.MutableHeader()->SetReadPos(0);
+
+        bootstrap.CheckPatchRejected(
+            dump,
+            NProto::EStateFileType::Unknown,
+            E_ARGUMENT,
+            "known entry boundary");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldValidateAllEntriesBeforeMutation)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                UNIT_ASSERT(PushBack(ringBuffer, "Hello"));
+                UNIT_ASSERT(PushBack(ringBuffer, "Bye"));
+            },
+            version);
+
+        const auto initialDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        const ui64 secondEntryPos = initialDump.GetEntries(1).GetEntryPos();
+        bootstrap.Accessor.ValidateAndInitialize();
+        auto secondHeader =
+            bootstrap.Accessor.GetDataProcessor()->ReadEntryHeader(
+                secondEntryPos);
+        secondHeader.DataSize = 1'000'000;
+        UNIT_ASSERT(bootstrap.Accessor.GetDataProcessor()->WriteEntryHeader(
+            secondEntryPos,
+            secondHeader));
+
+        auto patch = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(patch.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(2, patch.GetEntries().size());
+        UNIT_ASSERT(!patch.GetEntries(1).HasActualDataChecksum());
+
+        patch.MutableHeader()->SetReadPos(0);
+        patch.MutableHeader()->SetWritePos(0);
+        patch.MutableEntries(0)->SetTag(1);
+        patch.MutableEntries(1)->SetDataChecksum(0);
+
+        bootstrap.CheckPatchRejected(
+            patch,
+            NProto::EStateFileType::Unknown,
+            E_INVALID_STATE,
+            "not accessible");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldRejectInvalidChanges)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Execute(
+            [](TFileRingBuffer& ringBuffer)
+            {
+                const TVector<ui64> requestWithPayload{1, 2, 3, 4};
+                UNIT_ASSERT(PushBack(ringBuffer, AsBytes(requestWithPayload)));
+                const void* freeEntry = Alloc(ringBuffer, "Hello");
+                UNIT_ASSERT(!HasError(ringBuffer.Free(freeEntry)));
+            },
+            version);
+
+        const auto dump = bootstrap.Dump(NProto::EStateFileType::WriteBackCache);
+        auto check = [&](auto mutator, TStringBuf expectedMessage)
+        {
+            auto newState = dump;
+            mutator(newState);
+
+            bootstrap.CheckPatchRejected(
+                newState,
+                NProto::EStateFileType::WriteBackCache,
+                E_ARGUMENT,
+                expectedMessage);
+        };
+
+        check(
+            [](auto& state) { state.ClearHeader(); },
+            "does not contain a state file header");
+        check(
+            [](auto& state) { state.MutableHeader()->ClearWritePos(); },
+            "Patch is missing required fields");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetVersion(header->GetVersion() + 1);
+            },
+            "Version");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetHeaderSize(header->GetHeaderSize() + 1);
+            },
+            "HeaderSize");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetDataCapacity(header->GetDataCapacity() + 1);
+            },
+            "DataCapacity");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetDataOffset(header->GetDataOffset() + 1);
+            },
+            "DataOffset");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetMetadataCapacity(header->GetMetadataCapacity() + 1);
+            },
+            "MetadataCapacity");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetMetadataOffset(header->GetMetadataOffset() + 1);
+            },
+            "MetadataOffset");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetMetadataSize(header->GetMetadataSize() + 1);
+            },
+            "MetadataSize");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetReadPos(header->GetDataCapacity() + 1);
+            },
+            "ReadPos");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetWritePos(header->GetDataCapacity() + 1);
+            },
+            "WritePos");
+        check(
+            [](auto& state) { state.MutableHeader()->SetReadPos(1); },
+            version == EVersion::V6 ? "not aligned" : "known entry boundary");
+        check(
+            [](auto& state) { state.MutableHeader()->SetWritePos(8); },
+            "known entry boundary");
+        check(
+            [](auto& state)
+            {
+                state.MutableHeader()->SetReadPos(
+                    state.GetEntries(1).GetEntryPos());
+                state.MutableHeader()->SetWritePos(0);
+            },
+            "expected to point to a slack space");
+        check(
+            [](auto& state)
+            {
+                state.MutableHeader()->SetReadPos(
+                    state.GetHeader().GetWritePos());
+                state.MutableHeader()->SetWritePos(
+                    state.GetEntries(1).GetEntryPos());
+            },
+            "expected to point to an entry");
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetMetadataChecksum(header->GetMetadataChecksum() + 1);
+            },
+            "actual metadata checksum");
+        check(
+            [](auto& state)
+            {
+                auto* entry = state.MutableEntries(0);
+                entry->SetDataSize(entry->GetDataSize() + 1);
+            },
+            "Changing entry size");
+        check(
+            [](auto& state) { state.MutableEntries(0)->SetTag(Max<ui32>()); },
+            "exceeds the maximal value");
+        check(
+            [](auto& state) { state.MutableEntries(0)->SetTag(3); },
+            "Invalid write request tag");
+        check(
+            [](auto& state)
+            {
+                auto* requestInfo =
+                    state.MutableEntries(0)->MutableWriteDataRequestMetadata();
+                requestInfo->SetSize(requestInfo->GetSize() + 1);
+            },
+            "Changing request size");
+        check(
+            [](auto& state)
+            {
+                state.MutableEntries(1)
+                    ->MutableWriteDataRequestMetadata()
+                    ->CopyFrom(state.GetEntries(0).GetWriteDataRequestMetadata());
+            },
+            "request data presence");
+        check(
+            [](auto& state)
+            { state.MutableEntries(0)->ClearWriteDataRequestMetadata(); },
+            "request data presence");
+        check(
+            [](auto& state)
+            {
+                auto* entry = state.MutableEntries(0);
+                entry->SetDataChecksum(entry->GetDataChecksum() ^ 1);
+            },
+            "actual data checksum");
     }
 }
 

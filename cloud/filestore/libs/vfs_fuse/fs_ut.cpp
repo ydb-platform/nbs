@@ -1,6 +1,7 @@
 #include "fs.h"
 
 #include "directory_handle_storage.h"
+#include "fs_ut_bootstrap.h"
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -71,11 +72,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
-constexpr ui64 WriteBackCacheStateFileSize = 1_MB + 4_KB;
-constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
 constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
@@ -86,11 +84,6 @@ constexpr ui64 dotDotSize = dotSize;
 // second chunk is paged in by reading at the end of the first one.
 constexpr ui32 FirstChunkEntryCount = 600;
 constexpr ui32 SecondChunkEntryCount = 300;
-
-static const TString FileSystemId = "fs1";
-static const TString SessionId = CreateGuidAsString();
-
-static const TTempDir TempDir;
 
 TString GetFirstChunkFileName(ui32 index)
 {
@@ -182,317 +175,6 @@ struct TTestFileMapMemoryLimiter final
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TBootstrap
-{
-    std::shared_ptr<TFuseVirtioClient> Fuse;
-
-    const ILoggingServicePtr Logging;
-    const ISchedulerPtr Scheduler;
-    const ITimerPtr Timer;
-    const NMonitoring::TDynamicCountersPtr Counters;
-    const IFsCountersProviderPtr FsCountersProvider;
-    const IRequestStatsRegistryPtr StatsRegistry;
-    const IModuleStatsRegistryPtr ModuleStatsRegistry;
-
-    ISessionPtr Session;
-    std::shared_ptr<TFileStoreTest> Service;
-
-    IFileSystemLoopPtr Loop;
-
-    TString SocketPath;
-
-    TPromise<void> StopTriggered = NewPromise<void>();
-
-    TString DirectoryHandleStoragePath;
-
-    TBootstrap(
-            ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler(),
-            const NProto::TFileStoreFeatures& featuresConfig = {},
-            ui32 handleOpsQueueStateFileSize = 1000,
-            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheStateFileSize = WriteBackCacheStateFileSize,
-            ui64 directoryHandlesInitialDataSize = 0,
-            ui64 directoryHandlesMaxDataAreaStepSize = 0,
-            IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-                CreateFileMapMemoryLimiterStub(),
-            IPersistentStateManagerPtr persistentStateManager = nullptr,
-            IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler =
-                nullptr)
-        : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
-        , Scheduler{std::move(scheduler)}
-        , Timer{std::move(timer)}
-        , Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
-        , FsCountersProvider{CreateFsCountersProvider(
-            TString{MetricsComponent},
-            Counters)}
-        , StatsRegistry{CreateRequestStatsRegistry(
-            TString{MetricsComponent},
-            std::make_shared<TDiagnosticsConfig>(),
-            Counters,
-            Timer,
-            CreateUserCounterSupplierStub(),
-            FsCountersProvider)}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(
-            Timer,
-            FsCountersProvider,
-            Counters->GetSubgroup("component", TString{MetricsComponent}))}
-    {
-        signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
-
-        SocketPath = (TFsPath(GetSystemTempDir()) / Sprintf("vhost.socket_%lu", RandomNumber<ui64>())).GetPath();
-
-        InitLog(Logging);
-        NVhost::InitLog(Logging);
-        NVhost::StartServer();
-
-        Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
-
-        Service = std::make_shared<TFileStoreTest>();
-
-        Service->CreateSessionHandler =
-            [featuresConfig](auto callContext, auto request)
-        {
-            Y_UNUSED(callContext);
-
-            UNIT_ASSERT(request->GetRestoreClientSession());
-            NProto::TCreateSessionResponse result;
-            result.MutableSession()->SetSessionId(SessionId);
-            result.MutableFileStore()->SetBlockSize(4096);
-            result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                featuresConfig);
-            result.MutableFileStore()->SetFileSystemId(FileSystemId);
-            return MakeFuture(result);
-        };
-
-        Service->ResetSessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TResetSessionResponse{});
-        };
-
-        Service->DestroySessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TDestroySessionResponse());
-        };
-
-        Service->PingSessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TPingSessionResponse());
-        };
-
-        auto sessionConfig = std::make_shared<TSessionConfig>(NProto::TSessionConfig{});
-        Session = CreateSession(
-            Logging,
-            Timer,
-            Scheduler,
-            Service,
-            std::move(sessionConfig));
-
-        NProto::TVFSConfig proto;
-        proto.SetDebug(true);
-        proto.SetSocketPath(SocketPath);
-        proto.SetFileSystemId(FileSystemId);
-        // Keep the path configured to allow restoring
-        // an existing HandleOpsQueue.
-        proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-        proto.SetHandleOpsQueueSize(handleOpsQueueStateFileSize);
-
-        proto.SetDirectoryHandlesStoragePath(
-            TempDir.Path() / "DirectoryHandles");
-        DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
-        if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
-            if (directoryHandlesInitialDataSize) {
-                proto.SetDirectoryHandlesInitialDataSize(
-                    directoryHandlesInitialDataSize);
-            }
-            if (directoryHandlesMaxDataAreaStepSize) {
-                proto.SetDirectoryHandlesMaxDataAreaStepSize(
-                    directoryHandlesMaxDataAreaStepSize);
-            }
-        }
-
-        // WriteBackCache should be configured even if it is disabled
-        proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-        proto.SetWriteBackCacheStateFileSize(writeBackCacheStateFileSize);
-        proto.SetWriteBackCacheAutomaticFlushPeriod(
-            writeBackCacheAutomaticFlushPeriodMs);
-
-        auto config = std::make_shared<TVFSConfig>(std::move(proto));
-        if (!persistentStateManager) {
-            persistentStateManager = CreatePersistentStateManager({
-                .HandleOpsQueueBasePath = config->GetHandleOpsQueuePath(),
-                .WriteBackCacheBasePath = config->GetWriteBackCachePath(),
-                .DirectoryHandlesStorageBasePath =
-                    config->GetDirectoryHandlesStoragePath(),
-            });
-        }
-
-        Loop = NFuse::CreateFuseLoop(
-            config,
-            Logging,
-            StatsRegistry,
-            ModuleStatsRegistry,
-            FsCountersProvider,
-            Scheduler,
-            Timer,
-            CreateProfileLogStub(),
-            Session,
-            std::move(fileMapMemoryLimiter),
-            std::move(persistentStateManager),
-            std::move(multiFileSystemEventHandler));
-    }
-
-    NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "")
-            ->FindSubgroup("module", "DirectoryHandles");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "")
-            ->FindSubgroup("module", "HandleOpsQueue");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetAggregateHandleOpsQueueCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent})
-            ->FindSubgroup("module", "HandleOpsQueue");
-    }
-
-    ~TBootstrap()
-    {
-        Stop();
-    }
-
-    NProto::TError Start(bool sendInitRequest=true)
-    {
-        auto response = StartAsync();
-        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
-        auto error = response.GetValueSync();
-
-        if (HasError(error)) {
-            return error;
-        }
-
-        if (sendInitRequest) {
-            auto init = Fuse->SendRequest<TInitRequest>();
-            UNIT_ASSERT_NO_EXCEPTION(init.GetValueSync());
-        }
-        return error;
-    }
-
-    TFuture<NProto::TError> StartAsync()
-    {
-        if (Scheduler) {
-            Scheduler->Start();
-        }
-
-        auto future = Loop->StartAsync();
-        return future.Apply(
-            [=](const auto& f)
-            {
-                const auto& error = f.GetValue();
-                if (HasError(error)) {
-                    return MakeFuture<NProto::TError>(error);
-                }
-
-                Fuse->Init();
-                return MakeFuture<NProto::TError>();
-            });
-    }
-
-    void Stop()
-    {
-        auto stop = StopAsync();
-        StopTriggered.TrySetValue();
-
-        // Scheduled tasks are not run automatically when TTestScheduler is used
-        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
-        if (testScheduler) {
-            auto now = TInstant::Now();
-            while (!stop.HasValue() && !stop.HasException()) {
-                UNIT_ASSERT(TInstant::Now() - now < WaitTimeout);
-                testScheduler->RunAllScheduledTasks();
-            }
-        } else {
-            UNIT_ASSERT(stop.Wait(WaitTimeout));
-        }
-
-        if (Scheduler) {
-            // It is not allowed to stop Scheduler in the subscriber of
-            // Loop->StopAsync() because the callback may be called from
-            // a Scheduler thread
-            Scheduler->Stop();
-        }
-
-        Fuse->DeInit();
-        Loop = nullptr;
-        std::remove(SocketPath.c_str());
-    }
-
-    TFuture<void> StopAsync()
-    {
-        return Loop ? Loop->StopAsync() : MakeFuture();
-    }
-
-    void InterruptNextRequest()
-    {
-        auto interrupt = Fuse->SendRequest<TInterruptRequest>(Fuse->GetLastRequestId() + 2);
-        UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
-    };
-
-    static TBootstrap CreateWithHandleStorage(
-        ui64 directoryHandlesInitialDataSize = 0,
-        ui64 directoryHandlesMaxDataAreaStepSize = 0,
-        IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-            CreateFileMapMemoryLimiterStub())
-    {
-        NProto::TFileStoreFeatures features;
-        features.SetDirectoryHandlesStorageEnabled(true);
-        return TBootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features,
-            1000,
-            1000,
-            WriteBackCacheStateFileSize,
-            directoryHandlesInitialDataSize,
-            directoryHandlesMaxDataAreaStepSize,
-            std::move(fileMapMemoryLimiter));
-    }
-};
-
-NProto::TNodeAttr MakeNodeAttr(ui64 nodeId, ui32 nodeType)
-{
-    NProto::TNodeAttr attrs;
-    attrs.SetId(nodeId);
-    attrs.SetType(nodeType);
-    attrs.SetMode(0644);
-    return attrs;
-}
 
 template <typename TSetupCreateHandler, typename TSendCreateRequest>
 void DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
@@ -674,7 +356,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 {} /* featuresConfig */,
                 1000 /* handleOpsQueueStateFileSize */,
                 1000 /* writeBackCacheAutomaticFlushPeriodMs */,
-                WriteBackCacheStateFileSize,
                 0 /* directoryHandlesInitialDataSize */,
                 0 /* directoryHandlesMaxDataAreaStepSize */,
                 CreateFileMapMemoryLimiterStub(),
@@ -2280,7 +1961,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,   // handleOpsQueueStateFileSize
             1000,   // writeBackCacheAutomaticFlushPeriodMs
-            WriteBackCacheStateFileSize,
             initialDataAreaSize,
             initialDataAreaSize};
 
@@ -6270,7 +5950,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheStateFileSize,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6342,7 +6021,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 features,
                 1000,
                 1000,
-                WriteBackCacheStateFileSize,
                 0,
                 0,
                 CreateFileMapMemoryLimiterStub(),
@@ -6364,7 +6042,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheStateFileSize,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6564,7 +6241,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,   // handleOpsQueueStateFileSize
             1000,   // writeBackCacheAutomaticFlushPeriodMs
-            WriteBackCacheStateFileSize,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6587,25 +6263,65 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, errorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)
+    Y_UNIT_TEST(ShouldUseServerWriteBackCacheStateFileSizeFromFeatures)
+    {
+        for (const ui64 stateFileSize:
+             {WriteBackCacheStateFileSize, 2_MB, 4_GB + 100500})
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheStateFileSize(stateFileSize);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+            const auto error = bootstrap.Start();
+            UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+
+            const auto path = TempDir.Path() / "WriteBackCache" /
+                              FileSystemId / SessionId / "write_back_cache";
+            UNIT_ASSERT_VALUES_EQUAL(
+                stateFileSize,
+                TFile(path, RdOnly).GetLength());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseDefaultServerWriteBackCacheStateFileSizeForZero)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
-
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            features,
-            1000,
-            1000,
-            4_GB + 100500); // writeBackCacheStateFileSize
+            features);
 
-        // Narrowing ui64 to ui32 will result in verification failure because
-        // 100500 is less than the minimal allowed cache capacity
-        bootstrap.Start();
+        const auto createSession = bootstrap.Service->CreateSessionHandler;
+        bootstrap.Service->CreateSessionHandler =
+            [createSession](auto callContext, auto request)
+        {
+            auto result =
+                createSession(std::move(callContext), std::move(request))
+                    .GetValueSync();
+            result.MutableFileStore()
+                ->MutableFeatures()
+                ->SetServerWriteBackCacheStateFileSize(0);
+            return MakeFuture(result);
+        };
+
+        const auto error = bootstrap.Start();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
         Y_DEFER {
             bootstrap.Stop();
         };
+
+        const auto path = TFsPath(TempDir.Path()) / "WriteBackCache" /
+                          FileSystemId / SessionId / "write_back_cache";
+
+        UNIT_ASSERT_VALUES_EQUAL(256_MB, TFile(path, RdOnly).GetLength());
     }
 
     void TestShouldSupportZeroCopyWriteByWriteBackCache(
@@ -6697,8 +6413,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateScheduler(),
             features,
             /* handleOpsQueueStateFileSize= */ 1000,
-            /* writeBackCacheAutomaticFlushPeriodMs= */ 0,
-            WriteBackCacheStateFileSize);
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
 
         auto writeDataPromise = NewPromise();
         std::atomic<int> writeDataCalledCount = 0;
@@ -6994,6 +6709,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -7096,6 +6813,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),

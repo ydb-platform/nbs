@@ -921,8 +921,22 @@ public:
 private:
     void RegisterFileSystemEventHandler()
     {
-        if (!MultiFileSystemEventHandler || FileSystemEventHandler) {
+        if (!MultiFileSystemEventHandler) {
             return;
+        }
+
+        //
+        // The handler is bound to the current FileSystem. If the FileSystem
+        // has been recreated, the handler bound to the previous one is
+        // replaced - otherwise the new FileSystem would not get the
+        // invalidations while caching the metadata.
+        //
+
+        if (FileSystemEventHandler) {
+            MultiFileSystemEventHandler->Unregister(
+                FileSystemEventHandlerFileSystemId,
+                FileSystemEventHandler);
+            FileSystemEventHandler.reset();
         }
 
         //
@@ -935,7 +949,8 @@ private:
 
         FileSystemEventHandler = CreateFileSystemEventHandler(
             Log,
-            Config->GetFileSystemId());
+            Config->GetFileSystemId(),
+            FileSystem);
         FileSystemEventHandlerFileSystemId =
             FileSystemConfig->GetFileSystemId();
         MultiFileSystemEventHandler->Register(
@@ -993,7 +1008,6 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
-            RegisterFileSystemEventHandler();
             if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
                 RequestStats->EnableAvailabilityTracking(
                     FileSystemConfig->GetAvailabilityTrackingInterval());
@@ -1085,7 +1099,8 @@ private:
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
                             SessionId,
-                            Config->GetWriteBackCacheStateFileSize());
+                            FileSystemConfig
+                                ->GetServerWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1099,15 +1114,13 @@ private:
 
                     WriteBackCacheStateFileGuard = result.ExtractResult();
                     if (!WriteBackCacheStateFileGuard) {
-                        // An empty guard without an error has exactly one
-                        // meaning: no state file has been created because
-                        // the total size limit of the component is reached,
-                        // see IPersistentStateManager::
-                        // AcquireWriteBackCacheStateFile()
+                        // No state file was created because the requested size
+                        // is below the minimum or the total size limit would
+                        // be exceeded.
                         STORAGE_WARN(
                             "[f:%s][c:%s] WriteBackCache is not created: "
-                            "the total size limit of its state files is "
-                            "reached",
+                            "the requested state file size is below the "
+                            "minimum or the total size limit would be exceeded",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str());
                     }
@@ -1278,6 +1291,7 @@ private:
                 std::move(handleOpsQueue),
                 std::move(directoryHandleStorage),
                 WriteBackCache);
+            RegisterFileSystemEventHandler();
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -1402,6 +1416,11 @@ private:
             features.GetServerWriteBackCacheEnabled());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+
+        if (features.GetServerWriteBackCacheStateFileSize()) {
+            config.SetServerWriteBackCacheStateFileSize(
+                features.GetServerWriteBackCacheStateFileSize());
+        }
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());

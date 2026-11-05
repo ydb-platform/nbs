@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/core/disk_validation.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
@@ -144,6 +145,18 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
             MakeError(
                 E_ARGUMENT,
                 "Replicas cannot be empty for mirrored disk"));
+        return;
+    }
+
+    if (Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
+        Request.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+    }
+
+    if (auto error =
+            ValidateMediaKindForDiskFromDevices(Request.GetStorageMediaKind());
+        HasError(error))
+    {
+        ReplyAndDie(ctx, error);
         return;
     }
 

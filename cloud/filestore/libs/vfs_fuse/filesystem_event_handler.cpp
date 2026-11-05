@@ -1,5 +1,7 @@
 #include "filesystem_event_handler.h"
 
+#include "fs.h"
+
 #include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/service/mask.h>
 
@@ -19,24 +21,27 @@ class TFileSystemEventHandler final
 private:
     TLog Log;
     const TString FileSystemId;
+    const std::weak_ptr<IFileSystem> FileSystem;
 
 public:
-    TFileSystemEventHandler(TLog log, TString fileSystemId)
+    TFileSystemEventHandler(
+            TLog log,
+            TString fileSystemId,
+            std::weak_ptr<IFileSystem> fileSystem)
         : Log(std::move(log))
         , FileSystemId(std::move(fileSystemId))
+        , FileSystem(std::move(fileSystem))
     {}
 
     void OnEvent(const NProto::TFileSystemEvent& event) override
     {
         //
-        // TODO(#6874): add a per-key version (e.g. the tablet's CommitId) to
-        // the responses and to the events before using the events for cache
-        // invalidation. The tablet sends the response before the event, but
-        // they reach the cache via different paths (the request future vs this
-        // handler), so an invalidation may be applied before the response it
-        // invalidates is put into the cache - the stale data would then stay
-        // cached for the whole cache TTL. A response older than the last
-        // applied invalidation of the same key should not be cached.
+        // The response and the event reach the caches via different paths
+        // (the request future vs this handler), so an invalidation may be
+        // applied before the response it invalidates is put into the caches.
+        // Each invalidation gets a new cache version and the responses to the
+        // requests started before it are not cached (see TNodeCache and
+        // TNodeRefCache).
         //
 
         if (event.HasInvalidateNode()) {
@@ -60,6 +65,15 @@ public:
             "[f:%s] FileSystemEvent transport disconnected: %lu",
             FileSystemId.Quote().c_str(),
             tabletId);
+
+        //
+        // The tablet drops the subscriptions of a disconnected client - the
+        // invalidations may be lost.
+        //
+
+        if (auto fileSystem = FileSystem.lock()) {
+            fileSystem->InvalidateAllCachedMetadata();
+        }
     }
 
 private:
@@ -69,6 +83,10 @@ private:
             "[f:%s] InvalidateNode: %lu",
             FileSystemId.Quote().c_str(),
             nodeId);
+
+        if (auto fileSystem = FileSystem.lock()) {
+            fileSystem->InvalidateCachedNode(nodeId);
+        }
     }
 
     void InvalidateNodeRef(ui64 nodeId, const TString& name)
@@ -90,6 +108,10 @@ private:
             FileSystemId.Quote().c_str(),
             nodeId,
             MaskFileName(name).Quote().c_str());
+
+        if (auto fileSystem = FileSystem.lock()) {
+            fileSystem->InvalidateCachedNodeRef(nodeId, name);
+        }
     }
 
     void InvalidateNodeXAttr(ui64 nodeId, const TString& name)
@@ -117,11 +139,13 @@ private:
 
 IFileSystemEventHandlerPtr CreateFileSystemEventHandler(
     TLog log,
-    TString fileSystemId)
+    TString fileSystemId,
+    std::weak_ptr<IFileSystem> fileSystem)
 {
     return std::make_shared<TFileSystemEventHandler>(
         std::move(log),
-        std::move(fileSystemId));
+        std::move(fileSystemId),
+        std::move(fileSystem));
 }
 
 }   // namespace NCloud::NFileStore::NFuse
