@@ -9,9 +9,14 @@ SRCS(
     fstest.c
 )
 
+PEERDIR(
+    cloud/filestore/tools/testing/fs_posix_compliance/suite/libacl
+)
+
 END()
 
 RECURSE(
     bin
+    libacl
     tests
 )
