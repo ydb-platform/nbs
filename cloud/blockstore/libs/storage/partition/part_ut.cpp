@@ -10971,8 +10971,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         for (ui32 testCase = 0; testCase < 4; ++testCase) {
             const bool useChannelCounters = testCase & 1;
+            const bool completeNewerWriteFirst = testCase & 2;
             auto config = DefaultConfig();
-            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            config.SetExtendedBlobCountersEnabled(useChannelCounters);
             auto runtime = PrepareTestActorRuntime(config, 4096);
             TPartitionClient partition(*runtime);
             partition.WaitReady();
@@ -11000,8 +11001,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 });
 
             partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(0, 1024),
-                1);
+                TBlockRange32::WithLength(0, 1024), 1);
             runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
             UNIT_ASSERT(savedWrite);
 
@@ -11009,18 +11009,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
             UNIT_ASSERT(!rebuildStarted);
             UNIT_ASSERT(!partition.GetRebuildMetadataStatus()
-                             ->Record.GetProgress().GetIsCompleted());
+                             ->Record.GetProgress()
+                             .GetIsCompleted());
 
             partition.SendCleanupRequest();
             UNIT_ASSERT_VALUES_EQUAL(
-                E_TRY_AGAIN,
-                partition.RecvCleanupResponse()->GetStatus());
+                E_TRY_AGAIN, partition.RecvCleanupResponse()->GetStatus());
 
             // This newer write is outside the fixed rebuild boundary.
             TAutoPtr<IEventHandle> firstWrite = savedWrite.Release();
             partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(1024, 1024),
-                2);
+                TBlockRange32::WithLength(1024, 1024), 2);
             runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
             UNIT_ASSERT(savedWrite);
 
@@ -11037,32 +11036,49 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
                     {
                         rebuildStarted = true;
-                        initialCounters = event->Get<TEvPartitionPrivate::
-                            TEvMetadataRebuildBlockCountRequest>()->RebuildState;
+                        initialCounters =
+                            event
+                                ->Get<TEvPartitionPrivate::
+                                          TEvMetadataRebuildBlockCountRequest>()
+                                ->RebuildState;
                     }
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 });
+
+            if (completeNewerWriteFirst) {
+                // Exclude the newer write even if it commits first.
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+                UNIT_ASSERT(!rebuildStarted);
+            }
 
             runtime->Send(firstWrite.Release());
             partition.RecvWriteBlocksResponse();
             if (!completed) {
                 TDispatchOptions options;
-                options.CustomFinalCondition = [&] { return completed; };
+                options.CustomFinalCondition = [&]
+                {
+                    return completed;
+                };
                 runtime->DispatchEvents(options);
             }
             UNIT_ASSERT(completed);
             UNIT_ASSERT_VALUES_EQUAL(
-                1024,
-                initialCounters.InitialMergedChannelBlocks);
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                initialCounters.InitialMergedChannelBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(
                 useChannelCounters ? 1024 : 0,
-                initialCounters.InitialMergedIndexBlocks);
+                initialCounters.Initial.Channel.MergedBlocks);
             UNIT_ASSERT_VALUES_EQUAL(
                 useChannelCounters ? 1 : 0,
-                initialCounters.InitialMergedIndexBlobs);
+                initialCounters.Initial.Channel.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024, initialCounters.Initial.Index.MergedBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, initialCounters.Initial.Index.MergedBlobs);
+            const ui64 initialBytes =
+                useChannelCounters ? 1024 * DefaultBlockSize : 0;
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialBytes, initialCounters.Initial.Index.MergedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialBytes, initialCounters.Initial.Channel.MergedBytes);
 
             if (savedWrite) {
                 // Rebuild must finish without waiting for the newer write.
@@ -11081,6 +11097,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     useChannelCounters ? 2 : 0,
                     stats.GetMergedIndexBlobsCount());
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2048 * DefaultBlockSize,
+                    counters.MergedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2048 * DefaultBlockSize : 0,
+                    counters.MergedIndexBytesCount.Value);
             };
             assertCounters();
             partition.RebootTablet();
@@ -11166,14 +11193,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT(partition.GetRebuildMetadataStatus()
                             ->Record.GetProgress()
                             .GetIsCompleted());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, rebuilt.MixedIndexBytes);
             UNIT_ASSERT_VALUES_EQUAL(
-                1024 * DefaultBlockSize,
-                rebuilt.MergedIndexBytes);
-            UNIT_ASSERT_VALUES_EQUAL(0, rebuilt.MixedChannelBytes);
+                DefaultBlockSize, rebuilt.Rebuilt.Index.MixedBytes);
             UNIT_ASSERT_VALUES_EQUAL(
-                1025 * DefaultBlockSize,
-                rebuilt.MergedChannelBytes);
+                1024 * DefaultBlockSize, rebuilt.Rebuilt.Index.MergedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(0, rebuilt.Rebuilt.Channel.MixedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1025 * DefaultBlockSize, rebuilt.Rebuilt.Channel.MergedBytes);
 
             const auto assertBytes = [&]
             {
@@ -11252,14 +11278,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 runtime->DispatchEvents(options);
             }
             UNIT_ASSERT(savedResponse);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 2 : 0,
-                                     rebuildState.InitialMixedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 1 : 0,
-                                     rebuildState.InitialMergedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 0 : 2,
-                                     rebuildState.InitialMixedChannelBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 2 : 1,
-                                     rebuildState.InitialMergedChannelBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.Initial.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.Initial.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, rebuildState.Initial.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 2 : 0,
+                rebuildState.Initial.Channel.MergedBlobs);
 
             // New blobs must be retained even though they are outside the scan.
             partition.WriteBlocks(5, 5);
@@ -11275,22 +11300,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 runtime->DispatchEvents(options);
             }
             UNIT_ASSERT(completed);
-            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.MixedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.MergedIndexBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(0, rebuildState.MixedChannelBlobs);
-            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.MergedChannelBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.Rebuilt.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.Rebuilt.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, rebuildState.Rebuilt.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, rebuildState.Rebuilt.Channel.MergedBlobs);
 
             const auto assertCounters = [&]
             {
                 const auto stats = partition.StatPartition()->Record.GetStats();
-                UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 3 : 0,
-                                         stats.GetMixedIndexBlobsCount());
-                UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 2 : 0,
-                                         stats.GetMergedIndexBlobsCount());
-                UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 0 : 3,
-                                         stats.GetMixedBlobsCount());
-                UNIT_ASSERT_VALUES_EQUAL(useChannelCounters ? 4 : 2,
-                                         stats.GetMergedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 3 : 0,
+                    stats.GetMixedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2 : 0,
+                    stats.GetMergedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 0 : 3, stats.GetMixedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 4 : 2, stats.GetMergedBlobsCount());
             };
             assertCounters();
             partition.RebootTablet();
@@ -11363,8 +11392,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event->Get<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>();
                         UNIT_ASSERT_VALUES_UNEQUAL(
                             0,
-                            msg->RebuildState.MixedIndexBlocks +
-                                msg->RebuildState.MergedIndexBlocks);
+                            msg->RebuildState.Rebuilt.Index.MixedBlocks +
+                                msg->RebuildState.Rebuilt.Index.MergedBlocks);
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -11417,8 +11446,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.SendRebuildMetadataRequest(NProto::BLOCK_COUNT, 10);
         UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            partition.RecvRebuildMetadataResponse()->GetStatus());
+            E_REJECTED, partition.RecvRebuildMetadataResponse()->GetStatus());
 
         partition.SendGetRebuildMetadataStatusRequest();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -11437,16 +11465,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
         runtime->Send(putEvent.release());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.RecvCleanupResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK, partition.RecvCleanupResponse()->GetStatus());
 
         partition.RebuildMetadata(NProto::BLOCK_COUNT, 10);
         if (!completed) {
             TDispatchOptions options;
-            options.CustomFinalCondition = [&] { return completed; };
+            options.CustomFinalCondition = [&]
+            {
+                return completed;
+            };
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT(partition.GetRebuildMetadataStatus()
-                        ->Record.GetProgress().GetIsCompleted());
+                        ->Record.GetProgress()
+                        .GetIsCompleted());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());

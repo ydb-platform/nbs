@@ -466,15 +466,7 @@ private:
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
-        ui64 mixedIndexBlobsCount,
-        ui64 mergedIndexBlobsCount,
-        ui64 mixedChannelBlobsCount,
-        ui64 mergedChannelBlobsCount,
+        TPartitionBlobAndBlockCounts initialCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);

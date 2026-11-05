@@ -404,7 +404,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             auto state = MakeState(
                 DefaultBlockCount,
                 {.ExtendedBlobCountersEnabled = enabled});
-            state.UpdateBlocksCountersAfterMetadataRebuild(20, 60, 10, 70);
+            state.UpdateBlobAndBlockCountsAfterMetadataRebuild(
+                {.Index = {.MixedBlocks = 20, .MergedBlocks = 60},
+                 .Channel = {.MixedBlocks = 10, .MergedBlocks = 70}});
             UNIT_ASSERT_VALUES_EQUAL(20, state.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(60, state.GetMergedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -422,23 +424,58 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUpdateIndexBlobCountersAfterRebuildOnlyWhenEnabled)
+    Y_UNIT_TEST(ShouldRebuildBlobAndByteCountersInBothModes)
     {
-        for (bool useChannelCounters: {false, true}) {
+        for (bool enabled: {false, true}) {
             auto state = MakeState(
                 DefaultBlockCount,
-                {.ExtendedBlobCountersEnabled = useChannelCounters});
+                {.ExtendedBlobCountersEnabled = enabled});
             auto& stats = state.AccessStats();
-            stats.SetMixedIndexBlobsCount(7);
-            stats.SetMergedIndexBlobsCount(11);
+            stats.SetMixedBlobsCount(100);
+            stats.SetMergedBlobsCount(200);
+            if (enabled) {
+                stats.SetMixedIndexBlobsCount(100);
+                stats.SetMergedIndexBlobsCount(200);
+                stats.SetMixedChannelBlobsCount(300);
+                stats.SetMergedChannelBlobsCount(400);
+                auto& bytes = *stats.MutableBlobByteCounters();
+                bytes.SetMixedIndexBytesCount(1000);
+                bytes.SetMergedIndexBytesCount(2000);
+                bytes.SetMixedBytesCount(3000);
+                bytes.SetMergedBytesCount(4000);
+            }
 
-            state.UpdateBlobsCountersAfterMetadataRebuild(2, 6, 1, 7);
+            state.UpdateBlobAndBlockCountsAfterMetadataRebuild(
+                {.Index =
+                     {.MixedBlobs = 2,
+                      .MergedBlobs = 6,
+                      .MixedBytes = 123,
+                      .MergedBytes = 456},
+                 .Channel = {
+                     .MixedBlobs = 1,
+                     .MergedBlobs = 7,
+                     .MixedBytes = 100,
+                     .MergedBytes = 479}});
 
-            AssertBlobAndBlockCounts(
-                state.GetStats(),
-                {1, 7, 0, 0},
-                useChannelCounters ? TBlobAndBlockCounts{2, 6, 0, 0}
-                                   : TBlobAndBlockCounts{7, 11, 0, 0});
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, state.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 2 : 0, state.GetMixedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 6 : 0, state.GetMergedIndexBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 1 : 0, state.GetMixedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 7 : 0, state.GetMergedChannelBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 123 : 0, state.GetMixedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 456 : 0, state.GetMergedIndexBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 100 : 0, state.GetMixedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 479 : 0, state.GetMergedBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(enabled, stats.HasBlobByteCounters());
         }
     }
 
@@ -458,7 +495,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             UNIT_ASSERT_VALUES_EQUAL(expectedTotal, state.GetTotalBlobsCount());
             state.StartRebuildBlockCount();
             UNIT_ASSERT(state.IsMetadataRebuildStarted());
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetMetadataRebuildProgress().Total);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, state.GetMetadataRebuildProgress().Total);
             state.SetRebuildBlockCountTotal();
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedTotal,
