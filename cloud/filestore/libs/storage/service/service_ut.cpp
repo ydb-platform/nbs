@@ -944,6 +944,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_UNEQUAL(headers.SessionId, headers3.SessionId);
 
         service.DestroySession(headers);
+
+        auto headers4 = service.InitSession(
+            "test",
+            "client",
+            "",         // checkpointId
+            true       // restoreClientSession
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(headers3.SessionId, headers4.SessionId);
     }
 
     Y_UNIT_TEST(ShouldPropagateSessionOwnerGeneration)
