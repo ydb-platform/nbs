@@ -123,7 +123,7 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                         TABLED() { out << v.first; }
                         TABLED() {
                             const bool enabled =
-                                IsPreemptionEnabled(v.first, v.second);
+                                IsVolumePreemptibleToPush(v.first, v.second);
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {

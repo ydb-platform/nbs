@@ -82,7 +82,7 @@ ModifyScheme {{
             subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
 
 
-@retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
+@retrying.retry(stop_max_delay=180000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_filestore_server(daemon, port):
     '''
     Ping filestore server with delay between attempts to ensure
@@ -95,7 +95,7 @@ def wait_for_filestore_server(daemon, port):
         grpc_client.ping(protos.TPingRequest())
 
 
-@retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
+@retrying.retry(stop_max_delay=180000, wait_fixed=1000, retry_on_exception=is_grpc_error)
 def wait_for_filestore_vhost(daemon, port):
     '''
     Ping filestore vhost with delay between attempts to ensure

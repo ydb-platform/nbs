@@ -19,6 +19,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/string/vector.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -99,7 +101,9 @@ void SendDescribeDir(TTestActorRuntime& runtime, const TString& path)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path));
+        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+            path,
+            true /* addPathToError */));
 
     TAutoPtr<IEventHandle> handle;
     auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(handle);
@@ -171,7 +175,8 @@ TEvSSProxy::TEvDescribeSchemeResponse::TPtr DescribePath(
         MakeSSProxyServiceId(),
         sender,
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
-            std::move(path)));
+            std::move(path),
+            true /* addPathToError */));
 
     TAutoPtr<IEventHandle> handle;
     auto* response =
@@ -869,11 +874,51 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
     Y_UNIT_TEST(ShouldFailDescribeVolumeIfPathDoesNotExist)
     {
-        TTestEnv env;
-        SetupTestEnv(env);
-        auto& runtime = env.GetRuntime();
+        for (const bool useSchemeCache: {false, true}) {
+            TTestEnv env;
+            NProto::TStorageServiceConfig protoConfig;
+            protoConfig.SetUseSchemeCache(useSchemeCache);
+            auto config = CreateStorageConfig(std::move(protoConfig));
+            SetupTestEnv(env, config);
+            auto& runtime = env.GetRuntime();
+            const TString diskId = "volume";
+            const TString root = config->GetSchemeShardDir() + "/";
+            const TVector<TString> expectedPaths = {
+                root + DiskIdToPathDeprecated(diskId),
+                root + DiskIdToPath(diskId),
+                root + DiskIdToPath(GetSecondaryDiskId(diskId))};
 
-        DescribeVolumeWithFailure(runtime, "volume");
+            const auto sender = runtime.AllocateEdgeActor();
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(diskId));
+
+            TAutoPtr<IEventHandle> handle;
+            const auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+            const auto& error = response->GetError();
+            UNIT_ASSERT_VALUES_EQUAL(
+                MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist),
+                error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                response->CheckedPaths.size(),
+                expectedPaths.size());
+            for (size_t i = 0; i < expectedPaths.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    response->CheckedPaths[i],
+                    expectedPaths[i]);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                error.GetMessage(),
+                TStringBuilder()
+                    << (useSchemeCache ? "Path doesn't exist"
+                                       : "Path not found")
+                    << ", checked paths=[\""
+                    << JoinStrings(expectedPaths, "\", \"") << "\"]");
+            UNIT_ASSERT(HasProtoFlag(error.GetFlags(), NProto::EF_SILENT));
+        }
     }
 
     Y_UNIT_TEST(ShouldFailDescribeVolumeIfPathIsNotBlockStoreVolume)
@@ -1354,7 +1399,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 MakeSSProxyServiceId(),
                 sender,
                 std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
-                    missingPath));
+                    missingPath,
+                    true /* addPathToError */));
 
             TAutoPtr<IEventHandle> handle;
             auto* response = runtime.GrabEdgeEventRethrow<
@@ -1748,7 +1794,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 describeResponse->GetStatus(),
                 E_REJECTED);
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                TStringBuilder() << "ss is gone, checked paths=[\""
+                                 << config->GetSchemeShardDir() << "/volume\"]",
                 describeResponse->GetError().GetMessage());
         }
 
@@ -1757,7 +1804,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>("volume"));
+                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+                    "volume",
+                    true /* addPathToError */));
 
             TAutoPtr<IEventHandle> describeHandle;
             auto describeResponse =
@@ -1913,7 +1962,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "ss is gone",
+                TStringBuilder() << "ss is gone, checked paths=[\""
+                                 << config->GetSchemeShardDir() << "/volume\"]",
                 response->GetError().GetMessage());
         }
     }
@@ -2072,7 +2122,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(
-            "NavigateKeySet undelivered",
+            TStringBuilder() << "NavigateKeySet undelivered, checked paths=[\""
+                             << config->GetSchemeShardDir() << "/vol0\"]",
             response->GetErrorReason());
     }
 

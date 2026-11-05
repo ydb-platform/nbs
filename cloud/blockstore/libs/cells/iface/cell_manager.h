@@ -51,7 +51,7 @@ struct TCellDescribeResult
 struct TCellHostStatus
 {
     TString Fqdn;
-    bool Alive = false;
+    EHostLiveness Liveness = EHostLiveness::Unknown;
     bool Warm = false;
     ui32 Connections = 0;
 };
@@ -79,9 +79,9 @@ struct TCellsSnapshot
 
 struct ICellManager: public IStartable
 {
-    TCellsConfigPtr Config;
+    TCellsConfigConstPtr Config;
 
-    explicit ICellManager(TCellsConfigPtr config)
+    explicit ICellManager(TCellsConfigConstPtr config)
         : Config(std::move(config))
     {}
 

@@ -247,17 +247,6 @@ class TDurableFileStoreClient final
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD);
 
 #undef FILESTORE_IMPLEMENT_METHOD
-
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
-    {
-        Client->GetSessionEventsStream(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

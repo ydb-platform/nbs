@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/client/public.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
+#include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/vfs/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
@@ -25,7 +26,8 @@ NVFS::IFileSystemLoopPtr CreateFuseLoop(
     IProfileLogPtr profileLog,
     NClient::ISessionPtr session,
     IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
-    IPersistentStateManagerPtr persistentState);
+    IPersistentStateManagerPtr persistentState,
+    IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler);
 
 NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     ILoggingServicePtr logging,
@@ -35,6 +37,7 @@ NVFS::IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IModuleStatsRegistryPtr moduleStats,
     IFsCountersProviderPtr fsCountersProvider,
     IProfileLogPtr profileLog,
-    IPersistentStateManagerPtr persistentState);
+    IPersistentStateManagerPtr persistentState,
+    IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler);
 
 }   // namespace NCloud::NFileStore::NFuse

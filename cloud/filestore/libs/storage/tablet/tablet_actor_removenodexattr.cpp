@@ -113,6 +113,7 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 
     RemoveNodeAttr(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Attr->MinCommitId,
         args.CommitId,
@@ -125,7 +126,8 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TRemoveNodeXAttrMethod>(
         response->Record,
         args.RequestInfo->CallContext,

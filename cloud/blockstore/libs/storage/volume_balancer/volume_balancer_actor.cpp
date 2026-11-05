@@ -326,7 +326,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             } else if (auto vol = State->GetVolumeToPull()) {
                 PullVolumeFromHive(ctx, std::move(vol));
             }
-        } else if (IsMaxInProgressLimitReached()) {
+        } else {
             // StorageConfig isn't nullptr as limit wouldn't
             // be in effect otherwise
             LOG_INFO_S(

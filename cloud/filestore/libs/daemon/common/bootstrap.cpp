@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/factory/shard_factory.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
@@ -29,6 +30,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -72,6 +74,7 @@ TBootstrapCommon::TBootstrapCommon(
     , LogComponent(std::move(logComponent))
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
+    , MultiFileSystemEventHandler(CreateMultiFileSystemEventHandler())
 {
 }
 
@@ -90,6 +93,7 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_START_COMPONENT(CertificateProvider);
 
     StartComponents();
@@ -120,6 +124,7 @@ void TBootstrapCommon::Stop()
     StopComponents();
 
     FILESTORE_LOG_STOP_COMPONENT(CertificateProvider);
+    FILESTORE_LOG_STOP_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -323,6 +328,7 @@ void TBootstrapCommon::InitActorSystem()
     args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
     args.FastShardServer = FastShardServer;
+    args.FileSystemEventHandler = MultiFileSystemEventHandler;
     args.FastShardFactory = NStorage::NFastShard::CreateFileSystemShardFactory(
         Configs->StorageConfig->GetFastShardRuntimeEnabled());
 

@@ -211,16 +211,6 @@ struct TNullFileStore final
 
         return MakeFuture(response);
     }
-
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
-        Y_UNUSED(responseHandler);
-    }
 };
 
 }   // namespace

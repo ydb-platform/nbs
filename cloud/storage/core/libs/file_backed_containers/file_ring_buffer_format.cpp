@@ -320,6 +320,56 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromCapacity(
+    ui64 dataCapacity,
+    ui64 metadataCapacity)
+{
+    const ui64 metadataOffset = TFileRingBufferHeader::ReserveSize;
+
+    if (metadataOffset > MaxStateFileSize) {
+        // Integer overflow prevention
+        return std::nullopt;
+    }
+
+    if (metadataCapacity > MaxStateFileSize - metadataOffset) {
+        return std::nullopt;
+    }
+
+    // Align the data area so entry headers can be read and written atomically
+    const ui64 dataOffset =
+        AlignUp(metadataOffset + metadataCapacity, sizeof(ui64));
+
+    if (dataOffset > MaxStateFileSize ||
+        dataCapacity > MaxStateFileSize - dataOffset)
+    {
+        // Integer overflow prevention
+        return std::nullopt;
+    }
+
+    return TFileRingBufferLayout{
+        .DataOffset = dataOffset,
+        .MetadataOffset = metadataOffset,
+        .StateFileSize = dataOffset + dataCapacity,
+    };
+}
+
+std::optional<TFileRingBufferLayout> TFileRingBufferLayout::FromStateFileSize(
+    ui64 stateFileSize,
+    ui64 metadataCapacity)
+{
+    if (stateFileSize > MaxStateFileSize) {
+        return std::nullopt;
+    }
+
+    auto layout = FromCapacity(0, metadataCapacity);
+    if (layout) {
+        layout->StateFileSize = Max(stateFileSize, layout->StateFileSize);
+    }
+    return layout;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 std::unique_ptr<IFileRingBufferDataProcessor> CreateFileRingBufferDataProcessor(
     EFileRingBufferVersion version,
     std::span<char> data)

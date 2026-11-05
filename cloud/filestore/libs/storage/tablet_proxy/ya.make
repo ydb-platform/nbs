@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/service
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     contrib/ydb/core/tablet

@@ -10,6 +10,7 @@ SRCS(
     const.proto
     data.proto
     endpoint.proto
+    filesystem_event.proto
     fs.proto
     headers.proto
     locks.proto

@@ -122,6 +122,27 @@ NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
     return node;
 }
 
+bool HasNonTimeAttrChanges(
+    const NProto::TNode& attrs,
+    const NProto::TNode& prevAttrs)
+{
+    //
+    // All the TNode fields except ATime, MTime and CTime should be listed
+    // here.
+    //
+
+    return attrs.GetSize() != prevAttrs.GetSize()
+        || attrs.GetType() != prevAttrs.GetType()
+        || attrs.GetMode() != prevAttrs.GetMode()
+        || attrs.GetUid() != prevAttrs.GetUid()
+        || attrs.GetGid() != prevAttrs.GetGid()
+        || attrs.GetLinks() != prevAttrs.GetLinks()
+        || attrs.GetSymLink() != prevAttrs.GetSymLink()
+        || attrs.GetDevId() != prevAttrs.GetDevId()
+        || attrs.GetIsPreparedForUnlink() != prevAttrs.GetIsPreparedForUnlink()
+        || attrs.GetQuotaId() != prevAttrs.GetQuotaId();
+}
+
 void ConvertNodeFromAttrs(
     NProto::TNodeAttr& dst,
     ui64 id,

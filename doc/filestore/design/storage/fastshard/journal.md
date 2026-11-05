@@ -2,7 +2,7 @@
 
 The journal is the write-ahead log that the journalled device (see
 [storage-node.md](storage-node.md)) keeps in front of a raw storage device. The
-code lives in `cloud/fastshard/journal/impl`; the entry point is
+code lives in `cloud/fastshard/libs/journal/impl`; the entry point is
 `CreateJournalledDeviceV2`. The v1 device (`CreateJournalledDevice`) is a
 pass-through without a journal and is what the prototype still uses.
 

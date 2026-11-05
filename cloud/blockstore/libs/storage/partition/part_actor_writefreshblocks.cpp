@@ -44,7 +44,9 @@ void TPartitionActor::WriteFreshBlocks(
             State->GetUnflushedFreshBlobByteCount(),
             static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
                 State->GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -104,7 +106,8 @@ void TPartitionActor::WriteFreshBlocks(
             writeHandlers.push_back(r.Data.Handler);
         }
 
-        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
+        const auto [commitId, timestamp] =
+            SharedState->StartFreshWrite(ctx, blockCount);
 
         if (commitId == InvalidCommitId) {
             for (auto& r: requestsInBuffer) {
@@ -124,6 +127,7 @@ void TPartitionActor::WriteFreshBlocks(
             SelfId(),   // owner
             SelfId(),   // actorToAddFreshBlocks
             commitId,
+            timestamp,
             channel,
             blockCount,
             std::move(requests),
@@ -245,7 +249,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize);
+    State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
 
     if (FreshBlocksWriter) {
         SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
@@ -465,7 +469,9 @@ void TPartitionActor::ZeroFreshBlocks(
             State->GetUnflushedFreshBlobByteCount(),
             static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
                 State->GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -497,7 +503,8 @@ void TPartitionActor::ZeroFreshBlocks(
         requests.emplace_back(requestInfo, EFreshRequestType::ZeroBlocks);
         blockRanges.emplace_back(writeRange);
 
-        const ui64 commitId = SharedState->StartFreshWrite(blockCount);
+        const auto [commitId, timestamp] =
+            SharedState->StartFreshWrite(ctx, blockCount);
         if (commitId == InvalidCommitId) {
             requestInfo->CancelRequest(ctx);
             RebootPartitionOnCommitIdOverflow(ctx, "ZeroFreshBlocks");
@@ -521,6 +528,7 @@ void TPartitionActor::ZeroFreshBlocks(
             SelfId(),   // owner
             SelfId(),   // actorToAddFreshBlocks
             commitId,
+            timestamp,
             channel,
             blockCount,
             std::move(requests),

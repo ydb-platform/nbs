@@ -277,6 +277,19 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> DeferredNodeDestructionsCancelled{0};
     std::atomic<i64> NodeDestructionsDeferralSkipped{0};
 
+    // FileSystemEvents stats: the number of (event, client) pairs, i.e. the
+    // number of event sends. Counted in dry run mode as well.
+    std::atomic<i64> InvalidateNodeEventSendCount{0};
+    std::atomic<i64> InvalidateNodeRefEventSendCount{0};
+    std::atomic<i64> InvalidateNodeXAttrEventSendCount{0};
+
+    // FileSystemEvents stats: subscriber registry stats
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeRefCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryClientCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryExtraPageCount{0};
+    std::atomic<i64> FileSystemEventsSubscriberRegistryNodeXAttrCount{0};
+
     NMetrics::TDefaultWindowCalculator MaxUsedQuota{0};
 
     using TLatHistogram =
@@ -302,6 +315,14 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
         std::atomic<i64> RequestedBytesPrecharge{0};
         std::atomic<i64> PrepareAttempts{0};
         std::atomic<i64> ResponseNodeRefs{0};
+
+        ui64 PrevResponseNodeRefs = 0;
+
+        void UpdatePrev()
+        {
+            PrevResponseNodeRefs =
+                ResponseNodeRefs.load(std::memory_order_relaxed);
+        }
     } ListNodesExtra;
 
     struct TExtraCreateHandleMetrics

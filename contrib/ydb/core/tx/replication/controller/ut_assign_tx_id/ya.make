@@ -9,6 +9,7 @@ TIMEOUT(600)
 PEERDIR(
     contrib/ydb/core/tx/replication/ut_helpers
     library/cpp/testing/unittest
+    yql/essentials/sql/v1
 )
 
 SRCS(

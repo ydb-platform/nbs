@@ -110,9 +110,9 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
     auto link = TLeaderFollowerLink{
         .LinkUUID = {},
         .LeaderDiskId = msg->Record.GetDiskId(),
-        .LeaderShardId = msg->Record.GetLeaderShardId(),
+        .LeaderCellId = msg->Record.GetLeaderCellId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerShardId =  msg->Record.GetFollowerShardId()};
+        .FollowerCellId =  msg->Record.GetFollowerCellId()};
 
     if (auto follower = State->FindFollower(link)) {
         link = follower->Link;
@@ -208,9 +208,9 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
     auto link = TLeaderFollowerLink{
         .LinkUUID = "",
         .LeaderDiskId = msg->Record.GetDiskId(),
-        .LeaderShardId = msg->Record.GetLeaderShardId(),
+        .LeaderCellId = msg->Record.GetLeaderCellId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerShardId = msg->Record.GetFollowerShardId()};
+        .FollowerCellId = msg->Record.GetFollowerCellId()};
 
     auto follower = State->FindFollower(link);
     if (follower) {

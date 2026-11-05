@@ -26,6 +26,8 @@ ui32 SetupTestEnv(
     NProto::TStorageServiceConfig storageServiceConfig,
     NProto::TFeaturesConfig featuresConfig = {});
 
+ui32 SetupTestEnvWithCellId(TTestEnv& env, TString cellId);
+
 ui32 SetupTestEnvWithMultipleMount(
     TTestEnv& env,
     TDuration inactivateTimeout);

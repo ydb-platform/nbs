@@ -274,28 +274,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.AssertReadDataFailed(handle, 0, 1_KB);
     }
 
-    Y_UNIT_TEST(ShouldSendSessionEvents)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        tablet.SubscribeSession();
-        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"));
-
-        auto response = tablet.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
-        UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason());
-
-        const auto& events = response->Record.GetEvents();
-        UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
-    }
-
     Y_UNIT_TEST(ShouldRestoreClientSession)
     {
         TTestEnv env;
@@ -1310,6 +1288,98 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         }
     }
 
+    Y_UNIT_TEST(ShouldLoadSessionStateWithNonUtf8Ids)
+    {
+        // ClientId, SessionId and OriginFqdn come from request headers and may
+        // hold arbitrary bytes. The tablet persists them, and LoadState must be
+        // able to parse them back: when these fields were proto `string`s, a
+        // non-UTF-8 value was stored fine but made LoadState VERIFY on every
+        // restart.
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        // Non-UTF-8 values.
+        const TString clientId =
+            "^\xa7" "H\x16" "NSLN\xa5\x83\xe4\xf6\xf4@\xcc\xa5";
+        const TString sessionId = "\xff\xfe" "session";
+        const TString originFqdn = "\xc3\x28" "host";
+
+        {
+            auto request =
+                tablet.CreateCreateSessionRequest(clientId, sessionId);
+            request->Record.MutableHeaders()->SetOriginFqdn(originFqdn);
+            tablet.SendRequest(std::move(request));
+
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                sessionId,
+                response->Record.GetSessionId());
+        }
+        tablet.SetHeaders(clientId, sessionId, 0);
+
+        // Persist a handle, a lock and a dup cache entry for the session too.
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = CreateHandle(tablet, id);
+        tablet.AcquireLock(handle, 1, 0, 4_KB);
+
+        auto createDedupRequest = [&] () {
+            auto request = tablet.CreateCreateHandleRequest(
+                RootNodeId,
+                "dedup",
+                TCreateHandleArgs::CREATE_EXL);
+            request->Record.MutableHeaders()->SetRequestId(100500);
+            return request;
+        };
+
+        ui64 dedupHandle = 0;
+        tablet.SendRequest(createDedupRequest());
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            dedupHandle = response->Record.GetHandle();
+            UNIT_ASSERT(dedupHandle);
+        }
+
+        // Sessions, session history, handles, locks and the dup cache are all
+        // read back here.
+        tablet.RebootTablet();
+        tablet.InitSession(clientId, sessionId);
+
+        // The lock survived the reboot...
+        auto lockResponse = tablet.AssertAcquireLockFailed(handle, 2, 0, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_WOULDBLOCK,
+            lockResponse->GetError().GetCode());
+
+        // ...as did the dup cache entry...
+        tablet.SendRequest(createDedupRequest());
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(dedupHandle, response->Record.GetHandle());
+        }
+
+        // ...and both handles.
+        tablet.DestroyHandle(handle);
+        tablet.DestroyHandle(dedupHandle);
+        tablet.DestroySession();
+    }
+
     Y_UNIT_TEST(ShouldSupportInterhostMigrationScenarioInPresentsOfResets)
     {
         TTestEnvConfig envCfg;
@@ -1436,6 +1506,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         config.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
+        config.SetXAttrCacheTimeout(TDuration::Seconds(30).MilliSeconds());
+        config.SetXAttrCacheLimit(1024);
         config.SetPreferredBlockSizeMultiplier(2);
         config.SetAsyncDestroyHandleEnabled(true);
         config.SetAsyncDestroyReadOnlyHandleEnabled(true);
@@ -1447,6 +1519,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1472,6 +1545,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
         features.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
         features.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
+        features.SetXAttrCacheTimeout(TDuration::Seconds(30).MilliSeconds());
+        features.SetXAttrCacheLimit(1024);
         features.SetThreeStageWriteEnabled(true);
         features.SetThreeStageWriteThreshold(10_MB);
         features.SetPreferredBlockSize(4_KB * 2);
@@ -1485,6 +1560,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(2_MB);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
@@ -1506,6 +1582,42 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::Seconds(15).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReturnServerWriteBackCacheStateFileSizeFromStorageConfigOverride)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const auto checkStateFileSize = [&](ui64 expectedStateFileSize)
+        {
+            auto response = tablet.CreateSession("client", "session");
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedStateFileSize,
+                response->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetServerWriteBackCacheStateFileSize());
+        };
+
+        checkStateFileSize(2_MB);
+
+        NProto::TStorageConfig patch;
+        patch.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkStateFileSize(4_GB + 100500);
+
+        // Explicit zero uses the client default instead of the server-wide size.
+        patch.SetServerWriteBackCacheStateFileSize(0);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkStateFileSize(0);
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)

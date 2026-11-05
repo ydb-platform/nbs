@@ -367,6 +367,16 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 
 void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 {
+    if (State->GetSuspendSecureErase()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SecureErase is suspended. Skipping.",
+            LogTitle.GetWithTime().c_str());
+
+        return;
+    }
+
     auto dirtyDevices = State->GetDirtyDevices();
     EraseIf(
         dirtyDevices,
@@ -472,6 +482,22 @@ void TDiskRegistryActor::HandleSecureErase(
         "%s Received SecureErase request. DirtyDevices: %s",
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
+
+    if (State->GetSuspendSecureErase()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SecureErase is suspended. Skipping.",
+            LogTitle.GetWithTime().c_str());
+
+        auto response =
+            std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
+                MakeError(E_REJECTED, "SecureErase is suspended"),
+                msg->PoolName,
+                TVector<TString>{});
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
 
     THashMap<TDeviceList::TDeviceId, TDeviceList::TEraseIdempotencyKey>
         eraseIdempotencyKeys;

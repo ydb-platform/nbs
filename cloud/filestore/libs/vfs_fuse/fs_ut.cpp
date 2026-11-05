@@ -1,6 +1,7 @@
 #include "fs.h"
 
 #include "directory_handle_storage.h"
+#include "fs_ut_bootstrap.h"
 #include "log.h"
 #include "loop.h"
 #include "node_cache.h"
@@ -17,6 +18,7 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/loop.h>
@@ -49,6 +51,7 @@
 #include <util/generic/ylimits.h>
 #include <util/random/random.h>
 #include <util/system/file.h>
+#include <util/system/mutex.h>
 
 #include <array>
 #include <atomic>
@@ -69,28 +72,41 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
-constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
-constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
 constexpr ui64 dotSize = sizeof(fuse_direntplus) + sizeof(ui64);
 constexpr ui64 dotDotSize = dotSize;
 
 // Small directory listings for the multi-chunk paging tests below, kept tiny
-// so sanitizer builds don't time out building multi-megabyte responses. Each
-// entry serializes to +- 200 bytes; SecondChunkReadOffset lands past the first
-// chunk (~105 KB) to page in the second.
+// so sanitizer builds don't time out building multi-megabyte responses. The
+// second chunk is paged in by reading at the end of the first one.
 constexpr ui32 FirstChunkEntryCount = 600;
 constexpr ui32 SecondChunkEntryCount = 300;
-constexpr i64 SecondChunkReadOffset = 120'000;
 
-static const TString FileSystemId = "fs1";
-static const TString SessionId = CreateGuidAsString();
+TString GetFirstChunkFileName(ui32 index)
+{
+    return "first_chunk_file_" + ToString(index) + ".txt";
+}
 
-static const TTempDir TempDir;
+i64 GetFirstChunkSize()
+{
+    i64 size = dotSize + dotDotSize;
+    for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
+        size += AlignUp<ui64>(
+            sizeof(fuse_direntplus) + GetFirstChunkFileName(i).size(),
+            sizeof(ui64));
+    }
+    return size;
+}
+
+ui64 GetStateFileSize(ui64 dataCapacity)
+{
+    const auto layout = TFileRingBufferLayout::FromCapacity(dataCapacity, 0);
+    UNIT_ASSERT(layout);
+    return layout->StateFileSize;
+}
 
 TString CreateBuffer(size_t len, char fill = 0)
 {
@@ -160,315 +176,6 @@ struct TTestFileMapMemoryLimiter final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBootstrap
-{
-    std::shared_ptr<TFuseVirtioClient> Fuse;
-
-    const ILoggingServicePtr Logging;
-    const ISchedulerPtr Scheduler;
-    const ITimerPtr Timer;
-    const NMonitoring::TDynamicCountersPtr Counters;
-    const IFsCountersProviderPtr FsCountersProvider;
-    const IRequestStatsRegistryPtr StatsRegistry;
-    const IModuleStatsRegistryPtr ModuleStatsRegistry;
-
-    ISessionPtr Session;
-    std::shared_ptr<TFileStoreTest> Service;
-
-    IFileSystemLoopPtr Loop;
-
-    TString SocketPath;
-
-    TPromise<void> StopTriggered = NewPromise<void>();
-
-    TString DirectoryHandleStoragePath;
-
-    TBootstrap(
-            ITimerPtr timer = CreateWallClockTimer(),
-            ISchedulerPtr scheduler = CreateScheduler(),
-            const NProto::TFileStoreFeatures& featuresConfig = {},
-            ui32 handleOpsQueueSize = 1000,
-            ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
-            ui64 directoryHandlesInitialDataSize = 0,
-            ui64 directoryHandlesMaxDataAreaStepSize = 0,
-            IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-                CreateFileMapMemoryLimiterStub(),
-            IPersistentStateManagerPtr persistentStateManager = nullptr)
-        : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
-        , Scheduler{std::move(scheduler)}
-        , Timer{std::move(timer)}
-        , Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
-        , FsCountersProvider{CreateFsCountersProvider(
-            TString{MetricsComponent},
-            Counters)}
-        , StatsRegistry{CreateRequestStatsRegistry(
-            TString{MetricsComponent},
-            std::make_shared<TDiagnosticsConfig>(),
-            Counters,
-            Timer,
-            CreateUserCounterSupplierStub(),
-            FsCountersProvider)}
-        , ModuleStatsRegistry{CreateModuleStatsRegistry(
-            Timer,
-            FsCountersProvider,
-            Counters->GetSubgroup("component", TString{MetricsComponent}))}
-    {
-        signal(SIGUSR1, SIG_IGN);   // see fuse/driver for details
-
-        SocketPath = (TFsPath(GetSystemTempDir()) / Sprintf("vhost.socket_%lu", RandomNumber<ui64>())).GetPath();
-
-        InitLog(Logging);
-        NVhost::InitLog(Logging);
-        NVhost::StartServer();
-
-        Fuse = std::make_shared<TFuseVirtioClient>(SocketPath, WaitTimeout);
-
-        Service = std::make_shared<TFileStoreTest>();
-
-        Service->CreateSessionHandler =
-            [featuresConfig](auto callContext, auto request)
-        {
-            Y_UNUSED(callContext);
-
-            UNIT_ASSERT(request->GetRestoreClientSession());
-            NProto::TCreateSessionResponse result;
-            result.MutableSession()->SetSessionId(SessionId);
-            result.MutableFileStore()->SetBlockSize(4096);
-            result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                featuresConfig);
-            result.MutableFileStore()->SetFileSystemId(FileSystemId);
-            return MakeFuture(result);
-        };
-
-        Service->ResetSessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TResetSessionResponse{});
-        };
-
-        Service->DestroySessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TDestroySessionResponse());
-        };
-
-        Service->PingSessionHandler = [] (auto, auto) {
-            return MakeFuture(NProto::TPingSessionResponse());
-        };
-
-        auto sessionConfig = std::make_shared<TSessionConfig>(NProto::TSessionConfig{});
-        Session = CreateSession(
-            Logging,
-            Timer,
-            Scheduler,
-            Service,
-            std::move(sessionConfig));
-
-        NProto::TVFSConfig proto;
-        proto.SetDebug(true);
-        proto.SetSocketPath(SocketPath);
-        proto.SetFileSystemId(FileSystemId);
-        // Keep the path configured to allow restoring
-        // an existing HandleOpsQueue.
-        proto.SetHandleOpsQueuePath(TempDir.Path() / "HandleOpsQueue");
-        proto.SetHandleOpsQueueSize(handleOpsQueueSize);
-
-        proto.SetDirectoryHandlesStoragePath(
-            TempDir.Path() / "DirectoryHandles");
-        DirectoryHandleStoragePath = proto.GetDirectoryHandlesStoragePath();
-        if (featuresConfig.GetDirectoryHandlesStorageEnabled()) {
-            if (directoryHandlesInitialDataSize) {
-                proto.SetDirectoryHandlesInitialDataSize(
-                    directoryHandlesInitialDataSize);
-            }
-            if (directoryHandlesMaxDataAreaStepSize) {
-                proto.SetDirectoryHandlesMaxDataAreaStepSize(
-                    directoryHandlesMaxDataAreaStepSize);
-            }
-        }
-
-        // WriteBackCache should be configured even if it is disabled
-        proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-        // minimum possible capacity
-        proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
-        proto.SetWriteBackCacheAutomaticFlushPeriod(
-            writeBackCacheAutomaticFlushPeriodMs);
-
-        auto config = std::make_shared<TVFSConfig>(std::move(proto));
-        if (!persistentStateManager) {
-            persistentStateManager = CreatePersistentStateManager({
-                .HandleOpsQueueBasePath = config->GetHandleOpsQueuePath(),
-                .WriteBackCacheBasePath = config->GetWriteBackCachePath(),
-                .DirectoryHandlesStorageBasePath =
-                    config->GetDirectoryHandlesStoragePath(),
-            });
-        }
-
-        Loop = NFuse::CreateFuseLoop(
-            config,
-            Logging,
-            StatsRegistry,
-            ModuleStatsRegistry,
-            FsCountersProvider,
-            Scheduler,
-            Timer,
-            CreateProfileLogStub(),
-            Session,
-            std::move(fileMapMemoryLimiter),
-            std::move(persistentStateManager));
-    }
-
-    NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetDirectoryHandleCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "")
-            ->FindSubgroup("module", "DirectoryHandles");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
-            ->FindSubgroup("host", "cluster")
-            ->FindSubgroup("filesystem", FileSystemId)
-            ->FindSubgroup("client", "")
-            ->FindSubgroup("cloud", "")
-            ->FindSubgroup("folder", "")
-            ->FindSubgroup("module", "HandleOpsQueue");
-    }
-
-    NMonitoring::TDynamicCountersPtr GetAggregateHandleOpsQueueCounters() const
-    {
-        return Counters
-            ->FindSubgroup("component", TString{MetricsComponent})
-            ->FindSubgroup("module", "HandleOpsQueue");
-    }
-
-    ~TBootstrap()
-    {
-        Stop();
-    }
-
-    NProto::TError Start(bool sendInitRequest=true)
-    {
-        auto response = StartAsync();
-        UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
-        auto error = response.GetValueSync();
-
-        if (HasError(error)) {
-            return error;
-        }
-
-        if (sendInitRequest) {
-            auto init = Fuse->SendRequest<TInitRequest>();
-            UNIT_ASSERT_NO_EXCEPTION(init.GetValueSync());
-        }
-        return error;
-    }
-
-    TFuture<NProto::TError> StartAsync()
-    {
-        if (Scheduler) {
-            Scheduler->Start();
-        }
-
-        auto future = Loop->StartAsync();
-        return future.Apply(
-            [=](const auto& f)
-            {
-                const auto& error = f.GetValue();
-                if (HasError(error)) {
-                    return MakeFuture<NProto::TError>(error);
-                }
-
-                Fuse->Init();
-                return MakeFuture<NProto::TError>();
-            });
-    }
-
-    void Stop()
-    {
-        auto stop = StopAsync();
-        StopTriggered.TrySetValue();
-
-        // Scheduled tasks are not run automatically when TTestScheduler is used
-        auto testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
-        if (testScheduler) {
-            auto now = TInstant::Now();
-            while (!stop.HasValue() && !stop.HasException()) {
-                UNIT_ASSERT(TInstant::Now() - now < WaitTimeout);
-                testScheduler->RunAllScheduledTasks();
-            }
-        } else {
-            UNIT_ASSERT(stop.Wait(WaitTimeout));
-        }
-
-        if (Scheduler) {
-            // It is not allowed to stop Scheduler in the subscriber of
-            // Loop->StopAsync() because the callback may be called from
-            // a Scheduler thread
-            Scheduler->Stop();
-        }
-
-        Fuse->DeInit();
-        Loop = nullptr;
-        std::remove(SocketPath.c_str());
-    }
-
-    TFuture<void> StopAsync()
-    {
-        return Loop ? Loop->StopAsync() : MakeFuture();
-    }
-
-    void InterruptNextRequest()
-    {
-        auto interrupt = Fuse->SendRequest<TInterruptRequest>(Fuse->GetLastRequestId() + 2);
-        UNIT_ASSERT_NO_EXCEPTION(interrupt.GetValueSync());
-    };
-
-    static TBootstrap CreateWithHandleStorage(
-        ui64 directoryHandlesInitialDataSize = 0,
-        ui64 directoryHandlesMaxDataAreaStepSize = 0,
-        IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
-            CreateFileMapMemoryLimiterStub())
-    {
-        NProto::TFileStoreFeatures features;
-        features.SetDirectoryHandlesStorageEnabled(true);
-        return TBootstrap(
-            CreateWallClockTimer(),
-            CreateScheduler(),
-            features,
-            1000,
-            1000,
-            WriteBackCacheCapacity,
-            directoryHandlesInitialDataSize,
-            directoryHandlesMaxDataAreaStepSize,
-            std::move(fileMapMemoryLimiter));
-    }
-};
-
-NProto::TNodeAttr MakeNodeAttr(ui64 nodeId, ui32 nodeType)
-{
-    NProto::TNodeAttr attrs;
-    attrs.SetId(nodeId);
-    attrs.SetType(nodeType);
-    attrs.SetMode(0644);
-    return attrs;
-}
-
 template <typename TSetupCreateHandler, typename TSendCreateRequest>
 void DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
     TSetupCreateHandler setupCreateHandler,
@@ -525,8 +232,163 @@ void DoShouldInvalidateXAttrCacheAfterSuccessfulCreate(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestMultiFileSystemEventHandler final
+    : public IMultiFileSystemEventHandler
+{
+    TMutex Lock;
+    TVector<TString> Registered;
+    TVector<TString> Unregistered;
+
+    void OnEvent(const NProto::TFileSystemEvent& event) override
+    {
+        Y_UNUSED(event);
+    }
+
+    void OnDisconnect(ui64 tabletId) override
+    {
+        Y_UNUSED(tabletId);
+    }
+
+    void Register(
+        const TString& fileSystemId,
+        IFileSystemEventHandlerPtr handler) override
+    {
+        Y_UNUSED(handler);
+        with_lock (Lock) {
+            Registered.push_back(fileSystemId);
+        }
+    }
+
+    void Unregister(
+        const TString& fileSystemId,
+        const IFileSystemEventHandlerPtr& handler) override
+    {
+        Y_UNUSED(handler);
+        with_lock (Lock) {
+            Unregistered.push_back(fileSystemId);
+        }
+    }
+
+    TVector<TString> GetRegistered()
+    {
+        with_lock (Lock) {
+            return Registered;
+        }
+    }
+
+    TVector<TString> GetUnregistered()
+    {
+        with_lock (Lock) {
+            return Unregistered;
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CountXAttrRequests(
+    const NProto::TFileStoreFeatures& features,
+    const TVector<std::pair<TString, TDuration>>& getXAttrs)
+{
+    //
+    // Sends GetXAttr requests for the given names, advancing the time by the
+    // given delay before each request, and returns the number of
+    // GetNodeXAttr requests that were not served from the XAttrCache.
+    //
+
+    auto timer = std::make_shared<TTestTimer>();
+    TBootstrap bootstrap(timer, CreateScheduler(), features);
+    bootstrap.Start();
+    Y_DEFER {
+        bootstrap.Stop();
+    };
+
+    std::atomic<ui32> callCount = 0;
+    bootstrap.Service->SetHandlerGetNodeXAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+
+            ++callCount;
+            NProto::TGetNodeXAttrResponse response;
+            response.SetValue("value_" + request->GetName());
+            response.SetVersion(1);
+            return MakeFuture(response);
+        });
+
+    for (const auto& [name, delay]: getXAttrs) {
+        timer->AdvanceTime(delay);
+        auto xattr =
+            bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(name, 6);
+        UNIT_ASSERT(xattr.Wait(WaitTimeout));
+        UNIT_ASSERT_STRINGS_EQUAL("value_" + name, xattr.GetValue());
+    }
+
+    return callCount.load();
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TFileSystemTest)
 {
+    Y_UNIT_TEST(ShouldRegisterFileSystemEventHandlerUnderResolvedFileSystemId)
+    {
+        //
+        // The loop is configured with an alias (FileSystemId). The storage
+        // service resolves it upon session creation and returns the actual
+        // id, which the tablets use in FileSystemEvents.
+        //
+
+        const TString resolvedFileSystemId = "resolved_fs";
+        auto multiHandler =
+            std::make_shared<TTestMultiFileSystemEventHandler>();
+
+        {
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                {} /* featuresConfig */,
+                1000 /* handleOpsQueueStateFileSize */,
+                1000 /* writeBackCacheAutomaticFlushPeriodMs */,
+                0 /* directoryHandlesInitialDataSize */,
+                0 /* directoryHandlesMaxDataAreaStepSize */,
+                CreateFileMapMemoryLimiterStub(),
+                nullptr /* persistentStateManager */,
+                multiHandler);
+
+            bootstrap.Service->CreateSessionHandler = [&] (auto, auto) {
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(SessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->SetFileSystemId(
+                    resolvedFileSystemId);
+                return MakeFuture(result);
+            };
+
+            UNIT_ASSERT_VALUES_UNEQUAL(FileSystemId, resolvedFileSystemId);
+            UNIT_ASSERT(!HasError(bootstrap.Start()));
+
+            const auto registered = multiHandler->GetRegistered();
+            UNIT_ASSERT_VALUES_EQUAL(1, registered.size());
+            UNIT_ASSERT_VALUES_EQUAL(resolvedFileSystemId, registered[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, multiHandler->GetUnregistered().size());
+        }
+
+        //
+        // The loop is destroyed together with the bootstrap.
+        //
+
+        const auto unregistered = multiHandler->GetUnregistered();
+        UNIT_ASSERT_VALUES_EQUAL(1, unregistered.size());
+        UNIT_ASSERT_VALUES_EQUAL(resolvedFileSystemId, unregistered[0]);
+    }
+
     Y_UNIT_TEST(ShouldHandleInitRequest)
     {
         TBootstrap bootstrap;
@@ -1191,6 +1053,320 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
     }
 
+    void DoShouldServeLastChunkFromCacheAfterEmptyPage(
+        const TString& nextCookie,
+        const TString& emptyPageCookie)
+    {
+        TBootstrap bootstrap;
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                result.SetCookie(emptyPageCookie);
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie(nextCookie);
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+        // ".", "..", "1.txt" and "2.txt" have the same padded dirent size
+        const ui32 size = read.GetValue();
+        UNIT_ASSERT_GT(size, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+        const ui32 entrySize = size / 4;
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        // seekdir() back to "2.txt"
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size - entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyFinalPage)
+    {
+        // tablet: the entries after the cookie were unlinked between pages
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "3.txt" /* nextCookie */,
+            "" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldServeLastChunkFromCacheAfterEmptyPageWithCookie)
+    {
+        DoShouldServeLastChunkFromCacheAfterEmptyPage(
+            "42" /* nextCookie */,
+            "42" /* emptyPageCookie */);
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadDirBeyondCachedContent)
+    {
+        TBootstrap bootstrap;
+
+        std::atomic<ui32> numCalls = 0;
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            const ui64 call = ++numCalls;
+
+            NProto::TListNodesResponse result;
+            for (ui64 id = 2 * call - 1; id <= 2 * call; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie("next");
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        const auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+
+        // ".", "..", "1.txt" and "2.txt" have the same padded dirent size
+        const ui32 size = read.GetValue();
+        UNIT_ASSERT_GT(size, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+        const ui32 entrySize = size / 4;
+
+        auto isInvalidArgument = [](const TSystemError& e)
+        {
+            return e.Status() == EINVAL;
+        };
+
+        // lseek() past the listed entries
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            10 * entrySize);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read.GetValue(WaitTimeout),
+            TSystemError,
+            isInvalidArgument);
+        UNIT_ASSERT_VALUES_EQUAL(1, numCalls.load());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            size);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(2 * entrySize, read.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            3 * entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            5 * entrySize);
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+
+        read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+            nodeId,
+            handleId,
+            10 * entrySize);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            read.GetValue(WaitTimeout),
+            TSystemError,
+            isInvalidArgument);
+        UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+        auto close =
+            bootstrap.Fuse->SendRequest<TReleaseDirRequest>(nodeId, handleId);
+        UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldRestoreLastChunkAfterEmptyFinalPage)
+    {
+        const TString sessionId = CreateGuidAsString();
+        NProto::TFileStoreFeatures features;
+        features.SetDirectoryHandlesStorageEnabled(true);
+
+        auto createSessionHandler = [&](auto, auto)
+        {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(256 * 1024);
+
+            NProto::TCreateSessionResponse result;
+            result.MutableSession()->SetSessionId(sessionId);
+            UNIT_ASSERT(state.SerializeToString(
+                result.MutableSession()->MutableSessionState()));
+            result.MutableFileStore()->MutableFeatures()->CopyFrom(features);
+            result.MutableFileStore()->SetFileSystemId(FileSystemId);
+            return MakeFuture(result);
+        };
+
+        std::atomic<ui32> numCalls = 0;
+        auto listNodesHandler = [&](auto, auto request)
+        {
+            ++numCalls;
+
+            NProto::TListNodesResponse result;
+            if (request->GetCookie()) {
+                return MakeFuture(result);
+            }
+
+            for (ui64 id = 1; id <= 2; ++id) {
+                result.AddNames()->assign(ToString(id) + ".txt");
+                auto* node = result.AddNodes();
+                node->SetId(id);
+                node->SetType(NProto::E_REGULAR_NODE);
+            }
+            result.SetCookie("3.txt");
+            return MakeFuture(result);
+        };
+
+        const ui64 nodeId = 123;
+        ui64 handleId = 0;
+        ui32 size = 0;
+
+        TFsPath tmpPathForCache(
+            TFsPath(GetSystemTempDir()) /
+            "directory_handles_storage.empty_final_page");
+        TString pathToCache;
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            pathToCache = TFsPath(bootstrap.DirectoryHandleStoragePath) /
+                          FileSystemId / sessionId /
+                          "directory_handles_storage";
+
+            auto otherHandle =
+                bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(otherHandle.Wait(WaitTimeout));
+
+            auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+            UNIT_ASSERT(handle.Wait(WaitTimeout));
+            handleId = handle.GetValue();
+
+            auto read =
+                bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            size = read.GetValue();
+            UNIT_ASSERT_GT(size, 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, size % 4);
+
+            // frees the first storage record, the next record reuses it and
+            // is loaded first after the restart
+            auto close = bootstrap.Fuse->SendRequest<TReleaseDirRequest>(
+                nodeId,
+                otherHandle.GetValue());
+            UNIT_ASSERT_NO_EXCEPTION(close.GetValue(WaitTimeout));
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            TFsPath(pathToCache).CopyTo(tmpPathForCache.GetPath(), true);
+        }
+
+        {
+            auto bootstrap = TBootstrap::CreateWithHandleStorage();
+
+            tmpPathForCache.CopyTo(pathToCache, true);
+
+            bootstrap.Service->CreateSessionHandler = createSessionHandler;
+            bootstrap.Service->ListNodesHandler = listNodesHandler;
+
+            bootstrap.Start(false /* sendInitRequest */);
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            // seekdir() back to "2.txt"
+            const ui32 entrySize = size / 4;
+            auto read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size - entrySize);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(entrySize, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+
+            read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
+                nodeId,
+                handleId,
+                size);
+            UNIT_ASSERT(read.Wait(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(0, read.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(2, numCalls.load());
+        }
+    }
+
     Y_UNIT_TEST(ShouldDropStoredDirectoryHandleWhenStorageExpansionIsRejected)
     {
         const TString sessionId = CreateGuidAsString();
@@ -1428,8 +1604,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -1523,7 +1698,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, maxOpenHandleCount->Val());
 
         // Go beyond chunk 1
-        auto largeOffset = size1 + SecondChunkReadOffset;
+        auto largeOffset = GetFirstChunkSize();
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -1628,8 +1803,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (!request->GetCookie()) {
                 for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                    result.AddNames()->assign(
-                        "first_chunk_file_" + ToString(i) + ".txt");
+                    result.AddNames()->assign(GetFirstChunkFileName(i));
                     auto* node = result.AddNodes();
                     node->SetId(100 + i);
                     node->SetType(NProto::E_REGULAR_NODE);
@@ -1693,7 +1867,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(LargeDirectoryWaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(numCalls.load(), 3);
 
-        const auto largeOffset = size1 + SecondChunkReadOffset;
+        const auto largeOffset = GetFirstChunkSize();
         read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
             nodeId,
             handleId,
@@ -1785,9 +1959,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            1000,   // handleOpsQueueSize
+            1000,   // handleOpsQueueStateFileSize
             1000,   // writeBackCacheAutomaticFlushPeriodMs
-            WriteBackCacheCapacity,
             initialDataAreaSize,
             initialDataAreaSize};
 
@@ -1919,8 +2092,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
                 if (!request->GetCookie()) {
                     for (ui32 i = 1; i <= FirstChunkEntryCount; ++i) {
-                        result.AddNames()->assign(
-                            "first_chunk_file_" + ToString(i) + ".txt");
+                        result.AddNames()->assign(GetFirstChunkFileName(i));
                         auto* node = result.AddNodes();
                         node->SetId(100 + i);
                         node->SetType(NProto::E_REGULAR_NODE);
@@ -1967,7 +2139,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(numCalls2.load(), 0);
 
             // Go beyond the first chunk
-            auto largeOffset = SecondChunkReadOffset;
+            auto largeOffset = GetFirstChunkSize();
             read = bootstrap.Fuse->SendRequest<TReadDirRequest>(
                 nodeId,
                 handleId,
@@ -2637,6 +2809,53 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_STRINGS_EQUAL("value", xattr.GetValue());
             UNIT_ASSERT_VALUES_EQUAL(2, callCount.load());
         }
+    }
+
+    Y_UNIT_TEST(ShouldApplyXAttrCacheLimitFromFeatures)
+    {
+        //
+        // "a", then "b", then "a" again. The time is advanced before each
+        // request so that the eviction order is deterministic.
+        //
+
+        const TVector<std::pair<TString, TDuration>> getXAttrs = {
+            {"a", TDuration::Zero()},
+            {"b", TDuration::Seconds(1)},
+            {"a", TDuration::Seconds(1)},
+        };
+
+        //
+        // The default limit keeps both entries: the second "a" is served from
+        // the cache.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(2, CountXAttrRequests({}, getXAttrs));
+
+        //
+        // With the limit of 1 entry "b" evicts "a".
+        //
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheLimit(1);
+        UNIT_ASSERT_VALUES_EQUAL(3, CountXAttrRequests(features, getXAttrs));
+    }
+
+    Y_UNIT_TEST(ShouldApplyXAttrCacheTimeoutFromFeatures)
+    {
+        const TVector<std::pair<TString, TDuration>> getXAttrs = {
+            {"a", TDuration::Zero()},
+            {"a", TDuration::Seconds(2)},
+        };
+
+        //
+        // The default timeout (15 seconds) keeps the entry.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(1, CountXAttrRequests({}, getXAttrs));
+
+        NProto::TFileStoreFeatures features;
+        features.SetXAttrCacheTimeout(TDuration::Seconds(1).MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(2, CountXAttrRequests(features, getXAttrs));
     }
 
     Y_UNIT_TEST(ShouldNotCacheXAttrWhenErrorHappens)
@@ -4279,7 +4498,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4344,7 +4564,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4435,7 +4656,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto scheduler = std::make_shared<TTestScheduler>();
         // Keep the ring buffer smaller than a serialized queued create entry so
         // AddCreateRequest returns QueueOverflow.
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 nodeId = 10;
         const ui64 handle = 2;
@@ -4734,7 +4956,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
         auto scheduler = std::make_shared<TTestScheduler>();
-        TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features, 20);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(), scheduler, features, GetStateFileSize(20));
 
         const ui64 handle1 = 2;
         const ui64 nodeId1 = 10;
@@ -4924,15 +5147,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // protobuf entries have an 8-byte header and unaligned data. This fits
         // the create-confirm entry, but leaves less than one destroy entry
         // free.
-        const ui32 queueSize = static_cast<ui32>(
+        const ui32 queueDataCapacity = static_cast<ui32>(
             8 + createEntry.ByteSizeLong() +
             (8 + destroyEntry.ByteSizeLong()) / 2);
-
         // open fills the queue with a create confirmation. Its release
         // overflows into DelayedReleaseQueue.
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(
-            CreateWallClockTimer(), scheduler, features, queueSize);
+            CreateWallClockTimer(),
+            scheduler,
+            features,
+            GetStateFileSize(queueDataCapacity));
         std::atomic_uint confirmCalled = 0;
         std::atomic_uint destroyCalled = 0;
 
@@ -5712,8 +5937,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto persistentStateManager = CreatePersistentStateManager({
             .HandleOpsQueueBasePath = statePath,
             .WriteBackCacheBasePath = statePath,
-            .WriteBackCacheStateFileSize = 4096,
-            .WriteBackCacheTotalSizeLimit = 1,
+            .WriteBackCacheTotalSizeLimit = WriteBackCacheStateFileSize - 1,
             .DirectoryHandlesStorageBasePath = statePath,
         });
 
@@ -5726,7 +5950,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -5798,7 +6021,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 features,
                 1000,
                 1000,
-                WriteBackCacheCapacity,
                 0,
                 0,
                 CreateFileMapMemoryLimiterStub(),
@@ -5820,7 +6042,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -5992,25 +6213,115 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldSupportWriteBackCacheCapacity4GiB)
+    Y_UNIT_TEST(ShouldKeepExistingWriteBackCacheStateFileSize)
     {
+        constexpr ui64 MinStateFileSize = 2_MB;
+        constexpr ui64 ExistingStateFileSize = 4_MB;
+        const TString statePath = TempDir.Path() / "MinimumWriteBackCacheState";
+        auto persistentStateManager = CreatePersistentStateManager({
+            .WriteBackCacheBasePath = statePath,
+            .WriteBackCacheMinStateFileSize = MinStateFileSize,
+        });
+
+        {
+            auto result =
+                persistentStateManager->AcquireWriteBackCacheStateFile(
+                    FileSystemId,
+                    SessionId,
+                    ExistingStateFileSize);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
-
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            1000,
-            1000,
-            4_GB + 100500); // writeBackCacheCapacity
+            1000,   // handleOpsQueueStateFileSize
+            1000,   // writeBackCacheAutomaticFlushPeriodMs
+            0,
+            0,
+            CreateFileMapMemoryLimiterStub(),
+            persistentStateManager);
 
-        // Narrowing ui64 to ui32 will result in verification failure because
-        // 100500 is less than the minimal allowed cache capacity
-        bootstrap.Start();
+        const auto error = bootstrap.Start();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        const auto stateFile = TFsPath(statePath) / FileSystemId / SessionId /
+                               "write_back_cache";
+        UNIT_ASSERT_VALUES_EQUAL(
+            ExistingStateFileSize,
+            TFileStat(stateFile.GetPath()).Size);
+
+        auto errorCounter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    GetCriticalEventForPersistentStateFileRequestedSizeTooSmall(),
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(1, errorCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldUseServerWriteBackCacheStateFileSizeFromFeatures)
+    {
+        for (const ui64 stateFileSize:
+             {WriteBackCacheStateFileSize, 2_MB, 4_GB + 100500})
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheStateFileSize(stateFileSize);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+            const auto error = bootstrap.Start();
+            UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+
+            const auto path = TempDir.Path() / "WriteBackCache" /
+                              FileSystemId / SessionId / "write_back_cache";
+            UNIT_ASSERT_VALUES_EQUAL(
+                stateFileSize,
+                TFile(path, RdOnly).GetLength());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseDefaultServerWriteBackCacheStateFileSizeForZero)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const auto createSession = bootstrap.Service->CreateSessionHandler;
+        bootstrap.Service->CreateSessionHandler =
+            [createSession](auto callContext, auto request)
+        {
+            auto result =
+                createSession(std::move(callContext), std::move(request))
+                    .GetValueSync();
+            result.MutableFileStore()
+                ->MutableFeatures()
+                ->SetServerWriteBackCacheStateFileSize(0);
+            return MakeFuture(result);
+        };
+
+        const auto error = bootstrap.Start();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
         Y_DEFER {
             bootstrap.Stop();
         };
+
+        const auto path = TFsPath(TempDir.Path()) / "WriteBackCache" /
+                          FileSystemId / SessionId / "write_back_cache";
+
+        UNIT_ASSERT_VALUES_EQUAL(256_MB, TFile(path, RdOnly).GetLength());
     }
 
     void TestShouldSupportZeroCopyWriteByWriteBackCache(
@@ -6101,9 +6412,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            /* handleOpsQueueSize= */ 1000,
-            /* writeBackCacheAutomaticFlushPeriodMs= */ 0,
-            WriteBackCacheCapacity);
+            /* handleOpsQueueStateFileSize= */ 1000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
 
         auto writeDataPromise = NewPromise();
         std::atomic<int> writeDataCalledCount = 0;
@@ -6399,6 +6709,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -6501,6 +6813,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -6561,7 +6875,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 
@@ -6607,7 +6921,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 
@@ -7039,16 +7353,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             Service->GetNodeAttrHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
+                GetNodeAttrResponse = promise;
                 GetNodeAttrRequestEvent.Signal();
-                GetNodeAttrResponse = NewPromise<NProto::TGetNodeAttrResponse>();
-                return GetNodeAttrResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->ListNodesHandler = [&](auto, auto)
             {
+                auto promise = NewPromise<NProto::TListNodesResponse>();
+                ListNodesResponse = promise;
                 ListNodesRequestEvent.Signal();
-                ListNodesResponse = NewPromise<NProto::TListNodesResponse>();
-                return ListNodesResponse.GetFuture();
+                return promise.GetFuture();
             };
 
             Service->WriteDataHandler = [&](auto, const auto& rq)
@@ -7164,6 +7480,71 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             RenamePromise.GetFuture().GetValue(WaitTimeout);
         };
     };
+
+    void ReplyGetNodeAttr(TAttrRaceBootstrap& bootstrap)
+    {
+        NProto::TGetNodeAttrResponse response;
+        auto* node = response.MutableNode();
+        node->SetId(bootstrap.NodeId);
+        node->SetType(NProto::E_REGULAR_NODE);
+        bootstrap.GetNodeAttrResponse.SetValue(std::move(response));
+    }
+
+    void TestForgetNodeAfterAttrReply(
+        const std::function<void(TAttrRaceBootstrap&)>& attrRequest)
+    {
+        TAttrRaceBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>(
+            "node",
+            bootstrap.ParentNodeId);
+        UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+        ReplyGetNodeAttr(bootstrap);
+        lookup.GetValue(WaitTimeout);
+
+        attrRequest(bootstrap);
+
+        auto request = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
+        auto pending = bootstrap.Fuse->SendRequest(request);
+        UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+
+        // Record a version newer than the probe's, then drop the guest's only
+        // lookup reference. If an attr reply had leaked a reference, the entry
+        // would survive FORGET with that newer version, and the probe would
+        // get attr_valid == 0 as if its reply raced with a modification.
+        bootstrap.Write(/* offset */ 0, 4_KB);
+        bootstrap.Fuse->SendRequest<TForgetRequest>(bootstrap.NodeId, 1)
+            .GetValue(WaitTimeout);
+
+        ReplyGetNodeAttr(bootstrap);
+        pending.GetValue(WaitTimeout);
+        UNIT_ASSERT_GT(request->Out->Body.attr_valid, 0);
+    }
+
+    Y_UNIT_TEST(ShouldForgetNodeAfterGetAttrReply)
+    {
+        TestForgetNodeAfterAttrReply(
+            [] (TAttrRaceBootstrap& bootstrap) {
+                auto getAttr = bootstrap.Fuse->SendRequest<TGetAttrRequest>(
+                    bootstrap.NodeId);
+                UNIT_ASSERT(
+                    bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
+                ReplyGetNodeAttr(bootstrap);
+                getAttr.GetValue(WaitTimeout);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldForgetNodeAfterSetAttrReply)
+    {
+        TestForgetNodeAfterAttrReply(
+            [] (TAttrRaceBootstrap& bootstrap) {
+                bootstrap.SetSize(0);
+            });
+    }
 
     Y_UNIT_TEST(
         ShouldNotAllowGuestAttrCachingUponGetAttrAndAttrModificationRace)
@@ -8069,7 +8450,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 CreateWallClockTimer(),
                 CreateScheduler(),
                  features,
-                 /* handleOpsQueueSize = */ 0,
+                 /* handleOpsQueueStateFileSize = */ 1000,
                  /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
             const ui64 nodeId = 123;
@@ -8245,7 +8626,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
-            /* handleOpsQueueSize = */ 0,
+            /* handleOpsQueueStateFileSize = */ 1000,
             /* writeBackCacheAutomaticFlushPeriodMs = */ 0);
 
         bootstrap.Start();

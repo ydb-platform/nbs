@@ -201,6 +201,41 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         }
     }
 
+    Y_UNIT_TEST(ShouldSetGuestKeepCacheBasedOnCommitId)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
+        TTestEnv env({}, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto writeHandle =
+            CreateHandle(tablet, id, {}, TCreateHandleArgs::WRNLY);
+
+        auto keepCache = [&] {
+            return tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
+                ->Record.GetGuestKeepCache();
+        };
+
+        // opening the write handle has already invalidated the cache
+        UNIT_ASSERT(keepCache());
+
+        // mtime set back to the value seen by the last invalidation should
+        // not hide the write that happened in between
+        const auto mtime = GetNodeAttrs(tablet, id).GetMTime();
+        tablet.WriteData(writeHandle, 0, 4_KB, 'a');
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetMTime(mtime));
+        UNIT_ASSERT_VALUES_EQUAL(mtime, GetNodeAttrs(tablet, id).GetMTime());
+
+        UNIT_ASSERT(!keepCache());
+        UNIT_ASSERT(keepCache());
+    }
+
     Y_UNIT_TEST(ShouldSetHandleCreatedAsyncForEligibleCreateHandle)
     {
         NProto::TStorageConfig storageConfig;

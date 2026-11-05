@@ -9,6 +9,7 @@
 
 #include <util/folder/fwd.h>
 #include <util/generic/fwd.h>
+#include <util/system/file.h>
 
 #include <memory>
 
@@ -35,11 +36,18 @@ struct ISysFs
     virtual auto GetVfioDeviceForPCIDevice(const TString& pciAddr)
         -> TString = 0;
 
+    // Throws E_PRECONDITION_FAILED if the VFIO group is busy; other open errors
+    // retain their system codes. Keep the returned fd open until the device is
+    // unbound to block other VFIO group users and cdev/iommufd bindings.
+    // Unbound cdev fds are not covered by this guard.
+    virtual auto OpenVfioGroupForPCIDevice(const TString& pciAddr)
+        -> TFileHandle = 0;
+
     [[nodiscard]] virtual auto IsVfioDevSupported() const -> bool = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISysFsPtr CreateSysFs(TFsPath sysFsRoot);
+ISysFsPtr CreateSysFs(TFsPath sysFsRoot, TFsPath devFsRoot);
 
 }   // namespace NCloud::NBlockStore

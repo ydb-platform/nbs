@@ -59,12 +59,14 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     TVector<TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
+        TInstant timestamp;
         auto error = ParseFreshBlobContent(
             blob.CommitId,
             blob.BlobId,
             PartitionConfig.GetBlockSize(),
             blob.Data,
-            blocks);
+            blocks,
+            timestamp);
 
         if (FAILED(error.GetCode())) {
             ReportInitFreshBlocksError(
@@ -78,7 +80,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size());
+        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size(), timestamp);
     }
 
     for (const auto& block: blocks) {

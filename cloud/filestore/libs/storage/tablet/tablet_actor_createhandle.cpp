@@ -421,6 +421,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // TODO: support for O_TMPFILE
         CreateNodeRef(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.WriteCommitId,
             args.Name,
@@ -432,6 +433,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
         UpdateNode(
             *db,
+            args.FileSystemEvents,
             args.ParentNode->NodeId,
             args.ParentNode->MinCommitId,
             args.WriteCommitId,
@@ -458,6 +460,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
         UpdateNode(
             *db,
+            args.FileSystemEvents,
             args.TargetNodeId,
             args.TargetNode->MinCommitId,
             args.WriteCommitId,
@@ -491,7 +494,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
             const bool keepCache =
-                session->HandleStatsByNode.IsAllowedToKeepCache(*node);
+                session->HandleStatsByNode.IsAllowedToKeepCache(
+                    *node,
+                    args.TargetNode->MinCommitId);
             args.Response.SetGuestKeepCache(keepCache);
 
             Metrics->CreateHandleExtra.GuestKeepCacheSet.fetch_add(
@@ -503,7 +508,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // user of a given session in order not to invalidate the cache the next
         // time if the file was not modified
         if (!args.Response.GetGuestKeepCache()) {
-            session->HandleStatsByNode.OnGuestCacheInvalidated(*node);
+            session->HandleStatsByNode.OnGuestCacheInvalidated(
+                *node,
+                args.WriteCommitId);
         }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);

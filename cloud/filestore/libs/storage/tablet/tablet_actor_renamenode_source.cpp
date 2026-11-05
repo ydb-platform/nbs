@@ -510,6 +510,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -559,7 +560,7 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
 
         using TResponse =
             TEvIndexTabletPrivate::TEvPrepareRenameNodeInSourceResponse;
-        auto response = std::make_unique<TResponse>(args.Error);
+        auto response = std::make_unique<TResponse>(std::move(args.Error));
         response->OpLogEntryId = args.OpLogEntry.GetEntryId();
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
@@ -753,6 +754,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
     } else {
         RemoveNodeRef(
             *db,
+            args.FileSystemEvents,
             args.Request.GetNodeId(),
             args.ChildRef->MinCommitId,
             args.CommitId,
@@ -783,6 +785,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
             // create source ref to target node
             CreateNodeRef(
                 *db,
+                args.FileSystemEvents,
                 args.Request.GetNodeId(),
                 args.CommitId,
                 args.Request.GetName(),

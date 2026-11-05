@@ -57,6 +57,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
     library/cpp/testing/unittest
     library/cpp/testing/common
     contrib/ydb/core/kqp/ut/common

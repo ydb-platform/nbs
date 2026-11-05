@@ -2329,7 +2329,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
     TABLET_TEST_4K_ONLY(ShouldHandleCommitIdOverflowUponCompleteUnlinkNode)
     {
-        const ui32 maxTabletStep = 5;
+        const ui32 maxTabletStep = 8;
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetMaxTabletStep(maxTabletStep);
@@ -2339,9 +2339,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const ui32 nodeIdx = env.AddDynamicNode();
 
         TTabletRebootTracker rebootTracker;
-        env.GetRuntime().SetEventFilter(rebootTracker.GetEventFilter());
 
         const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            rebootTracker.GetEventFilter());
 
         TIndexTabletClient tablet(
             env.GetRuntime(),
@@ -2365,8 +2369,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         ui32 failures = 0;
 
-        const TString shardId = "shard";
-        const ui64 opLogEntryId = Max<ui64>();
+        const TString shardId = tablet.GetHeaders().FileSystemId;
 
         //
         // Pre-creating N fake external node-refs to apply the unlink op to.
@@ -2374,6 +2377,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         const ui32 iterations = 5;
         TVector<TString> fileNames;
+        TVector<TString> shardNodeNames;
 
         for (ui32 i = 0; i < iterations;) {
             auto fileName = TStringBuilder() << "file" << i;
@@ -2391,8 +2395,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             }
 
             fileNames.push_back(fileName);
+            shardNodeNames.push_back(shardNodeName);
             ++i;
         }
+
+        // Replayed UnlinkNodeInShard requests are routed back to this tablet.
+        // Configure it as a shard so those requests do not require an active
+        // client session while the tablet is still recovering.
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            shardId,
+            "main_fs" /* mainFileSystemId */);
 
         for (ui32 i = 0; i < iterations; ++i) {
             auto unlinkNodeRequest = tablet.CreateUnlinkNodeRequest(
@@ -2401,6 +2414,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                 false /* unlinkDirectory */);
 
             NProto::TUnlinkNodeResponse unlinkResponse;
+
+            ui64 opLogEntryId = 0;
+            for (;;) {
+                NProto::TOpLogEntry entry;
+                auto* shardRequest =
+                    entry.MutableUnlinkNodeInShardRequest();
+                shardRequest->MutableHeaders()->CopyFrom(
+                    unlinkNodeRequest->Record.GetHeaders());
+                shardRequest->SetFileSystemId(shardId);
+                shardRequest->SetNodeId(RootNodeId);
+                shardRequest->SetName(shardNodeNames[i]);
+                shardRequest->SetUnlinkDirectory(false);
+                shardRequest->MutableOriginalRequest()->CopyFrom(
+                    unlinkNodeRequest->Record);
+                shardRequest->SetShouldUnlockUponCompletion(true);
+
+                tablet.SendWriteOpLogEntryRequest(std::move(entry));
+                auto writeResponse = tablet.RecvWriteOpLogEntryResponse();
+                reconnectIfNeeded();
+                if (HasError(writeResponse->GetError())) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        E_REJECTED,
+                        writeResponse->GetStatus(),
+                        FormatError(writeResponse->GetError()));
+                    continue;
+                }
+
+                opLogEntryId = writeResponse->OpLogEntryId;
+                break;
+            }
 
             tablet.SendCompleteUnlinkNodeRequest(
                 unlinkNodeRequest->Record,
@@ -2415,9 +2458,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
                     response->GetStatus(),
                     FormatError(response->GetError()));
                 ++failures;
-                continue;
             }
 
+            // If CompleteUnlinkNode overflows, its real op-log entry must
+            // survive the transaction and be replayed after the reboot.  The
+            // replay must eventually remove the node ref from the leader.
             tablet.SendUnsafeGetNodeRefRequest(dir, fileNames[i]);
             auto getNodeRefResponse = tablet.RecvUnsafeGetNodeRefResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(

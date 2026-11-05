@@ -117,7 +117,8 @@ void TIndexTabletActor::CompleteTx_AcquireLock(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvAcquireLockResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvAcquireLockResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TAcquireLockMethod>(
         response->Record,
         args.RequestInfo->CallContext,

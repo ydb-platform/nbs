@@ -14,10 +14,6 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
-#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
-#include <contrib/ydb/core/cms/console/console.h>
-#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
@@ -27,7 +23,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
-using namespace NConsole;
 
 namespace {
 
@@ -210,6 +205,20 @@ struct TVolumeStatsTestMock final: public IVolumeStats
         Y_UNUSED(diskId);
         return {};
     }
+
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -375,14 +384,6 @@ public:
             TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
         request->Record.SetOpStatus(status);
         Send(receiver, std::move(request));
-    }
-
-    THolder<TEvConsole::TEvConfigNotificationResponse>
-    GrabConfigNotificationResponse()
-    {
-        return TestEnv.GetRuntime()
-            .GrabEdgeEvent<TEvConsole::TEvConfigNotificationResponse>(
-                TDuration());
     }
 
     THolder<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>
@@ -751,7 +752,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
-        config.WithType(NProto::PREEMPTION_NONE);
 
         auto volumeBalancerActorId = testEnv.Register(CreateVolumeBalancerActor(
             config.WithType(NProto::PREEMPTION_NONE),

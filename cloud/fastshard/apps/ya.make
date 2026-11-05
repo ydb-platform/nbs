@@ -1,0 +1,5 @@
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    RECURSE(
+        client
+    )
+ENDIF()

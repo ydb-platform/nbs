@@ -84,7 +84,8 @@ bool TIndexTabletActor::AcceptRequestNoSession(
     }
 
     if (FAILED(error.GetCode())) {
-        auto response = std::make_unique<typename TMethod::TResponse>(error);
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
         return false;
     }
@@ -204,6 +205,8 @@ FILESTORE_GENERATE_IMPL(PrepareUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AbortUnlinkDirectoryNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(LinkNodeInShard, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(ListNodesInternal, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(CreateSession, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(DestroySession, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 

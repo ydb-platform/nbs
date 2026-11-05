@@ -11,6 +11,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
@@ -48,6 +50,28 @@ using ICellHostWatcherPtr = std::shared_ptr<ICellHostWatcher>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The cell's sensors, under counters=blockstore/component=cells/cell=<id>.
+// HostsUnavailable counts the hosts found dead, not the ones never asked: a
+// host is only pinged while its channel is open, and only with migration on.
+struct TCellCounters
+{
+    NMonitoring::TDynamicCounters::TCounterPtr HostsConfigured;
+    NMonitoring::TDynamicCounters::TCounterPtr HostsUnavailable;
+    NMonitoring::TDynamicCounters::TCounterPtr Connections;
+
+    NMonitoring::TDynamicCounters::TCounterPtr HostBecameUnavailable;
+    NMonitoring::TDynamicCounters::TCounterPtr HostBecameAvailable;
+    NMonitoring::TDynamicCounters::TCounterPtr ChannelWarmupErrors;
+    NMonitoring::TDynamicCounters::TCounterPtr DescribeEndpointErrors;
+    NMonitoring::TDynamicCounters::TCounterPtr PingSweepErrors;
+
+    NMonitoring::TDynamicCounters::TCounterPtr Migrations;
+    NMonitoring::TDynamicCounters::TCounterPtr MigrationFailures;
+    NMonitoring::TDynamicCounters::TCounterPtr NoMigrationTarget;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Keeps the control channels to the hosts of a single cell and tracks which
 // of them are usable.
 //
@@ -81,12 +105,13 @@ private:
         ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture Endpoint;
         ui32 RefCount = 0;
         bool Configured = false;
-        bool Alive = true;
+        EHostLiveness Liveness = EHostLiveness::Unknown;
         TVector<std::weak_ptr<ICellHostWatcher>> Watchers;
     };
 
     const TCellConfigPtr Config;
     const TBootstrap Bootstrap;
+    const TCellCounters Counters;
 
     TLog Log;
 
@@ -104,12 +129,16 @@ public:
     [[nodiscard]] TCellHostEndpoints GetDescribeEndpoints(
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    // A live configured host, or - only when there is none - a live host
-    // discovered at runtime.
+    // Where a new connection goes: a configured host not found dead, picked
+    // at random whether or not it has answered a ping yet; a discovered one
+    // only when no configured host is left.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHost() const;
 
-    // The same, minus hosts the caller already knows are no good for it -
-    // the one it is leaving, and any it has found unusable since.
+    // Where a connection moves to, minus hosts the caller already knows are
+    // no good for it - the one it is leaving, and any it has found unusable
+    // since. A host that answered a ping first, configured before
+    // discovered; only when there is none, a host that has not been asked
+    // yet, in the same order. Never a host found dead.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHostExcept(
         const THashSet<TString>& except) const;
 
@@ -140,7 +169,7 @@ public:
     struct THostStatus
     {
         TString Fqdn;
-        bool Alive = false;
+        EHostLiveness Liveness = EHostLiveness::Unknown;
         bool Warm = false;
         size_t Connections = 0;
     };
@@ -160,17 +189,24 @@ public:
 
     [[nodiscard]] TString GetCellId() const;
 
+    [[nodiscard]] const TCellCounters& GetCounters() const;
+
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
         AcquireControlChannel(const TString& fqdn);
     void ReleaseControlChannel(const TString& fqdn);
 
 private:
+    [[nodiscard]] TResultOrError<TCellHostConfig> PickHostImpl(
+        const THashSet<TString>& except,
+        bool preferVerified) const;
+
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
         EnsureChannelLocked(const TString& fqdn);
 
     // Warms configured hosts until MinCellConnections channels are live.
     void TopUpWarmChannelsLocked();
     void PruneRetainedDiscoveredLocked();
+    void UpdateHostsUnavailableLocked();
     [[nodiscard]] size_t CountLiveChannelsLocked(
         const TString& except) const;
 

@@ -121,6 +121,7 @@ void TIndexTabletActor::ExecuteTx_PrepareUnlinkDirectoryNode(
     attrs.SetIsPreparedForUnlink(true);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.Request.GetNodeId(),
         args.Node->MinCommitId,
         args.CommitId,

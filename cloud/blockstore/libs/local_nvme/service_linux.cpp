@@ -185,7 +185,7 @@ class TLocalNVMeService final
     };
 
 private:
-    const TLocalNVMeConfigPtr Config;
+    const TLocalNVMeConfigConstPtr Config;
     const ILoggingServicePtr Logging;
     const IMonitoringServicePtr Monitoring;
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
@@ -212,7 +212,7 @@ private:
 
 public:
     TLocalNVMeService(
-        TLocalNVMeConfigPtr config,
+        TLocalNVMeConfigConstPtr config,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -318,7 +318,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TLocalNVMeService::TLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -1404,7 +1404,22 @@ auto TLocalNVMeService::ReleaseDeviceImpl(const TSerialNumber& serialNumber)
                 << "Device " << serialNumber.Quote() << " not found");
     }
 
-    if (auto error = BindDeviceToDriver(*device, "nvme"); HasError(error)) {
+    auto error = SafeExecute<NProto::TError>(
+        [&]
+        {
+            TFileHandle vfioGroup;
+            const auto& pciAddr = device->GetPCIAddress();
+            if (Config->GetAcquireVfioGroupOnRelease() &&
+                SysFs->GetDriverForPCIDevice(pciAddr) == "vfio-pci")
+            {
+                vfioGroup = SysFs->OpenVfioGroupForPCIDevice(pciAddr);
+            }
+
+            // Hold the group fd until unbind completes so another process
+            // cannot acquire the VFIO group or bind a cdev to iommufd.
+            return BindDeviceToDriver(*device, "nvme");
+        });
+    if (HasError(error)) {
         return error;
     }
 
@@ -1459,7 +1474,7 @@ auto TLocalNVMeService::ListDevices() const -> TVector<NProto::TNVMeDevice>
 ////////////////////////////////////////////////////////////////////////////////
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -1480,7 +1495,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
 }
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -1496,7 +1511,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(nvmeManager),
         std::move(executor),
         std::move(backgroundExecutor),
-        CreateSysFs("/sys"));
+        CreateSysFs("/sys", "/dev"));
 }
 
 }   // namespace NCloud::NBlockStore

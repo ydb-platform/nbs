@@ -39,8 +39,8 @@ struct TWriteBackCacheArgs
     // Path to the file used for persistent storage
     TString FilePath;
 
-    // Maximum size of persistent storage
-    ui64 CapacityBytes = 0;
+    // The target size of persistent storage
+    ui64 StateFileSize = 0;
 
     // WriteBackCache calls FlushAllData with the specified period
     TDuration AutomaticFlushPeriod = TDuration::Zero();

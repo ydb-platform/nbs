@@ -17,6 +17,7 @@ enum EDiskRegistryConfigKey
     WRITABLE_STATE = 3,
     RESTORE_STATE = 4,
     LAST_BACKUP_TS = 5,
+    SUSPEND_SECURE_ERASE = 6,
 };
 
 }   // namespace
@@ -425,6 +426,32 @@ void TDiskRegistryDatabase::WriteWritableState(bool state)
     Table<TTable>()
         .Key(WRITABLE_STATE)
         .Update<TTable::Config>(config);
+}
+
+bool TDiskRegistryDatabase::ReadSuspendSecureErase(bool& state)
+{
+    using TTable = TDiskRegistrySchema::DiskRegistryConfig;
+
+    auto it = Table<TTable>().Key(SUSPEND_SECURE_ERASE).Select();
+
+    if (!it.IsReady()) {
+        return false;
+    }
+
+    state = it.IsValid() ? it.GetValue<TTable::Config>().GetSuspendSecureErase()
+                         : false;
+
+    return true;
+}
+
+void TDiskRegistryDatabase::WriteSuspendSecureErase(bool state)
+{
+    using TTable = TDiskRegistrySchema::DiskRegistryConfig;
+
+    NProto::TDiskRegistryConfig config;
+    config.SetSuspendSecureErase(state);
+
+    Table<TTable>().Key(SUSPEND_SECURE_ERASE).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::AddErrorNotification(const TString& diskId)

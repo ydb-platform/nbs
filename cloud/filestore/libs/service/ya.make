@@ -9,6 +9,8 @@ SRCS(
     error.cpp
     filestore.cpp
     filestore_test.cpp
+    filesystem_event.cpp
+    mask.cpp
     request.cpp
     service_auth.cpp
 )
@@ -20,6 +22,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/protos
 
+    library/cpp/digest/md5
     library/cpp/protobuf/util
     library/cpp/threading/future
 )

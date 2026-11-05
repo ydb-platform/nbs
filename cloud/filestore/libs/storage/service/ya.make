@@ -1,5 +1,9 @@
 LIBRARY(filestore-libs-storage-service)
 
+IF(OPENSOURCE)
+    CFLAGS(-DOPENSOURCE)
+ENDIF()
+
 SRCS(
     helpers.cpp
     rope_utils.cpp
@@ -33,7 +37,6 @@ SRCS(
     service_actor_forward.cpp
     service_actor_getfsinfo.cpp
     service_actor_getnodeattr.cpp
-    service_actor_getsessionevents.cpp
     service_actor_list.cpp
     service_actor_listnodes.cpp
     service_actor_monitoring.cpp

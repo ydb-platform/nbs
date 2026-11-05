@@ -272,3 +272,38 @@ func (s *storageYDB) ListSnapshots(
 	)
 	return ids, err
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) EnqueueBackupChunks(
+	ctx context.Context,
+	snapshotID string,
+	entries []BackupChunkQueueEntry,
+) (err error) {
+
+	defer s.metrics.StatOperation("EnqueueBackupChunks")(&err)
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.enqueueBackupChunks(ctx, session, snapshotID, entries)
+		},
+	)
+}
+
+func (s *storageYDB) GetQueuedChunksToBackup(
+	ctx context.Context,
+	limit int,
+) (entries []BackupChunkQueueEntry, err error) {
+
+	defer s.metrics.StatOperation("GetQueuedChunksToBackup")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			entries, err = s.getQueuedChunksToBackup(ctx, session, limit)
+			return err
+		},
+	)
+	return entries, err
+}

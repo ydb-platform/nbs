@@ -903,6 +903,9 @@ void TBootstrapYdb::InitKikimrService()
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        args.CellId = Configs->CellsConfig->GetCellId();
+    }
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.PartitionBudgetManager = PartitionBudgetManager;
     args.LocalNVMeService = LocalNVMeService;
@@ -1020,17 +1023,9 @@ void TBootstrapYdb::SetupCellManager()
                 "Secure cells port is configured without certificates");
 
             cellCertProvider = CreateCertificateProvider(
-                Logging,
-                GetComponentName(
-                    TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
-                Scheduler,
-                LongRunningTaskExecutor,
-                Monitoring->GetCounters()
-                    ->GetSubgroup("counters", "blockstore")
-                    ->GetSubgroup("component", "cells"),
+                CertificateWatcher,
                 grpcConfig.GetRootCertsFile(),
-                std::move(certList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
+                std::move(certList));
         }
 
         CellManager = CreateCellManager(

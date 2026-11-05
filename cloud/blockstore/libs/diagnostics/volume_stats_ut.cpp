@@ -1,7 +1,8 @@
-#include "volume_stats.h"
+#include "volume_stats.cpp"
 
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
@@ -132,6 +133,83 @@ void Mount(
 
     volumeStats->MountVolume(volume, client, instance);
 }
+
+struct TDownDisksFixture: NUnitTest::TBaseFixture
+{
+    using TMediaKind = NCloud::NProto::EStorageMediaKind;
+    const TVector<TMediaKind> MediaKinds;
+
+    IVolumeStatsPtr VolumeStats;
+    THashMap<TMediaKind, TString> DiskIds;
+    THashMap<TMediaKind, TString> ClientIds;
+    THashMap<TMediaKind, TString> InstanceIds;
+    NMonitoring::TDynamicCounters::TCounterPtr TotalDownDisks;
+    THashMap<TMediaKind, NMonitoring::TDynamicCounters::TCounterPtr> DownDisks;
+    THashMap<TMediaKind, NMonitoring::TDynamicCounters::TCounterPtr>
+        HasDowntime;
+
+    TDownDisksFixture()
+        : MediaKinds(GetMediaKinds())
+    {}
+
+    void SetUp(NUnitTest::TTestContext&) override
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        VolumeStats = CreateVolumeStats(
+            monitoring,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            std::make_shared<TTestTimer>());
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
+
+        TotalDownDisks = counters->GetCounter("DownDisks");
+        for (const auto mk: MediaKinds) {
+            DownDisks[mk] =
+                counters->GetSubgroup("type", MediaKindToStatsString(mk))
+                    ->GetCounter("DownDisks");
+
+            DiskIds[mk] = "disk_" + ToString(static_cast<int>(mk));
+            ClientIds[mk] = "client_" + ToString(static_cast<int>(mk));
+            InstanceIds[mk] = "instance_" + ToString(static_cast<int>(mk));
+
+            Mount(VolumeStats, DiskIds[mk], ClientIds[mk], InstanceIds[mk], mk);
+
+            HasDowntime[mk] =
+                monitoring->GetCounters()
+                    ->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "server_volume")
+                    ->GetSubgroup("host", "cluster")
+                    ->GetSubgroup("volume", DiskIds[mk])
+                    ->GetSubgroup("instance", InstanceIds[mk])
+                    ->GetSubgroup("cloud", DefaultCloudId)
+                    ->GetSubgroup("folder", DefaultFolderId)
+                    ->GetSubgroup("type", MediaKindToStatsString(mk))
+                    ->GetCounter("HasDowntime");
+        }
+    }
+
+    static bool IsNrd(NCloud::NProto::EStorageMediaKind mk)
+    {
+        return mk == NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED ||
+               mk == NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+    }
+
+private:
+    static TVector<NCloud::NProto::EStorageMediaKind> GetMediaKinds()
+    {
+        TVector<NCloud::NProto::EStorageMediaKind> result;
+        for (auto mediaKind = NCloud::NProto::EStorageMediaKind_MIN;
+             mediaKind <= NCloud::NProto::EStorageMediaKind_MAX;
+             mediaKind =
+                 static_cast<NCloud::NProto::EStorageMediaKind>(1 + mediaKind))
+        {
+            result.push_back(mediaKind);
+        }
+        return result;
+    }
+};
 
 }   // namespace
 
@@ -1322,6 +1400,172 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1,
             counters->GetSubgroup("type", "ssd")
                 ->GetCounter("DownDisks")->Val());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldExcludeNrdWithHwProblemsFromDownDisks,
+        TDownDisksFixture)
+    {
+        ui32 errorFlags = 0;
+        SetProtoFlag(errorFlags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+
+        for (const auto mk: MediaKinds) {
+            auto volumeInfo =
+                VolumeStats->GetVolumeInfo(DiskIds[mk], ClientIds[mk]);
+
+            const ui64 started = volumeInfo->RequestStarted(
+                EBlockStoreRequest::WriteBlocks,
+                1024);
+            volumeInfo->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                started - DurationToCyclesSafe(TDuration::Seconds(30)),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                1024,
+                EDiagnosticsErrorKind::ErrorSilent,
+                errorFlags,
+                false,
+                0);
+        }
+
+        // The number of down disks must remain unchanged while the hardware
+        // issue is within the internal max-time calculator’s window:
+        for (size_t i = 0; i < TDowntimeCalculator::BucketCount; ++i) {
+            VolumeStats->UpdateStats(true);
+
+            ui64 expected = 0;
+            for (auto mk: MediaKinds) {
+                auto msg = MediaKindToString(mk) + ToString(i);
+                expected += IsNrd(mk) ? 0 : 1;
+                if (IsNrd(mk)) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(0, DownDisks[mk]->Val(), msg);
+                } else {
+                    UNIT_ASSERT_VALUES_UNEQUAL_C(0, DownDisks[mk]->Val(), msg);
+                }
+                UNIT_ASSERT_VALUES_EQUAL_C(1, HasDowntime[mk]->Val(), msg);
+                const auto history =
+                    VolumeStats->GetDowntimeHistory(DiskIds[mk]);
+                UNIT_ASSERT_C(!history.empty(), msg);
+                UNIT_ASSERT_EQUAL_C(
+                    EDowntimeStateChange::DOWN,
+                    history.back().second,
+                    msg);
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(expected, TotalDownDisks->Val(), i);
+        }
+
+        // Once the internal calculator's window is zeroed out, there must be no
+        // down disks:
+        VolumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, TotalDownDisks->Val());
+        for (auto mk: MediaKinds) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                DownDisks[mk]->Val(),
+                MediaKindToString(mk));
+        }
+
+        // Ensure the previous HW problem does not affect new downtimes:
+        for (const auto mk: MediaKinds) {
+            auto volumeInfo =
+                VolumeStats->GetVolumeInfo(DiskIds[mk], ClientIds[mk]);
+
+            const ui64 started = volumeInfo->RequestStarted(
+                EBlockStoreRequest::WriteBlocks,
+                1024);
+            volumeInfo->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                started - DurationToCyclesSafe(TDuration::Seconds(30)),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                1024,
+                EDiagnosticsErrorKind::Success,
+                0,
+                false,
+                0);
+        }
+
+        VolumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(MediaKinds.size(), TotalDownDisks->Val());
+        for (auto mk: MediaKinds) {
+            UNIT_ASSERT_VALUES_UNEQUAL_C(
+                0,
+                DownDisks[mk]->Val(),
+                MediaKindToString(mk));
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldExcludeNrdWithHwProblemsFromDownDisks_InRetry,
+        TDownDisksFixture)
+    {
+        ui32 errorFlags = 0;
+        SetProtoFlag(errorFlags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+
+        for (const auto mk: MediaKinds) {
+            auto volumeInfo =
+                VolumeStats->GetVolumeInfo(DiskIds[mk], ClientIds[mk]);
+
+            const ui64 started = volumeInfo->RequestStarted(
+                EBlockStoreRequest::WriteBlocks,
+                1024);
+
+            volumeInfo->AddRetryStats(
+                EBlockStoreRequest::WriteBlocks,
+                EDiagnosticsErrorKind::ErrorSilent,
+                errorFlags);
+
+            volumeInfo->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                started - DurationToCyclesSafe(TDuration::Seconds(30)),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                TDuration::Zero(),
+                1024,
+                EDiagnosticsErrorKind::Success,
+                0,
+                false,
+                0);
+        }
+
+        // The number of down disks must remain unchanged while the hardware
+        // issue is within the internal max-time calculator’s window:
+        for (size_t i = 0; i < TDowntimeCalculator::BucketCount; ++i) {
+            VolumeStats->UpdateStats(true);
+
+            ui64 expected = 0;
+            for (auto mk: MediaKinds) {
+                auto msg = MediaKindToString(mk) + ToString(i);
+                expected += IsNrd(mk) ? 0 : 1;
+                if (IsNrd(mk)) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(0, DownDisks[mk]->Val(), msg);
+                } else {
+                    UNIT_ASSERT_VALUES_UNEQUAL_C(0, DownDisks[mk]->Val(), msg);
+                }
+                UNIT_ASSERT_VALUES_EQUAL_C(1, HasDowntime[mk]->Val(), msg);
+                const auto history =
+                    VolumeStats->GetDowntimeHistory(DiskIds[mk]);
+                UNIT_ASSERT_C(!history.empty(), msg);
+                UNIT_ASSERT_EQUAL_C(
+                    EDowntimeStateChange::DOWN,
+                    history.back().second,
+                    msg);
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(expected, TotalDownDisks->Val(), i);
+        }
+
+        // Once the internal calculator's window is zeroed out, there must be no
+        // down disks:
+        VolumeStats->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, TotalDownDisks->Val());
+        for (auto mk: MediaKinds) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                DownDisks[mk]->Val(),
+                MediaKindToString(mk));
+        }
     }
 
     Y_UNIT_TEST(ShouldTrackAvailabilityCounters)
@@ -2568,6 +2812,187 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             keeper.GetValue(
                 "compute.cloud_id.folder_id.test2.instance2.disk.write_ops"),
             "2");
+    }
+
+    Y_UNIT_TEST(ShouldReportServingCellHostPerInstance)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto findCell = [&] (const TString& type, const TString& cellId) {
+            auto group = counters
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindSubgroup("type", type);
+            return group ? group->FindSubgroup("cell", cellId) : nullptr;
+        };
+
+        auto cellMount = [&] (
+            const TString& type,
+            const TString& cellId,
+            const TString& fqdn) -> i64
+        {
+            auto cell = findCell(type, cellId);
+            auto host = cell ? cell->FindSubgroup("cell_host", fqdn) : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-1"));
+
+        // a move to another host of the cell drops the old one
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-2");
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("hdd", "cell-a", "host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-2"));
+
+        // a relabel rebuilds the instance tree - the serving host carries over
+        Mount(
+            volumeStats,
+            "test",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("ssd", "cell-a", "host-2"));
+
+        volumeStats->SetServingCellHost("test", "client-1", 1, {}, {});
+        UNIT_ASSERT(!findCell("ssd", "cell-a"));
+    }
+
+    Y_UNIT_TEST(ShouldShowServingCellHostWhileAnyConnectionUsesIt)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto counter = [&] (const TString& fqdn)
+        {
+            auto group = monitoring
+                ->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "hdd")
+                ->FindSubgroup("cell", "cell-a");
+            auto host = group ? group->FindSubgroup("cell_host", fqdn)
+                              : nullptr;
+            return host ? host->FindCounter("CellMount") : nullptr;
+        };
+        auto cellMount = [&] (const TString& fqdn) -> i64
+        {
+            auto c = counter(fqdn);
+            return c ? c->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        // a local VM migration: the new endpoint comes up while the old one
+        // still serves, each through its own connection
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-1");
+        const auto shown = counter("host-1");
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            2,
+            "cell-a",
+            "host-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+        // a host still in use stays as it is, never dropped and added back
+        UNIT_ASSERT_EQUAL(shown, counter("host-1"));
+
+        // the new connection moves to another host
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            2,
+            "cell-a",
+            "host-2");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-2"));
+
+        // the old endpoint goes away, the new one is still shown
+        volumeStats->SetServingCellHost("test", "client-1", 1, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-2"));
+
+        volumeStats->SetServingCellHost("test", "client-1", 2, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-2"));
+    }
+
+    Y_UNIT_TEST(ShouldRelabelDiskWithDoubleCopySuffix)
+    {
+        auto volumeStats = CreateVolumeStats(
+            CreateMonitoringServiceStub(),
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        // kept under disk-copy, and a relabel must look it up there again
+        // rather than strip the suffix a second time
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto info = volumeStats->GetVolumeInfo("disk-copy-copy", "client-1");
+        UNIT_ASSERT(info);
+        UNIT_ASSERT_EQUAL(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            info->GetInfo().GetStorageMediaKind());
     }
 }
 

@@ -16,11 +16,15 @@ using namespace NActors;
 void TPartitionThreadSafeState::Init(
     NActors::TActorId partitionActorId,
     ui32 generation,
-    ui32 lastCommitId)
+    ui32 lastCommitId,
+    TInstant now,
+    NActors::TMonotonic monotonic)
 {
     PartitionActorId = partitionActorId;
     Generation = generation;
     LastCommitId = lastCommitId;
+    FreshWriteTimeAnchor = now;
+    FreshWriteMonotonicAnchor = monotonic;
 }
 
 ui64 TPartitionThreadSafeState::GenerateCommitId()
@@ -35,16 +39,29 @@ ui64 TPartitionThreadSafeState::GetLastCommitId() const
     return GetLastCommitIdImpl();
 }
 
-ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
+TPartitionThreadSafeState::TFreshWriteInfo
+TPartitionThreadSafeState::StartFreshWrite(
+    const NActors::TActorContext& ctx,
+    ui64 blockCount)
 {
     TGuard guard(StateLock);
 
     ui64 commitId = GenerateCommitIdImpl();
+    const auto timestamp = GetFreshWriteTimestamp(ctx);
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
     CommitQueue.AcquireBarrier(commitId);
     FreshWritesCommitQueue.AcquireBarrier(commitId);
-    return commitId;
+    return {.CommitId = commitId, .Timestamp = timestamp};
+}
+
+TInstant TPartitionThreadSafeState::GetFreshWriteTimestamp(
+    const NActors::TActorContext& ctx) const
+{
+    // Persist Unix time, but advance it with the monotonic clock so timestamps
+    // follow commit order.
+    return FreshWriteTimeAnchor +
+           (ctx.Monotonic() - FreshWriteMonotonicAnchor);
 }
 
 void TPartitionThreadSafeState::FinishFreshWrite(

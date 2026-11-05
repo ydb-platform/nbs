@@ -43,8 +43,6 @@ namespace NCloud::NFileStore {
 #define FILESTORE_DATA_METHODS(xxx, ...)                                       \
     xxx(StatFileStore,                      __VA_ARGS__)                       \
                                                                                \
-    xxx(SubscribeSession,                   __VA_ARGS__)                       \
-    xxx(GetSessionEvents,                   __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \
@@ -132,7 +130,6 @@ namespace NCloud::NFileStore {
     FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
     FILESTORE_DATA_METHODS(xxx,             __VA_ARGS__)                       \
     FILESTORE_LOCAL_DATA_METHODS(xxx,       __VA_ARGS__)                       \
-    xxx(GetSessionEventsStream,             __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
 // FILESTORE_REQUESTS
 
@@ -172,8 +169,8 @@ enum class EFileStoreRequest
     DestroyCheckpoint = 19,
     ExecuteAction = 20,
     StatFileStore = 21,
-    SubscribeSession = 22,
-    GetSessionEvents = 23,
+    Reserved1 = 22,     // formerly SubscribeSession
+    Reserved2 = 23,     // formerly GetSessionEvents
     ResetSession = 24,
     ResolvePath = 25,
     CreateNode = 26,
@@ -198,7 +195,7 @@ enum class EFileStoreRequest
     AllocateData = 45,
     Fsync = 46,
     FsyncDir = 47,
-    GetSessionEventsStream = 48,
+    Reserved3 = 48,     // formerly GetSessionEventsStream
     StartEndpoint = 49,
     StopEndpoint = 50,
     ListEndpoints = 51,

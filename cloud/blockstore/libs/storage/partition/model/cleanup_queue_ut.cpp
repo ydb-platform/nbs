@@ -44,27 +44,33 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
         UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(), 10);
         UNIT_ASSERT_VALUES_EQUAL(
-            queue
-                .GetCount(0, TPartialBlobId(Max(), Max()), MakeCommitId(1, 15)),
+            queue.GetCount(
+                0,
+                TPartialBlobId(Max(), Max()),
+                MakeCommitId(1, 15),
+                100),
             5);
 
         UNIT_ASSERT_VALUES_EQUAL(
             queue.GetCount(
                 MakeCommitId(1, 15),
                 TPartialBlobId(Max(), Max()),
-                MakeCommitId(1, 20)),
+                MakeCommitId(1, 20),
+                100),
             5);
         UNIT_ASSERT_VALUES_EQUAL(
             queue.GetCount(
                 MakeCommitId(1, 11),
                 TPartialBlobId(Max(), Max()),
-                MakeCommitId(1, 15)),
+                MakeCommitId(1, 15),
+                100),
             4);
         UNIT_ASSERT_VALUES_EQUAL(
             queue.GetCount(
                 MakeCommitId(1, 20),
                 TPartialBlobId(Max(), Max()),
-                MakeCommitId(1, 20)),
+                MakeCommitId(1, 20),
+                100),
             0);
 
         EnsureEqual(
@@ -134,10 +140,18 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
         const TPartialBlobId blob7(1, 7, 3, 1024, 0, 0);
         const TPartialBlobId blob10(1, 10, 3, 1024, 0, 0);
 
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(commitId, blob1, commitId), 9);
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(commitId, blob4, commitId), 6);
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(commitId, blob7, commitId), 3);
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(commitId, blob10, commitId), 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(commitId, blob1, commitId, 100),
+            9);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(commitId, blob4, commitId, 100),
+            6);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(commitId, blob7, commitId, 100),
+            3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(commitId, blob10, commitId, 100),
+            0);
 
         EnsureEqual(
             queue.GetItems(commitId, blob1, commitId, 100),
@@ -147,6 +161,38 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
             {5, 6, 7, 8, 9, 10});
         EnsureEqual(queue.GetItems(commitId, blob7, commitId, 100), {8, 9, 10});
         EnsureEqual(queue.GetItems(commitId, blob10, commitId, 100), {});
+    }
+
+    Y_UNIT_TEST(ShouldLimitCount)
+    {
+        TCleanupQueue queue(1024);
+
+        ui32 deletionStep = 10;
+        for (ui32 step: Steps) {
+            queue.Add(
+                {TPartialBlobId(1, step, 3, 1024, 0, 0),
+                 MakeCommitId(1, ++deletionStep),
+                 {}});
+        }
+
+        const TPartialBlobId blobId(Max(), Max());
+        const ui64 toCommitId = MakeCommitId(1, 20);
+
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(0, blobId, toCommitId, 0), 0);
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(0, blobId, toCommitId, 3), 3);
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(0, blobId, toCommitId, 10), 10);
+        UNIT_ASSERT_VALUES_EQUAL(queue.GetCount(0, blobId, toCommitId, 11), 10);
+
+        // The limit only matters if there are enough items in the range.
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(0, blobId, MakeCommitId(1, 12), 5),
+            2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(MakeCommitId(1, 15), blobId, toCommitId, 3),
+            3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCount(MakeCommitId(1, 18), blobId, toCommitId, 3),
+            2);
     }
 
     Y_UNIT_TEST(ShouldTrimQueue)

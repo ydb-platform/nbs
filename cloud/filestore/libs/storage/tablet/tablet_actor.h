@@ -22,6 +22,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet/model/filesystem_event_subscriptions.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
@@ -205,6 +206,22 @@ private:
     TStorageConfigPtr Config;
     TDiagnosticsConfigPtr DiagConfig;
 
+    //
+    // PipeServerId -> ActorId of the client on the other side of the pipe
+    // (IndexTabletProxyActor). FileSystemEvents are sent to these clients.
+    //
+
+    THashMap<NActors::TActorId, NActors::TActorId> FileSystemEventClients;
+
+    //
+    // Which clients (identified by the pipe servers) have read which Nodes and
+    // NodeRefs. FileSystemEvents are sent only to these clients. The clients
+    // that have disconnected are filtered out via FileSystemEventClients upon
+    // sending, their registrations go away with the generation rotation.
+    //
+
+    TFileSystemEventSubscriptions FileSystemEventSubscriptions;
+
     struct TCompactionStateLoadStatus
     {
         TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
@@ -332,7 +349,8 @@ private:
         const TIndexTabletState::TBackpressureThresholds&
             backpressureThresholds,
         const TIndexTabletState::TBackpressureValues& backpressureValues,
-        const THandlesStats& handlesStats);
+        const THandlesStats& handlesStats,
+        const TFileSystemEventSubscriptions::TStats& subscriptionsStats);
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);
@@ -360,11 +378,26 @@ private:
         const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueForcedOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedRangeOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedTabletOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    void HandleForcedOperationCompletedImpl(
+        const NActors::TActorId& sender,
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
 
     void AddInFlightRequest(
         TRequestInfo& requestInfo,
@@ -451,9 +484,57 @@ private:
         }
     }
 
-    void NotifySessionEvent(
+    NActors::TActorId RegisterFileSystemEventClient(
+        const NActors::TActorId& recipient,
+        const NActors::TActorId& clientId,
+        const NProto::THeaders& headers);
+
+    void AddFileSystemEventNodeSubscriber(
         const NActors::TActorContext& ctx,
-        const NProto::TSessionEvent& event);
+        const NActors::TActorId& pipeServerId,
+        ui64 nodeId);
+
+    void AddFileSystemEventNodeRefSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 parentNodeId,
+        const TString& name);
+
+    void AddFileSystemEventNodeXAttrSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 nodeId,
+        const TString& name);
+
+    void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
+
+    TDuration GetFileSystemEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
+    TDuration GetFileSystemListingEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
+    ui32 SendFileSystemEvents(
+        const NActors::TActorContext& ctx,
+        const TVector<NProto::TFileSystemEvent>& events);
+
+    template <typename T>
+    void SendTxFileSystemEvents(
+        const NActors::TActorContext& ctx,
+        const T& args)
+    {
+        //
+        // Must be called after UpdateInMemoryIndexState(args): otherwise a
+        // client, having received an event, may re-read the stale data from
+        // the in-memory index cache.
+        //
+
+        if constexpr (std::is_base_of_v<TIndexStateNodeUpdates, T>) {
+            if (!args.FileSystemEvents.empty()) {
+                SendFileSystemEvents(ctx, args.FileSystemEvents);
+            }
+        }
+    }
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
     TBackpressureThresholds BuildBackpressureSoftThresholds() const;
@@ -493,6 +574,7 @@ private:
 
     void DestroySessionHandlesAndRemoveNodes(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const NActors::TActorContext& ctx,
         TSession* session,
         ui64 commitId,
@@ -620,6 +702,10 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    NProto::TError CheckUnconfirmedDataOverlap(
+        ui64 nodeId,
+        const TByteRange& range) const;
+    NProto::TError ForceLoadRangeIfNeeded(ui64 nodeId, const TByteRange& range);
     bool IsInUnconfirmedCreateHandleGracePeriod(
         const NActors::TActorContext& ctx) const;
     bool NeedsNodeDestructionDeferral(
@@ -636,6 +722,7 @@ private:
     // was deferred or failed (in the latter case an orphan node is written).
     bool DeferNodeDestructionOrRemoveNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const NActors::TActorContext& ctx,
         const INodeIndexTabletDatabase::TNode& node,
         ui64 commitId,

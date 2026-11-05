@@ -5,6 +5,7 @@ SRCS(
     directory_handle_stats.cpp
     directory_handle_storage.cpp
     directory_handle_storage_stats.cpp
+    filesystem_event_handler.cpp
     fs.cpp
     fs_directory_content_format.cpp
     fs_directory_handle.cpp
@@ -19,8 +20,11 @@ SRCS(
     handle_ops_queue_stats.cpp
     log.cpp
     loop.cpp
+    node_attrs_cache.cpp
     node_cache.cpp
+    node_ref_cache.cpp
     persistent_state_manager.cpp
+    ttl_cache.cpp
 )
 
 PEERDIR(

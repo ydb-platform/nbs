@@ -373,6 +373,7 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
     const TString& diskId,
     const TString& agentId,
     const TString& path,
+    NCloud::NProto::EStorageMediaKind mediaKind,
     const TString& folderId,
     const TString& cloudId)
         -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>
@@ -383,6 +384,7 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
     request->Record.SetDiskId(diskId);
     request->Record.SetAgentId(agentId);
     request->Record.SetPath(path);
+    request->Record.SetStorageMediaKind(mediaKind);
     request->Record.SetFolderId(folderId);
     request->Record.SetCloudId(cloudId);
 
@@ -527,22 +529,26 @@ TServiceClient::CreateAddTagsRequest(
 std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
 TServiceClient::CreateCreateVolumeLinkRequest(
     const TString& leaderDiskId,
-    const TString& followerDiskId)
+    const TString& followerDiskId,
+    const TString& followerCellId)
 {
     auto request = std::make_unique<TEvService::TEvCreateVolumeLinkRequest>();
     request->Record.SetLeaderDiskId(leaderDiskId);
     request->Record.SetFollowerDiskId(followerDiskId);
+    request->Record.SetFollowerCellId(followerCellId);
     return request;
 }
 
 std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
 TServiceClient::CreateDestroyVolumeLinkRequest(
     const TString& leaderDiskId,
-    const TString& followerDiskId)
+    const TString& followerDiskId,
+    const TString& followerCellId)
 {
     auto request = std::make_unique<TEvService::TEvDestroyVolumeLinkRequest>();
     request->Record.SetLeaderDiskId(leaderDiskId);
     request->Record.SetFollowerDiskId(followerDiskId);
+    request->Record.SetFollowerCellId(followerCellId);
     return request;
 }
 

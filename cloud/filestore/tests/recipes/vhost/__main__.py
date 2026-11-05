@@ -41,6 +41,7 @@ def start(argv):
     parser.add_argument("--vhost-package-path", action="store", default=None)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--service", action="store", default=None)
+    parser.add_argument("--enable-external-data-channel", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--restart-flag", action="store", default=None)
     parser.add_argument("--restart-flag-on-demand", action="store_true", default=False)
@@ -172,6 +173,7 @@ def start(argv):
         access_service_type=access_service_type,
         trace_sampling_rate=args.trace_sampling_rate,
         bs_failure_probability=args.bs_failure_probability,
+        enable_external_data_channel=args.enable_external_data_channel,
     )
 
     filestore_vhost = FilestoreVhost(vhost_configurator)

@@ -27,6 +27,7 @@ PEERDIR(
 
     contrib/ydb/public/sdk/cpp/src/client/federated_topic
     contrib/ydb/public/sdk/cpp/src/client/federated_topic/impl
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

@@ -6,6 +6,7 @@
 #include <cloud/filestore/public/api/protos/data.pb.h>
 #include <cloud/filestore/public/api/protos/locks.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
+#include <cloud/filestore/public/api/protos/session.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -17,6 +18,8 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 #define FAST_SHARD_PRIVATE_METHODS(xxx, ...)                                   \
     xxx(GetNodeAttrBatch, __VA_ARGS__)                                         \
+    xxx(CreateSession, __VA_ARGS__)                                            \
+    xxx(DestroySession, __VA_ARGS__)                                           \
     // FAST_SHARD_PRIVATE_METHODS
 
 #define FAST_SHARD_PUBLIC_METHODS(xxx, ...)                                    \
@@ -37,6 +40,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
     xxx(GetNodeXAttr, __VA_ARGS__)                                             \
     xxx(SetNodeXAttr, __VA_ARGS__)                                             \
     xxx(ListNodeXAttr, __VA_ARGS__)                                            \
+    xxx(ResetSession, __VA_ARGS__)                                             \
 // FAST_SHARD_PUBLIC_METHODS
 
 struct TFileSystemShardStats
@@ -49,6 +53,8 @@ struct TFileSystemShardStats
     ui64 TotalHandleCount = 0;
     ui64 UsedPageCount = 0;
     ui64 TotalPageCount = 0;
+    ui64 LastNodeId = 0;
+    ui64 LastHandleId = 0;
 };
 
 struct IFileSystemShard

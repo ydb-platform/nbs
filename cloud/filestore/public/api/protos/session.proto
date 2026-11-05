@@ -27,46 +27,6 @@ message TSessionInfo
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Session event description.
-
-message TSessionEvent
-{
-    message TNodeLinked
-    {
-        uint64 ParentNodeId = 1;
-        uint64 ChildNodeId = 2;
-        bytes Name = 3;
-    }
-
-    message TNodeUnlinked
-    {
-        uint64 ParentNodeId = 1;
-        uint64 ChildNodeId = 2;
-        bytes Name = 3;
-    }
-
-    enum ENodeChangeKind
-    {
-        NODE_ATTR_CHANGED = 0;
-        NODE_XATTR_CHANGED = 1;
-    }
-
-    message TNodeChanged
-    {
-        uint64 NodeId = 1;
-        uint32 Kind = 2;
-    }
-
-    // Event sequence number.
-    uint64 SeqNo = 1;
-
-    // Event data.
-    repeated TNodeLinked NodeLinked = 100;
-    repeated TNodeUnlinked NodeUnlinked = 101;
-    repeated TNodeChanged NodeChanged = 102;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // CreateSession request/response
 
 message TCreateSessionRequest
@@ -166,53 +126,4 @@ message TPingSessionResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// SubscribeSession request/response
-
-message TSubscribeSessionRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    string FileSystemId = 2;
-
-    // TODO
-}
-
-message TSubscribeSessionResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // TODO
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// GetSessionEvents request/response
-
-message TGetSessionEventsRequest
-{
-    // Optional request headers.
-    THeaders Headers = 1;
-
-    // FileSystem identifier.
-    string FileSystemId = 2;
-
-    // Last known sequence number.
-    uint64 SeqNo = 3;
-}
-
-message TGetSessionEventsResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // Events occured on the server-side since last polling.
-    repeated TSessionEvent Events = 2;
-
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
 }

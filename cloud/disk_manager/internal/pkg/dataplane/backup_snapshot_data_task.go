@@ -44,6 +44,14 @@ func (t *backupSnapshotDataTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// A DEK that cannot be opened fails the chunk copier on every
+	// chunk and leaves those queue rows unfinished, so this task
+	// interrupts forever. Reject it before anything is enqueued.
+	err := t.backupS3.CheckEncryptedDEK(t.request.EncryptedDek)
+	if err != nil {
+		return err
+	}
+
 	snapshotID := t.request.SnapshotId
 
 	meta, err := t.storage.CheckSnapshotReady(ctx, snapshotID)
@@ -63,7 +71,7 @@ func (t *backupSnapshotDataTask) Run(
 		return err
 	}
 
-	return t.clearCompletedBackupChunkQueueEntries(ctx, snapshotID)
+	return t.clearCompletedBackupChunks(ctx, snapshotID)
 }
 
 func (t *backupSnapshotDataTask) Cancel(
@@ -170,9 +178,10 @@ func (t *backupSnapshotDataTask) enqueueChunks(
 		}
 
 		batch = append(batch, storage.BackupChunkQueueEntry{
-			SnapshotID: snapshotID,
-			ChunkID:    entry.ChunkID,
-			StoredInS3: entry.StoredInS3,
+			SnapshotID:   snapshotID,
+			ChunkID:      entry.ChunkID,
+			StoredInS3:   entry.StoredInS3,
+			EncryptedDEK: t.request.EncryptedDek,
 		})
 
 		if len(batch) >= t.batchSize {
@@ -215,13 +224,13 @@ func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	return nil
 }
 
-func (t *backupSnapshotDataTask) clearCompletedBackupChunkQueueEntries(
+func (t *backupSnapshotDataTask) clearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 ) error {
 
 	for {
-		cleared, err := t.storage.ClearCompletedBackupChunkQueueEntries(
+		cleared, err := t.storage.ClearCompletedBackupChunks(
 			ctx,
 			snapshotID,
 			t.batchSize,
@@ -287,6 +296,7 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkMapKey(meta.ID),
+		t.request.EncryptedDek,
 		persistence.S3Object{Data: data},
 	)
 	if err != nil {

@@ -23,6 +23,7 @@ namespace {
     xxx(StateCacheFilePath, TString, "")                                       \
     xxx(UpdateDevicesInterval, TDuration, 1min)                                \
     xxx(UpdateCountersInterval, TDuration, 15s)                                \
+    xxx(AcquireVfioGroupOnRelease, bool, true)                                 \
     // BLOCKSTORE_LOCAL_NVME_CONFIG
 
 // Fields wrapped into their own config-object type: no sensible default,

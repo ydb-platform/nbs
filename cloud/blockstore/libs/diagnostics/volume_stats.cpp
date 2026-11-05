@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -22,6 +23,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
@@ -70,10 +72,13 @@ public:
 
 class TDowntimeCalculator
 {
-private:
-    using TMaxTimeCalculator = TMaxCalculator<DEFAULT_BUCKET_COUNT>;
+public:
+    static constexpr size_t BucketCount = DEFAULT_BUCKET_COUNT;
 
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+private:
+    using TMaxTimeCalculator = TMaxCalculator<BucketCount>;
+
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const NProto::EStorageMediaKind MediaKind;
 
     TMaxTimeCalculator Read;
@@ -82,7 +87,7 @@ private:
 
 public:
     TDowntimeCalculator(
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             const NProto::TVolume& volume,
             ITimerPtr timer)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -169,11 +174,12 @@ struct TVolumeInfoBase
     TDowntimeHistoryHolder DowntimeHistory;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> ThrottlerRejects;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> CheckpointRejects;
+    TMaxCalculator<TDowntimeCalculator::BucketCount> HardwareProblems;
     TDynamicCounters::TCounterPtr HasStorageConfigPatchCounter;
 
     TVolumeInfoBase(
             NProto::TVolume volume,
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             IPostponeTimePredictorPtr postponeTimePredictor,
             TDynamicCountersPtr volumeGroup,
             ITimerPtr timer)
@@ -185,6 +191,7 @@ struct TVolumeInfoBase
         , DowntimeCalculator(diagnosticsConfig, Volume, timer)
         , ThrottlerRejects(timer)
         , CheckpointRejects(timer)
+        , HardwareProblems(timer)
         , HasStorageConfigPatchCounter(
             volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
@@ -257,6 +264,29 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    struct TServingCellHost
+    {
+        TString CellId;
+        TString Fqdn;
+
+        bool operator==(const TServingCellHost& other) const = default;
+    };
+
+    struct TServingConnection
+    {
+        ui64 ConnectionId = 0;
+        TServingCellHost Host;
+    };
+
+    // the per-instance group; the serving cell host hangs off it
+    TDynamicCountersPtr CountersGroup;
+    // under TVolumeStats::Lock for writing. Endpoints of the same disk and
+    // client - a local VM migration, a switch to the -copy - share this
+    // instance, each through its own cell connection: a host is shown while
+    // any of them goes through it. Two at most in practice, hence vectors
+    TVector<TServingConnection> ServingConnections;
+    TVector<TServingCellHost> ShownServingCellHosts;
+
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
     // compute availability = Available/Observed and quality = Healthy/Observed
@@ -325,6 +355,60 @@ public:
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
     }
 
+    void SetServingCellHost(
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn)
+    {
+        EraseIf(
+            ServingConnections,
+            [&](const auto& c) { return c.ConnectionId == connectionId; });
+        if (fqdn) {
+            ServingConnections.push_back({connectionId, {cellId, fqdn}});
+        }
+        ShowServingCellHosts();
+    }
+
+    void CarryServingCellHostFrom(const TVolumeInfo& other)
+    {
+        ServingConnections = other.ServingConnections;
+        ShowServingCellHosts();
+    }
+
+    void ShowServingCellHosts()
+    {
+        if (!CountersGroup) {
+            return;
+        }
+
+        TVector<TServingCellHost> hosts;
+        for (const auto& connection: ServingConnections) {
+            if (!IsIn(hosts, connection.Host)) {
+                hosts.push_back(connection.Host);
+            }
+        }
+
+        for (const auto& host: hosts) {
+            *CountersGroup->GetSubgroup("cell", host.CellId)
+                 ->GetSubgroup("cell_host", host.Fqdn)
+                 ->GetCounter("CellMount") = 1;
+        }
+
+        for (const auto& shown: ShownServingCellHosts) {
+            const bool cellInUse = AnyOf(
+                hosts,
+                [&](const auto& h) { return h.CellId == shown.CellId; });
+            if (!cellInUse) {
+                CountersGroup->RemoveSubgroup("cell", shown.CellId);
+            } else if (!IsIn(hosts, shown)) {
+                CountersGroup->GetSubgroup("cell", shown.CellId)
+                    ->RemoveSubgroup("cell_host", shown.Fqdn);
+            }
+        }
+
+        ShownServingCellHosts = std::move(hosts);
+    }
+
     ui64 RequestStarted(
         EBlockStoreRequest requestType,
         ui64 requestBytes) override
@@ -359,6 +443,8 @@ public:
                 postponedTime + backoffTime + shapingTime),   // waitTime
             requestBytes);
         VolumeBase->PostponeTimePredictor->Register(postponedTime);
+
+        RecordHardwareProblems(errorKind, errorFlags);
         VolumeBase->DowntimeCalculator.RequestCompleted(
             TranslateLocalRequestType(requestType),
             requestStarted,
@@ -405,6 +491,7 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags) override
     {
+        RecordHardwareProblems(errorKind, errorFlags);
         if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint) {
             VolumeBase->CheckpointRejects.Add(1);
         } else if (errorKind == EDiagnosticsErrorKind::ErrorThrottling) {
@@ -470,6 +557,17 @@ public:
             timeHist,
             sizeHist);
     }
+private:
+    void RecordHardwareProblems(
+        EDiagnosticsErrorKind errorKind,
+        ui32 errorFlags)
+    {
+        if (errorKind != EDiagnosticsErrorKind::Success &&
+            HasProtoFlag(errorFlags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED))
+        {
+            VolumeBase->HardwareProblems.Add(1);
+        }
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -534,7 +632,7 @@ class TVolumeStats final
 private:
     const IMonitoringServicePtr Monitoring;
     const TDuration InactiveClientsTimeout;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const EVolumeStatsType Type;
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
@@ -575,7 +673,7 @@ public:
     TVolumeStats(
             IMonitoringServicePtr monitoring,
             TDuration inactiveClientsTimeout,
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             EVolumeStatsType type,
             ITimerPtr timer)
         : Monitoring(std::move(monitoring))
@@ -597,8 +695,8 @@ public:
     {
         bool inserted = false;
 
-        volume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
-
+        // the disk id is already logical: normalizing it again would turn a
+        // disk-copy-copy into a disk on a relabel
         auto volumeIt = Volumes.find(volume.GetDiskId());
         if (volumeIt == Volumes.end()) {
             volumeIt = Volumes.emplace(
@@ -635,14 +733,15 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
+        auto logicalVolume = volume;
+        logicalVolume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
         auto [it, _] = ClientVolumeToRealInstance.try_emplace(
-            {clientId, diskId},
+            {clientId, logicalVolume.GetDiskId()},
             clientId,
             instanceId);
 
         return MountVolumeImpl(
-            volume,
+            std::move(logicalVolume),
             it->second,
             0 /* pinCountForNewInstance */);
     }
@@ -699,8 +798,12 @@ public:
         UnregisterVolume(holder.VolumeBase);
 
         for (const auto& item: holder.VolumeInfos) {
-            const TVolumeInfo& info = *item.second;
+            TVolumeInfo& info = *item.second;
             MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
+
+            Volumes.at(volumeConfig.GetDiskId())
+                .VolumeInfos.at(info.RealInstanceId)
+                ->CarryServingCellHostFrom(info);
         }
     }
 
@@ -935,8 +1038,13 @@ public:
             volumeBase.BusyIdleCalc.OnUpdateStats();
             volumeBase.PerfCalc.UpdateStats();
 
-            const auto hasDowntime = volumeBase.DowntimeCalculator.OnUpdateStats();
-            if (hasDowntime) {
+            const bool hasDowntime =
+                volumeBase.DowntimeCalculator.OnUpdateStats();
+            const bool isNrd = IsNonReplicatedMediaKind(
+                volumeBase.Volume.GetStorageMediaKind());
+            const bool hasHwProblems =
+                volumeBase.HardwareProblems.NextValue() != 0;
+            if (hasDowntime && !(isNrd && hasHwProblems)) {
                 ++totalDownDisks;
                 ++downDisksCounters[volumeBase.Volume.GetStorageMediaKind()];
             }
@@ -1109,6 +1217,22 @@ public:
         return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
     }
 
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        // a write lock: rare, and it keeps a relabel carrying the host over
+        // out of the way
+        TWriteGuard guard(Lock);
+
+        if (auto info = GetVolumeInfoImpl(diskId, clientId)) {
+            info->SetServingCellHost(connectionId, cellId, fqdn);
+        }
+    }
+
 private:
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
@@ -1166,6 +1290,7 @@ private:
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        info->CountersGroup = countersGroup;
 
         // Register the cumulative counters in the narrow component=sli_volume
         // tree (see AvailabilityCounters comment).
@@ -1400,6 +1525,20 @@ struct TVolumeStatsStub final
         return {};
     }
 
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
+    }
+
 };
 
 }   // namespace
@@ -1408,7 +1547,7 @@ struct TVolumeStatsStub final
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
     ITimerPtr timer)

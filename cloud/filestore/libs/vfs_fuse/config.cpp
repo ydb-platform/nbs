@@ -24,6 +24,8 @@ namespace {
     xxx(XAttrCacheLimit,        ui32,           512                           )\
     xxx(XAttrCacheTimeout,      TDuration,      TDuration::Seconds(15)        )\
     xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
+    xxx(NodeRefCacheLimit,      ui32,           64 * 1024                     )\
+    xxx(NodeAttrsCacheLimit,    ui32,           64 * 1024                     )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \
@@ -46,6 +48,7 @@ namespace {
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheStateFileSize,                ui64,     256_MB    )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\

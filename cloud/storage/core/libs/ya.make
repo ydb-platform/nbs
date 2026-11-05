@@ -13,6 +13,7 @@ RECURSE(
     grpc
     hive_proxy
     http
+    icv2
     io_uring
     kikimr
     netlink
@@ -20,6 +21,7 @@ RECURSE(
     rdma
     ss_proxy
     tablet
+    tablet_proxy
     throttling
     uds
     user_stats

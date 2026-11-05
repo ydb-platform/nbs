@@ -491,6 +491,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         if (!GetFileSystem().GetDirectoryCreationInShardsEnabled()) {
             UnlinkExternalNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNodeId,
                 args.Name,
                 args.ChildRef->ShardId,
@@ -501,6 +502,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
             UpdateNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNode->NodeId,
                 args.ParentNode->MinCommitId,
                 args.CommitId,
@@ -532,6 +534,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     } else {
         auto e = UnlinkNode(
             *db,
+            args.FileSystemEvents,
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
@@ -550,6 +553,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
             UpdateNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNode->NodeId,
                 args.ParentNode->MinCommitId,
                 args.CommitId,
@@ -638,16 +642,6 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         if (!BehaveAsShard(args.Request.GetHeaders())) {
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
-
-        // TODO(#1350): support session events for external nodes
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* unlinked = sessionEvent.AddNodeUnlinked();
-            unlinked->SetParentNodeId(args.ParentNodeId);
-            unlinked->SetChildNodeId(args.ChildNode->NodeId);
-            unlinked->SetName(args.Name);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     RemoveInFlightRequest(*args.RequestInfo);
@@ -738,11 +732,11 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
 {
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    DeleteOpLogEntry(*db, args.OpLogEntryId);
-
     // If the original response was an error or prepare stage failed, we don't
     // need to do anything
     if (FAILED(args.Error.GetCode())) {
+        DeleteOpLogEntry(*db, args.OpLogEntryId);
+
         // It should be impossible to achieve this state
         LOG_ERROR(
             ctx,
@@ -759,6 +753,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
         return;
     }
     if (FAILED(args.Response.GetError().GetCode())) {
+        DeleteOpLogEntry(*db, args.OpLogEntryId);
         return;
     }
 
@@ -767,8 +762,11 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
         return args.OnCommitIdOverflow();
     }
 
+    DeleteOpLogEntry(*db, args.OpLogEntryId);
+
     UnlinkExternalNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNodeId,
         args.Name,
         args.ChildRef->ShardId,
@@ -779,6 +777,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,

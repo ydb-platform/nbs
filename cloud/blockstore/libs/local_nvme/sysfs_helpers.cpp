@@ -8,6 +8,8 @@
 #include <util/string/strip.h>
 #include <util/system/fs.h>
 
+#include <cerrno>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -100,10 +102,12 @@ class TSysFs final: public ISysFs
 {
 private:
     const TFsPath SysFsRoot;
+    const TFsPath DevFsRoot;
 
 public:
-    explicit TSysFs(TFsPath sysFsRoot)
+    TSysFs(TFsPath sysFsRoot, TFsPath devFsRoot)
         : SysFsRoot(std::move(sysFsRoot))
+        , DevFsRoot(std::move(devFsRoot))
     {}
 
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
@@ -201,6 +205,35 @@ public:
         return GetVFioDeviceName(SysFsRoot / "bus/pci/devices" / pciAddr);
     }
 
+    auto OpenVfioGroupForPCIDevice(const TString& pciAddr) -> TFileHandle final
+    {
+        const auto group =
+            GetIOMMUGroup(SysFsRoot / "bus/pci/devices" / pciAddr);
+        if (!group) {
+            ythrow TServiceError(E_INVALID_STATE)
+                << "No IOMMU group for PCI device " << pciAddr;
+        }
+
+        const auto path = DevFsRoot / "vfio" / ToString(*group);
+        TFileHandle handle(path.GetPath(), OpenExisting | RdWr | CloseOnExec);
+        if (!handle.IsOpen()) {
+            const int err = errno;
+            // VFIO group open is exclusive, including against devices bound
+            // through cdev/iommufd. GET_STATUS is not needed here.
+            if (err == EBUSY) {
+                ythrow TServiceError(E_PRECONDITION_FAILED)
+                    << "VFIO group " << path.GetPath().Quote()
+                    << " for PCI device " << pciAddr << " is in use";
+            }
+
+            ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
+                << "Failed to open VFIO group " << path.GetPath().Quote()
+                << " for PCI device " << pciAddr;
+        }
+
+        return handle;
+    }
+
     [[nodiscard]] auto IsVfioDevSupported() const -> bool final
     {
         return NFs::Exists(SysFsRoot / "class/vfio-dev");
@@ -211,9 +244,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISysFsPtr CreateSysFs(TFsPath sysFsRoot)
+ISysFsPtr CreateSysFs(TFsPath sysFsRoot, TFsPath devFsRoot)
 {
-    return std::make_shared<TSysFs>(std::move(sysFsRoot));
+    return std::make_shared<TSysFs>(
+        std::move(sysFsRoot),
+        std::move(devFsRoot));
 }
 
 }   // namespace NCloud::NBlockStore

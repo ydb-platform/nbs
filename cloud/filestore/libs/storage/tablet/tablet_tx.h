@@ -235,9 +235,14 @@ struct TIndexStateNodeUpdates
 {
     TVector<IInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 
+    // Sent to the tablet's clients after NodeUpdates are applied to the
+    // in-memory index state.
+    TVector<NProto::TFileSystemEvent> FileSystemEvents;
+
     void Clear()
     {
         NodeUpdates.clear();
+        FileSystemEvents.clear();
     }
 };
 
@@ -2324,7 +2329,7 @@ struct TTxIndexTablet
         const ui32 WriteBlobThreshold;
         const ui64 Handle;
         const TByteRange ByteRange;
-        /*const*/ IBlockBufferPtr Buffer;
+        /*const*/ IConstBlockBufferPtr Buffer;
         // Used when we want to write data to a specific node, not the node
         // inferred from the handle.
         const ui64 ExplicitNodeId = InvalidNodeId;
@@ -2338,7 +2343,7 @@ struct TTxIndexTablet
                 const ui32 writeBlobThreshold,
                 const NProto::TWriteDataRequest& request,
                 TByteRange byteRange,
-                IBlockBufferPtr buffer,
+                IConstBlockBufferPtr buffer,
                 NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
@@ -2673,6 +2678,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui32 RangeId;
         const bool FilterNodes;
+        const bool Forced;
 
         // should persist across tx restarts
         bool RangeLoaded = false;
@@ -2682,11 +2688,16 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         bool SkipRangeRewrite = false;
 
-        TCompaction(TRequestInfoPtr requestInfo, ui32 rangeId, bool filterNodes)
+        TCompaction(
+                TRequestInfoPtr requestInfo,
+                ui32 rangeId,
+                bool filterNodes,
+                bool forced)
             : TProfileAware(EFileStoreSystemRequest::Compaction)
             , RequestInfo(std::move(requestInfo))
             , RangeId(rangeId)
             , FilterNodes(filterNodes)
+            , Forced(forced)
         {}
 
         void Clear() override

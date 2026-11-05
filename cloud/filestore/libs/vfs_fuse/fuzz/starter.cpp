@@ -126,7 +126,8 @@ TStarter::TStarter()
         CreateProfileLogStub(),
         std::move(session),
         CreateFileMapMemoryLimiterStub(),
-        CreatePersistentStateManagerStub());
+        CreatePersistentStateManagerStub(),
+        nullptr /* multiFileSystemEventHandler */);
 }
 
 

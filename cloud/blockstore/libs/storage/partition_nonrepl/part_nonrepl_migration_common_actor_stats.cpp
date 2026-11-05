@@ -49,7 +49,7 @@ TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     if (SrcCounters) {
         stats->AggregateWith(*SrcCounters);
@@ -73,7 +73,7 @@ TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
     stats->AggregateWith(*MigrationCounters);
     MigrationCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     return {
         .DiskCounters = std::move(stats),

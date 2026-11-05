@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"net"
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
@@ -58,7 +59,17 @@ func GetUserIP(ctx context.Context) string {
 		return ""
 	}
 
-	return p.Addr.String()
+	host, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		return ""
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return ""
+	}
+
+	return ip.String()
 }
 
 func GetAccessToken(ctx context.Context) (string, error) {

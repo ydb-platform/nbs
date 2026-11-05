@@ -197,9 +197,9 @@ void TSSProxyFallbackActor::HandleCreateFileStore(
     const TEvSSProxy::TEvCreateFileStoreRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto error = MakeError(E_NOT_IMPLEMENTED);
     auto response =
-        std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(error);
+        std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(
+            MakeError(E_NOT_IMPLEMENTED));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -207,9 +207,9 @@ void TSSProxyFallbackActor::HandleAlterFileStore(
     const TEvSSProxy::TEvAlterFileStoreRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto error = MakeError(E_NOT_IMPLEMENTED);
     auto response =
-        std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(error);
+        std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(
+            MakeError(E_NOT_IMPLEMENTED));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -217,9 +217,9 @@ void TSSProxyFallbackActor::HandleDestroyFileStore(
     const TEvSSProxy::TEvDestroyFileStoreRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto error = MakeError(E_NOT_IMPLEMENTED);
     auto response =
-        std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(error);
+        std::make_unique<TEvSSProxy::TEvDestroyFileStoreResponse>(
+            MakeError(E_NOT_IMPLEMENTED));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

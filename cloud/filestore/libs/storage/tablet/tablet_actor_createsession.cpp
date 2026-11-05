@@ -36,6 +36,9 @@ void FillFeatures(
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+    features->SetXAttrCacheTimeout(
+        config.GetXAttrCacheTimeout().MilliSeconds());
+    features->SetXAttrCacheLimit(config.GetXAttrCacheLimit());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 
     auto preferredBlockSizeMultiplier =
@@ -68,6 +71,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheStateFileSize(
+        config.GetServerWriteBackCacheStateFileSize());
     features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
         config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
@@ -138,6 +143,7 @@ void FillFeatures(
     features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
     features->SetExternalWriteDataPayloadEnabled(
         config.GetExternalWriteDataPayloadEnabled());
+    features->SetEnableRdmaForWrites(config.GetEnableRdmaForWrites());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -503,7 +509,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             LogTag.c_str(),
             FormatError(args.Error).c_str());
 
-        auto response = std::make_unique<TResponse>(args.Error);
+        auto response = std::make_unique<TResponse>(std::move(args.Error));
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }

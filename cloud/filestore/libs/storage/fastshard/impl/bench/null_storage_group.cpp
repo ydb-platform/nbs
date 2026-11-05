@@ -6,6 +6,8 @@
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
+using NCloud::NFastShard::IDelayPolicyPtr;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////

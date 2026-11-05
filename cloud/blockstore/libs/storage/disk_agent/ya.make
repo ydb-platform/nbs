@@ -25,6 +25,7 @@ SRCS(
     disk_agent.cpp
     hash_table_storage.cpp
     journalled_device_adapter.cpp
+    journalled_device_manager.cpp
     rdma_target.cpp
     recent_blocks_tracker.cpp
     secure_erase_state.cpp
@@ -46,9 +47,9 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/model
 
-    cloud/fastshard/journal/iface
-    cloud/fastshard/journal/impl
-    cloud/fastshard/journal/server
+    cloud/fastshard/libs/journal/iface
+    cloud/fastshard/libs/journal/impl
+    cloud/fastshard/libs/journal/server
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/rdma/iface

@@ -126,9 +126,6 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
-    void SetVolumePreemptionType(
-        NProto::EVolumePreemptionType volumePreemptionType);
-
     void Register(NKikimr::TControlBoard& controlBoard) const;
 
     static TStorageConfigConstPtr Merge(
@@ -165,9 +162,14 @@ public:
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
-    ui32 GetFlushThreshold() const;
-    ui32 GetFreshBlobCountFlushThreshold() const;
-    ui32 GetFreshBlobByteCountFlushThreshold() const;
+    ui32 GetFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetFlushThresholdSSD() const;
+    ui32 GetFreshBlobCountFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetFreshBlobCountFlushThresholdSSD() const;
+    ui32 GetFreshBlobByteCountFlushThresholdHDD() const;
+    TDuration GetFreshBlobAgeFlushThresholdSSD() const;
+    TDuration GetFreshBlobAgeFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 
@@ -333,6 +335,7 @@ public:
 
     bool GetThrottlingEnabled() const;
     bool GetThrottlingEnabledSSD() const;
+    bool GetChangeThrottlingPolicyEnabled() const;
     ui32 GetThrottlingBurstPercentage() const;
     ui32 GetThrottlingMaxPostponedWeight() const;
     ui32 GetDefaultPostponedRequestWeight() const;
@@ -346,14 +349,17 @@ public:
     ui32 GetCompactionScoreThresholdForBackpressure() const;
     ui32 GetCompactionScoreLimitForBackpressure() const;
     ui32 GetCompactionScoreFeatureMaxValue() const;
-    ui32 GetFreshByteCountThresholdForBackpressure() const;
-    ui32 GetFreshByteCountLimitForBackpressure() const;
+    ui32 GetFreshByteCountThresholdForBackpressureHDD() const;
+    [[nodiscard]] ui32 GetFreshByteCountThresholdForBackpressureSSD() const;
+    ui32 GetFreshByteCountLimitForBackpressureHDD() const;
+    [[nodiscard]] ui32 GetFreshByteCountLimitForBackpressureSSD() const;
     ui32 GetFreshByteCountFeatureMaxValue() const;
     ui64 GetCleanupQueueBytesThresholdForBackpressure() const;
     ui64 GetCleanupQueueBytesLimitForBackpressure() const;
     ui32 GetCleanupQueueBytesFeatureMaxValue() const;
     ui32 GetMaxWriteCostMultiplier() const;
-    ui32 GetFreshByteCountHardLimit() const;
+    ui32 GetFreshByteCountHardLimitHDD() const;
+    [[nodiscard]] ui32 GetFreshByteCountHardLimitSSD() const;
     ui64 GetFreshLogicalBlocksByteCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;
 
@@ -722,6 +728,7 @@ public:
 
     TDuration GetDiskRegistryBackupPeriod() const;
     TString GetDiskRegistryBackupDirPath() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxNonReplicatedDiskDeallocationRequests() const;
 
@@ -987,7 +994,7 @@ public:
 
     [[nodiscard]] bool GetCheckpointAwareCleanupEnabled() const;
 
-    [[nodiscard]] bool GetUseBlobChannelDataKindForCounters() const;
+    [[nodiscard]] bool GetExtendedBlobCountersEnabled() const;
 
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledHDD() const;
 
@@ -1008,6 +1015,8 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesSSD() const;
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
+
+    [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 
     [[nodiscard]] bool GetVolumeBalancerEnabled() const;
 };

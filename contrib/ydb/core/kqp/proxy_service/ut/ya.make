@@ -10,6 +10,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
+    yql/essentials/sql/v1
     contrib/ydb/core/kqp/run_script_actor
     contrib/ydb/core/kqp/proxy_service
     contrib/ydb/core/kqp/ut/common
