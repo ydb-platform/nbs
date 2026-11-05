@@ -439,11 +439,11 @@ public:
             auto e = instances.Instances.size() - deletedIndices.size();
             instances.Instances.resize(e + newInstances.size());
             for (auto& [newInstance, secure] : newInstances) {
-                auto& ii = instances.Instances[e];
+                TInstanceInfo ii;
                 ii.Host = newInstance.first;
                 ii.Port = newInstance.second;
                 ii.IsSecurePort = secure;
-                ++e;
+                instances.Instances[e++] = std::move(ii);
             }
 
             Counters.SetInstanceCount(instances.Instances.size());

@@ -378,6 +378,85 @@ Y_UNIT_TEST_SUITE(FetchTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldResetStateForNewStaticInstanceAfterRemovingHosts)
+    {
+        TEnv env(false);
+        auto fetcher = CreateStaticInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub()
+        );
+        fetcher->Start();
+
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "A\t1\nB\t2\nC\t3\n";
+        }
+
+        TInstanceList instances;
+        fetcher->FetchInstances(instances).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(3, instances.Instances.size());
+
+        SortBy(instances.Instances, [] (const TInstanceInfo& ii) {
+            return ii.Host;
+        });
+        UNIT_ASSERT_VALUES_EQUAL("A", instances.Instances[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL("B", instances.Instances[1].Host);
+        UNIT_ASSERT_VALUES_EQUAL("C", instances.Instances[2].Host);
+
+        for (ui32 i = 0; i < instances.Instances.size(); ++i) {
+            auto& ii = instances.Instances[i];
+            ii.Status = TInstanceInfo::EStatus::Reachable;
+            ii.BalancingScore = 3 - i;
+            ii.Tag = ii.Host;
+            ii.PrevStat = {TInstant::Seconds(10 + i), 100 + i, 10 + i};
+            ii.LastStat = {TInstant::Seconds(20 + i), 200 + i, 20 + i};
+        }
+        const auto survivor = instances.Instances[2];
+
+        // Move C to the front and reuse B's old slot for the new host D.
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "C\t3\nD\t4\n";
+        }
+        fetcher->FetchInstances(instances).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
+        const auto& retained = instances.Instances[0];
+        UNIT_ASSERT_VALUES_EQUAL(survivor.Host, retained.Host);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.Port, retained.Port);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.IsSecurePort, retained.IsSecurePort);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.Tag, retained.Tag);
+        UNIT_ASSERT(retained.Status == survivor.Status);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.BalancingScore, retained.BalancingScore);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.PrevStat.Ts, retained.PrevStat.Ts);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.PrevStat.Bytes, retained.PrevStat.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            survivor.PrevStat.Requests,
+            retained.PrevStat.Requests);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.LastStat.Ts, retained.LastStat.Ts);
+        UNIT_ASSERT_VALUES_EQUAL(survivor.LastStat.Bytes, retained.LastStat.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            survivor.LastStat.Requests,
+            retained.LastStat.Requests);
+
+        const auto& added = instances.Instances[1];
+        UNIT_ASSERT_VALUES_EQUAL("D", added.Host);
+        UNIT_ASSERT_VALUES_EQUAL(4, added.Port);
+        UNIT_ASSERT(!added.IsSecurePort);
+        UNIT_ASSERT_VALUES_EQUAL(0, added.BalancingScore);
+        UNIT_ASSERT(added.Status == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(added.Tag.empty());
+        UNIT_ASSERT(!added.PrevStat);
+        UNIT_ASSERT_VALUES_EQUAL(0, added.PrevStat.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, added.PrevStat.Requests);
+        UNIT_ASSERT(!added.LastStat);
+        UNIT_ASSERT_VALUES_EQUAL(0, added.LastStat.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, added.LastStat.Requests);
+
+        fetcher->Stop();
+    }
+
     Y_UNIT_TEST(ShouldFetchFromFileSecure)
     {
         TEnv env(false);
