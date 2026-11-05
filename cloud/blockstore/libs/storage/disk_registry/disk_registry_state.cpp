@@ -8705,8 +8705,12 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
 {
     Y_DEBUG_ABORT_UNLESS(result);
 
+    TCreateDiskFromDevicesParams mirroredParams = params;
+    // Currenly, only current block count is used for mirrored disks
+    mirroredParams.KeepBlockCount = true;
+
     auto error =
-        CanCreateMirroredDiskFromDevices(db, masterId, params, replicas);
+        CanCreateMirroredDiskFromDevices(db, masterId, mirroredParams, replicas);
     if (HasError(error)) {
         return error;
     }
@@ -8757,7 +8761,7 @@ NProto::TError TDiskRegistryState::CreateMirroredDiskFromDevices(
                 now,
                 db,
                 replicaId,
-                params,
+                mirroredParams,
                 ToDeviceConfig(resolvedReplicas[i]),
                 /*dryRun=*/false,
                 /*allowFreshDevices=*/false,

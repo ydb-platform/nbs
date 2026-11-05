@@ -131,7 +131,23 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    const bool isMirrored = IsReliableDiskRegistryMediaKind(Request.GetStorageMediaKind());
+    if (Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
+        Request.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+    }
+
+    const auto mediaKind = Request.GetStorageMediaKind();
+    if (!IsDiskRegistryMediaKind(mediaKind)) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << MediaKindToString(mediaKind)
+                                 << " media kind is not allowed, expected disk "
+                                    "registry media kind"));
+        return;
+    }
+
+    const bool isMirrored = IsReliableDiskRegistryMediaKind(mediaKind);
     if (!isMirrored && Request.GetDeviceUUIDs().empty()) {
         ReplyAndDie(
             ctx,
@@ -145,18 +161,6 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
             MakeError(
                 E_ARGUMENT,
                 "Replicas cannot be empty for mirrored disk"));
-        return;
-    }
-
-    if (Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
-        Request.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
-    }
-
-    if (auto error =
-            ValidateMediaKindForDiskFromDevices(Request.GetStorageMediaKind());
-        HasError(error))
-    {
-        ReplyAndDie(ctx, error);
         return;
     }
 

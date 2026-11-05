@@ -1098,8 +1098,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
              {NCloud::NProto::STORAGE_MEDIA_SSD,
               NCloud::NProto::STORAGE_MEDIA_HYBRID,
               NCloud::NProto::STORAGE_MEDIA_HDD,
-              NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
-              NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
               NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP})
         {
             NProto::TCreateVolumeFromDevicesRequest request;

@@ -1685,7 +1685,8 @@ message TCreateVolumeFromDevicesRequest
     // Force dangerous actions.
     bool Force = 9;
 
-    // If true, the block count will not be adjusted.
+    // If false, the block count will be cast to unadjusted.
+    // Currently for mirrored disks it is always true.
     bool KeepBlockCount = 10;
 }
 
