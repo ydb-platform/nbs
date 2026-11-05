@@ -25,5 +25,8 @@ Tests {
         }
         IODepth: 64
         TestDuration: 240
+        IndexConsistencyValidation: {
+            Enabled: true
+        }
     }
 }

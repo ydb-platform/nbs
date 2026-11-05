@@ -20,5 +20,9 @@ Tests {
         }
         IODepth: 32
         TestDuration: 60
+        IndexConsistencyValidation: {
+            Enabled: true
+            TimeoutSeconds: 300
+        }
     }
 }
