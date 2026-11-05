@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_base_disk_keep_alive.h>
-#include <cloud/blockstore/libs/storage/partition_common/blobs_compressor.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -102,10 +102,10 @@ TPartitionActor::TPartitionActor(
         ParseBlobCompressionCodec(Config->GetBlobCompressionCodec());
     // An unsupported codec disables compression estimation.
     if (!HasError(codec.GetError())) {
-        BlobsCompressor = std::make_shared<TBlobsCompressor>(
+        BlobCompressor = std::make_shared<TBlobCompressor>(
             PartitionConfig.GetBlockSize(),
             codec.GetResult(),
-            TBlobsCompressor::TMetricsConfig{
+            TBlobCompressor::TMetricsConfig{
                 .CompressionRate = Config->GetBlobCompressionRate(),
                 .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
                 .PartCounters = SharedState->GetPartCounters()});

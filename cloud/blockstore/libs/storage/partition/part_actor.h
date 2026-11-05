@@ -167,7 +167,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
-    std::shared_ptr<TBlobsCompressor> BlobsCompressor;
+    TBlobCompressorPtr BlobCompressor;
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 

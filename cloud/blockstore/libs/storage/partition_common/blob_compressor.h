@@ -18,6 +18,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <memory>
 #include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -44,7 +45,7 @@ ParseBlobCompressionCodec(TStringBuf codecName);
  * metadata and require the same block size that was used for compression.
  * Invalid inputs, compressed data and codec failures are returned as errors.
  */
-class TBlobsCompressor
+class TBlobCompressor
 {
 public:
     using ECompressionType = NProto::TCompressionMetadata::ECompressionType;
@@ -110,7 +111,7 @@ public:
      * @param metricsConfig - Optional settings for compression estimation.
      *  Omitting them disables metrics.
      */
-    TBlobsCompressor(
+    TBlobCompressor(
         ui32 blockSize,
         ui32 chunkSize,
         ECompressionType codec,
@@ -126,7 +127,7 @@ public:
      * @param metricsConfig - Optional settings for compression estimation.
      *  Omitting them disables metrics.
      */
-    TBlobsCompressor(
+    TBlobCompressor(
         ui32 blockSize,
         ECompressionType codec,
         std::optional<TMetricsConfig> metricsConfig);
@@ -158,14 +159,14 @@ public:
      *  may span ropes and rope segments.
      *  Empty ropes are allowed. Each compressed chunk is extracted into a
      *  reusable buffer before decoding.
-     * @param outputBuffers - One buffer of exactly BlockSize bytes
-     *  per requested block, in blockOffsets order.
-     *  Buffers must be non-null, writable and must not overlap input.
      * @param compression - Metadata describing the compressed blob.
      * @param blobSize - Total compressed blob size, including unread chunks.
      * @param blockOffsets - Block positions within the original blob, sorted
      *  in strictly increasing order (no duplicates). Every offset must refer
      *  to an existing block.
+     * @param outputBuffers - One buffer of exactly BlockSize bytes
+     *  per requested block, in blockOffsets order.
+     *  Buffers must be non-null, writable and must not overlap input.
      * @param blockChecksums - Optional output; appends one checksum per block
      *  in blockOffsets order.
      *
@@ -175,10 +176,10 @@ public:
      */
     [[nodiscard]] NProto::TError DecompressBlob(
         const TVector<TRope>& compressedBuffers,
-        const TSgList& outputBuffers,
         const NProto::TCompressionMetadata& compression,
-        ui32 blobSize,
+        const ui32 blobSize,
         const TVector<ui16>& blockOffsets,
+        const TSgList& outputBuffers,
         TVector<ui32>* blockChecksums) const;
 
     /**
@@ -223,5 +224,7 @@ public:
 private:
     ui64 EstimateCompressedSize(TStringBuf blobContent, ui64 chunkSize) const;
 };
+
+using TBlobCompressorPtr = std::shared_ptr<TBlobCompressor>;
 
 }   // namespace NCloud::NBlockStore::NStorage
