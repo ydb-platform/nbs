@@ -30,8 +30,7 @@ NCloud::NProto::TError ValidateBlockSize(
 NProto::TError ValidateMediaKindForDiskFromDevices(
     NProto::EStorageMediaKind mediaKind)
 {
-    if (!IsDiskRegistryMediaKind(mediaKind) ||
-        IsReliableDiskRegistryMediaKind(mediaKind))
+    if (!IsDiskRegistryMediaKind(mediaKind))
     {
         return MakeError(
             E_ARGUMENT,
