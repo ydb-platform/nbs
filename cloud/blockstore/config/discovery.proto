@@ -67,6 +67,6 @@ message TDiscoveryServiceConfig
     // Max ping requests per one healthcheck cycle
     optional uint32 MaxPingRequestsPerHealthCheck = 12;
 
-    // Cloud DNS EDS discovery settings.
+    // Cloud DNS EDS settings.
     optional TEdsConfig Eds = 13;
 }
