@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/model/background_ops_throttling.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -146,6 +147,7 @@ private:
     const TVolumeLabelsConstPtr VolumeLabels;
     const TActorId Tablet;
     const ui32 BlockSize;
+    const std::optional<ui32> RepairBlockChecksum;
     const ui32 MaxAffectedBlocksPerCompaction;
     const bool ForceChecksumsCalculation;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -202,6 +204,7 @@ public:
         TVolumeLabelsConstPtr volumeLabels,
         const TActorId& tablet,
         ui32 blockSize,
+        EStorageAccessMode storageAccessMode,
         ui32 maxAffectedBlocksPerCompaction,
         bool forceChecksumsCalculation,
         IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -273,29 +276,31 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactionActor::TCompactionActor(
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TVolumeLabelsConstPtr volumeLabels,
-        const TActorId& tablet,
-        ui32 blockSize,
-        ui32 maxAffectedBlocksPerCompaction,
-        bool forceChecksumsCalculation,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration blobStorageAsyncRequestTimeout,
-        ECompactionType compactionType,
-        ui64 commitId,
-        TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests,
-        TDuration compactionTxTime,
-        TChildLogTitle logTitle,
-        bool splitTxEnabled,
-        TVector<TPartialBlobId> blobsToReadBlockMasks,
-        TVector<TPartialBlobId> blobsToReadBlobMetas)
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TVolumeLabelsConstPtr volumeLabels,
+    const TActorId& tablet,
+    ui32 blockSize,
+    EStorageAccessMode storageAccessMode,
+    ui32 maxAffectedBlocksPerCompaction,
+    bool forceChecksumsCalculation,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    TDuration blobStorageAsyncRequestTimeout,
+    ECompactionType compactionType,
+    ui64 commitId,
+    TVector<TRangeCompactionInfo> rangeCompactionInfos,
+    TVector<TRequest> requests,
+    TDuration compactionTxTime,
+    TChildLogTitle logTitle,
+    bool splitTxEnabled,
+    TVector<TPartialBlobId> blobsToReadBlockMasks,
+    TVector<TPartialBlobId> blobsToReadBlobMetas)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
     , Tablet(tablet)
     , BlockSize(blockSize)
+    , RepairBlockChecksum(GetRepairBlockChecksum(storageAccessMode, blockSize))
     , MaxAffectedBlocksPerCompaction(maxAffectedBlocksPerCompaction)
     , ForceChecksumsCalculation(forceChecksumsCalculation)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -367,6 +372,12 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
         const size_t n = Min(batch.Requests.size(), batch.BlockChecksums.size());
         for (ui32 i = 0; i < n; ++i) {
             const auto* r = batch.Requests[i];
+            if (RepairBlockChecksum == batch.BlockChecksums[i]) {
+                // Persist the checksum of the marker written by repair.
+                rc.BlockChecksums[r->IndexInBlobContent] =
+                    batch.BlockChecksums[i];
+                continue;
+            }
             if (!rc.BlockChecksums[r->IndexInBlobContent]) {
                 ReportBlockChecksumAbsent(
                     "block checksum is absent",
@@ -2461,6 +2472,7 @@ void TPartitionActor::CompleteCompaction(
         VolumeLabels,
         SelfId(),
         State->GetBlockSize(),
+        StorageAccessMode,
         Config->GetMaxAffectedBlocksPerCompaction(),
         Config->GetComputeDigestForEveryBlockOnCompaction(),
         BlockDigestGenerator,
