@@ -68,7 +68,11 @@ private:
     TConfigInitializerCommonPtr Configs;
 
 protected:
-    // Prepared config inputs; owned by bootstrap and set once before use.
+    // Startup inputs for common initialization in TBootstrapBase and for
+    // TBootstrapYdb overrides shared by YDB, Local and Null service modes.
+    // Set once before service initialization and retained for the bootstrap lifetime.
+    // For YDB service mode, section pointers come from StartupBlockstoreConfig.
+    // For Local and Null service modes, they come from local configuration.
     std::unique_ptr<const TBootstrapConfig> BootstrapConfig;
 
     IDeviceHandlerFactoryPtr DeviceHandlerFactory;
