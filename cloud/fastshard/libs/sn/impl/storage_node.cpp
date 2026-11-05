@@ -4,6 +4,8 @@
 
 #include <silk/fibers/fiber.h>
 
+#include <google/protobuf/repeated_ptr_field.h>
+
 #include <util/generic/algorithm.h>
 #include <util/generic/buffer.h>
 #include <util/generic/string.h>
@@ -79,8 +81,10 @@ NCloud::NProto::TError ValidateReadRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TError ValidateWriteRequest(
-    const NCloud::NProto::TWriteLogRecordRequest& req)
+using TPageGroups =
+    google::protobuf::RepeatedPtrField<NCloud::NProto::TDevicePageGroup>;
+
+NCloud::NProto::TError ValidatePageGroups(const TPageGroups& groups)
 {
     //
     // Two invariants:
@@ -103,10 +107,11 @@ NCloud::NProto::TError ValidateWriteRequest(
 
     ui64 pageSize = 0;
     TVector<TInterval> intervals;
-    intervals.reserve(req.PageGroupsSize());
+    const size_t groupCount = groups.size();
+    intervals.reserve(groupCount);
 
-    for (size_t i = 0; i < req.PageGroupsSize(); ++i) {
-        const auto& pg = req.GetPageGroups(i);
+    for (size_t i = 0; i < groupCount; ++i) {
+        const auto& pg = groups[i];
         const size_t pageCount = pg.ContentSize();
         if (pageCount == 0) {
             continue;
@@ -337,10 +342,52 @@ public:
         NCloud::NProto::TWriteLogRecordRequest request) override
     {
         NCloud::NProto::TWriteLogRecordResponse resp;
-
-        if (auto err = ValidateWriteRequest(request); HasError(err)) {
+        if (auto err = WritePageGroups(*request.MutablePageGroups());
+            HasError(err))
+        {
             *resp.MutableError() = std::move(err);
-            return resp;
+        }
+        return resp;
+    }
+
+    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+        TFastShardContext&,
+        NCloud::NProto::TReadJournalTailRequest request) override
+    {
+        // WriteLogRecord writes in place, so the journal is always empty and
+        // there is never anything to replay.
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
+        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override
+    {
+        // Every page is already at its final location, so the watermark can be
+        // advanced to any value without doing anything.
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NCloud::NProto::TWritePagesResponse WritePages(
+        TFastShardContext&,
+        NCloud::NProto::TWritePagesRequest request) override
+    {
+        NCloud::NProto::TWritePagesResponse resp;
+        if (auto err = WritePageGroups(*request.MutablePageGroups());
+            HasError(err))
+        {
+            *resp.MutableError() = std::move(err);
+        }
+        return resp;
+    }
+
+private:
+    NCloud::NProto::TError WritePageGroups(TPageGroups& groups)
+    {
+        if (auto err = ValidatePageGroups(groups); HasError(err)) {
+            return err;
         }
 
         //
@@ -358,32 +405,35 @@ public:
             FiberScheduler::IoFuture Future;
         };
 
-        const size_t n = request.PageGroupsSize();
+        const size_t n = groups.size();
         if (n == 0) {
-            return resp;
+            return {};
         }
 
         TVector<TWriteOp> ops(n);
 
-        const int fd = static_cast<FHANDLE>(File);
-
-        size_t submitted = 0;
+        // Every buffer first: nothing may throw once an SQE points into ops.
         for (size_t i = 0; i < n; ++i) {
-            auto& pg = *request.MutablePageGroups(i);
-            const size_t pageCount = pg.ContentSize();
-            if (pageCount == 0) {
-                continue;
-            }
+            auto& pg = groups[i];
             auto& op = ops[i];
-            const size_t pageSize = pg.GetContent(0).size();
-            op.Iov.resize(pageCount);
-            for (size_t k = 0; k < pageCount; ++k) {
+            op.Iov.resize(pg.ContentSize());
+            for (size_t k = 0; k < op.Iov.size(); ++k) {
                 auto& content = *pg.MutableContent(k);
                 op.Iov[k].iov_base = content.begin();
                 op.Iov[k].iov_len = content.size();
                 op.TotalLen += content.size();
             }
-            const ui64 offset = pg.GetFirstPageNo() * pageSize;
+        }
+
+        const int fd = static_cast<FHANDLE>(File);
+
+        size_t submitted = 0;
+        for (size_t i = 0; i < n; ++i) {
+            auto& op = ops[i];
+            if (op.Iov.empty()) {
+                continue;
+            }
+            const ui64 offset = groups[i].GetFirstPageNo() * op.Iov[0].iov_len;
             FiberScheduler::write(
                 fd,
                 op.Iov.data(),
@@ -395,7 +445,7 @@ public:
         }
 
         if (submitted == 0) {
-            return resp;
+            return {};
         }
 
         //
@@ -421,8 +471,7 @@ public:
         }
 
         if (firstErr != 0) {
-            *resp.MutableError() = MakeIoError(firstErr, "write");
-            return resp;
+            return MakeIoError(firstErr, "write");
         }
 
         //
@@ -439,39 +488,17 @@ public:
                 continue;
             }
             if (op.BytesWritten != op.TotalLen) {
-                *resp.MutableError() = MakeError(
+                return MakeError(
                     E_IO,
                     TStringBuilder()
                         << "sn/impl write: short write: " << op.BytesWritten
                         << " of " << op.TotalLen << " bytes");
-                return resp;
             }
         }
 
-        return resp;
-    }
-
-    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
-        TFastShardContext&,
-        NCloud::NProto::TReadJournalTailRequest request) override
-    {
-        // WriteLogRecord writes in place, so the journal is always empty and
-        // there is never anything to replay.
-        Y_UNUSED(request);
         return {};
     }
 
-    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
-        TFastShardContext&,
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override
-    {
-        // Every page is already at its final location, so the watermark can be
-        // advanced to any value without doing anything.
-        Y_UNUSED(request);
-        return {};
-    }
-
-private:
     const TString Path;
     TFileHandle File;
 };
