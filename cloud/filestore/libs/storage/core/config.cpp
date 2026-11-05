@@ -430,6 +430,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ControlNamespaceDirName,                    TString,   {}             )\
                                                                                \
     xxx(EnableRdmaForWrites,                        bool,      false          )\
+    xxx(EnablePreallocatedDataActors, bool, false)                             \
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

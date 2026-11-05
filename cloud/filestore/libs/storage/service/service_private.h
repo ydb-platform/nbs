@@ -7,6 +7,8 @@
 #include <cloud/filestore/libs/storage/api/events.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 
+#include <contrib/ydb/library/actors/core/event_local.h>
+
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -63,12 +65,28 @@ struct TEvServicePrivate
         EvSessionCreated,
         EvSessionDestroyed,
         EvUpdateStats,
+        EvStartReadData,
+        EvReleaseReadDataActor,
+        EvStartWriteData,
+        EvReleaseWriteDataActor,
 
         EvEnd
     };
 
     static_assert(EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::SERVICE_WORKER_END");
+
+    struct TEvReleaseReadDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
+    {
+    };
 
     using TEvPingSession = TRequestEvent<TEmpty, EvPingSession>;
     using TEvCreateSession = TRequestEvent<TCreateSession, EvCreateSession>;

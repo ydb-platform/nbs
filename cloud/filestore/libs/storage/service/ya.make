@@ -52,6 +52,7 @@ SRCS(
     service_actor_xattr.cpp
     service_state.cpp
     tablet_action_actor.cpp
+    worker_actor_pool.cpp
 )
 
 PEERDIR(

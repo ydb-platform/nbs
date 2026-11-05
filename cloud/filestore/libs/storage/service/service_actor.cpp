@@ -13,6 +13,8 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 RequestCookieBit = 63;
+constexpr ui32 InitialReadDataActorPoolSize = 100;
+constexpr ui32 InitialWriteDataActorPoolSize = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +33,8 @@ TStorageServiceActor::TStorageServiceActor(
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
     , InFlightRequests(MakeIntrusive<TInFlightRequestStorage>(ProfileLog))
+    , ReadDataActorPool(ProfileLog, TraceSerializer, InFlightRequests)
+    , WriteDataActorPool(ProfileLog, TraceSerializer)
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
@@ -43,6 +47,11 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
+
+    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+        ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
+        WriteDataActorPool.Initialize(ctx, InitialWriteDataActorPoolSize);
+    }
 
     RegisterPages(ctx);
     RegisterCounters(ctx);
@@ -95,6 +104,14 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto ssdCounters = serviceCounters->GetSubgroup("type", "ssd");
     SsdFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
     SsdTabletCount = hddCounters->GetCounter("TabletCount", false);
+
+    ReadDataActorPoolSize =
+        serviceCounters->GetCounter("ReadDataActorPoolSize");
+    ReadDataActorPoolSize->Set(ReadDataActorPool.GetSize());
+
+    WriteDataActorPoolSize =
+        serviceCounters->GetCounter("WriteDataActorPoolSize");
+    WriteDataActorPoolSize->Set(WriteDataActorPool.GetSize());
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
@@ -191,6 +208,12 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         HFunc(TEvServicePrivate::TEvSessionCreated, HandleSessionCreated);
         HFunc(TEvServicePrivate::TEvSessionDestroyed, HandleSessionDestroyed);
         HFunc(TEvServicePrivate::TEvUpdateStats, HandleUpdateStats);
+        HFunc(
+            TEvServicePrivate::TEvReleaseReadDataActor,
+            HandleReleaseReadDataActor);
+        HFunc(
+            TEvServicePrivate::TEvReleaseWriteDataActor,
+            HandleReleaseWriteDataActor);
 
         default:
             return false;
