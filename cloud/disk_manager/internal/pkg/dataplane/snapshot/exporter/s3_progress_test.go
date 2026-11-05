@@ -50,6 +50,11 @@ func TestS3ProgressRecordsSuccessfulPUTDuringCancellation(t *testing.T) {
 		SnapshotID: "snapshot",
 		PartCount:  1,
 	}
+	state := &S3ExportState{Manifest: *manifest}
+	manifest = &state.Manifest
+	checkpoint := &memoryS3ExportCheckpoint{
+		state: state, save: func(context.Context) error { return nil },
+	}
 
 	options := s3TestOptions()
 	options.Compression = "lz4"
@@ -66,9 +71,13 @@ func TestS3ProgressRecordsSuccessfulPUTDuringCancellation(t *testing.T) {
 		options,
 		"prefix/",
 		manifest,
+		state,
+		checkpoint,
 		progress,
 		time.Now(),
-		func(context.Context) error { return nil },
+		func(ctx context.Context, parts []S3ManifestPart) error {
+			return checkpoint.Save(ctx, state, parts)
+		},
 	)
 	require.Len(t, manifest.Parts, 1)
 	require.Equal(

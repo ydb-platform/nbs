@@ -39,6 +39,7 @@ func RegisterForExecution(
 		return &createSnapshotFromDiskTask{
 			config:            config,
 			performanceConfig: performanceConfig,
+			disabledZones:     disabledZones,
 			nbsFactory:        nbsFactory,
 			storage:           storage,
 		}
@@ -283,6 +284,7 @@ func RegisterForExecution(
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
 				performanceConfig: performanceConfig,
+				disabledZones:     disabledZones,
 				nbsFactory:        nbsFactory,
 			}
 		},

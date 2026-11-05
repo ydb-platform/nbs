@@ -25,7 +25,8 @@ message ExportSnapshotTaskState {
     string Source = 1;
     bytes BackupMetaSHA256 = 2;
     bytes BackupChunkMapSHA256 = 3;
-    // JSON exporter.S3ExportState: immutable manifest plan and completed parts.
+    // JSON exporter.S3ExportState. JSON checkpoints include uploaded parts;
+    // with PartsInYDB only the immutable plan and small counters remain here.
     // Contains opaque decryption metadata, never S3 credentials.
     bytes ExportState = 4;
     double Progress = 5;
@@ -36,4 +37,8 @@ message ExportSnapshotTaskState {
     string SourceRetryObject = 7;
     // Learned upload concurrency survives retries and executor changes.
     uint32 UploadWorkerLimit = 8;
+    // The format is pinned before export initialization and never migrated.
+    // Completed parts are stored in export_parts in the task database.
+    // ExportState then contains only the immutable plan and small counters.
+    bool PartsInYDB = 9;
 }

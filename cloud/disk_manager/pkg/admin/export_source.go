@@ -153,9 +153,6 @@ func (c *exportResource) validateSourceOptions(cmd *cobra.Command) error {
 		}
 
 	case "backup":
-		if c.kind == exportSnapshotKind && c.srcDiskID == "" {
-			return fmt.Errorf("--source=backup requires --src-disk-id")
-		}
 
 	default:
 		return fmt.Errorf(
@@ -244,20 +241,22 @@ func (c *exportResource) newBackupSource(
 	)
 	if c.kind == exportImageKind {
 		return exporter.NewBackupImageSource(
-			ctx,
-			reader,
-			c.resourceID,
-			backupMetrics,
+			ctx, reader, c.resourceID, backupMetrics,
 		)
 	}
-
-	return exporter.NewBackupSnapshotSource(
-		ctx,
-		reader,
-		c.resourceID,
-		c.srcDiskID,
-		backupMetrics,
+	source, err := exporter.NewBackupSnapshotSource(
+		ctx, reader, c.resourceID, c.srcDiskID, backupMetrics,
 	)
+	if err != nil {
+		return nil, err
+	}
+	meta, err := source.CheckSnapshotReady(ctx, c.resourceID)
+	if err != nil {
+		return nil, err
+	}
+	// Include the resolved ID in the local checkpoint source identity.
+	c.srcDiskID = meta.Disk.GetDiskId()
+	return source, nil
 }
 
 func (c *exportResource) newSnapshotStorageSource(

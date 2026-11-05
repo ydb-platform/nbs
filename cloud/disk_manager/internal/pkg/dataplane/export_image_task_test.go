@@ -76,3 +76,46 @@ func TestImageExportReadsImageBackupWithoutDiskID(t *testing.T) {
 	require.Len(t, task.state.BackupMetaSHA256, 32)
 	execCtx.AssertExpectations(t)
 }
+
+func TestSnapshotExportReadsBackupWithoutDiskID(t *testing.T) {
+	meta, err := json.Marshal(backup.SnapshotMeta{
+		ID: "snapshot", DiskID: "disk", FolderID: "folder",
+		Size: backup.ChunkSize, BlockSize: 4096,
+	})
+	require.NoError(t, err)
+	chunkMap, err := proto.Marshal(&protos.BackupChunkMap{ChunkIds: []string{""}})
+	require.NoError(t, err)
+	reader := &imageExportBackupReader{objects: map[string]persistence.S3Object{
+		"snapshots/disk/snapshot/meta.json": {Data: meta},
+		"chunk_maps/snapshot": {Data: chunkMap, Metadata: map[string]*string{
+			backup.DiskIDMetadataKey: proto.String("disk"),
+		}},
+	}}
+	task := &exportSnapshotTask{
+		config: &server_config.ExportConfig{
+			SourceStorage: server_config.ExportConfig_BACKUP.Enum(),
+		},
+		request: &protos.ExportSnapshotRequest{
+			SnapshotId: "snapshot", FolderId: "folder",
+		},
+		state:        &protos.ExportSnapshotTaskState{},
+		backupReader: reader, registry: metrics.NewEmptyRegistry(),
+	}
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("SaveState", mock.Anything).Return(nil).Once()
+	source, err := task.selectSource(
+		context.Background(), execCtx,
+		newSnapshotExportSourceRetries(task.state, 30*time.Minute),
+	)
+	require.NoError(t, err)
+	loaded, err := source.CheckSnapshotReady(context.Background(), "snapshot")
+	require.NoError(t, err)
+	require.Equal(t, "disk", loaded.Disk.GetDiskId())
+	require.Equal(t, uint32(4096), loaded.BlockSize)
+	require.Equal(t, []string{
+		"chunk_maps/snapshot", "snapshots/disk/snapshot/meta.json",
+	}, reader.keys)
+	require.Len(t, task.state.BackupMetaSHA256, 32)
+	require.Len(t, task.state.BackupChunkMapSHA256, 32)
+	execCtx.AssertExpectations(t)
+}

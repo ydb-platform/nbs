@@ -103,6 +103,15 @@ message ExportConfig {
     // failure. Timeouts postpone the task without a retry limit.
     // The failure timestamp survives task retries and executor changes.
     optional string SourceRetryTimeout = 17 [default = "30m"];
+    // Selects YDB part rows only for exports that have not initialized yet.
+    // Started tasks keep the checkpoint format recorded in their state.
+    optional bool UseExportPartsTable = 18 [default = false];
+    // Maximum successful PUT confirmations in one YDB checkpoint transaction.
+    optional uint32 CheckpointPartCount = 19 [default = 16];
+    // Flush pending confirmations even when the batch is not full.
+    optional string CheckpointInterval = 20 [default = "1s"];
+    // Maximum part rows deleted by one cleanup transaction.
+    optional uint32 PartsCleanupBatchSize = 21 [default = 1000];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

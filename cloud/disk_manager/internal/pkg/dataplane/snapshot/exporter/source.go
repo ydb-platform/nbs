@@ -85,14 +85,13 @@ func newBackupSource(
 		return nil, err
 	}
 
-	return NewLoadedBackupSource(reader, loaded, options.DiskID, metrics), nil
+	return NewLoadedBackupSource(reader, loaded, metrics), nil
 }
 
 // Uses a validated backup whose metadata and chunk map were pinned by the task.
 func NewLoadedBackupSource(
 	reader backup.ObjectReader,
 	loaded *backup.LoadedBackup,
-	diskID string,
 	metrics storage_metrics.Metrics,
 ) Source {
 
@@ -102,7 +101,7 @@ func NewLoadedBackupSource(
 			ID:        loaded.Meta.ID,
 			Disk: &types.Disk{
 				// backup.Load verifies this ID against the snapshot metadata.
-				DiskId: diskID,
+				DiskId: loaded.Meta.DiskID,
 			},
 			Size:        loaded.Meta.Size,
 			StorageSize: loaded.Meta.StorageSize,

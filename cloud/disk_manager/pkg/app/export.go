@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
+	export_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter/storage"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
@@ -24,17 +25,19 @@ func initSnapshotExport(
 	creds auth.Credentials,
 	registry *tasks.Registry,
 	backupS3 *backup.S3,
+	db *persistence.YDBClient,
 ) (func(), error) {
 
 	// Controlplane hosts coordinate exports but never execute S3 transfers.
 	if config.GetGrpcConfig() != nil {
 		return func() {}, dataplane.RegisterExport(
-			registry, nil, nil, nil, nil, nil,
+			registry, nil, nil, nil, nil, nil, nil,
 		)
 	}
 
 	exportConfig := config.GetExportConfig()
 	var storage snapshot_storage.Storage
+	var parts export_storage.Storage
 	var diskServiceClient disk_service.Client
 	var backupReader backup.ObjectReader
 	var cleanups []func()
@@ -45,6 +48,22 @@ func initSnapshotExport(
 	}
 
 	if exportConfig != nil {
+		checkpointInterval, err := time.ParseDuration(
+			exportConfig.GetCheckpointInterval(),
+		)
+		if err != nil || checkpointInterval <= 0 {
+			return nil, fmt.Errorf(
+				"export checkpoint interval must be positive",
+			)
+		}
+		if exportConfig.GetCheckpointPartCount() == 0 ||
+			exportConfig.GetPartsCleanupBatchSize() == 0 {
+
+			return nil, fmt.Errorf(
+				"export checkpoint and cleanup batch sizes must be positive",
+			)
+		}
+
 		sourceRetryTimeout, err := time.ParseDuration(
 			exportConfig.GetSourceRetryTimeout(),
 		)
@@ -162,6 +181,10 @@ func initSnapshotExport(
 			}
 		}
 
+		parts = export_storage.NewStorage(
+			db, config.GetTasksConfig().GetStorageFolder(),
+		)
+
 		limits := config.GetTasksConfig().InflightTaskPerNodeLimits
 		if limits == nil {
 			limits = make(map[string]int64)
@@ -179,7 +202,7 @@ func initSnapshotExport(
 
 	err := dataplane.RegisterExport(
 		registry, exportConfig, storage, backupReader, diskServiceClient,
-		mon.NewRegistry("snapshot_export"),
+		mon.NewRegistry("snapshot_export"), parts,
 	)
 	if err != nil {
 		cleanup()

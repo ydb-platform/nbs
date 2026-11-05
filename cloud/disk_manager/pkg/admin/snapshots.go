@@ -422,8 +422,8 @@ const exportSnapshotLong = `Export a ready snapshot or image from dataplane
 snapshot storage, or a snapshot from backup S3, to stdout as a raw disk image
 stream or to a user-specified S3 destination.
 
-` + exportStorageLong + `--source=backup requires --src-disk-id and supports
-snapshot backups only.
+` + exportStorageLong + `--source=backup discovers the original disk ID from
+chunk map metadata. --src-disk-id can override it for older snapshot backups.
 It reads SnapshotStorageBackupConfig.S3Config (Endpoint, CredentialsFilePath
 or UseIamToken, Region), S3Bucket, S3KeyPrefix, and optional KekFile and KekId
 from --server-config. Set KekFile and KekId together for encrypted backup
@@ -461,7 +461,7 @@ const exportSnapshotExample = `  disk-manager-admin \
   disk-manager-admin \
       --server-config /etc/disk-manager/server-config.txt \
       snapshots export --id <snapshot-id> \
-      --source backup --src-disk-id <original-disk-id> \
+      --source backup \
       --s3-endpoint https://destination.example.com \
       --s3-bucket exported-images \
       --s3-credentials-file /path/to/destination-credentials.json

@@ -29,7 +29,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,15 +260,10 @@ func (e *restoreTestEnv) backupDisk(
 	data, err := json.Marshal(meta)
 	require.NoError(t, err)
 
-	err = e.follower.backupS3.PutObject(
-		ctx,
-		backup.SnapshotMetaKey(disk.DiskId, snapshotID),
-		e.follower.encryptedDEK,
-		persistence.S3Object{Data: data},
-	)
-	require.NoError(t, err)
-
 	dataTask := newBackupSnapshotDataTask(e.storage, e.follower, snapshotID)
+	dataTask.request.DiskId = disk.DiskId
+	dataTask.request.MetaKey = backup.SnapshotMetaKey(disk.DiskId, snapshotID)
+	dataTask.request.Meta = data
 	dataExecCtx := newBackupExecutionContext(ctx)
 
 	err = dataTask.Run(ctx, dataExecCtx)
@@ -284,6 +278,10 @@ func (e *restoreTestEnv) backupDisk(
 		err = dataTask.Run(ctx, dataExecCtx)
 	}
 	require.NoError(t, err)
+
+	chunkMapDiskID := backupChunkMapDiskID(t, ctx, e.follower, snapshotID)
+	require.NotNil(t, chunkMapDiskID)
+	require.Equal(t, disk.DiskId, *chunkMapDiskID)
 }
 
 func (e *restoreTestEnv) readSnapshotMeta(

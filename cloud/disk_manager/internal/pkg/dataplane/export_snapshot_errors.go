@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -110,6 +109,40 @@ func publicSnapshotExportError(
 }
 
 func snapshotExportTargetMessage(target *snapshotExportTargetError) string {
+	var awsError awserr.Error
+	if errors.As(target.err, &awsError) {
+		message := exportErrorValue(awsError.Code(), 64)
+		if text := awsError.Message(); text != "" {
+			if message != "" {
+				message += ": "
+			}
+			message += exportErrorValue(text, 1024)
+		}
+		if message == "" {
+			message = "Target S3 request failed"
+		}
+
+		var details []string
+		var failure awserr.RequestFailure
+		if errors.As(target.err, &failure) {
+			if failure.StatusCode() != 0 {
+				details = append(details, fmt.Sprintf(
+					"HTTP %v", failure.StatusCode(),
+				))
+			}
+			if failure.RequestID() != "" {
+				details = append(details,
+					"request ID: "+exportErrorValue(failure.RequestID(), 128),
+				)
+			}
+		}
+		if len(details) != 0 {
+			message += " (" + strings.Join(details, ", ") + ")"
+		}
+
+		return message
+	}
+
 	message := "Target S3 request failed"
 	if target.operation != "" {
 		message = fmt.Sprintf("Target S3 %v failed", target.operation)
@@ -131,97 +164,12 @@ func snapshotExportTargetMessage(target *snapshotExportTargetError) string {
 		return message + ": the destination bucket does not exist."
 	}
 
-	message += ": " + snapshotExportTargetReason(target.err)
-	var details []string
-	var awsError awserr.Error
-	if errors.As(target.err, &awsError) {
-		details = append(details, fmt.Sprintf(
-			"AWS code %q", exportErrorValue(awsError.Code(), 64),
-		))
-	}
-
-	var failure awserr.RequestFailure
-	if errors.As(target.err, &failure) {
-		if failure.StatusCode() != 0 {
-			details = append(details, fmt.Sprintf(
-				"HTTP %v", failure.StatusCode(),
-			))
-		}
-
-		if failure.RequestID() != "" {
-			details = append(details, fmt.Sprintf(
-				"request ID %q", exportErrorValue(failure.RequestID(), 128),
-			))
-		}
-	}
-
-	if len(details) != 0 {
-		message += " (" + strings.Join(details, ", ") + ")"
-	}
-
-	return message + "."
+	return message + ": " + snapshotExportTargetReason(target.err) + "."
 }
 
 func snapshotExportTargetReason(err error) string {
-	var awsError awserr.Error
-	if errors.As(err, &awsError) {
-		switch awsError.Code() {
-		case "AccessDenied":
-			return "access to the destination was denied"
-		case "InvalidAccessKeyId":
-			return "the S3 access key is invalid"
-		case "SignatureDoesNotMatch", "AuthorizationHeaderMalformed":
-			return "the destination rejected the request signature"
-		case "ExpiredToken", "InvalidToken", "TokenRefreshRequired":
-			return "the S3 authentication token is invalid or expired"
-		case "NoSuchBucket":
-			return "the destination bucket does not exist"
-		case "NoSuchKey", "NotFound":
-			return "the requested destination object was not found"
-		case "EntityTooLarge":
-			return "the destination rejected the object size"
-		case "BadDigest", "InvalidDigest":
-			return "the destination rejected the object checksum"
-		case "QuotaLimitExceeded":
-			return "the destination storage quota was exceeded"
-		case "SlowDown", "Throttling", "ThrottlingException":
-			return "the destination is throttling requests"
-		case "InternalError", "InternalServerError", "ServiceUnavailable":
-			return "the destination storage service is unavailable"
-		case "InvalidRequest", "InvalidArgument", "InvalidBucketName":
-			return "the destination rejected the request parameters"
-		case "PermanentRedirect", "IncorrectEndpoint":
-			return "the destination endpoint or region is incorrect"
-		case "SerializationError", "UnmarshalError":
-			return "the destination returned an invalid error response"
-		}
-	}
-
 	if isSnapshotExportSourceTimeout(err) {
 		return "the destination request timed out"
-	}
-
-	var failure awserr.RequestFailure
-	if errors.As(err, &failure) {
-		switch status := failure.StatusCode(); {
-		case status == http.StatusUnauthorized ||
-			status == http.StatusForbidden:
-
-			return "access to the destination was denied"
-		case status == http.StatusNotFound:
-			return "the requested destination resource was not found"
-		case status == http.StatusRequestEntityTooLarge:
-			return "the destination rejected the object size"
-		case status == http.StatusTooManyRequests:
-			return "the destination is throttling requests"
-		case status >= 500:
-			return "the destination storage service is unavailable"
-		}
-	}
-
-	// AWS SDK v1 retains transport errors in OrigErr, not Unwrap.
-	for errors.As(err, &awsError) && awsError.OrigErr() != nil {
-		err = awsError.OrigErr()
 	}
 
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -230,7 +178,8 @@ func snapshotExportTargetReason(err error) string {
 
 	var networkError net.Error
 	if errors.As(err, &networkError) {
-		return "could not connect to the destination"
+		return "could not connect to the destination endpoint; " +
+			"check the endpoint address and network accessibility"
 	}
 
 	return "the destination request could not be completed"
@@ -238,8 +187,8 @@ func snapshotExportTargetReason(err error) string {
 
 func exportErrorValue(value string, limit int) string {
 	if len(value) > limit {
-		return value[:limit] + "..."
+		return strings.ToValidUTF8(value[:limit], "\uFFFD") + "..."
 	}
 
-	return value
+	return strings.ToValidUTF8(value, "\uFFFD")
 }

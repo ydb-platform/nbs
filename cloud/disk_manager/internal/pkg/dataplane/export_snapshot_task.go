@@ -17,6 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
+	export_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -32,6 +33,7 @@ import (
 type exportSnapshotTask struct {
 	config       *server_config.ExportConfig
 	storage      storage.Storage
+	parts        export_storage.Storage
 	backupReader backup.ObjectReader
 	diskService  disk_service.Client
 	registry     metrics.Registry
@@ -60,7 +62,11 @@ func (t *exportSnapshotTask) metricsRegistry() metrics.Registry {
 }
 
 func (t *exportSnapshotTask) Save() ([]byte, error) {
-	data, err := json.Marshal(t.resume)
+	resume := t.resume
+	if t.state.PartsInYDB {
+		resume.Manifest.Parts = nil
+	}
+	data, err := json.Marshal(resume)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +153,9 @@ func (t *exportSnapshotTask) Run(
 	}()
 
 	if t.resume.Completed {
+		if err := t.clearExportParts(ctx, execCtx); err != nil {
+			return err
+		}
 		return t.release(ctx, execCtx)
 	}
 
@@ -281,6 +290,14 @@ func (t *exportSnapshotTask) run(
 	if err != nil {
 		return errors.NewNonRetriableError(err)
 	}
+	checkpointInterval, err := time.ParseDuration(
+		t.config.GetCheckpointInterval(),
+	)
+	if err != nil || checkpointInterval <= 0 {
+		return errors.NewNonRetriableErrorf(
+			"export checkpoint interval must be positive",
+		)
+	}
 
 	clientOptions := []persistence.S3ClientOption{
 		persistence.WithS3EmptySigningRegion(),
@@ -356,37 +373,36 @@ func (t *exportSnapshotTask) run(
 		})
 	}
 
-	_, err = exporter.ExportToS3Resumable(
-		ctx,
-		source,
-		t.request.SnapshotId,
-		snapshotExportTarget{S3Destination: client, uploads: uploads},
-		options,
-		&t.resume,
-		func(ctx context.Context) error {
-			sourceRetries.checkpoint(t.state)
-			uploads.checkpoint(t.state)
-			var completed uint64
-			for _, part := range t.resume.Manifest.Parts {
-				completed += part.Length
-			}
-
-			if t.resume.Manifest.Size != 0 {
-				t.state.Progress = 0.99 * float64(completed) /
-					float64(t.resume.Manifest.Size)
-			}
-
-			if t.resume.Completed {
-				t.state.Progress = 1
-			}
-
-			return t.saveState(ctx, execCtx)
-		},
-	)
+	if err := t.prepareExportParts(ctx, execCtx); err != nil {
+		return err
+	}
+	checkpoint := &snapshotExportCheckpoint{
+		task: t, execCtx: execCtx,
+		sourceRetries: sourceRetries, uploads: uploads,
+	}
+	target := snapshotExportTarget{S3Destination: client, uploads: uploads}
+	if t.state.PartsInYDB {
+		options.CheckpointPartCount = int(t.config.GetCheckpointPartCount())
+		options.CheckpointInterval = checkpointInterval
+		_, err = exporter.ExportToS3WithCheckpoint(
+			ctx, source, t.request.SnapshotId, target,
+			options, &t.resume, checkpoint,
+		)
+	} else {
+		_, err = exporter.ExportToS3Resumable(
+			ctx, source, t.request.SnapshotId, target,
+			options, &t.resume, func(ctx context.Context) error {
+				return checkpoint.Save(ctx, &t.resume, nil)
+			},
+		)
+	}
 	if err != nil {
 		return err
 	}
 
+	if err := t.clearExportParts(ctx, execCtx); err != nil {
+		return err
+	}
 	return t.release(ctx, execCtx)
 }
 
@@ -502,7 +518,6 @@ func (t *exportSnapshotTask) selectSource(
 	source := exporter.NewLoadedBackupSource(
 		reader,
 		loaded,
-		t.request.SourceDiskId,
 		storage_metrics.New(t.registry, "backup"),
 	)
 	meta, err := source.CheckSnapshotReady(ctx, t.request.SnapshotId)
@@ -599,6 +614,9 @@ func (t *exportSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	if err := t.clearExportParts(ctx, execCtx); err != nil {
+		return err
+	}
 	err := t.release(ctx, execCtx)
 	if err == nil && t.registry != nil {
 		t.metricsRegistry().Counter("export/cancelSucceeded").Inc()
@@ -634,6 +652,7 @@ func RegisterExport(
 	backupReader backup.ObjectReader,
 	diskServiceClient disk_service.Client,
 	metrics metrics.Registry,
+	parts export_storage.Storage,
 ) error {
 
 	register := registry.Register
@@ -647,6 +666,7 @@ func RegisterExport(
 			return &exportSnapshotTask{
 				config:       config,
 				storage:      storage,
+				parts:        parts,
 				backupReader: backupReader,
 				diskService:  diskServiceClient,
 				registry:     metrics,

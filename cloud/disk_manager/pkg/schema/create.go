@@ -8,6 +8,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	export_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -101,6 +102,13 @@ func create(
 		// Dedicated export nodes also need the task schema.
 		err = tasks_storage.CreateYDBTables(
 			ctx, config.GetTasksConfig(), db, dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		err = export_storage.CreateYDBTables(
+			ctx, db, config.GetTasksConfig().GetStorageFolder(),
+			dropUnusedColumns,
 		)
 		if err != nil {
 			return err

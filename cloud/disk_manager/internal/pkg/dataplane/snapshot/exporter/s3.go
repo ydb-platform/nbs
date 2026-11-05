@@ -48,6 +48,10 @@ type S3Destination interface {
 }
 
 type S3ExportOptions struct {
+	// Zero keeps synchronous callers' per-part checkpoint semantics.
+	CheckpointPartCount int
+	// Zero uses a one-second interval for pending confirmations.
+	CheckpointInterval time.Duration
 	// Optional registry for aggregate transfer metrics; never persisted.
 	MetricsRegistry metrics.Registry
 	// MaxRetries limits retries per source/destination operation after its
@@ -82,9 +86,10 @@ type S3DecryptionInfo struct {
 	EncryptedDEK string `json:"encrypted_dek"`
 }
 
-// S3ExportState is checkpointed before any parts are written and after each
-// successful upload. The caller keeps exclusive ownership of the destination
-// prefix and keeps the source immutable until completion or cancellation.
+// S3ExportState is checkpointed before any parts are written and together with
+// batches of successful uploads. The caller keeps exclusive ownership of the
+// destination prefix and keeps the source immutable until completion or
+// cancellation.
 type S3ExportState struct {
 	Bucket              string     `json:"bucket"`
 	Prefix              string     `json:"prefix"`
@@ -92,6 +97,9 @@ type S3ExportState struct {
 	Initialized         bool       `json:"initialized"`
 	DestinationPrepared bool       `json:"destination_prepared"`
 	Completed           bool       `json:"completed"`
+	UploadedPartCount   uint32     `json:"uploaded_part_count,omitempty"`
+	UploadedBytes       uint64     `json:"uploaded_bytes,omitempty"`
+	StoredBytes         uint64     `json:"stored_bytes,omitempty"`
 }
 
 type s3ExportFile struct {
@@ -376,6 +384,28 @@ func ExportToS3Resumable(
 	saveState func(context.Context) error,
 ) (S3Manifest, error) {
 
+	return ExportToS3WithCheckpoint(
+		ctx, snapshotStorage, snapshotID, destination, options, state,
+		&memoryS3ExportCheckpoint{state: state, save: saveState},
+	)
+}
+
+// ExportToS3WithCheckpoint keeps uploaded parts outside the task state. The
+// checkpoint implementation chooses durable YDB rows or process-local memory.
+func ExportToS3WithCheckpoint(
+	ctx context.Context,
+	snapshotStorage Source,
+	snapshotID string,
+	destination S3Destination,
+	options S3ExportOptions,
+	state *S3ExportState,
+	partCheckpoint S3ExportCheckpoint,
+) (S3Manifest, error) {
+
+	saveState := func(ctx context.Context) error {
+		return partCheckpoint.Save(ctx, state, nil)
+	}
+
 	if state.Initialized && (state.Bucket != options.Bucket ||
 		state.Prefix != s3BackupPrefix(options.Prefix)) {
 
@@ -411,6 +441,11 @@ func ExportToS3Resumable(
 	}
 	if options.MaxRetries < -1 {
 		return S3Manifest{}, task_errors.NewNonRetriableErrorf("S3 max retries must be -1 or nonnegative")
+	}
+	if options.CheckpointInterval < 0 {
+		return S3Manifest{}, task_errors.NewNonRetriableErrorf(
+			"checkpoint interval must not be negative",
+		)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -594,13 +629,36 @@ func ExportToS3Resumable(
 		}
 	}
 
-	if len(manifest.Parts) != 0 {
-		logging.Info(ctx, "resuming backup %v: reusing %v/%v completed parts", uri, len(manifest.Parts), count)
-	}
 	copyStarted := time.Now()
 	progress := &s3ExportProgress{metrics: transferMetrics}
-	for _, part := range manifest.Parts {
+	state.UploadedPartCount = 0
+	state.UploadedBytes = 0
+	state.StoredBytes = 0
+	iterator := s3PartIterator{checkpoint: partCheckpoint}
+	for {
+		part, err := iterator.next(ctx)
+		if err != nil {
+			return *manifest, err
+		}
+		if part == nil {
+			break
+		}
+		check := *manifest
+		check.Parts = []S3ManifestPart{*part}
+		err = validateS3ResumeState(check, snapshotID, meta, options, count)
+		if err != nil {
+			return *manifest, task_errors.NewNonRetriableError(err)
+		}
+		state.UploadedPartCount++
+		state.UploadedBytes += part.Length
+		state.StoredBytes += part.StoredLength
 		progress.restoreCompleted(part.Length, part.StoredLength)
+	}
+	if state.UploadedPartCount != 0 {
+		logging.Info(
+			ctx, "resuming backup %v: reusing %v/%v completed parts",
+			uri, state.UploadedPartCount, count,
+		)
 	}
 
 	stopProgress := progress.startLogging(
@@ -619,13 +677,37 @@ func ExportToS3Resumable(
 		options,
 		prefix,
 		manifest,
+		state,
+		partCheckpoint,
 		progress,
 		copyStarted,
-		saveState,
+		func(ctx context.Context, parts []S3ManifestPart) error {
+			return transferMetrics.saveCheckpoint(ctx, func(ctx context.Context) error {
+				if err := partCheckpoint.Save(ctx, state, parts); err != nil {
+					return err
+				}
+				return checkpoint.save(*manifest)
+			})
+		},
 	)
 	if err != nil {
 		return *manifest, err
 	}
+	// Only the final manifest needs the full list in memory. Durable task
+	// checkpoints omit it and continue to use the rows until publication.
+	parts := make([]S3ManifestPart, 0, int(manifest.PartCount))
+	iterator = s3PartIterator{checkpoint: partCheckpoint}
+	for {
+		part, err := iterator.next(ctx)
+		if err != nil {
+			return *manifest, err
+		}
+		if part == nil {
+			break
+		}
+		parts = append(parts, *part)
+	}
+	manifest.Parts = parts
 
 	if err := validateS3Manifest(*manifest); err != nil {
 		return *manifest, fmt.Errorf("backup %v: %w", uri, err)

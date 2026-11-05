@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -298,18 +297,14 @@ func exportS3Parts(
 	options S3ExportOptions,
 	prefix string,
 	manifest *S3Manifest,
+	state *S3ExportState,
+	partCheckpoint S3ExportCheckpoint,
 	progress *s3ExportProgress,
 	started time.Time,
-	saveState func(context.Context) error,
+	saveState func(context.Context, []S3ManifestPart) error,
 ) error {
 
-	// The final upload may have been checkpointed before the old runner sorted
-	// the parts. A fully uploaded checkpoint still needs stream order.
-	sort.Slice(manifest.Parts, func(i, j int) bool {
-		return manifest.Parts[i].Number < manifest.Parts[j].Number
-	})
-
-	if uint64(len(manifest.Parts)) == uint64(manifest.PartCount) {
+	if state.UploadedPartCount == manifest.PartCount {
 		return ctx.Err()
 	}
 
@@ -336,11 +331,6 @@ func exportS3Parts(
 	copyCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	group, groupCtx := errgroup.WithContext(copyCtx)
-	// Immutable while workers run; the collector appends to manifest.Parts.
-	uploadedParts := make(map[uint32]bool, len(manifest.Parts))
-	for _, part := range manifest.Parts {
-		uploadedParts[part.Number] = true
-	}
 	source = newS3ReadSource(
 		source,
 		options.ReadWorkerCount,
@@ -354,8 +344,17 @@ func exportS3Parts(
 			// Keep the producer alive while it adds and joins assemblers.
 			// No assembler can send a ready part after jobs is closed.
 			defer readers.Wait()
+			iterator := s3PartIterator{checkpoint: partCheckpoint}
+			uploaded, err := iterator.next(groupCtx)
+			if err != nil {
+				return err
+			}
 			for number := uint64(1); number <= uint64(manifest.PartCount); number++ {
-				if uploadedParts[uint32(number)] {
+				if uploaded != nil && uploaded.Number == uint32(number) {
+					uploaded, err = iterator.next(groupCtx)
+					if err != nil {
+						return err
+					}
 					continue
 				}
 				progress.setStage("waiting for buffer")
@@ -551,54 +550,79 @@ func exportS3Parts(
 		done <- err
 	}()
 
-	var uploaded uint64
-	var stored uint64
-	for _, part := range manifest.Parts {
-		uploaded += part.Length
-		stored += part.StoredLength
-	}
+	uploaded := state.UploadedBytes
+	stored := state.StoredBytes
 
 	initialStored := stored
+	checkpointPartCount := options.CheckpointPartCount
+	if checkpointPartCount <= 0 {
+		checkpointPartCount = 1
+	}
+	completedCount := state.UploadedPartCount
+	var pending []S3ManifestPart
 	var saveError error
-	for part := range completed {
-		manifest.Parts = append(manifest.Parts, part.part)
-		if saveError == nil {
-			if err := saveState(ctx); err != nil {
-				saveError = err
-				cancel()
-			}
+	flush := func() {
+		if saveError != nil || len(pending) == 0 {
+			return
 		}
-		uploaded += part.part.Length
-		stored += part.part.StoredLength
-		now := time.Now()
-		logging.Info(
-			ctx,
-			"backup %v: completed %v/%v logical bytes, stored %v bytes, "+
-				"completed parts %v/%v, last part %v, "+
-				"stored speed %.2f MiB/s, average %.2f MiB/s, ratio %.3f",
-			uri,
-			uploaded,
-			meta.Size,
-			stored,
-			len(manifest.Parts),
-			manifest.PartCount,
-			part.part.Number,
-			copySpeedMiBPerSecond(
-				part.part.StoredLength,
-				part.finished.Sub(part.started),
-			),
-			copySpeedMiBPerSecond(stored-initialStored, now.Sub(started)),
-			s3CompressionRatio(uploaded, stored),
-		)
+		oldCount := state.UploadedPartCount
+		oldBytes := state.UploadedBytes
+		oldStored := state.StoredBytes
+		for _, part := range pending {
+			state.UploadedPartCount++
+			state.UploadedBytes += part.Length
+			state.StoredBytes += part.StoredLength
+		}
+		if err := saveState(ctx, pending); err != nil {
+			state.UploadedPartCount = oldCount
+			state.UploadedBytes = oldBytes
+			state.StoredBytes = oldStored
+			saveError = err
+			cancel()
+		}
+		pending = nil
+	}
+	checkpointInterval := options.CheckpointInterval
+	if checkpointInterval == 0 {
+		checkpointInterval = time.Second
+	}
+	ticker := time.NewTicker(checkpointInterval)
+	defer ticker.Stop()
+	for completed != nil {
+		select {
+		case part, ok := <-completed:
+			if !ok {
+				completed = nil
+				flush()
+				continue
+			}
+			if saveError == nil {
+				pending = append(pending, part.part)
+				if len(pending) >= checkpointPartCount {
+					flush()
+				}
+			}
+			uploaded += part.part.Length
+			stored += part.part.StoredLength
+			completedCount++
+			now := time.Now()
+			logging.Info(ctx,
+				"backup %v: completed %v/%v logical bytes, stored %v bytes, "+
+					"completed parts %v/%v, last part %v, "+
+					"stored speed %.2f MiB/s, average %.2f MiB/s, ratio %.3f",
+				uri, uploaded, meta.Size, stored, completedCount,
+				manifest.PartCount, part.part.Number,
+				copySpeedMiBPerSecond(
+					part.part.StoredLength, part.finished.Sub(part.started),
+				),
+				copySpeedMiBPerSecond(stored-initialStored, now.Sub(started)),
+				s3CompressionRatio(uploaded, stored),
+			)
+		case <-ticker.C:
+			flush()
+		}
 	}
 
-	// Upload completion order is independent of the raw stream order.
-	sort.Slice(
-		manifest.Parts,
-		func(i, j int) bool {
-			return manifest.Parts[i].Number < manifest.Parts[j].Number
-		},
-	)
 	err := <-done
 	if saveError != nil {
 		return saveError

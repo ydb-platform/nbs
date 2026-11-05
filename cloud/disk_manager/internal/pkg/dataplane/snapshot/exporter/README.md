@@ -316,10 +316,19 @@ Source modes:
   `DataplaneConfig.SnapshotConfig` when the former is absent. The primary source
   can contain chunks in both S3 and YDB.
 - `BACKUP`: use `SnapshotStorageBackupConfig`, including its bucket, prefix and
-  envelope key configuration; no primary YDB configuration is needed.
+  envelope key configuration; no primary YDB configuration is needed. For a
+  snapshot, the original disk ID is discovered from `Disk-Id` in the metadata of
+  `chunk_maps/<snapshot-id>`. Images use `images/<image-id>/meta.json` directly.
 - `AUTO` (default): configure both sources. Use primary when its snapshot
   metadata exists; fall back to backup only when it is absent. A primary service
   error or a chunk error does not change sources during the export.
+
+The admin flag `--src-disk-id` is optional and can supply a disk ID for older
+backups without `Disk-Id`. An explicit ID must match the backup metadata.
+If the disk ID cannot be resolved, export fails before uploading parts and logs
+`disk_id not found in backup metadata` with the snapshot ID and object key.
+The chunk map is fetched once and reused. `meta.json` remains a required
+completion marker; missing or invalid metadata is not replaced from YDB.
 
 Dedicated export nodes can omit `DataplaneConfig`, using
 `ExportConfig.SnapshotConfig` for primary reads or only

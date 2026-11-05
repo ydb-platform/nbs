@@ -186,12 +186,12 @@ func TestSnapshotExportSourceOptions(t *testing.T) {
 			"backup",
 		},
 
-		{"backup missing disk", []string{"--source=backup"}, false, ""},
+		{"backup missing disk", []string{"--source=backup"}, true, "backup"},
 		{
 			"backup empty disk",
 			[]string{"--source=backup", "--src-disk-id="},
-			false,
-			"",
+			true,
+			"backup",
 		},
 
 		{"disk for storage", []string{"--src-disk-id=disk"}, false, ""},

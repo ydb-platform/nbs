@@ -139,7 +139,9 @@ func TestDeleteBaseDisksTaskDisabledZones(t *testing.T) {
 			err := task.Run(ctx, execCtx)
 			if tc.errorAt != "" {
 				require.True(t, errors.Is(err, assert.AnError))
-				storage.AssertNotCalled(t, "BaseDisksDeleted", mock.Anything, mock.Anything)
+				if tc.errorAt != "BaseDisksDeleted" {
+					storage.AssertNotCalled(t, "BaseDisksDeleted", mock.Anything, mock.Anything)
+				}
 			} else {
 				require.NoError(t, err)
 			}

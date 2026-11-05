@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 	"testing"
@@ -12,9 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 	grpc_codes "google.golang.org/grpc/codes"
 	grpc_status "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -23,82 +26,90 @@ import (
 
 func TestExportTargetPublicErrors(t *testing.T) {
 	for _, test := range []struct {
-		code   string
-		status int
-		reason string
+		code    string
+		status  int
+		message string
 	}{
-		{"AccessDenied", 403, "access to the destination was denied"},
-		{"InvalidAccessKeyId", 403, "the S3 access key is invalid"},
-		{"NoSuchBucket", 404, "the destination bucket does not exist"},
-		{"EntityTooLarge", 400, "the destination rejected the object size"},
-		{"BadDigest", 400, "the destination rejected the object checksum"},
-		{"SlowDown", 503, "the destination is throttling requests"},
+		{"BadRequest", 400, "Bad Request"},
+		{"AccessDenied", 403, "Access Denied"},
+		{"InvalidAccessKeyId", 403, "The access key does not exist."},
+		{"NoSuchBucket", 404, "The specified bucket does not exist."},
+		{"EntityTooLarge", 400, "The object exceeds the maximum allowed size."},
+		{"BadDigest", 400, "The Content-MD5 did not match."},
+		{"SlowDown", 503, "Please reduce your request rate."},
 		{
 			"InternalError", 500,
-			"the destination storage service is unavailable",
+			"We encountered an internal error, please try again.",
 		},
 		{
 			"UnknownServiceError", 500,
-			"the destination storage service is unavailable",
+			"Provider-specific error description.",
 		},
 		{
 			"SerializationError", 400,
-			"the destination returned an invalid error response",
+			"failed to unmarshal error message",
+		},
+		{
+			"BucketMaxSizeExceeded", 403,
+			"You have attempted to exceed the max size " +
+				"configured for the bucket.",
 		},
 	} {
-		t.Run(test.code, func(t *testing.T) {
-			original := awserr.NewRequestFailure(
-				awserr.New(test.code, "secret response body", nil),
-				test.status,
-				"request-123",
-			)
-			target := wrapSnapshotExportTargetError(
-				original, "PutObject", "bucket", "prefix/part-00000007.raw",
-			)
-			err := publicSnapshotExportError(
-				newContext(), "snapshot",
-				errors.NewNonRetriableError(fmt.Errorf(
-					"private exporter context: %w", target,
-				)),
-			)
-			require.ErrorIs(t, err, original)
-			require.False(t, errors.CanRetry(err))
-			require.True(t, errors.IsPublic(err))
-			status := grpc_status.Convert(err)
-			require.Equal(t, grpc_codes.Aborted, status.Code())
-			require.Contains(t, status.Message(), test.reason)
-			require.Contains(t, status.Message(), "PutObject")
-			require.Contains(t, status.Message(), `bucket "bucket"`)
-			require.Contains(t, status.Message(), "prefix/part-00000007.raw")
-			require.Contains(t, status.Message(), test.code)
-			require.Contains(t, status.Message(), fmt.Sprint(test.status))
-			require.Contains(t, status.Message(), "request-123")
-			for _, hidden := range []string{
-				"secret response body", "private exporter context",
-				"goroutine", "Non retriable", "source S3", "DiskService",
-			} {
-				require.NotContains(t, status.Message(), hidden)
-				require.NotContains(t, err.Error(), hidden)
-			}
+		for _, kind := range []string{"snapshot", "image"} {
+			t.Run(kind+"/"+test.code, func(t *testing.T) {
+				original := awserr.NewRequestFailure(
+					awserr.New(test.code, test.message,
+						errors.New("private AWS cause or response body")),
+					test.status,
+					"request-123",
+				)
+				target := wrapSnapshotExportTargetError(
+					original, "PutObject", "bucket", "prefix/part-00000007.raw",
+				)
+				err := publicSnapshotExportError(
+					newContext(), kind,
+					errors.NewNonRetriableError(fmt.Errorf(
+						"private exporter context: %w", target,
+					)),
+				)
+				require.ErrorIs(t, err, original)
+				require.False(t, errors.CanRetry(err))
+				require.True(t, errors.IsPublic(err))
+				status := grpc_status.Convert(err)
+				require.Equal(t, grpc_codes.Aborted, status.Code())
+				require.Equal(t, fmt.Sprintf(
+					"%v: %v (HTTP %v, request ID: request-123)",
+					test.code, test.message, test.status,
+				), status.Message())
+				for _, hidden := range []string{
+					"private AWS cause or response body", "private exporter context",
+					"goroutine", "Non retriable", "source S3", "DiskService",
+					"PutObject", "prefix/part-00000007.raw",
+				} {
+					require.NotContains(t, status.Message(), hidden)
+					require.NotContains(t, err.Error(), hidden)
+				}
 
-			var saved tasks_storage.TaskState
-			saved.SetError(err)
-			require.Equal(t, status.Message(), saved.ErrorMessage)
-			require.NotNil(t, saved.ErrorDetails)
-			require.False(t, saved.ErrorDetails.Internal)
-			require.Equal(t, status.Message(), saved.ErrorDetails.Message)
+				var saved tasks_storage.TaskState
+				saved.SetError(err)
+				require.Equal(t, status.Message(), saved.ErrorMessage)
+				require.NotNil(t, saved.ErrorDetails)
+				require.Equal(t, int64(codes.Aborted), saved.ErrorDetails.Code)
+				require.False(t, saved.ErrorDetails.Internal)
+				require.Equal(t, status.Message(), saved.ErrorDetails.Message)
 
-			// The control-plane task receives this error from WaitTask.
-			parentError := errors.NewDetailedErrorFull(
-				grpc_status.Error(saved.ErrorCode, saved.ErrorMessage),
-				saved.ErrorDetails,
-				saved.ErrorSilent,
-			)
-			var parent tasks_storage.TaskState
-			parent.SetError(parentError)
-			require.Equal(t, saved.ErrorMessage, parent.ErrorMessage)
-			require.Equal(t, saved.ErrorDetails, parent.ErrorDetails)
-		})
+				// The control-plane task receives this error from WaitTask.
+				parentError := errors.NewDetailedErrorFull(
+					grpc_status.Error(saved.ErrorCode, saved.ErrorMessage),
+					saved.ErrorDetails,
+					saved.ErrorSilent,
+				)
+				var parent tasks_storage.TaskState
+				parent.SetError(parentError)
+				require.Equal(t, saved.ErrorMessage, parent.ErrorMessage)
+				require.Equal(t, saved.ErrorDetails, parent.ErrorDetails)
+			})
+		}
 	}
 }
 
@@ -108,15 +119,44 @@ func TestExportTransportPublicErrors(t *testing.T) {
 		reason string
 	}{
 		{
-			awserr.New("RequestCanceled", "secret", context.DeadlineExceeded),
-			"the destination request timed out",
+			awserr.New("RequestError", "send request failed", nil),
+			"RequestError: send request failed",
 		},
 		{
-			awserr.New("RequestError", "secret", &url.Error{
+			awserr.New("RequestError", "send request failed",
+				errors.New("TLS certificate rejected for private.example")),
+			"RequestError: send request failed",
+		},
+		{
+			awserr.New("outer", "SDK wrapper message",
+				awserr.New("RequestError", "secret", nil)),
+			"outer: SDK wrapper message",
+		},
+		{
+			awserr.New("RequestError", "send request failed", &url.Error{
+				Op: "HEAD", URL: "https://private.example/?secret=token",
+				Err: &net.DNSError{Err: "no such host", Name: "private.example"},
+			}),
+			"RequestError: send request failed",
+		},
+		{
+			awserr.New("RequestCanceled", "request context canceled",
+				context.DeadlineExceeded),
+			"RequestCanceled: request context canceled",
+		},
+		{
+			awserr.New("RequestError", "send request failed", &url.Error{
 				Op: "PUT", URL: "https://private.example/?secret=token",
 				Err: io.ErrUnexpectedEOF,
 			}),
-			"the destination connection closed unexpectedly",
+			"RequestError: send request failed",
+		},
+		{
+			&net.DNSError{Err: "no such host", Name: "private.example"},
+			"could not connect to the destination endpoint",
+		},
+		{
+			io.ErrUnexpectedEOF, "the destination connection closed unexpectedly",
 		},
 	} {
 		err := publicSnapshotExportError(
@@ -132,6 +172,40 @@ func TestExportTransportPublicErrors(t *testing.T) {
 	}
 }
 
+func TestExportTerminalConnectionErrorSurvivesTaskState(t *testing.T) {
+	original := awserr.New("RequestError", "send request failed", nil)
+	err := publicSnapshotExportError(
+		newContext(), "snapshot", errors.NewNonRetriableError(
+			fmt.Errorf("checking destination bucket: %w",
+				wrapSnapshotExportTargetError(
+					errors.NewRetriableError(original),
+					"GetBucket", "test", "",
+				)),
+		),
+	)
+	require.ErrorIs(t, err, original)
+	require.False(t, errors.CanRetry(err))
+
+	var state tasks_storage.TaskState
+	state.SetError(err)
+	require.Equal(t, grpc_codes.Aborted, state.ErrorCode)
+	require.NotNil(t, state.ErrorDetails)
+	require.Equal(t, int64(codes.Aborted), state.ErrorDetails.Code)
+	require.False(t, state.ErrorDetails.Internal)
+	require.Equal(t, state.ErrorMessage, state.ErrorDetails.Message)
+	require.Equal(t, "RequestError: send request failed", state.ErrorMessage)
+	require.NotContains(t, state.ErrorMessage, "Retriable error")
+
+	var parent tasks_storage.TaskState
+	parent.SetError(errors.NewDetailedErrorFull(
+		grpc_status.Error(state.ErrorCode, state.ErrorMessage),
+		state.ErrorDetails, state.ErrorSilent,
+	))
+	require.Equal(t, state.ErrorCode, parent.ErrorCode)
+	require.Equal(t, state.ErrorMessage, parent.ErrorMessage)
+	require.Equal(t, state.ErrorDetails, parent.ErrorDetails)
+}
+
 func TestExportInternalErrorsStayPrivate(t *testing.T) {
 	for _, kind := range []string{"snapshot", "image"} {
 		for _, test := range []struct {
@@ -141,6 +215,12 @@ func TestExportInternalErrorsStayPrivate(t *testing.T) {
 			{
 				errors.NewNonRetriableError(&snapshotExportSourceError{
 					err: fmt.Errorf("source S3 private endpoint and chunk ID"),
+				}),
+				fmt.Sprintf("Failed to read %v data.", kind),
+			},
+			{
+				errors.NewNonRetriableError(&snapshotExportSourceError{
+					err: awserr.New("AccessDenied", "private source S3 message", nil),
 				}),
 				fmt.Sprintf("Failed to read %v data.", kind),
 			},
@@ -206,14 +286,19 @@ func TestExportTargetErrorValuesAreBounded(t *testing.T) {
 	err := publicSnapshotExportError(
 		newContext(), "snapshot", wrapSnapshotExportTargetError(
 			awserr.NewRequestFailure(
-				awserr.New(strings.Repeat("X", 5000), "secret", nil),
+				awserr.New(strings.Repeat("X", 5000),
+					strings.Repeat("€", 5000), errors.New("private AWS cause")),
 				400, strings.Repeat("R", 5000),
 			),
 			"PutObject", strings.Repeat("B", 5000), strings.Repeat("K", 5000),
 		),
 	)
 	require.Less(t, len(grpc_status.Convert(err).Message()), 2048)
-	require.NotContains(t, err.Error(), "secret")
+	require.NotContains(t, err.Error(), "private AWS cause")
+	var state tasks_storage.TaskState
+	state.SetError(err)
+	_, marshalErr := proto.Marshal(state.ErrorDetails)
+	require.NoError(t, marshalErr)
 }
 
 type failingExportDiskService struct {

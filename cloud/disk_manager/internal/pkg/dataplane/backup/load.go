@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"strings"
 
 	"github.com/golang/protobuf/proto"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,6 +27,7 @@ type LoadOptions struct {
 }
 
 type Meta struct {
+	DiskID            string
 	BlockSize         uint32
 	ID                string
 	FolderID          string
@@ -53,13 +57,21 @@ func Load(
 	}
 
 	var key string
+	var chunkMapObject persistence.S3Object
+	mapLoaded := false
 	switch options.Kind {
 	case protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT:
 		if options.DiskID == "" {
-			return nil, errors.NewNonRetriableErrorf(
-				"source disk id is required for backup of snapshot %v",
-				options.ID,
-			)
+			var err error
+			chunkMapObject, err = reader.GetObject(ctx, ChunkMapKey(options.ID))
+			if err != nil {
+				return nil, err
+			}
+			mapLoaded = true
+			options.DiskID = chunkMapDiskID(chunkMapObject)
+			if options.DiskID == "" {
+				return nil, missingDiskID(ctx, ChunkMapKey(options.ID), options.ID)
+			}
 		}
 
 		key = SnapshotMetaKey(options.DiskID, options.ID)
@@ -96,6 +108,9 @@ func Load(
 	if options.Kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT {
 		var snapshot SnapshotMeta
 		err = json.Unmarshal(object.Data, &snapshot)
+		if err == nil && snapshot.DiskID == "" {
+			return nil, missingDiskID(ctx, key, options.ID)
+		}
 		if err == nil && snapshot.DiskID != options.DiskID {
 			return nil, errors.NewNonRetriableErrorf(
 				"%v has disk id %q, expected %q",
@@ -106,6 +121,7 @@ func Load(
 		}
 
 		meta = Meta{
+			DiskID:            options.DiskID,
 			BlockSize:         snapshot.BlockSize,
 			ID:                snapshot.ID,
 			FolderID:          snapshot.FolderID,
@@ -118,6 +134,7 @@ func Load(
 		var image ImageMeta
 		err = json.Unmarshal(object.Data, &image)
 		meta = Meta{
+			DiskID:            image.SrcDiskID,
 			ID:                image.ID,
 			FolderID:          image.FolderID,
 			Size:              image.Size,
@@ -173,9 +190,19 @@ func Load(
 	}
 
 	key = ChunkMapKey(options.ID)
-	chunkMapObject, err := reader.GetObject(ctx, key)
-	if err != nil {
-		return nil, err
+	if !mapLoaded {
+		chunkMapObject, err = reader.GetObject(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if diskID := chunkMapDiskID(chunkMapObject); diskID != "" &&
+		options.Kind == protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT &&
+		diskID != meta.DiskID {
+
+		return nil, errors.NewNonRetriableErrorf(
+			"%v has disk id %q, expected %q", key, diskID, meta.DiskID,
+		)
 	}
 
 	var chunkMap protos.BackupChunkMap
@@ -202,6 +229,26 @@ func Load(
 		MetaData:     object.Data,
 		ChunkMapData: chunkMapObject.Data,
 	}, nil
+}
+
+func missingDiskID(ctx context.Context, key string, snapshotID string) error {
+	logging.Error(
+		ctx, "disk_id not found in backup metadata, "+
+			"snapshot_id %v, object %v", snapshotID, key,
+	)
+	return errors.NewNonRetriableErrorf(
+		"disk_id not found in backup metadata %q for snapshot %v",
+		key, snapshotID,
+	)
+}
+
+func chunkMapDiskID(object persistence.S3Object) string {
+	for name, value := range object.Metadata {
+		if strings.EqualFold(name, DiskIDMetadataKey) && value != nil {
+			return *value
+		}
+	}
+	return ""
 }
 
 ////////////////////////////////////////////////////////////////////////////////

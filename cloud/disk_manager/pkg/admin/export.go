@@ -279,8 +279,8 @@ func newExportCmd(
 			&c.srcDiskID,
 			"src-disk-id",
 			"",
-			"Original disk ID; required with --source=backup, "+
-				"otherwise rejected",
+			"Original disk ID override for --source=backup; "+
+				"otherwise read from backup metadata",
 		)
 	}
 

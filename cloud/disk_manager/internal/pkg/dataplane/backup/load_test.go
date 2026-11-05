@@ -182,7 +182,9 @@ func TestLoadBackupValidation(t *testing.T) {
 					t,
 					errors.Is(err, errors.NewEmptyNonRetriableError()),
 				)
-				require.NotContains(t, r.requestedKeys, ChunkMapKey("snapshot"))
+				if tc.name != "empty disk" {
+					require.NotContains(t, r.requestedKeys, ChunkMapKey("snapshot"))
+				}
 			},
 		)
 	}
@@ -287,4 +289,77 @@ func TestCheckImageMeta(t *testing.T) {
 		Data: []byte(`{"id": "image"}`),
 	}
 	require.NoError(t, CheckImageMeta(ctx, r, "image"))
+}
+
+func TestLoadBackupDiscoversDiskID(t *testing.T) {
+	for _, name := range []string{"Disk-Id", "disk-id", "DISK-ID"} {
+		t.Run(name, func(t *testing.T) {
+			r := newFakeObjectReader()
+			key := SnapshotMetaKey("disk", "snapshot")
+			putLoadTestJSON(t, r, key, SnapshotMeta{
+				ID: "snapshot", DiskID: "disk", FolderID: "folder",
+				Size: ChunkSize, BlockSize: 4096,
+			})
+			putLoadTestMap(t, r, []string{""})
+			object := r.objects[ChunkMapKey("snapshot")]
+			object.Metadata = map[string]*string{name: proto.String("disk")}
+			r.objects[ChunkMapKey("snapshot")] = object
+			loaded, err := Load(newTestContext(), r, LoadOptions{
+				Kind: protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT,
+				ID:   "snapshot", ExpectedFolderID: "folder",
+			})
+			require.NoError(t, err)
+			require.Equal(t, "disk", loaded.Meta.DiskID)
+			require.Equal(
+				t, []string{ChunkMapKey("snapshot"), key}, r.requestedKeys,
+			)
+		})
+	}
+}
+
+func TestLoadBackupMissingDiskIDMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		metadata map[string]*string
+	}{
+		{name: "no metadata"},
+		{name: "nil value", metadata: map[string]*string{DiskIDMetadataKey: nil}},
+		{name: "empty value", metadata: map[string]*string{
+			DiskIDMetadataKey: proto.String(""),
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newFakeObjectReader()
+			putLoadTestMap(t, r, []string{""})
+			key := ChunkMapKey("snapshot")
+			object := r.objects[key]
+			object.Metadata = tc.metadata
+			r.objects[key] = object
+			_, err := Load(newTestContext(), r, LoadOptions{
+				Kind: protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT,
+				ID:   "snapshot",
+			})
+			require.ErrorContains(t, err, "disk_id not found in backup metadata")
+			require.ErrorContains(t, err, key)
+			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+			require.Equal(t, []string{key}, r.requestedKeys)
+		})
+	}
+}
+
+func TestLoadBackupMissingDiskIDInCompletionMetadata(t *testing.T) {
+	r := newFakeObjectReader()
+	key := SnapshotMetaKey("disk", "snapshot")
+	putLoadTestJSON(t, r, key, SnapshotMeta{ID: "snapshot", Size: ChunkSize})
+	putLoadTestMap(t, r, []string{""})
+	object := r.objects[ChunkMapKey("snapshot")]
+	object.Metadata = map[string]*string{DiskIDMetadataKey: proto.String("disk")}
+	r.objects[ChunkMapKey("snapshot")] = object
+	_, err := Load(newTestContext(), r, LoadOptions{
+		Kind: protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT,
+		ID:   "snapshot",
+	})
+	require.ErrorContains(t, err, "disk_id not found in backup metadata")
+	require.ErrorContains(t, err, key)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }

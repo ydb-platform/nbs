@@ -50,9 +50,10 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("placement_group.AlterPlacementGroupMembership", func() tasks.Task {
 		return &alterPlacementGroupMembershipTask{
-			storage:      storage,
-			nbsFactory:   nbsFactory,
-			cellSelector: cellSelector,
+			storage:       storage,
+			nbsFactory:    nbsFactory,
+			cellSelector:  cellSelector,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {

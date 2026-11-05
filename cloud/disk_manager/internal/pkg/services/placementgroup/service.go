@@ -55,38 +55,42 @@ func getZoneIDForPlacementGroup(
 	cellSelector cells.CellSelector,
 	groupID string,
 	reqZoneID string,
+	meta *resources.PlacementGroupMeta,
 ) (string, error) {
 
-	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupID)
-	if err != nil {
-		return "", err
+	if meta == nil {
+		var err error
+		meta, err = storage.GetPlacementGroupMeta(ctx, groupID)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	return resolvePlacementGroupZoneID(cellSelector, groupID, reqZoneID, pgMeta)
+	return resolvePlacementGroupZoneID(cellSelector, groupID, reqZoneID, meta)
 }
 
 func resolvePlacementGroupZoneID(
 	cellSelector cells.CellSelector,
 	groupID string,
 	reqZoneID string,
-	pgMeta *resources.PlacementGroupMeta,
+	meta *resources.PlacementGroupMeta,
 ) (string, error) {
 
 	zoneID := reqZoneID
-	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+	if meta != nil && len(meta.ZoneID) > 0 {
 		zoneCells, err := cellSelector.ResolveCells(reqZoneID)
 		if err != nil {
 			return "", err
 		}
-		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
+		if !slices.Contains(zoneCells, meta.ZoneID) {
 			return "", errors.NewNonRetriableErrorf(
 				"placement group %v is in zone %v, not in requested zone %v",
 				groupID,
-				pgMeta.ZoneID,
+				meta.ZoneID,
 				reqZoneID,
 			)
 		}
-		zoneID = pgMeta.ZoneID
+		zoneID = meta.ZoneID
 	}
 
 	return zoneID, nil
@@ -99,6 +103,7 @@ func selectClientByGroup(
 	cellSelector cells.CellSelector,
 	groupID string,
 	reqZoneID string,
+	meta *resources.PlacementGroupMeta,
 ) (nbs.Client, error) {
 
 	zoneID, err := getZoneIDForPlacementGroup(
@@ -107,6 +112,7 @@ func selectClientByGroup(
 		cellSelector,
 		groupID,
 		reqZoneID,
+		meta,
 	)
 	if err != nil {
 		return nil, err
@@ -269,6 +275,7 @@ func (s *service) DescribePlacementGroup(
 		s.cellSelector,
 		req.GroupId.GroupId,
 		req.GroupId.ZoneId,
+		nil,
 	)
 
 	if err != nil {

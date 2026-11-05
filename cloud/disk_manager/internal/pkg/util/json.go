@@ -99,12 +99,8 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"images.ExportImage": func() proto.Message {
 		return &images_protos.ExportImageTaskState{}
 	},
-	"dataplane.ExportSnapshotToS3": func() proto.Message {
-		return &dataplane_protos.ExportSnapshotTaskState{}
-	},
-	"dataplane.ExportImageToS3": func() proto.Message {
-		return &dataplane_protos.ExportSnapshotTaskState{}
-	},
+	"dataplane.ExportSnapshotToS3":                  newExportSnapshotTaskStateJSON,
+	"dataplane.ExportImageToS3":                     newExportSnapshotTaskStateJSON,
 	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
@@ -169,6 +165,18 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"snapshots.ExportSnapshot": func() proto.Message {
 		return &snapshot_protos.ExportSnapshotTaskState{}
 	},
+}
+
+type exportSnapshotTaskStateJSON struct {
+	*dataplane_protos.ExportSnapshotTaskState
+	// Shadow the opaque checkpoint in JSON without changing the protobuf state.
+	ExportState []byte `json:"ExportState,omitempty"`
+}
+
+func newExportSnapshotTaskStateJSON() proto.Message {
+	return &exportSnapshotTaskStateJSON{
+		ExportSnapshotTaskState: &dataplane_protos.ExportSnapshotTaskState{},
+	}
 }
 
 type FormattableDuration struct {
