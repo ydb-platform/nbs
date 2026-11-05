@@ -1,9 +1,9 @@
-import json
 import os
 
 import yatest.common as common
 import yatest.common.network as network
 
+from cloud.blockstore.tests.python.lib.fake_root_kms import start_fake_root_kms
 from cloud.tasks.test.common.processes import register_process, kill_processes
 
 from library.python.testing.recipe import declare_recipe, set_env
@@ -17,9 +17,6 @@ def start(argv):
     pm = network.PortManager()
     port = pm.get_port()
 
-    binary_path = common.binary_path(
-        "cloud/blockstore/tools/testing/fake-root-kms/fake-root-kms")
-
     try:
         test_name = common.context.test_name or ''
         test_name = test_name.translate(str.maketrans({':': '_', '/': '_'}))
@@ -29,40 +26,11 @@ def start(argv):
     working_dir = os.path.join(common.output_path(), test_name, "root_kms")
     os.makedirs(working_dir, exist_ok=True)
 
-    certs_dir = common.source_path(
-        'cloud/blockstore/tests/recipes/fake-root-kms/certs')
-
-    ca = os.path.join(certs_dir, 'ca.crt')
-
-    config = {
-        'port': port,
-        'ca': ca,
-        'server_cert': os.path.join(certs_dir, 'server.crt'),
-        'server_key': os.path.join(certs_dir, 'server.key'),
-        'keys': {
-            'nbs': os.path.join(certs_dir, 'nbs.key')
-        }
-    }
-
-    config_path = os.path.join(working_dir, "config.txt")
-
-    with open(config_path, "w") as f:
-        json.dump(config, f)
-
-    root_kms = common.execute(
-        command=[binary_path, '--config-path', config_path],
-        cwd=working_dir,
-        stdout=os.path.join(working_dir, "out.txt"),
-        stderr=os.path.join(working_dir, "err.txt"),
-        wait=False,
-    )
-
+    root_kms, environment = start_fake_root_kms(working_dir, port)
     register_process(SERVICE_NAME, root_kms.process.pid)
 
-    set_env("FAKE_ROOT_KMS_PORT", str(port))
-    set_env("FAKE_ROOT_KMS_CA", ca)
-    set_env("FAKE_ROOT_KMS_CLIENT_CRT", os.path.join(certs_dir, 'client.crt'))
-    set_env("FAKE_ROOT_KMS_CLIENT_KEY", os.path.join(certs_dir, 'client.key'))
+    for name, value in environment.items():
+        set_env(name, value)
 
 
 def stop(argv):
