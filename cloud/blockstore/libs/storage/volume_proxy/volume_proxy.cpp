@@ -746,8 +746,7 @@ void TVolumeProxyActor::HandleDisconnect(
         return;
     }
 
-    auto connectionIds = it->second.ConnectionIds;
-    for (ui64 id: connectionIds) {
+    for (ui64 id: it->second.ConnectionIds) {
         if (auto* conn = GetConnectionById(id);
             conn && conn->State == STARTED)
         {
