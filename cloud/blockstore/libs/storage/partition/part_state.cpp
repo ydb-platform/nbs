@@ -56,85 +56,34 @@ ui64 CalculatePerDiskThreshold(
            CeilDiv(remainder * perUnitThreshold, allocationUnitBlocks);
 }
 
-void InitializeMixedMergedBlobsAndBlocksCounts(
-    const TPartitionChannelsState& channelsState,
-    NProto::TPartitionStats& stats,
-    bool useBlobChannelDataKindForCounters)
-{
-    const bool indexCountersInitialized =
-        stats.GetMixedIndexBlobsCount() || stats.GetMergedIndexBlobsCount() ||
-        stats.GetMixedIndexBlocksCount() || stats.GetMergedIndexBlocksCount();
-
-    if (!useBlobChannelDataKindForCounters) {
-        // Restore legacy counters by index kind when rolling back the feature.
-        if (indexCountersInitialized) {
-            stats.SetMixedBlobsCount(stats.GetMixedIndexBlobsCount());
-            stats.SetMergedBlobsCount(stats.GetMergedIndexBlobsCount());
-            stats.SetMixedBlocksCount(stats.GetMixedIndexBlocksCount());
-            stats.SetMergedBlocksCount(stats.GetMergedIndexBlocksCount());
-        }
-
-        // Do not reuse stale index counters on subsequent restarts.
-        stats.SetMixedIndexBlobsCount(0);
-        stats.SetMergedIndexBlobsCount(0);
-        stats.SetMixedIndexBlocksCount(0);
-        stats.SetMergedIndexBlocksCount(0);
-        return;
-    }
-
-    // Initialize index counters before classifying legacy counters by channel.
-    if (!indexCountersInitialized) {
-        stats.SetMixedIndexBlobsCount(stats.GetMixedBlobsCount());
-        stats.SetMergedIndexBlobsCount(stats.GetMergedBlobsCount());
-        stats.SetMixedIndexBlocksCount(stats.GetMixedBlocksCount());
-        stats.SetMergedIndexBlocksCount(stats.GetMergedBlocksCount());
-    }
-
-    // If there are no channels with kind mixed, all blobs from mixed index
-    // table were written to merged channel. If there are some mixed channels,
-    // we are trying to use them for mixed blobs.
-    if (!channelsState.GetChannelsByKind(
-            [](EChannelDataKind kind)
-            { return kind == EChannelDataKind::Mixed; }))
-    {
-        stats.SetMergedBlobsCount(
-            stats.GetMergedBlobsCount() + stats.GetMixedBlobsCount());
-        stats.SetMixedBlobsCount(0);
-        stats.SetMergedBlocksCount(
-            stats.GetMergedBlocksCount() + stats.GetMixedBlocksCount());
-        stats.SetMixedBlocksCount(0);
-    }
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionState::TPartitionState(
-        NProto::TPartitionMeta meta,
-        ICompactionPolicyPtr compactionPolicy,
-        ui32 compactionScoreHistorySize,
-        ui32 cleanupScoreHistorySize,
-        const TBackpressureFeaturesConfig& bpConfig,
-        const TFreeSpaceConfig& freeSpaceConfig,
-        ui32 maxIORequestsInFlight,
-        ui32 reassignChannelsPercentageThreshold,
-        ui32 reassignFreshChannelsPercentageThreshold,
-        ui32 reassignMixedChannelsPercentageThreshold,
-        bool reassignSystemChannelsImmediately,
-        ui32 channelCount,
-        ui32 mixedIndexCacheSize,
-        ui64 allocationUnit,
-        ui32 maxBlobsPerUnit,
-        ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState,
-        ui64 tabletId,
-        const std::optional<TMixedBlocksFilterConfig>
-            mixedBlocksFilterConfig,
-        bool checkpointAwareCleanupEnabled,
-        bool useBlobChannelDataKindForCounters,
-        bool compactionStatsTrackerEnabled)
+    NProto::TPartitionMeta meta,
+    ICompactionPolicyPtr compactionPolicy,
+    ui32 compactionScoreHistorySize,
+    ui32 cleanupScoreHistorySize,
+    const TBackpressureFeaturesConfig& bpConfig,
+    const TFreeSpaceConfig& freeSpaceConfig,
+    ui32 maxIORequestsInFlight,
+    ui32 reassignChannelsPercentageThreshold,
+    ui32 reassignFreshChannelsPercentageThreshold,
+    ui32 reassignMixedChannelsPercentageThreshold,
+    bool reassignSystemChannelsImmediately,
+    ui32 channelCount,
+    ui32 mixedIndexCacheSize,
+    ui64 allocationUnit,
+    ui32 maxBlobsPerUnit,
+    ui32 maxBlobsPerRange,
+    ui32 compactionRangeCountPerRun,
+    TPartitionThreadSafeStatePtr threadSafeState,
+    ui64 tabletId,
+    const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
+    bool checkpointAwareCleanupEnabled,
+    bool compactionStatsTrackerEnabled,
+    bool extendedBlobCountersEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -152,7 +101,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
-    , UseBlobChannelDataKindForCounters(useBlobChannelDataKindForCounters)
+    , ExtendedBlobCountersEnabled(extendedBlobCountersEnabled)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -194,10 +143,51 @@ TPartitionState::TPartitionState(
     }
     InitChannels();
 
-    InitializeMixedMergedBlobsAndBlocksCounts(
-        *this,
-        AccessStats(),
-        UseBlobChannelDataKindForCounters);
+    auto& stats = AccessStats();
+    if (!ExtendedBlobCountersEnabled) {
+        stats.ClearBlobByteCounters();
+        stats.SetMixedChannelBlobsCount(0);
+        stats.SetMergedChannelBlobsCount(0);
+        stats.SetMixedChannelBlocksCount(0);
+        stats.SetMergedChannelBlocksCount(0);
+        stats.SetMixedIndexBlobsCount(0);
+        stats.SetMergedIndexBlobsCount(0);
+        stats.SetMixedIndexBlocksCount(0);
+        stats.SetMergedIndexBlocksCount(0);
+    } else if (!stats.HasBlobByteCounters()) {
+        stats.SetMixedIndexBlobsCount(stats.GetMixedBlobsCount());
+        stats.SetMergedIndexBlobsCount(stats.GetMergedBlobsCount());
+        stats.SetMixedIndexBlocksCount(stats.GetMixedBlocksCount());
+        stats.SetMergedIndexBlocksCount(stats.GetMergedBlocksCount());
+        stats.SetMixedChannelBlobsCount(stats.GetMixedBlobsCount());
+        stats.SetMergedChannelBlobsCount(stats.GetMergedBlobsCount());
+        stats.SetMixedChannelBlocksCount(stats.GetMixedBlocksCount());
+        stats.SetMergedChannelBlocksCount(stats.GetMergedBlocksCount());
+
+        // Without mixed channels, mixed-index blobs live on merged channels.
+        if (!GetChannelsByKind([](EChannelDataKind kind)
+                               { return kind == EChannelDataKind::Mixed; }))
+        {
+            stats.SetMergedChannelBlobsCount(
+                stats.GetMergedBlobsCount() + stats.GetMixedBlobsCount());
+            stats.SetMixedChannelBlobsCount(0);
+            stats.SetMergedChannelBlocksCount(
+                stats.GetMergedBlocksCount() + stats.GetMixedBlocksCount());
+            stats.SetMixedChannelBlocksCount(0);
+        }
+
+        // Enable before compression: initially stored sizes equal logical
+        // sizes.
+        auto& counters = *stats.MutableBlobByteCounters();
+        counters.SetMixedBytesCount(
+            stats.GetMixedChannelBlocksCount() * GetBlockSize());
+        counters.SetMergedBytesCount(
+            stats.GetMergedChannelBlocksCount() * GetBlockSize());
+        counters.SetMixedIndexBytesCount(
+            stats.GetMixedBlocksCount() * GetBlockSize());
+        counters.SetMergedIndexBytesCount(
+            stats.GetMergedBlocksCount() * GetBlockSize());
+    }
 }
 bool TPartitionState::CheckBlockRange(const TBlockRange64& range) const
 {
@@ -494,6 +484,114 @@ void TPartitionState::ConfirmBlobs(
 
     UnconfirmedBlobs.clear();
     UnconfirmedBlobCount = 0;
+}
+
+ui64 TPartitionState::GetMixedBytesCount() const
+{
+    return GetStats().GetBlobByteCounters().GetMixedBytesCount();
+}
+
+ui64 TPartitionState::GetMergedBytesCount() const
+{
+    return GetStats().GetBlobByteCounters().GetMergedBytesCount();
+}
+
+ui64 TPartitionState::GetMixedIndexBytesCount() const
+{
+    return GetStats().GetBlobByteCounters().GetMixedIndexBytesCount();
+}
+
+ui64 TPartitionState::GetMergedIndexBytesCount() const
+{
+    return GetStats().GetBlobByteCounters().GetMergedIndexBytesCount();
+}
+
+void TPartitionState::UpdateBlobCounters(
+    const TPartialBlobId& blobId,
+    EChannelDataKind indexKind,
+    ui64 blocksCount,
+    bool added)
+{
+    const bool isDeletionMarker = IsDeletionMarker(blobId);
+    // Deletion markers contribute to index blob totals, but not block totals.
+    if (isDeletionMarker) {
+        blocksCount = 0;
+    }
+
+    const auto update = [added](ui64 value, ui64 delta)
+    {
+        return added ? SafeIncrement(value, delta)
+                     : SafeDecrement(value, Min(value, delta));
+    };
+
+    auto& stats = AccessStats();
+    switch (indexKind) {
+        case EChannelDataKind::Mixed:
+            stats.SetMixedBlobsCount(update(stats.GetMixedBlobsCount(), 1));
+            stats.SetMixedBlocksCount(
+                update(stats.GetMixedBlocksCount(), blocksCount));
+            break;
+        case EChannelDataKind::Merged:
+            stats.SetMergedBlobsCount(update(stats.GetMergedBlobsCount(), 1));
+            stats.SetMergedBlocksCount(
+                update(stats.GetMergedBlocksCount(), blocksCount));
+            break;
+        default:
+            Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
+    }
+
+    if (!ExtendedBlobCountersEnabled) {
+        return;
+    }
+
+    const ui64 bytesCount = isDeletionMarker ? 0 : blobId.BlobSize();
+    auto& counters = *stats.MutableBlobByteCounters();
+    switch (indexKind) {
+        case EChannelDataKind::Mixed:
+            stats.SetMixedIndexBlobsCount(
+                update(stats.GetMixedIndexBlobsCount(), 1));
+            stats.SetMixedIndexBlocksCount(
+                update(stats.GetMixedIndexBlocksCount(), blocksCount));
+            counters.SetMixedIndexBytesCount(
+                update(counters.GetMixedIndexBytesCount(), bytesCount));
+            break;
+        case EChannelDataKind::Merged:
+            stats.SetMergedIndexBlobsCount(
+                update(stats.GetMergedIndexBlobsCount(), 1));
+            stats.SetMergedIndexBlocksCount(
+                update(stats.GetMergedIndexBlocksCount(), blocksCount));
+            counters.SetMergedIndexBytesCount(
+                update(counters.GetMergedIndexBytesCount(), bytesCount));
+            break;
+        default:
+            Y_ABORT("Unexpected index kind: %u", static_cast<ui32>(indexKind));
+    }
+
+    // Deletion markers do not have a data channel.
+    if (isDeletionMarker) {
+        return;
+    }
+
+    switch (GetChannelDataKind(blobId.Channel())) {
+        case EChannelDataKind::Mixed:
+            stats.SetMixedChannelBlobsCount(
+                update(stats.GetMixedChannelBlobsCount(), 1));
+            stats.SetMixedChannelBlocksCount(
+                update(stats.GetMixedChannelBlocksCount(), blocksCount));
+            counters.SetMixedBytesCount(
+                update(counters.GetMixedBytesCount(), bytesCount));
+            break;
+        case EChannelDataKind::Merged:
+            stats.SetMergedChannelBlobsCount(
+                update(stats.GetMergedChannelBlobsCount(), 1));
+            stats.SetMergedChannelBlocksCount(
+                update(stats.GetMergedChannelBlocksCount(), blocksCount));
+            counters.SetMergedBytesCount(
+                update(counters.GetMergedBytesCount(), bytesCount));
+            break;
+        default:
+            Y_ABORT("Unexpected blob channel: %u", blobId.Channel());
+    }
 }
 
 #define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)                           \

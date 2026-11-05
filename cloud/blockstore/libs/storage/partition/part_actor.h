@@ -470,6 +470,7 @@ private:
         ui64 mergedBlocksCount,
         ui64 mixedChannelBlocksCount,
         ui64 mergedChannelBlocksCount,
+        const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
