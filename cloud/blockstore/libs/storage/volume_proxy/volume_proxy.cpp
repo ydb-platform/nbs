@@ -571,6 +571,8 @@ void TVolumeProxyActor::ForwardRequest(
     }
 
     auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
+    // Prepare may create a new pipe client. Track it before connect/disconnect
+    // events arrive so that handlers can ignore events from an older client.
     tabletIt->second.ClientId = clientId;
 
     LOG_TRACE(
