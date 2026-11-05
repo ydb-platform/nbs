@@ -106,7 +106,8 @@ class TVolumeProxyActor final
         EConnectionState State = INITIAL;
         bool IsConnectionToBaseDisk = false;
         ui64 TabletId = 0;
-        // TabletId may be set before the connection is attached to a pipe.
+        // A base disk can have TabletId set before its connection is added to TabletConnections.
+        // AttachedTabletId records which tablet actually contains this connection.
         ui64 AttachedTabletId = 0;
 
         // Generation of the connection established with the volume tablet.
@@ -181,6 +182,8 @@ class TVolumeProxyActor final
 
     using TActiveRequestMap = THashMap<ui64, TActiveRequest>;
 
+    // Different disk names can resolve to the same tablet.
+    // Their connections share one pipe client but keep separate pending and active requests.
     struct TTabletConnection
     {
         THashSet<ui64> ConnectionIds;
@@ -384,6 +387,7 @@ void TVolumeProxyActor::DetachFromTablet(
             {{"ConnectionId", conn.Id}, {"TabletId", tabletId}});
     }
 
+    // Other connections can still use this pipe client.
     if (it->second.ConnectionIds.empty()) {
         ClientCache->Shutdown(ctx, tabletId);
         TabletConnections.erase(it);
@@ -394,6 +398,8 @@ void TVolumeProxyActor::EraseConnection(
     const TActorContext& ctx,
     TConnection* conn)
 {
+    // Connections with different DiskIds can resolve to the same RealDiskId.
+    // The mapping can belong to another connection that still uses it.
     auto removeFromMap =
         [conn](THashMap<TString, TConnection*>& map, const TString& key)
     {
@@ -423,14 +429,26 @@ void TVolumeProxyActor::StartConnection(
     conn.LogTitle.SetTabletId(tabletId);
     conn.AdvanceGeneration();
 
+    // After disconnect, describe can return a different real disk.
     if (conn.RealDiskId && conn.RealDiskId != realDiskId) {
+        // When the old RealDiskId equals DiskId, this mapping also handles
+        // requests for the original DiskId.
         if (conn.RealDiskId != conn.DiskId) {
+            // The mapping can point to another connection that still uses it.
+            // 1) Request for Disk-1-copy creates connection A and its mapping.
+            // 2) Later request for Disk-1 creates connection B, which also
+            //    resolves to Disk-1-copy.
+            // 3) StartConnection keeps A's mapping.
+            // After disconnect, a new describe for B can return a different
+            // RealDiskId. The lookup by B's old RealDiskId still returns A.
+            // Remove the mapping only if it points to conn.
             auto it = ConnectionByDiskId.find(conn.RealDiskId);
             if (it != ConnectionByDiskId.end() && it->second == &conn) {
                 ConnectionByDiskId.erase(it);
             }
         }
 
+        // The exact-name mapping can also point to A while conn is B.
         auto it = ConnectionByRealDiskId.find(conn.RealDiskId);
         if (it != ConnectionByRealDiskId.end() && it->second == &conn) {
             ConnectionByRealDiskId.erase(it);
@@ -454,6 +472,9 @@ void TVolumeProxyActor::StartConnection(
         ConnectionByRealDiskId[conn.RealDiskId] = &conn;
     }
 
+    // On the first StartConnection call, the connection has no tablet attachment.
+    // After disconnect, describe can return a different tablet.
+    // Move the connection to that tablet.
     if (conn.AttachedTabletId != tabletId) {
         DetachFromTablet(ctx, conn);
         TabletConnections[tabletId].ConnectionIds.insert(conn.Id);
@@ -495,6 +516,11 @@ void TVolumeProxyActor::OnDisconnect(
 
     CancelActiveRequests(ctx, conn);
     ProcessPendingRequests(conn);
+    // Disconnect can cancel all active requests before the first response
+    // starts the inactivity timer. A previous timer can also expire while
+    // requests are active.
+    // Schedule cleanup here because responses to cancelled requests
+    // do not start the timer.
     ScheduleConnectionShutdown(ctx, conn);
 }
 
@@ -560,6 +586,7 @@ void TVolumeProxyActor::ForwardRequest(
              {"DiskId", conn.DiskId},
              {"TabletId", conn.TabletId}});
 
+        // Pipe events cannot cancel active requests after we remove the connection.
         CancelActiveRequests(ctx, conn);
         auto error = MakeTabletIsDeadError(E_REJECTED, __LOCATION__);
         DestroyConnection(ctx, conn, error);
@@ -571,8 +598,8 @@ void TVolumeProxyActor::ForwardRequest(
     }
 
     auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
-    // Prepare may create a new pipe client. Track it before connect/disconnect
-    // events arrive so that handlers can ignore events from an older client.
+    // Prepare can create a new pipe client. Save its ID so that connect/disconnect
+    // handlers can tell which events belong to this pipe client.
     tabletIt->second.ClientId = clientId;
 
     LOG_TRACE(
@@ -697,10 +724,16 @@ void TVolumeProxyActor::HandleConnect(
         return;
     }
 
+    // On failure, DestroyConnection removes connection IDs from this set.
+    // It also removes the tablet entry when no connections remain.
+    // Use a copy of the set for this loop.
     auto connectionIds = it->second.ConnectionIds;
     if (!connected) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
         for (ui64 id: connectionIds) {
+            // After an earlier disconnect, a connection can wait for describe
+            // while still attached to this tablet.
+            // That describe can return a different tablet.
             if (auto* conn = GetConnectionById(id);
                 conn && (conn->State == STARTED || conn->State == FAILED))
             {
@@ -746,6 +779,9 @@ void TVolumeProxyActor::HandleDisconnect(
         return;
     }
 
+    // After an earlier disconnect, a connection can wait for describe while
+    // still attached to this tablet.
+    // That describe can return a different tablet.
     for (ui64 id: it->second.ConnectionIds) {
         if (auto* conn = GetConnectionById(id);
             conn && conn->State == STARTED)
