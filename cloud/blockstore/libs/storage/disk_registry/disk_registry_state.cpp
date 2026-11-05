@@ -8512,11 +8512,22 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
             E_ARGUMENT,
             TStringBuilder() << "invalid master disk " << masterId.Quote());
     }
+    const ui32 devicesCount = replicas.front().size();
+
+    THashSet<TDeviceId> deviceSet;
+    deviceSet.reserve(devicesCount * replicas.size());
 
     bool allReplicasAlreadyCreated = true;
 
-    const ui32 devicesCount = replicas.front().size();
     for (ui32 i = 0; i < replicas.size(); ++i) {
+        for (const auto& uuid: replicas[i]) {
+            if (uuid && !deviceSet.insert(uuid).second) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "duplicate device " << uuid.Quote());
+            }
+        }
+
         const auto replicaId = GetReplicaDiskId(masterId, i);
 
         TAllocateDiskResult result;
@@ -8569,10 +8580,32 @@ NProto::TError TDiskRegistryState::CanCreateMirroredDiskFromDevices(
                              << " already exists with other parameters");
     }
 
-    for (ui32 i = 0; i < devicesCount; ++i) {
-        auto [_, incDataError] = GetDeviceWithData(replicas, i);
+    for (ui32 d = 0; d < devicesCount; ++d) {
+        auto [refUuid, incDataError] = GetDeviceWithData(replicas, d);
         if (HasError(incDataError)) {
             return incDataError;
+        }
+
+        const auto* refConfig = DeviceList.FindDevice(refUuid);
+        Y_ABORT_UNLESS(refConfig);
+        const auto size =
+            refConfig->GetBlockSize() * refConfig->GetBlocksCount();
+
+        for (const auto& replica: replicas) {
+            if (!replica[d] || replica[d] == refUuid) {
+                continue;
+            }
+
+            const auto* device = DeviceList.FindDevice(replica[d]);
+            Y_ABORT_UNLESS(device);
+
+            if (size != device->GetBlockSize() * device->GetBlocksCount()) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "inconsistent size of devices " << refUuid.Quote()
+                        << ", " << replica[d].Quote());
+            }
         }
     }
     return {};
