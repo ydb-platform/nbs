@@ -192,7 +192,7 @@ message TPartitionMeta
 message TCompressionMetadata
 {
     // Each value identifies a specific library/cpp/blockcodecs configuration.
-    // Keep in sync with CompressionCodecs in partition_common/blobs_compressor.cpp.
+    // Keep in sync with CompressionCodecs in partition_common/blob_compressor.cpp.
     enum ECompressionType
     {
         COMPRESSION_LZ4_FAST14_SAFE = 0;

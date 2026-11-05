@@ -10,7 +10,7 @@ SRCS(
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     actor_writefreshblocks.cpp
-    blobs_compressor.cpp
+    blob_compressor.cpp
     checkpoints_in_flight.cpp
     commit_ids_state.cpp
     commit_queue.cpp

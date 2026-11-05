@@ -1,13 +1,13 @@
 #include "io_companion.h"
 
-#include "blobs_compressor.h"
+#include "blob_compressor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
@@ -50,7 +50,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    const std::shared_ptr<TBlobsCompressor> BlobsCompressor;
+    const TBlobCompressorPtr BlobCompressor
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -71,7 +71,7 @@ public:
         TChildLogTitle logTitle,
         ui64 bsGroupOperationId,
         bool shouldSendTraceIdToBlobstorage,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor);
+        TBlobCompressorPtr blobsCompressor);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -104,18 +104,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBlobActor::TWriteBlobActor(
-        const TActorId& tabletActorId,
-        const TActorId& volumeActorId,
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TString diskId,
-        std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui32 groupId,
-        TChildLogTitle logTitle,
-        ui64 bsGroupOperationId,
-        bool shouldSendTraceIdToBlobstorage,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor)
+    const TActorId& tabletActorId,
+    const TActorId& volumeActorId,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TString diskId,
+    std::unique_ptr<TRequest> request,
+    TDuration longRunningThreshold,
+    ui32 groupId,
+    TChildLogTitle logTitle,
+    ui64 bsGroupOperationId,
+    bool shouldSendTraceIdToBlobstorage,
+    TBlobCompressorPtr blobsCompressor)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -131,7 +131,7 @@ TWriteBlobActor::TWriteBlobActor(
     , LogTitle(std::move(logTitle))
     , BSGroupOperationId(bsGroupOperationId)
     , PassTraceIdToBlobstorage(shouldSendTraceIdToBlobstorage)
-    , BlobsCompressor(std::move(blobsCompressor))
+    , BlobCompressor(std::move(blobsCompressor))
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -176,8 +176,8 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    if (BlobsCompressor && Request->CompressedSizeEstimationCandidate) {
-        BlobsCompressor->CalculateCompressionMetrics(
+    if (BlobCompressor && Request->CompressedSizeEstimationCandidate) {
+        BlobCompressor->CalculateCompressionMetrics(
             Request->BlobId,
             blobContent);
     }
@@ -390,7 +390,7 @@ void TIOCompanion::HandleWriteBlob(
             LogTitle.GetChild(GetCycleCount()),
             bsGroupOperationId,
             DiagnosticsConfig->GetPassTraceIdToBlobstorage(),
-            BlobsCompressor),
+            BlobCompressor),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,
