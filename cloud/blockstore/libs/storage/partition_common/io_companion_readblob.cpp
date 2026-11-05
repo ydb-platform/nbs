@@ -60,7 +60,8 @@ void TIOCompanion::HandleReadBlob(
             *DiagnosticsConfig,
             PartitionConfig.GetStorageMediaKind()),
         bsGroupOperationId,
-        DiagnosticsConfig->GetPassTraceIdToBlobstorage());
+        DiagnosticsConfig->GetPassTraceIdToBlobstorage(),
+        BlobCompressor);
 
     if (blob.TabletID() != TabletID) {
         // Treat this situation as we were reading from base disk.

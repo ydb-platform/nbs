@@ -47,6 +47,8 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
+    const TBlobCompressorPtr BlobCompressor;
+
     TVector<TVector<ui32>> BlockOffsetsForEachRequest;
 
     TInstant RequestSent;
@@ -66,12 +68,13 @@ public:
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold,
         ui64 bsGroupOperationId,
-        bool passTraceIdToBlobstorage);
+        bool passTraceIdToBlobstorage,
+        TBlobCompressorPtr blobCompressor = nullptr);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    TBlobCompressor::TReadPlan GetQueries() const;
+    TResultOrError<TBlobCompressor::TReadPlan> GetQueries() const;
 
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
@@ -102,6 +105,12 @@ private:
     TDataThatCanBeProcessed FillBrokenDataAndFilterItOut(
         TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
         const TSgList& sglist,
+        const NActors::TActorContext& ctx);
+
+    TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse>& responses,
+        const TSgList& sglist,
+        const TVector<ui16>& blockOffsets,
         const NActors::TActorContext& ctx);
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(

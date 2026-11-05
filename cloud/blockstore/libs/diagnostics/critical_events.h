@@ -49,6 +49,7 @@ using TCritEventParams =
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(DiskRegistryPurgeDeviceError)                                          \
+    xxx(CompressedBlobReadError)                                               \
     xxx(CompressionChunkNotFound)                                              \
     xxx(InvalidBlobCompressionCodec)                                           \
     // BLOCKSTORE_CRITICAL_EVENTS
