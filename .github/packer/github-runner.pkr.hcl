@@ -22,6 +22,24 @@ variable "USER_TO_CREATE" {
   default = "github"
 }
 
+variable "IMAGE_DISK_SIZE_GIB" {
+  type        = number
+  default     = 93
+  description = "Image disk including OS, warmed ya cache and provisioning workspace"
+}
+
+variable "PREFETCH_REPOSITORY_URL" {
+  type        = string
+  default     = "https://github.com/ydb-platform/nbs.git"
+  description = "Public repository to check out for ya resource prefetching"
+}
+
+variable "PREFETCH_REVISION" {
+  type        = string
+  default     = "main"
+  description = "Git revision to prefetch; CI passes the checked-out commit SHA"
+}
+
 variable "DEBUG_USER" {
   type    = string
   default = "debug"
@@ -39,7 +57,7 @@ variable "TEAM" {
 
 variable "TMPFS_SIZE" {
   type        = string
-  default     = "70866960384"  # 66GiB
+  default     = "70866960384" # 66GiB
   description = "tmpfs size (0 to disable). Can be a percentage of available RAM"
 }
 
@@ -50,7 +68,7 @@ variable "TMPFS_MOUNT_POINT" {
 }
 
 variable "PASSWORD_HASH" {
-  type    = string
+  type = string
   # we are using secret.VM_USER_PASSWD from GA
   default = env("PASSWORD_HASH")
 }
@@ -66,13 +84,13 @@ variable "NEBIUS_IAM_TOKEN" {
 }
 
 variable "PARENT_ID" {
-  type    = string
+  type = string
   # by default we are using vars.POOLED_HEAVY_PARENT_ID
   default = env("PARENT_ID")
 }
 
 variable "SUBNET_ID" {
-  type    = string
+  type = string
   # by default we are using vars.POOLED_HEAVY_SUBNET_ID
   default = env("SUBNET_ID")
 }
@@ -116,11 +134,11 @@ locals {
 
 source "nebius-image" "ubuntu2204-nbs-github-ci" {
   packer_build_name = local.packer_build_name
-  communicator = "ssh"
-  ssh_username = "ubuntu"
-  token      = var.NEBIUS_IAM_TOKEN
+  communicator      = "ssh"
+  ssh_username      = "ubuntu"
+  token             = var.NEBIUS_IAM_TOKEN
   disk {
-    size_gibibytes = 16
+    size_gibibytes = var.IMAGE_DISK_SIZE_GIB
   }
   base_image {
     family = "ubuntu22.04-driverless"
@@ -208,6 +226,15 @@ build {
     scripts         = ["scripts/github-runner.sh"]
   }
 
+  provisioner "shell" {
+    environment_vars = [
+      "PREFETCH_REPOSITORY_URL=${var.PREFETCH_REPOSITORY_URL}",
+      "PREFETCH_REVISION=${var.PREFETCH_REVISION}",
+    ]
+    execute_command = "sudo -H -u '${var.USER_TO_CREATE}' env {{ .Vars }} bash '{{ .Path }}'"
+    scripts         = ["scripts/prefetch-ya-cache.sh"]
+  }
+
   # nvme-loop
 
   provisioner "file" {
@@ -248,13 +275,13 @@ build {
   }
 
   post-processor "manifest" {
-    output = "reports/manifest.json"
+    output     = "reports/manifest.json"
     strip_path = true
     custom_data = {
-      family = local.image_family
-      os_name = "Ubuntu"
-      os_version = "22.04"
-      linux_kernel = "6.2.0-39"
+      family           = local.image_family
+      os_name          = "Ubuntu"
+      os_version       = "22.04"
+      linux_kernel     = "6.2.0-39"
       cpu_architecture = "amd64"
     }
   }

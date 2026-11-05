@@ -1,8 +1,89 @@
 # Build Graph Helpers
 
-Helpers in this directory inspect `ya dump dir-graph --split` output. They are
-intended for catching `ya.make` files that exist in the checkout but are not
-reachable from the expected `RECURSE` / `RECURSE_FOR_TESTS` graph.
+Helpers in this directory inspect ya graphs to check target reachability and
+prefetch build/test resources.
+
+## Prefetching Resources For Runner Images
+
+`prefetch_ya_resources.py` warms ya's native tool and resource caches without
+compiling targets, running tests, or starting recipes. Run it as the eventual
+runner user during image provisioning:
+
+```bash
+python3 .github/scripts/build_graph/prefetch_ya_resources.py \
+    --cache-dir /home/github/.ya \
+    --save-plan /tmp/ya-prefetch-plan.json \
+    -- -A --build=relwithdebinfo -DGITHUB_CI=yes \
+    cloud/blockstore cloud/filestore
+```
+
+Everything after `--` is passed to **graph generation only**. Use the same
+targets, test filters, build flags and target platforms as CI. `-A` includes
+tests of all sizes; omit it for a build-only graph. `--test-prepare` is not
+required. For cross compilation, pass the usual `--target-platform=...`.
+
+The script first runs `ya make -j0 --dump-json-graph`, which can download the
+tools required to configure the graph. It follows dependencies from the graph's
+results, collects referenced tools from `conf.resources` and per-node resource
+URIs, and generates a separate graph containing only `/bin/true` commands.
+Executing that graph with `--build-custom-json` lets ya perform its normal
+fetching, extraction, locking and cache registration. Neither original node
+commands nor their output UIDs are reused. The no-op nodes are uncacheable so
+subsequent warmups check for resources that may have been evicted.
+
+Both `build/mapping.conf.json` and `build/ext_mapping.conf.json` are resolved by
+ya itself. The mapping files are catalogs; unused entries are not prefetched.
+Tools are extracted into the tool cache. Other resources are stored in the
+native build cache under ya's resource UIDs; a later build may still unpack or
+copy them, but does not need to download them again.
+
+To inspect a plan first, or reuse saved graphs:
+
+```bash
+python3 .github/scripts/build_graph/prefetch_ya_resources.py \
+    --plan-only --save-graph /tmp/full-graph.json \
+    --save-plan /tmp/prefetch-plan.json \
+    -- -A --build=relwithdebinfo cloud/storage
+
+python3 .github/scripts/build_graph/prefetch_ya_resources.py \
+    --cache-dir /home/github/.ya \
+    --graph-json /tmp/full-graph.json
+```
+
+Repeat `--graph-json` to warm the union of several builds. Tool definitions with
+the same pattern name but different resources remain separate. Use graphs from
+the same checkout and ya version, for the intended host OS/architecture. Ya
+selects the host variant of platform-dependent tool definitions.
+
+`--jobs` controls prefetch concurrency (default: 8). `--ya-bin` selects a launcher
+or binary. Repeat `--ya-arg=...` for options needed in both phases, such as
+`--ya-arg=--cache-size=100G` or `--ya-arg=--host-platform=...`. Existing environment
+overrides, including `YA_CACHE_DIR_TOOLS`, are honored. Downloads fail the command
+with a nonzero exit code; a partial cache can be reused on retry.
+
+For an image, retain both `.ya/tools` and the persistent cache under `.ya/build`.
+Use the same cache settings/user at runtime, keep `clean_ya_dir=no`, and size the
+image disk and cache limits to fit the selected resources. `--keep-temps` is not
+needed. Source changes that introduce new resource IDs require another warmup.
+Downloads implemented directly inside build commands, tests or recipes are
+outside this script's scope. It does not run those commands or populate caches
+of compiled outputs. The generated graph format is an internal ya interface;
+rerun the integration test when upgrading ya.
+
+Validation:
+
+```bash
+python3 -m pytest -q .github/scripts/build_graph
+
+# Optional: real ya, a local HTTP server, then cache reuse with the server stopped.
+# Use an already installed ya-bin; all fixture data and caches are temporary.
+YA_PREFETCH_INTEGRATION_BINARY=/path/to/ya-bin \
+    python3 -m pytest -q .github/scripts/build_graph -k native
+```
+
+Also set `YA_PREFETCH_INTEGRATION_TC_BINARY=/path/to/ya-tc` to exercise the daemon
+tool/build caches used by this checkout's `ya.conf`. Without it, the test uses
+ya's filesystem caches. The test stops its own cache daemon on completion.
 
 ## Cloud Reachability Check
 
