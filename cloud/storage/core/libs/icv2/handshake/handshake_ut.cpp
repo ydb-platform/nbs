@@ -1,7 +1,6 @@
 #include "handshake.h"
 
-#include <cloud/blockstore/libs/icv2/transport/protos/handshake.pb.h>
-
+#include <cloud/storage/core/libs/icv2/handshake/protos/handshake.pb.h>
 #include <cloud/storage/core/libs/icv2/tcp/testlib/socket_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -17,17 +16,13 @@
 
 #include <future>
 
-namespace NCloud::NBlockStore::NIcV2 {
-
-using NCloud::NIcV2::TSocketPtr;
-
-using NCloud::NIcV2::IConnectorPtr;
+namespace NCloud::NIcV2 {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using namespace NCloud::NIcV2::NTests;
+using namespace NTests;
 using namespace std::chrono_literals;
 
 TString MakeHello(
@@ -177,7 +172,7 @@ struct TFixture
     {
         TTestListener listener;
         listener.Listener->Start();
-        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
+        auto connector = NTests::CreateTestConnector();
         connector->Start();
         auto outgoing = WaitSocket(connector->Connect(
             listener.Listener->GetAddress(),
@@ -191,7 +186,7 @@ struct TFixture
 struct TXdcFixture: TFixture
 {
     TTestListener Listener;
-    IConnectorPtr Connector = NCloud::NIcV2::NTests::CreateTestConnector();
+    IConnectorPtr Connector = NTests::CreateTestConnector();
 
     TXdcFixture(bool clientXdc, bool serverXdc)
         : TFixture(clientXdc, serverXdc)
@@ -1128,4 +1123,4 @@ Y_UNIT_TEST_SUITE(TIcV2HandshakeTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

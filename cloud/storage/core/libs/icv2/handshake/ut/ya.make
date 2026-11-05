@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/blockstore/libs/icv2/transport)
+UNITTEST_FOR(cloud/storage/core/libs/icv2/handshake)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/icv2/transport/protos
+    cloud/storage/core/libs/icv2/handshake/protos
     cloud/storage/core/libs/icv2/tcp/testlib
     cloud/storage/core/libs/icv2/tcp
 )

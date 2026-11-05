@@ -1,7 +1,6 @@
 #include "handshake.h"
 
-#include <cloud/blockstore/libs/icv2/transport/protos/handshake.pb.h>
-
+#include <cloud/storage/core/libs/icv2/handshake/protos/handshake.pb.h>
 #include <cloud/storage/core/libs/icv2/tcp/socket_helpers.h>
 #include <cloud/storage/core/libs/icv2/tcp/socket_worker.h>
 
@@ -18,14 +17,7 @@
 
 #include <climits>
 
-namespace NCloud::NBlockStore::NIcV2 {
-
-using NCloud::NIcV2::TSocketPtr;
-
-using NCloud::NIcV2::CreateSocket;
-using NCloud::NIcV2::ISocketWorkerHandler;
-using NCloud::NIcV2::MakeSocketError;
-using NCloud::NIcV2::TSocketWorker;
+namespace NCloud::NIcV2 {
 
 namespace {
 
@@ -475,8 +467,7 @@ private:
         }
         request.XdcSocket = std::move(socket);
         request.OnXdc = true;
-        const int res =
-            NCloud::NIcV2::ConnectSocket(*request.XdcSocket, address);
+        const int res = ConnectSocket(*request.XdcSocket, address);
         if (!res) {
             request.Next(EStage::SendHello, request.EncodeHello());
         } else if (res == EINPROGRESS || res == EINTR) {
@@ -720,4 +711,4 @@ TResultOrError<IHandshakeProviderPtr> CreateHandshakeProvider(
     }
 }
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

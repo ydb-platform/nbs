@@ -5,7 +5,7 @@
 
 #include <variant>
 
-namespace NCloud::NBlockStore::NIcV2 {
+namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,8 +17,8 @@ struct THandshakeConfig
 // Use these sockets to create an IC V2 channel; XdcSocket may be empty.
 struct THandshakeReady
 {
-    NCloud::NIcV2::TSocketPtr Socket;
-    NCloud::NIcV2::TSocketPtr XdcSocket;
+    TSocketPtr Socket;
+    TSocketPtr XdcSocket;
 };
 
 using TConnectHandshakeResult = TResultOrError<THandshakeReady>;
@@ -47,14 +47,14 @@ struct IHandshakeProvider: public IStartable
     // Use for outgoing sockets. If both peers enable XDC, opens a second socket
     // to the same address and port within the timeout.
     virtual TConnectHandshakeFuture Connect(
-        NCloud::NIcV2::TSocketPtr socket,
+        TSocketPtr socket,
         TDuration timeout) = 0;
 
     // Submit every accepted socket to the same provider. Create a channel for
     // THandshakeReady; ignore THandshakeIncomplete. Timeout includes
     // waiting for the other socket when XDC is enabled on both peers.
     virtual TAcceptHandshakeFuture Accept(
-        NCloud::NIcV2::TSocketPtr socket,
+        TSocketPtr socket,
         TDuration timeout) = 0;
 
     // Safe from continuations. Rejects new work without waiting for completion;
@@ -67,4 +67,4 @@ using IHandshakeProviderPtr = std::shared_ptr<IHandshakeProvider>;
 TResultOrError<IHandshakeProviderPtr> CreateHandshakeProvider(
     THandshakeConfig config);
 
-}   // namespace NCloud::NBlockStore::NIcV2
+}   // namespace NCloud::NIcV2

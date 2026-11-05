@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package NCloud.NBlockStore.NIcV2.NHandshakeProto;
+package NCloud.NIcV2.NHandshakeProto;
 
 message THandshakeHello
 {
