@@ -6,6 +6,8 @@
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <util/string/join.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -64,8 +66,9 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
 {
     const ui64 tabletId = TabletInfo->TabletID;
 
+    const bool hasSomeFlags = !Keep.empty() || !DoNotKeep.empty();
     STORAGE_VERIFY_C(
-        !Hard || (!Keep && !DoNotKeep),
+        !(Hard && hasSomeFlags),
         TWellKnownEntityTypes::TABLET,
         tabletId,
         "Hard barrier with flags, keep: " << Keep.size()
@@ -122,6 +125,15 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
             ++RequestsInFlight;
         }
     }
+
+    STORAGE_VERIFY_C(
+        RequestsInFlight > 0,
+        TWellKnownEntityTypes::TABLET,
+        tabletId,
+        "No CollectGarbage requests to send, trim fresh log to: "
+            << barrierGen << ":" << barrierStep << ", fresh channels: ["
+            << JoinSeq(", ", FreshChannels) << "], keep: " << Keep.size()
+            << ", do not keep: " << DoNotKeep.size());
 }
 
 void TTrimFreshLogActor::NotifyCompleted(const TActorContext& ctx)
