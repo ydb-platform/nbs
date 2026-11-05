@@ -71,6 +71,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheStateFileSize(
+        config.GetServerWriteBackCacheStateFileSize());
     features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
         config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
@@ -141,6 +143,7 @@ void FillFeatures(
     features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
     features->SetExternalWriteDataPayloadEnabled(
         config.GetExternalWriteDataPayloadEnabled());
+    features->SetEnableRdmaForWrites(config.GetEnableRdmaForWrites());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

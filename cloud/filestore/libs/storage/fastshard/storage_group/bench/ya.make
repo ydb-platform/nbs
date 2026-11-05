@@ -1,8 +1,6 @@
 G_BENCHMARK()
 
-IF (SANITIZER_TYPE)
-    TAG(ya:manual)
-ENDIF()
+TAG(ya:manual)
 
 SRCS(
     storage_group_bench.cpp
@@ -11,9 +9,9 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/storage/fastshard/storage_group
 
-    cloud/fastshard/bootstrap
-    cloud/fastshard/sn/iface
-    cloud/fastshard/testlib
+    cloud/fastshard/libs/bootstrap
+    cloud/fastshard/libs/sn/iface
+    cloud/fastshard/libs/sn/testlib
 
     cloud/storage/core/libs/common
 

@@ -154,6 +154,20 @@ void TPartitionActor::ExecuteLoadState(
     // override config
     args.Meta->MutableConfig()->CopyFrom(PartitionConfig);
 
+    if (!Config->GetExtendedBlobCountersEnabled()) {
+        // Reinitialize from block counts if enabled again later.
+        auto& stats = *args.Meta->MutableStats();
+        stats.ClearBlobByteCounters();
+        stats.SetMixedChannelBlobsCount(0);
+        stats.SetMergedChannelBlobsCount(0);
+        stats.SetMixedChannelBlocksCount(0);
+        stats.SetMergedChannelBlocksCount(0);
+        stats.SetMixedIndexBlobsCount(0);
+        stats.SetMergedIndexBlobsCount(0);
+        stats.SetMixedIndexBlocksCount(0);
+        stats.SetMergedIndexBlocksCount(0);
+    }
+
     db.WriteMeta(*args.Meta);
 }
 
@@ -162,6 +176,8 @@ void TPartitionActor::CompleteLoadState(
     TTxPartition::TLoadState& args)
 {
     const auto& partitionConfig = args.Meta->GetConfig();
+    const bool isSSD = partitionConfig.GetStorageMediaKind() ==
+                       NCloud::NProto::STORAGE_MEDIA_SSD;
 
     // initialize state
     TBackpressureFeaturesConfig bpConfig {
@@ -171,8 +187,10 @@ void TPartitionActor::CompleteLoadState(
             static_cast<double>(Config->GetCompactionScoreFeatureMaxValue()),
         },
         {
-            Config->GetFreshByteCountLimitForBackpressure(),
-            Config->GetFreshByteCountThresholdForBackpressure(),
+            isSSD ? Config->GetFreshByteCountLimitForBackpressureSSD()
+                  : Config->GetFreshByteCountLimitForBackpressureHDD(),
+            isSSD ? Config->GetFreshByteCountThresholdForBackpressureSSD()
+                  : Config->GetFreshByteCountThresholdForBackpressureHDD(),
             static_cast<double>(Config->GetFreshByteCountFeatureMaxValue()),
         },
         {
@@ -239,7 +257,12 @@ void TPartitionActor::CompleteLoadState(
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
 
-    SharedState->Init(SelfId(), Executor()->Generation(), 0);
+    SharedState->Init(
+        SelfId(),
+        Executor()->Generation(),
+        0,   // lastCommitId
+        ctx.Now(),
+        ctx.Monotonic());
 
     std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig;
     if (IsMixedBlocksFilterEnabled()) {
@@ -270,12 +293,12 @@ void TPartitionActor::CompleteLoadState(
         TabletID(),
         mixedBlocksFilterConfig,
         IsCheckpointAwareCleanupEnabled(),
-        Config->GetUseBlobChannelDataKindForCounters(),
         Config->GetCompactionStatsTrackerEnabled() ||
             Config->IsCompactionStatsTrackerFeatureEnabled(
                 partitionConfig.GetCloudId(),
                 partitionConfig.GetFolderId(),
-                partitionConfig.GetDiskId()));
+                partitionConfig.GetDiskId()),
+        Config->GetExtendedBlobCountersEnabled());
 
     CreateFreshBlocksCompanionClient();
 
@@ -298,7 +321,7 @@ void TPartitionActor::CompleteLoadState(
         PartitionConfig,
         Info(),
         TabletID(),
-        BlobCodec,
+        BlobsCompressor,
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,

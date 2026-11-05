@@ -3,6 +3,7 @@ UNITTEST()
 PEERDIR(
     contrib/ydb/core/testlib/default
     contrib/ydb/core/ymq/actor
+    yql/essentials/sql/v1
 )
 
 SRCS(

@@ -121,13 +121,26 @@ void TFileSystem::GetAttr(
         return;
     }
 
+    if (TryReplyAttrFromCache(*callContext, req, ino)) {
+        return;
+    }
+
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
 
-    // Take into account cached WriteData requests
-    const auto maxWrittenOffset =
-        WriteBackCache ? WriteBackCache.GetMaxWrittenOffset(ino) : 0;
+    //
+    // The version is loaded before reading the WriteBackCache state: a write
+    // acknowledged after the version is loaded invalidates the node with a
+    // newer version, so the response is not cached; a write acknowledged
+    // before that is either still cached in WriteBackCache (then
+    // maxWrittenOffset is nonzero and the response is not cached) or already
+    // flushed before the request is sent.
+    //
 
     const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
+
+    // Take into account cached WriteData requests
+    const ui64 maxWrittenOffset =
+        WriteBackCache ? WriteBackCache.GetMaxWrittenOffset(ino) : 0;
 
     Session->GetNodeAttr(callContext, std::move(request))
         .Subscribe(
@@ -139,6 +152,17 @@ void TFileSystem::GetAttr(
                 if (self && self->CheckNodeError(
                         *callContext, req, response.GetError()))
                 {
+                    //
+                    // The attrs of a node with the data cached in
+                    // WriteBackCache are going to change upon flush, which
+                    // doesn't produce an invalidation if it changes only
+                    // the timestamps.
+                    //
+
+                    if (!maxWrittenOffset) {
+                        self->UpdateCachedNodeAttrs(response, version);
+                    }
+
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
                     self->ReplyAttrWithCache(

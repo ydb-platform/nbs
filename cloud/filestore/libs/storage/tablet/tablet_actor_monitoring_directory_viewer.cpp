@@ -203,6 +203,13 @@ void TDirViewerActor::ListNodes(const TActorContext& ctx)
     request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(true);
 
     //
+    // The viewer doesn't cache anything - neither here nor in GetNodeAttrBatch.
+    //
+
+    request->Record.MutableHeaders()->SetFileSystemEventSubscriptionDisabled(
+        true);
+
+    //
     // Right now DirViewer deliberately requests only the first page of each
     // directory. Think about doing the following:
     // 1. request the first and the last page
@@ -234,6 +241,7 @@ void TDirViewerActor::GetNodeAttrsBatch(const TActorContext& ctx)
             if (batch.Record.GetHeaders().GetSessionId().empty()) {
                 auto* headers = batch.Record.MutableHeaders();
                 headers->SetBehaveAsDirectoryTablet(false);
+                headers->SetFileSystemEventSubscriptionDisabled(true);
                 batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }

@@ -1,0 +1,42 @@
+{
+  "id": 1,
+  "name": "Restrict workflow modifications",
+  "target": "actions",
+  "source_type": "Enterprise",
+  "source": "enterprise",
+  "enforcement": "active",
+  "conditions": {
+    "organization_name": {
+      "include": [
+        "octo-org"
+      ],
+      "exclude": []
+    },
+    "repository_name": {
+      "include": [
+        "octo-repo"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 5,
+            "type": "User"
+          },
+          {
+            "id": 1234,
+            "type": "Team"
+          }
+        ]
+      }
+    }
+  ],
+  "node_id": "RUL_lA",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}

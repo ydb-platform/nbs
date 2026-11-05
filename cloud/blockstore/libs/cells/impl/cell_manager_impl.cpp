@@ -29,7 +29,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
+TCellManager::TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
     , Bootstrap(std::move(bootstrap))
 {
@@ -77,7 +77,7 @@ TCellsSnapshot TCellManager::GetSnapshot()
         for (const auto& status: pool->GetHostStatuses()) {
             statuses.push_back({
                 .Fqdn = status.Fqdn,
-                .Alive = status.Alive,
+                .Liveness = status.Liveness,
                 .Warm = status.Warm,
                 .Connections = static_cast<ui32>(status.Connections)});
         }
@@ -209,7 +209,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
-    TCellsConfigPtr config,
+    TCellsConfigConstPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
@@ -223,7 +223,7 @@ ICellManagerPtr CreateCellManager(
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
 
-    auto result = NClient::CreateMultiHostClient(
+    auto result = NClient::CreateEndpointFactory(
         std::move(appConfig),
         timer,
         scheduler,

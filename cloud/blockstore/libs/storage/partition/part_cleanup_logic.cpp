@@ -20,72 +20,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DecrementBlobCounters(
-    TPartitionState& state,
-    const TPartialBlobId& blobId,
-    EChannelDataKind indexKind,
-    ui64 blocksCount)
-{
-    // Deletion markers contribute to blob totals, but not block totals.
-    if (IsDeletionMarker(blobId)) {
-        blocksCount = 0;
-    }
-
-    if (state.ShouldUseBlobChannelDataKindForCounters()) {
-        switch (indexKind) {
-            case EChannelDataKind::Mixed:
-                state.DecrementMixedIndexBlobsCount(
-                    Min<ui64>(1, state.GetMixedIndexBlobsCount()));
-                state.DecrementMixedIndexBlocksCount(
-                    Min(blocksCount, state.GetMixedIndexBlocksCount()));
-                break;
-            case EChannelDataKind::Merged:
-                state.DecrementMergedIndexBlobsCount(
-                    Min<ui64>(1, state.GetMergedIndexBlobsCount()));
-                state.DecrementMergedIndexBlocksCount(
-                    Min(blocksCount, state.GetMergedIndexBlocksCount()));
-                break;
-            default:
-                Y_ABORT(
-                    "Unexpected index kind: %u",
-                    static_cast<ui32>(indexKind));
-        }
-    }
-
-    // Deletion markers do not have a data channel.
-    if (IsDeletionMarker(blobId) &&
-        state.ShouldUseBlobChannelDataKindForCounters())
-    {
-        return;
-    }
-
-    // If channel-based counters are enabled, use the channel data kind
-    // otherwise use the index kind
-    const auto countersKind = state.ShouldUseBlobChannelDataKindForCounters()
-                                  ? state.GetChannelDataKind(blobId.Channel())
-                                  : indexKind;
-    switch (countersKind) {
-        case EChannelDataKind::Mixed:
-            state.DecrementMixedBlobsCount(
-                Min<ui64>(1, state.GetMixedBlobsCount()));
-            state.DecrementMixedBlocksCount(
-                Min(blocksCount, state.GetMixedBlocksCount()));
-            break;
-        case EChannelDataKind::Merged:
-            state.DecrementMergedBlobsCount(
-                Min<ui64>(1, state.GetMergedBlobsCount()));
-            state.DecrementMergedBlocksCount(
-                Min(blocksCount, state.GetMergedBlocksCount()));
-            break;
-        default:
-            Y_ABORT(
-                "Unexpected blob channel data kind: %u",
-                static_cast<ui32>(countersKind));
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TVerifyBlocksMetaResult VerifyMixedBlocksMeta(
     TPartitionDatabase& db,
     TPartialBlobId originalBlobId,
@@ -480,7 +414,11 @@ void ExecuteCleanupTransaction(
             blockCountInBlob = blockRange.Size() - mergedBlocks.GetSkipped();
         }
 
-        DecrementBlobCounters(state, item.BlobId, indexKind, blockCountInBlob);
+        state.UpdateBlobCounters(
+            item.BlobId,
+            indexKind,
+            blockCountInBlob,
+            false);
 
         LOG_DEBUG(
             *actorSystem,

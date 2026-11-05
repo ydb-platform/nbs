@@ -50,6 +50,7 @@ struct TClientConfig
     ui8 QpRnrRetryCount = 7;    // inf
     bool UseMemoryWindows = false;
     ui32 MemoryWindowsPoolSize = 0;
+    ui32 MaxEagerRequestBytes = 0;
 
     TClientConfig();
 
@@ -77,6 +78,8 @@ struct TClientRequest
     IClientRequestHandlerPtr Handler;
     std::unique_ptr<TNullContext> Context;
 
+    // Fill before IClientEndpoint::SendRequest(); may be empty by the time
+    // HandleResponse() runs.
     TStringBuf RequestBuffer;
     TStringBuf ResponseBuffer;
 

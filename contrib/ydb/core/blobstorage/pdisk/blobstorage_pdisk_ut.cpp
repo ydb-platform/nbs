@@ -1138,6 +1138,59 @@ Y_UNIT_TEST_SUITE(TPDiskTest) {
         UNIT_ASSERT_LE(ui64(evCheckSpaceResult->TotalChunks) * formatChunkSize, expectedSlotSize);
     }
 
+    Y_UNIT_TEST(SlotSizeBytesUsesFormulaUnlessExpectedSlotSizeIsSet) {
+        TActorTestContext testCtx({
+            .DiskSize = 1_GB,
+            .ChunkSize = 1_MB,
+        });
+
+        const ui32 firstNodeId = testCtx.GetRuntime()->GetFirstNodeId();
+        testCtx.GetRuntime()->SetDispatchTimeout(10 * TDuration::MilliSeconds(testCtx.GetPDiskConfig()->StatisticsUpdateIntervalMs));
+        testCtx.GetRuntime()->RegisterService(NNodeWhiteboard::MakeNodeWhiteboardServiceId(firstNodeId), testCtx.Sender);
+
+        auto waitForPDiskStateUpdate = [&](ui32 expectedSlotCount, ui64 expectedSlotSize) {
+            for (ui32 i = 0; i < 10; ++i) {
+                const auto evPDiskStateUpdate = testCtx.Recv<NNodeWhiteboard::TEvWhiteboard::TEvPDiskStateUpdate>();
+                const NKikimrWhiteboard::TPDiskStateInfo& pdiskInfo = evPDiskStateUpdate->Record;
+                if (pdiskInfo.GetExpectedSlotCount() == expectedSlotCount &&
+                        pdiskInfo.GetExpectedSlotSize() == expectedSlotSize) {
+                    return;
+                }
+            }
+            UNIT_ASSERT_C(false, "No PDisk state update with expected slot settings received");
+        };
+
+        auto getSlotSizeBytes = [&] {
+            return testCtx.SafeRunOnPDisk([](const NPDisk::TPDisk* pdisk) {
+                return pdisk->Mon.SlotSizeBytes->Val();
+            });
+        };
+
+        const ui32 expectedSlotCount = 4;
+
+        testCtx.TestResponse<NPDisk::TEvChangeExpectedSlotCountResult>(
+            new NPDisk::TEvChangeExpectedSlotCount(expectedSlotCount),
+            NKikimrProto::OK);
+        testCtx.Send(new TEvents::TEvWakeup());
+        waitForPDiskStateUpdate(expectedSlotCount, 0);
+
+        const ui64 formulaSlotSizeBytes = testCtx.SafeRunOnPDisk([&](const NPDisk::TPDisk* pdisk) {
+            return ui64(pdisk->Keeper.GetUserChunkPoolSize() / expectedSlotCount) * ui64(pdisk->Format.ChunkSize);
+        });
+        UNIT_ASSERT_VALUES_EQUAL(getSlotSizeBytes(), formulaSlotSizeBytes);
+
+        const ui64 expectedSlotSize = 3ull * testCtx.GetPDiskConfig()->ChunkSize + 1;
+        UNIT_ASSERT_VALUES_UNEQUAL(expectedSlotSize, formulaSlotSizeBytes);
+
+        testCtx.TestResponse<NPDisk::TEvChangeExpectedSlotCountResult>(
+            new NPDisk::TEvChangeExpectedSlotCount(expectedSlotCount, expectedSlotSize),
+            NKikimrProto::OK);
+        testCtx.Send(new TEvents::TEvWakeup());
+        waitForPDiskStateUpdate(expectedSlotCount, expectedSlotSize);
+
+        UNIT_ASSERT_VALUES_EQUAL(getSlotSizeBytes(), expectedSlotSize);
+    }
+
     Y_UNIT_TEST(ChangeExpectedSlotSettingsLive) {
         TActorTestContext testCtx({
             .DiskSize = 1_GB,
@@ -1591,6 +1644,28 @@ Y_UNIT_TEST_SUITE(TPDiskTest) {
         }
         Cout << Endl;
         return shares;
+    }
+
+    Y_UNIT_TEST(ConfigureSchedulerAppliesWeights) {
+        TActorTestContext testCtx{{}};
+        TVDiskMock vdisk(&testCtx);
+        vdisk.InitFull();
+
+        const ui32 owner = vdisk.PDiskParams->Owner;
+        const ui32 ownerRound = vdisk.PDiskParams->OwnerRound;
+
+        TPDiskSchedulerConfig cfg;
+        cfg.LowReadWeight = 42;
+
+        auto *ev = new NPDisk::TEvConfigureScheduler(owner, ownerRound);
+        ev->SchedulerCfg = cfg;
+        testCtx.TestResponse<NPDisk::TEvConfigureSchedulerResult>(ev, NKikimrProto::OK);
+
+        testCtx.SafeRunOnPDisk([&](NPDisk::TPDisk* pdisk) {
+            auto* low = pdisk->ForsetiScheduler.GetCbs(owner, NPDisk::GateLow);
+            UNIT_ASSERT(low);
+            UNIT_ASSERT_EQUAL(low->Weight, cfg.LowReadWeight);
+        });
     }
 
     Y_UNIT_TEST(CheckChunkReadOperationPriorities) {

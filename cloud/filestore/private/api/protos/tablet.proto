@@ -1,3 +1,12 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
 import "cloud/storage/core/protos/error.proto";
@@ -767,7 +776,10 @@ message TForcedOperationStatusResponse
         E_COMPLETED = 3;
         E_FAILED = 4;
     }
-    EStatus Status = 5;
+    EStatus OperationStatus = 5;
+
+    // Operation error. Unlike Error contains issue that happened in the op
+    NCloud.NProto.TError OperationError = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -949,6 +961,11 @@ message TGetNodeAttrBatchResponse
 
     // Individual node responses.
     repeated NProto.TGetNodeAttrResponse Responses = 2;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed. The NodeRefs
+    // looked up by GetNodeAttrBatch are shard-internal and are never cached.
+    uint32 NodeCacheTTL = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1192,7 +1209,7 @@ message TRenameNodeInDestinationRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // New parent Node
     uint64 NewParentId = 3;
@@ -1204,8 +1221,8 @@ message TRenameNodeInDestinationRequest
     uint32 Flags = 5;
 
     // Source node info.
-    string SourceNodeShardId = 6;
-    string SourceNodeShardNodeName = 7;
+    bytes SourceNodeShardId = 6;
+    bytes SourceNodeShardNodeName = 7;
 
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
@@ -1261,7 +1278,7 @@ message TAbortUnlinkDirectoryNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // The node.
     uint64 NodeId = 3;
@@ -1379,7 +1396,7 @@ message TUnlinkNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Parent node.
     uint64 NodeId = 3;
@@ -1548,6 +1565,14 @@ message TListNodesInternalResponse
     repeated uint32 ExternalRefIndices = 8;
 
     bytes Cookie = 9;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 10;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned NodeRefs. Zero means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 11;
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;

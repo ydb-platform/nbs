@@ -22,6 +22,7 @@ func RegisterForExecution(
 	config *disks_config.DisksConfig,
 	performanceConfig *performance_config.PerformanceConfig,
 	disabledZones *common.DisabledZones,
+	proxyOverlayDiskIDPrefix string,
 	resourceStorage resources.Storage,
 	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,
@@ -76,6 +77,21 @@ func RegisterForExecution(
 			scheduler:    taskScheduler,
 			nbsFactory:   nbsFactory,
 			cellSelector: cellSelector,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromBaseDisk", func() tasks.Task {
+		return &createDiskFromBaseDiskTask{
+			storage:                  resourceStorage,
+			scheduler:                taskScheduler,
+			poolService:              poolService,
+			nbsFactory:               nbsFactory,
+			performanceConfig:        performanceConfig,
+			proxyOverlayDiskIDPrefix: proxyOverlayDiskIDPrefix,
+			cellSelector:             cellSelector,
 		}
 	})
 	if err != nil {

@@ -126,6 +126,8 @@ void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
     config.SetAutomaticallyCreatedShardSize(fsConfig.ShardBlockCount * 4_KB);
     config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);
     config.SetUseListNodesInternal(useListNodesInternal);
+    config.SetFileSystemEventsEnabled(true);
+    config.SetFileSystemListingEventsEnabled(true);
     TTestEnv env({}, config);
     ui32 nodeIdx = env.AddDynamicNode();
 
@@ -133,71 +135,99 @@ void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
     env.GetMultiFileSystemEventHandler()->Register(fsConfig.FsId, handler);
 
     TServiceClient service(env.GetRuntime(), nodeIdx);
-    const auto fsInfo = CreateFileSystem(service, fsConfig);
+    CreateFileSystem(service, fsConfig);
 
     auto headers = service.InitSession(fsConfig.FsId, "client");
+    TVector<ui64> nodeIds;
     for (ui32 i = 0; i < 4; ++i) {
-        service.CreateNode(
-            headers,
-            TCreateNodeArgs::File(RootNodeId, Sprintf("f%u", i)));
+        nodeIds.push_back(
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::File(RootNodeId, Sprintf("f%u", i)))
+                ->Record.GetNode()
+                .GetId());
     }
 
     //
-    // Rebooting the tablets drops all their clients: CreateNode has
-    // registered the client both in the main tablet and in the shards.
+    // CreateNode doesn't subscribe the client in the main tablet or in the
+    // shards.
     //
 
-    const TVector<ui64> tabletIds = {
-        fsInfo.MainTabletId,
-        fsInfo.Shard1TabletId,
-        fsInfo.Shard2TabletId};
-    for (const ui64 tabletId: tabletIds) {
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.RebootTablet();
-    }
+    const auto shardIds = fsConfig.ShardIds();
+    auto shardIdOf = [&] (ui64 nodeId) {
+        const ui32 shardNo = ExtractShardNo(nodeId);
+        UNIT_ASSERT_LT(0, shardNo);
+        return shardIds[shardNo - 1];
+    };
 
-    for (const auto& fsId: fsConfig.MainAndShardIds()) {
-        const auto response =
-            GenerateFileSystemEvent(service, fsId, MakeEvent(42));
-        UNIT_ASSERT_VALUES_EQUAL_C(0, response.GetClientCount(), fsId);
-    }
+    for (ui32 i = 0; i < nodeIds.size(); ++i) {
+        auto response = GenerateFileSystemEvent(
+            service,
+            fsConfig.FsId,
+            MakeEvent(RootNodeId, Sprintf("f%u", i)));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
 
-    headers = service.InitSession(
-        fsConfig.FsId,
-        "client",
-        {} /* checkpointId */,
-        true /* restoreClientSession */);
+        response = GenerateFileSystemEvent(
+            service,
+            shardIdOf(nodeIds[i]),
+            MakeEvent(nodeIds[i]));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
+    }
 
     //
-    // ListNodes (or ListNodesInternal) goes to the main tablet, the attrs of
-    // the shard-resident nodes are fetched via GetNodeAttrBatch.
+    // ListNodes (or ListNodesInternal) goes to the main tablet and subscribes
+    // the client to the listed entries. The attrs of the shard-resident nodes
+    // are fetched via GetNodeAttrBatch, which subscribes the client to the
+    // nodes in the shards.
     //
 
     const auto listNodesResponse = service.ListNodes(headers, RootNodeId);
-    const auto& nodes = listNodesResponse->Record.GetNodes();
-    UNIT_ASSERT_VALUES_EQUAL(4, nodes.size());
+    UNIT_ASSERT_VALUES_EQUAL(4, listNodesResponse->Record.NodesSize());
+    const ui32 cacheTTL =
+        (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds();
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        listNodesResponse->Record.GetNodeCacheTTL());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        listNodesResponse->Record.GetNodeRefCacheTTL());
 
-    THashSet<ui32> shardNos;
-    for (const auto& node: nodes) {
-        shardNos.insert(ExtractShardNo(node.GetId()));
+    for (ui32 i = 0; i < nodeIds.size(); ++i) {
+        auto response = GenerateFileSystemEvent(
+            service,
+            fsConfig.FsId,
+            MakeEvent(RootNodeId, Sprintf("f%u", i)));
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
+
+        response = GenerateFileSystemEvent(
+            service,
+            shardIdOf(nodeIds[i]),
+            MakeEvent(nodeIds[i]));
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
     }
-    UNIT_ASSERT(!shardNos.contains(0));
 
-    auto response =
-        GenerateFileSystemEvent(service, fsConfig.FsId, MakeEvent(42));
-    UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
-
-    const auto shardIds = fsConfig.ShardIds();
-    for (const ui32 shardNo: shardNos) {
-        const auto& shardId = shardIds[shardNo - 1];
-        response = GenerateFileSystemEvent(service, shardId, MakeEvent(42));
-        UNIT_ASSERT_VALUES_EQUAL_C(1, response.GetClientCount(), shardId);
-    }
-
-    UNIT_ASSERT_VALUES_EQUAL(1 + shardNos.size(), handler->Events.size());
+    UNIT_ASSERT_VALUES_EQUAL(2 * nodeIds.size(), handler->Events.size());
     for (const auto& event: handler->Events) {
         UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, event.GetFileSystemId());
     }
+
+    //
+    // GetNodeAttr of a shard-resident node: the NodeRef comes from the main
+    // tablet, the Node - from the shard.
+    //
+
+    const auto getNodeAttrResponse =
+        service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "f0");
+    UNIT_ASSERT_VALUES_EQUAL(
+        nodeIds[0],
+        getNodeAttrResponse->Record.GetNode().GetId());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        getNodeAttrResponse->Record.GetNodeCacheTTL());
+    UNIT_ASSERT_VALUES_EQUAL(
+        cacheTTL,
+        getNodeAttrResponse->Record.GetNodeRefCacheTTL());
 }
 
 }   // namespace
@@ -220,7 +250,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 
     Y_UNIT_TEST(ShouldDeliverGeneratedFileSystemEvent)
     {
-        TTestEnv env;
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TTestEnv env({}, config);
         ui32 nodeIdx = env.AddDynamicNode();
 
         auto handler = std::make_shared<TTestFileSystemEventHandler>();
@@ -231,25 +263,43 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         auto headers = service.InitSession("test", "client");
 
         //
-        // No clients yet: the tablet has not received any of the requests
-        // that register a client.
+        // Nobody has read the entry yet.
         //
 
         auto response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42));
+            GenerateFileSystemEvent(
+                service,
+                "test",
+                MakeEvent(RootNodeId, "f"));
         UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
 
         //
-        // CreateNode registers the IndexTabletProxy as a client. The flag
-        // is disabled, so CreateNode itself generates no events.
+        // CreateNode doesn't subscribe the client. GetNodeAttr subscribes it
+        // to the entry and the node.
         //
 
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "f"));
+        const auto nodeId =
+            service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
         UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
 
-        response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42));
+        response = GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
+
+        const auto getNodeAttrResponse =
+            service.GetNodeAttr(headers, "test", RootNodeId, "f");
+        const ui32 cacheTTL =
+            (TDuration::Minutes(30) - TDuration::Minutes(1)).MilliSeconds();
+        UNIT_ASSERT_VALUES_EQUAL(
+            cacheTTL,
+            getNodeAttrResponse->Record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(
+            cacheTTL,
+            getNodeAttrResponse->Record.GetNodeRefCacheTTL());
+
+        response = GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Events.size());
 
@@ -257,14 +307,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         UNIT_ASSERT_VALUES_EQUAL("test", event.GetFileSystemId());
         UNIT_ASSERT(event.HasInvalidateNode());
         UNIT_ASSERT(!event.HasInvalidateNodeRef());
-        UNIT_ASSERT_VALUES_EQUAL(42, event.GetInvalidateNode().GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, event.GetInvalidateNode().GetNodeId());
 
         response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(1, "a"));
+            GenerateFileSystemEvent(
+                service,
+                "test",
+                MakeEvent(RootNodeId, "f"));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(2, handler->Events.size());
-        UNIT_ASSERT(handler->HasInvalidateNodeRef(1, "a"));
+        UNIT_ASSERT(handler->HasInvalidateNodeRef(RootNodeId, "f"));
         UNIT_ASSERT(!handler->Events[1].HasInvalidateNode());
+
+        //
+        // Subscriptions are one-shot.
+        //
+
+        response = GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, handler->Events.size());
 
         //
         // Handlers registered for other filesystems get nothing.
@@ -274,7 +335,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         env.GetMultiFileSystemEventHandler()->Register(
             "other",
             otherHandler);
-        GenerateFileSystemEvent(service, "test", MakeEvent(42));
+        service.GetNodeAttr(headers, "test", nodeId, "");
+        GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
         UNIT_ASSERT_VALUES_EQUAL(3, handler->Events.size());
         UNIT_ASSERT_VALUES_EQUAL(0, otherHandler->Events.size());
 
@@ -283,7 +345,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         env.GetMultiFileSystemEventHandler()->Unregister("test", handler);
-        GenerateFileSystemEvent(service, "test", MakeEvent(42));
+        service.GetNodeAttr(headers, "test", nodeId, "");
+        GenerateFileSystemEvent(service, "test", MakeEvent(nodeId));
         UNIT_ASSERT_VALUES_EQUAL(3, handler->Events.size());
     }
 
@@ -313,6 +376,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
             E_ARGUMENT,
             response->GetError().GetCode(),
             FormatError(response->GetError()));
+
+        event = MakeEvent(42);
+        auto* invalidate = event.MutableInvalidateNodeXAttr();
+        invalidate->SetNodeId(42);
+        invalidate->SetName("user.a");
+        response = service.AssertExecuteActionFailed(
+            "generatefilesystemevent",
+            MakeGenerateFileSystemEventInput("test", event));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldGenerateFileSystemEventsUponNodeChanges)
@@ -334,15 +409,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
                 ->Record.GetNode()
                 .GetId();
 
-        UNIT_ASSERT(handler->HasInvalidateNodeRef(RootNodeId, "f"));
-        UNIT_ASSERT(!handler->HasInvalidateNode(nodeId));
+        //
+        // Nobody had read the entry before it was created - the event isn't
+        // sent to anyone.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
+
+        service.GetNodeAttr(headers, "test", RootNodeId, "f");
+        service.UnlinkNode(headers, RootNodeId, "f");
         for (const auto& event: handler->Events) {
             UNIT_ASSERT_VALUES_EQUAL("test", event.GetFileSystemId());
         }
-
-        handler->Events.clear();
-
-        service.UnlinkNode(headers, RootNodeId, "f");
 
         UNIT_ASSERT(handler->HasInvalidateNodeRef(RootNodeId, "f"));
         UNIT_ASSERT(handler->HasInvalidateNode(nodeId));
@@ -381,15 +459,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         handler->Events.clear();
+        service.GetNodeAttr(headers, "test", nodeId, "");
         service.WriteData(headers, "test", nodeId, handle, 0, TString(10, 'a'));
         UNIT_ASSERT(handler->HasInvalidateNode(nodeId));
 
         //
         // Overwrites the data within the file size - only MTime changes,
-        // no InvalidateNode is expected.
+        // no InvalidateNode is expected. The subscription has been consumed
+        // by the previous event, so the client reads the node again.
         //
 
         handler->Events.clear();
+        service.GetNodeAttr(headers, "test", nodeId, "");
         service.WriteData(headers, "test", nodeId, handle, 0, TString(5, 'b'));
         UNIT_ASSERT(!handler->HasInvalidateNode(nodeId));
 
@@ -398,6 +479,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         handler->Events.clear();
+        service.GetNodeAttr(headers, "test", nodeId, "");
         service.SetNodeAttr(
             headers,
             "test",
@@ -425,7 +507,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 
     Y_UNIT_TEST(ShouldNotifyHandlerUponPipeDisconnect)
     {
-        TTestEnv env;
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TTestEnv env({}, config);
         ui32 nodeIdx = env.AddDynamicNode();
         auto& runtime = env.GetRuntime();
 
@@ -461,12 +545,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         UNIT_ASSERT_LE(1, handler->DisconnectCount);
 
         //
-        // The rebooted tablet has no clients until it receives one of the
-        // registering requests via a new pipe.
+        // The rebooted tablet has no clients and subscriptions until the
+        // client reads the entry again via a new pipe.
         //
 
         auto response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42));
+            GenerateFileSystemEvent(
+                service,
+                "test",
+                MakeEvent(RootNodeId, "f"));
         UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
 
         headers = service.InitSession(
@@ -477,7 +564,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         service.GetNodeAttr(headers, "test", RootNodeId, "f");
 
         response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42));
+            GenerateFileSystemEvent(
+                service,
+                "test",
+                MakeEvent(RootNodeId, "f"));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Events.size());
     }
@@ -491,6 +581,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         config.SetAutomaticallyCreatedShardSize(
             fsConfig.ShardBlockCount * 4_KB);
         config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);
+        config.SetFileSystemEventsEnabled(true);
         TTestEnv env({}, config);
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -510,9 +601,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         auto response = GenerateFileSystemEvent(
             service,
             fsConfig.Shard1Id,
-            MakeEvent(42));
-        UNIT_ASSERT_LE(1, response.GetClientCount());
-        UNIT_ASSERT_LE(1, handler->Events.size());
+            MakeEvent(RootNodeId));
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, handler->Events.size());
 
         //
         // Shards report the main FileSystemId so that the handlers do not
@@ -522,7 +613,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         for (const auto& event: handler->Events) {
             UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, event.GetFileSystemId());
         }
-        UNIT_ASSERT(handler->HasInvalidateNode(42));
+        UNIT_ASSERT(handler->HasInvalidateNode(RootNodeId));
     }
 }
 

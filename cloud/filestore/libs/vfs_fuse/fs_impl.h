@@ -7,7 +7,9 @@
 #include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "node_attrs_cache.h"
 #include "node_cache.h"
+#include "node_ref_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -89,6 +91,8 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
+    TNodeAttrsCache NodeAttrsCache;
+    TNodeRefCache NodeRefCache;
 
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
 
@@ -350,6 +354,12 @@ public:
         fuse_file_info* fi,
         int op) override;
 
+    void InvalidateCachedNode(ui64 nodeId) override;
+    void InvalidateCachedNodeRef(
+        ui64 parentNodeId,
+        const TString& name) override;
+    void InvalidateAllCachedMetadata() override;
+
 private:
     template <typename T>
     static std::shared_ptr<T> StartRequest()
@@ -448,7 +458,27 @@ private:
         fuse_entry_param& entry,
         ui64 version);
 
+    TInstant GetCacheDeadline(ui32 cacheTTL) const;
+    void UpdateCachedNodeRef(
+        ui64 parentNodeId,
+        const TString& name,
+        const NProto::TGetNodeAttrResponse& response,
+        ui64 version);
+    void UpdateCachedNodeAttrs(
+        const NProto::TGetNodeAttrResponse& response,
+        ui64 version);
+    bool TryReplyEntryFromCache(
+        TCallContext& callContext,
+        fuse_req_t req,
+        ui64 parentNodeId,
+        const TString& name);
+    bool TryReplyAttrFromCache(
+        TCallContext& callContext,
+        fuse_req_t req,
+        ui64 nodeId);
+
     void InvalidateNodeInCache(ui64 nodeId);
+    void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,
         const TString& name);

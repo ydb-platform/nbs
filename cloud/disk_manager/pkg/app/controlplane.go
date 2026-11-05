@@ -190,6 +190,7 @@ func registerControlplaneTasks(
 		config.GetDisksConfig(),
 		performanceConfig,
 		disabledZones,
+		config.GetProxyOverlayDiskIdPrefix(),
 		resourceStorage,
 		poolStorage,
 		taskRegistry,
@@ -336,7 +337,12 @@ func initControlplane(
 
 	logging.Info(ctx, "Initializing pool storage")
 	poolMetricsRegistry := mon.NewRegistry("pools")
-	poolStorage, err := pools_storage.NewStorage(config.GetPoolsConfig(), db, poolMetricsRegistry)
+	poolStorage, err := pools_storage.NewStorage(
+		config.GetPoolsConfig(),
+		config.GetPerformanceConfig(),
+		db,
+		poolMetricsRegistry,
+	)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize pool storage: %v", err)
 		return nil, err

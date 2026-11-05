@@ -20,6 +20,7 @@ SRCS(
     compaction_map.cpp
     deletion_markers.cpp
     fresh_blocks.cpp
+    filesystem_event_subscriptions.cpp
     fresh_bytes.cpp
     garbage_queue.cpp
     group_by.cpp
@@ -45,6 +46,7 @@ SRCS(
     throttler_logger.cpp
     throttling_policy.cpp
     truncate_queue.cpp
+    xattr_acl_helpers.cpp
 )
 
 PEERDIR(

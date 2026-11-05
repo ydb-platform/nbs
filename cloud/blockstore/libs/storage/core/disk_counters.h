@@ -3,7 +3,11 @@
 #include "histogram.h"
 #include "storage_request_counters.h"
 
+#include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/diagnostics/solomon_counters.h>
+
+#include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -141,11 +145,27 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMixedBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMergedBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter MixedIndexBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MergedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMixedIndexBytesCount{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalMergedIndexBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -274,8 +294,12 @@ struct TSimpleDiskCounters
 
         MakeMeta<&TSimpleDiskCounters::MixedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMixedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMergedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MixedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedIndexBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMixedIndexBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalMergedIndexBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),
@@ -921,6 +945,30 @@ static_assert(
      std::size(TTransportCounters::AllCounters)));
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobCompressionCounters
+{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TMeta = TMemberMeta<TCounter TBlobCompressionCounters::*>;
+
+    TCounter UncompressedBytesWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompressedBytesWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter ZeroBytesCompressed{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TBlobCompressionCounters::UncompressedBytesWritten>(),
+        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>(),
+        MakeMeta<&TBlobCompressionCounters::ZeroBytesCompressed>()};
+};
+
 struct TPartitionDiskCounters
 {
     TSimpleDiskCounters Simple;
@@ -929,16 +977,13 @@ struct TPartitionDiskCounters
     THistogramCounters Histogram;
     TTransportCounters Rdma;
     TTransportCounters Interconnect;
+    THashMap<ui64, TBlobCompressionCounters> BlobCompression;
 
     EPublishingPolicy Policy;
 
     TPartitionDiskCounters(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
-        : RequestCounters(histCounterOptions)
-        , Histogram(histCounterOptions)
-        , Policy(policy)
-    {}
+        EPublishingPolicy policy,
+        const TDiagnosticsConfig& diagnosticsConfig);
 
     void Add(const TPartitionDiskCounters& source);
     void AggregateWith(const TPartitionDiskCounters& source);
@@ -986,7 +1031,7 @@ struct TVolumeSelfCounters
 
 TPartitionDiskCountersPtr CreatePartitionDiskCounters(
     EPublishingPolicy policy,
-    EHistogramCounterOptions histCounterOptions);
+    const TDiagnosticsConfig& diagnosticsConfig);
 TVolumeSelfCountersPtr CreateVolumeSelfCounters(
     EPublishingPolicy policy,
     EHistogramCounterOptions histCounterOptions);

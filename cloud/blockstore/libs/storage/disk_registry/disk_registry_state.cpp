@@ -3250,6 +3250,16 @@ bool TDiskRegistryState::CanSecureErase(const NProto::TDeviceConfig& device) con
            ESecureEraseReadiness::ReadyToErase;
 }
 
+void TDiskRegistryState::SetSuspendSecureErase(bool suspend)
+{
+    SuspendSecureErase = suspend;
+}
+
+bool TDiskRegistryState::GetSuspendSecureErase() const
+{
+    return SuspendSecureErase;
+}
+
 ESecureEraseReadiness TDiskRegistryState::GetSecureEraseReadiness(
     const NProto::TDeviceConfig& device) const
 {
@@ -4790,6 +4800,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.DisksInWarningState->Set(disksInWarningState);
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
     SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
+    SelfCounters.SuspendSecureErase->Set(GetSuspendSecureErase() ? 1 : 0);
 
     ui32 migratingDeviceCount = 0;
     for (const auto& x: SourceDeviceMigrationsInProgress) {

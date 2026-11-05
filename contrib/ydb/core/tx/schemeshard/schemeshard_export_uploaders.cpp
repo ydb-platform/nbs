@@ -16,7 +16,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/public/api/protos/ydb_export.pb.h>
-#include <contrib/ydb/public/lib/ydb_cli/dump/util/view_utils.h>
+#include <contrib/ydb/public/lib/ydb_cli/dump/util/view_query_iface/view_query.h>
 
 #include <library/cpp/json/json_writer.h>
 

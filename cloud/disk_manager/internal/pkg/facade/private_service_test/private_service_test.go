@@ -307,6 +307,107 @@ func TestPrivateServiceRetireBaseDiskInParallelWithOverlayDiskDeleting(t *testin
 	testcommon.CheckConsistency(t, ctx)
 }
 
+// Disk Registry based disk is filled from a base disk via a proxy overlay disk
+// (disks.CreateDiskFromBaseDisk). Base disk retirement during the transfer
+// should be transparent: the proxy overlay disk is rebased onto another base
+// disk.
+func TestPrivateServiceRetireBaseDisksInParallelWithSsdNonreplDiskCreation(
+	t *testing.T,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	imageID := t.Name()
+	// Large enough for the transfer to last several seconds, so that the
+	// retirement below lands while the transfer is running.
+	imageSize := uint64(1024 * 1024 * 1024)
+
+	diskContentInfo := testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		true, // pooled
+	)
+
+	diskID := t.Name()
+	diskSize := uint64(262144 * 4096)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	createOp, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+		FolderId: "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, createOp)
+
+	// Don't leave the creation running if the test fails: the proxy overlay
+	// disk would make the next test wait in CheckConsistency.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+
+		cleanupClient, err := testcommon.NewClient(ctx)
+		if err != nil {
+			return
+		}
+		defer cleanupClient.Close()
+
+		_, _ = cleanupClient.CancelOperation(ctx, &disk_manager.CancelOperationRequest{
+			OperationId: createOp.Id,
+		})
+	})
+
+	// Wait until the data transfer from the base disk is running (creation
+	// progress is reported by the transfer), so that the retirement lands
+	// during the transfer.
+	require.Eventually(t, func() bool {
+		meta := disk_manager.CreateDiskMetadata{}
+		err := internal_client.GetOperationMetadata(ctx, client, createOp.Id, &meta)
+		return err == nil && meta.Progress > 0
+	}, 200*time.Second, 100*time.Millisecond)
+
+	privateClient, err := testcommon.NewPrivateClient(ctx)
+	require.NoError(t, err)
+	defer privateClient.Close()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	retireOp, err := privateClient.RetireBaseDisks(reqCtx, &api.RetireBaseDisksRequest{
+		ImageId: imageID,
+		ZoneId:  "zone-a",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, retireOp)
+
+	err = internal_client.WaitOperation(ctx, client, createOp.Id)
+	require.NoError(t, err)
+
+	err = internal_client.WaitOperation(ctx, client, retireOp.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
+	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
+	require.NoError(t, err)
+
+	testcommon.DeleteDisk(t, ctx, client, diskID)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	ctx := testcommon.NewContext()
 

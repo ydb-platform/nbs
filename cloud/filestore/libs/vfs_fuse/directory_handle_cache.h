@@ -21,6 +21,7 @@ private:
     TDirectoryHandleMap Handles;
     TDirectoryHandleStoragePtr Storage;
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
+    const ui64 ChunkSwitchStatsMinHandleSize;
 
     TDirectoryHandleModuleStatsPtr Stats;
 
@@ -33,7 +34,8 @@ public:
         TLog log,
         TDirectoryHandleModuleStatsPtr stats,
         TDirectoryHandleStoragePtr storage,
-        TDirectoryEntryVersionCachePtr directoryEntryVersionCache);
+        TDirectoryEntryVersionCachePtr directoryEntryVersionCache,
+        ui64 chunkSwitchStatsMinHandleSize);
 
     bool IsPersistent() const;
 
@@ -48,6 +50,7 @@ public:
         ui64 handleId,
         const std::shared_ptr<TDirectoryHandle>& handle,
         const TDirectoryHandleChunk& handleChunk);
+    void RecordRead(const TReadContentResult& result);
 
     void Clear();
     void Reset();

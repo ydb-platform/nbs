@@ -1,0 +1,46 @@
+{
+  "name": "NBS: restrict approval checks",
+  "enforcement": "disabled",
+  "conditions": {
+    "workflow_path": {
+      "include": [
+        ".github/workflows/approvals.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 9863268,
+            "type": "Team"
+          },
+          {
+            "id": 9863273,
+            "type": "Team"
+          },
+          {
+            "id": 2557343,
+            "type": "User"
+          },
+          {
+            "id": 127485837,
+            "type": "User"
+          }
+        ]
+      }
+    },
+    {
+      "type": "restrict_action_events",
+      "parameters": {
+        "allowed_events": [
+          "issue_comment",
+          "pull_request_review"
+        ]
+      }
+    }
+  ]
+}

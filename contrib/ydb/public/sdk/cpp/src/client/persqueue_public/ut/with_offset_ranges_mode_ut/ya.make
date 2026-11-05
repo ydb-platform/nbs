@@ -12,11 +12,13 @@ ENDIF()
 FORK_SUBTESTS()
 
 PEERDIR(
+    contrib/ydb/core/testlib/default
     library/cpp/testing/gmock_in_unittest
     contrib/ydb/public/lib/json_value
     contrib/ydb/public/lib/yson_value
     contrib/ydb/public/sdk/cpp/src/client/driver
     contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

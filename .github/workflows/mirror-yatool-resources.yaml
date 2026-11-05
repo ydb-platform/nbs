@@ -69,7 +69,7 @@ jobs:
           skip_upload: ${{ inputs.upload_resources && 'false' || 'true' }}
 
       - name: Upload generated patch
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: yatool-resource-localization-patch
           path: |

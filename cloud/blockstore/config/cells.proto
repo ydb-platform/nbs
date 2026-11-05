@@ -63,10 +63,10 @@ message TCellConfig
     // before data is moved back onto it, in milliseconds.
     optional uint32 RdmaSettleTime = 12;
 
-    // Watch the hosts of this cell over gRPC and move a connection off a host
-    // that stopped answering. Also moves it to the host where the volume
-    // tablet lives, when a mount reports one.
-    optional bool HostMigrationEnabled = 13;
+    // HostMigrationEnabled: the hosts are always watched over gRPC now, and a
+    // connection always moves off a host that stopped answering and onto the
+    // host where the volume tablet lives.
+    reserved 13;
 
     // How often every known host of the cell is pinged, in milliseconds.
     optional uint32 HostPingPeriod = 14;

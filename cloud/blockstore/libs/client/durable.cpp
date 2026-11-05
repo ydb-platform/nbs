@@ -12,6 +12,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -352,7 +353,14 @@ private:
                 auto& error = *response.MutableError();
                 auto errorStr = FormatError(error);
                 error.SetCode(E_RETRY_TIMEOUT);
-                error.SetMessage(TStringBuilder() << "Retry timeout: " << errorStr);
+                if (HasProtoFlag(
+                        error.GetFlags(),
+                        NProto::EF_HW_PROBLEMS_DETECTED))
+                {
+                    SetErrorProtoFlag(error, NProto::EF_SILENT);
+                }
+                error.SetMessage(
+                    TStringBuilder() << "Retry timeout: " << errorStr);
             }
 
             auto duration = TInstant::Now() - state->Started;

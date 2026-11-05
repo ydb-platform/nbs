@@ -53,10 +53,11 @@ func newCreateSnapshotDiskZoneTest(
 		execCtx:    tasks_mocks.NewExecutionContextMock(),
 	}
 	f.task = &createSnapshotFromDiskTask{
-		config:        &config.DataplaneConfig{ProxyOverlayDiskIdPrefix: proto.String("proxy-")},
-		disabledZones: disabledZones,
-		storage:       f.storage,
-		nbsFactory:    f.nbsFactory,
+		config:                   &config.DataplaneConfig{},
+		proxyOverlayDiskIDPrefix: "proxy-",
+		disabledZones:            disabledZones,
+		storage:                  f.storage,
+		nbsFactory:               f.nbsFactory,
 	}
 	mocks := []*mock.Mock{
 		&f.storage.Mock,

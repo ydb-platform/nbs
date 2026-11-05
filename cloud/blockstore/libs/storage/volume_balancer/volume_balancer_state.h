@@ -62,8 +62,12 @@ private:
 
     TDuration PullDelayResetTimespan;
 
+    IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
+
 public:
-    TVolumeBalancerState(TStorageConfigConstPtr storageConfig);
+    TVolumeBalancerState(
+        TStorageConfigConstPtr storageConfig,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
@@ -83,6 +87,8 @@ public:
 
     bool GetEnabled() const
     {
+        // TODO: Remove preemption type check after VolumeBalancerEnabled option
+        // integration
         return StorageConfig->GetVolumePreemptionType() !=
                    NProto::PREEMPTION_NONE &&
                IsEnabled;
@@ -112,9 +118,18 @@ private:
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);
 
-    bool IsVolumePreemptible(
+    bool IsPreemptionEnabled(
         const TString& diskId,
         const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPush(
+        const TString& diskId,
+        const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPull(
+        const TString& diskId,
+        const TVolumeInfo& volume,
+        TInstant now) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

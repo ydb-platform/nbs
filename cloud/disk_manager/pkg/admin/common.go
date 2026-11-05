@@ -170,6 +170,7 @@ func newPoolStorage(
 
 	poolsStorage, err := pools_storage.NewStorage(
 		config.GetPoolsConfig(),
+		config.GetPerformanceConfig(),
 		db,
 		metrics.NewEmptyRegistry(),
 	)

@@ -1,15 +1,12 @@
 package tests
 
 import (
-	"os"
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
-	node_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	db "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -25,13 +22,7 @@ func TestDiskServiceCreateDeletePlacementGroup(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	configString := os.Getenv("DISK_MANAGER_RECIPE_SERVER_CONFIG")
-
-	require.NotEmpty(t, configString)
-
-	var config node_config.ServerConfig
-	err = proto.UnmarshalText(configString, &config)
-	require.NoError(t, err)
+	config := testcommon.GetServerConfig(t)
 
 	ydbClient, err := ydb.NewYDBClient(
 		ctx,

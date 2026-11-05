@@ -97,6 +97,14 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = validateUseReadyBaseDiskAsSrcConfig(
+		config.GetUseReadyBaseDiskAsSrc(),
+		config.GetHoldBaseDisksWithInflightDependents(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("pools.AcquireBaseDisk", func() tasks.Task {
 		return &acquireBaseDiskTask{
 			scheduler: taskScheduler,
@@ -306,6 +314,19 @@ func validateIdleCleanupConfig(
 	if baseDiskIdleTTL > 0 && !holdBaseDisksWithInflightDependents {
 		return fmt.Errorf(
 			"BaseDiskIdleTTL > 0 requires HoldBaseDisksWithInflightDependents=true",
+		)
+	}
+	return nil
+}
+
+func validateUseReadyBaseDiskAsSrcConfig(
+	useReadyBaseDiskAsSrc bool,
+	holdBaseDisksWithInflightDependents bool,
+) error {
+
+	if useReadyBaseDiskAsSrc && !holdBaseDisksWithInflightDependents {
+		return fmt.Errorf(
+			"UseReadyBaseDiskAsSrc requires HoldBaseDisksWithInflightDependents=true",
 		)
 	}
 	return nil

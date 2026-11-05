@@ -18,8 +18,8 @@ int main(int argc, char** argv)
 
         const auto blob = BuildWriteFreshBlocksBlobContent(
             blockRanges,
-            holders
-        );
+            holders,
+            TInstant::Zero());
 
         TFile file(
             "fresh_write.blob",
@@ -32,8 +32,8 @@ int main(int argc, char** argv)
         using namespace NCloud::NBlockStore::NStorage;
 
         const auto blob = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+            ZeroFreshBlocksRange,
+            TInstant::Zero());
 
         TFile file(
             "fresh_zero.blob",

@@ -4,10 +4,10 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/sn/impl/storage_node.h>
-#include <cloud/fastshard/sn/server/server.h>
-#include <cloud/fastshard/testlib/fake_storage_node.h>
-#include <cloud/fastshard/testlib/silk_env.h>
+#include <cloud/fastshard/libs/sn/impl/storage_node.h>
+#include <cloud/fastshard/libs/sn/server/server.h>
+#include <cloud/fastshard/libs/sn/testlib/fake_storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

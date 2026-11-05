@@ -23,6 +23,7 @@ func RegisterForExecution(
 	config *config.DataplaneConfig,
 	performanceConfig *performance_config.PerformanceConfig,
 	disabledZones *common.DisabledZones,
+	proxyOverlayDiskIDPrefix string,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
@@ -37,11 +38,12 @@ func RegisterForExecution(
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			config:            config,
-			performanceConfig: performanceConfig,
-			disabledZones:     disabledZones,
-			nbsFactory:        nbsFactory,
-			storage:           storage,
+			config:                   config,
+			performanceConfig:        performanceConfig,
+			disabledZones:            disabledZones,
+			nbsFactory:               nbsFactory,
+			storage:                  storage,
+			proxyOverlayDiskIDPrefix: proxyOverlayDiskIDPrefix,
 		}
 	})
 	if err != nil {

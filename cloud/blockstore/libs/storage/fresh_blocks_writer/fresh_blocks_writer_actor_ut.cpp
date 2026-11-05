@@ -267,8 +267,10 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 {
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountThresholdForBackpressureHDD(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
+    config.SetFreshByteCountLimitForBackpressureHDD(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
@@ -965,12 +967,57 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFlushFreshBlocksWriterBlobsByAge)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlobAgeFlushThresholdSSD(60000);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(1), 1);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+
+        fbwClient.ZeroBlocks(2);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
     Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1027,7 +1074,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
         config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1091,9 +1138,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     Y_UNIT_TEST(ShouldCorrectlyUpdateSharedCountersWhenFlushIsConcurrentWithFreshBlocksWriterStart)
     {
         auto config = DefaultConfig();
-        config.SetFreshByteCountHardLimit(0);
+        config.SetFreshByteCountHardLimitSSD(0);
         config.SetFreshLogicalBlocksByteCountHardLimit(DefaultBlockSize);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);
@@ -1586,6 +1633,51 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         UNIT_ASSERT_VALUES_EQUAL(expectedContent, actualContent);
     }
 
+    Y_UNIT_TEST(ShouldKeepFreshVersionsBetweenCheckpoints)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(1, '1');
+        partition.CreateCheckpoint("c1");
+        fbwClient.WriteBlocks(1, '2');
+        partition.CreateCheckpoint("c2");
+        fbwClient.WriteBlocks(1, '3');
+
+        auto check = [&](TFreshBlocksWriterClient& client)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('1'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1), "c1")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('2'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1), "c2")));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('3'),
+                GetBlocksContent(
+                    client.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+        };
+
+        check(fbwClient);
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        check(newFbwClient);
+    }
+
     Y_UNIT_TEST(ShouldRejectWriteRequestsIfDataChannelsAreYellow)
     {
         TMyTestEnv testEnv;
@@ -1889,8 +1981,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitSSD(8_KB);
+        config.SetFlushThresholdSSD(4_MB);
 
         TMyTestEnv testEnv;
         InitTestActorRuntime(testEnv, config);

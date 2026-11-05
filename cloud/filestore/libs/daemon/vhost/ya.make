@@ -22,7 +22,7 @@ PEERDIR(
     cloud/filestore/libs/vfs_fuse/vhost
     cloud/filestore/libs/vhost
 
-    cloud/fastshard/bootstrap
+    cloud/fastshard/libs/bootstrap
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
