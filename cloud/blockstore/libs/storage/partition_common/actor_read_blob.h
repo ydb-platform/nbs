@@ -71,7 +71,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    TReadPlan GetQueries() const;
+    TResultOrError<TReadPlan> GetQueries() const;
 
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
@@ -106,6 +106,11 @@ private:
         const TSgList& sglist,
         const NActors::TActorContext& ctx,
         TDataThatCanBeProcessed& dataThatCanBeProcessed) const;
+
+    TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
+        std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+        std::span<const TBlockDataRef> sglist,
+        std::span<const ui16> blockOffsets);
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(
         std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
