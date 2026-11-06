@@ -1,6 +1,11 @@
 #include "log_record.h"
 
+#include <library/cpp/digest/crc32c/crc32c.h>
+
+#include <util/system/yassert.h>
+
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 namespace NCloud::NJournalled {
@@ -21,7 +26,8 @@ struct TRecordHeader
 {
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
-    ui64 PageMappingCount = 0;
+    ui32 PageMappingCount = 0;
+    ui32 PagesCrc = 0;
 };
 
 static_assert(sizeof(TMetadataHeader) == 16);
@@ -69,13 +75,20 @@ std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer)
 
 TBuffer SerializeRecord(const TLogRecord& record)
 {
+    const ui64 pageMappingCount = record.PageMappings.size();
+    Y_DEBUG_ABORT_UNLESS(
+        pageMappingCount <= std::numeric_limits<ui32>::max(),
+        "too many page mappings (%lu) in the log record with lsn %lu",
+        pageMappingCount,
+        record.Lsn);
+
     TRecordHeader header;
     header.Lsn = record.Lsn;
     header.PrevLsn = record.PrevLsn;
-    header.PageMappingCount = record.PageMappings.size();
+    header.PageMappingCount = static_cast<ui32>(pageMappingCount);
+    header.PagesCrc = record.PagesCrc;
 
-    TBuffer buffer(
-        sizeof(header) + record.PageMappings.size() * sizeof(TPageMapping));
+    TBuffer buffer(sizeof(header) + pageMappingCount * sizeof(TPageMapping));
     buffer.Append(reinterpret_cast<const char*>(&header), sizeof(header));
 
     for (const auto& mapping: record.PageMappings) {
@@ -106,6 +119,7 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer)
     auto record = std::make_shared<TLogRecord>();
     record->Lsn = header.Lsn;
     record->PrevLsn = header.PrevLsn;
+    record->PagesCrc = header.PagesCrc;
 
     record->PageMappings.reserve(header.PageMappingCount);
     const char* ptr = buffer.Data() + sizeof(header);
@@ -119,6 +133,16 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer)
 
     record->Promise = NewPromise<NCloud::NProto::TWriteLogRecordResponse>();
     return record;
+}
+
+ui32 CalculatePagesCrc(const TVector<TBuffer>& pages)
+{
+    ui32 crc = 0;
+    for (const auto& page: pages) {
+        crc = Crc32cExtend(crc, page.Data(), page.Size());
+    }
+
+    return crc;
 }
 
 ui32 CalculateMinRecordBufferSize()
