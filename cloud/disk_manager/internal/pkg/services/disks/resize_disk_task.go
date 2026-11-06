@@ -86,3 +86,9 @@ func (t *resizeDiskTask) GetMetadata(
 func (t *resizeDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *resizeDiskTask) getDiskOperationRequest() diskOperationRequest {
+	return t.request
+}

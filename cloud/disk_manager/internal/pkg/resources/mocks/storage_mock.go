@@ -674,9 +674,10 @@ func (s *StorageMock) ListPlacementGroups(
 func (s *StorageMock) IncrementFillGeneration(
 	ctx context.Context,
 	diskID string,
+	lockTaskID string,
 ) (uint64, error) {
 
-	args := s.Called(ctx, diskID)
+	args := s.Called(ctx, diskID, lockTaskID)
 	return args.Get(0).(uint64), args.Error(1)
 }
 
@@ -697,9 +698,10 @@ func (s *StorageMock) DiskRelocated(
 	diskID string,
 	srcZoneID string,
 	dstZoneID string,
+	lockTaskID string,
 ) error {
 
-	args := s.Called(ctx, tx, diskID, srcZoneID, dstZoneID)
+	args := s.Called(ctx, tx, diskID, srcZoneID, dstZoneID, lockTaskID)
 	return args.Error(0)
 }
 
@@ -714,4 +716,25 @@ func NewStorageMock() *StorageMock {
 // Ensure that StorageMock implements resources.Storage.
 func assertStorageMockIsStorage(arg *StorageMock) resources.Storage {
 	return arg
+}
+
+func (s *StorageMock) LockDisk(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	input resources.LockDiskInput,
+) (*resources.DiskMeta, error) {
+
+	args := s.Called(ctx, tx, input)
+	meta, _ := args.Get(0).(*resources.DiskMeta)
+	return meta, args.Error(1)
+}
+
+func (s *StorageMock) UnlockDisk(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	taskID string,
+) error {
+
+	return s.Called(ctx, tx, diskID, taskID).Error(0)
 }
