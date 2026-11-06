@@ -11,6 +11,7 @@ SRCS(
     create_empty_disk_task.go
     create_overlay_disk_task.go
     delete_disk_task.go
+    disk_operation_task.go
     migrate_disk_task.go
     resize_disk_task.go
     unassign_disk_task.go
@@ -25,6 +26,7 @@ GO_TEST_SRCS(
     create_empty_disk_task_test.go
     create_overlay_disk_task_test.go
     delete_disk_task_test.go
+    disk_operation_task_test.go
     migrate_disk_task_test.go
     service_test.go
 )
