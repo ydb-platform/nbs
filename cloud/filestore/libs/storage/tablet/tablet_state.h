@@ -250,6 +250,8 @@ private:
 
     bool CompressNodeRef = false;
 
+    ui32 SizeToNodesRatio = Max<ui16>();
+
     /*const*/ bool FileSystemEventsEnabled = false;
     /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
     /*const*/ bool FileSystemListingEventsEnabled = false;
@@ -453,7 +455,13 @@ public:
             return MaxNodes;
         }
 
-        return FileSystem.GetNodesCount();
+        // TFileSystem::NodeCount is set from NKikimrFileStore::TConfig,
+        // which is ui32. To overcome 32 bit limitation the nodes count
+        // is recalculated here.
+        return Max<ui64>(
+            FileSystem.GetNodesCount(),
+            FileSystem.GetBlocksCount() * FileSystem.GetBlockSize() /
+                SizeToNodesRatio);
     }
 
     bool GetCompressNodeRef() const
