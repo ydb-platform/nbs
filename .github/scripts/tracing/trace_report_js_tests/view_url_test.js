@@ -256,6 +256,35 @@ function testSharedFlatOrderExcludesContextRows() {
   );
 }
 
+function testMatchStatusTracksTheSelectedOrder() {
+  const context = makeViewRuntime("?minimum-duration=4");
+  const status = () => vm.runInContext("filterStatus.textContent", context);
+  assert.strictEqual(status(), "3 matching spans");
+  for (const [order, expected] of [
+    [encodeTestPhaseSelection("ya.test"), "1 matching span"],
+    [ROW_ORDERS.DURATION, "3 matching spans"],
+    [encodeTestPhaseSelection("ya.test.worker"), "1 matching span"],
+  ]) {
+    context.controls.order.value = order;
+    vm.runInContext("applyRowOrder();", context);
+    assert.strictEqual(status(), expected);
+  }
+  vm.runInContext("expandAllGroups();", context);
+  assert.strictEqual(context.rendered.spanRows, 3);
+  assert.strictEqual(status(), "1 matching span");
+  context.controls.order.value = encodeTestPhaseSelection("ya.test");
+  context.controls.minimum.value = "6";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(context.rendered.spanRows, 0);
+  assert.strictEqual(status(), "0 matching spans");
+  context.controls.minimum.value = "";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(status(), "1 matching span");
+  context.controls.order.value = ROW_ORDERS.TREE;
+  vm.runInContext("applyRowOrder();", context);
+  assert.strictEqual(status(), "");
+}
+
 function testSharedWorkerDurationKeepsContainedTestNameSearch() {
   const context = makeViewRuntime(
     "?query=case&phase=ya.test.worker&minimum-duration=9&order=ya.test",
@@ -422,12 +451,21 @@ function testFilteredGroupExpansionOnAFullPagePreservesOtherGroups() {
   );
   const firstPage = Array.from(context.rendered.items, ({ index }) => index);
   assert.strictEqual(firstPage.length, INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
   vm.runInContext("toggleSpanGroup(1);", context);
   assert.deepStrictEqual(
     Array.from(context.rendered.items, ({ index }) => index),
     [firstPage[0], 2, ...firstPage.slice(1)],
   );
   assert.strictEqual(context.rendered.truncated, true);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
+  // Flat lists also count the full result, independently of the page budget.
+  context.controls.phase.value = "";
+  context.controls.minimum.value = "";
+  context.controls.order.value = encodeTestPhaseSelection("ya.test");
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(context.rendered.spanRows, INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
 }
 
 for (const test of [
@@ -441,6 +479,7 @@ for (const test of [
   testHashNavigationPreservesFiltersAfterUrlSync,
   testSharedGroupedOrderKeepsTestNameMatches,
   testSharedFlatOrderExcludesContextRows,
+  testMatchStatusTracksTheSelectedOrder,
   testSharedWorkerDurationKeepsContainedTestNameSearch,
   testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
   testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,

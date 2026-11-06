@@ -112,7 +112,6 @@ function applyFilter() {
   matchingSpans = result.matching;
   if (result.visible === null) {
     visible = null;
-    filterStatus.textContent = "";
     resetDefaults();
     updateOrderedRows();
     renderRows();
@@ -121,9 +120,6 @@ function applyFilter() {
   rowBudget = INITIAL_ROW_BUDGET;
   limits = new Map();
   visible = result.visible;
-  filterStatus.textContent = `${result.matches.toLocaleString()} matching span${
-    result.matches === 1 ? "" : "s"
-  }`;
   updateOrderedRows();
   renderRows();
 }
@@ -142,6 +138,10 @@ function updateOrderedRows() {
     order === ROW_ORDERS.TREE
       ? []
       : durationOrderedIndexes(traceIndex, order, currentFilters());
+  const matches = order === ROW_ORDERS.TREE ? matchingSpans?.size : orderedRows.length;
+  filterStatus.textContent = matches === undefined
+    ? ""
+    : `${matches.toLocaleString()} matching span${matches === 1 ? "" : "s"}`;
   orderedVisible = visible;
   if (order !== ROW_ORDERS.TREE && !rowOrderIsFlat(order) && visible) {
     orderedVisible = new Set([...visible, ...orderedRows]);
