@@ -96,7 +96,7 @@ void TPartitionFreshBlobState::AddFreshBlob(
     }
 }
 
-void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+ui64 TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
     auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
 
@@ -111,25 +111,40 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
         UntrimmedFreshBlobByteCount -= blobSize;
         blobs.erase(blobs.begin());
     }
+
+    ui64 trimmedByteCount = 0;
+    auto& unflushed = UnflushedFreshBlobsByCommitId;
+    while (unflushed && unflushed.begin()->first <= commitId) {
+        trimmedByteCount += EraseUnflushedFreshBlob(unflushed.begin());
+    }
+    return trimmedByteCount;
 }
 
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+ui64 TPartitionFreshBlobState::FlushFreshBlob(
+    ui64 commitId,
+    ui64 trimmedToCommitId)
 {
-    auto& blobs = UnflushedFreshBlobsByCommitId;
+    auto it = UnflushedFreshBlobsByCommitId.find(commitId);
+    if (it == UnflushedFreshBlobsByCommitId.end()) {
+        STORAGE_VERIFY_C(
+            commitId <= trimmedToCommitId,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        return 0;
+    }
+    return EraseUnflushedFreshBlob(it);
+}
 
-    auto it = blobs.find(commitId);
-    STORAGE_VERIFY_C(
-        it != blobs.end(),
-        TWellKnownEntityTypes::TABLET,
-        TabletID,
-        "Commit id: " << commitId);
-
+ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(
+    TUnflushedFreshBlobsByCommitId::iterator it)
+{
     const ui64 blobSize = it->second.ByteCount;
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
-    blobs.erase(it);
+    UnflushedFreshBlobsByCommitId.erase(it);
 
     return blobSize;
 }

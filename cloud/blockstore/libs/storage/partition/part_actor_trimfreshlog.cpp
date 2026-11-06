@@ -185,7 +185,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
         State->RegisterTrimFreshLogSuccess();
         State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-        State->TrimFreshBlobs(msg->CommitId);
+        const ui64 trimmedByteCount = State->TrimFreshBlobs(msg->CommitId);
+        if (IsFreshBlocksWriterEnabled()) {
+            SharedState->UnflushedFreshBlobByteCount.fetch_sub(
+                trimmedByteCount);
+        }
     }
 
     State->AccessTrimFreshLogState().SetStatus(
