@@ -87,6 +87,12 @@ public:
         }
     }
 
+    // returns the number of submitted iocbs or a negative errno
+    int SubmitBatch(iocb** ios, int count)
+    {
+        return io_submit(Context, count, ios);
+    }
+
     NProto::TError Submit(iocb* io)
     {
         const int ret = io_submit(Context, 1, &io);
@@ -121,7 +127,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TAIOService final
-    : public IFileIOService
+    : public IExternalCompletionFileIOService
 {
 private:
     TAsyncIOContext IOContext;
@@ -129,26 +135,91 @@ private:
     TThread PollerThread;
     std::atomic_flag ShouldStop = false;
 
+    // PROTOTYPE: external completion mode, see IExternalCompletionFileIOService
+    const bool External = false;
+    TFileHandle EventFd;
+    std::atomic<size_t> InFlightCount = 0;
+
 public:
-    explicit TAIOService(TAioServiceParams params)
+    explicit TAIOService(TAioServiceParams params, bool external = false)
         : IOContext(params.MaxEvents)
         , PollerThread(
               std::bind_front(
                   &TAIOService::Run,
                   this,
                   std::move(params.CompletionThreadName)))
-    {}
+        , External(external)
+    {
+        if (External) {
+            EventFd = TFileHandle(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
+            Y_ABORT_UNLESS(EventFd.IsOpen());
+        }
+    }
+
+    // IExternalCompletionFileIOService
+
+    int GetCompletionFd() override
+    {
+        return EventFd;
+    }
+
+    size_t InFlight() override
+    {
+        return InFlightCount.load(std::memory_order_acquire);
+    }
+
+    // wakes whoever waits on the completion fd, so a spinning reaper starts
+    // polling right after a submit
+    void Kick()
+    {
+        if (External) {
+            ui64 one = 1;
+            Y_UNUSED(::write(EventFd, &one, sizeof(one)));
+        }
+    }
+
+    size_t ProcessCompletions() override
+    {
+        size_t reaped = 0;
+        io_event events[MAX_EVENTS_BATCH] {};
+        for (;;) {
+            timespec zero {0, 0};
+            auto batch = IOContext.GetEvents(events, zero);
+            if (batch.empty()) {
+                break;
+            }
+            reaped += batch.size();
+            for (auto& ev: batch) {
+                std::unique_ptr<iocb> ptr {ev.obj};
+                const i64 ret = static_cast<i64>(ev.res);
+                Complete(
+                    static_cast<TFileIOCompletion*>(ev.data),
+                    MakeIOError(ret),
+                    ev.res);
+            }
+        }
+        return reaped;
+    }
 
     // IStartable
 
     void Start() override
     {
-        PollerThread.Start();
+        if (!External) {
+            PollerThread.Start();
+        }
     }
 
     void Stop() override
     {
         if (ShouldStop.test()) {
+            return;
+        }
+
+        if (External) {
+            ShouldStop.test_and_set();
+            ui64 one = 1;
+            Y_UNUSED(::write(EventFd, &one, sizeof(one)));
             return;
         }
 
@@ -185,6 +256,9 @@ public:
             offset);
 
         req->data = completion;
+        if (External) {
+            io_set_eventfd(req.get(), EventFd);
+        }
 
         Submit(std::move(req));
     }
@@ -211,6 +285,9 @@ public:
             offset);
 
         req->data = completion;
+        if (External) {
+            io_set_eventfd(req.get(), EventFd);
+        }
 
         Submit(std::move(req));
     }
@@ -224,20 +301,25 @@ public:
     {
         auto req = std::make_unique<iocb>();
         const ui32 syncFlags = GetWriteSyncFlags(flags);
-        iovec iov;
-        iov.iov_base = const_cast<char*>(buffer.data());
-        iov.iov_len = buffer.size();
+        // the iovec lives until the iocb is handed to the kernel, which may
+        // happen later in a batch
+        auto iov = std::make_unique<iovec[]>(1);
+        iov[0].iov_base = const_cast<char*>(buffer.data());
+        iov[0].iov_len = buffer.size();
         io_prep_pwritev2(
             req.get(),
             file,
-            &iov,
+            iov.get(),
             1,
             offset,
             syncFlags);
 
         req->data = completion;
+        if (External) {
+            io_set_eventfd(req.get(), EventFd);
+        }
 
-        Submit(std::move(req));
+        Submit(std::move(req), std::move(iov));
     }
 
     void AsyncWriteV(
@@ -250,7 +332,7 @@ public:
         auto req = std::make_unique<iocb>();
         const ui32 syncFlags = GetWriteSyncFlags(flags);
 
-        TVector<iovec> iov(buffers.size());
+        auto iov = std::make_unique<iovec[]>(buffers.size());
         for (ui32 i = 0; i < buffers.size(); ++i) {
             iov[i].iov_base = const_cast<char*>(buffers[i].data());
             iov[i].iov_len = buffers[i].size();
@@ -258,14 +340,17 @@ public:
         io_prep_pwritev2(
             req.get(),
             file,
-            iov.data(),
-            iov.size(),
+            iov.get(),
+            buffers.size(),
             offset,
             syncFlags);
 
         req->data = completion;
+        if (External) {
+            io_set_eventfd(req.get(), EventFd);
+        }
 
-        Submit(std::move(req));
+        Submit(std::move(req), std::move(iov));
     }
 
 private:
@@ -274,10 +359,55 @@ private:
         const NProto::TError& error,
         ui32 bytes)
     {
+        InFlightCount.fetch_sub(1, std::memory_order_acq_rel);
         std::invoke(completion->Func, completion, error, bytes);
     }
 
-    void Submit(std::unique_ptr<iocb> request)
+    // PROTOTYPE: iocbs deferred within a FileIOBeginBatch/EndBatch scope
+    struct TPending
+    {
+        iocb* Request;
+        std::unique_ptr<iovec[]> Iov;
+    };
+    static inline thread_local TVector<TPending> PendingBatch;
+
+    void FlushBatch()
+    {
+        TVector<TPending> batch = std::move(PendingBatch);
+        PendingBatch.clear();
+        if (batch.empty()) {
+            return;
+        }
+
+        TVector<iocb*> ios;
+        ios.reserve(batch.size());
+        for (const auto& pending: batch) {
+            ios.push_back(pending.Request);
+        }
+
+        InFlightCount.fetch_add(ios.size(), std::memory_order_acq_rel);
+        int submitted = IOContext.SubmitBatch(ios.data(), ios.size());
+        if (submitted < 0) {
+            submitted = 0;
+        }
+        if (submitted) {
+            Kick();
+        }
+
+        // the iocbs the kernel did not take fail here; the iovecs of the
+        // taken ones were copied by the kernel and die with |batch|
+        for (size_t i = submitted; i < ios.size(); ++i) {
+            std::unique_ptr<iocb> failed(ios[i]);
+            Complete(
+                static_cast<TFileIOCompletion*>(failed->data),
+                MakeError(E_REJECTED, "batched io_submit failed"),
+                0);
+        }
+    }
+
+    void Submit(
+        std::unique_ptr<iocb> request,
+        std::unique_ptr<iovec[]> iov = {})
     {
         iocb* ptr = request.get();
 
@@ -285,12 +415,22 @@ private:
         // tsan is not aware of barrier between io_submit/io_getevents
         AtomicSet(*(TAtomicBase*)ptr, *(TAtomicBase*)ptr);
 #endif
+        if (FileIOInBatch()) {
+            if (PendingBatch.empty()) {
+                FileIOSetBatchFlusher([this] { FlushBatch(); });
+            }
+            PendingBatch.push_back({request.release(), std::move(iov)});
+            return;
+        }
+
+        InFlightCount.fetch_add(1, std::memory_order_acq_rel);
         auto error = IOContext.Submit(ptr);
 
         if (HasError(error)) {
             Complete(static_cast<TFileIOCompletion*>(ptr->data), error, 0);
         } else {
             Y_UNUSED(request.release());  // ownership transferred
+            Kick();
         }
     }
 
@@ -350,6 +490,12 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+std::shared_ptr<IExternalCompletionFileIOService>
+CreateAIOServiceExternalCompletion(TAioServiceParams params)
+{
+    return std::make_shared<TAIOService>(std::move(params), true);
+}
 
 IFileIOServicePtr CreateAIOService(TAioServiceParams params)
 {

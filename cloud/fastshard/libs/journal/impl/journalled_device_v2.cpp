@@ -7,6 +7,7 @@
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -213,9 +214,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TWriteLogRecordResponse>(
-            [request = std::move(request)](auto& self) mutable
-            { return self.DoWriteLogRecord(std::move(request)); });
+        return DoWriteLogRecord(std::move(request));
     }
 
     TFuture<NCloud::NProto::TReadJournalTailResponse> ReadJournalTail(
@@ -243,12 +242,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-            [request = std::move(request)](auto& self) mutable
-            {
-                return self.Executor->ExtractResponse(
-                    self.Journal->AdvanceLsnLowWatermark(std::move(request)));
-            });
+        return Journal->AdvanceLsnLowWatermark(std::move(request));
     }
 
 private:
@@ -355,18 +349,32 @@ private:
         return response;
     }
 
-    NCloud::NProto::TWriteLogRecordResponse DoWriteLogRecord(
+    TFuture<NCloud::NProto::TWriteLogRecordResponse> DoWriteLogRecord(
         NCloud::NProto::TWriteLogRecordRequest request)
     {
         ui64 lsn = request.GetLogSequenceNumber();
         auto future = Journal->Write(std::move(request));
-        auto response = Executor->ExtractResponse(std::move(future));
-        if (HasError(response)) {
-            return response;
-        }
 
-        IndexedLsnBarrier.Advance(lsn);
-        return response;
+        //
+        // Advance the barrier where the write completes, on the device
+        // completion thread: the record is indexed by then and the flusher
+        // may take it
+        //
+
+        return future.Apply(
+            [lsn, weakSelf = weak_from_this()](const auto& future)
+                -> NCloud::NProto::TWriteLogRecordResponse
+            {
+                auto response = UnsafeExtractValue(future);
+                if (HasError(response)) {
+                    return response;
+                }
+
+                if (auto self = weakSelf.lock()) {
+                    self->IndexedLsnBarrier.Advance(lsn);
+                }
+                return response;
+            });
     }
 
     void ScheduleFlushCycle()

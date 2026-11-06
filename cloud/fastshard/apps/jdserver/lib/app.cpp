@@ -12,6 +12,10 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
+
+#include <library/cpp/coroutine/engine/impl.h>
+
+#include <library/cpp/coroutine/engine/network.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
@@ -80,11 +84,31 @@ int Serve(const TOptions& options)
         << FormatByteSize(options.DataSize) << ", block size "
         << options.BlockSize);
 
-    auto fileIO = options.AioThreads == 1
-                      ? CreateAIOService()
-                      : CreateThreadedAIOService(options.AioThreads);
+    std::shared_ptr<IExternalCompletionFileIOService> externalAio;
+    IFileIOServicePtr fileIO;
+    if (options.AioOnExecutor) {
+        externalAio = CreateAIOServiceExternalCompletion();
+        fileIO = externalAio;
+    } else {
+        fileIO = options.AioThreads == 1
+                     ? CreateAIOService()
+                     : CreateThreadedAIOService(options.AioThreads);
+    }
 
-    auto executor = TExecutor::Create("JD");
+    //
+    // Create the executors: the first one runs the device and the listener,
+    // with more than one the connections are spread over all of them
+    //
+
+    TVector<TExecutorPtr> executors;
+    for (ui32 i = 0; i != options.Executors; ++i) {
+        TString name = "JD";
+        if (i) {
+            name += ToString(i);
+        }
+        executors.push_back(TExecutor::Create(std::move(name)));
+    }
+    auto executor = executors.front();
 
     auto device = CreateFileDevice(
         fileIO,
@@ -103,6 +127,8 @@ int Serve(const TOptions& options)
             .ListenAddress = MakeListenAddress(options),
             .JournalEnabled = !options.NoJournal,
             .RestoreConcurrency = 1,
+            .ConnectionExecutors =
+                options.Executors > 1 ? executors : TVector<TExecutorPtr>{},
         },
         {TJournalledDeviceConfig{
             .DeviceUUID = options.DeviceUUID,
@@ -119,11 +145,65 @@ int Serve(const TOptions& options)
             fileIO->Stop();
         };
 
-        executor->Start();
+        for (const auto& e: executors) {
+            e->Start();
+        }
         Y_DEFER
         {
-            executor->Stop();
+            if (externalAio) {
+                // wakes and ends the completion coroutine below
+                externalAio->Stop();
+            }
+            for (const auto& e: executors) {
+                e->Stop();
+            }
         };
+
+        //
+        // PROTOTYPE: reap the AIO completions on the first executor - the
+        // kernel wakes the executor's poller through the eventfd, so the
+        // completion thread and its hand-off are out of the path
+        //
+
+        if (externalAio) {
+            const bool spin = options.AioSpin;
+            executor->ExecuteSimple(
+                [externalAio, spin]
+                {
+                    TCont* cont = RunningCont();
+                    const int fd = externalAio->GetCompletionFd();
+                    for (;;) {
+                        if (NCoro::PollI(cont, fd, CONT_POLL_READ) != 0) {
+                            break;
+                        }
+                        ui64 count = 0;
+                        if (::read(fd, &count, sizeof(count)) < 0) {
+                            continue;
+                        }
+                        externalAio->ProcessCompletions();
+
+                        if (!spin) {
+                            continue;
+                        }
+
+                        //
+                        // Busy-poll while writes are in flight: a submit
+                        // kicks the fd, so this runs right after it and
+                        // sees the completion without a wake-up. Bounded,
+                        // so a slow device falls back to the wait above
+                        //
+
+                        for (ui32 i = 0; i < 20000 && externalAio->InFlight();
+                             ++i)
+                        {
+                            if (externalAio->ProcessCompletions()) {
+                                break;
+                            }
+                            sched_yield();
+                        }
+                    }
+                });
+        }
 
         server->Start();
         Y_DEFER
@@ -135,7 +215,8 @@ int Serve(const TOptions& options)
             "Serving the device "
             << options.DeviceUUID.Quote() << " on port " << options.Port
             << (options.NoJournal ? " without a journal" : "") << " with "
-            << options.AioThreads << " AIO thread(s), press Ctrl+C to stop");
+            << options.Executors << " executor(s) and " << options.AioThreads
+            << " AIO thread(s), press Ctrl+C to stop");
 
         //
         // Wait for a stop signal; a second one is left to the default handler

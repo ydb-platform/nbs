@@ -98,8 +98,14 @@ public:
             return 0;
         }
 
+        // PROTOTYPE: wait first and read once, instead of a read that fails
+        // with EAGAIN before every wait
+        if (int r = NCoro::PollI(Executor->Running(), SignalRecvPipe, CONT_POLL_READ); r != 0) {
+            return r;
+        }
         char tmp;
-        return NCoro::ReadI(Executor->Running(), SignalRecvPipe, &tmp, 1).Status();
+        Y_UNUSED(::read(SignalRecvPipe, &tmp, 1));
+        return 0;
     }
 };
 

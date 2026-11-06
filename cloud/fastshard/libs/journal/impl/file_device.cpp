@@ -24,6 +24,8 @@
 #   include <fcntl.h>
 #endif
 
+#include <atomic>
+
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
@@ -199,15 +201,20 @@ public:
             }
         }
 
+        // PROTOTYPE: one range needs no WaitAll layer
+        if (ranges.size() == 1 && !ranges[0].Pages.empty()) {
+            return Write(ranges[0].FirstPageNo, std::move(ranges[0].Pages));
+        }
+
         TVector<TFuture<NCloud::NProto::TError>> futures;
         futures.reserve(ranges.size());
 
-        for (const auto& range: ranges) {
+        for (auto& range: ranges) {
             if (range.Pages.empty()) {
                 continue;
             }
 
-            futures.push_back(Write(range.FirstPageNo, range.Pages));
+            futures.push_back(Write(range.FirstPageNo, std::move(range.Pages)));
         }
 
         return WaitAll(futures).Apply(
@@ -341,8 +348,64 @@ private:
     // the request does not have to outlive the write
     TFuture<NCloud::NProto::TError> Write(
         ui64 firstPageNo,
-        const TVector<TBuffer>& pages)
+        TVector<TBuffer> pages)
     {
+        //
+        // PROTOTYPE: write straight from the page buffers when they are
+        // aligned for O_DIRECT (a 4K tcmalloc allocation is), keeping them
+        // alive in the completion; fall back to the aligned copy otherwise
+        //
+
+        bool aligned = true;
+        for (const TBuffer& page: pages) {
+            if (reinterpret_cast<uintptr_t>(page.Data()) % DirectIOAlignment) {
+                aligned = false;
+                break;
+            }
+        }
+
+        if (aligned) {
+            auto promise = NewPromise<NCloud::NProto::TError>();
+            const ui32 size = static_cast<ui32>(pages.size() * PageSize);
+
+            // the buffers point into the pages, which the completion keeps
+            TVector<TArrayRef<const char>> buffers;
+            buffers.reserve(pages.size());
+            for (const TBuffer& page: pages) {
+                buffers.emplace_back(page.Data(), PageSize);
+            }
+
+            auto completion =
+                [promise, firstPageNo, size, pages = std::move(pages)](
+                    const NCloud::NProto::TError& error,
+                    ui32 bytes) mutable
+            {
+                promise.SetValue(
+                    CheckTransfer("write", firstPageNo, size, error, bytes));
+            };
+
+            if (buffers.size() == 1) {
+                FileIO->AsyncWrite(
+                    File,
+                    GetOffset(firstPageNo),
+                    buffers[0],
+                    std::move(completion));
+            } else {
+                FileIO->AsyncWriteV(
+                    File,
+                    GetOffset(firstPageNo),
+                    buffers,
+                    std::move(completion));
+            }
+
+            return promise.GetFuture();
+        }
+
+        static std::atomic<ui64> misaligned = 0;
+        if (misaligned.fetch_add(1) == 0) {
+            Cerr << "file device: misaligned page buffer, copying" << Endl;
+        }
+
         TAlignedBuffer buffer(
             static_cast<ui32>(pages.size() * PageSize),
             DirectIOAlignment);

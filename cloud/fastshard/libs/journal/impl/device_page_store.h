@@ -48,6 +48,15 @@ struct IDevicePageStore
         const TVector<TBuffer>& pages)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
+    // PROTOTYPE: the pages are moved to the device, not copied
+    [[nodiscard]] virtual auto Write(
+        const TVector<TPageRangeRef>& pageRanges,
+        TVector<TBuffer>&& pages)
+        -> NThreading::TFuture<NCloud::NProto::TError>
+    {
+        return Write(pageRanges, pages);
+    }
+
     [[nodiscard]] virtual auto Read(const TVector<TPageRangeRef>& pageRanges)
         -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
 };

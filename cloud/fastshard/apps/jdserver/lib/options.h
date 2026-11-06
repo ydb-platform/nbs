@@ -28,7 +28,10 @@ struct TOptions
     bool NoJournal = false;
 
     // The AIO completion threads the device file is served by.
+    ui32 Executors = 1;
     ui32 AioThreads = 1;
+    bool AioOnExecutor = false;
+    bool AioSpin = false;
 
     bool Verbose = false;
 

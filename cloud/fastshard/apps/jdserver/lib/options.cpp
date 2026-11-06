@@ -94,6 +94,27 @@ void TOptions::Parse(int argc, const char* argv[])
         .NoArgument()
         .SetFlag(&NoJournal);
 
+    opts.AddLongOption(
+            "executors",
+            "executor threads; the connections are spread over them")
+        .RequiredArgument("NUM")
+        .DefaultValue(Executors)
+        .StoreResult(&Executors);
+
+    opts.AddLongOption(
+            "aio-executor",
+            "PROTOTYPE: reap AIO completions on the first executor instead of "
+            "a completion thread")
+        .NoArgument()
+        .SetFlag(&AioOnExecutor);
+
+    opts.AddLongOption(
+            "aio-spin",
+            "PROTOTYPE: with --aio-executor, busy-poll the completions "
+            "instead of sleeping on the eventfd")
+        .NoArgument()
+        .SetFlag(&AioSpin);
+
     opts.AddLongOption("aio-threads", "AIO completion threads")
         .RequiredArgument("NUM")
         .DefaultValue(AioThreads)
@@ -135,8 +156,9 @@ void TOptions::Validate() const
     if (!DataSize) {
         ythrow TUsageException() << "--data-size must be positive";
     }
-    if (!AioThreads) {
-        ythrow TUsageException() << "--aio-threads must be positive";
+    if (!Executors || !AioThreads) {
+        ythrow TUsageException()
+            << "--executors and --aio-threads must be positive";
     }
     if (DataSize % BlockSize) {
         ythrow TUsageException()

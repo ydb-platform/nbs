@@ -26,6 +26,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/digest/crc32c
+    library/cpp/threading/future
 )
 
 END()

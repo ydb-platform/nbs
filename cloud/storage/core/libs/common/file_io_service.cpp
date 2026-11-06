@@ -445,4 +445,38 @@ IFileIOServicePtr CreateConcurrentFileIOService(
         CreateThreadPool(submissionThreadName, 1));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+thread_local bool FileIOBatching = false;
+thread_local std::function<void()> FileIOBatchFlusher;
+
+}   // namespace
+
+void FileIOBeginBatch()
+{
+    FileIOBatching = true;
+}
+
+void FileIOEndBatch()
+{
+    FileIOBatching = false;
+    if (FileIOBatchFlusher) {
+        auto flusher = std::move(FileIOBatchFlusher);
+        FileIOBatchFlusher = nullptr;
+        flusher();
+    }
+}
+
+bool FileIOInBatch()
+{
+    return FileIOBatching;
+}
+
+void FileIOSetBatchFlusher(std::function<void()> flusher)
+{
+    FileIOBatchFlusher = std::move(flusher);
+}
+
 }   // namespace NCloud

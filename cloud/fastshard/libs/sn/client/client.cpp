@@ -339,16 +339,19 @@ private:
 
         const int fd = conn.Fd;
 
+        // PROTOTYPE: the length and the body go out in one send, so the
+        // server gets the whole frame in one segment and one read
+        const size_t bodySize = req.ByteSizeLong();
         TString buf;
-        Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToString(&buf);
-
-        ui32 lenBe = htonl(static_cast<ui32>(buf.size()));
-        if (int r = SendAll(poller, fd, &lenBe, sizeof(lenBe)); r) {
-            return CloseAndError(fd, req.GetRequestId(), r, "send length");
-        }
+        buf.ReserveAndResize(sizeof(ui32) + bodySize);
+        ui32 lenBe = htonl(static_cast<ui32>(bodySize));
+        memcpy(buf.begin(), &lenBe, sizeof(lenBe));
+        Y_PROTOBUF_SUPPRESS_NODISCARD req.SerializeToArray(
+            buf.begin() + sizeof(lenBe),
+            static_cast<int>(bodySize));
 
         if (int r = SendAll(poller, fd, buf.data(), buf.size()); r) {
-            return CloseAndError(fd, req.GetRequestId(), r, "send body");
+            return CloseAndError(fd, req.GetRequestId(), r, "send request");
         }
 
         ui32 respLenBe = 0;

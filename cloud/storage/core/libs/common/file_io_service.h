@@ -31,6 +31,15 @@ struct TFileIOCompletion
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// PROTOTYPE: thread-local submit batching. Between Begin and End a service
+// may defer its submits and hand them to the kernel in one call at End.
+void FileIOBeginBatch();
+void FileIOEndBatch();
+bool FileIOInBatch();
+void FileIOSetBatchFlusher(std::function<void()> flusher);
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IFileIOService
     : IStartable
 {

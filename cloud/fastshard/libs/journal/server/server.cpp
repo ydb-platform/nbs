@@ -13,9 +13,14 @@
 #include <library/cpp/coroutine/engine/sockpool.h>
 #include <library/cpp/coroutine/listener/listen.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/scope.h>
+#include <util/generic/size_literals.h>
 #include <util/network/address.h>
+#include <util/system/byteorder.h>
 
+#include <cstring>
+#include <mutex>
 #include <optional>
 
 namespace NCloud::NJournalled {
@@ -74,24 +79,54 @@ SN_METHODS(STORAGE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The wire form of a response: its size in network byte order, then the
+// serialized message. Built where the response completes, so the executor
+// has nothing but the socket write left to do.
+TString SerializeResponse(const NProto::TDeviceProtocolResponse& response)
+{
+    const size_t size = response.ByteSizeLong();
+    Y_ABORT_UNLESS(size <= Max<ui32>());
+
+    TString wire;
+    wire.ReserveAndResize(sizeof(ui32) + size);
+
+    const ui32 wireSize = HostToInet(static_cast<ui32>(size));
+    memcpy(wire.begin(), &wireSize, sizeof(wireSize));
+
+    const bool ok = response.SerializeToArray(
+        wire.begin() + sizeof(wireSize),
+        static_cast<int>(size));
+    Y_ABORT_UNLESS(ok);
+
+    return wire;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TConnection
 {
     TSocketHolder Socket;
-    TContLockFreeQueue<NProto::TDeviceProtocolResponse> ResponseQueue;
+
+    // The executor the connection's coroutines run on
+    const TExecutorPtr Executor;
+
+    // Serialized responses in their wire form; an empty one is the sentinel
+    // that stops the sending
+    TContLockFreeQueue<TString> ResponseQueue;
 
     TCont* Send = nullptr;
     TCont* Recv = nullptr;
 
-    TConnection(TSocketHolder socket, TContExecutor* e)
+    TConnection(TSocketHolder socket, TExecutorPtr executor)
         : Socket(std::move(socket))
-        , ResponseQueue(e)
+        , Executor(std::move(executor))
+        , ResponseQueue(Executor->GetContExecutor())
     {}
 
     void OnReceiveStopped()
     {
         Recv = nullptr;
 
-        // Empty response is used as a sentinel to stop response dequeuing
         ResponseQueue.Enqueue({});
     }
 
@@ -100,25 +135,18 @@ struct TConnection
         Send = nullptr;
     }
 
-    bool DequeueResponse(NProto::TDeviceProtocolResponse* response)
+    bool DequeueResponse(TString* wire)
     {
-        if (!ResponseQueue.Dequeue(response)) {
+        if (!ResponseQueue.Dequeue(wire)) {
             return false;
         }
 
-        return !IsShutdownSentinel(*response);
+        return !wire->empty();
     }
 
     bool IsAlive() const
     {
         return Recv || Send;
-    }
-
-    static bool IsShutdownSentinel(
-        const NProto::TDeviceProtocolResponse& response)
-    {
-        return response.GetResponseCase() ==
-               NProto::TDeviceProtocolResponse::ResponseCase::RESPONSE_NOT_SET;
     }
 };
 
@@ -135,18 +163,23 @@ private:
     const TNetworkAddress ListenAddress;
     const TExecutorPtr Executor;
     const IServerBackendPtr Backend;
+    const TVector<TExecutorPtr> ConnectionExecutors;
     const TLog Log;
 
     std::optional<TContListener> Listener;
 
+    // The connections are opened and closed on their own executors
+    std::mutex ConnectionsLock;
     TVector<TConnectionPtr> Connections;
+    size_t NextExecutor = 0;
 
 public:
     TServer(
         const TNetworkAddress& listenAddress,
         ILoggingServicePtr logging,
         TExecutorPtr executor,
-        IServerBackendPtr backend);
+        IServerBackendPtr backend,
+        TVector<TExecutorPtr> connectionExecutors);
 
     // IStartable
 
@@ -161,6 +194,11 @@ public:
 private:
     void StartListen();
     void StopImpl();
+
+    // Runs on the connection's executor
+    void StartConnection(TConnectionPtr conn);
+    void StopConnection(const TConnectionPtr& conn);
+    size_t ConnectionCount();
 
     void Receive(TConnectionPtr conn);
     void Send(TConnectionPtr conn);
@@ -205,9 +243,9 @@ private:
                 NProto::TDeviceProtocolResponse response;
                 response.SetRequestId(requestId);
 
+                // nobody else holds the future, so its value is moved out
                 auto& proto = TMethod::MutableProto(response);
-                proto.CopyFrom(
-                    SafeExecute<TResponse>([&] { return future.GetValue(); }));
+                proto = NCloud::ExtractResponse(future);
 
                 const bool failed = HasError(proto.GetError());
 
@@ -217,7 +255,7 @@ private:
                                   << (failed ? " failed: " : " completed: ")
                                   << FormatError(proto.GetError()));
 
-                conn->ResponseQueue.Enqueue(std::move(response));
+                conn->ResponseQueue.Enqueue(SerializeResponse(response));
             });
     }
 };
@@ -228,10 +266,14 @@ TServer::TServer(
     const TNetworkAddress& listenAddress,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IServerBackendPtr backend)
+    IServerBackendPtr backend,
+    TVector<TExecutorPtr> connectionExecutors)
     : ListenAddress(listenAddress)
     , Executor(std::move(executor))
     , Backend(std::move(backend))
+    , ConnectionExecutors(
+          connectionExecutors.empty() ? TVector<TExecutorPtr>{Executor}
+                                      : std::move(connectionExecutors))
     , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
@@ -267,9 +309,27 @@ void TServer::OnAcceptFull(const TAcceptFull& accept)
 
     SetNoDelay(socket, true);
 
-    TContExecutor* e = Executor->GetContExecutor();
+    //
+    // Hand the connection to the next executor; its coroutines can only be
+    // created on the thread of that executor
+    //
 
-    auto conn = std::make_shared<TConnection>(std::move(socket), e);
+    auto executor = ConnectionExecutors[NextExecutor++ % ConnectionExecutors.size()];
+
+    auto conn = std::make_shared<TConnection>(std::move(socket), executor);
+
+    executor->ExecuteSimple(
+        [weakSelf = weak_from_this(), conn]
+        {
+            if (auto self = weakSelf.lock()) {
+                self->StartConnection(std::move(conn));
+            }
+        });
+}
+
+void TServer::StartConnection(TConnectionPtr conn)
+{
+    TContExecutor* e = conn->Executor->GetContExecutor();
 
     conn->Send = e->CreateOwned(
         [weakSelf = weak_from_this(), conn](TCont*)
@@ -289,7 +349,25 @@ void TServer::OnAcceptFull(const TAcceptFull& accept)
         },
         "receive");
 
-    Connections.push_back(conn);
+    std::lock_guard lock(ConnectionsLock);
+    Connections.push_back(std::move(conn));
+}
+
+void TServer::StopConnection(const TConnectionPtr& conn)
+{
+    if (conn->Send) {
+        conn->Send->Cancel();
+    }
+
+    if (conn->Recv) {
+        conn->Recv->Cancel();
+    }
+}
+
+size_t TServer::ConnectionCount()
+{
+    std::lock_guard lock(ConnectionsLock);
+    return Connections.size();
 }
 
 void TServer::StartListen()
@@ -307,19 +385,26 @@ void TServer::StopImpl()
         Listener->Stop();
     }
 
-    for (auto& conn: Connections) {
-        if (conn->Send) {
-            conn->Send->Cancel();
-        }
+    //
+    // Cancel the coroutines of every connection on its own executor and
+    // wait for the connections to go away
+    //
 
-        if (conn->Recv) {
-            conn->Recv->Cancel();
-        }
+    TVector<TConnectionPtr> connections;
+    {
+        std::lock_guard lock(ConnectionsLock);
+        connections = Connections;
+    }
+
+    for (const auto& conn: connections) {
+        auto future = conn->Executor->Execute(
+            [this, conn] { StopConnection(conn); });
+        Executor->WaitFor(future);
     }
 
     Listener.reset();
 
-    while (!Connections.empty()) {
+    while (ConnectionCount() != 0) {
         RunningCont()->Yield();
     }
 
@@ -328,11 +413,84 @@ void TServer::StopImpl()
 
 void TServer::Receive(TConnectionPtr conn)
 {
+    // PROTOTYPE: buffered frame reader. Wait for readability first and then
+    // read everything available in one recv, instead of probing the socket
+    // with a read that fails with EAGAIN before every wait and reading the
+    // length and the body separately.
     try {
-        TContIO io(conn->Socket, RunningCont());
+        TCont* cont = RunningCont();
+        const SOCKET fd = conn->Socket;
 
-        while (auto request = ReadDeviceProtocolRequest(io)) {
-            HandleRequest(*request, conn);
+        TBuffer buffer(64_KB);
+        size_t head = 0;
+
+        for (;;) {
+            //
+            // Parse every complete frame in the buffer
+            //
+
+            for (;;) {
+                const size_t avail = buffer.Size() - head;
+                if (avail < sizeof(ui32)) {
+                    break;
+                }
+
+                ui32 wireSize = 0;
+                memcpy(&wireSize, buffer.Data() + head, sizeof(wireSize));
+                const ui32 size = InetToHost(wireSize);
+
+                if (avail < sizeof(ui32) + size) {
+                    if (buffer.Capacity() < sizeof(ui32) + size) {
+                        buffer.Reserve(sizeof(ui32) + size);
+                    }
+                    break;
+                }
+
+                NProto::TDeviceProtocolRequest request;
+                Y_ENSURE(request.ParseFromArray(
+                    buffer.Data() + head + sizeof(ui32),
+                    static_cast<int>(size)));
+                head += sizeof(ui32) + size;
+
+                HandleRequest(request, conn);
+            }
+
+            if (head == buffer.Size()) {
+                buffer.Clear();
+                head = 0;
+            } else if (head) {
+                buffer.ChopHead(head);
+                head = 0;
+            }
+
+            if (buffer.Avail() == 0) {
+                buffer.Reserve(buffer.Capacity() * 2);
+            }
+
+            //
+            // Wait for data, then read as much as the buffer takes
+            //
+
+            if (int r = NCoro::PollI(cont, fd, CONT_POLL_READ); r != 0) {
+                if (r == ECANCELED) {
+                    break;
+                }
+                ythrow TSystemError(r) << "poll";
+            }
+
+            const ssize_t received =
+                ::recv(fd, buffer.Pos(), buffer.Avail(), MSG_DONTWAIT);
+            if (received > 0) {
+                buffer.Advance(received);
+                continue;
+            }
+            if (received == 0) {
+                break;   // closed by peer
+            }
+            const int err = LastSystemError();
+            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR) {
+                ythrow TSystemError(err) << "recv";
+            }
         }
 
         STORAGE_DEBUG(
@@ -351,21 +509,9 @@ void TServer::Send(TConnectionPtr conn)
     try {
         TContIO io(conn->Socket, RunningCont());
 
-        NProto::TDeviceProtocolResponse response;
-        while (conn->DequeueResponse(&response)) {
-            TString payload;
-
-            const bool ok = response.SerializeToString(&payload);
-            Y_ABORT_UNLESS(ok);
-
-            const ui32 wireSize = HostToInet(static_cast<ui32>(payload.size()));
-
-            io.Write(&wireSize, sizeof(wireSize));
-            if (!payload.empty()) {
-                io.Write(payload.data(), payload.size());
-            }
-
-            io.Flush();
+        TString wire;
+        while (conn->DequeueResponse(&wire)) {
+            io.Write(wire.data(), wire.size());
         }
     } catch (...) {
         STORAGE_ERROR("Send: " << CurrentExceptionMessage());
@@ -385,6 +531,7 @@ void TServer::OnExit(TConnectionPtr conn)
         "remove connection "
         << PrintHostAndPort(*NAddr::GetPeerAddr(conn->Socket)));
 
+    std::lock_guard lock(ConnectionsLock);
     std::erase(Connections, conn);
 }
 
@@ -468,7 +615,7 @@ void TServer::HandleRequest(
             response.SetRequestId(requestId);
             *response.MutableProtocolError() =
                 MakeError(E_ARGUMENT, "unknown request");
-            conn->ResponseQueue.Enqueue(std::move(response));
+            conn->ResponseQueue.Enqueue(SerializeResponse(response));
         }
     }
 }
@@ -481,13 +628,15 @@ std::shared_ptr<IStartable> CreateServer(
     const TNetworkAddress& listenAddress,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IServerBackendPtr backend)
+    IServerBackendPtr backend,
+    TVector<TExecutorPtr> connectionExecutors)
 {
     return std::make_shared<TServer>(
         listenAddress,
         std::move(logging),
         std::move(executor),
-        std::move(backend));
+        std::move(backend),
+        std::move(connectionExecutors));
 }
 
 }   // namespace NCloud::NJournalled

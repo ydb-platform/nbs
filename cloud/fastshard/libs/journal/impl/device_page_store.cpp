@@ -114,6 +114,14 @@ public:
         const TVector<TBuffer>& pages)
         -> TFuture<NCloud::NProto::TError> override
     {
+        return Write(pageRanges, TVector<TBuffer>(pages));
+    }
+
+    auto Write(
+        const TVector<TPageRangeRef>& pageRanges,
+        TVector<TBuffer>&& pages)
+        -> TFuture<NCloud::NProto::TError> override
+    {
         ui64 pageCount = 0;
         for (const auto& pageRange: pageRanges) {
             pageCount += pageRange.PageCount;
@@ -158,7 +166,9 @@ public:
         for (const auto& pageRange: pageRanges) {
             auto& deviceRange = deviceRanges.emplace_back();
             deviceRange.FirstPageNo = pageRange.FirstPageNo;
-            deviceRange.Pages.assign(page, page + pageRange.PageCount);
+            deviceRange.Pages.assign(
+                std::make_move_iterator(page),
+                std::make_move_iterator(page + pageRange.PageCount));
             page += pageRange.PageCount;
         }
 

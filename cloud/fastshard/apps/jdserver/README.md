@@ -55,6 +55,9 @@ the server.
  * `--no-journal` - serve the device without a journal: writes go
    straight to the data and the journal parts are not allocated; use it
    for a baseline
+ * `--executors` - executor threads; the first one runs the device and the
+   listener, the connections are spread over all of them round robin
+   (default 1)
  * `--aio-threads` - AIO completion threads (default 1)
  * `--verbose` - debug logging
 
