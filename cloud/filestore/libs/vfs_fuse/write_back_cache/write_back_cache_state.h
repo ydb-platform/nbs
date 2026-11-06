@@ -170,10 +170,10 @@ public:
         ui64 nodeId,
         const TEntryVisitor& visitor);
 
-    // Returns a known live handle that should be used for flushing requests or
-    // NProto::E_INVALID_HANDLE if there are no unflushed requests with live
-    // handles or TWriteBackCacheState::IsFailed is set
-    ui64 GetLiveHandle(ui64 nodeId) const;
+    // Selects and retains a live handle until FlushSucceeded or FlushFailed.
+    // Returns NProto::E_INVALID_HANDLE if no handle is available or the cache
+    // is in a failed state. Only one flush attempt may hold a handle per node.
+    ui64 AcquireFlushHandle(ui64 nodeId);
 
     // Inform that the first |requestCount| unflushed changes requests have
     // been flushed
@@ -249,6 +249,12 @@ private:
         TNodeState& nodeState,
         ui64 handle,
         THandleState& handleState);
+
+    // Removes the handle from nodeState.Handles when it has no pending or
+    // unflushed requests and is not retained by an in-flight flush attempt.
+    // Completes any pending ReleaseHandle request before removing the handle.
+    // Does nothing if the handle is absent or still in use.
+    void TryRemoveUnusedHandle(TNodeState& nodeState, ui64 handle);
 
     void DropCachedData(
         ui64 nodeId,

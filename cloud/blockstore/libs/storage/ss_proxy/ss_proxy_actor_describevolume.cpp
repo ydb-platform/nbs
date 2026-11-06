@@ -9,6 +9,8 @@
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/string/vector.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -146,8 +148,9 @@ TString TDescribeVolumeActor::GetFullPath() const
 
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(GetFullPath());
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        GetFullPath(),
+        false /* addPathToError */);
 
     if (CheckedPaths.empty() || CheckedPaths.back() != GetFullPath()) {
         CheckedPaths.push_back(GetFullPath());
@@ -208,10 +211,15 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
             }
         }
 
+        auto responseError = error;
+        responseError.SetMessage(
+            TStringBuilder() << error.GetMessage() << ", checked paths=[\""
+                             << JoinStrings(CheckedPaths, "\", \"") << "\"]");
+
         ReplyAndDie(
             ctx,
             std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                error,
+                std::move(responseError),
                 GetFullPath(),
                 std::move(CheckedPaths)));
         return;

@@ -12,7 +12,7 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
         cloud/filestore/libs/storage/fastshard/impl/hash_table_index/resources
         cloud/filestore/libs/storage/fastshard/impl/model
 
-        cloud/fastshard/ipc
+        cloud/fastshard/libs/ipc
 
         cloud/storage/core/libs/common
 
@@ -35,7 +35,7 @@ PEERDIR(
 
     cloud/filestore/private/api/protos
 
-    cloud/fastshard/sn/client
+    cloud/fastshard/libs/sn/client
 )
 
 END()

@@ -19,7 +19,7 @@
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/sn/client/client.h>
+#include <cloud/fastshard/libs/sn/client/client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>
@@ -2193,6 +2193,30 @@ public:
         NProto::TListNodeXAttrRequest request)
     {
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
+    }
+
+    NProtoPrivate::TCreateSessionResponse CreateSession(
+        NProtoPrivate::TCreateSessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NProto::TResetSessionResponse ResetSession(
+        NProto::TResetSessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NProtoPrivate::TDestroySessionResponse DestroySession(
+        NProtoPrivate::TDestroySessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
     }
 
     [[nodiscard]] NProto::TError CollectStats(

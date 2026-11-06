@@ -42,6 +42,7 @@ def start(argv):
     parser.add_argument("--use-log-files", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
+    parser.add_argument("--enable-external-data-channel", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", nargs="+", default=[])
     parser.add_argument("--diag-config-patch", action="store", default=None)
@@ -69,6 +70,11 @@ def start(argv):
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
         ],
     )
+
+    if args.enable_external_data_channel:
+        kikimr_configurator.yaml_config.setdefault("interconnect_config", {})[
+            "enable_external_data_channel"
+        ] = True
 
     kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
     kikimr_cluster.start()
@@ -158,6 +164,7 @@ def start(argv):
         trace_sampling_rate=args.trace_sampling_rate,
         bs_failure_probability=args.bs_failure_probability,
         use_fast_shard_port=args.use_fast_shard_port,
+        enable_external_data_channel=args.enable_external_data_channel,
     )
     filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
 

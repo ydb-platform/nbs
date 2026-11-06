@@ -385,6 +385,7 @@ void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
 
 ui64 TIndexTabletState::CreateNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -395,11 +396,18 @@ ui64 TIndexTabletState::CreateNodeAttr(
 
     IncrementAttrsUsedBytesCount(db, SizeSum(name, value));
 
+    //
+    // The clients may have cached the absence of the attribute.
+    //
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, name);
+
     return version;
 }
 
 ui64 TIndexTabletState::UpdateNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -430,11 +438,15 @@ ui64 TIndexTabletState::UpdateNodeAttr(
     } else {
         DecrementAttrsUsedBytesCount(db, SizeDiff(attr.Value, newValue));
     }
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, attr.Name);
+
     return version;
 }
 
 void TIndexTabletState::RemoveNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -457,6 +469,8 @@ void TIndexTabletState::RemoveNodeAttr(
     }
 
     DecrementAttrsUsedBytesCount(db, SizeSum(attr.Name, attr.Value));
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, attr.Name);
 }
 
 bool TIndexTabletState::ReadNodeAttr(
@@ -847,12 +861,28 @@ void TIndexTabletState::AddInvalidateNodeRefEvent(
     ui64 nodeId,
     const TString& name)
 {
-    if (!FileSystemEventsEnabled) {
+    if (!FileSystemEventsEnabled || IsShardInternalNodeRef(nodeId)) {
         return;
     }
 
     NProto::TFileSystemEvent event;
     auto* invalidate = event.MutableInvalidateNodeRef();
+    invalidate->SetNodeId(nodeId);
+    invalidate->SetName(name);
+    fileSystemEvents.push_back(std::move(event));
+}
+
+void TIndexTabletState::AddInvalidateNodeXAttrEvent(
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+    ui64 nodeId,
+    const TString& name)
+{
+    if (!FileSystemEventsEnabled) {
+        return;
+    }
+
+    NProto::TFileSystemEvent event;
+    auto* invalidate = event.MutableInvalidateNodeXAttr();
     invalidate->SetNodeId(nodeId);
     invalidate->SetName(name);
     fileSystemEvents.push_back(std::move(event));

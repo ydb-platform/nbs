@@ -20,8 +20,10 @@ namespace NCloud {
     xxx(FailedToSerializeRdmaError)                                            \
     xxx(SchemeCacheError)                                                      \
     xxx(FileRingBufferCorruptionDetectedError)                                 \
+    xxx(FileRingBufferInitializationError)                                     \
     xxx(AccessToCorruptedFileRingBufferError)                                  \
     xxx(JournalStrandedRecordDetectedError)                                    \
+    xxx(JournalledDeviceCreationError)                                         \
 // STORAGE_CRITICAL_EVENTS
 
 #define STORAGE_IMPOSSIBLE_EVENTS(xxx)                                         \

@@ -292,6 +292,12 @@ struct TRequestCounters
             *SolomonExternalRequestBytes += ExternalRequestBytes;
         }
     }
+
+    void Publish(TInstant now)
+    {
+        Y_UNUSED(now);
+        Publish();
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

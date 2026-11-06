@@ -47,6 +47,13 @@ PEERDIR(
     yql/essentials/public/udf/service/exception_policy
 )
 
+IF (OPENSOURCE)
+    PEERDIR(
+        yql/essentials/sql/v1_dummy
+        contrib/ydb/public/lib/ydb_cli/dump/util/view_query_dummy
+    )
+ENDIF()
+
 YQL_LAST_ABI_VERSION()
 
 END()

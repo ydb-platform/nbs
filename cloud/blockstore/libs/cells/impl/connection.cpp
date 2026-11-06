@@ -255,7 +255,6 @@ private:
     const TBootstrap Bootstrap;
     const NClient::TClientAppConfigPtr ClientConfig;
     const ICellConnectionObserverPtr Observer;
-    const bool MigrationEnabled;
 
     // outlive any binding: this is what makes a move invisible from outside
     const IEndpointRouterPtr ControlRouter;
@@ -332,7 +331,6 @@ public:
         , Bootstrap(std::move(bootstrap))
         , ClientConfig(std::move(clientConfig))
         , Observer(std::move(observer))
-        , MigrationEnabled(binding->HostConfig.GetHostMigrationEnabled())
         , ControlRouter(std::move(controlRouter))
         , DataRouter(std::move(dataRouter))
         , Log(Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"))
@@ -456,9 +454,7 @@ public:
 
         // checked again inside, under the lock: the observer ran in between,
         // and so may have a move the pinger asked for
-        if (MigrationEnabled) {
-            MigrateTo(fqdn, "the volume tablet lives there", generation);
-        }
+        MigrateTo(fqdn, "the volume tablet lives there", generation);
     }
 
     void OnHostUnavailable(const TString& fqdn, ui64 epoch) noexcept override
@@ -501,10 +497,6 @@ public:
     // carries data does not apply here.
     void OnRdmaUnusable(ui64 generation, const TString& fqdn) noexcept
     {
-        if (!MigrationEnabled) {
-            return;
-        }
-
         with_lock (Lock) {
             // recorded here, by name, for the current binding and for one
             // still being prepared alike: whether we move because of this
@@ -1349,12 +1341,10 @@ TCellConnectionFuture CreateCellConnection(
 
             connection->InstallBinding(built.GetResult());
 
-            if (hostConfig.GetHostMigrationEnabled()) {
-                if (pool->WatchHost(fqdn, connection)) {
-                    connection->OnHostUnavailable(
-                        fqdn,
-                        pool->GetChannelEpoch(fqdn));
-                }
+            if (pool->WatchHost(fqdn, connection)) {
+                connection->OnHostUnavailable(
+                    fqdn,
+                    pool->GetChannelEpoch(fqdn));
             }
 
             // last: from here on callbacks may act on their own

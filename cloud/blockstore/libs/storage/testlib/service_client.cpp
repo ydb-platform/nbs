@@ -373,6 +373,7 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
     const TString& diskId,
     const TString& agentId,
     const TString& path,
+    NCloud::NProto::EStorageMediaKind mediaKind,
     const TString& folderId,
     const TString& cloudId)
         -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>
@@ -383,6 +384,7 @@ auto TServiceClient::CreateCreateVolumeFromDeviceRequest(
     request->Record.SetDiskId(diskId);
     request->Record.SetAgentId(agentId);
     request->Record.SetPath(path);
+    request->Record.SetStorageMediaKind(mediaKind);
     request->Record.SetFolderId(folderId);
     request->Record.SetCloudId(cloudId);
 

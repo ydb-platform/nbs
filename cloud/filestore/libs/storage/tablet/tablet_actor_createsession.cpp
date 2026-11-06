@@ -36,6 +36,9 @@ void FillFeatures(
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+    features->SetXAttrCacheTimeout(
+        config.GetXAttrCacheTimeout().MilliSeconds());
+    features->SetXAttrCacheLimit(config.GetXAttrCacheLimit());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 
     auto preferredBlockSizeMultiplier =
@@ -68,6 +71,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
+    features->SetServerWriteBackCacheStateFileSize(
+        config.GetServerWriteBackCacheStateFileSize());
     features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
         config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
@@ -138,6 +143,7 @@ void FillFeatures(
     features->SetExternalReadDataPayload(config.GetExternalReadDataPayload());
     features->SetExternalWriteDataPayloadEnabled(
         config.GetExternalWriteDataPayloadEnabled());
+    features->SetEnableRdmaForWrites(config.GetEnableRdmaForWrites());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

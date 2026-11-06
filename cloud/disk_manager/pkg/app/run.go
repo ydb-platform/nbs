@@ -121,6 +121,12 @@ func run(
 	mon := monitoring.NewMonitoring(config.MonitoringConfig, newMetricsRegistry)
 	mon.Start(ctx)
 
+	var disableAuthorization float64
+	if config.GetAuthConfig().GetDisableAuthorization() {
+		disableAuthorization = 1
+	}
+	mon.NewRegistry("auth").Gauge("disableAuthorization").Set(disableAuthorization)
+
 	accounting.Init(mon.NewRegistry("accounting"))
 
 	if config.TracingConfig != nil {

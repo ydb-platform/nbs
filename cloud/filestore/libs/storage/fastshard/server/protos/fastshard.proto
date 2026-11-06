@@ -6,6 +6,7 @@ import "cloud/filestore/private/api/protos/tablet.proto";
 import "cloud/filestore/public/api/protos/data.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
+import "cloud/filestore/public/api/protos/session.proto";
 import "cloud/storage/core/protos/error.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,6 +40,11 @@ message TRequest
         NCloud.NFileStore.NProto.TListNodeXAttrRequest ListNodeXAttr = 17;
         NCloud.NFileStore.NProtoPrivate.TGetNodeAttrBatchRequest
             GetNodeAttrBatch = 18;
+        NCloud.NFileStore.NProtoPrivate.TCreateSessionRequest
+            CreateSession = 19;
+        NCloud.NFileStore.NProto.TResetSessionRequest ResetSession = 20;
+        NCloud.NFileStore.NProtoPrivate.TDestroySessionRequest
+            DestroySession = 21;
     }
 }
 
@@ -68,5 +74,10 @@ message TResponse
         NCloud.NFileStore.NProto.TListNodeXAttrResponse ListNodeXAttr = 17;
         NCloud.NFileStore.NProtoPrivate.TGetNodeAttrBatchResponse
             GetNodeAttrBatch = 18;
+        NCloud.NFileStore.NProtoPrivate.TCreateSessionResponse
+            CreateSession = 19;
+        NCloud.NFileStore.NProto.TResetSessionResponse ResetSession = 20;
+        NCloud.NFileStore.NProtoPrivate.TDestroySessionResponse
+            DestroySession = 21;
     }
 }

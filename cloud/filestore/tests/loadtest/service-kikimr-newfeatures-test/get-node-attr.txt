@@ -18,5 +18,8 @@ Tests {
         IODepth: 64
         RequestsCount: 16384
         TestDuration: 60
+        IndexConsistencyValidation: {
+            Enabled: true
+        }
     }
 }

@@ -95,9 +95,15 @@ int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
     NProto::TAcquireDevicesRequest request = *params->Request;
     request.AddDeviceUUIDs(params->Device.DeviceUUID);
     *params->Response = CallWithRetries(
+        *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->AcquireDevices(request); });
+        [&]
+        {
+            return params->Device.Node->AcquireDevices(
+                *params->Context,
+                request);
+        });
 
     return 0;
 }
@@ -107,9 +113,15 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
     NProto::TReleaseDevicesRequest request = *params->Request;
     request.AddDeviceUUIDs(params->Device.DeviceUUID);
     *params->Response = CallWithRetries(
+        *params->Context,
         *params->RetryPolicy,
         *params->Timer,
-        [&] { return params->Device.Node->ReleaseDevices(request); });
+        [&]
+        {
+            return params->Device.Node->ReleaseDevices(
+                *params->Context,
+                request);
+        });
 
     return 0;
 }

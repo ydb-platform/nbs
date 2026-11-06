@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
     contrib/ydb/core/kqp/ut/common
     yql/essentials/ast
     yql/essentials/sql/pg_dummy

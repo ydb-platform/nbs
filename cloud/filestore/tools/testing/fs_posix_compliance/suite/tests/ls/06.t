@@ -26,9 +26,9 @@ n2=`namegen`
 
 # ls -tr reverses time sort (oldest first)
 expect 0 create file1 0644
-sleep 0.1
+sleep 2
 expect 0 create file2 0644
-sleep 0.1
+sleep 2
 expect 0 create file3 0644
 output=`ls -tr 2>&1 | tr '\n' ' ' | sed 's/ $//'`
 test_check_quoted "$output" = "file1 file2 file3"

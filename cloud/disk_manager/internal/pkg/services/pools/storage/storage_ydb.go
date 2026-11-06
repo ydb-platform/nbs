@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -28,8 +29,16 @@ type storageYDB struct {
 
 	baseDiskOverSubscription uint64
 
+	// See PerformanceConfig.BaseDiskUnitMaxReadBandwidthMiBs.
+	baseDiskUnitMaxReadBandwidthMiBs uint64
+
 	// TODO: remove after deployment of this version is finished.
 	holdBaseDisksWithInflightDependents bool
+
+	// Use ready base disks of a pool as a source for new base disks of that
+	// pool (instead of creating them from the image). Takes effect only if
+	// holdBaseDisksWithInflightDependents is enabled.
+	useReadyBaseDiskAsSrc bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -496,6 +505,23 @@ func (s *storageYDB) CheckBaseDiskSlotReleased(
 	)
 }
 
+func (s *storageYDB) CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	ctx context.Context,
+	overlayDiskIDPrefix string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+				ctx,
+				session,
+				overlayDiskIDPrefix,
+			)
+		},
+	)
+}
+
 func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	return s.db.Execute(
 		ctx,
@@ -546,6 +572,7 @@ func (s *storageYDB) InitializeIdleTimestamps(ctx context.Context) error {
 
 func NewStorage(
 	config *pools_config.PoolsConfig,
+	performanceConfig *performance_config.PerformanceConfig,
 	db *persistence.YDBClient,
 	metricsRegistry common_metrics.Registry,
 ) (Storage, error) {
@@ -565,6 +592,10 @@ func NewStorage(
 	common.Assert(
 		config.GetBaseDiskOverSubscription() != 0,
 		"BaseDiskOverSubscription should not be zero",
+	)
+	common.Assert(
+		performanceConfig.GetBaseDiskUnitMaxReadBandwidthMiBs() != 0,
+		"BaseDiskUnitMaxReadBandwidthMiBs should not be zero",
 	)
 
 	// Default value.
@@ -589,6 +620,10 @@ func NewStorage(
 
 		baseDiskOverSubscription: uint64(config.GetBaseDiskOverSubscription()),
 
+		baseDiskUnitMaxReadBandwidthMiBs: performanceConfig.GetBaseDiskUnitMaxReadBandwidthMiBs(),
+
 		holdBaseDisksWithInflightDependents: config.GetHoldBaseDisksWithInflightDependents(),
+
+		useReadyBaseDiskAsSrc: config.GetUseReadyBaseDiskAsSrc(),
 	}, nil
 }

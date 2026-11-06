@@ -47,6 +47,8 @@ constexpr double GetMetricsMultiplicator(
 #define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
     xxx(MixedBytesCount,                                           __VA_ARGS__)\
     xxx(MergedBytesCount,                                          __VA_ARGS__)\
+    xxx(LogicalMixedBytesCount,                                    __VA_ARGS__)\
+    xxx(LogicalMergedBytesCount,                                   __VA_ARGS__)\
     xxx(FreshBytesCount,                                           __VA_ARGS__)\
     xxx(UsedBytesCount,                                            __VA_ARGS__)\
     xxx(LogicalUsedBytesCount,                                     __VA_ARGS__)\
@@ -260,7 +262,7 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
     }
 
     if (!data.PartCountersData.DiskCounters) {
@@ -352,7 +354,7 @@ std::optional<TVolumeDatabase::TPartStats> TVolumeActor::UpdatePartCounters(
     if (!statInfo->LastCounters) {
         statInfo->LastCounters = CreatePartitionDiskCounters(
             State->CountersPolicy(),
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
         statInfo->LastMetrics = std::move(partCountersData.BlobLoadMetrics);
     }
 
@@ -551,7 +553,7 @@ TVolumeActor::GetPartCounters(const TString& diskId)
 {
     auto stats = CreatePartitionDiskCounters(
         State->CountersPolicy(),
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
     ui64 systemCpu = 0;
     ui64 userCpu = 0;
     // XXX - we need to "manually" calculate total channel history

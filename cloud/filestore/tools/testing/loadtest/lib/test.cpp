@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "context.h"
+#include "filestore_index_operations.h"
 #include "request.h"
 #include "shm_client.h"
 
@@ -36,6 +37,7 @@
 #include <util/system/mutex.h>
 #include <util/system/thread.h>
 
+#include <exception>
 #include <variant>
 
 namespace NCloud::NFileStore::NLoadTest {
@@ -72,14 +74,19 @@ struct TTestStats
 template <typename T>
 T WaitForCompletion(
     const TString& request,
-    const TFuture<T>& future)
+    const TFuture<T>& future,
+    TInstant deadlineTs = TInstant::Max())
 {
-    const auto& response = future.GetValue(TDuration::Max());
+    if (!future.Wait(deadlineTs)) {
+        throw yexception() << "Failed to execute " << request
+                           << " request: deadline exceeded";
+    }
+
+    const auto& response = future.GetValue();
     if (HasError(response)) {
         const auto& error = response.GetError();
-        throw yexception()
-            << "Failed to execute " << request << " request: "
-            << FormatError(error);
+        throw yexception() << "Failed to execute " << request
+                           << " request: " << FormatError(error);
     }
 
     return response;
@@ -124,10 +131,7 @@ struct TSetupSession
     TPromise<bool> Complete;
 };
 
-struct TTeardown
-{
-    TPromise<bool> Complete;
-};
+struct TTeardown {};
 struct TSuspendLoad {};
 struct TResumeLoad {};
 struct TProcessCompletedRequests {};
@@ -399,8 +403,9 @@ public:
 
     bool HandleTeardown(TTeardown& cmd)
     {
+        Y_UNUSED(cmd);
         STORAGE_INFO("%s got teardown", MakeTestTag().c_str())
-        TeardownTest(cmd);
+        TeardownTest();
         return false;
     }
 
@@ -473,8 +478,7 @@ public:
                     }
                 }
                 if (ShouldStop() && !ShutdownFlag) {
-                    TTeardown dummy;
-                    TeardownTest(dummy);
+                    TeardownTest();
 
                     TTestFinished cmd;
                     cmd.Id = TestInstanceId;
@@ -494,7 +498,11 @@ public:
             STORAGE_ERROR("%s test has failed: %s",
                 MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
 
-            Result.SetException(std::current_exception());
+            // ensure controller wakes up if it is waiting on the event queue
+            Controller.Enqueue(TTestFinished{TestInstanceId});
+
+            auto result = Result;
+            result.SetException(std::current_exception());
         }
 
         return nullptr;
@@ -772,12 +780,9 @@ private:
         return results;
     }
 
-    void TeardownTest(TTeardown& cmd)
+    void TeardownTest()
     {
         if (ShutdownFlag) {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
-            }
             return;
         }
 
@@ -800,14 +805,6 @@ private:
                     SeqNo,
                     response.GetError().GetMessage().c_str());
                 TestStats.Success = false;
-            }
-
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(SUCCEEDED(response.GetError().GetCode()));
-            }
-        } else {
-            if (cmd.Complete.Initialized()) {
-                cmd.Complete.SetValue(true);
             }
         }
 
@@ -890,6 +887,8 @@ private:
 
     TLoadTestControllerCommandChannel Events;
 
+    std::exception_ptr Exception;
+
     TTestStats TestStats;
     TPromise<NProto::TTestStats> Result = NewPromise<NProto::TTestStats>();
 
@@ -940,16 +939,6 @@ public:
         cmd.SessionSeqNo = sessionSeqNo;
         cmd.Complete = complete;
         test->EnqueueCommand(std::move(cmd));
-
-        return complete.GetFuture();
-    }
-
-    TFuture<bool> SendTeardownTest(std::shared_ptr<TLoadTest>& test)
-    {
-        TPromise<bool> complete = NewPromise<bool>();
-        TTeardown teardown;
-        teardown.Complete = complete;
-        test->EnqueueCommand(teardown);
 
         return complete.GetFuture();
     }
@@ -1130,23 +1119,38 @@ public:
 
     void CleanupTest()
     {
-        if (SourceTest) {
-            auto result = SendTeardownTest(SourceTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+        const auto stopTest = [this](
+            const std::shared_ptr<TLoadTest>& test,
+            const TFuture<NProto::TTestStats>& future)
+        {
+            if (test) {
+                test->EnqueueCommand(TTeardown{});
             }
-        }
 
-        if (TargetTest) {
-            auto result = SendTeardownTest(TargetTest).GetValueSync();
-            if (!result) {
-                STORAGE_ERROR(
-                    "%s failed to teardown source client",
-                    MakeTestTag().c_str());
+            if (future.Initialized()) {
+                try {
+                    future.GetValueSync();
+                } catch (...) {
+                    SaveException();
+                }
             }
-            TargetFuture.GetValueSync();
+        };
+        stopTest(SourceTest, SourceFuture);
+        stopTest(TargetTest, TargetFuture);
+
+        const auto indexConsistencyValidation =
+            Config.GetIndexConsistencyValidation();
+        if (indexConsistencyValidation.GetEnabled()) {
+            TString filesystemId;
+            if (Config.HasFileSystemId()) {
+                filesystemId = Config.GetFileSystemId();
+            } else if (Config.HasCreateFileStoreRequest()) {
+                filesystemId =
+                    Config.GetCreateFileStoreRequest().GetFileSystemId();
+            }
+            ValidateIndexConsistency(
+                indexConsistencyValidation,
+                filesystemId);
         }
 
         if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
@@ -1167,9 +1171,6 @@ public:
         }
 
         Client->Stop();
-
-        auto result = Result;
-        result.SetValue(SourceFuture.GetValueSync());
     }
 
     void* ThreadProc() override
@@ -1193,33 +1194,143 @@ public:
                 if (!cont) {
                     break;
                 }
-            } catch(...) {
-                STORAGE_ERROR("%s test has failed: %s",
-                    MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
-
-                Result.SetException(std::current_exception());
+            } catch (...) {
+                SaveException();
             }
         }
 
         STORAGE_INFO("test is going to finish");
 
-        CleanupTest();
+        try {
+            CleanupTest();
+        } catch (...) {
+            SaveException();
+        }
 
+        // This is a workaround for this object being destroyed by the main
+        // thread immediately after Set*() while the function is still running.
+        // Note that for the same reason we must only set Result after all other
+        // work in this method is complete (e.g. CleanupTest()).
+        auto result = Result;
+        if (Exception) {
+            result.SetException(Exception);
+        } else {
+            result.SetValue(SourceFuture.GetValueSync());
+        }
         return nullptr;
     }
 
 private:
+    void SaveException()
+    {
+        STORAGE_ERROR("%s test has failed: %s",
+            MakeTestTag().c_str(), CurrentExceptionMessage().c_str());
+        if (!Exception) {
+            Exception = std::current_exception();
+        }
+    }
+
     bool ShouldStop() const
     {
         return AtomicGet(Ctx.ShouldStop) ||
-            (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
-            (TargetFuture.HasValue() || SourceFuture.HasValue());
+               (MaxDuration && TInstant::Now() - StartTs >= MaxDuration) ||
+               (TargetFuture.HasValue() || SourceFuture.HasValue()) ||
+               Exception;
     }
-
 
     const TString& MakeTestTag() const
     {
         return TestTag;
+    }
+
+    void ValidateIndexConsistency(
+        const NProto::TIndexConsistencyValidation& config,
+        const TString& filesystemId)
+    {
+        STORAGE_INFO(
+            "%s Starting index consistency validation",
+            MakeTestTag().c_str());
+
+        const auto timeout =
+            config.GetTimeoutSeconds() ? config.GetTimeoutSeconds() : 60;
+        const auto deadlineTs = TInstant::Now() + TDuration::Seconds(timeout);
+
+        try {
+            TFileStoreIndexOperations filestoreCleanup(
+                Log,
+                Client,
+                filesystemId,
+                deadlineTs);
+            filestoreCleanup.Flush();
+            filestoreCleanup.FlushBytes();
+            filestoreCleanup.Cleanup();
+            filestoreCleanup.Compaction();
+            // We need to create a new commit to make collect_garbage handle
+            // new blobs
+            CreateCommit(filesystemId, deadlineTs);
+            filestoreCleanup.CollectGarbage();
+            ValidateStorageStats(filestoreCleanup.GetStorageStats());
+        } catch (...) {
+            SaveException();
+        }
+    }
+
+    void ValidateStorageStats(const NProtoPrivate::TStorageStats& stats)
+    {
+        TStringBuilder builder;
+        auto check = [&](const char* name, ui64 value)
+        {
+            if (value != 0) {
+                if (!builder.empty()) {
+                    builder << ", ";
+                }
+                builder << name << "=" << value;
+            }
+        };
+
+        check("FreshBlocksCount", stats.GetFreshBlocksCount());
+        check("FreshBytesItemCount", stats.GetFreshBytesItemCount());
+        check("DeletedFreshBytesCount", stats.GetDeletedFreshBytesCount());
+        check("DeletionMarkersCount", stats.GetDeletionMarkersCount());
+        // TODO: there is no forced op to trigger processing of large deletions
+        // check(LargeDeletionMarkersCount);
+        check("GarbageQueueSize", stats.GetGarbageQueueSize());
+        check("GarbageBlocksCount", stats.GetGarbageBlocksCount());
+        check("UnconfirmedDataCount", stats.GetUnconfirmedDataCount());
+
+        if (!builder.empty()) {
+            throw yexception() << "ValidateStorageStats failed: " << builder;
+        }
+
+        STORAGE_INFO("Storage GC stats validation passed");
+    }
+
+    // Creating and destroying a session should be sufficient to increment
+    // commit id across all shards.
+    void CreateCommit(const TString& filesystemId, TInstant deadlineTs)
+    {
+        NProto::TSessionConfig proto;
+        proto.SetFileSystemId(filesystemId);
+        proto.SetClientId(
+            Config.GetClientId() ? Config.GetClientId() : "test-client");
+        proto.SetSessionPingTimeout(Config.GetSessionPingTimeout());
+
+        auto session = NClient::CreateSession(
+            Logging,
+            Timer,
+            Scheduler,
+            Client,
+            std::make_shared<TSessionConfig>(proto));
+
+        WaitForCompletion(
+            "create session",
+            session->CreateSession(false, SessionSeqNo),
+            deadlineTs);
+
+        WaitForCompletion(
+            "destroy session",
+            session->DestroySession(),
+            deadlineTs);
     }
 };
 

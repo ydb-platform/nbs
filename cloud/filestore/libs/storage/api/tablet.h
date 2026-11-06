@@ -80,8 +80,6 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN(xxx, ...)                      \
     xxx(WaitReady,                  __VA_ARGS__)                               \
-    xxx(CreateSession,              __VA_ARGS__)                               \
-    xxx(DestroySession,             __VA_ARGS__)                               \
     xxx(GetStorageStats,            __VA_ARGS__)                               \
     xxx(GetDiagnosticStats,         __VA_ARGS__)                               \
     xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
@@ -98,6 +96,8 @@ namespace NCloud::NFileStore::NStorage {
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
     xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
+    xxx(CreateSession,              __VA_ARGS__)                               \
+    xxx(DestroySession,             __VA_ARGS__)                               \
 // FILESTORE_TABLET_ADAPTER_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////

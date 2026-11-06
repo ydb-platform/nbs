@@ -209,6 +209,11 @@ public:
         Headers = { "test", clientId, sessionId, sessionSeqNo};
     }
 
+    const THeaders& GetHeaders() const
+    {
+        return Headers;
+    }
+
     template <typename T>
     auto CreateSessionRequest()
     {
@@ -593,7 +598,10 @@ public:
 
     auto CreateCompactionRequest(ui32 rangeId, bool filter = false)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
+            rangeId,
+            filter,
+            false /* forced */);
     }
 
     auto CreateForcedRangeOperationRequest(
@@ -842,6 +850,16 @@ public:
         request->Record.SetNodeId(node);
         request->Record.SetMaxBytes(bytes);
         request->Record.SetCookie(std::move(cookie));
+        return request;
+    }
+
+    auto CreateListNodesInternalRequest(ui64 node)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvListNodesInternalRequest>();
+        auto* originalRequest = request->Record.MutableOriginalRequest();
+        Headers.Fill(*originalRequest);
+        originalRequest->SetNodeId(node);
         return request;
     }
 

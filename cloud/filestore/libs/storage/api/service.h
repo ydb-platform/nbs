@@ -71,10 +71,6 @@ namespace NCloud::NFileStore::NStorage {
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx,   __VA_ARGS__)      \
 // FILESTORE_SERVICE_REQUESTS
 
-#define FILESTORE_SERVICE_ADAPTER_REQUESTS_PLAIN(xxx, ...)                     \
-    xxx(ResetSession,                       __VA_ARGS__)                       \
-// FILESTORE_SERVICE_ADAPTER_REQUESTS_PLAIN
-
 #define FILESTORE_SERVICE_ADAPTER_REQUESTS(xxx, ...)                           \
     xxx(AccessNode,                         __VA_ARGS__)                       \
     xxx(SetNodeAttr,                        __VA_ARGS__)                       \
@@ -93,6 +89,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
     xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+    xxx(ResetSession,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE_ADAPTER_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////

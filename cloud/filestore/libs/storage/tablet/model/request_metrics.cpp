@@ -41,16 +41,7 @@ double TTabletRequestMetrics::AverageSecondsPerSecond(TInstant now) const
 
 ui64 TTabletRequestMetrics::AverageRequestSize() const
 {
-    const auto requestCount =
-        Count.load(std::memory_order_relaxed) - PrevCount;
-    if (!requestCount) {
-        return 0;
-    }
-
-    const auto requestBytes =
-        RequestBytes.load(std::memory_order_relaxed)
-        - PrevRequestBytes;
-    return requestBytes / requestCount;
+    return AveragePerRequest(RequestBytes, PrevRequestBytes);
 }
 
 TDuration TTabletRequestMetrics::AverageLatency() const
@@ -67,6 +58,20 @@ TDuration TTabletRequestMetrics::AverageLatency() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+ui64 TTabletRequestMetrics::AveragePerRequest(
+    const std::atomic<i64>& counter,
+    ui64 prevCounter) const
+{
+    const auto requestCount =
+        Count.load(std::memory_order_relaxed) - PrevCount;
+    if (!requestCount) {
+        return 0;
+    }
+
+    const auto cur = counter.load(std::memory_order_relaxed);
+    return (cur - prevCounter) / requestCount;
+}
 
 double TTabletRequestMetrics::Rate(
     TInstant now,

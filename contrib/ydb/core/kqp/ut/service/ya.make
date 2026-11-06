@@ -18,6 +18,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
+    yql/essentials/sql/v1
     contrib/libs/fmt
     library/cpp/threading/local_executor
     contrib/ydb/core/kqp

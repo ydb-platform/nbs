@@ -6,6 +6,7 @@ RECURSE(
     client_spdk
     common
     config
+    configs_manager
     daemon
     diagnostics
     discovery

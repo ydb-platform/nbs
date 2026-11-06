@@ -1,8 +1,8 @@
 #include "null_storage_group.h"
 #include "shard_bench.h"
 
-#include <cloud/fastshard/bootstrap/core.h>
-#include <cloud/fastshard/testlib/delay_policy.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
+#include <cloud/fastshard/libs/sn/testlib/delay_policy.h>
 
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>

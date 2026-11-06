@@ -1,5 +1,9 @@
 LIBRARY(filestore-libs-storage-service)
 
+IF(OPENSOURCE)
+    CFLAGS(-DOPENSOURCE)
+ENDIF()
+
 SRCS(
     helpers.cpp
     rope_utils.cpp

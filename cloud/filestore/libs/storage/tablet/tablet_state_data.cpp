@@ -746,7 +746,31 @@ void TIndexTabletState::WriteFreshBlock(
         blockIndex,
         blockData,
         GetBlockSize(),
-        commitId);
+        commitId,
+        InvalidCommitId);
+    TABLET_VERIFY(added);
+
+    db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
+
+    IncrementFreshBlocksCount(db);
+
+    InvalidateReadAheadCache(nodeId);
+}
+
+void TIndexTabletState::WriteFreshBlock(
+    IIndexTabletDatabase& db,
+    ui64 nodeId,
+    ui64 commitId,
+    ui32 blockIndex,
+    TBlockDataHolder freshBlock)
+{
+    const auto blockData = freshBlock.GetBlockData();
+    bool added = Impl->FreshBlocks.AddBlock(
+        nodeId,
+        blockIndex,
+        std::move(freshBlock),
+        commitId,
+        InvalidCommitId);
     TABLET_VERIFY(added);
 
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);

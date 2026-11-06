@@ -11,8 +11,8 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/fastshard/bootstrap
-    cloud/fastshard/testlib
+    cloud/fastshard/libs/bootstrap
+    cloud/fastshard/libs/sn/testlib
 
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface

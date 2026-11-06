@@ -285,6 +285,61 @@ func (s *storageYDB) checkBaseDiskSlotReleased(
 	return tx.Commit(ctx)
 }
 
+func (s *storageYDB) checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	ctx context.Context,
+	session *persistence.Session,
+	overlayDiskIDPrefix string,
+) error {
+
+	if len(overlayDiskIDPrefix) == 0 {
+		return errors.NewNonRetriableErrorf(
+			"overlay disk id prefix should not be empty",
+		)
+	}
+
+	// Note: overlay_disk_id is the primary key of the table.
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $overlay_disk_id_prefix as Utf8;
+		declare $status as Int64;
+
+		select *
+		from slots
+		where StartsWith(overlay_disk_id, $overlay_disk_id_prefix) and status != $status
+		limit 1
+	`, s.tablesPath),
+		persistence.ValueParam("$overlay_disk_id_prefix", persistence.UTF8Value(overlayDiskIDPrefix)),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(slotStatusReleased))),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			slot, err := scanSlot(res)
+			if err != nil {
+				return err
+			}
+
+			return errors.NewNonRetriableErrorf(
+				"internal inconsistency: slot %+v should be released",
+				slot,
+			)
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return errors.NewRetriableError(err)
+	}
+
+	return nil
+}
+
 func (s *storageYDB) checkPoolConsistency(
 	ctx context.Context,
 	expectedPoolState pool,

@@ -71,7 +71,7 @@ TCachedWriteDataRequest::CreateFromAllocation(
     TInstant time,
     TStringBuf allocation)
 {
-    if (allocation.size() <= sizeof(TSerializedWriteDataRequestHeader)) {
+    if (!HasWriteDataRequestPayload(allocation.size())) {
         return nullptr;
     }
 

@@ -9,6 +9,18 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum ENVMeDeviceState
+{
+    // The device is operational and available for use.
+    NVME_DEVICE_STATE_ONLINE = 0;
+
+    // The device is marked for maintenance.
+    NVME_DEVICE_STATE_MAINTENANCE = 1;
+
+    // The device has failed or is unreachable.
+    NVME_DEVICE_STATE_OFFLINE = 2;
+}
+
 message TNVMeDeviceDesc
 {
     // Serial number.
@@ -25,6 +37,9 @@ message TNVMeDeviceDesc
 
     // NUMA node.
     optional uint32 NumaNode = 5;
+
+    // NVMe device state.
+    ENVMeDeviceState DeviceState = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

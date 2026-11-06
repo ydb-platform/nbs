@@ -1,12 +1,14 @@
 UNITTEST_FOR(contrib/ydb/core/kqp/federated_query)
 
 PEERDIR(
+    contrib/ydb/public/lib/ydb_cli/dump/util
     contrib/ydb/core/kqp/federated_query
     contrib/ydb/public/api/protos
     yql/essentials/minikql/comp_nodes/llvm16
     yql/essentials/public/issue/protos
     yql/essentials/public/udf/service/stub
     yql/essentials/sql/pg_dummy
+    yql/essentials/sql/v1
     yt/yql/providers/yt/comp_nodes/dq/llvm16
     yt/yql/providers/yt/comp_nodes/llvm16
 )

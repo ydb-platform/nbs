@@ -2743,6 +2743,169 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             getNodeAttrResponse->GetError().GetMessage());
     }
 
+    enum class ECreateMethod
+    {
+        CreateNode,
+        CreateHandle,
+    };
+
+    void CheckGetNodeAttrByNameRacingWithCreateInShard(
+        NProto::TStorageConfig config,
+        ECreateMethod createMethod)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // The nodeRef is written in the leader before the node exists in the
+        // shard. Holding the shard step of the create and the shard's answer
+        // to the lookup reproduces the interleaving where the shard is asked
+        // before the create and its answer is handled after it.
+
+        TAutoPtr<IEventHandle> createNodeInShard;
+        TAutoPtr<IEventHandle> shardResponse;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCreateNodeRequest: {
+                        const auto* msg = event->template Get<
+                            TEvService::TEvCreateNodeRequest>();
+                        const auto& fsId = msg->Record.GetFileSystemId();
+                        if (!createNodeInShard && (fsId == fsConfig.Shard1Id ||
+                                                   fsId == fsConfig.Shard2Id))
+                        {
+                            createNodeInShard = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvService::EvGetNodeAttrResponse: {
+                        const auto* msg = event->template Get<
+                            TEvService::TEvGetNodeAttrResponse>();
+                        if (!shardResponse &&
+                            msg->GetError().GetCode() == E_FS_NOENT)
+                        {
+                            shardResponse = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        switch (createMethod) {
+            case ECreateMethod::CreateNode:
+                service.SendCreateNodeRequest(
+                    headers,
+                    TCreateNodeArgs::File(RootNodeId, "file1"));
+                break;
+            case ECreateMethod::CreateHandle:
+                service.SendCreateHandleRequest(
+                    headers,
+                    fsConfig.FsId,
+                    RootNodeId,
+                    "file1",
+                    TCreateHandleArgs::CREATE);
+                break;
+        }
+
+        for (ui32 attempt = 0; attempt < 100 && !createNodeInShard; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(createNodeInShard);
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+
+        for (ui32 attempt = 0; attempt < 100 && !shardResponse; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(shardResponse);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        env.GetRuntime().Send(createNodeInShard.Release(), nodeIdx);
+        ui64 nodeId = InvalidNodeId;
+        switch (createMethod) {
+            case ECreateMethod::CreateNode: {
+                auto response = service.RecvCreateNodeResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    response->GetStatus(),
+                    response->GetErrorReason());
+                nodeId = response->Record.GetNode().GetId();
+                break;
+            }
+            case ECreateMethod::CreateHandle: {
+                auto response = service.RecvCreateHandleResponse();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    S_OK,
+                    response->GetStatus(),
+                    response->GetErrorReason());
+                nodeId = response->Record.GetNodeAttr().GetId();
+                break;
+            }
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(nodeId));
+
+        // the create has completed and the nodeRef is unlocked by the time
+        // the shard's NOENT is handled - the lookup should be retried, not
+        // reported as a lost node
+
+        env.GetRuntime().Send(shardResponse.Release(), nodeIdx);
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInShard");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            0,
+            counter->GetAtomic(),
+            getNodeAttrResponse->GetError().GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            getNodeAttrResponse->GetError().GetCode(),
+            getNodeAttrResponse->GetError().GetMessage());
+        UNIT_ASSERT(HasProtoFlag(
+            getNodeAttrResponse->GetError().GetFlags(),
+            NCloud::NProto::EF_INSTANT_RETRIABLE));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "file1")
+                ->Record.GetNode()
+                .GetId());
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldHandleGetNodeAttrByNameRacingWithCreateNodeInShard)
+    {
+        CheckGetNodeAttrByNameRacingWithCreateInShard(
+            std::move(config),
+            ECreateMethod::CreateNode);
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldHandleGetNodeAttrByNameRacingWithCreateHandleInShard)
+    {
+        CheckGetNodeAttrByNameRacingWithCreateInShard(
+            std::move(config),
+            ECreateMethod::CreateHandle);
+    }
+
     SERVICE_TEST_DIR_CREATION_IN_SHARDS(
         ShouldNotRejectGetNodeAttrByNameOnShardErrorsOtherThanNoEnt)
     {
@@ -3818,6 +3981,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             file.second,
             0,
             GenerateValidateData(fileSize, 0xBADF00D));
+    }
+
+    SERVICE_TEST(
+        ShouldNotEnableStrictFileSystemSizeEnforcementForOtherFileSystems)
+    {
+        // Resizing a filesystem with StrictFileSystemSizeEnforcement must not
+        // affect the filesystems created after it: resize used to merge this
+        // flag into the storage config shared by the whole service.
+        config.SetStrictFileSystemSizeEnforcementEnabled(false);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            0 /* shardCount */,
+            true /* enableStrictSizeMode */);
+        UNIT_ASSERT(GetFileSystemTopology(service, fsConfig.FsId)
+                        .GetStrictFileSystemSizeEnforcementEnabled());
+
+        const TString otherFsId = "other";
+        service.CreateFileStore(otherFsId, fsConfig.MainFsBlockCount);
+
+        const auto topology = GetFileSystemTopology(service, otherFsId);
+        UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
+        UNIT_ASSERT(!topology.GetStrictFileSystemSizeEnforcementEnabled());
+        for (const auto& shardId: topology.GetShardFileSystemIds()) {
+            UNIT_ASSERT_C(
+                !GetFileSystemTopology(service, shardId)
+                     .GetStrictFileSystemSizeEnforcementEnabled(),
+                shardId);
+        }
     }
 
     SERVICE_TEST(

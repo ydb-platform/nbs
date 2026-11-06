@@ -1,6 +1,6 @@
 #include "client.h"
 
-#include <cloud/fastshard/ipc/ipc.h>
+#include <cloud/fastshard/libs/ipc/ipc.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

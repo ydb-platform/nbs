@@ -114,6 +114,9 @@ struct TConfigInitializerYdb final
         const NKikimrConfig::TAppConfig& config);
 
 private:
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
+
     // Build TBlockstoreConfig with current configuration sections.
     NProto::TBlockstoreConfig BuildCurrentBlockstoreConfig() const;
 

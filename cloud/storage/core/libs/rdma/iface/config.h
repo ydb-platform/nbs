@@ -57,20 +57,21 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
 
     SET(QueueSize);
     SET(MaxBufferSize);
-    SET(WaitMode, ConvertRdmaWaitMode);
+    SET_OPTIONAL(WaitMode, ConvertRdmaWaitMode);
     SET(PollerThreads);
     SET(MaxReconnectDelay, TDuration::MilliSeconds);
     SET(MaxResponseDelay, TDuration::MilliSeconds);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
-    SET(AlignedDataEnabled);
+    SET_OPTIONAL(AlignedDataEnabled);
     SET(IpTypeOfService);
-    SET(SourceInterface);
+    SET_OPTIONAL(SourceInterface);
     SET(VerbsQP);
     SET(SendQueueSize);
     SET(RecvQueueSize);
     SET(ResolveTimeout, TDuration::MilliSeconds);
     SET(FlushTimeout, TDuration::MilliSeconds);
+    SET(MaxEagerRequestBytes);
     SET(UseMemoryWindows);
     SET(MemoryWindowsPoolSize);
 
@@ -109,17 +110,18 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     SET(QueueSize);
     SET(MaxBufferSize);
     SET(KeepAliveTimeout, TDuration::MilliSeconds);
-    SET(WaitMode, ConvertRdmaWaitMode);
+    SET_OPTIONAL(WaitMode, ConvertRdmaWaitMode);
     SET(PollerThreads);
     SET(MaxInflightBytes);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
     SET(IpTypeOfService);
-    SET(SourceInterface);
+    SET_OPTIONAL(SourceInterface);
     SET(VerbsQP);
     SET(SendQueueSize);
     SET(RecvQueueSize);
     SET(StrictValidation);
+    SET(MaxEagerRequestBytes);
 
     SET_OPTIONAL(QpRetryCount);
     SET_OPTIONAL(QpRnrRetryCount);

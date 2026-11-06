@@ -30,10 +30,12 @@ TDirectoryHandleCache::TDirectoryHandleCache(
     TLog log,
     TDirectoryHandleModuleStatsPtr stats,
     TDirectoryHandleStoragePtr storage,
-    TDirectoryEntryVersionCachePtr directoryEntryVersionCache)
+    TDirectoryEntryVersionCachePtr directoryEntryVersionCache,
+    ui64 chunkSwitchStatsMinHandleSize)
     : Log(std::move(log))
     , Storage(std::move(storage))
     , DirectoryEntryVersionCache(std::move(directoryEntryVersionCache))
+    , ChunkSwitchStatsMinHandleSize(chunkSwitchStatsMinHandleSize)
     , Stats(std::move(stats))
 {
     if (Storage) {
@@ -172,6 +174,15 @@ void TDirectoryHandleCache::AppendChunk(
 
     if (Storage) {
         Storage->UpdateHandle(handleId, *handle, handleChunk);
+    }
+}
+
+void TDirectoryHandleCache::RecordRead(const TReadContentResult& result)
+{
+    if (result.ChunkSwitched &&
+        result.HandleSize > ChunkSwitchStatsMinHandleSize)
+    {
+        Stats->IncrementChunkSwitchCount();
     }
 }
 

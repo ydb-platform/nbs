@@ -9,6 +9,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/common
     contrib/ydb/core/blobstorage/vdisk/hulldb
     contrib/ydb/core/blobstorage/vdisk/hulldb/test
+    contrib/ydb/library/actors/testlib
 )
 
 SRCS(

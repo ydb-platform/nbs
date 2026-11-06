@@ -22,6 +22,7 @@
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet/model/filesystem_event_subscriptions.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
@@ -212,6 +213,15 @@ private:
 
     THashMap<NActors::TActorId, NActors::TActorId> FileSystemEventClients;
 
+    //
+    // Which clients (identified by the pipe servers) have read which Nodes and
+    // NodeRefs. FileSystemEvents are sent only to these clients. The clients
+    // that have disconnected are filtered out via FileSystemEventClients upon
+    // sending, their registrations go away with the generation rotation.
+    //
+
+    TFileSystemEventSubscriptions FileSystemEventSubscriptions;
+
     struct TCompactionStateLoadStatus
     {
         TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
@@ -339,7 +349,8 @@ private:
         const TIndexTabletState::TBackpressureThresholds&
             backpressureThresholds,
         const TIndexTabletState::TBackpressureValues& backpressureValues,
-        const THandlesStats& handlesStats);
+        const THandlesStats& handlesStats,
+        const TFileSystemEventSubscriptions::TStats& subscriptionsStats);
     void UpdateDelayCounter(
         TThrottlingPolicy::EOpType opType,
         TDuration time);
@@ -473,9 +484,35 @@ private:
         }
     }
 
-    void RegisterFileSystemEventClient(
+    NActors::TActorId RegisterFileSystemEventClient(
         const NActors::TActorId& recipient,
-        const NActors::TActorId& clientId);
+        const NActors::TActorId& clientId,
+        const NProto::THeaders& headers);
+
+    void AddFileSystemEventNodeSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 nodeId);
+
+    void AddFileSystemEventNodeRefSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 parentNodeId,
+        const TString& name);
+
+    void AddFileSystemEventNodeXAttrSubscriber(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& pipeServerId,
+        ui64 nodeId,
+        const TString& name);
+
+    void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
+
+    TDuration GetFileSystemEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
+
+    TDuration GetFileSystemListingEventsCacheTTL(
+        const NActors::TActorId& pipeServerId) const;
 
     ui32 SendFileSystemEvents(
         const NActors::TActorContext& ctx,

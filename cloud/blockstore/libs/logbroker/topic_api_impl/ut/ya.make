@@ -13,6 +13,8 @@ SRCS(
 PEERDIR(
     contrib/ydb/public/sdk/cpp/src/client/topic/ut/ut_utils
     contrib/ydb/public/sdk/cpp/src/client/persqueue_public/ut/ut_utils
+
+    yql/essentials/sql/v1
 )
 
 YQL_LAST_ABI_VERSION()

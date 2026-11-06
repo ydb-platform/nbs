@@ -6,14 +6,37 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NThreading::TFuture<NCloud::NProto::TError> TTestFastShard::Init()
+using namespace NThreading;
+
+TFuture<NProtoPrivate::TCreateSessionResponse> TTestFastShard::CreateSession(
+    NProtoPrivate::TCreateSessionRequest request)
+{
+    Y_UNUSED(request);
+    return MakeFuture(NProtoPrivate::TCreateSessionResponse{});
+}
+
+TFuture<NProto::TResetSessionResponse> TTestFastShard::ResetSession(
+    NProto::TResetSessionRequest request)
+{
+    Y_UNUSED(request);
+    return MakeFuture(NProto::TResetSessionResponse{});
+}
+
+TFuture<NProtoPrivate::TDestroySessionResponse> TTestFastShard::DestroySession(
+    NProtoPrivate::TDestroySessionRequest request)
+{
+    Y_UNUSED(request);
+    return MakeFuture(NProtoPrivate::TDestroySessionResponse{});
+}
+
+TFuture<NCloud::NProto::TError> TTestFastShard::Init()
 {
     return InitResult.GetFuture();
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TTestFastShard::Format()
+TFuture<NCloud::NProto::TError> TTestFastShard::Format()
 {
-    return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
 }
 
 void TTestFastShard::TearDown()
@@ -21,12 +44,12 @@ void TTestFastShard::TearDown()
     TornDown = true;
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TTestFastShard::CollectStats(
+TFuture<NCloud::NProto::TError> TTestFastShard::CollectStats(
     NFastShard::TFileSystemShardStats* stats) const
 {
     Y_UNUSED(stats);
 
-    return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
 }
 
 void TTestFastShard::DumpLayoutHtml(IOutputStream& out) const

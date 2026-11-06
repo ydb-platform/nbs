@@ -4,6 +4,7 @@ PEERDIR(
     library/cpp/testing/unittest
 
     contrib/ydb/core/resource_pools
+    yql/essentials/sql/v1_dummy
 )
 
 SRCS(

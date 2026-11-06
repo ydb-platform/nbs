@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -77,7 +79,12 @@ func newStorageWithConfig(
 	err := CreateYDBTables(ctx, config, db, false /* dropUnusedColumns */)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, db, registry)
+	storage, err := NewStorage(
+		config,
+		&performance_config.PerformanceConfig{},
+		db,
+		registry,
+	)
 	require.NoError(t, err)
 
 	return storage
@@ -1294,7 +1301,7 @@ func TestStorageYDBAcquireShouldUseBaseDiskAllocationUnits(t *testing.T) {
 
 	// 4 TB.
 	size := uint64(4 << 40)
-	allottedUnits := computeAllottedUnits(&slot{
+	allottedUnits := computeAllottedUnitsBySize(&slot{
 		overlayDiskKind: types.DiskKind_DISK_KIND_SSD,
 		overlayDiskSize: size,
 	})
@@ -1350,6 +1357,209 @@ func TestStorageYDBAcquireShouldUseBaseDiskAllocationUnits(t *testing.T) {
 			require.Equal(t, baseDisks[0].ID, actual.ID)
 		}
 	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// Slots with ExpectedReadBandwidthMiBs are charged by bandwidth without
+// oversubscription, and the charge is kept when they are rebased onto another
+// base disk.
+func TestStorageYDBAcquireWithExpectedReadBandwidthShouldChargeWithoutOversubscription(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	// Three base disk allocation units are needed to provide this bandwidth.
+	baseDiskUnitMaxReadBandwidthMiBs :=
+		(&performance_config.PerformanceConfig{}).GetBaseDiskUnitMaxReadBandwidthMiBs()
+	expectedReadBandwidthMiBs := 2*baseDiskUnitMaxReadBandwidthMiBs + 1
+	allottedUnits := uint64(3 * regularUnitsPerSSDUnit)
+
+	defaultConfig := makeDefaultConfig()
+	units := uint64(defaultConfig.GetMaxBaseDiskUnits())
+	slotCount := int(common.DivideWithRoundingUp(units, allottedUnits))
+	// Otherwise test is invalid: base disk should run out of units, not out of
+	// slots.
+	require.Less(t, slotCount, int(defaultConfig.GetMaxActiveSlots()))
+
+	newSlots := func(idPrefix string) []*Slot {
+		slots := make([]*Slot, 0)
+		for j := 0; j < slotCount; j++ {
+			slots = append(slots, &Slot{
+				OverlayDisk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: fmt.Sprintf("%v%v", idPrefix, j),
+				},
+				// Should be ignored.
+				OverlayDiskKind: types.DiskKind_DISK_KIND_HDD,
+				OverlayDiskSize: 1 << 30,
+
+				ExpectedReadBandwidthMiBs: expectedReadBandwidthMiBs,
+			})
+		}
+		return slots
+	}
+
+	fillBaseDisk := func(baseDiskID string, slots []*Slot) {
+		for _, slot := range slots {
+			// Base disk still has free units.
+			actual, err := storage.TakeBaseDisksToSchedule(ctx)
+			require.NoError(t, err)
+			require.Empty(t, actual)
+
+			acquired, err := storage.AcquireBaseDiskSlot(ctx, "image", *slot)
+			require.NoError(t, err)
+			require.Equal(t, baseDiskID, acquired.ID)
+		}
+	}
+
+	slots := newSlots("overlay")
+	fillBaseDisk(baseDisks[0].ID, slots)
+
+	// Base disk is full, another one should be scheduled.
+	actual, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(actual))
+	require.NotEqual(t, baseDisks[0].ID, actual[0].ID)
+
+	target := actual[0]
+	target.CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{target})
+	require.NoError(t, err)
+
+	err = storage.BaseDiskCreated(ctx, target)
+	require.NoError(t, err)
+
+	// Rebase all slots onto the target base disk: the bandwidth is stored in
+	// the slot, so they should be charged the same way there.
+	for _, slot := range slots {
+		info := RebaseInfo{
+			OverlayDisk:      slot.OverlayDisk,
+			TargetBaseDiskID: target.ID,
+		}
+
+		err = storage.OverlayDiskRebasing(ctx, info)
+		require.NoError(t, err)
+
+		err = storage.OverlayDiskRebased(ctx, info)
+		require.NoError(t, err)
+	}
+
+	// Source base disk is free again (and the target one is full).
+	otherSlots := newSlots("other")
+	fillBaseDisk(baseDisks[0].ID, otherSlots)
+
+	// Both base disks are full, another one should be scheduled.
+	actual, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(actual))
+	require.NotEqual(t, baseDisks[0].ID, actual[0].ID)
+	require.NotEqual(t, target.ID, actual[0].ID)
+
+	for _, slot := range append(slots, otherSlots...) {
+		_, err := storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
+		require.NoError(t, err)
+	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBCheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	// No slots at all.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.NoError(t, err)
+
+	// Note: the error message prints the whole slot, field names included,
+	// so the ids should not be substrings of the field names.
+	regularDisk := &types.Disk{ZoneId: "zone", DiskId: "regular-disk"}
+	proxyDisk := &types.Disk{ZoneId: "zone", DiskId: "proxy-disk"}
+
+	for _, disk := range []*types.Disk{regularDisk, proxyDisk} {
+		_, err = storage.AcquireBaseDiskSlot(ctx, "image", Slot{
+			OverlayDisk:     disk,
+			OverlayDiskKind: types.DiskKind_DISK_KIND_SSD,
+			OverlayDiskSize: 1 << 30,
+		})
+		require.NoError(t, err)
+	}
+
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.ErrorContains(t, err, "proxy-disk")
+
+	// Slots of other overlay disks are not checked.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "other-")
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, proxyDisk)
+	require.NoError(t, err)
+
+	// Released slot is kept as a tombstone, but it is released.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "proxy-")
+	require.NoError(t, err)
+
+	// Slot of the regular disk is still acquired.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "regular-")
+	require.ErrorContains(t, err, "regular-disk")
+
+	// Empty prefix (which would match any slot) is rejected.
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "")
+	require.ErrorContains(t, err, "should not be empty")
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, regularDisk)
+	require.NoError(t, err)
+
+	err = storage.CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(ctx, "regular-")
+	require.NoError(t, err)
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
@@ -2926,7 +3136,7 @@ func TestStorageYDBReleasingOneSlotShouldNotIncreaseSizeOfPoolIfBaseDiskIsStillU
 
 	// Large overlay disk should be able to occupy whole base disk.
 	size := uint64(32 << 40)
-	allottedUnits := computeAllottedUnits(&slot{
+	allottedUnits := computeAllottedUnitsBySize(&slot{
 		overlayDiskKind: types.DiskKind_DISK_KIND_SSD,
 		overlayDiskSize: size,
 	})
@@ -3066,7 +3276,12 @@ func TestStorageYDBShouldSurviveBaseDisksInflightOverlimit(t *testing.T) {
 	require.NoError(t, err)
 
 	*config.MaxBaseDisksInflight = uint32(1)
-	storage, err = NewStorage(config, db, metrics.NewEmptyRegistry())
+	storage, err = NewStorage(
+		config,
+		&performance_config.PerformanceConfig{},
+		db,
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	err = storage.ConfigurePool(ctx, "image", "zone", 10, 0)
@@ -3611,6 +3826,456 @@ func TestStorageYDBRetiredBaseDiskShouldBeDeletedWhenHoldIsDisabled(
 	require.NoError(t, err)
 
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Creates a pool with capacity of |baseDiskCount| base disks and makes all of
+// them ready. Returns these base disks.
+// |baseDiskCount| should not exceed MaxBaseDisksInflight, otherwise base disks
+// are not scheduled all at once.
+func createPoolWithReadyBaseDisks(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	config *pools_config.PoolsConfig,
+	baseDiskCount uint32,
+) []BaseDisk {
+
+	err := storage.ConfigurePool(
+		ctx,
+		"image",
+		"zone",
+		baseDiskCount*config.GetMaxActiveSlots(),
+		0, // imageSize
+	)
+	require.NoError(t, err)
+
+	// Pool is empty, so base disks should be created from the image.
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, baseDisks, int(baseDiskCount))
+
+	for i := range baseDisks {
+		require.Nil(t, baseDisks[i].SrcDisk)
+		baseDisks[i].CreateTaskID = "create"
+	}
+
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	for _, baseDisk := range baseDisks {
+		err = storage.BaseDiskCreated(ctx, baseDisk)
+		require.NoError(t, err)
+	}
+
+	return baseDisks
+}
+
+func TestStorageYDBShouldUseReadyBaseDiskAsSrcWhenScheduling(t *testing.T) {
+	for _, testCase := range []struct {
+		name                                string
+		useReadyBaseDiskAsSrc               bool
+		holdBaseDisksWithInflightDependents bool
+		expectSrcDisk                       bool
+	}{
+		{
+			name:                                "disabled",
+			useReadyBaseDiskAsSrc:               false,
+			holdBaseDisksWithInflightDependents: true,
+			expectSrcDisk:                       false,
+		},
+		{
+			name:                                "enabled",
+			useReadyBaseDiskAsSrc:               true,
+			holdBaseDisksWithInflightDependents: true,
+			expectSrcDisk:                       true,
+		},
+		{
+			// Source base disks can't be held from deletion, so new base
+			// disks should still be created from the image.
+			name:                                "enabled_without_hold",
+			useReadyBaseDiskAsSrc:               true,
+			holdBaseDisksWithInflightDependents: false,
+			expectSrcDisk:                       false,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			defer cancel()
+
+			db, err := newYDB(ctx)
+			require.NoError(t, err)
+			defer db.Close(ctx)
+
+			config := makeDefaultConfig()
+			config.UseReadyBaseDiskAsSrc = &testCase.useReadyBaseDiskAsSrc
+			config.HoldBaseDisksWithInflightDependents =
+				&testCase.holdBaseDisksWithInflightDependents
+
+			storage := newStorageWithConfig(
+				t,
+				ctx,
+				db,
+				config,
+				metrics.NewEmptyRegistry(),
+			)
+
+			readyBaseDisks := createPoolWithReadyBaseDisks(
+				t,
+				ctx,
+				storage,
+				config,
+				1, // baseDiskCount
+			)
+			source := readyBaseDisks[0]
+
+			// Pool is full, nothing to schedule.
+			toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+			require.NoError(t, err)
+			require.Empty(t, toSchedule)
+
+			// Acquire one slot, so that pool needs one more base disk.
+			overlayDisk := &types.Disk{
+				ZoneId: "zone",
+				DiskId: "overlay",
+			}
+
+			acquired, err := storage.AcquireBaseDiskSlot(
+				ctx,
+				"image",
+				Slot{OverlayDisk: overlayDisk},
+			)
+			require.NoError(t, err)
+			require.Equal(t, source.ID, acquired.ID)
+
+			toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+			require.NoError(t, err)
+			require.Len(t, toSchedule, 1)
+
+			newBaseDisk := toSchedule[0]
+			require.NotEqual(t, source.ID, newBaseDisk.ID)
+			require.Equal(t, "image", newBaseDisk.ImageID)
+			require.Equal(t, "zone", newBaseDisk.ZoneID)
+			require.Equal(t, "image", newBaseDisk.CheckpointID)
+			require.False(t, newBaseDisk.Ready)
+
+			if !testCase.expectSrcDisk {
+				require.Nil(t, newBaseDisk.SrcDisk)
+
+				err = storage.CheckConsistency(ctx)
+				require.NoError(t, err)
+				return
+			}
+
+			require.NotNil(t, newBaseDisk.SrcDisk)
+			require.Equal(t, source.ID, newBaseDisk.SrcDisk.DiskId)
+			require.Equal(t, source.ZoneID, newBaseDisk.SrcDisk.ZoneId)
+			// Note: we use image id as checkpoint id.
+			require.Equal(t, "image", newBaseDisk.SrcDiskCheckpointID)
+
+			// Source base disk should be held by the new base disk (see
+			// inflightDependents), consistency check verifies the counter.
+			err = storage.CheckConsistency(ctx)
+			require.NoError(t, err)
+
+			// Check idempotency.
+			toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+			require.NoError(t, err)
+			require.Len(t, toSchedule, 1)
+			require.Equal(t, newBaseDisk.ID, toSchedule[0].ID)
+			require.NotNil(t, toSchedule[0].SrcDisk)
+			require.Equal(t, source.ID, toSchedule[0].SrcDisk.DiskId)
+
+			newBaseDisk.CreateTaskID = "create_new"
+			err = storage.BaseDisksScheduled(ctx, []BaseDisk{newBaseDisk})
+			require.NoError(t, err)
+
+			// Retire the source: its only slot is rebased to the new base
+			// disk, which is suitable for rebasing even though it is still
+			// being created.
+			rebaseInfos, err := storage.RetireBaseDisk(
+				ctx,
+				source.ID,
+				nil, // srcDisk
+				0,   // useImageSize
+			)
+			require.NoError(t, err)
+			require.Len(t, rebaseInfos, 1)
+			require.Equal(t, source.ID, rebaseInfos[0].BaseDiskID)
+			require.Equal(t, newBaseDisk.ID, rebaseInfos[0].TargetBaseDiskID)
+
+			// Releasing the last slot of the retired source must not delete
+			// it while the new base disk is still being created from it.
+			_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+			require.NoError(t, err)
+			require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+			err = storage.CheckConsistency(ctx)
+			require.NoError(t, err)
+
+			// Hold is released as soon as the new base disk is created.
+			err = storage.BaseDiskCreated(ctx, newBaseDisk)
+			require.NoError(t, err)
+			require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+			require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, newBaseDisk))
+
+			err = storage.CheckConsistency(ctx)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestStorageYDBShouldReleaseSrcBaseDiskWhenCreationFailed(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := makeDefaultConfig()
+	useReadyBaseDiskAsSrc := true
+	config.UseReadyBaseDiskAsSrc = &useReadyBaseDiskAsSrc
+
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	readyBaseDisks := createPoolWithReadyBaseDisks(
+		t,
+		ctx,
+		storage,
+		config,
+		1, // baseDiskCount
+	)
+	source := readyBaseDisks[0]
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "overlay",
+	}
+
+	acquired, err := storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk},
+	)
+	require.NoError(t, err)
+	require.Equal(t, source.ID, acquired.ID)
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, toSchedule, 1)
+
+	newBaseDisk := toSchedule[0]
+	require.NotNil(t, newBaseDisk.SrcDisk)
+	require.Equal(t, source.ID, newBaseDisk.SrcDisk.DiskId)
+
+	newBaseDisk.CreateTaskID = "create_new"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{newBaseDisk})
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Retire the source and release its only slot, so that the only thing
+	// that keeps it from deletion is the base disk being created from it.
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		source.ID,
+		nil, // srcDisk
+		0,   // useImageSize
+	)
+	require.NoError(t, err)
+	require.Len(t, rebaseInfos, 1)
+	require.Equal(t, newBaseDisk.ID, rebaseInfos[0].TargetBaseDiskID)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Failed base disk gets deleted itself and releases its source, which has
+	// nothing to hold it anymore.
+	err = storage.BaseDiskCreationFailed(ctx, newBaseDisk)
+	require.NoError(t, err)
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, newBaseDisk))
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// There are no ready base disks left in the pool, so it is refilled from
+	// the image.
+	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, toSchedule, 1)
+	require.NotEqual(t, newBaseDisk.ID, toSchedule[0].ID)
+	require.Nil(t, toSchedule[0].SrcDisk)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBShouldNotUseCreatingBaseDiskAsSrcWhenScheduling(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := makeDefaultConfig()
+	useReadyBaseDiskAsSrc := true
+	config.UseReadyBaseDiskAsSrc = &useReadyBaseDiskAsSrc
+
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	err = storage.ConfigurePool(
+		ctx,
+		"image",
+		"zone",
+		config.GetMaxActiveSlots(),
+		0, // imageSize
+	)
+	require.NoError(t, err)
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, toSchedule, 1)
+	require.Nil(t, toSchedule[0].SrcDisk)
+
+	// Base disk is being created, but is not ready yet.
+	creating := toSchedule[0]
+	creating.CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{creating})
+	require.NoError(t, err)
+
+	// Overlay disk can acquire slot on base disk that is still being created.
+	acquired, err := storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{
+			OverlayDisk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "overlay",
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, creating.ID, acquired.ID)
+
+	// Pool needs one more base disk, but the only base disk of the pool is
+	// not ready, so it can't be used as a source: its data and checkpoint
+	// don't exist yet.
+	toSchedule, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, toSchedule, 1)
+	require.NotEqual(t, creating.ID, toSchedule[0].ID)
+	require.Nil(t, toSchedule[0].SrcDisk)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBShouldSpreadNewBaseDisksOverSrcBaseDisks(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := makeDefaultConfig()
+	useReadyBaseDiskAsSrc := true
+	config.UseReadyBaseDiskAsSrc = &useReadyBaseDiskAsSrc
+
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	readyBaseDisks := createPoolWithReadyBaseDisks(
+		t,
+		ctx,
+		storage,
+		config,
+		3, // baseDiskCount
+	)
+
+	readyBaseDiskIDs := make([]string, 0, len(readyBaseDisks))
+	for _, baseDisk := range readyBaseDisks {
+		readyBaseDiskIDs = append(readyBaseDiskIDs, baseDisk.ID)
+	}
+
+	// Acquire enough slots to make the pool want two more base disks.
+	slotsToAcquire := config.GetMaxActiveSlots() + 1
+	for i := uint32(0); i < slotsToAcquire; i++ {
+		_, err = storage.AcquireBaseDiskSlot(
+			ctx,
+			"image",
+			Slot{
+				OverlayDisk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: fmt.Sprintf("overlay%v", i),
+				},
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	toSchedule, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Len(t, toSchedule, 2)
+
+	srcDiskIDs := make([]string, 0, len(toSchedule))
+	for _, baseDisk := range toSchedule {
+		require.NotNil(t, baseDisk.SrcDisk)
+		require.Equal(t, "zone", baseDisk.SrcDisk.ZoneId)
+		require.Contains(t, readyBaseDiskIDs, baseDisk.SrcDisk.DiskId)
+		require.NotContains(t, srcDiskIDs, baseDisk.SrcDisk.DiskId)
+
+		srcDiskIDs = append(srcDiskIDs, baseDisk.SrcDisk.DiskId)
+	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Each source is held by exactly one new base disk; it is released as soon
+	// as the dependent is created.
+	for i := range toSchedule {
+		toSchedule[i].CreateTaskID = "create_new"
+	}
+
+	err = storage.BaseDisksScheduled(ctx, toSchedule)
+	require.NoError(t, err)
+
+	for _, baseDisk := range toSchedule {
+		err = storage.BaseDiskCreated(ctx, baseDisk)
+		require.NoError(t, err)
+	}
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)

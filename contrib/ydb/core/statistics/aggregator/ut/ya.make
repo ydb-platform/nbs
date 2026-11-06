@@ -18,6 +18,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/testlib/default
     contrib/ydb/core/statistics/ut_common
+    yql/essentials/sql/v1
 )
 
 SRCS(

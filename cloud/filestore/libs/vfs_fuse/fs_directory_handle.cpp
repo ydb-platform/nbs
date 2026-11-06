@@ -1,5 +1,7 @@
 #include "fs_directory_handle.h"
 
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 namespace {
@@ -134,7 +136,6 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
 {
     size_t end = offset + content->size();
     TDirectoryHandleChunk chunk{
-        .Key = end,
         .Index = Index,
         .DirectoryContent = {
             .Content = content,
@@ -143,10 +144,16 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
             .CacheVersion = cacheVersion,
         },
     };
+    if (!content->Empty()) {
+        chunk.Key = end;
+    }
 
     with_lock (Lock) {
-        Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
-        Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
+        if (chunk.Key) {
+            Y_ABORT_UNLESS(Content.upper_bound(end) == Content.end());
+            Content[end] = {.Buffer = content, .CacheVersion = cacheVersion};
+            LastReadKey = end;
+        }
         Cookie = std::move(cookie);
         chunk.Cookie = Cookie;
         chunk.UpdateVersion = ++UpdateVersion;
@@ -156,45 +163,62 @@ TDirectoryHandleChunk TDirectoryHandle::UpdateContent(
     return chunk;
 }
 
-TMaybe<TDirectoryContent>
-TDirectoryHandle::ReadContent(size_t size, size_t offset, TLog& Log)
+TResultOrError<TReadContentResult> TDirectoryHandle::ReadContent(
+    size_t size,
+    size_t offset)
 {
-    size_t end = 0;
-    TBufferPtr content = nullptr;
-    ui64 cacheVersion = 0;
+    using EStatus = TReadContentResult::EStatus;
 
     with_lock (Lock) {
         auto it = Content.upper_bound(offset);
-        if (it != Content.end()) {
-            end = it->first;
-            content = it->second.Buffer;
-            cacheVersion = it->second.CacheVersion;
-        } else if (Cookie) {
-            return Nothing();
+        if (it == Content.end()) {
+            if (!Cookie) {
+                return TReadContentResult{.Status = EStatus::Eof};
+            }
+            const ui64 cachedEnd =
+                Content.empty() ? 0 : Content.rbegin()->first;
+            if (offset != cachedEnd) {
+                return MakeError(
+                    E_FS_INVAL,
+                    TStringBuilder()
+                        << "offset " << offset << " is beyond cached content");
+            }
+            return TReadContentResult{.Status = EStatus::Miss};
         }
-    }
 
-    TDirectoryContent result;
-    if (content) {
-        offset = offset - (end - content->size());
-        if (offset >= content->size()) {
-            STORAGE_ERROR("off %lu size %lu", offset, content->size());
-            return Nothing();
+        const auto& content = it->second.Buffer;
+        Y_DEBUG_ABORT_UNLESS(it->first >= content->size());
+        const size_t start = it->first - content->size();
+        if (offset < start) {
+            return MakeError(
+                E_FS_INVAL,
+                TStringBuilder() << "offset " << offset
+                                 << " is before cached chunk " << start);
         }
-        result = {
-            .Content = content,
-            .Offset = offset,
-            .Size = size,
-            .CacheVersion = cacheVersion};
-    }
 
-    return result;
+        // A chunk switch is a read from a different chunk than the last one
+        // served. Reads of the newest chunk don't count, nor does the first
+        // read after restore, when there is no last chunk.
+        const bool chunkSwitched = LastReadKey && *LastReadKey != it->first &&
+                                   std::next(it) != Content.end();
+        LastReadKey = it->first;
+        return TReadContentResult{
+            .Status = EStatus::Hit,
+            .DirectoryContent =
+                {.Content = content,
+                 .Offset = offset - start,
+                 .Size = size,
+                 .CacheVersion = it->second.CacheVersion},
+            .ChunkSwitched = chunkSwitched,
+            .HandleSize = SerializedSize};
+    }
 }
 
 void TDirectoryHandle::ResetContent()
 {
     with_lock (Lock) {
         Content.clear();
+        LastReadKey.reset();
         Cookie.clear();
         UpdateVersion = 0;
         SerializedSize = BaseSerializedSize;
@@ -252,7 +276,7 @@ void TDirectoryHandle::ConsumeChunk(TDirectoryHandleChunk& chunk, TLog& Log)
         Cookie = std::move(chunk.Cookie);
     }
 
-    if (chunk.Key) {
+    if (chunk.Key && chunk.DirectoryContent.Content) {
         const auto insertResult = Content.emplace(
             chunk.Key.value(),
             std::move(chunk.DirectoryContent.Content));

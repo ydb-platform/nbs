@@ -48,6 +48,7 @@ public:
     [[nodiscard]] TDuration GetUpdateDevicesInterval() const;
     [[nodiscard]] TDuration GetUpdateCountersInterval() const;
     [[nodiscard]] std::optional<TNVMeLockdownConfig> GetLockdownConfig() const;
+    [[nodiscard]] bool GetAcquireVfioGroupOnRelease() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

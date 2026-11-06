@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/fastshard/libs/common
     cloud/filestore/libs/storage/fastshard/iface
 
     cloud/storage/core/libs/common

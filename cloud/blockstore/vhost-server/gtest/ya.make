@@ -2,6 +2,12 @@ GTEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+# Expensive parameterized I/O cases cluster in the sorted test list.
+# Use round-robin partitioning to spread them across chunks and reduce
+# the risk of individual chunks exceeding their timeout.
+FORK_SUBTESTS(MODULO)
+SPLIT_FACTOR(20)
+
 SRCS(
     ../backend.cpp
     ../backend_aio.cpp

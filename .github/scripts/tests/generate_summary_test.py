@@ -45,6 +45,7 @@ def test_gen_summary_creates_html_and_aggregates_counters(
         "https://summary/",
         str(tmp_path),
         [("Tests", "ya-test.html", str(xml_path))],
+        trace_report_url="https://reports.example/trace.html",
     )
 
     assert summary.is_empty is False
@@ -60,6 +61,8 @@ def test_gen_summary_creates_html_and_aggregates_counters(
     assert 'id="FAIL"' in html
     assert "a/fail" in html
     assert "Summary dir file listing" in html
+    assert 'href="https://reports.example/trace.html"' in html
+    assert "best-effort basis and may be missing" in html
 
 
 def test_gen_summary_links_build_errors_in_fail_build_html(
@@ -274,6 +277,24 @@ def test_write_summary_omits_fail_build_log_link(tmp_path: Path, monkeypatch) ->
 
     assert "[1](https://summary/ya-test.html#FAIL_BUILD)" in content
     assert "https://summary/build_errors.html" not in content
+
+
+def test_configure_failure_links_build_report_with_passing_tests(
+    tmp_path: Path, mk_testcase, write_junit_xml
+) -> None:
+    report = tmp_path / "junit.xml"
+    write_junit_xml(report, mk_testcase())
+    summary = gs.gen_summary(
+        "",
+        str(tmp_path),
+        [("Tests", "tests.html", str(report))],
+        build_error_log_url="build_errors.html",
+    )
+
+    markdown = gs.render_summary_markdown(summary, build_failed_count=1)
+    assert "[Build errors](build_errors.html)" in markdown
+    assert "[1](build_errors.html)" in markdown
+    assert summary.lines[0].test_count == summary.lines[0].passed == 1
 
 
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
