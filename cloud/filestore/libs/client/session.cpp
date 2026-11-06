@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/ptr.h>
 #include <util/system/hostname.h>
 #include <util/system/spinlock.h>
@@ -256,7 +257,8 @@ public:
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
             readOnly,
             mountSeqNumber,
-            F_RESTORE_SESSION | F_RESET_SESSION_ID,
+            F_RESET_SESSION_ID |
+                (Config->GetRestoreSession() ? F_RESTORE_SESSION : 0),
             std::move(callContext));
 
         ExecuteRequest(state);
@@ -435,6 +437,11 @@ private:
                     << static_cast<ui32>(state->Flags));
             }
 
+            // Reuse the same id if the durable client retries after the server
+            // created the session but its response was lost.
+            if (!sessionId && !(state->Flags & F_RESTORE_SESSION)) {
+                sessionId = CreateGuidAsString();
+            }
             state->SessionId = std::move(sessionId);
 
             if (state->Flags & F_RESTORE_SESSION) {

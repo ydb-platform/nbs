@@ -1551,8 +1551,8 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         shardTablet.ChangeStorageConfig(std::move(shardStorageConfig));
         shardTablet.RebootTablet();
 
-        THeaders headers;
-        auto session = service.InitSession(headers, fsConfig.FsId, "client");
+        THeaders headers{fsConfig.FsId, "client"};
+        auto session = service.InitSession(headers);
         UNIT_ASSERT(!session->Record.GetFileStore()
                          .GetFeatures()
                          .GetUnconfirmedFlowEnabled());

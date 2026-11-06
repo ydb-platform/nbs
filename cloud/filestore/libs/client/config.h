@@ -64,6 +64,7 @@ public:
     TString GetClientId() const;
 
     TDuration GetSessionPingTimeout() const;
+    bool GetRestoreSession() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

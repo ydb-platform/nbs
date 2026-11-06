@@ -405,8 +405,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     }
 
     // check if there is existing session for the client
+    session = FindSessionByClientId(clientId);
     if (args.Request.GetRestoreClientSession()) {
-        auto* session = FindSessionByClientId(clientId);
         if (session) {
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s CreateSession c:%s, s:%s recovered by client",
@@ -449,6 +449,13 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
             "%s CreateSession: no session available for client c: %s",
             LogTag.c_str(),
             clientId.c_str());
+    }
+
+    if (session) {
+        args.Error = MakeError(
+            E_INVALID_STATE,
+            "Using existing session id without restore flag");
+        return;
     }
 
     if (!sessionId) {
