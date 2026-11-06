@@ -1,0 +1,47 @@
+From 6048e59142677972adb8e67b87bf16f0ea6724c1 Mon Sep 17 00:00:00 2001
+From: proller <proller@github.com>
+Date: Fri, 30 Oct 2026 17:27:50 +0100
+Subject: [PATCH] try.fix.test.e2e_tests_part2
+
+---
+ .../ydb/tests/library/clients/kikimr_monitoring.py  | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/contrib/ydb/tests/library/clients/kikimr_monitoring.py b/contrib/ydb/tests/library/clients/kikimr_monitoring.py
+index 26f78a082f..3d4d8a58e0 100644
+--- a/contrib/ydb/tests/library/clients/kikimr_monitoring.py
++++ b/contrib/ydb/tests/library/clients/kikimr_monitoring.py
+@@ -2,9 +2,14 @@
+ import time
+ import json
+ import collections
++import logging
++from contextlib import closing
+ from six.moves.urllib import request
+ 
+ 
++logger = logging.getLogger(__name__)
++
++
+ class KikimrMonitor(object):
+     def __init__(self, host, mon_port, update_interval_seconds=1.0):
+         super(KikimrMonitor, self).__init__()
+@@ -38,12 +43,10 @@ class KikimrMonitor(object):
+             return
+ 
+         try:
+-            url = request.urlopen(self.__url)
++            with closing(request.urlopen(self.__url, timeout=10)) as response:
++                raw = json.load(response)
+         except Exception:
+-            return False
+-        try:
+-            raw = json.load(url)
+-        except ValueError:
++            logger.warning("Failed to fetch monitoring counters from %s", self.__url, exc_info=True)
+             return False
+ 
+         self.__data = {}
+-- 
+2.43.0
+
