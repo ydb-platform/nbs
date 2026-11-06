@@ -207,6 +207,41 @@ message TPartitionMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TCompressionMetadata
+{
+    // Each value identifies a specific library/cpp/blockcodecs configuration.
+    // Keep in sync with CompressionCodecs in partition_common/blob_compressor.cpp.
+    enum ECompressionType
+    {
+        COMPRESSION_LZ4_FAST14_SAFE = 0;
+        COMPRESSION_SNAPPY = 1;
+        COMPRESSION_ZLIB_6 = 2;
+        COMPRESSION_LZMA_5 = 3;
+        COMPRESSION_BZIP2_6 = 4;
+        COMPRESSION_FASTLZ_0 = 5;
+        COMPRESSION_ZSTD_3 = 6;
+        COMPRESSION_BROTLI_GENERIC_11 = 7;
+    }
+    ECompressionType Codec = 1;
+
+    // Uncompressed chunk size in bytes used when writing this blob.
+    uint32 ChunkSize = 2;
+
+    message TPlainChunks
+    {
+        // Cumulative compressed end offsets of all chunks except the last.
+        // N chunks have N-1 offsets; the last chunk ends at the blob size.
+        repeated uint32 ChunkOffset = 1;
+    }
+
+    oneof Chunks
+    {
+        TPlainChunks PlainChunks = 3;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TBlobMeta
 {
     message TMixedBlocks
