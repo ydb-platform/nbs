@@ -147,4 +147,13 @@ SN_FORWARD(AdvanceLsnLowWatermark)
 
 #undef SN_FORWARD
 
+// TODO(#6957): SN_FORWARD(WritePages)
+NProto::TWritePagesResponse TJournalledStorageNode::WritePages(
+    TFastShardContext&,
+    NProto::TWritePagesRequest)
+{
+    ++Counters.WritePages;
+    return TErrorResponse(E_NOT_IMPLEMENTED, "WritePages is not implemented");
+}
+
 }   // namespace NCloud::NFastShard

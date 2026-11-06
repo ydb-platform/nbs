@@ -62,6 +62,10 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TAdvanceLsnLowWatermarkResponse>(
             NProto::TAdvanceLsnLowWatermarkRequest)>;
 
+    using TWritePagesFunc =
+        std::function<TFuture<NProto::TWritePagesResponse>(
+            NProto::TWritePagesRequest)>;
+
     TAcquireDevicesFunc AcquireDevicesImpl;
     TReleaseDevicesFunc ReleaseDevicesImpl;
     TFormatDeviceFunc FormatDeviceImpl;
@@ -70,6 +74,7 @@ struct TTestBackend: public IServerBackend
     TWriteLogRecordFunc WriteLogRecordImpl;
     TReadJournalTailFunc ReadJournalTailImpl;
     TAdvanceLsnLowWatermarkFunc AdvanceLsnLowWatermarkImpl;
+    TWritePagesFunc WritePagesImpl;
 
     void Start() override
     {}
@@ -130,6 +135,13 @@ struct TTestBackend: public IServerBackend
         -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
     {
         return AdvanceLsnLowWatermarkImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto WritePages(
+        NProto::TWritePagesRequest request)
+        -> TFuture<NProto::TWritePagesResponse> final
+    {
+        return WritePagesImpl(std::move(request));
     }
 };
 
@@ -638,6 +650,55 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedRequest.DebugString(),
             formatDeviceRequest->DebugString());
+    }
+
+    Y_UNIT_TEST_F(ShouldDispatchWritePages, TFixture)
+    {
+        const ui64 requestId = 51;
+
+        const auto expectedRequest = []
+        {
+            NProto::TWritePagesRequest proto;
+            proto.MutableHeaders()->SetClientId("copy");
+            proto.SetDeviceUUID("uuid-1");
+            auto* pg = proto.AddPageGroups();
+            pg->SetFirstPageNo(7);
+            pg->AddContent("payload");
+            return proto;
+        }();
+
+        auto writePagesRequest = NewPromise<NProto::TWritePagesRequest>();
+
+        Backend->WritePagesImpl = [&](auto request)
+        {
+            writePagesRequest.SetValue(std::move(request));
+
+            NProto::TWritePagesResponse response;
+            *response.MutableError() = MakeError(E_REJECTED, "copy-error");
+            return MakeFuture(std::move(response));
+        };
+
+        TTestClient client{Port};
+
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableWritePages()->CopyFrom(expectedRequest);
+            client.Send(request);
+        }
+
+        auto response = client.Receive();
+
+        UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+        UNIT_ASSERT(response.HasWritePages());
+
+        const auto& error = response.GetWritePages().GetError();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("copy-error", error.GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedRequest.DebugString(),
+            writePagesRequest.GetFuture().GetValueSync().DebugString());
     }
 
     Y_UNIT_TEST_F(ShouldDispatchListDevices, TFixture)
