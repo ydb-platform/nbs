@@ -1,9 +1,12 @@
 import errno
+import hashlib
 import logging
 import os
 import signal
 import stat
 import time
+
+import yatest.common as common
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
 
@@ -46,17 +49,10 @@ class VirtioFsServer:
             self.virtiofs_server_binary,
             "--socket-path", self.socket_path,
             "--shared-dir", self.fspath,
-            #
-            # The default sandbox pivot_root/mount()s inside a fresh
-            # user namespace; that needs CAP_SYS_ADMIN in the caller's
-            # effective set. Non-root Docker containers don't have it
-            # even with --cap-add SYS_ADMIN (caps land in bounding, not
-            # effective). "--sandbox none" skips the isolation entirely,
-            # which is fine for tests since we already control which
-            # paths we hand to --shared-dir.
-            #
-            "--sandbox", "none",
-            # For debug: "--log-level", "trace",
+            # Keep the export symlink out of collected test artifacts.
+            "--state-dir", common.work_path(
+                "virtiofs-state-" + hashlib.sha256(
+                    os.path.abspath(self.socket_path).encode()).hexdigest()[:16]),
         ]
 
         self.virtiofs_server = Daemon(
