@@ -1,6 +1,12 @@
 #include "command.h"
 
+#include "time_range.h"
+
+#include <library/cpp/eventlog/iterator.h>
+
 #include <util/folder/dirut.h>
+#include <util/generic/algorithm.h>
+#include <util/generic/hash_set.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -11,7 +17,63 @@ namespace {
 
 constexpr TStringBuf ProfileLogLabel = "profile-log";
 
+TProfileLogFile MakeProfileLogFile(TString path, bool readRecords)
+{
+    path = RealPath(path);
+    return GetProfileLogFile(path, readRecords);
+}
+
+int ProcessProfileLog(
+    const TString& path,
+    IEventProcessor& processor,
+    bool ignoreErrors)
+{
+    const auto handleReadError = [&path, ignoreErrors](const yexception& error)
+    {
+        Cerr << "Error reading profile log " << path << ": " << error.what()
+             << Endl;
+        if (ignoreErrors) {
+            Cerr << "Skipping unreadable remainder of profile log: " << path
+                 << Endl;
+            return 0;
+        }
+        return 1;
+    };
+
+    NEventLog::TOptions options;
+    options.FileName = path;
+    THolder<NEventLog::IIterator> iterator;
+    try {
+        iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
+    } catch (const yexception& error) {
+        return handleReadError(error);
+    }
+
+    for (;;) {
+        TConstEventPtr event;
+        try {
+            event = iterator->Next();
+        } catch (const yexception& error) {
+            return handleReadError(error);
+        }
+        // Processing and output failures must propagate even with
+        // ignore-errors.
+        if (!event || !processor.CheckedProcessEvent(event.Get())) {
+            return 0;
+        }
+    }
+}
+
 }   // namespace
+
+void PrintProfileLogProgress(const TProfileLogFile& file)
+{
+    Cerr << "Reading " << file.Path;
+    if (file.EndTime) {
+        Cerr << " " << *file.EndTime;
+    }
+    Cerr << Endl;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,18 +81,78 @@ TCommand::TCommand()
 {
     Opts.AddLongOption(
             ProfileLogLabel.data(),
-            "Path to profile log")
-        .Required()
-        .RequiredArgument("STR")
-        .StoreResult(&PathToProfileLog);
+            "Path to profile log (repeat for multiple files; "
+            "processed oldest first by record end time)")
+        .RequiredArgument("STR");
+
+    Opts.AddLongOption(
+            "ignore-errors",
+            "Report log read errors and continue with the next file")
+        .NoArgument()
+        .StoreTrue(&IgnoreErrors);
 }
 
 int TCommand::Run(int argc, const char** argv)
 {
-    OptsParseResult.ConstructInPlace(&Opts, argc, argv);
+    // Give each argument its own storage so equal strings in different
+    // positions remain distinguishable. Getopt may permute the pointer array.
+    TVector<TString> arguments;
+    arguments.reserve(argc);
+    for (int i = 0; i < argc; ++i) {
+        arguments.emplace_back(argv[i]);
+    }
+    TVector<const char*> parsedArguments;
+    for (const auto& argument: arguments) {
+        parsedArguments.push_back(argument.c_str());
+    }
+    OptsParseResult.ConstructInPlace(&Opts, argc, parsedArguments.data());
     if (!OptsParseResult.Defined()) {
         Cerr << "Failed to parse cmd parameters" << Endl;
         return 1;
+    }
+
+    const auto& parsed = OptsParseResult.GetRef();
+    THashSet<const char*> inputValues;
+    if (const auto* option =
+            parsed.FindLongOptParseResult(ProfileLogLabel.data()))
+    {
+        for (const auto* value: option->Values()) {
+            inputValues.insert(value);
+        }
+    }
+    for (size_t i = parsed.GetFreeArgsPos(); i < parsedArguments.size(); ++i) {
+        inputValues.insert(parsedArguments[i]);
+    }
+    // In PERMUTE mode getopt can leave the separator among free arguments.
+    // Exclude only the first standalone separator, not option values or later
+    // literal "--" paths.
+    THashSet<const char*> optionValues;
+    for (const auto* option: Opts.GetOpts()) {
+        if (const auto* result = parsed.FindOptParseResult(option)) {
+            for (const auto* value: result->Values()) {
+                optionValues.insert(value);
+            }
+        }
+    }
+    for (size_t i = 1; i < arguments.size(); ++i) {
+        const auto& argument = arguments[i];
+        if (argument == "--" && !optionValues.contains(argument.c_str())) {
+            inputValues.erase(argument.c_str());
+            break;
+        }
+    }
+    ProfileLogPaths.clear();
+    for (size_t i = 1; i < arguments.size(); ++i) {
+        const auto& argument = arguments[i];
+        // Inline option values point inside their argument (e.g.
+        // --profile-log=x).
+        for (size_t offset = 0; offset <= argument.size(); ++offset) {
+            const auto* value = argument.c_str() + offset;
+            if (inputValues.contains(value)) {
+                ProfileLogPaths.emplace_back(value);
+                break;
+            }
+        }
     }
 
     if (!TCommand::Init(OptsParseResult.GetRef()) ||
@@ -47,12 +169,46 @@ const NLastGetopt::TOpts& TCommand::GetOpts() const
     return Opts;
 }
 
+int TCommand::ProcessProfileLogs(IEventProcessor& processor)
+{
+    for (const auto& file: ProfileLogFiles) {
+        if (ProfileLogFiles.size() > 1) {
+            PrintProfileLogProgress(file);
+        }
+        const auto result =
+            ProcessProfileLog(file.Path, processor, IgnoreErrors);
+        if (result) {
+            return result;
+        }
+    }
+    return 0;
+}
+
 bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)
 {
     Y_UNUSED(parseResult);
-
     try {
-        PathToProfileLog = RealPath(PathToProfileLog);
+        if (ProfileLogPaths.empty()) {
+            ythrow NLastGetopt::TUsageException()
+                << "At least one profile log is required; use --profile-log "
+                   "or a positional path";
+        }
+
+        for (const auto& path: ProfileLogPaths) {
+            ProfileLogFiles.push_back(
+                MakeProfileLogFile(path, ProfileLogPaths.size() > 1));
+        }
+
+        StableSort(
+            ProfileLogFiles,
+            [](const auto& lhs, const auto& rhs)
+            {
+                if (lhs.EndTime.Defined() != rhs.EndTime.Defined()) {
+                    return lhs.EndTime.Defined();
+                }
+                return lhs.EndTime < rhs.EndTime;
+            });
+
     } catch (const TFileError& error) {
         Cerr << error.what() << Endl;
         return false;
