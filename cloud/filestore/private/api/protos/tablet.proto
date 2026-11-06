@@ -329,6 +329,9 @@ message TFileSystemConfig
 
     // Performance profile, used for throttling.
     NProto.TFileStorePerformanceProfile PerformanceProfile = 12;
+
+    // Immutable; zero means the legacy value of 64.
+    uint32 BlockGroupSize = 13;
 }
 
 message TGetFileSystemConfigRequest

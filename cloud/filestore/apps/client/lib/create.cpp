@@ -23,6 +23,7 @@ private:
     TString CloudId;
     TString FolderId;
     ui32 BlockSize = 4_KB;
+    ui32 BlockGroupSize = 0;
     ui64 BlocksCount = 0;
     NCloud::NProto::EStorageMediaKind StorageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_HDD;
@@ -46,6 +47,12 @@ public:
         Opts.AddLongOption("block-size")
             .RequiredArgument("NUM")
             .StoreResult(&BlockSize);
+
+        Opts.AddLongOption("block-group-size")
+            .RequiredArgument("NUM")
+            .Help(
+                "blocks per compaction range, fixed at creation (default: 64)")
+            .StoreResult(&BlockGroupSize);
 
         Opts.AddLongOption("blocks-count")
             .Required()
@@ -71,6 +78,7 @@ public:
         request->SetCloudId(CloudId);
         request->SetFolderId(FolderId);
         request->SetBlockSize(BlockSize);
+        request->SetBlockGroupSize(BlockGroupSize);
         request->SetBlocksCount(BlocksCount);
 
         if (StorageMediaKindArg == "ssd") {

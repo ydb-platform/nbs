@@ -30,6 +30,10 @@ message TConfig {
 
     optional uint32 RangeIdHasherType = 18;
 
+    // Immutable block grouping selected when the filesystem is created.
+    // Zero or absent means the legacy value of 64.
+    optional uint32 BlockGroupSize = 19;
+
     repeated TChannelProfile ExplicitChannelProfiles = 30;
     optional bool PoolKindChangeAllowed = 31;
 

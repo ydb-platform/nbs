@@ -79,6 +79,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     using namespace NCloud::NStorage;
 
+    Y_UNIT_TEST(ShouldReadConfiguredBlockGroupsAfterFlushAndReboot)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {.BlockGroupSize = 256});
+        tablet.InitSession("client", "session");
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const ui64 handle = CreateHandle(tablet, id);
+        constexpr ui32 blockSize = DefaultBlockSize;
+        TString expected(600 * blockSize, 'a');
+        tablet.WriteData(handle, 0, expected.size(), 'a');
+        tablet.Flush();
+        tablet.WriteData(handle, 63 * blockSize, 200 * blockSize, 'b');
+        expected.replace(
+            63 * blockSize,
+            200 * blockSize,
+            TString(200 * blockSize, 'b'));
+        tablet.Flush();
+        auto hasher = CreateRangeIdHasher(RangeIdHasherType, 256);
+        for (ui32 index: {0, 256, 512}) {
+            tablet.Compaction(hasher->Calc(id, index));
+        }
+        tablet.RebootTablet();
+        const auto response = tablet.ReadData(handle, 0, expected.size());
+        UNIT_ASSERT_VALUES_EQUAL(expected, response->Record.GetBuffer());
+
+        // Multi-stage writes must use the same configured boundaries.
+        const auto generated =
+            tablet.GenerateBlobIds(id, handle, 64 * blockSize, 256 * blockSize);
+        UNIT_ASSERT_VALUES_EQUAL(2, generated->Record.BlobsSize());
+        const auto first =
+            LogoBlobIDFromLogoBlobID(generated->Record.GetBlobs(0).GetBlobId());
+        const auto second =
+            LogoBlobIDFromLogoBlobID(generated->Record.GetBlobs(1).GetBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(192 * blockSize, first.BlobSize());
+        UNIT_ASSERT_VALUES_EQUAL(64 * blockSize, second.BlobSize());
+    }
+
     TABLET_TEST(ShouldStoreFreshBytes)
     {
         TTestEnv env(testEnvConfig);

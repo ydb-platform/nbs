@@ -321,7 +321,7 @@ TIndexTabletActor::BuildAddBlobRequest(
     SplitRange(
         byteRange.FirstAlignedBlock(),
         byteRange.AlignedBlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&](ui32 blockOffset, ui32 blocksCount)
         {
             TBlock block{

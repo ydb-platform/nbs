@@ -10,6 +10,12 @@ namespace {
 
 struct TLegacyHasher: IBlockLocation2RangeIndex
 {
+    const ui32 BlockGroupSize;
+
+    explicit TLegacyHasher(ui32 blockGroupSize)
+        : BlockGroupSize(blockGroupSize)
+    {}
+
     ui32 Calc(ui64 nodeId, ui32 blockIndex) const override
     {
         // 1. just ignore high bits of node index
@@ -29,6 +35,12 @@ struct TLegacyHasher: IBlockLocation2RangeIndex
 
 struct TBlockLocalityHasher: IBlockLocation2RangeIndex
 {
+    const ui32 BlockGroupSize;
+
+    explicit TBlockLocalityHasher(ui32 blockGroupSize)
+        : BlockGroupSize(blockGroupSize)
+    {}
+
     ui32 Calc(ui64 nodeId, ui32 blockIndex) const override
     {
         // 1. just ignore high bits of node index
@@ -48,11 +60,16 @@ struct TBlockLocalityHasher: IBlockLocation2RangeIndex
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type)
+IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type, ui32 blockGroupSize)
 {
+    blockGroupSize = GetEffectiveBlockGroupSize(blockGroupSize);
+    Y_ABORT_UNLESS(IsValidBlockGroupSize(blockGroupSize));
+
     switch (type) {
-        case 0: return std::make_shared<TLegacyHasher>();
-        case 1: return std::make_shared<TBlockLocalityHasher>();
+        case 0:
+            return std::make_shared<TLegacyHasher>(blockGroupSize);
+        case 1:
+            return std::make_shared<TBlockLocalityHasher>(blockGroupSize);
     }
 
     return nullptr;

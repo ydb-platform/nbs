@@ -18,7 +18,9 @@ namespace {
 
 IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
 {
-    auto hasher = CreateRangeIdHasher(fs.GetRangeIdHasherType());
+    std::cerr << "MYAGKOV: FS: " << fs.GetFileSystemId() << " BlockGroupSize: " << fs.GetBlockGroupSize() << std::endl;
+    auto hasher =
+        CreateRangeIdHasher(fs.GetRangeIdHasherType(), fs.GetBlockGroupSize());
     Y_ABORT_UNLESS(
         hasher,
         "[f:%s] unsupported hasher type: %u",

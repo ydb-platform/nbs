@@ -1968,6 +1968,63 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldValidateBlockGroupSize)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        for (ui32 size: {3, 255, 1025, 2048}) {
+            auto request = service.CreateCreateFileStoreRequest("test", 1000);
+            request->Record.SetBlockGroupSize(size);
+            service.SendCreateFileStoreRequest(std::move(request));
+            auto response = service.RecvCreateFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlockGroupSizeDuringResize)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        auto request = service.CreateCreateFileStoreRequest("test", 1000);
+        request->Record.SetBlockGroupSize(256);
+        request->Record.SetShardCount(2);
+        service.SendCreateFileStoreRequest(std::move(request));
+        auto response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        const ui64 tabletId = service.GetFileStoreInfo("test")
+                                  ->Record.GetFileStore()
+                                  .GetMainTabletId();
+        TIndexTabletClient
+            tablet(env.GetRuntime(), nodeIdx, tabletId, {}, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            256,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+        service.ResizeFileStore("test", 2000, false, 3);
+        service.AlterFileStore("test", "cloud", "folder");
+        tablet.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(
+            256,
+            GetFileSystemConfig(tablet).GetBlockGroupSize());
+        for (const TString& fsId: {"test_s1", "test_s2", "test_s3"}) {
+            const ui64 shardId = service.GetFileStoreInfo(fsId)
+                                     ->Record.GetFileStore()
+                                     .GetMainTabletId();
+            TIndexTabletClient
+                shard(env.GetRuntime(), nodeIdx, shardId, {}, false);
+            UNIT_ASSERT_VALUES_EQUAL(
+                256,
+                GetFileSystemConfig(shard).GetBlockGroupSize());
+        }
+    }
+
     Y_UNIT_TEST(ShouldValidateBlockSize)
     {
         TTestEnv env;
