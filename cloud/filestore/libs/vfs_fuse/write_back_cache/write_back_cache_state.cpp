@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
@@ -25,11 +27,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
     const TFlushBatchLimits& flushBatchLimits,
+    TLog log,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , FlushBatchLimits(flushBatchLimits)
+    , Log(std::move(log))
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , RequestManager(
@@ -59,11 +63,21 @@ NProto::TError TWriteBackCacheState::Init()
     return error;
 }
 
-void TWriteBackCacheState::SetDrainingMode()
+void TWriteBackCacheState::Drain()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    DrainingMode = true;
+    StartDraining();
+}
+
+TFuture<void> TWriteBackCacheState::Shutdown()
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    ShutdownMode = true;
+    StartDraining();
+    CheckShutdownCompletion();
+    return ShutdownPromise.GetFuture();
 }
 
 bool TWriteBackCacheState::IsDrained() const
@@ -374,10 +388,8 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (IsFailed) {
-        return;
-    }
-
+    // A failed cache retains this node and its flush reservation until this
+    // completion retires it, so the invariant below still applies
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
     Y_ABORT_UNLESS(
@@ -389,8 +401,12 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
 
     // We will recalculate the flush status later
-    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
-    Stats->FlushCompleted();
+    CompleteNodeFlush(nodeState);
+
+    if (IsFailed) {
+        CheckShutdownCompletion();
+        return;
+    }
 
     for (size_t i = 0; i < requestCount; i++) {
         Y_ABORT_UNLESS(nodeState.Cache.HasUnflushedRequests());
@@ -409,6 +425,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    CheckShutdownCompletion();
 }
 
 EFlushRetryStatus TWriteBackCacheState::FlushFailed(
@@ -417,10 +434,9 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (IsFailed) {
-        return EFlushRetryStatus::ShouldNotRetry;
-    }
-
+    // Cache failure does not remove this node's requested flush or unflushed
+    // data; only this node's completion can retire them. These checks remain
+    // valid even when IsFailed is set.
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
     Y_ABORT_UNLESS(
@@ -435,6 +451,12 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     const auto flushHandle =
         std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
+
+    if (IsFailed) {
+        CompleteNodeFlush(nodeState);
+        CheckShutdownCompletion();
+        return EFlushRetryStatus::ShouldNotRetry;
+    }
 
     Stats->FlushFailed();
 
@@ -520,6 +542,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         while (!handleState.UnflushedRequests.Empty()) {
             auto* request = handleState.UnflushedRequests.PopFront();
             if (!RequestManager.SetHandleReleased(request)) {
+                CompleteNodeFlush(nodeState);
                 SetFailedFlag();
                 return EFlushRetryStatus::ShouldNotRetry;
             }
@@ -544,10 +567,14 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     TryRemoveUnusedHandle(nodeState, flushHandle);
 
-    if (nodeState.Handles.empty()) {
-        // No live handles remaining - drop all unflushed requests
-        nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
-        Stats->FlushCompleted();
+    // During shutdown, any flush error, including a retriable one, permits
+    // dropping cached data instead of retrying.
+    const bool shouldDropCachedData =
+        nodeState.Handles.empty() ||
+        (ShutdownMode && !nodeState.Cache.HasPendingRequests());
+
+    if (shouldDropCachedData) {
+        CompleteNodeFlush(nodeState);
         DropCachedData(nodeId, nodeState, error);
         return EFlushRetryStatus::ShouldNotRetry;
     }
@@ -695,6 +722,14 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     return MakeFuture<TWriteDataResponse>();
 }
 
+void TWriteBackCacheState::StartDraining()
+{
+    DrainingMode = true;
+    if (!IsFailed) {
+        TriggerFlushAll(true);
+    }
+}
+
 void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 {
     if (includePendingRequests) {
@@ -706,9 +741,7 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 
     for (auto nodeId: NodesReadyToFlush) {
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-        nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
-        Stats->FlushStarted();
-        QueuedOperations.ScheduleFlushNode(nodeId);
+        RequestNodeFlush(nodeId, nodeState);
     }
 
     NodesReadyToFlush.clear();
@@ -741,23 +774,42 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
             break;
     }
 
-    nodeState.FlushStatus = newFlushStatus;
-
     // Process new state
-    switch (nodeState.FlushStatus) {
+    switch (newFlushStatus) {
         case ENodeFlushStatus::NothingToFlush:
+            nodeState.FlushStatus = newFlushStatus;
             break;
 
         case ENodeFlushStatus::FlushRequested:
-            Stats->FlushStarted();
-            QueuedOperations.ScheduleFlushNode(nodeId);
+            RequestNodeFlush(nodeId, nodeState);
             break;
 
         case ENodeFlushStatus::ReadyToFlush:
+            nodeState.FlushStatus = newFlushStatus;
             auto inserted = NodesReadyToFlush.insert(nodeId).second;
             Y_ABORT_UNLESS(inserted);
             break;
     }
+}
+
+void TWriteBackCacheState::RequestNodeFlush(ui64 nodeId, TNodeState& nodeState)
+{
+    Y_ABORT_UNLESS(nodeState.FlushStatus != ENodeFlushStatus::FlushRequested);
+
+    nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
+    ++NodesFlushRequestedCount;
+    Stats->FlushStarted();
+    QueuedOperations.ScheduleFlushNode(nodeId);
+}
+
+void TWriteBackCacheState::CompleteNodeFlush(TNodeState& nodeState)
+{
+    Y_ABORT_UNLESS(nodeState.FlushStatus == ENodeFlushStatus::FlushRequested);
+    Y_ABORT_UNLESS(NodesFlushRequestedCount > 0);
+
+    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+    --NodesFlushRequestedCount;
+    Stats->FlushCompleted();
 }
 
 void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
@@ -794,6 +846,25 @@ void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
         QueuedOperations.CompleteFlushOrReleasePromise(
             std::move(front.Promise));
         FlushAllRequestQueue.pop_front();
+    }
+}
+
+void TWriteBackCacheState::CheckShutdownCompletion()
+{
+    if (ShutdownMode && !ShutdownCompletionQueued &&
+        NodesFlushRequestedCount == 0 &&
+        (IsFailed || !RequestManager.HasPendingOrUnflushedRequests()))
+    {
+        QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
+        ShutdownCompletionQueued = true;
+
+        if (ShutdownDroppedRequestCount > 0) {
+            ReportWriteBackCacheDataLossError(
+                TStringBuilder()
+                << LogTag
+                << " Dropped unflushed WriteData requests during shutdown"
+                << " RequestCount=" << ShutdownDroppedRequestCount);
+        }
     }
 }
 
@@ -1070,18 +1141,31 @@ void TWriteBackCacheState::DropCachedData(
         return;
     }
 
-    if (nodeState.Cache.HasUnflushedRequests()) {
-        // TODO(#1751): Implement logging for dropped unflushed requests
-        // similar to STORAGE_WARN macro
-    }
+    ui64 droppedRequestCount = 0;
 
     while (nodeState.Cache.HasUnflushedRequests()) {
         auto* request = nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         if (!RequestManager.SetFlushed(request)) {
             SetFailedFlag();
-            return;
+            break;
         }
         Stats->WriteDataRequestDropped();
+        ++droppedRequestCount;
+    }
+
+    if (ShutdownMode) {
+        ShutdownDroppedRequestCount += droppedRequestCount;
+    }
+
+    if (droppedRequestCount > 0) {
+        STORAGE_WARN(
+            LogTag << " Dropped unflushed WriteData requests"
+                   << " NodeId=" << nodeId << " RequestCount="
+                   << droppedRequestCount << " Error=" << FormatError(error));
+    }
+
+    if (IsFailed) {
+        return;
     }
 
     for (auto& it: nodeState.Handles) {
@@ -1098,10 +1182,13 @@ void TWriteBackCacheState::DropCachedData(
         }
     }
 
+    // List destruction detaches the sentinels; surviving cached requests
+    // unlink themselves when destroyed.
     nodeState.Handles.clear();
     nodeState.HandlesWithReleaseRequests.clear();
 
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    CheckShutdownCompletion();
 }
 
 void TWriteBackCacheState::FailUnallocatedPendingRequest(
@@ -1164,6 +1251,7 @@ void TWriteBackCacheState::SetFailedFlag()
     // PersistentStorage. Each failure in PersistentStorage is already reported
     // as a critical event - no need to fire an event again.
     IsFailed = true;
+    CheckShutdownCompletion();
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
