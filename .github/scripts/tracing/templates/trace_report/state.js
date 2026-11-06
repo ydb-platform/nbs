@@ -36,7 +36,7 @@ let limits;
 let visible;
 let matchingSpans;
 let orderedRows = [];
-let orderedVisible = null;
+let viewVisible = null;
 let selected = null;
 let searchCache = [];
 let rowBudget = INITIAL_ROW_BUDGET;

@@ -154,6 +154,15 @@ function makeViewRuntime(search, { blockHistory = false, traceModel = null } = {
   return context;
 }
 
+function mockRowElements(context) {
+  context.document.createElement = () => ({
+    disabled: false, children: [], dataset: {}, style: {}, attributes: {},
+    classList: { add() {} },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    append(...children) { this.children.push(...children); },
+  });
+}
+
 function testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering() {
   const context = makeViewRuntime(
     "?query=target&phase=ya.test.worker&minimum-duration=9&test-size=medium" +
@@ -395,12 +404,7 @@ function testDurationFilteredGroupsCanExpandAndCollapse() {
     assert.deepStrictEqual(shown(), [root]);
 
     // Exercise the rendered controls as well as the expansion handlers.
-    context.document.createElement = () => ({
-      children: [], dataset: {}, style: {}, attributes: {},
-      classList: { add() {} },
-      setAttribute(name, value) { this.attributes[name] = value; },
-      append(...children) { this.children.push(...children); },
-    });
+    mockRowElements(context);
     const row = vm.runInContext("spanRow(rendered.items[0])", context);
     const [toggle, name] = row.children[0].children;
     assert.strictEqual(toggle.disabled, false);
@@ -468,6 +472,86 @@ function testFilteredGroupExpansionOnAFullPagePreservesOtherGroups() {
   assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
 }
 
+function testAttributeMatchedTreeGroupsExpandOnlyOnRequest() {
+  const traceModel = {
+    c: ["workflow", "ya.build", "ya.chunk", "ya.test.stage", "ya.test"],
+    s: [
+      makeSpan({ id: "root", name: "run" }),
+      makeSpan({ id: "build", name: "build operations", parent: 0, scope: 1,
+        attributes: { "ya.build.critical_path.summary": "target" } }),
+      makeSpan({ id: "compile", name: "unrelated compile", parent: 1 }),
+      makeSpan({ id: "chunk", name: "target chunk", parent: 0, scope: 2,
+        attributes: { "ya.chunk.metric.suite_start_timestamp": 1793707149 } }),
+      makeSpan({ id: "prepare", name: "prepare recipes", parent: 3, scope: 3 }),
+      makeSpan({ id: "test", name: "case", parent: 3, scope: 4 }),
+      makeSpan({ id: "other-chunk", name: "other chunk", parent: 0, scope: 2 }),
+      makeSpan({ id: "other-test", name: "other case", parent: 6, scope: 4 }),
+    ],
+  };
+  const context = makeViewRuntime("?query=1793707149", { traceModel });
+  const shown = () => Array.from(context.rendered.items, ({ index }) => index);
+  assert.deepStrictEqual(shown(), [0, 3]);
+  mockRowElements(context);
+  const row = vm.runInContext("spanRow(rendered.items[1])", context);
+  const [toggle, name] = row.children[0].children;
+  assert.strictEqual(toggle.disabled, false);
+  assert.strictEqual(name.disabled, false);
+  assert.strictEqual(toggle.attributes["aria-expanded"], "false");
+  vm.runInContext("toggleSpanGroup(3);", context);
+  assert.deepStrictEqual(shown(), [0, 3, 4, 5]);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "1 matching span");
+  vm.runInContext("toggleSpanGroup(3);", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+  vm.runInContext("expandAllGroups();", context);
+  assert.deepStrictEqual(shown(), [0, 3, 4, 5]);
+  vm.runInContext("collapseAllGroups(); toggleSpanGroup(0);", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+
+  // A new query resets explicit context. Metadata summaries stay closed while
+  // name-matched groups still reveal their matching paths automatically.
+  context.controls.query.value = "target";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.deepStrictEqual(shown(), [0, 1, 3, 4, 5]);
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.deepStrictEqual(shown(), [0, 1, 2, 3, 4, 5]);
+  context.controls.query.value = "1793707149";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+}
+
+function testAttributeMatchedTreeGroupChildrenLoadProgressively() {
+  const traceModel = {
+    c: ["workflow", "ya.chunk", "ya.test"],
+    s: [
+      makeSpan({ id: "root", name: "run" }),
+      makeSpan({ id: "chunk", name: "chunk", parent: 0, scope: 1,
+        attributes: { "test.suite": "metadata target" } }),
+      ...Array.from({ length: 250 }, (_, i) => makeSpan({
+        id: `test-${i}`, name: `case ${i}`, parent: 1, scope: 2,
+      })),
+    ],
+  };
+  const context = makeViewRuntime("?query=metadata", { traceModel });
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.strictEqual(context.rendered.spanRows, 202);
+  const more = context.rendered.items.at(-1);
+  assert.strictEqual(more.kind, "more");
+  assert.strictEqual(more.shown, 200);
+  assert.strictEqual(more.total, 250);
+  context.action = {
+    dataset: { rowAction: "load-group", index: "1", nextLimit: "250", loadCount: "50" },
+    closest: () => null,
+  };
+  vm.runInContext(`
+    rowsElement = { contains: () => true };
+    handleRowsClick({ target: { closest: () => action } });
+  `, context);
+  assert.strictEqual(context.rendered.spanRows, 252);
+  assert(!context.rendered.items.some((row) => row.kind === "more"));
+  vm.runInContext("toggleSpanGroup(1); toggleSpanGroup(1);", context);
+  assert.strictEqual(context.rendered.spanRows, 252);
+}
+
 for (const test of [
   testViewUrlRoundTripsEveryControl,
   testClearingViewRemovesOwnedParametersAndKeepsTheReportUrl,
@@ -486,6 +570,8 @@ for (const test of [
   testSharedWorkerDurationKeepsTestPredicates,
   testDurationFilteredGroupsCanExpandAndCollapse,
   testFilteredGroupExpansionOnAFullPagePreservesOtherGroups,
+  testAttributeMatchedTreeGroupsExpandOnlyOnRequest,
+  testAttributeMatchedTreeGroupChildrenLoadProgressively,
 ]) {
   test();
 }

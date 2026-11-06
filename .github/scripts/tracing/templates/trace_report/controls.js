@@ -142,17 +142,20 @@ function updateOrderedRows() {
   filterStatus.textContent = matches === undefined
     ? ""
     : `${matches.toLocaleString()} matching span${matches === 1 ? "" : "s"}`;
-  orderedVisible = visible;
+  viewVisible = visible ? new Set(visible) : null;
   if (order !== ROW_ORDERS.TREE && !rowOrderIsFlat(order) && visible) {
-    orderedVisible = new Set([...visible, ...orderedRows]);
+    orderedRows.forEach((index) => viewVisible.add(index));
     // A directly matching interval can expose its contents. Context ancestors
     // must not expose unrelated branches that failed the duration selection.
     const matchingGroups = [...matchingSpans].filter((index) =>
       testPhaseDefinition(traceIndex.scope(index))?.expandable,
     );
-    traceIndex.addDescendants(orderedVisible, matchingGroups);
+    traceIndex.addDescendants(viewVisible, matchingGroups);
+  }
+  if (!rowOrderIsFlat(order) && visible) {
     // Start with matching paths open; subsequent expansion and collapse are
     // controlled by the user, including when a duration filter is active.
+    if (order === ROW_ORDERS.TREE) expanded = new Set();
     visible.forEach((index) => {
       if (children[index].some((child) => visible.has(child))) expanded.add(index);
     });
@@ -178,20 +181,25 @@ function flattenRows() {
     sourceRoots: ordered ? orderedRows : roots,
     sourceExpanded: expanded,
     sourceLimits: limits,
-    sourceVisible: ordered ? orderedVisible : visible,
-    autoExpandVisible: !ordered,
+    sourceVisible: viewVisible,
+    autoExpandVisible: false,
     maximumRows: rowBudget,
   });
 }
 
 function toggleSpanGroup(index) {
-  if (treeFilterIsActive() || !children[index].length) return;
+  if (!children[index].length) return;
   if (expanded.has(index)) {
     expanded.delete(index);
   } else {
     const flattened = flattenRows();
-    if (currentRowOrder() !== ROW_ORDERS.TREE) {
-      // Leave room for children even when the sorted group list fills the page.
+    if (treeFilterIsActive() && matchingSpans.has(index)) {
+      // Reveal context only after an explicit expansion of a matched group.
+      // Expanding an ancestor must not pull in unrelated sibling branches.
+      traceIndex.addDescendants(viewVisible, [index]);
+    }
+    if (currentRowOrder() !== ROW_ORDERS.TREE || visible) {
+      // Leave room for children even when the current list fills the page.
       rowBudget = expandedGroupBudget(
         rowBudget,
         flattened.spanRows,
@@ -214,6 +222,9 @@ function toggleSpanGroup(index) {
 }
 
 function expandAllGroups() {
+  if (treeFilterIsActive()) {
+    traceIndex.addDescendants(viewVisible, matchingSpans);
+  }
   spans.forEach((_span, index) => {
     if (children[index].length) expanded.add(index);
   });
