@@ -734,3 +734,68 @@ func TestOrdinaryDiskOperationRestoresRegistrationOnResume(t *testing.T) {
 	require.Empty(t, meta.ActiveOperationTaskIDs)
 	require.NoError(t, releaseDiskOperation(ctx, db, storage, disk.ID, "transfer-task"))
 }
+
+func TestFinishDiskTransferValidatesCatalogIdentity(t *testing.T) {
+	for _, name := range []string{"same-cell", "cross-cell", "wrong-generation", "wrong-source", "wrong-owner", "ordinary-owner"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, db, storage := setupTest(t)
+			defer db.Close(ctx)
+			disk := DiskMeta{
+				ID: t.Name(), ZoneID: "source-cell", CreateTaskID: "create-task",
+				CreateRequest: &wrappers.UInt64Value{Value: 1}, CreatingAt: time.Now(),
+			}
+			_, err := storage.CreateDisk(ctx, disk)
+			require.NoError(t, err)
+			disk.CreatedAt = time.Now()
+			require.NoError(t, storage.DiskCreated(ctx, disk))
+			owner := "transfer-task"
+			if name == "wrong-owner" {
+				owner = "another-task"
+			}
+			_, err = reserveDiskOperation(t, ctx, db, storage, DiskOperation{
+				DiskID: disk.ID, TaskID: owner, Kind: DiskOperationTransfer, Exclusive: name != "ordinary-owner",
+				CellID: "source-cell", CreateTaskID: "create-task",
+			})
+			require.NoError(t, err)
+			sourceCell, targetCell, createTask := "source-cell", "target-cell", "create-task"
+			if name == "same-cell" {
+				targetCell = "source-cell"
+			}
+			if name == "wrong-generation" {
+				createTask = "another-create-task"
+			}
+			if name == "wrong-source" {
+				sourceCell = "another-cell"
+			}
+			err = db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+				tx, err := session.BeginRWTransaction(ctx)
+				if err != nil {
+					return err
+				}
+				defer tx.Rollback(ctx)
+				if err := storage.FinishDiskTransfer(ctx, tx, disk.ID, sourceCell, targetCell, createTask, "transfer-task"); err != nil {
+					return err
+				}
+				return tx.Commit(ctx)
+			})
+			if name == "same-cell" || name == "cross-cell" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				targetCell = "source-cell"
+			}
+			actual, err := storage.GetDiskMeta(ctx, disk.ID)
+			require.NoError(t, err)
+			require.Equal(t, targetCell, actual.ZoneID)
+			if name == "same-cell" || name == "cross-cell" {
+				require.Empty(t, actual.ExclusiveOperationTaskID)
+				require.Empty(t, actual.ActiveOperationTaskIDs)
+			} else if name == "ordinary-owner" {
+				require.Empty(t, actual.ExclusiveOperationTaskID)
+				require.Equal(t, []string{owner}, actual.ActiveOperationTaskIDs)
+			} else {
+				require.Equal(t, owner, actual.ExclusiveOperationTaskID)
+			}
+		})
+	}
+}

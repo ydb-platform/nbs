@@ -1184,6 +1184,33 @@ func createDisksYDBTables(
 	return nil
 }
 
+// FinishDiskTransfer participates in the transaction that finishes the task.
+// The creation task guards against relocating a deleted and recreated disk.
+func (s *storageYDB) FinishDiskTransfer(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	sourceCellID string,
+	targetCellID string,
+	createTaskID string,
+	transferTaskID string,
+) error {
+	if diskID == "" || sourceCellID == "" || targetCellID == "" || createTaskID == "" || transferTaskID == "" {
+		return errors.NewNonRetriableErrorf("disk transfer identity must be specified")
+	}
+	state, err := s.getDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+	if state.status != diskStatusReady || state.createTaskID != createTaskID || state.zoneID != sourceCellID ||
+		state.exclusiveOperationTaskID != transferTaskID {
+		return errors.NewNonRetriableErrorf("disk %q changed while its volume was transferred", diskID)
+	}
+	state.zoneID = targetCellID
+	state.exclusiveOperationTaskID = ""
+	return s.updateDiskState(ctx, tx, state)
+}
+
 func dropDisksYDBTables(
 	ctx context.Context,
 	folder string,
