@@ -8,7 +8,7 @@ for arg in "$@"; do
             run_in_cell2 "$@"
             ;;
         -h|--help)
-            echo "Usage: ./8-make-disks.sh [--cell2]"
+            echo "Usage: ./7-make-disks.sh [--cell2]"
             echo "Create the example disks in cell-1, or in cell-2 with a -cell2 suffix."
             exit 0
             ;;
