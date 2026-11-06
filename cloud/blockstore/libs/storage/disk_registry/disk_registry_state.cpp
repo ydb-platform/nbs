@@ -540,6 +540,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
         disk.VolumeHealth = config.GetVolumeHealth();
         disk.VolumeHealthSeqNo = config.GetVolumeHealthSeqNo();
+        disk.ExternalVolumeTabletId = config.GetExternalVolumeTabletId();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -2477,7 +2478,48 @@ NProto::TError TDiskRegistryState::ValidateAllocateDiskParams(
                 << disk.LogicalBlockSize << " -> " << params.BlockSize);
     }
 
+    if (!IsNewDisk(disk) &&
+        disk.ExternalVolumeTabletId != params.ExternalVolumeTabletId)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "attempt to change ExternalVolumeTabletId: "
+                << disk.ExternalVolumeTabletId << " -> "
+                << params.ExternalVolumeTabletId);
+    }
+
     return {};
+}
+
+bool TDiskRegistryState::IsNewDisk(const TDiskState& disk)
+{
+    return disk.Devices.empty() && !disk.ReplicaCount;
+}
+
+NProto::TError TDiskRegistryState::CheckExternalVolumeTabletId(
+    const TDiskId& diskId,
+    ui64 externalVolumeTabletId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (disk && disk->ExternalVolumeTabletId != externalVolumeTabletId) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "disk " << diskId.Quote()
+                << " is owned by external volume tablet "
+                << disk->ExternalVolumeTabletId << ", not "
+                << externalVolumeTabletId);
+    }
+
+    return {};
+}
+
+ui64 TDiskRegistryState::GetExternalVolumeTabletId(
+    const TDiskId& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    return disk ? disk->ExternalVolumeTabletId : 0;
 }
 
 NProto::TError TDiskRegistryState::AllocateDisk(
@@ -2492,9 +2534,9 @@ NProto::TError TDiskRegistryState::AllocateDisk(
     auto originalBlockCount = GetDiskBlockCount(params.DiskId);
 
     if (HasError(error)) {
-        if (disk.Devices.empty() && !disk.ReplicaCount) {
+        if (IsNewDisk(disk)) {
             Disks.erase(params.DiskId);
-            AddToBrokenDisks(now, db, params.DiskId);
+            AddToBrokenDisks(now, db, params);
         }
 
         return error;
@@ -2531,6 +2573,12 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
 
     if (diskInfo.CheckpointId) {
         return MakeError(E_ARGUMENT, "Can't create checkpoint for checkpoint");
+    }
+
+    if (diskInfo.ExternalVolumeTabletId) {
+        return MakeError(
+            E_ARGUMENT,
+            "Can't create checkpoint for disk owned by external volume");
     }
 
     const auto shadowDiskId =
@@ -2614,8 +2662,8 @@ NProto::TError TDiskRegistryState::DeallocateCheckpoint(
 
     Checkpoints.erase(id);
 
-    MarkDiskForCleanup(db, *shadowDiskId);
-    return DeallocateDisk(db, *shadowDiskId);
+    MarkDiskForCleanupImpl(db, *shadowDiskId);
+    return DeallocateDiskImpl(db, *shadowDiskId);
 }
 
 NProto::TError TDiskRegistryState::GetCheckpointDataState(
@@ -2736,7 +2784,7 @@ void TDiskRegistryState::CleanupMirroredDisk(
             params.FolderId);
     }
 
-    AddToBrokenDisks(now, db, diskId);
+    AddToBrokenDisks(now, db, params);
 }
 
 void TDiskRegistryState::UpdateReplicaTable(
@@ -2832,7 +2880,7 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
     TDiskState& disk,
     TAllocateDiskResult* result)
 {
-    const bool isNewDisk = disk.Devices.empty() && !disk.ReplicaCount;
+    const bool isNewDisk = IsNewDisk(disk);
 
     auto onError = [&] {
         if (isNewDisk) {
@@ -2878,6 +2926,7 @@ NProto::TError TDiskRegistryState::AllocateMirroredDisk(
     disk.StateTs = now;
     disk.ReplicaCount = params.ReplicaCount;
     disk.MediaKind = params.MediaKind;
+    disk.ExternalVolumeTabletId = params.ExternalVolumeTabletId;
     db.UpdateDisk(BuildDiskConfig(params.DiskId, disk));
 
     UpdateReplicaTable(params.DiskId, *result);
@@ -3064,7 +3113,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
                 } else {
                     // failed to allocate storage for the new volume, need to
                     // destroy this volume
-                    AddToBrokenDisks(now, db, params.DiskId);
+                    AddToBrokenDisks(now, db, params);
                 }
             }
         }
@@ -3184,6 +3233,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     disk.FolderId = params.FolderId;
     disk.MasterDiskId = params.MasterDiskId;
     disk.MediaKind = params.MediaKind;
+    disk.ExternalVolumeTabletId = params.ExternalVolumeTabletId;
     disk.CheckpointReplica.CopyFrom(checkpointParams);
 
     db.UpdateDisk(BuildDiskConfig(params.DiskId, disk));
@@ -3195,7 +3245,7 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     return {};
 }
 
-NProto::TError TDiskRegistryState::DeallocateDisk(
+NProto::TError TDiskRegistryState::DeallocateDiskImpl(
     TDiskRegistryDatabase& db,
     const TString& diskId)
 {
@@ -3256,6 +3306,20 @@ NProto::TError TDiskRegistryState::DeallocateDisk(
         "An error occurred while deallocating disk",
         {{"disk", diskId}});
     return {};
+}
+
+NProto::TError TDiskRegistryState::DeallocateDisk(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    ui64 externalVolumeTabletId)
+{
+    auto error =
+        CheckExternalVolumeTabletId(diskId, externalVolumeTabletId);
+    if (HasError(error)) {
+        return error;
+    }
+
+    return DeallocateDiskImpl(db, diskId);
 }
 
 bool TDiskRegistryState::CanSecureErase(const TDeviceId& uuid) const
@@ -3461,8 +3525,8 @@ void TDiskRegistryState::DeleteCheckpointByDisk(
         Checkpoints.erase(id);
     }
     for (const auto& diskToDelete: disksToDelete) {
-        MarkDiskForCleanup(db, diskToDelete);
-        DeallocateDisk(db, diskToDelete);
+        MarkDiskForCleanupImpl(db, diskToDelete);
+        DeallocateDiskImpl(db, diskToDelete);
     }
 }
 
@@ -3487,14 +3551,20 @@ void TDiskRegistryState::ReallocateCheckpointByDisk(
 void TDiskRegistryState::AddToBrokenDisks(
     TInstant now,
     TDiskRegistryDatabase& db,
-    const TString& diskId)
+    const TAllocateDiskParams& params)
 {
+    // A broken disk is destroyed via the NBS volume. External volumes own
+    // their tablets, so there is nothing to destroy on the NBS side.
+    if (params.ExternalVolumeTabletId) {
+        return;
+    }
+
     TBrokenDiskInfo brokenDiskInfo{
-        diskId,
+        params.DiskId,
         now + StorageConfig->GetBrokenDiskDestructionDelay()
     };
     db.AddBrokenDisk(brokenDiskInfo);
-    BrokenDisks[diskId] = brokenDiskInfo.TsToDestroy;
+    BrokenDisks[params.DiskId] = brokenDiskInfo.TsToDestroy;
 }
 
 NProto::TDeviceConfig TDiskRegistryState::GetDevice(const TString& id) const
@@ -3833,6 +3903,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
     diskInfo.History = disk.History;
     diskInfo.MigrationStartTs = disk.MigrationStartTs;
+    diskInfo.ExternalVolumeTabletId = disk.ExternalVolumeTabletId;
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -4290,7 +4361,7 @@ bool TDiskRegistryState::IsKnownDevice(const TString& uuid) const
         });
 }
 
-NProto::TError TDiskRegistryState::MarkDiskForCleanup(
+NProto::TError TDiskRegistryState::MarkDiskForCleanupImpl(
     TDiskRegistryDatabase& db,
     const TString& diskId)
 {
@@ -4303,6 +4374,20 @@ NProto::TError TDiskRegistryState::MarkDiskForCleanup(
     DisksToCleanup.insert(diskId);
 
     return {};
+}
+
+NProto::TError TDiskRegistryState::MarkDiskForCleanup(
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    ui64 externalVolumeTabletId)
+{
+    auto error =
+        CheckExternalVolumeTabletId(diskId, externalVolumeTabletId);
+    if (HasError(error)) {
+        return error;
+    }
+
+    return MarkDiskForCleanupImpl(db, diskId);
 }
 
 bool TDiskRegistryState::MarkDeviceAsDirty(
@@ -5011,7 +5096,7 @@ NProto::TError TDiskRegistryState::DestroyPlacementGroup(
 
         d->PlacementGroupId.clear();
 
-        NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
+        AddOutdatedVolumeConfig(db, diskId, *d);
 
         affectedDisks.emplace_back(diskId);
     }
@@ -5173,7 +5258,7 @@ NProto::TError TDiskRegistryState::AlterPlacementGroupMembership(
         d->PlacementGroupId = groupId;
         d->PlacementPartitionIndex = placementPartitionIndex;
 
-        NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
+        AddOutdatedVolumeConfig(db, diskId, *d);
     }
 
     for (const auto& diskId: disksToRemove) {
@@ -5185,7 +5270,7 @@ NProto::TError TDiskRegistryState::AlterPlacementGroupMembership(
             d->PlacementGroupId.clear();
             d->PlacementPartitionIndex = 0;
 
-            NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
+            AddOutdatedVolumeConfig(db, diskId, *d);
         }
     }
 
@@ -5410,6 +5495,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
     config.SetVolumeHealth(diskState.VolumeHealth);
     config.SetVolumeHealthSeqNo(diskState.VolumeHealthSeqNo);
+    config.SetExternalVolumeTabletId(diskState.ExternalVolumeTabletId);
 
     for (const auto& [uuid, seqNo, _]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -7568,6 +7654,19 @@ TVector<TString> TDiskRegistryState::GetDisksToCleanup() const
     return {DisksToCleanup.begin(), DisksToCleanup.end()};
 }
 
+void TDiskRegistryState::AddOutdatedVolumeConfig(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    const TDiskState& disk)
+{
+    // External volumes are not registered in SchemeShard.
+    if (disk.ExternalVolumeTabletId) {
+        return;
+    }
+
+    NotificationSystem.AddOutdatedVolumeConfig(db, diskId);
+}
+
 std::pair<TVolumeConfig, ui64> TDiskRegistryState::GetVolumeConfigUpdate(
     const TDiskId& diskId) const
 {
@@ -7660,6 +7759,13 @@ NProto::TError TDiskRegistryState::ValidateUpdateDiskBlockSizeParams(
     }
 
     const auto& disk = Disks[diskId];
+
+    if (disk.ExternalVolumeTabletId) {
+        return MakeError(
+            E_ARGUMENT,
+            "block size change is not supported for disk owned by external "
+            "volume");
+    }
 
     if (blockSize == disk.LogicalBlockSize) {
         return MakeError(S_FALSE, TStringBuilder()

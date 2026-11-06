@@ -133,6 +133,7 @@ struct TTxDiskRegistry
         const TVector<TString> AgentIds;
         const TString PoolName;
         const NProto::EStorageMediaKind MediaKind;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
         TVector<NProto::TDeviceConfig> Devices;
@@ -156,7 +157,8 @@ struct TTxDiskRegistry
                 ui32 replicaCount,
                 TVector<TString> agentIds,
                 TString poolName,
-                NProto::EStorageMediaKind mediaKind)
+                NProto::EStorageMediaKind mediaKind,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , CloudId(std::move(cloudId))
@@ -169,6 +171,7 @@ struct TTxDiskRegistry
             , AgentIds(std::move(agentIds))
             , PoolName(std::move(poolName))
             , MediaKind(mediaKind)
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()
@@ -194,16 +197,19 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
         const bool Sync;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
 
         TRemoveDisk(
                 TRequestInfoPtr requestInfo,
                 TString diskId,
-                bool sync)
+                bool sync,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Sync(sync)
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()
@@ -910,14 +916,17 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
 
         TMarkDiskForCleanup(
                 TRequestInfoPtr requestInfo,
-                TString diskId)
+                TString diskId,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()

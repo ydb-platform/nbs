@@ -22,7 +22,10 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
+#include <util/digest/multi.h>
 #include <util/generic/hash_set.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -58,6 +61,15 @@ constexpr bool IsDataPlaneMethod =
     std::is_same_v<TMethod, TEvService::TZeroBlocksMethod> ||
     std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod> ||
     std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
+
+template <typename TRequest>
+ui64 GetExternalVolumeTabletId(const TRequest& request)
+{
+    if constexpr (requires { request.Record.GetExternalVolumeTabletId(); }) {
+        return request.Record.GetExternalVolumeTabletId();
+    }
+    return 0;
+}
 
 // VolumeProxy discovers the volume specified in the DiskId field of request,
 // establishes a connection to the tablet of this volume and redirects the
@@ -102,6 +114,7 @@ class TVolumeProxyActor final
         // An exact name match is required. It is forbidden to connect to a
         // copied disk that has a name with a suffix.
         const bool RequireExactDiskIdMatch = false;
+        const ui64 ExternalVolumeTabletId = 0;
 
         EConnectionState State = INITIAL;
         bool IsConnectionToBaseDisk = false;
@@ -139,10 +152,12 @@ class TVolumeProxyActor final
             ui64 id,
             TString diskId,
             bool requireExactDiskIdMatch,
+            ui64 externalVolumeTabletId,
             bool temporaryServer)
             : Id(id)
             , DiskId(std::move(diskId))
             , RequireExactDiskIdMatch(requireExactDiskIdMatch)
+            , ExternalVolumeTabletId(externalVolumeTabletId)
             , LogTitle(
                   GetCycleCount(),
                   TLogTitle::TVolumeProxy{
@@ -190,6 +205,22 @@ class TVolumeProxyActor final
         TActorId ClientId;
     };
 
+    struct TExternalVolumeKey
+    {
+        TString DiskId;
+        ui64 ExternalVolumeTabletId;
+
+        bool operator==(const TExternalVolumeKey&) const = default;
+    };
+
+    struct TExternalVolumeKeyHash
+    {
+        size_t operator()(const TExternalVolumeKey& key) const
+        {
+            return MultiHash(key.DiskId, key.ExternalVolumeTabletId);
+        }
+    };
+
 private:
     const TStorageConfigConstPtr Config;
     const TDuration PipeInactivityTimeout;
@@ -205,6 +236,9 @@ private:
     THashMap<TString, TConnection*> ConnectionByDiskId;
     // Mapping of the DiskId to the connection with exact DiskId match.
     THashMap<TString, TConnection*> ConnectionByRealDiskId;
+    // External routes are identified by both disk and owner tablet.
+    THashMap<TExternalVolumeKey, TConnection*, TExternalVolumeKeyHash>
+        ConnectionByExternalVolume;
     THashMap<ui64, TTabletConnection> TabletConnections;
 
     struct TBaseTabletId
@@ -227,7 +261,10 @@ public:
         bool temporaryServer);
 
 private:
-    TConnection& CreateConnection(const TString& diskId, bool exactDiskIdMatch);
+    TConnection& CreateConnection(
+        const TString& diskId,
+        bool exactDiskIdMatch,
+        ui64 externalVolumeTabletId);
     void EraseConnection(const TActorContext& ctx, TConnection* conn);
     void DetachFromTablet(const TActorContext& ctx, TConnection& conn);
 
@@ -336,9 +373,18 @@ TVolumeProxyActor::TVolumeProxyActor(
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
     const TString& diskId,
-    bool exactDiskIdMatch)
+    bool exactDiskIdMatch,
+    ui64 externalVolumeTabletId)
 {
-    if (exactDiskIdMatch) {
+    if (externalVolumeTabletId) {
+        if (TConnection** conn = ConnectionByExternalVolume.FindPtr(
+                TExternalVolumeKey{
+                    .DiskId = diskId,
+                    .ExternalVolumeTabletId = externalVolumeTabletId}))
+        {
+            return **conn;
+        }
+    } else if (exactDiskIdMatch) {
         if (TConnection** conn = ConnectionByRealDiskId.FindPtr(diskId)) {
             return **conn;
         }
@@ -352,9 +398,19 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
 
     auto [it, inserted] = ConnectionById.emplace(
         connectionId,
-        TConnection(connectionId, diskId, exactDiskIdMatch, TemporaryServer));
+        TConnection(
+            connectionId,
+            diskId,
+            exactDiskIdMatch,
+            externalVolumeTabletId,
+            TemporaryServer));
 
-    if (exactDiskIdMatch) {
+    if (externalVolumeTabletId) {
+        ConnectionByExternalVolume[TExternalVolumeKey{
+            .DiskId = diskId,
+            .ExternalVolumeTabletId = externalVolumeTabletId}] =
+            &it->second;
+    } else if (exactDiskIdMatch) {
         ConnectionByRealDiskId[diskId] = &it->second;
     } else {
         ConnectionByDiskId[diskId] = &it->second;
@@ -373,6 +429,8 @@ void TVolumeProxyActor::DetachFromTablet(
 
     const ui64 tabletId = conn.AttachedTabletId;
     conn.AttachedTabletId = 0;
+    // Both attachment guards are intentional in release builds: report broken
+    // invariants without aborting the server or dereferencing a missing entry.
     auto it = TabletConnections.find(tabletId);
     if (it == TabletConnections.end()) {
         ReportVolumeProxyInvalidState(
@@ -401,7 +459,7 @@ void TVolumeProxyActor::EraseConnection(
     // Connections with different DiskIds can resolve to the same RealDiskId.
     // The mapping can belong to another connection that still uses it.
     auto removeFromMap =
-        [conn](THashMap<TString, TConnection*>& map, const TString& key)
+        [conn](auto& map, const auto& key)
     {
         auto it = map.find(key);
         if (it != map.end() && it->second == conn) {
@@ -413,6 +471,13 @@ void TVolumeProxyActor::EraseConnection(
     removeFromMap(ConnectionByDiskId, conn->RealDiskId);
     removeFromMap(ConnectionByRealDiskId, conn->DiskId);
     removeFromMap(ConnectionByRealDiskId, conn->RealDiskId);
+    if (conn->ExternalVolumeTabletId) {
+        removeFromMap(
+            ConnectionByExternalVolume,
+            TExternalVolumeKey{
+                .DiskId = conn->DiskId,
+                .ExternalVolumeTabletId = conn->ExternalVolumeTabletId});
+    }
 
     DetachFromTablet(ctx, *conn);
 
@@ -464,11 +529,17 @@ void TVolumeProxyActor::StartConnection(
         conn.RealDiskId.Quote().c_str(),
         path.Quote().c_str());
 
-    if (!ConnectionByDiskId.contains(conn.RealDiskId)) {
+    // External connections use DiskId and ExternalVolumeTabletId as the key.
+    // A DiskId-only mapping could send requests to the wrong tablet.
+    if (!conn.ExternalVolumeTabletId &&
+        !ConnectionByDiskId.contains(conn.RealDiskId))
+    {
         ConnectionByDiskId[conn.RealDiskId] = &conn;
     }
 
-    if (!ConnectionByRealDiskId.contains(conn.RealDiskId)) {
+    if (!conn.ExternalVolumeTabletId &&
+        !ConnectionByRealDiskId.contains(conn.RealDiskId))
+    {
         ConnectionByRealDiskId[conn.RealDiskId] = &conn;
     }
 
@@ -576,6 +647,8 @@ void TVolumeProxyActor::ForwardRequest(
 {
     auto* msg = ev->Get();
 
+    // A STARTED connection must be attached. Keep this guard in release builds
+    // to reject requests safely if that invariant is broken.
     auto tabletIt = TabletConnections.find(conn.TabletId);
     if (tabletIt == TabletConnections.end() ||
         !tabletIt->second.ConnectionIds.contains(conn.Id))
@@ -899,14 +972,27 @@ void TVolumeProxyActor::HandleRequest(
 
     const TString& diskId = GetDiskId(*msg);
 
+    const ui64 externalVolumeTabletId =
+        GetExternalVolumeTabletId(*msg);
     TConnection& conn = CreateConnection(
         diskId,
-        msg->Record.GetHeaders().GetExactDiskIdMatch());
+        msg->Record.GetHeaders().GetExactDiskIdMatch(),
+        externalVolumeTabletId);
     switch (conn.State) {
         case INITIAL:
         case FAILED:
         {
             conn.State = RESOLVING;
+            if (externalVolumeTabletId) {
+                PostponeRequest(conn, IEventHandlePtr(ev.Release()));
+                StartConnection(
+                    ctx,
+                    conn,
+                    externalVolumeTabletId,
+                    "ExternalVolumeTabletId",
+                    diskId);
+                break;
+            }
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
                 if (!baseDisk->TabletId) {
                     ReportVolumeProxyInvalidState(
