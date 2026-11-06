@@ -10,19 +10,24 @@ function initialize(decoded) {
     ...filterForm.elements,
     rowLoadSizeElement,
     timelineModeElement,
-    document.getElementById("expand"),
-    document.getElementById("collapse"),
+    rowOrderElement,
+    expandElement,
+    collapseElement,
+    copyViewLinkElement,
   ].forEach((element) => {
     element.disabled = false;
   });
-  updateFilterClearControls();
-  renderRows();
+  restoreTraceViewFromUrl();
+  applyFilterImmediately();
 }
 
 function scheduleFilter() {
   updateFilterClearControls();
   clearTimeout(filterTimer);
-  filterTimer = setTimeout(applyFilter, 120);
+  filterTimer = setTimeout(() => {
+    filterTimer = undefined;
+    applyFilter();
+  }, 120);
 }
 
 function startTraceReport() {
@@ -42,6 +47,13 @@ function startTraceReport() {
   clearFiltersElement = document.getElementById("clear-filters");
   rowLoadSizeElement = document.getElementById("row-load-size");
   timelineModeElement = document.getElementById("timeline-mode");
+  rowOrderElement = document.getElementById("row-order");
+  expandElement = document.getElementById("expand");
+  collapseElement = document.getElementById("collapse");
+  copyViewLinkElement = document.getElementById("copy-view-link");
+  shareLinkControl = document.getElementById("share-link-control");
+  shareLinkElement = document.getElementById("share-link");
+  shareStatus = document.getElementById("share-status");
   rowLoader = document.getElementById("row-loader");
   rowLoadButton = document.getElementById("load-rows");
   rowStatus = document.getElementById("row-status");
@@ -68,21 +80,16 @@ function startTraceReport() {
   );
   rowLoadSizeElement.addEventListener("change", renderRows);
   timelineModeElement.addEventListener("change", renderRows);
+  rowOrderElement.addEventListener("change", applyRowOrder);
+  copyViewLinkElement.addEventListener("click", copyTraceViewLink);
+  window.addEventListener("popstate", restoreTraceViewOnNavigation);
   rowsElement.addEventListener("click", handleRowsClick);
   rowLoadButton.addEventListener("click", () => {
     rowBudget = nextRowLimit(rowBudget, selectedLoadSize());
     renderRows();
   });
-  document.getElementById("expand").addEventListener("click", () => {
-    spans.forEach((_span, index) => {
-      if (children[index].length) expanded.add(index);
-    });
-    renderRows();
-  });
-  document.getElementById("collapse").addEventListener("click", () => {
-    expanded.clear();
-    renderRows();
-  });
+  expandElement.addEventListener("click", expandAllGroups);
+  collapseElement.addEventListener("click", collapseAllGroups);
   decodeModel()
     .then(initialize)
     .catch((error) => {
@@ -114,6 +121,7 @@ const traceReportApi = {
   INITIAL_ROW_BUDGET,
   NAME_COLUMN_STORAGE_KEY,
   TIMELINE_MODES,
+  ROW_ORDERS,
   LOCAL_TIMELINE_ROOT_SCOPES,
   COLLAPSED_SCOPES,
   TEST_SIZES,
@@ -121,6 +129,7 @@ const traceReportApi = {
   TraceIndex,
   formatDuration,
   reportedTestDurationNs,
+  displayedDurationNs,
   reportedTestTimingNote,
   childCountLabel,
   directChildCountLabel,
@@ -141,10 +150,17 @@ const traceReportApi = {
   matchingVisibility,
   filterVisibility,
   flattenTraceRows,
+  rowOrderFromValue,
+  rowOrderIsFlat,
+  durationOrderedIndexes,
+  flatOrderedRows,
+  readTraceView,
+  traceViewUrl,
   loadSizeFromValue,
   nextRowLimit,
   groupLoadPlan,
   initialGroupLimit,
+  expandedGroupBudget,
   clampNameColumnWidth,
   readStoredNameColumnWidth,
   writeStoredNameColumnWidth,

@@ -26,6 +26,10 @@ const TIMELINE_MODES = Object.freeze({
   GLOBAL: "global",
   LOCAL: "local",
 });
+const ROW_ORDERS = Object.freeze({
+  TREE: "tree",
+  DURATION: "duration",
+});
 const LOCAL_TIMELINE_ROOT_SCOPES = new Set([
   "ya.test.worker",
   "ya.test.node",
@@ -40,6 +44,23 @@ const COLLAPSED_SCOPES = new Set([
 ]);
 const TEST_SIZES = Object.freeze(["small", "medium", "large"]);
 const TEST_PHASE_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    scope: "ya.test",
+    label: "Tests",
+    ownerScopes: Object.freeze([]),
+  }),
+  Object.freeze({
+    scope: "ya.chunk",
+    label: "Test chunks (tests + recipes)",
+    ownerScopes: Object.freeze([]),
+    expandable: true,
+  }),
+  Object.freeze({
+    scope: "ya.test.worker",
+    label: "Tests + infrastructure (full worker)",
+    ownerScopes: Object.freeze([]),
+    expandable: true,
+  }),
   Object.freeze({
     scope: "ya.test.stage",
     attribute: "ya.test.stage.name",

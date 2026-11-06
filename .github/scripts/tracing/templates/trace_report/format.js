@@ -61,6 +61,10 @@ function initialGroupLimit(rowLimit, renderedRows, childCount) {
   return Math.min(PAGE_SIZE, childCount, availableRows);
 }
 
+function expandedGroupBudget(rowLimit, renderedRows, shownChildren) {
+  return Math.max(rowLimit, renderedRows + shownChildren);
+}
+
 function formatDuration(durationNs) {
   const duration = durationNs / 1e9;
   if (duration < 0.001) return `${(duration * 1e6).toFixed(0)} µs`;
@@ -79,6 +83,10 @@ function reportedTestDurationNs(span, scope) {
   return Number.isFinite(seconds) && seconds >= 0
     ? Math.round(seconds * 1e9)
     : null;
+}
+
+function displayedDurationNs(span, scope) {
+  return reportedTestDurationNs(span, scope) ?? span[DURATION];
 }
 
 function reportedTestTimingNote(span, scope) {

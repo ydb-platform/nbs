@@ -4,7 +4,9 @@ function normalizedTestPhase(testPhase) {
     !testPhase ||
     !testPhaseDefinition(testPhase.scope) ||
     (testPhase.name !== null &&
-      (typeof testPhase.name !== "string" || !testPhase.name))
+      (typeof testPhase.name !== "string" ||
+        !testPhase.name ||
+        !testPhaseDefinition(testPhase.scope).attribute))
   ) {
     return null;
   }
@@ -77,8 +79,39 @@ function filterVisibility(
   const matchesSize = (span) =>
     filters.testSizes.has(String(span[ATTRS]["test.size"] || "").toLowerCase());
   const matchesTopTest = (span) => longestTestRank(span) !== null;
+  const matchesQueryContext = (spanIndex) =>
+    index.ancestors(spanIndex).some((candidate) =>
+      matchesQuery(sourceSpans[candidate], candidate),
+    );
+  const grouped = Boolean(
+    testPhaseDefinition(filters.testPhase?.scope)?.expandable,
+  );
+  let matchingGroupAncestors = null;
+  if (
+    grouped &&
+    (filters.query ||
+      filters.failedOnly ||
+      filters.topTestsOnly ||
+      filters.testSizes.size)
+  ) {
+    // Match all non-duration predicates on one span before selecting its
+    // containing groups. Different siblings cannot supply separate predicates.
+    matchingGroupAncestors = new Set();
+    sourceSpans.forEach((span, spanIndex) => {
+      if (filters.topTestsOnly && !matchesTopTest(span)) return;
+      const selection = { scope: index.scope(spanIndex) };
+      if (filters.failedOnly && !phaseOrOwnerMatches(
+        spanIndex, index, selection, (candidate) => candidate[STATUS] === 2,
+      )) return;
+      if (filters.testSizes.size && !phaseOrOwnerMatches(
+        spanIndex, index, selection, matchesSize,
+      )) return;
+      if (filters.query && !matchesQueryContext(spanIndex)) return;
+      index.addAncestors(matchingGroupAncestors, spanIndex);
+    });
+  }
   const topTestAncestors = new Set();
-  if (filters.topTestsOnly && filters.testPhase) {
+  if (!grouped && filters.topTestsOnly && filters.testPhase) {
     sourceSpans.forEach((span, spanIndex) => {
       if (matchesTopTest(span)) {
         index
@@ -92,16 +125,16 @@ function filterVisibility(
     filters.testPhase &&
       ((span) =>
         spanMatchesTestPhase(span, filters.scopes, filters.testPhase)),
-    filters.query &&
+    matchingGroupAncestors &&
+      ((_span, spanIndex) => matchingGroupAncestors.has(spanIndex)),
+    !grouped &&
+      filters.query &&
       ((span, spanIndex) =>
         filters.testPhase
-          ? index
-              .ancestors(spanIndex)
-              .some((candidate) =>
-                matchesQuery(sourceSpans[candidate], candidate),
-              )
+          ? matchesQueryContext(spanIndex)
           : matchesQuery(span, spanIndex)),
-    filters.failedOnly &&
+    !grouped &&
+      filters.failedOnly &&
       ((span, spanIndex) =>
         filters.testPhase
           ? phaseOrOwnerMatches(
@@ -111,17 +144,22 @@ function filterVisibility(
               (candidate) => candidate[STATUS] === 2,
             )
           : span[STATUS] === 2),
-    filters.topTestsOnly &&
+    !grouped &&
+      filters.topTestsOnly &&
       ((span, spanIndex) =>
         filters.testPhase
           ? matchesTopTest(span) ||
+            topTestAncestors.has(spanIndex) ||
             topTestAncestors.has(
               index.phaseOwner(spanIndex, filters.testPhase.scope),
             )
           : matchesTopTest(span)),
     filters.minimumDurationNs !== null &&
-      ((span) => span[DURATION] >= filters.minimumDurationNs),
-    filters.testSizes.size &&
+      ((span) =>
+        displayedDurationNs(span, filters.scopes[span[SCOPE]]) >=
+        filters.minimumDurationNs),
+    !grouped &&
+      filters.testSizes.size &&
       ((span, spanIndex) =>
         filters.testPhase
           ? phaseOrOwnerMatches(
@@ -140,9 +178,19 @@ function filterVisibility(
   });
 
   if (filters.query && !filters.hasSelection) {
-    index.addDescendants(result, directMatches);
+    // A group's name identifies its subtree. Metadata (such as a build-wide
+    // critical-path summary) can mention one target without identifying every
+    // child as part of that target.
+    const matchingGroups = directMatches.filter((spanIndex) =>
+      sourceSpans[spanIndex][NAME].toLowerCase().includes(filters.query),
+    );
+    index.addDescendants(result, matchingGroups);
   }
-  return { visible: result, matches: directMatches.length };
+  return {
+    visible: result,
+    matching: new Set(directMatches),
+    matches: directMatches.length,
+  };
 }
 
 function flattenTraceRows({
@@ -152,6 +200,7 @@ function flattenTraceRows({
   sourceExpanded,
   sourceLimits = new Map(),
   sourceVisible = null,
+  autoExpandVisible = true,
   pageSize = PAGE_SIZE,
   maximumRows = INITIAL_ROW_BUDGET,
 }) {
@@ -178,7 +227,10 @@ function flattenTraceRows({
     const candidates = sourceVisible
       ? sourceChildren[index].filter((child) => sourceVisible.has(child))
       : sourceChildren[index];
-    if (!candidates.length || (!sourceVisible && !sourceExpanded.has(index))) {
+    if (
+      !candidates.length ||
+      (!(sourceVisible && autoExpandVisible) && !sourceExpanded.has(index))
+    ) {
       return;
     }
     const limit = sourceLimits.has(index) ? sourceLimits.get(index) : pageSize;
