@@ -180,6 +180,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             {"ssd", NCloud::NProto::STORAGE_MEDIA_SSD},                        \
             {"ssdmirror", NCloud::NProto::STORAGE_MEDIA_SSD},                  \
         }})                                                                   )\
+    xxx(FreshBlocksWriterEnabled,             bool,        false              )\
     xxx(ShapingThrottlerConfig,           NProto::TShapingThrottlerConfig, {} )\
 /* Safety-critical section of settings that must not be changed at runtime. */ \
     xxx(FlushToDevNull,                                      bool, false      )\
@@ -726,7 +727,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AttachDetachPathRequestTimeout,       TDuration,   Seconds(5)         )\
     xxx(ResourceMetricsUpdateInterval,        TDuration,   Seconds(1)         )\
     xxx(SendErrorOnAddClientConflict,         bool,        false              )\
-    xxx(FreshBlocksWriterEnabled,             bool,        false              )\
                                                                                \
     xxx(MaxInflightAttachDetachPathRequestsProcessing, ui64,  1000            )\
     xxx(MaxInFlightCmsRequests,               ui32,        0                  )\
