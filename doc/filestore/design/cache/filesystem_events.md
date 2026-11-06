@@ -77,7 +77,6 @@ nonzero TTL means the client is subscribed to the corresponding key.
 - Events are sent before the completion of the request that generated them,
   so a writer subscribed by its own request (SetNodeXAttr) doesn't get its
   own change; it does get the next one
-- TODO: node removal should drop the node's XAttrs on the client
 
 ## Correctness
 
