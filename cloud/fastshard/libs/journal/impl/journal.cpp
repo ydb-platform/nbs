@@ -6,7 +6,6 @@
 #include "log_index.h"
 #include "lsn_barrier.h"
 
-#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -316,6 +315,10 @@ private:
         const THashMap<ui64, TLogRecordPtr>& lsnToRecord,
         ui64* headLsn);
 
+    NProto::TError ValidateRecordPages(const TLogRecord& record, ui64 ackedLsn);
+
+    TResultOrError<ui32> ReadPagesCrc(const TLogRecord& record);
+
     NCloud::NProto::TError ValidateWriteRequest(
         const NCloud::NProto::TWriteLogRecordRequest& request) const;
 
@@ -349,16 +352,14 @@ TJournal::TJournal(
 
 TFuture<TResultOrError<ui64>> TJournal::Restore()
 {
-    return MetaStore->Restore().Apply(
-        [self = shared_from_this()](const auto& future) -> TResultOrError<ui64>
-        {
-            auto response = UnsafeExtractValue(future);
-            if (HasError(response)) {
-                return response.GetError();
-            }
+    auto future = MetaStore->Restore();
 
-            return self->RestoreFrom(response.ExtractResult());
-        });
+    auto response = Executor->ExtractResponse(std::move(future));
+    if (HasError(response)) {
+        return MakeFuture<TResultOrError<ui64>>(response.GetError());
+    }
+
+    return MakeFuture(RestoreFrom(response.ExtractResult()));
 }
 
 TResultOrError<ui64> TJournal::RestoreFrom(TRestoredBuffers restored)
@@ -428,13 +429,12 @@ TResultOrError<ui64> TJournal::RestoreFrom(TRestoredBuffers restored)
     }
 
     //
-    // Drop the records that can never join the chain and returns the rest
-    // in chain order. |headLsn| is walked back from the watermark it is
-    // given to the head of the chain.
+    // Drop the stranded and the torn records, take the rest in chain order.
+    // |headLsn| is walked back from the watermark to the head of the chain.
     //
 
     ui64 headLsn = lsnLowWatermark;
-    auto records = FilterStrandedRecords(std::move(lsnToRecord), &headLsn);
+    auto records = FilterStrandedRecords(lsnToRecord, &headLsn);
 
     //
     // Start the chain, the page index and the flushed lsn at the head of the
@@ -487,6 +487,9 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
     const THashMap<ui64, TLogRecordPtr>& lsnToRecord,
     ui64* headLsn)
 {
+    // everything up to the watermark is acked
+    const ui64 ackedLsn = *headLsn;
+
     //
     // Walk the acked chain back from the watermark to find where it starts
     //
@@ -506,13 +509,19 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
 
     THashMap<ui64, TLogRecordPtr> prevLsnToRecord;
     for (const auto& [_, record]: lsnToRecord) {
-        prevLsnToRecord.emplace(record->PrevLsn, record);
+        auto [it, inserted] = prevLsnToRecord.emplace(record->PrevLsn, record);
+        if (!inserted && record->Lsn > it->second->Lsn) {
+            STORAGE_WARN(
+                "record with lsn " << it->second->Lsn << " is replaced by lsn "
+                                   << record->Lsn << " chaining from lsn "
+                                   << record->PrevLsn);
+            it->second = record;
+        }
     }
 
     //
-    // Walk the chain forward: its records go first, in order. Keep the rest
-    // only if they chain from the end of the chain or past it - the others
-    // are stranded, nothing can join them
+    // Walk the chain forward: its records go first, in order. The chain ends
+    // at a torn record - the ones past it wait for its rewrite
     //
 
     TVector<TLogRecordPtr> records;
@@ -524,10 +533,25 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
             break;
         }
 
+        auto error = ValidateRecordPages(*it->second, ackedLsn);
+        if (HasError(error)) {
+            STORAGE_WARN(
+                "dropping the log record with lsn "
+                << it->second->Lsn << " chaining from lsn " << tailLsn << ": "
+                << FormatError(error));
+            prevLsnToRecord.erase(it);
+            break;
+        }
+
         tailLsn = it->second->Lsn;
         records.push_back(std::move(it->second));
         prevLsnToRecord.erase(it);
     }
+
+    //
+    // Keep the rest only if they chain from the end of the chain or past it
+    // and are not torn - the others are stranded
+    //
 
     for (auto& [prevLsn, record]: prevLsnToRecord) {
         if (prevLsn < tailLsn) {
@@ -538,10 +562,67 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
             continue;
         }
 
+        auto error = ValidateRecordPages(*record, ackedLsn);
+        if (HasError(error)) {
+            STORAGE_WARN(
+                "dropping the log record with lsn "
+                << record->Lsn << " chaining from lsn " << prevLsn << ": "
+                << FormatError(error));
+            continue;
+        }
+
         records.push_back(std::move(record));
     }
 
     return records;
+}
+
+NProto::TError TJournal::ValidateRecordPages(
+    const TLogRecord& record,
+    ui64 ackedLsn)
+{
+    //
+    // The pages and the record are written in parallel, so a crash or a
+    // failed page write leaves a torn record behind. An acked record is never
+    // torn, so the records up to the watermark are trusted without a read
+    //
+
+    if (record.Lsn <= ackedLsn) {
+        return {};
+    }
+
+    auto crcOrError = ReadPagesCrc(record);
+    if (HasError(crcOrError)) {
+        const auto& error = crcOrError.GetError();
+        return MakeError(
+            error.GetCode(),
+            TStringBuilder()
+                << "unable to read the pages back: " << error.GetMessage());
+    }
+
+    const ui32 crc = crcOrError.GetResult();
+    if (crc != record.PagesCrc) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "the pages have crc " << crc << ", expected "
+                             << record.PagesCrc);
+    }
+
+    return {};
+}
+
+TResultOrError<ui32> TJournal::ReadPagesCrc(const TLogRecord& record)
+{
+    auto locations = GetLocations(record.PageMappings);
+
+    auto future = DataStore->Read(locations);
+    const auto& response = Executor->WaitFor(future);
+
+    if (HasError(response)) {
+        return response.GetError();
+    }
+
+    return CalculatePagesCrc(response.GetResult());
 }
 
 TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
@@ -643,20 +724,36 @@ NProto::TError TJournal::WriteLogRecord(
     };
 
     record.PageMappings = CreatePageMappings(requestPageRanges, locations);
+    record.PagesCrc = CalculatePagesCrc(pages);
 
     //
-    // Write the pages first and the record second: the record is what a
-    // restore finds, so it may only point at pages that are already written
+    // Issue the record write first: the log metadata rejects a record it cannot
+    // take right away. Nothing is in flight then, so skip the page write and
+    // free the pages at once
+
+    auto metaFuture = MetaStore->Write(record.Lsn, SerializeRecord(record));
+
+    if (metaFuture.HasValue() && HasError(metaFuture.GetValue())) {
+        return metaFuture.GetValue();
+    }
+
+    //
+    // Write the pages in parallel with the record - the crc tells a restore
+    // whether the pages are there. Wait for both: the pages of a failed
+    // record are freed, so nothing may be writing to them by then
     //
 
     auto dataFuture = DataStore->Write(locations, pages);
-    if (auto error = Executor->WaitFor(dataFuture); HasError(error)) {
-        return error;
+
+    const auto& metaError = Executor->WaitFor(metaFuture);
+    const auto& dataError = Executor->WaitFor(dataFuture);
+
+    if (HasError(metaError)) {
+        return metaError;
     }
 
-    auto metaFuture = MetaStore->Write(record.Lsn, SerializeRecord(record));
-    if (auto error = Executor->WaitFor(metaFuture); HasError(error)) {
-        return error;
+    if (HasError(dataError)) {
+        return dataError;
     }
 
     success = true;
