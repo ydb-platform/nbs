@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/systemd_time/timestamp.h>
 
+#include <contrib/libs/cctz/include/cctz/time_zone.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/json/json_reader.h>
 
@@ -63,6 +65,9 @@ TMaybe<TInstant> ParseTimestamp(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// roundUp selects the range boundary: false rounds to the start of the period
+// for Grafana's "from"; true rounds to its final millisecond for "to"
+// (e.g. /d gives 00:00:00.000 or 23:59:59.999 UTC, respectively).
 bool TryRoundGrafanaTimestamp(
     TInstant current,
     char unit,
@@ -72,7 +77,13 @@ bool TryRoundGrafanaTimestamp(
     const auto utc = NDatetime::GetUtcTimeZone();
     const cctz::time_point<cctz::seconds> reference{
         cctz::seconds(current.Seconds())};
+    // Civil time stores calendar fields (year, month, day, hour, minute, second)
+    // without a timezone. This lookup gives the fields in UTC, which we use
+    // below to find the start and end of each calendar period.
     const auto civil = utc.lookup(reference).cs;
+    // start is the period's beginning; end is the next period's beginning.
+    // Converting to a coarser civil type resets smaller fields to the period's
+    // start, and adding 1 advances by that type's unit (minute, day, etc.).
     cctz::civil_second start;
     cctz::civil_second end;
     switch (unit) {
@@ -94,6 +105,8 @@ bool TryRoundGrafanaTimestamp(
             break;
         case 'w': {
             // Copied ranges omit Grafana's locale/week-start preference.
+            // prev_weekday searches strictly before its argument; adding one
+            // day lets a Sunday select itself as the start of the week.
             const auto day = cctz::prev_weekday(
                 cctz::civil_day(civil) + 1,
                 cctz::weekday::sunday);
@@ -106,6 +119,7 @@ bool TryRoundGrafanaTimestamp(
             end = cctz::civil_second(cctz::civil_month(civil) + 1);
             break;
         case 'Q': {
+            // Map months 1..12 to the quarter's first month: 1, 4, 7, or 10.
             const cctz::civil_month month(
                 civil.year(),
                 (civil.month() - 1) / 3 * 3 + 1);
@@ -121,11 +135,15 @@ bool TryRoundGrafanaTimestamp(
             return false;
     }
 
-    // Grafana's endOf() uses millisecond precision.
+    // UTC has no ambiguous civil times, so lookup().pre is the unique instant.
+    // Grafana's endOf() uses millisecond precision: subtract one second from
+    // the next period's start, then add 999000 microseconds below.
     const auto seconds =
         utc.lookup(roundUp ? end : start).pre.time_since_epoch().count() -
         (roundUp ? 1 : 0);
     const ui64 fraction = roundUp ? 999000 : 0;
+    // Reject pre-epoch instants and check the final value fits before
+    // multiplying seconds into microseconds and adding the fraction.
     if (seconds < 0 ||
         static_cast<ui64>(seconds) >
             (TInstant::Max().MicroSeconds() - fraction) / 1000000)
