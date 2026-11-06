@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from dateutil import parser as dateparser
+from functools import cached_property
 import jinja2
 import json
 import subprocess
@@ -47,7 +48,20 @@ def _remove_parameters(cmd: list[str]):
 
 class YcpCmdEngine:
 
+    @cached_property
+    def _supports_legacy_syntax(self) -> bool:
+        # Older versions can accept unknown flags when displaying top-level help.
+        return subprocess.run(
+            ["ycp", "--syntax", "1", "version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+
     def exec(self, command, input, err):
+        if self._supports_legacy_syntax:
+            command = [command[0], "--syntax", "1", *command[1:]]
+
         return subprocess.check_output(
             command,
             input=bytes(input if input else "{}", "utf8"),
