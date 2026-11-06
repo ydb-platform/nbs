@@ -11,6 +11,7 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
+    cloud/blockstore/libs/storage/cell_proxy
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent
     cloud/blockstore/libs/storage/disk_agent/model

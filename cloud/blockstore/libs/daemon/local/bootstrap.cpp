@@ -71,6 +71,11 @@ void TBootstrapLocal::SetupCellManager()
     CellManager = NCells::CreateCellManagerStub(Service);
 }
 
+void TBootstrapLocal::SetupCellProxy()
+{
+    // no actor system here
+}
+
 void TBootstrapLocal::SetupCellMonitoringActor()
 {
     // no actor system here

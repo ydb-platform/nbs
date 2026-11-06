@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -12,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/cell_proxy/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -156,6 +158,16 @@ public:
                 ssProxy.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
+
+        //
+        // CellProxy is initialized once the cell manager has started.
+        //
+
+        auto cellProxy = CreateCellProxy();
+        setup->LocalServices.emplace_back(
+            MakeCellProxyServiceId(),
+            TActorSetupCmd(cellProxy.release(), TMailboxType::Revolving,
+                           appData->UserPoolId));
 
         //
         // HiveProxy
