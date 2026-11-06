@@ -19,6 +19,7 @@
 #include <util/generic/hash_set.h>
 
 #include <array>
+#include <functional>
 #include <utility>
 
 using namespace NMonitoring;
@@ -140,14 +141,20 @@ private:
     void ScheduleFetch(
         const TDuration interval,
         IInstanceFetcher& fetcher,
-        TInstanceList& instances);
+        TInstanceList& instances,
+        bool initial);
     void FetchInstances(
         const TDuration interval,
         IInstanceFetcher& fetcher,
-        TInstanceList& instances);
+        TInstanceList& instances,
+        bool initial);
 
-    void ScheduleHealthCheck(TInstanceList& instances);
-    void HealthCheckInstances(TInstanceList& instances);
+    void ScheduleHealthCheck(
+        TInstanceList& instances,
+        std::function<void()> onInitialized);
+    void HealthCheckInstances(
+        TInstanceList& instances,
+        std::function<void()> onInitialized);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -227,21 +234,21 @@ void TDiscoveryService::Start()
     FetchInstances(
         Config->GetConductorRequestInterval(),
         *ConductorInstanceFetcher,
-        ConductorInstances
+        ConductorInstances,
+        true
     );
     FetchInstances(
         Config->GetEdsRequestInterval(),
         *EdsInstanceFetcher,
-        EdsInstances
+        EdsInstances,
+        true
     );
     FetchInstances(
         Config->GetLocalFilesReloadInterval(),
         *StaticInstanceFetcher,
-        StaticInstances
+        StaticInstances,
+        true
     );
-    ScheduleHealthCheck(ConductorInstances);
-    ScheduleHealthCheck(StaticInstances);
-    ScheduleHealthCheck(EdsInstances);
 }
 
 void TDiscoveryService::Stop()
@@ -274,7 +281,8 @@ void TDiscoveryService::AddInstance(
 void TDiscoveryService::ScheduleFetch(
     const TDuration interval,
     IInstanceFetcher& fetcher,
-    TInstanceList& instances)
+    TInstanceList& instances,
+    bool initial)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -283,9 +291,9 @@ void TDiscoveryService::ScheduleFetch(
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + interval,
-        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] {
+        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances, initial] {
             if (auto p = weak_ptr.lock()) {
-                p->FetchInstances(interval, fetcher, instances);
+                p->FetchInstances(interval, fetcher, instances, initial);
             }
         }
     );
@@ -294,7 +302,8 @@ void TDiscoveryService::ScheduleFetch(
 void TDiscoveryService::FetchInstances(
     const TDuration interval,
     IInstanceFetcher& fetcher,
-    TInstanceList& instances)
+    TInstanceList& instances,
+    bool initial)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -303,9 +312,37 @@ void TDiscoveryService::FetchInstances(
     try {
         auto weak_ptr = weak_from_this();
         fetcher.FetchInstances(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (auto) {
+            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances, initial] (auto future) {
                 if (auto p = weak_ptr.lock()) {
-                    p->ScheduleFetch(interval, fetcher, instances);
+                    if (AtomicGet(p->ShouldStop)) {
+                        return;
+                    }
+                    try {
+                        const auto& error = future.GetValue();
+                        if (HasError(error)) {
+                            auto& Log = p->Log;
+                            STORAGE_ERROR("instance fetch error: " << FormatError(error));
+                            p->ScheduleFetch(interval, fetcher, instances, initial);
+                            return;
+                        }
+                        if (initial) {
+                            p->HealthCheckInstances(
+                                instances,
+                                [weak_ptr, interval, &fetcher, &instances] {
+                                    if (auto p = weak_ptr.lock()) {
+                                        p->ScheduleFetch(interval, fetcher, instances, false);
+                                    }
+                                }
+                            );
+                            return;
+                        }
+                    } catch (...) {
+                        auto& Log = p->Log;
+                        STORAGE_ERROR("instance fetch error: "
+                            << CurrentExceptionMessage());
+                        p->Counters.OnUnexpectedFetchError();
+                    }
+                    p->ScheduleFetch(interval, fetcher, instances, initial);
                 }
             }
         );
@@ -313,11 +350,13 @@ void TDiscoveryService::FetchInstances(
         STORAGE_ERROR("unexpected fetch error: "
             << CurrentExceptionMessage());
         Counters.OnUnexpectedFetchError();
-        ScheduleFetch(interval, fetcher, instances);
+        ScheduleFetch(interval, fetcher, instances, initial);
     }
 }
 
-void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
+void TDiscoveryService::ScheduleHealthCheck(
+    TInstanceList& instances,
+    std::function<void()> onInitialized)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -326,15 +365,17 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + Config->GetHealthCheckInterval(),
-        [weak_ptr = std::move(weak_ptr), &instances] {
+        [weak_ptr = std::move(weak_ptr), &instances, onInitialized] {
             if (auto p = weak_ptr.lock()) {
-                p->HealthCheckInstances(instances);
+                p->HealthCheckInstances(instances, onInitialized);
             }
         }
     );
 }
 
-void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
+void TDiscoveryService::HealthCheckInstances(
+    TInstanceList& instances,
+    std::function<void()> onInitialized)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -343,11 +384,27 @@ void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
     try {
         auto weak_ptr = weak_from_this();
         HealthChecker->UpdateStatus(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), &instances] (auto) {
+            [weak_ptr = std::move(weak_ptr), &instances, onInitialized] (auto future) {
                 if (auto p = weak_ptr.lock()) {
-                    p->BalancingPolicy->Reorder(instances);
-                    AtomicSet(instances.HealthCheckDone, true);
-                    p->ScheduleHealthCheck(instances);
+                    if (AtomicGet(p->ShouldStop)) {
+                        return;
+                    }
+                    try {
+                        future.GetValue();
+                        p->BalancingPolicy->Reorder(instances);
+                        AtomicSet(instances.HealthCheckDone, true);
+                    } catch (...) {
+                        auto& Log = p->Log;
+                        STORAGE_ERROR("healthcheck error: "
+                            << CurrentExceptionMessage());
+                        p->Counters.OnUnexpectedHealthCheckError();
+                        p->ScheduleHealthCheck(instances, onInitialized);
+                        return;
+                    }
+                    if (onInitialized) {
+                        onInitialized();
+                    }
+                    p->ScheduleHealthCheck(instances, {});
                 }
             }
         );
@@ -355,7 +412,7 @@ void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
         STORAGE_ERROR("unexpected healthcheck error: "
             << CurrentExceptionMessage());
         Counters.OnUnexpectedHealthCheckError();
-        ScheduleHealthCheck(instances);
+        ScheduleHealthCheck(instances, onInitialized);
     }
 }
 
