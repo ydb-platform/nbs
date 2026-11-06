@@ -145,6 +145,11 @@ TCellHostConfig::TCellHostConfig(
 {
 }
 
+void TCellHostConfig::SetTransport(NProto::ECellDataTransport transport)
+{
+    Transport = transport;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCellConfig::TImpl

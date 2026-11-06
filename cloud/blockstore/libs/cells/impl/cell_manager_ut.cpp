@@ -840,6 +840,31 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
         UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].TabletHost);
 
+        const auto selected = cellManager
+                                  ->SwitchDataTransport(
+                                      "xyz",
+                                      "disk-1",
+                                      "client-1",
+                                      NProto::CELL_DATA_TRANSPORT_GRPC)
+                                  .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(selected), FormatError(selected));
+        const auto afterSelection = cellManager->GetSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(afterSelection.Mounts.size(), 1);
+        UNIT_ASSERT(
+            afterSelection.Mounts[0].SelectedTransport ==
+            NProto::CELL_DATA_TRANSPORT_GRPC);
+        const auto noRdma = cellManager
+                                ->SwitchDataTransport(
+                                    "xyz",
+                                    "disk-1",
+                                    "client-1",
+                                    NProto::CELL_DATA_TRANSPORT_RDMA)
+                                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(noRdma.GetCode(), E_ARGUMENT);
+        const auto afterFailure = cellManager->GetSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(afterFailure.Mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(afterFailure.Mounts[0].DataTransport, "grpc");
+
         auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
         request->SetDiskId("disk-1");
         request->MutableHeaders()->SetClientId("client-1");
