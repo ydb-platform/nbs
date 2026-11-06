@@ -777,6 +777,11 @@ runs:
       shell: bash
       run: |
         if [ -d "$AFFECTED_TESTS_DIR" ]; then
+            for graph in "$AFFECTED_TESTS_DIR"/*-graph.json; do
+                if [ -f "$graph" ]; then
+                    gzip -1 -- "$graph"
+                fi
+            done
             aws s3 sync --acl public-read --follow-symlinks --no-progress \
                 "$AFFECTED_TESTS_DIR/" "$S3_BUCKET_PATH/affected-tests/${COMPONENT_DIR}"
             {

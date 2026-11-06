@@ -54,6 +54,8 @@ and undeclared dependencies cannot be tracked this way.
 Both graphs, selection details, target paths, and graph generation logs are
 uploaded to `$S3_BUCKET_PATH/affected-tests/${COMPONENT_DIR}`. The job summary
 links to those files on S3. Partial results are also uploaded if selection fails.
+Graph dumps are compressed as `base-graph.json.gz` and `head-graph.json.gz`;
+the small selection report and logs remain directly readable.
 Test results use the existing workflow reports.
 The existing PR and nightly workflows keep their default behavior.
 The implementation works with our current `ya`; it does not require graph/context
