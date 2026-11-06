@@ -33,6 +33,7 @@ PEERDIR(
     contrib/ydb/core/mon
     contrib/ydb/library/actors/core
 
+    library/cpp/cgiparam
     library/cpp/html/pcdata
     library/cpp/monlib/service/pages
     library/cpp/threading/hot_swap

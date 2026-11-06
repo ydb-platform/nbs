@@ -3,9 +3,10 @@
 #include "public.h"
 
 #include "connection.h"
-#include "inbound_activity.h"
 #include "host_endpoint.h"
+#include "inbound_activity.h"
 
+#include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -63,8 +64,10 @@ struct TCellMountStatus
     TString ClientId;
     TString CellId;
     TString Host;            // the cell host the connection is on now
-    TString DataTransport;   // what carries the data now
+    TString DataTransport;   // selected route, or RDMA's active gRPC fallback
     TString TabletHost;      // where the mount found the volume tablet
+    NProto::ECellDataTransport SelectedTransport =
+        NProto::CELL_DATA_TRANSPORT_UNSET;
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no
@@ -102,8 +105,18 @@ struct ICellManager: public IStartable
 
     [[nodiscard]] virtual TCellsSnapshot GetSnapshot() = 0;
 
+    // Runtime override for one mounted disk/client on this node. Existing I/O
+    // retains its endpoint. The selection follows host migration and expires
+    // with the connection; preparation failure leaves the old path intact.
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
+    SwitchDataTransport(
+        TString cellId,
+        TString diskId,
+        TString clientId,
+        NProto::ECellDataTransport transport) = 0;
+
     [[nodiscard]] virtual NThreading::TFuture<TVector<TCellDescribeResult>>
-        SearchVolume(TString diskId, TDuration timeout) = 0;
+    SearchVolume(TString diskId, TDuration timeout) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
