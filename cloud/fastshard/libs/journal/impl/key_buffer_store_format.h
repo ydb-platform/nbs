@@ -28,15 +28,14 @@ struct TSuperblock
     TBuffer MetaBuffer;
 };
 
-NProto::TError ValidatePageSize(ui32 pageSize);
+NProto::TError ValidatePageSize(ui32 pageSize, ui32 minKeyBufferSize);
 
 ui32 GetPageHeaderSize();
 ui32 GetSerializedEntrySize(ui32 entryBufferSize);
 
-// Lays out |entries| in a page of |pageSize| bytes.
-TResultOrError<TBuffer> MakePageBuffer(
-    ui32 pageSize,
-    const TVector<TEntry>& entries);
+// Lays out |entries| in a page of |pageSize| bytes. On success the entries
+// point into the returned page instead of the buffers they came from.
+TResultOrError<TBuffer> MakePageBuffer(ui32 pageSize, TVector<TEntry>& entries);
 
 // Returns the entries of a valid page, nothing for a page that holds anything
 // else.
