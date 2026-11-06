@@ -117,7 +117,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("1->100x2, 5->200x3", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldSkipPagesThatAreNotInTheLog)
+    Y_UNIT_TEST(ShouldSkipPagesThatAreNotInLog)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -131,7 +131,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
             Describe(map.Lookup({Range(0, 6)}, 0).Mappings));
     }
 
-    Y_UNIT_TEST(ShouldOverrideAnOlderRangeEntirely)
+    Y_UNIT_TEST(ShouldOverrideOlderRangeEntirely)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -145,7 +145,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("1->200x4", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldOverrideAnOlderRangeThatItContains)
+    Y_UNIT_TEST(ShouldOverrideOlderRangeThatItContains)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -159,7 +159,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("1->200x8", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldTrimTheTailOfAnOlderRange)
+    Y_UNIT_TEST(ShouldTrimTailOfOlderRange)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -176,7 +176,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("1->100x2, 3->200x4", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldTrimTheHeadOfAnOlderRangeAndMoveItsOffset)
+    Y_UNIT_TEST(ShouldTrimHeadOfOlderRangeAndMoveItsOffset)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("1->200x4, 5->102x2", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldSplitAnOlderRangeInTwo)
+    Y_UNIT_TEST(ShouldSplitOlderRangeInTwo)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -248,7 +248,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
             DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldClipTheResultToTheRequestedRange)
+    Y_UNIT_TEST(ShouldClipResultToRequestedRange)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.Lookup({Range(1, 1)}, 100).Mappings.empty());
     }
 
-    Y_UNIT_TEST(ShouldRemoveEverythingBelowTheGivenLsn)
+    Y_UNIT_TEST(ShouldRemoveEverythingBelowGivenLsn)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -344,7 +344,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL(20, map.GetLastIndexedLsn());
     }
 
-    Y_UNIT_TEST(ShouldRemoveNothingBelowTheOldestLsn)
+    Y_UNIT_TEST(ShouldRemoveNothingBelowOldestLsn)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -359,7 +359,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
     }
 
-    Y_UNIT_TEST(ShouldBeReadableThroughAConstReference)
+    Y_UNIT_TEST(ShouldBeReadableThroughConstReference)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);

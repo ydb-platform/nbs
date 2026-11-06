@@ -61,7 +61,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldHoldTheBarrierWhileLsnAdvances)
+    Y_UNIT_TEST(ShouldHoldBarrierWhileLsnAdvances)
     {
         TLsnBarrier barrier;
 
@@ -80,7 +80,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldReportTheOldestOfSeveralBarriers)
+    Y_UNIT_TEST(ShouldReportOldestOfSeveralBarriers)
     {
         TLsnBarrier barrier;
 
@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(30, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldRefcountRepeatedBarriersAtTheSameLsn)
+    Y_UNIT_TEST(ShouldRefcountRepeatedBarriersAtSameLsn)
     {
         TLsnBarrier barrier;
 
@@ -153,7 +153,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldReleaseTheBarrierOnGuardDestruction)
+    Y_UNIT_TEST(ShouldReleaseBarrierOnGuardDestruction)
     {
         TLsnBarrier barrier;
 
@@ -169,7 +169,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldMoveTheGuardWithoutReleasingTheBarrier)
+    Y_UNIT_TEST(ShouldMoveGuardWithoutReleasingBarrier)
     {
         TLsnBarrier barrier;
 
@@ -187,7 +187,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldAcquireZeroLsnBeforeTheFirstAdvance)
+    Y_UNIT_TEST(ShouldAcquireZeroLsnBeforeFirstAdvance)
     {
         TLsnBarrier barrier;
 
@@ -201,7 +201,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldAcquireAheadOfTheCurrentLsn)
+    Y_UNIT_TEST(ShouldAcquireAheadOfCurrentLsn)
     {
         TLsnBarrier barrier;
 
@@ -224,7 +224,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(30, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldNotAcquireBehindTheCurrentLsn)
+    Y_UNIT_TEST(ShouldNotAcquireBehindCurrentLsn)
     {
         TLsnBarrier barrier;
 
@@ -242,7 +242,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
     }
 
-    Y_UNIT_TEST(ShouldNotReclaimPastTheBarrierUnderConcurrency)
+    Y_UNIT_TEST(ShouldNotReclaimPastBarrierUnderConcurrency)
     {
         // The contract readers rely on: while a barrier is held,
         // GetBarrierLsn() never moves past it, so records with a greater lsn

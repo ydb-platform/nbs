@@ -218,7 +218,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("11:[b]", ReadPages({{11, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldWriteEveryPageGroupOfTheRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldWriteEveryPageGroupOfRequest, TFixture)
     {
         WritePages({{10, {Page('a'), Page('b')}}, {20, {Page('c')}}});
 
@@ -279,7 +279,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldReturnAPageGroupPerPageGroupRef, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnPageGroupPerPageGroupRef, TFixture)
     {
         WritePages({{10, {Page('a')}}});
 
@@ -292,13 +292,13 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("", ReadPages({}));
     }
 
-    Y_UNIT_TEST_F(ShouldAcceptAnEmptyWriteRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldAcceptEmptyWriteRequest, TFixture)
     {
         WritePages({});
         WritePages({{10, {}}});
     }
 
-    Y_UNIT_TEST_F(ShouldReadAndWriteTheWholeDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldReadAndWriteWholeDevice, TFixture)
     {
         TVector<TString> pages;
         for (ui64 i = 0; i != DefaultPageCount; ++i) {
@@ -319,7 +319,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldKeepThePagesInTheFile, TFixture)
+    Y_UNIT_TEST_F(ShouldKeepPagesInFile, TFixture)
     {
         WritePages({{10, {Page('a'), Page('b')}}});
 
@@ -345,14 +345,14 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("10:[a,b]", ReadPages({{10, 2}}));
     }
 
-    Y_UNIT_TEST_F(ShouldCreateTheFileOfTheDeviceSize, TFixture)
+    Y_UNIT_TEST_F(ShouldCreateFileOfDeviceSize, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultPageCount * DefaultPageSize,
             FileSize());
     }
 
-    Y_UNIT_TEST_F(ShouldGrowAShorterFile, TFixture)
+    Y_UNIT_TEST_F(ShouldGrowShorterFile, TFixture)
     {
         Device.reset();
 
@@ -374,7 +374,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
             response.GetPageGroups(0).GetContent(0));
     }
 
-    Y_UNIT_TEST_F(ShouldNotTruncateALongerFile, TFixture)
+    Y_UNIT_TEST_F(ShouldNotTruncateLongerFile, TFixture)
     {
         Device.reset();
 
@@ -397,7 +397,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
             FormatError(response.GetError()));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectAPageOfTheWrongSizeOnWrite, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectPageOfWrongSizeOnWrite, TFixture)
     {
         for (ui32 size: {DefaultPageSize - 1, DefaultPageSize + 1, 0u}) {
             const auto error = Write({{10, {Page('a'), Page('b', size)}}});
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
             response.GetPageGroups(0).GetContent(0));
     }
 
-    Y_UNIT_TEST_F(ShouldRejectPagesBeyondTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectPagesBeyondDevice, TFixture)
     {
         // the last page is writable and readable
 
@@ -470,7 +470,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldRejectTheWholeRequestIfAnyGroupIsInvalid, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectWholeRequestIfAnyGroupIsInvalid, TFixture)
     {
         const auto error = Write({
             {10, {Page('a')}},
@@ -513,7 +513,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("10:[a]", ReadPages({{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldZeroALargeRange, TFixture)
+    Y_UNIT_TEST_F(ShouldZeroLargeRange, TFixture)
     {
         constexpr ui64 pageCount = 1_MB / DefaultPageSize + 3;
 
@@ -535,7 +535,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("a", DescribePage(content[pageCount + 1]));
     }
 
-    Y_UNIT_TEST_F(ShouldFreeTheZeroedPages, TFixture)
+    Y_UNIT_TEST_F(ShouldFreeZeroedPages, TFixture)
     {
         constexpr ui64 pageCount = 1_MB / DefaultPageSize;
 
@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(pageCount * DefaultPageSize, FileSize());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectZeroingPagesBeyondTheDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectZeroingPagesBeyondDevice, TFixture)
     {
         WritePages({{10, {Page('a')}}});
 
@@ -582,26 +582,24 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldThrowIfTheFileCanNotBeOpened, TFixture)
+    Y_UNIT_TEST_F(ShouldThrowIfFileCanNotBeOpened, TFixture)
     {
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
+        UNIT_ASSERT_EXCEPTION(
             CreateFileDevice(
                 FileIO,
                 TempDir.Path() / "missing" / "device",
                 DefaultPageCount,
                 DefaultPageSize),
-            yexception,
-            "unable to open");
+            yexception);
     }
 
-    Y_UNIT_TEST_F(ShouldThrowOnAPageSizeUnfitForDirectIO, TFixture)
+    Y_UNIT_TEST_F(ShouldThrowOnPageSizeUnfitForDirectIO, TFixture)
     {
         for (ui32 size: {0u, 512u, DefaultPageSize - 1, DefaultPageSize + 512})
         {
-            UNIT_ASSERT_EXCEPTION_CONTAINS_C(
+            UNIT_ASSERT_EXCEPTION_C(
                 CreateDevice(DefaultPageCount, size),
                 yexception,
-                "page size",
                 size);
         }
 

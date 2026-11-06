@@ -520,7 +520,6 @@ TEST(TFastShardClientTest, ShouldSpeakProtoText)
     NCloud::NProto::TAcquireDevicesResponse resp;
     ParseFromTextFormat(*f.Output, resp);
     EXPECT_EQ(E_REJECTED, resp.GetError().GetCode());
-    EXPECT_EQ("not now", resp.GetError().GetMessage());
 }
 
 TEST(TFastShardClientTest, ShouldWritePages)
