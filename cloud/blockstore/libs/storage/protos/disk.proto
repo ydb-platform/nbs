@@ -1459,6 +1459,9 @@ message TBackupDiskRegistryStateResponse
 
     // Disk Regsitry state backup from local db.
     TDiskRegistryStateBackup LocalDBBackup = 4;
+
+    // Time when the state was read (in microseconds).
+    uint64 SnapshotTs = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

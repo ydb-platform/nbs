@@ -101,12 +101,13 @@ struct TTxDiskRegistry
         bool SuspendSecureErase = false;
 
         TLoadState() = default;
+        virtual ~TLoadState() = default;
 
         explicit TLoadState(TRequestInfoPtr requestInfo)
             : RequestInfo{std::move(requestInfo)}
         {}
 
-        void Clear()
+        virtual void Clear()
         {
             RestoreState = false;
             LastBackupTime = {};
@@ -939,22 +940,32 @@ struct TTxDiskRegistry
     // BackupDiskRegistryState
     //
 
-    struct TBackupDiskRegistryState
-        : TLoadState
+    struct TBackupDiskRegistryState: public TLoadState
     {
         const TString BackupFilePath;
         const NProto::EBackupDiskRegistryStateSource Source;
         NProto::TDiskRegistryStateBackup MemorySnapshot;
+        TInstant SnapshotTs;
 
         TBackupDiskRegistryState() = default;
+
         TBackupDiskRegistryState(
-                TRequestInfoPtr requestInfo,
-                TString backupFilePath,
-                NProto::EBackupDiskRegistryStateSource source)
+            TRequestInfoPtr requestInfo,
+            TString backupFilePath,
+            NProto::EBackupDiskRegistryStateSource source)
             : TLoadState{std::move(requestInfo)}
             , BackupFilePath{std::move(backupFilePath)}
             , Source{source}
         {}
+
+        ~TBackupDiskRegistryState() override = default;
+
+        void Clear() override
+        {
+            MemorySnapshot.Clear();
+            SnapshotTs = TInstant{};
+            TLoadState::Clear();
+        }
     };
 
     //
