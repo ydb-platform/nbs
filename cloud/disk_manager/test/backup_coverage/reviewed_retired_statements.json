@@ -1,0 +1,216 @@
+{
+  "source_revision": "11bf043f6b6055c4ded599421075afb4af4f4b3b",
+  "target_revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+  "entries": [
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup/follower_s3.go",
+      "start": [
+        37,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go",
+      "start": [
+        32,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/register.go",
+      "start": [
+        282,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/register.go",
+      "start": [
+        283,
+        3
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/register.go",
+      "start": [
+        286,
+        5
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/register.go",
+      "start": [
+        296,
+        5
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/register.go",
+      "start": [
+        342,
+        63
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/dataplane/schedule_backup_chunks_tasks.go",
+      "reason": "deleted before second squash",
+      "statements": 11
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        70,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        81,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/images/register.go",
+      "start": [
+        101,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/images/register.go",
+      "start": [
+        103,
+        4
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        77,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        92,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/register.go",
+      "start": [
+        61,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/register.go",
+      "start": [
+        63,
+        4
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/controlplane.go",
+      "start": [
+        191,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/controlplane.go",
+      "start": [
+        208,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/controlplane.go",
+      "start": [
+        395,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/dataplane.go",
+      "start": [
+        91,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        225,
+        2
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        229,
+        3
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        239,
+        3
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        351,
+        3
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    },
+    {
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        423,
+        3
+      ],
+      "reason": "replaced by second PR; replacement counted once"
+    }
+  ],
+  "source_files": {
+    "cloud/disk_manager/internal/pkg/dataplane/backup/follower_s3.go": "a731f20c52fa8dd62e002ddfcf47e2a20b62214448fc217eb7d957c727f3ca1c",
+    "cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go": "7aec8f79ff122c3535d856f6baeef581730e8ad5b573675adbf0fee5a73b5699",
+    "cloud/disk_manager/internal/pkg/dataplane/register.go": "ef0b34cbafa2f58e6923928d3b1a8f4cdc723c181b1299505cccece1ae46a42a",
+    "cloud/disk_manager/internal/pkg/dataplane/schedule_backup_chunks_tasks.go": "96d6fd178bea5720b5e79079c87362340fe81060261f53f7897f6d658617b84e",
+    "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go": "b8f1acc594b294eef24ae1768610194a8e6b1716c44ce1b440a781cf874ad89e",
+    "cloud/disk_manager/internal/pkg/services/images/register.go": "30cd30fe9f151f9b8e6cb237af33d30a03bc0609cc4edaf3e3cccd39417574d8",
+    "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go": "8526a48c24b0cc035158d6a4fc3eb4eaf17848a7ac3548dd6ffae762da2011d9",
+    "cloud/disk_manager/internal/pkg/services/snapshots/register.go": "3ac4e96950ba7b514b8f6e6cf4ec927d583af6cd1235f01d6cc4ba7523920c53",
+    "cloud/disk_manager/pkg/app/controlplane.go": "444cf612f3666d988d1a4091743e386401dc4f5742ff08a38a51575d7abe34ed",
+    "cloud/disk_manager/pkg/app/dataplane.go": "5d47cc10092937319ab10e1dbd4c328abe0fc81821ff88063157b3cf60bebc60",
+    "cloud/disk_manager/pkg/app/run.go": "44c8273fbb938beaf6a4e2520855fcc4149d868c617fff3d90f91154e789e1c1"
+  }
+}

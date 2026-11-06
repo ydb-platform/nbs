@@ -10,6 +10,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_integrity_test.go
     storage_ydb_test.go
 )
 
