@@ -7,6 +7,7 @@ GO_TEST_SRCS(
     ../backup_chunks_task_test.go
     ../backup_snapshot_data_task_test.go
     ../delete_snapshot_data_task_test.go
+    ../establish_snapshot_inheritance_tasks_test.go
 )
 
 IF (RACE)

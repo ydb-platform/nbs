@@ -13,6 +13,8 @@ SRCS(
     delete_disk_from_incremental.go
     delete_snapshot_data_task.go
     delete_snapshot_task.go
+    establish_snapshot_inheritance_task.go
+    establish_snapshot_inheritance_for_all_snapshots_task.go
     migrate_snapshot.go
     migrate_snapshot_database_task.go
     register.go

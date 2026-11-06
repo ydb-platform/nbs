@@ -1,11 +1,13 @@
 package tests
 
 import (
+	"bytes"
 	"hash/crc32"
 	"testing"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -346,6 +348,163 @@ func TestSnapshotServiceCreateIncrementalSnapshotFromDisk(t *testing.T) {
 		disk_manager.DiskKind_DISK_KIND_SSD,
 		36*1024*4096, // diskSize
 	)
+}
+
+func TestSnapshotServiceInheritanceSurvivesIntermediateDeletion(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	storage, closeStorage := testcommon.NewSnapshotStorage(t, ctx)
+	defer closeStorage()
+
+	const chunkSize = 4 * 1024 * 1024
+	const diskSize = 3 * chunkSize
+	diskID := t.Name() + "_disk"
+	snapshotIDs := []string{t.Name() + "_0", t.Name() + "_1", t.Name() + "_2"}
+	imageIDs := []string{t.Name() + "_image0", t.Name() + "_image1", t.Name() + "_image2"}
+
+	operation, err := client.CreateDisk(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateDiskRequest{
+			Src:  &disk_manager.CreateDiskRequest_SrcEmpty{SrcEmpty: &empty.Empty{}},
+			Size: diskSize,
+			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+
+	createSnapshot := func(snapshotID string) {
+		operation, err := client.CreateSnapshot(
+			testcommon.GetRequestContext(t, ctx),
+			&disk_manager.CreateSnapshotRequest{
+				Src: &disk_manager.DiskId{
+					ZoneId: defaultZoneID,
+					DiskId: diskID,
+				},
+				SnapshotId: snapshotID,
+				FolderId:   "folder",
+			},
+		)
+		require.NoError(t, err)
+		require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+	}
+	createImage := func(request *disk_manager.CreateImageRequest) {
+		request.FolderId = "folder"
+		operation, err := client.CreateImage(testcommon.GetRequestContext(t, ctx), request)
+		require.NoError(t, err)
+		require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+	}
+	checkParents := func(snapshotID string, expected ...string) {
+		parents, err := storage.GetSnapshotParents(ctx, snapshotID)
+		require.NoError(t, err)
+		require.ElementsMatch(t, expected, parents, "snapshot %s", snapshotID)
+	}
+	waitDeleted := func(snapshotID string) {
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+			assert.NoError(collect, err)
+			assert.Nil(collect, meta)
+		}, time.Minute, 100*time.Millisecond, "snapshot %s was not collected", snapshotID)
+		checkParents(snapshotID)
+	}
+	deleteSnapshot := func(snapshotID string) {
+		operation, err := client.DeleteSnapshot(
+			testcommon.GetRequestContext(t, ctx),
+			&disk_manager.DeleteSnapshotRequest{SnapshotId: snapshotID},
+		)
+		require.NoError(t, err)
+		require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+		waitDeleted(snapshotID)
+	}
+	deleteImage := func(imageID string) {
+		operation, err := client.DeleteImage(
+			testcommon.GetRequestContext(t, ctx),
+			&disk_manager.DeleteImageRequest{ImageId: imageID},
+		)
+		require.NoError(t, err)
+		require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+		waitDeleted(imageID)
+	}
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
+	content := bytes.Repeat([]byte{1}, diskSize)
+	require.NoError(t, nbsClient.Write(diskID, 0, content))
+	createSnapshot(snapshotIDs[0])
+	checkParents(snapshotIDs[0])
+
+	// The last snapshot has one chunk owned by each snapshot in the chain.
+	copy(content[:chunkSize], bytes.Repeat([]byte{2}, chunkSize))
+	require.NoError(t, nbsClient.Write(diskID, 0, content[:chunkSize]))
+	createSnapshot(snapshotIDs[1])
+	testcommon.CheckBaseSnapshot(t, ctx, snapshotIDs[1], snapshotIDs[0])
+	checkParents(snapshotIDs[1], snapshotIDs[0])
+
+	copy(content[chunkSize:2*chunkSize], bytes.Repeat([]byte{3}, chunkSize))
+	require.NoError(t, nbsClient.Write(diskID, chunkSize, content[chunkSize:2*chunkSize]))
+	createSnapshot(snapshotIDs[2])
+	testcommon.CheckBaseSnapshot(t, ctx, snapshotIDs[2], snapshotIDs[1])
+	checkParents(snapshotIDs[2], snapshotIDs[0], snapshotIDs[1])
+
+	// Both image operations run dataplane.CreateSnapshotFromSnapshot.
+	createImage(&disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcSnapshotId{
+			SrcSnapshotId: snapshotIDs[2],
+		},
+		DstImageId: imageIDs[0],
+	})
+	createImage(&disk_manager.CreateImageRequest{
+		Src:        &disk_manager.CreateImageRequest_SrcImageId{SrcImageId: imageIDs[0]},
+		DstImageId: imageIDs[1],
+	})
+	checkParents(imageIDs[0], snapshotIDs...)
+	checkParents(imageIDs[1], snapshotIDs...)
+
+	deleteSnapshot(snapshotIDs[1])
+	deleteImage(imageIDs[0])
+	checkParents(snapshotIDs[2], snapshotIDs[0], snapshotIDs[1])
+	checkParents(imageIDs[1], snapshotIDs...)
+
+	// Copies must retain the original chunk creators after their metadata is gone.
+	createImage(&disk_manager.CreateImageRequest{
+		Src:        &disk_manager.CreateImageRequest_SrcImageId{SrcImageId: imageIDs[1]},
+		DstImageId: imageIDs[2],
+	})
+	checkParents(imageIDs[2], snapshotIDs...)
+
+	restoredDiskID := t.Name() + "_restored"
+	operation, err = client.CreateDisk(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateDiskRequest{
+			Src:  &disk_manager.CreateDiskRequest_SrcImageId{SrcImageId: imageIDs[2]},
+			Size: diskSize,
+			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: restoredDiskID,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+	require.NoError(t, nbsClient.ValidateCrc32(ctx, restoredDiskID, nbs.DiskContentInfo{
+		ContentSize: diskSize,
+		Crc32:       crc32.ChecksumIEEE(content),
+	}))
+
+	deleteSnapshot(snapshotIDs[0])
+	deleteSnapshot(snapshotIDs[2])
+	checkParents(imageIDs[1], snapshotIDs...)
+	checkParents(imageIDs[2], snapshotIDs...)
+	deleteImage(imageIDs[1])
+	deleteImage(imageIDs[2])
+	testcommon.CheckConsistency(t, ctx)
 }
 
 func TestSnapshotServiceCreateIncrementalSnapshotFromSsdNonreplicatedDisk(t *testing.T) {

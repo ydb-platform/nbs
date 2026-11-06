@@ -25,6 +25,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 var requestProtoByTaskType = map[string]func() proto.Message{
+	"dataplane.EstablishSnapshotInheritance": func() proto.Message {
+		return &dataplane_protos.EstablishSnapshotInheritanceRequest{}
+	},
+	"dataplane.EstablishSnapshotInheritanceForAllSnapshots": func() proto.Message {
+		return &empty.Empty{}
+	},
+
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskRequest{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotRequest{} },
 	"dataplane.CreateSnapshotFromURL":               func() proto.Message { return &dataplane_protos.CreateSnapshotFromURLRequest{} },
@@ -82,6 +89,13 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
+	"dataplane.EstablishSnapshotInheritance": func() proto.Message {
+		return &dataplane_protos.EstablishSnapshotInheritanceTaskState{}
+	},
+	"dataplane.EstablishSnapshotInheritanceForAllSnapshots": func() proto.Message {
+		return &dataplane_protos.EstablishSnapshotInheritanceForAllSnapshotsTaskState{}
+	},
+
 	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },

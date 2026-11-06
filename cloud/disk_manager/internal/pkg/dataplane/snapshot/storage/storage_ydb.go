@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
@@ -271,6 +272,69 @@ func (s *storageYDB) ListSnapshots(
 		},
 	)
 	return ids, err
+}
+
+func (s *storageYDB) AddSnapshotParents(
+	ctx context.Context,
+	snapshotID string,
+	parentIDs map[string]struct{},
+) (err error) {
+
+	defer s.metrics.StatOperation("AddSnapshotParents")(&err)
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.addSnapshotParents(
+				ctx,
+				session,
+				snapshotID,
+				parentIDs,
+			)
+		},
+	)
+}
+
+func (s *storageYDB) GetSnapshotParents(
+	ctx context.Context,
+	snapshotID string,
+) (parentIDs []string, err error) {
+
+	defer s.metrics.StatOperation("GetSnapshotParents")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			parentIDs, err = s.getSnapshotParents(ctx, session, snapshotID)
+			return err
+		},
+	)
+	return parentIDs, err
+}
+
+func (s *storageYDB) ListSnapshotsBefore(
+	ctx context.Context,
+	creatingBefore time.Time,
+	afterSnapshotID string,
+	limit uint64,
+) (snapshotIDs []string, err error) {
+
+	defer s.metrics.StatOperation("ListSnapshotsBefore")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			snapshotIDs, err = s.listSnapshotsBefore(
+				ctx,
+				session,
+				creatingBefore,
+				afterSnapshotID,
+				limit,
+			)
+			return err
+		},
+	)
+	return snapshotIDs, err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

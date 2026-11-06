@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message SnapshotInheritanceTask {
+    string SnapshotId = 1;
+    string TaskId = 2;
+}
+
+message EstablishSnapshotInheritanceForAllSnapshotsTaskState {
+    google.protobuf.Timestamp StartedAt = 1;
+    string LastSnapshotId = 2;
+    repeated SnapshotInheritanceTask InflightSnapshots = 3;
+    bool Completed = 4;
+}
