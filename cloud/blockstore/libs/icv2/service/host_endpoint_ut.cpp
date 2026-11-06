@@ -5,13 +5,13 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/icv2/data/protocol.h>
-#include <cloud/blockstore/libs/icv2/transport/event_test.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/icv2/transport/testlib/event_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -24,7 +24,7 @@ using NCloud::NIcV2::TResponseResult;
 
 namespace {
 
-using TEvents = NStorage::TEvService;
+using NStorage::TEvService;
 constexpr ui32 BlockSize = 4096;
 
 template <typename T>
@@ -51,34 +51,29 @@ struct TTestChannel final: IRequestChannel
     }
 
     TResponseFuture Request(
-        std::unique_ptr<NActors::IEventBase> event, TDuration) override
+        std::unique_ptr<NActors::IEventBase> event,
+        TDuration) override
     {
         auto& request = Requests.emplace_back(std::move(event));
         return request.Promise.GetFuture();
     }
 
-    bool Reply(ui64, std::unique_ptr<NActors::IEventBase>) override
-    {
-        UNIT_FAIL("unexpected incoming request");
-        return false;
-    }
-
     void Close() override
     {}
 
-    NThreading::TFuture<void> WhenClosed() const override
+    NThreading::TFuture<NProto::TError> WhenClosed() const override
     {
-        return NThreading::MakeFuture();
+        return NThreading::MakeFuture(NProto::TError{});
     }
 
-    void Respond(
-        size_t index, const NProto::TError& error = {}, char readData = 'r')
+    void
+    Respond(size_t index, const NProto::TError& error = {}, char readData = 'r')
     {
         std::unique_ptr<NActors::IEventBase> event;
         switch (Requests.at(index).Event->Type()) {
-            case TEvents::EvReadBlocksRequest: {
+            case TEvService::EvReadBlocksRequest: {
                 auto response =
-                    std::make_unique<TEvents::TEvReadBlocksResponse>();
+                    std::make_unique<TEvService::TEvReadBlocksResponse>();
                 *response->Record.MutableError() = error;
                 if (!HasError(error)) {
                     response->AddPayload(TRope(TString(BlockSize, readData)));
@@ -86,19 +81,22 @@ struct TTestChannel final: IRequestChannel
                 event = std::move(response);
                 break;
             }
-            case TEvents::EvWriteBlocksRequest:
+            case TEvService::EvWriteBlocksRequest:
                 event =
-                    std::make_unique<TEvents::TEvWriteBlocksResponse>(error);
+                    std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
                 break;
-            case TEvents::EvZeroBlocksRequest:
-                event = std::make_unique<TEvents::TEvZeroBlocksResponse>(error);
+            case TEvService::EvZeroBlocksRequest:
+                event =
+                    std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
                 break;
             default:
                 UNIT_FAIL("unexpected request type");
         }
-        auto handle = std::make_shared<NActors::IEventHandle>(
-            NActors::TActorId(), NActors::TActorId(), event.release());
-        NTests::PreserializeEvent(handle);
+        auto handle = std::make_unique<NActors::IEventHandle>(
+            NActors::TActorId(),
+            NActors::TActorId(),
+            event.release());
+        NCloud::NIcV2::NTests::PreserializeEvent(handle);
         auto promise = Requests.at(index).Promise;
         promise.SetValue(std::move(handle));
     }
@@ -202,7 +200,10 @@ struct TFixture
             Endpoint,
             NClient::CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD),
             CreateLoggingService("console"),
-            Timer, Retries, CreateRequestStatsStub(), CreateVolumeStatsStub());
+            Timer,
+            Retries,
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub());
     }
 
     ~TFixture()
@@ -234,11 +235,16 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
     Y_UNIT_TEST(ClassifiesConnectionAndChannelErrorsWithoutResending)
     {
         for (bool connect: {false, true}) {
-            for (ui32 code: TVector<ui32>{
+            for (ui32 code:
+                 TVector<ui32>{
                      E_TRANSPORT_ERROR,
                      E_IO,
                      static_cast<ui32>(MAKE_SYSTEM_ERROR(ECONNRESET)),
-                     E_ARGUMENT, E_BADMSG, E_TIMEOUT, E_REJECTED, E_CANCELLED})
+                     E_ARGUMENT,
+                     E_BADMSG,
+                     E_TIMEOUT,
+                     E_REJECTED,
+                     E_CANCELLED})
             {
                 TFixture f;
                 auto error = MakeError(code, "original reason");
@@ -258,21 +264,27 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
                     response.GetError().GetCode(),
                     network ? E_UNAVAILABLE : code);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    response.GetError().GetMessage(), error.GetMessage());
+                    response.GetError().GetMessage(),
+                    error.GetMessage());
                 UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetFlags(), 17);
                 UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    f.Peers->Channel->Requests.size(), connect ? 0 : 1);
+                    f.Peers->Channel->Requests.size(),
+                    connect ? 0 : 1);
             }
         }
     }
 
     Y_UNIT_TEST(PreservesStorageErrorCodeMessageAndFlags)
     {
-        for (ui32 code: TVector<ui32>{
+        for (ui32 code:
+             TVector<ui32>{
                  E_TRANSPORT_ERROR,
                  E_IO,
-                 E_UNAVAILABLE, E_BS_INVALID_SESSION, E_BADMSG, E_CANCELLED})
+                 E_UNAVAILABLE,
+                 E_BS_INVALID_SESSION,
+                 E_BADMSG,
+                 E_CANCELLED})
         {
             TFixture f;
             auto future = f.Zero();
@@ -282,7 +294,8 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             const auto response = Wait(future);
             UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), code);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetError().GetMessage(), error.GetMessage());
+                response.GetError().GetMessage(),
+                error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetFlags(), 17);
             UNIT_ASSERT_VALUES_EQUAL(f.Peers->Unregistered, 0);
         }
@@ -299,7 +312,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         f.Peers->ConnectError.Clear();
         f.Retries->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 2);
-        const auto& record = static_cast<TEvents::TEvZeroBlocksRequest*>(
+        const auto& record = static_cast<TEvService::TEvZeroBlocksRequest*>(
                                  f.Peers->Channel->Requests.at(0).Event.get())
                                  ->Record;
         UNIT_ASSERT_VALUES_EQUAL(record.GetHeaders().GetRequestId(), 123);
@@ -324,7 +337,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             f.Durable->WriteBlocksLocal(MakeIntrusive<TCallContext>(), request);
         auto snapshot = [&f](size_t index)
         {
-            const auto* event = static_cast<TEvents::TEvWriteBlocksRequest*>(
+            const auto* event = static_cast<TEvService::TEvWriteBlocksRequest*>(
                 f.Peers->Channel->Requests.at(index).Event.get());
             UNIT_ASSERT_VALUES_EQUAL(
                 event->Record.GetBlocks().BuffersSize(),
@@ -370,7 +383,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT(!future.HasValue());
         f.Retries->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(f.Peers->Channel->Requests.size(), 2);
-        const auto& record = static_cast<TEvents::TEvReadBlocksRequest*>(
+        const auto& record = static_cast<TEvService::TEvReadBlocksRequest*>(
                                  f.Peers->Channel->Requests.at(1).Event.get())
                                  ->Record;
         UNIT_ASSERT_VALUES_EQUAL(record.GetHeaders().GetRequestId(), 789);
@@ -390,9 +403,11 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             auto future = f.Zero(true);
             f.Endpoint->Stop();
             UNIT_ASSERT_VALUES_EQUAL(
-                Wait(future).GetError().GetCode(), E_CANCELLED);
+                Wait(future).GetError().GetCode(),
+                E_CANCELLED);
             UNIT_ASSERT_VALUES_EQUAL(
-                Wait(f.Zero(true)).GetError().GetCode(), E_CANCELLED);
+                Wait(f.Zero(true)).GetError().GetCode(),
+                E_CANCELLED);
             f.Retries->RunAllScheduledTasks();
             if (connecting) {
                 f.Peers->Connected.SetValue(
@@ -402,7 +417,8 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             }
             UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
             UNIT_ASSERT_VALUES_EQUAL(
-                f.Peers->Channel->Requests.size(), connecting ? 0 : 1);
+                f.Peers->Channel->Requests.size(),
+                connecting ? 0 : 1);
             UNIT_ASSERT_VALUES_EQUAL(f.Peers->Unregistered, 1);
         }
     }
@@ -416,7 +432,8 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         f.Endpoint->Stop();
         f.Retries->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(future).GetError().GetCode(), E_CANCELLED);
+            Wait(future).GetError().GetCode(),
+            E_CANCELLED);
         UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
         UNIT_ASSERT_VALUES_EQUAL(f.Peers->Channel->Requests.size(), 1);
     }
@@ -439,7 +456,8 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
                 const auto response = Wait(future);
                 UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), code);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    response.GetError().GetMessage(), error.GetMessage());
+                    response.GetError().GetMessage(),
+                    error.GetMessage());
                 f.Retries->RunAllScheduledTasks();
                 UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
             }
@@ -453,12 +471,14 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         TFixture f(config);
         auto first = f.Zero();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(f.Zero()).GetError().GetCode(), E_REJECTED);
+            Wait(f.Zero()).GetError().GetCode(),
+            E_REJECTED);
         f.Peers->Channel->Respond(0);
         UNIT_ASSERT(!HasError(Wait(first)));
         f.Endpoint->Stop();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(f.Zero()).GetError().GetCode(), E_CANCELLED);
+            Wait(f.Zero()).GetError().GetCode(),
+            E_CANCELLED);
     }
 }
 

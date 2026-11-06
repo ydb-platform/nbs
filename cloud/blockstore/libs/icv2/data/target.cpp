@@ -1,4 +1,5 @@
-#include "data.h"
+#include "target.h"
+
 #include "protocol.h"
 #include "request_tracker.h"
 
@@ -7,41 +8,45 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
-using NCloud::NIcV2::IRequestChannel;
-using NCloud::NIcV2::IRequestChannelPtr;
-
 namespace {
+
+using NCloud::NIcV2::IIncomingRequest;
+using NCloud::NIcV2::IIncomingRequestPtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TEvents = NStorage::TEvService;
-using TReservation = std::shared_ptr<TRequestTracker::TReservation>;
+using NStorage::TEvService;
+using TReservationPtr = std::shared_ptr<TRequestTracker::TReservation>;
 
 template <typename TResponse>
-void ReplyError(const IRequestChannelPtr& channel, ui64 cookie,
-                const NProto::TError& error)
+void ReplyError(IIncomingRequest& request, const NProto::TError& error)
 {
     auto event = std::make_unique<TResponse>(error);
-    if (!channel->Reply(cookie, std::move(event))) {
-        channel->Close();
+    if (HasError(request.Reply(std::move(event)))) {
+        request.CloseChannel();
     }
 }
 
-void ReplyError(const IRequestChannelPtr& channel, ui32 type, ui64 cookie,
-                const NProto::TError& error)
+void ReplyError(
+    IIncomingRequest& request,
+    ui32 type,
+    const NProto::TError& error)
 {
     switch (type) {
-        case TEvents::EvReadBlocksRequest:
-            return ReplyError<TEvents::TEvReadBlocksResponse>(channel, cookie,
-                                                              error);
-        case TEvents::EvWriteBlocksRequest:
-            return ReplyError<TEvents::TEvWriteBlocksResponse>(channel, cookie,
-                                                               error);
-        case TEvents::EvZeroBlocksRequest:
-            return ReplyError<TEvents::TEvZeroBlocksResponse>(channel, cookie,
-                                                              error);
+        case TEvService::EvReadBlocksRequest:
+            return ReplyError<TEvService::TEvReadBlocksResponse>(
+                request,
+                error);
+        case TEvService::EvWriteBlocksRequest:
+            return ReplyError<TEvService::TEvWriteBlocksResponse>(
+                request,
+                error);
+        case TEvService::EvZeroBlocksRequest:
+            return ReplyError<TEvService::TEvZeroBlocksResponse>(
+                request,
+                error);
         default:
-            channel->Close();
+            request.CloseChannel();
     }
 }
 
@@ -49,13 +54,12 @@ template <typename TRequest, typename TResponse>
 struct TOperation
 {
     // Released last, after request/response buffers and SG access are gone.
-    TReservation Reservation;
+    TReservationPtr Reservation;
     std::shared_ptr<TRequest> Request = std::make_shared<TRequest>();
     std::unique_ptr<TResponse> Response = std::make_unique<TResponse>();
     TRope Payload;
     TGuardedSgList Sglist;
-    std::weak_ptr<IRequestChannel> Channel;
-    ui64 Cookie;
+    IIncomingRequestPtr Incoming;
     TCallContextPtr Context;
 
     ~TOperation()
@@ -90,8 +94,10 @@ class TDataTarget final
     const std::shared_ptr<TRequestTracker> Tracker;
 
 public:
-    TDataTarget(IBlockStorePtr service, ITaskQueuePtr executor,
-                TDataConfig config)
+    TDataTarget(
+        IBlockStorePtr service,
+        ITaskQueuePtr executor,
+        TDataConfig config)
         : Service(std::move(service))
         , Executor(std::move(executor))
         , Config(config)
@@ -108,91 +114,96 @@ public:
         Tracker->Stop();
     }
 
-    void HandleRequest(const IRequestChannelPtr& channel,
-                       std::unique_ptr<NActors::IEventHandle> request) override
+    void HandleRequest(IIncomingRequestPtr request) override
     {
-        if (!request || !request->Cookie) {
-            channel->Close();
+        if (!request) {
             return;
         }
-        const ui64 bytes = request->GetSize();
+
+        const auto& event = request->GetEvent();
+        const ui64 bytes = event.GetSize();
         if (bytes > Config.MaxRequestBytes) {
             ReplyError(
-                channel, request->Type, request->Cookie,
+                *request,
+                event.Type,
                 MakeError(E_ARGUMENT, "IC V2 request exceeds size limit"));
             return;
         }
-        // Account for received serialization and decoding before enqueueing.
         auto [reservation, admissionError] = Tracker->Acquire(2 * bytes);
         if (HasError(admissionError)) {
-            ReplyError(channel, request->Type, request->Cookie, admissionError);
+            ReplyError(*request, event.Type, admissionError);
             return;
         }
         Executor->ExecuteSimple(
             [self = shared_from_this(),
-             weak = std::weak_ptr<IRequestChannel>(channel),
              request = std::move(request),
              reservation = std::move(reservation)]() mutable
             {
-                if (auto channel = weak.lock()) {
-                    NProto::TError error;
-                    try {
-                        error = self->Execute(channel, *request, reservation);
-                    } catch (...) {
-                        channel->Close();
-                        return;
+                NProto::TError error;
+                try {
+                    error = self->ExecuteRequest(request, reservation);
+                } catch (...) {
+                    if (request) {
+                        request->CloseChannel();
                     }
-                    if (HasError(error)) {
-                        ReplyError(channel, request->Type, request->Cookie,
-                                   error);
-                    }
+                    return;
+                }
+                if (HasError(error)) {
+                    ReplyError(*request, request->GetEvent().Type, error);
                 }
             });
     }
 
 private:
-    NProto::TError Execute(
-        const IRequestChannelPtr& channel,
-        NActors::IEventHandle& request, TReservation reservation)
+    NProto::TError ExecuteRequest(
+        IIncomingRequestPtr& incoming,
+        TReservationPtr reservation)
     {
+        auto& request = incoming->GetEvent();
         if (auto error = reservation->AddBytes(0); HasError(error)) {
             return error;
         }
         switch (request.Type) {
-            case TEvents::EvReadBlocksRequest: {
-                auto* event = request.Get<TEvents::TEvReadBlocksRequest>();
+            case TEvService::EvReadBlocksRequest: {
+                auto* event = request.Get<TEvService::TEvReadBlocksRequest>();
                 if (event->GetPayloadCount()) {
                     return MakeError(
                         E_ARGUMENT,
                         "unexpected IC V2 read payload");
                 }
                 auto& record = event->Record;
-                auto [bytes, error] = ValidateDataRange(
-                    record.GetDiskId(), record.GetStartIndex(),
-                    record.GetBlocksCount(), record.GetBlockSize(), Config);
+                auto [bytes, error] = ValidateDataRangeAndGetBytes(
+                    record.GetDiskId(),
+                    record.GetStartIndex(),
+                    record.GetBlocksCount(),
+                    record.GetBlockSize(),
+                    Config);
                 if (HasError(error)) {
                     return error;
                 }
                 if (auto error = reservation->AddBytes(GetDataReservationBytes(
-                        bytes, record.GetBlocksCount()));
+                        bytes,
+                        record.GetBlocksCount()));
                     HasError(error))
                 {
                     return error;
                 }
-                auto op = Prepare<
+                auto op = CreateOperation<
                     NProto::TReadBlocksLocalRequest,
-                    TEvents::TEvReadBlocksResponse>(
-                    channel, request.Cookie, std::move(reservation));
+                    TEvService::TEvReadBlocksResponse>(
+                    std::move(incoming),
+                    std::move(reservation));
                 op->Request->CopyFrom(record);
                 op->Payload = TRope(TString(bytes, '\0'));
                 op->Sglist = TGuardedSgList(
                     GetBlockSgList(op->Payload, record.GetBlockSize()));
                 op->Request->Sglist = op->Sglist;
-                Invoke<TBlockStoreReadBlocksLocalMethod>(std::move(op));
+                ExecuteStorageRequest<TBlockStoreReadBlocksLocalMethod>(
+                    std::move(op));
                 return {};
             }
-            case TEvents::EvWriteBlocksRequest: {
-                auto* event = request.Get<TEvents::TEvWriteBlocksRequest>();
+            case TEvService::EvWriteBlocksRequest: {
+                auto* event = request.Get<TEvService::TEvWriteBlocksRequest>();
                 auto& record = event->Record;
                 if (!record.GetBlockSize() ||
                     record.GetBlocks().BuffersSize() ||
@@ -206,9 +217,12 @@ private:
                 if (size % record.GetBlockSize() || count > Max<ui32>()) {
                     return MakeError(E_ARGUMENT, "unaligned IC V2 write size");
                 }
-                auto [bytes, error] = ValidateDataRange(
-                    record.GetDiskId(), record.GetStartIndex(), count,
-                    record.GetBlockSize(), Config);
+                auto [bytes, error] = ValidateDataRangeAndGetBytes(
+                    record.GetDiskId(),
+                    record.GetStartIndex(),
+                    count,
+                    record.GetBlockSize(),
+                    Config);
                 if (HasError(error)) {
                     return error;
                 }
@@ -218,9 +232,11 @@ private:
                 {
                     return error;
                 }
-                auto op = Prepare<NProto::TWriteBlocksLocalRequest,
-                                  TEvents::TEvWriteBlocksResponse>(
-                    channel, request.Cookie, std::move(reservation));
+                auto op = CreateOperation<
+                    NProto::TWriteBlocksLocalRequest,
+                    TEvService::TEvWriteBlocksResponse>(
+                    std::move(incoming),
+                    std::move(reservation));
                 static_cast<NProto::TWriteBlocksRequest&>(*op->Request) =
                     std::move(record);
                 op->Request->BlocksCount = count;
@@ -228,29 +244,34 @@ private:
                 op->Sglist = TGuardedSgList(
                     GetBlockSgList(op->Payload, op->Request->GetBlockSize()));
                 op->Request->Sglist = op->Sglist;
-                Invoke<TBlockStoreWriteBlocksLocalMethod>(std::move(op));
+                ExecuteStorageRequest<TBlockStoreWriteBlocksLocalMethod>(
+                    std::move(op));
                 return {};
             }
-            case TEvents::EvZeroBlocksRequest: {
-                auto* event = request.Get<TEvents::TEvZeroBlocksRequest>();
+            case TEvService::EvZeroBlocksRequest: {
+                auto* event = request.Get<TEvService::TEvZeroBlocksRequest>();
                 if (event->GetPayloadCount()) {
                     return MakeError(
                         E_ARGUMENT,
                         "unexpected IC V2 zero payload");
                 }
                 auto& record = event->Record;
-                if (auto error = ValidateRange(record.GetDiskId(),
-                                               record.GetStartIndex(),
-                                               record.GetBlocksCount());
+                if (auto error = ValidateBlockRange(
+                        record.GetDiskId(),
+                        record.GetStartIndex(),
+                        record.GetBlocksCount());
                     HasError(error))
                 {
                     return error;
                 }
-                auto op = Prepare<NProto::TZeroBlocksRequest,
-                                  TEvents::TEvZeroBlocksResponse>(
-                    channel, request.Cookie, std::move(reservation));
+                auto op = CreateOperation<
+                    NProto::TZeroBlocksRequest,
+                    TEvService::TEvZeroBlocksResponse>(
+                    std::move(incoming),
+                    std::move(reservation));
                 *op->Request = std::move(record);
-                Invoke<TBlockStoreZeroBlocksMethod>(std::move(op));
+                ExecuteStorageRequest<TBlockStoreZeroBlocksMethod>(
+                    std::move(op));
                 return {};
             }
             default:
@@ -259,19 +280,18 @@ private:
     }
 
     template <typename TRequest, typename TResponse>
-    std::shared_ptr<TOperation<TRequest, TResponse>> Prepare(
-        const IRequestChannelPtr& channel, ui64 cookie,
-        TReservation reservation)
+    std::shared_ptr<TOperation<TRequest, TResponse>> CreateOperation(
+        IIncomingRequestPtr incoming,
+        TReservationPtr reservation)
     {
         auto op = std::make_shared<TOperation<TRequest, TResponse>>();
-        op->Channel = channel;
-        op->Cookie = cookie;
+        op->Incoming = std::move(incoming);
         op->Reservation = std::move(reservation);
         return op;
     }
 
     template <typename TMethod, typename TOperation>
-    void Invoke(std::shared_ptr<TOperation> op)
+    void ExecuteStorageRequest(std::shared_ptr<TOperation> op)
     {
         op->Context = MakeIntrusive<TCallContext>(
             op->Request->GetHeaders().GetRequestId());
@@ -304,8 +324,9 @@ private:
                             op->Context->Time(EProcessingStage::Shaping)
                                 .MicroSeconds());
                         if constexpr (
-                            std::is_same_v<TMethod,
-                                           TBlockStoreReadBlocksLocalMethod>)
+                            std::is_same_v<
+                                TMethod,
+                                TBlockStoreReadBlocksLocalMethod>)
                         {
                             response.ClearBlocks();
                             if (!HasError(response.GetError())) {
@@ -314,11 +335,9 @@ private:
                             }
                         }
                         op->Response->Record.Swap(&response);
-                        if (auto channel = op->Channel.lock()) {
-                            if (!channel->Reply(op->Cookie,
-                                                std::move(op->Response))) {
-                                channel->Close();
-                            }
+                        if (HasError(
+                                op->Incoming->Reply(std::move(op->Response)))) {
+                            op->Incoming->CloseChannel();
                         }
                         op.reset();
                     });
@@ -330,14 +349,21 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IDataTarget::~IDataTarget() = default;
+
 TResultOrError<IDataTargetPtr> CreateDataTarget(
-    IBlockStorePtr service, ITaskQueuePtr executor, TDataConfig config)
+    IBlockStorePtr service,
+    ITaskQueuePtr executor,
+    TDataConfig config)
 {
-    if (!service || !executor || !ValidateDataConfig(config)) {
+    if (!service || !executor || !config.IsValid()) {
         return MakeError(E_ARGUMENT, "invalid IC V2 data target configuration");
     }
-    return IDataTargetPtr(std::make_shared<TDataTarget>(
-        std::move(service), std::move(executor), config));
+    return IDataTargetPtr(
+        std::make_shared<TDataTarget>(
+            std::move(service),
+            std::move(executor),
+            config));
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

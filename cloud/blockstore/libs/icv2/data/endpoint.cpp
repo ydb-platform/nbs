@@ -1,4 +1,5 @@
-#include "data.h"
+#include "endpoint.h"
+
 #include "protocol.h"
 #include "request_tracker.h"
 
@@ -7,11 +8,11 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+namespace {
+
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::IRequestChannelPtr;
 using NCloud::NIcV2::TResponseFuture;
-
-namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,10 +26,12 @@ template <typename TResponse>
 void ProcessThrottleTime(const TCallContextPtr& context, TResponse& response)
 {
     auto& info = *response.MutableHeaders()->MutableThrottler();
-    context->AddTime(EProcessingStage::Postponed,
-                     TDuration::MicroSeconds(info.GetDelay()));
-    context->AddTime(EProcessingStage::Shaping,
-                     TDuration::MicroSeconds(info.GetShapingDelay()));
+    context->AddTime(
+        EProcessingStage::Postponed,
+        TDuration::MicroSeconds(info.GetDelay()));
+    context->AddTime(
+        EProcessingStage::Shaping,
+        TDuration::MicroSeconds(info.GetShapingDelay()));
     context->SetPossiblePostponeDuration(TDuration::Zero());
     info.SetDelay(0);
     info.SetShapingDelay(0);
@@ -53,8 +56,10 @@ class TDataEndpoint final: public TBlockStoreImpl<TDataEndpoint, IDataEndpoint>
     const std::shared_ptr<TRequestTracker> Tracker;
 
 public:
-    TDataEndpoint(IRequestChannelPtr channel, ITimerPtr timer,
-                  TDataConfig config)
+    TDataEndpoint(
+        IRequestChannelPtr channel,
+        ITimerPtr timer,
+        TDataConfig config)
         : Channel(std::move(channel))
         , Timer(std::move(timer))
         , Config(config)
@@ -82,15 +87,21 @@ public:
         Channel->WhenClosed().GetValueSync();
     }
 
-    TStorageBuffer AllocateBuffer(size_t) override
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
+        Y_UNUSED(bytesCount);
+
         return nullptr;
     }
 
     template <typename TMethod>
     NThreading::TFuture<typename TMethod::TResponse> Execute(
-        TCallContextPtr, std::shared_ptr<typename TMethod::TRequest>)
+        const TCallContextPtr& callContext,
+        const std::shared_ptr<typename TMethod::TRequest>& request)
     {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+
         return Fail<typename TMethod::TResponse>(
             MakeError(E_NOT_IMPLEMENTED, "unsupported IC V2 data operation"));
     }
@@ -99,23 +110,26 @@ public:
         TCallContextPtr context,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        using TResponse = NProto::TReadBlocksLocalResponse;
+        using NProto::TReadBlocksLocalResponse;
         const auto started = Timer->Now();
         if (!request || !context) {
-            return Fail<TResponse>(
+            return Fail<TReadBlocksLocalResponse>(
                 MakeError(E_ARGUMENT, "empty IC V2 read request"));
         }
-        auto [bytes, error] = ValidateDataRange(
-            request->GetDiskId(), request->GetStartIndex(),
-            request->GetBlocksCount(), request->GetBlockSize(), Config);
+        auto [bytes, error] = ValidateDataRangeAndGetBytes(
+            request->GetDiskId(),
+            request->GetStartIndex(),
+            request->GetBlocksCount(),
+            request->GetBlockSize(),
+            Config);
         if (HasError(error)) {
-            return Fail<TResponse>(error);
+            return Fail<TReadBlocksLocalResponse>(error);
         }
         auto [reservation, admissionError] = Tracker->Acquire(
             GetDataReservationBytes(bytes, request->GetBlocksCount()) +
             request->ByteSizeLong());
         if (HasError(admissionError)) {
-            return Fail<TResponse>(admissionError);
+            return Fail<TReadBlocksLocalResponse>(admissionError);
         }
         auto event =
             std::make_unique<NStorage::TEvService::TEvReadBlocksRequest>();
@@ -123,7 +137,7 @@ public:
         const auto deadline =
             started +
             TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
-        return Send<TResponse>(
+        return Send<TReadBlocksLocalResponse>(
             std::move(event),
             deadline,
             std::move(reservation),
@@ -140,20 +154,22 @@ public:
                     (!failed && received->GetPayload(0).GetSize() != bytes))
                 {
                     badResponse = true;
-                    return TResponse(
+                    return TReadBlocksLocalResponse(
                         TErrorResponse(E_BADMSG, "invalid IC V2 read payload"));
                 }
-                TResponse response(std::move(record));
+                TReadBlocksLocalResponse response(std::move(record));
                 if (!failed) {
                     auto src = GetPayloadSgList(received->GetPayload(0));
                     auto guard = request->Sglist.Acquire();
                     if (!guard) {
-                        return TResponse(TErrorResponse(
-                            E_CANCELLED, "IC V2 read sglist is closed"));
+                        return TReadBlocksLocalResponse(TErrorResponse(
+                            E_CANCELLED,
+                            "IC V2 read sglist is closed"));
                     }
                     if (SgListGetSize(guard.Get()) != bytes) {
-                        return TResponse(TErrorResponse(
-                            E_ARGUMENT, "invalid IC V2 read sglist size"));
+                        return TReadBlocksLocalResponse(TErrorResponse(
+                            E_ARGUMENT,
+                            "invalid IC V2 read sglist size"));
                     }
                     SgListCopy(src, guard.Get());
                 }
@@ -167,23 +183,26 @@ public:
         TCallContextPtr context,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        using TResponse = NProto::TWriteBlocksLocalResponse;
+        using NProto::TWriteBlocksLocalResponse;
         const auto started = Timer->Now();
         if (!request || !context) {
-            return Fail<TResponse>(
+            return Fail<TWriteBlocksLocalResponse>(
                 MakeError(E_ARGUMENT, "empty IC V2 write request"));
         }
-        auto [bytes, error] = ValidateDataRange(
-            request->GetDiskId(), request->GetStartIndex(),
-            request->BlocksCount, request->GetBlockSize(), Config);
+        auto [bytes, error] = ValidateDataRangeAndGetBytes(
+            request->GetDiskId(),
+            request->GetStartIndex(),
+            request->BlocksCount,
+            request->GetBlockSize(),
+            Config);
         if (HasError(error)) {
-            return Fail<TResponse>(error);
+            return Fail<TWriteBlocksLocalResponse>(error);
         }
         auto [reservation, admissionError] = Tracker->Acquire(
             GetDataReservationBytes(bytes, request->BlocksCount) +
             request->ByteSizeLong());
         if (HasError(admissionError)) {
-            return Fail<TResponse>(admissionError);
+            return Fail<TWriteBlocksLocalResponse>(admissionError);
         }
         auto event =
             std::make_unique<NStorage::TEvService::TEvWriteBlocksRequest>();
@@ -194,11 +213,11 @@ public:
         {
             auto guard = request->Sglist.Acquire();
             if (!guard) {
-                return Fail<TResponse>(
+                return Fail<TWriteBlocksLocalResponse>(
                     MakeError(E_CANCELLED, "IC V2 write sglist is closed"));
             }
             if (SgListGetSize(guard.Get()) != bytes) {
-                return Fail<TResponse>(
+                return Fail<TWriteBlocksLocalResponse>(
                     MakeError(E_ARGUMENT, "invalid IC V2 write sglist size"));
             }
             auto payload = TRope::Uninitialized(bytes);
@@ -211,12 +230,15 @@ public:
         const auto deadline =
             started +
             TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
-        return Send<TResponse>(
+        return Send<TWriteBlocksLocalResponse>(
             std::move(event),
             deadline,
             std::move(reservation),
-            [context = std::move(context)](NActors::IEventHandle& event, bool&)
+            [context = std::move(
+                 context)](NActors::IEventHandle& event, bool& badResponse)
             {
+                Y_UNUSED(badResponse);
+
                 auto response = std::move(
                     event.Get<NStorage::TEvService::TEvWriteBlocksResponse>()
                         ->Record);
@@ -229,23 +251,24 @@ public:
         TCallContextPtr context,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
-        using TResponse = NProto::TZeroBlocksResponse;
+        using NProto::TZeroBlocksResponse;
         const auto started = Timer->Now();
         if (!request || !context) {
-            return Fail<TResponse>(
+            return Fail<TZeroBlocksResponse>(
                 MakeError(E_ARGUMENT, "empty IC V2 zero request"));
         }
-        if (auto error =
-                ValidateRange(request->GetDiskId(), request->GetStartIndex(),
-                              request->GetBlocksCount());
+        if (auto error = ValidateBlockRange(
+                request->GetDiskId(),
+                request->GetStartIndex(),
+                request->GetBlocksCount());
             HasError(error))
         {
-            return Fail<TResponse>(error);
+            return Fail<TZeroBlocksResponse>(error);
         }
         auto [reservation, admissionError] =
             Tracker->Acquire(request->ByteSizeLong());
         if (HasError(admissionError)) {
-            return Fail<TResponse>(admissionError);
+            return Fail<TZeroBlocksResponse>(admissionError);
         }
         auto event =
             std::make_unique<NStorage::TEvService::TEvZeroBlocksRequest>();
@@ -253,12 +276,15 @@ public:
         const auto deadline =
             started +
             TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
-        return Send<TResponse>(
+        return Send<TZeroBlocksResponse>(
             std::move(event),
             deadline,
             std::move(reservation),
-            [context = std::move(context)](NActors::IEventHandle& event, bool&)
+            [context = std::move(
+                 context)](NActors::IEventHandle& event, bool& badResponse)
             {
+                Y_UNUSED(badResponse);
+
                 auto response = std::move(
                     event.Get<NStorage::TEvService::TEvZeroBlocksResponse>()
                         ->Record);
@@ -270,7 +296,8 @@ public:
 private:
     template <typename TResponse, typename TDecoder>
     NThreading::TFuture<TResponse> Send(
-        std::unique_ptr<NActors::IEventBase> event, TInstant deadline,
+        std::unique_ptr<NActors::IEventBase> event,
+        TInstant deadline,
         std::shared_ptr<TRequestTracker::TReservation> reservation,
         TDecoder decoder)
     {
@@ -287,9 +314,12 @@ private:
         const std::weak_ptr<IRequestChannel> weak = Channel;
         Channel->Request(std::move(event), deadline - now)
             .Subscribe(
-                [promise, reservation = std::move(reservation),
-                 decoder = std::move(decoder), weak, timer = Timer,
-                 deadline](const TResponseFuture& future) mutable
+                [promise,
+                 reservation = std::move(reservation),
+                 decoder = std::move(decoder),
+                 weak,
+                 timer = Timer,
+                 deadline](TResponseFuture future) mutable
                 {
                     bool badResponse = false;
                     auto response = SafeExecute<TResponse>(
@@ -299,21 +329,24 @@ private:
                                 HasError(error)) {
                                 return TErrorResponse(error);
                             }
-                            const auto& result = future.GetValue();
+                            auto result = future.ExtractValue();
                             if (HasError(result.GetError())) {
                                 return TErrorResponse(result.GetError());
                             }
                             if (timer->Now() >= deadline) {
                                 return TErrorResponse(
-                                    E_TIMEOUT, "IC V2 data request timed out");
+                                    E_TIMEOUT,
+                                    "IC V2 data request timed out");
                             }
                             try {
-                                return decoder(*result.GetResult(),
-                                               badResponse);
+                                return decoder(
+                                    *result.GetResult(),
+                                    badResponse);
                             } catch (...) {
                                 badResponse = true;
                                 return TErrorResponse(
-                                    E_BADMSG, "invalid IC V2 data response");
+                                    E_BADMSG,
+                                    "invalid IC V2 data response");
                             }
                         });
                     if (badResponse) {
@@ -333,14 +366,20 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IDataEndpointPtr> CreateDataEndpoint(
-    IRequestChannelPtr channel, ITimerPtr timer, TDataConfig config)
+    IRequestChannelPtr channel,
+    ITimerPtr timer,
+    TDataConfig config)
 {
-    if (!channel || !timer || !ValidateDataConfig(config)) {
-        return MakeError(E_ARGUMENT,
-                         "invalid IC V2 data endpoint configuration");
+    if (!channel || !timer || !config.IsValid()) {
+        return MakeError(
+            E_ARGUMENT,
+            "invalid IC V2 data endpoint configuration");
     }
-    return IDataEndpointPtr(std::make_shared<TDataEndpoint>(
-        std::move(channel), std::move(timer), config));
+    return IDataEndpointPtr(
+        std::make_shared<TDataEndpoint>(
+            std::move(channel),
+            std::move(timer),
+            config));
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

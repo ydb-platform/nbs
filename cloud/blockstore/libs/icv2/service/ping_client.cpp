@@ -38,19 +38,24 @@ public:
         Requests->Stop();
     }
 
-    TPingFuture Ping(TString cellId, TString payload,
-                     TDuration timeout) override
+    TPingFuture
+    Ping(TString cellId, TString payload, TDuration timeout) override
     {
         const auto started = Timer->Now();
         auto event = std::make_unique<TEvDiagnostic::TEvPingRequest>();
         event->Record.SetPayload(payload);
-        auto future = Requests->Request(cellId, std::move(event),
-                                        started + timeout, payload.size());
+        auto future = Requests->Request(
+            cellId,
+            std::move(event),
+            started + timeout,
+            payload.size());
         return future.Apply(
-            [cellId = std::move(cellId), payload = std::move(payload), started,
-             timer = Timer](const TRequestClientFuture& future) -> TPingResult
+            [cellId = std::move(cellId),
+             payload = std::move(payload),
+             started,
+             timer = Timer](TRequestClientFuture future) -> TPingResult
             {
-                const auto& result = future.GetValue();
+                auto result = future.ExtractValue();
                 if (HasError(result.GetError())) {
                     return result.GetError();
                 }
@@ -59,8 +64,10 @@ public:
                         result.GetResult()
                             .Event->Get<TEvDiagnostic::TEvPingResponse>();
                     if (event->Record.GetPayload() == payload) {
-                        return TPingResponse{cellId, event->Record.GetPayload(),
-                                             timer->Now() - started};
+                        return TPingResponse{
+                            cellId,
+                            event->Record.GetPayload(),
+                            timer->Now() - started};
                     }
                 } catch (...) {
                 }
@@ -74,17 +81,22 @@ public:
 }   // namespace
 
 TResultOrError<IPingClientPtr> CreatePingClient(
-    TPingClientConfig config, IPeerConnectionsPtr peers, ITimerPtr timer,
-    ISchedulerPtr scheduler, ITaskQueuePtr completions)
+    TPingClientConfig config,
+    IPeerConnectionsPtr peers,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ITaskQueuePtr completions)
 {
     if (!peers) {
         return MakeError(E_ARGUMENT, "missing IC V2 peers");
     }
     auto [requests, error] = CreateRequestClient(
         {config.MaxPendingRequests, config.MaxPayloadBytes},
-        [peers = std::move(peers)](const TString& cellId) {
-            return peers->GetChannel(cellId);
-        }, timer, std::move(scheduler), std::move(completions));
+        [peers = std::move(peers)](const TString& cellId)
+        { return peers->GetChannel(cellId); },
+        timer,
+        std::move(scheduler),
+        std::move(completions));
     if (HasError(error)) {
         return error;
     }

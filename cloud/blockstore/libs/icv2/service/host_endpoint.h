@@ -2,7 +2,7 @@
 
 #include "request_client.h"
 
-#include <cloud/blockstore/libs/icv2/data/data.h>
+#include <cloud/blockstore/libs/icv2/data/endpoint.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 

@@ -30,7 +30,7 @@ Mount, unmount, поиск диска и другие управляющие о�
 | [request_channel](../../../storage/core/libs/icv2/request_channel/request_channel.h) | Сопоставление типов запросов и ответов, cookies и дедлайны |
 | [service](service/service.h) | Listener, peer connections, входящие каналы, data target и рабочие очереди |
 | [host_endpoint](service/host_endpoint.h) | Привязка data endpoint к выбранному хосту и контракт транспортных ошибок для NBS |
-| [data](data/data.h) | Адаптация локального блочного API NBS к сериализуемым событиям и обратно |
+| [data](data/endpoint.h) | Адаптация локального блочного API NBS к сериализуемым событиям и обратно |
 | [cell connection](../cells/impl/connection.cpp) | Маршрутизация control/data, смена хоста и ручной выбор транспорта |
 | [monitoring](../cells/impl/mon.cpp) | Страница `/blockstore/cells` и применение ручного выбора |
 | [NBS bootstrap](../daemon/common/bootstrap.cpp) | Создание, запуск и остановка IC V2 вместе с приложением NBS |

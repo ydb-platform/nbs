@@ -20,8 +20,12 @@ class THostChannel final: public IRequestChannel
     std::atomic<bool> Closing = false;
 
 public:
-    THostChannel(TString cellId, ui64 bindingId, IPeerConnectionsPtr peers,
-                 IRequestClientPtr requests, ITimerPtr timer)
+    THostChannel(
+        TString cellId,
+        ui64 bindingId,
+        IPeerConnectionsPtr peers,
+        IRequestClientPtr requests,
+        ITimerPtr timer)
         : CellId(std::move(cellId))
         , BindingId(bindingId)
         , Peers(std::move(peers))
@@ -40,7 +44,8 @@ public:
     }   // cache activates the real channel
 
     TResponseFuture Request(
-        std::unique_ptr<NActors::IEventBase> event, TDuration timeout) override
+        std::unique_ptr<NActors::IEventBase> event,
+        TDuration timeout) override
     {
         if (Closing) {
             return NThreading::MakeFuture<TResponseResult>(
@@ -54,11 +59,10 @@ public:
         return Requests
             ->Request(CellId, std::move(event), Timer->Now() + timeout, bytes)
             .Apply(
-                [](const TRequestClientFuture& future) -> TResponseResult
+                [](TRequestClientFuture future) -> TResponseResult
                 {
-                    const auto& result = future.GetValue();
-                    if (HasError(result.GetError())) {
-                        auto error = result.GetError();
+                    auto [response, error] = future.ExtractValue();
+                    if (HasError(error)) {
                         // Only channel/connection failures reach this branch.
                         // Storage errors travel inside the response event.
                         const auto code = error.GetCode();
@@ -69,13 +73,8 @@ public:
                         }
                         return error;
                     }
-                    return result.GetResult().Event;
+                    return std::move(response.Event);
                 });
-    }
-
-    bool Reply(ui64, std::unique_ptr<NActors::IEventBase>) override
-    {
-        return false;
     }
 
     void Close() override
@@ -86,9 +85,14 @@ public:
         }
     }
 
-    NThreading::TFuture<void> WhenClosed() const override
+    NThreading::TFuture<NProto::TError> WhenClosed() const override
     {
-        return Requests->WhenClosed();
+        return Requests->WhenClosed().Apply(
+            [](const auto& future)
+            {
+                future.GetValue();
+                return NProto::TError{};
+            });
     }
 };
 }   // namespace
@@ -114,17 +118,23 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     }
     auto [requests, requestError] = CreateRequestClient(
         {dataConfig.MaxInflightRequests, dataConfig.MaxInflightBytes},
-        [peers, cellId, bindingId](const TString&) {
-            return peers->GetHostChannel(cellId, bindingId);
-        }, timer, std::move(scheduler), std::move(completions));
+        [peers, cellId, bindingId](const TString&)
+        { return peers->GetHostChannel(cellId, bindingId); },
+        timer,
+        std::move(scheduler),
+        std::move(completions));
     if (HasError(requestError)) {
         peers->UnregisterHost(cellId, bindingId);
         return requestError;
     }
     requests->Start();
     auto closed = requests->WhenClosed();
-    auto channel = std::make_shared<THostChannel>(cellId, bindingId, peers,
-                                                  std::move(requests), timer);
+    auto channel = std::make_shared<THostChannel>(
+        cellId,
+        bindingId,
+        peers,
+        std::move(requests),
+        timer);
     auto [endpoint, endpointError] =
         CreateDataEndpoint(std::move(channel), std::move(timer), dataConfig);
     if (HasError(endpointError)) {

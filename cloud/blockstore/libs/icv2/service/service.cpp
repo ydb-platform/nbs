@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/icv2/data/protocol.h>
+#include <cloud/blockstore/libs/icv2/data/target.h>
 #include <cloud/blockstore/libs/icv2/transport/diagnostic.h>
 
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -29,6 +30,7 @@
 namespace NCloud::NBlockStore::NIcV2 {
 
 using NCloud::NIcV2::CreateRequestChannel;
+using NCloud::NIcV2::IIncomingRequestPtr;
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::IRequestChannelHandler;
 using NCloud::NIcV2::IRequestChannelPtr;
@@ -63,9 +65,7 @@ class TChannelHandler final: public IRequestChannelHandler
 public:
     explicit TChannelHandler(std::weak_ptr<TServiceState> state);
 
-    void HandleRequest(
-        std::weak_ptr<IRequestChannel> channel,
-        std::unique_ptr<NActors::IEventHandle> request) override;
+    void HandleRequest(IIncomingRequestPtr request) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -312,43 +312,35 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         return channel;
     }
 
-    void Reply(
-        std::weak_ptr<IRequestChannel> weakChannel,
-        std::unique_ptr<NActors::IEventHandle> request)
+    void Reply(IIncomingRequestPtr request)
     {
-        if (request->GetTypeRewrite() != TEvDiagnostic::EvPingRequest) {
-            if (auto channel = weakChannel.lock()) {
-                DataTarget->HandleRequest(
-                    std::move(channel),
-                    std::move(request));
-            }
+        if (request->GetEvent().GetTypeRewrite() !=
+            TEvDiagnostic::EvPingRequest)
+        {
+            DataTarget->HandleRequest(std::move(request));
             return;
         }
         ++*PingRequests;
         TEvDiagnostic::TEvPingRequest* ping;
         try {
-            ping = request->Get<TEvDiagnostic::TEvPingRequest>();
+            ping = request->GetEvent().Get<TEvDiagnostic::TEvPingRequest>();
         } catch (const yexception& e) {
             STORAGE_WARN("IC V2 invalid ping: error=" << e.what());
-            if (auto channel = weakChannel.lock()) {
-                channel->Close();
-            }
+            request->CloseChannel();
             return;
         }
         auto response = std::make_unique<TEvDiagnostic::TEvPingResponse>();
         response->Record.SetPayload(ping->Record.GetPayload());
-        if (auto channel = weakChannel.lock()) {
-            if (channel->Reply(request->Cookie, std::move(response))) {
-                ++*PingReplies;
-                STORAGE_DEBUG(
-                    "IC V2 ping replied: cookie="
-                    << request->Cookie
-                    << " bytes=" << ping->Record.GetPayload().size());
-            } else {
-                // A rejected reply must not leave the peer waiting until its
-                // deadline while this channel keeps accepting more requests.
-                channel->Close();
-            }
+        const auto error = request->Reply(std::move(response));
+        if (!HasError(error)) {
+            ++*PingReplies;
+            STORAGE_DEBUG(
+                "IC V2 ping replied: cookie="
+                << request->GetEvent().Cookie
+                << " bytes=" << ping->Record.GetPayload().size());
+        } else {
+            STORAGE_WARN("IC V2 ping reply failed: " << FormatError(error));
+            request->CloseChannel();
         }
     }
 };
@@ -357,12 +349,10 @@ TChannelHandler::TChannelHandler(std::weak_ptr<TServiceState> state)
     : State(std::move(state))
 {}
 
-void TChannelHandler::HandleRequest(
-    std::weak_ptr<IRequestChannel> channel,
-    std::unique_ptr<NActors::IEventHandle> request)
+void TChannelHandler::HandleRequest(IIncomingRequestPtr request)
 {
     if (auto state = State.lock()) {
-        state->Reply(std::move(channel), std::move(request));
+        state->Reply(std::move(request));
     }
 }
 

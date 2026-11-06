@@ -14,11 +14,12 @@ struct TRequestClientConfig
 
 struct TRequestClientResponse
 {
-    std::shared_ptr<NActors::IEventHandle> Event;
+    std::unique_ptr<NActors::IEventHandle> Event;
     std::weak_ptr<NCloud::NIcV2::IRequestChannel> Channel;
 };
 
 using TRequestClientResult = TResultOrError<TRequestClientResponse>;
+// Consume the result once with ExtractValue().
 using TRequestClientFuture = NThreading::TFuture<TRequestClientResult>;
 using TChannelProvider = std::function<TChannelFuture(const TString&)>;
 
@@ -33,7 +34,8 @@ struct IRequestClient: public IStartable
     virtual TRequestClientFuture Request(
         TString key,
         std::unique_ptr<NActors::IEventBase> event,
-        TInstant deadline, ui64 payloadBytes) = 0;
+        TInstant deadline,
+        ui64 payloadBytes) = 0;
     virtual void RequestStop() = 0;
     virtual NThreading::TFuture<void> WhenClosed() const = 0;
 };
@@ -41,7 +43,10 @@ struct IRequestClient: public IStartable
 using IRequestClientPtr = std::shared_ptr<IRequestClient>;
 
 TResultOrError<IRequestClientPtr> CreateRequestClient(
-    TRequestClientConfig config, TChannelProvider provider, ITimerPtr timer,
-    ISchedulerPtr scheduler, ITaskQueuePtr completions);
+    TRequestClientConfig config,
+    TChannelProvider provider,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ITaskQueuePtr completions);
 
 }   // namespace NCloud::NBlockStore::NIcV2

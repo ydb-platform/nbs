@@ -34,6 +34,7 @@
 namespace NCloud::NBlockStore::NIcV2 {
 
 using NCloud::NIcV2::CreateRequestChannel;
+using NCloud::NIcV2::IIncomingRequestPtr;
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::IRequestChannelHandler;
 using NCloud::NIcV2::IRequestChannelPtr;
@@ -57,9 +58,7 @@ namespace {
 class TUnexpectedRequestHandler final: public IRequestChannelHandler
 {
 public:
-    void HandleRequest(
-        std::weak_ptr<IRequestChannel>,
-        std::unique_ptr<NActors::IEventHandle>) override
+    void HandleRequest(IIncomingRequestPtr) override
     {
         UNIT_FAIL("client channel must not receive requests");
     }
@@ -565,7 +564,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                 std::move(request),
                 TDuration::Seconds(5));
             UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
-            auto [event, error] = future.GetValue();
+            auto [event, error] = future.ExtractValue();
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             UNIT_ASSERT_VALUES_EQUAL(
                 event->Get<TEvDiagnostic::TEvPingResponse>()
@@ -795,7 +794,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             auto result =
                 channel->Request(std::move(request), TDuration::Seconds(5));
             UNIT_ASSERT(result.Wait(TDuration::Seconds(5)));
-            auto [event, pingError] = result.GetValue();
+            auto [event, pingError] = result.ExtractValue();
             UNIT_ASSERT_C(!HasError(pingError), FormatError(pingError));
             UNIT_ASSERT_VALUES_EQUAL(
                 event->Get<TEvDiagnostic::TEvPingResponse>()

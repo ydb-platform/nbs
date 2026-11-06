@@ -1,15 +1,20 @@
 #pragma once
 
-#include "data.h"
+#include "config.h"
 
-#include <mutex>
+#include <cloud/storage/core/libs/common/error.h>
+
+#include <library/cpp/threading/future/future.h>
+
+#include <util/system/mutex.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Internal shared admission and shutdown accounting for an endpoint or target.
-class TRequestTracker: public std::enable_shared_from_this<TRequestTracker>
+// Create with make_shared; retain a reservation until its request finishes.
+class TRequestTracker final
+    : public std::enable_shared_from_this<TRequestTracker>
 {
 public:
     class TReservation
@@ -22,12 +27,14 @@ public:
         TReservation(const TReservation&) = delete;
         TReservation& operator=(const TReservation&) = delete;
         ~TReservation();
+
+        // Zero bytes checks for shutdown. Failure leaves the budget unchanged.
         NProto::TError AddBytes(ui64 bytes);
     };
 
 private:
     const TDataConfig Config;
-    std::mutex Mutex;
+    TMutex Mutex;
     ui32 Requests = 0;
     ui64 Bytes = 0;
     bool Stopping = false;
@@ -38,6 +45,8 @@ public:
     explicit TRequestTracker(TDataConfig config);
     TResultOrError<std::shared_ptr<TReservation>> Acquire(ui64 bytes);
     void RequestStop();
+
+    // Waits for all reservations; do not call while holding one.
     void Stop();
 
 private:
@@ -45,12 +54,5 @@ private:
     void Release(ui64 bytes);
     void PublishClosed();
 };
-
-bool ValidateDataConfig(const TDataConfig& config);
-ui64 GetDataReservationBytes(ui64 payloadBytes, ui32 blocksCount);
-NProto::TError ValidateRange(const TString& diskId, ui64 start, ui32 count);
-TResultOrError<ui64> ValidateDataRange(const TString& diskId, ui64 start,
-                                       ui32 count, ui32 blockSize,
-                                       const TDataConfig& config);
 
 }   // namespace NCloud::NBlockStore::NIcV2

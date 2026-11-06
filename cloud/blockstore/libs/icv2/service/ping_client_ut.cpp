@@ -1,12 +1,13 @@
 #include "ping_client.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <cloud/blockstore/libs/icv2/transport/diagnostic.h>
-#include <cloud/blockstore/libs/icv2/transport/event_test.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/icv2/transport/testlib/event_test.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
 #include <atomic>
@@ -91,7 +92,8 @@ struct TTestChannel final: IRequestChannel
     std::mutex Mutex;
     TVector<TRequest> Requests;
     std::atomic<bool> Closing = false;
-    NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
+    NThreading::TPromise<NProto::TError> Closed =
+        NThreading::NewPromise<NProto::TError>();
 
     bool Activate() override
     {
@@ -109,20 +111,14 @@ struct TTestChannel final: IRequestChannel
         return request.Promise.GetFuture();
     }
 
-    bool Reply(ui64, std::unique_ptr<NActors::IEventBase>) override
-    {
-        UNIT_FAIL("ping client must only originate requests");
-        return false;
-    }
-
     void Close() override
     {
         if (!Closing.exchange(true)) {
-            Closed.SetValue();
+            Closed.SetValue(NProto::TError{});
         }
     }
 
-    NThreading::TFuture<void> WhenClosed() const override
+    NThreading::TFuture<NProto::TError> WhenClosed() const override
     {
         return Closed.GetFuture();
     }
@@ -148,11 +144,11 @@ TResponseResult MakeResponse(TString payload, bool malformed = false)
         response->Record.SetPayload(std::move(payload));
         event = std::move(response);
     }
-    auto handle = std::make_shared<NActors::IEventHandle>(
+    auto handle = std::make_unique<NActors::IEventHandle>(
         NActors::TActorId(),
         NActors::TActorId(),
         event.release());
-    NTests::PreserializeEvent(handle);
+    NCloud::NIcV2::NTests::PreserializeEvent(handle);
     return handle;
 }
 
@@ -475,7 +471,8 @@ Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
         queue->Stop();
         UNIT_ASSERT(queued);
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(result).GetError().GetCode(), E_CANCELLED);
+            Wait(result).GetError().GetCode(),
+            E_CANCELLED);
     }
 
     Y_UNIT_TEST(RequestStopFromContinuationAndExternalStopWaitsForIt)
@@ -558,7 +555,8 @@ Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
             }
             f.Client->Stop();
             UNIT_ASSERT_VALUES_EQUAL(
-                Wait(future).GetError().GetCode(), E_CANCELLED);
+                Wait(future).GetError().GetCode(),
+                E_CANCELLED);
             if (connected) {
                 f.Reply();
             } else {
@@ -572,18 +570,21 @@ Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
     {
         TFixture f;
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(f.Ping()).GetError().GetCode(), E_CANCELLED);
+            Wait(f.Ping()).GetError().GetCode(),
+            E_CANCELLED);
         f.Client->Start();
         UNIT_ASSERT_VALUES_EQUAL(
             Wait(f.Client->Ping("", "", TDuration::Seconds(1)))
                 .GetError()
-                .GetCode(), E_ARGUMENT);
+                .GetCode(),
+            E_ARGUMENT);
         UNIT_ASSERT_VALUES_EQUAL(
             Wait(f.Ping("", TDuration::Zero())).GetError().GetCode(),
             E_TIMEOUT);
         f.Client->Stop();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(f.Ping()).GetError().GetCode(), E_CANCELLED);
+            Wait(f.Ping()).GetError().GetCode(),
+            E_CANCELLED);
         UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 0);
     }
 }

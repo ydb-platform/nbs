@@ -25,13 +25,32 @@ struct TRequestChannelConfig
     // At least one pair; each event type must be nonzero and occur only once.
     TVector<TRequestEventTypes> EventTypes;
     bool SendPings = false;
-    // Includes results queued for completion and running continuations.
+    // Includes queued results; a slot is freed before its continuation runs.
     ui32 MaxPendingRequests = 1024;
 };
 
-using TResponseResult = TResultOrError<std::shared_ptr<NActors::IEventHandle>>;
+using TResponseResult = TResultOrError<std::unique_ptr<NActors::IEventHandle>>;
+// Consume the result once with ExtractValue(); do not call GetValue() first.
 using TResponseFuture = NThreading::TFuture<TResponseResult>;
-struct IRequestChannel;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Read the event and optionally reply once. Dropping it sends no response.
+struct IIncomingRequest
+{
+    virtual ~IIncomingRequest();
+
+    virtual NActors::IEventHandle& GetEvent() = 0;
+
+    // One attempt, including failures. Use the matching response type.
+    // Consumes response; success means accepted for sending, not delivered.
+    virtual NProto::TError Reply(
+        std::unique_ptr<NActors::IEventBase> response) = 0;
+
+    virtual void CloseChannel() = 0;
+};
+
+using IIncomingRequestPtr = std::unique_ptr<IIncomingRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,10 +60,7 @@ struct IRequestChannelHandler
 {
     virtual ~IRequestChannelHandler();
 
-    // Lock channel to reply; keep it weak when saving it for a later response.
-    virtual void HandleRequest(
-        std::weak_ptr<IRequestChannel> channel,
-        std::unique_ptr<NActors::IEventHandle> request) = 0;
+    virtual void HandleRequest(IIncomingRequestPtr request) = 0;
 };
 
 using IRequestChannelHandlerPtr = std::shared_ptr<IRequestChannelHandler>;
@@ -67,13 +83,6 @@ struct IRequestChannel
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) = 0;
 
-    // Echo the cookie of the received request and supply its corresponding
-    // response type. Rejects unconfigured response types. Consumes the event
-    // even on rejection. True means accepted for sending, not delivered.
-    virtual bool Reply(
-        ui64 cookie,
-        std::unique_ptr<NActors::IEventBase> event) = 0;
-
     // Safe from callbacks. Closes the connection and fails pending requests.
     // Does not wait for callbacks. Admitted results are completed on the
     // completion executor. Handlers and continuations must not throw or wait
@@ -82,8 +91,10 @@ struct IRequestChannel
 
     // Ready after connection callbacks and all admitted result continuations
     // finish. No new handler/result callbacks from previous work after this.
+    // Returns the first closure reason; local Close succeeds.
     // Rejected calls made after Close return already completed futures.
-    virtual NThreading::TFuture<void> WhenClosed() const = 0;
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
+    WhenClosed() const = 0;
 };
 
 using IRequestChannelPtr = std::shared_ptr<IRequestChannel>;
@@ -93,10 +104,10 @@ using IRequestChannelPtr = std::shared_ptr<IRequestChannel>;
 // Use the same clock for timer and scheduler. Keep scheduler and completions
 // running until WhenClosed(); completions must enqueue asynchronously.
 TResultOrError<IRequestChannelPtr> CreateRequestChannel(
-    ITransportPtr transport,
+    const ITransportPtr& transport,
     TSocketPtr socket,
     TSocketPtr xdcSocket,
-    TRequestChannelConfig config,
+    const TRequestChannelConfig& config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ITaskQueuePtr completions,

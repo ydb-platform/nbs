@@ -11,6 +11,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/icv2/tcp/testlib
+    cloud/storage/core/libs/icv2/transport/testlib
 )
 
 END()

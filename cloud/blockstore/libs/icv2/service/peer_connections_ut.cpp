@@ -115,7 +115,8 @@ struct TTestHostHandler final: IHostConnectionHandler
 
 struct TTestChannel final: IRequestChannel
 {
-    NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
+    NThreading::TPromise<NProto::TError> Closed =
+        NThreading::NewPromise<NProto::TError>();
     std::atomic<bool> Closing = false;
     std::function<void()> OnActivate;
 
@@ -135,20 +136,14 @@ struct TTestChannel final: IRequestChannel
         return {};
     }
 
-    bool Reply(ui64, std::unique_ptr<NActors::IEventBase>) override
-    {
-        UNIT_FAIL("channel replies are outside cache admission");
-        return false;
-    }
-
     void Close() override
     {
         if (!Closing.exchange(true)) {
-            Closed.SetValue();
+            Closed.SetValue(NProto::TError{});
         }
     }
 
-    NThreading::TFuture<void> WhenClosed() const override
+    NThreading::TFuture<NProto::TError> WhenClosed() const override
     {
         return Closed.GetFuture();
     }

@@ -66,9 +66,12 @@ class TRequestClient final
     NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
 
 public:
-    TRequestClient(TRequestClientConfig config, TChannelProvider provider,
-                   ITimerPtr timer, ISchedulerPtr scheduler,
-                   ITaskQueuePtr completions)
+    TRequestClient(
+        TRequestClientConfig config,
+        TChannelProvider provider,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ITaskQueuePtr completions)
         : Config(config)
         , Provider(std::move(provider))
         , Timer(std::move(timer))
@@ -89,9 +92,11 @@ public:
         Started = true;
     }
 
-    TRequestClientFuture Request(TString key,
-                                 std::unique_ptr<NActors::IEventBase> event,
-                                 TInstant deadline, ui64 payloadBytes) override
+    TRequestClientFuture Request(
+        TString key,
+        std::unique_ptr<NActors::IEventBase> event,
+        TInstant deadline,
+        ui64 payloadBytes) override
     {
         const auto keepAlive = shared_from_this();
         std::shared_ptr<TClientRequest> request;
@@ -100,7 +105,8 @@ public:
             std::lock_guard guard(Mutex);
             if (!Started || Stopping) {
                 return NThreading::MakeFuture<TRequestClientResult>(MakeError(
-                    E_CANCELLED, "IC V2 request client is not running"));
+                    E_CANCELLED,
+                    "IC V2 request client is not running"));
             }
             if (key.empty() || !event) {
                 return NThreading::MakeFuture<TRequestClientResult>(
@@ -115,11 +121,15 @@ public:
                 PayloadBytes > Config.MaxPayloadBytes - payloadBytes)
             {
                 return NThreading::MakeFuture<TRequestClientResult>(MakeError(
-                    E_REJECTED, "IC V2 request admission limit reached"));
+                    E_REJECTED,
+                    "IC V2 request admission limit reached"));
             }
             Y_ABORT_UNLESS(NextRequestId, "IC V2 request IDs exhausted");
             request = std::make_shared<TClientRequest>(
-                NextRequestId++, std::move(key), std::move(event), payloadBytes,
+                NextRequestId++,
+                std::move(key),
+                std::move(event),
+                payloadBytes,
                 deadline);
             Pending.emplace(request->Id, request);
             Deadlines.emplace(deadline, request->Id);
@@ -127,8 +137,9 @@ public:
             PayloadBytes += payloadBytes;
             auto [it, inserted] = Connecting.try_emplace(request->Key);
             if (inserted) {
-                Y_ABORT_UNLESS(NextConnectionId,
-                               "IC V2 connection IDs exhausted");
+                Y_ABORT_UNLESS(
+                    NextConnectionId,
+                    "IC V2 connection IDs exhausted");
                 connectionId = NextConnectionId++;
                 it->second.Id = connectionId;
                 ++Callbacks;
@@ -140,12 +151,14 @@ public:
             const std::weak_ptr<TRequestClient> weak = shared_from_this();
             Provider(request->Key)
                 .Subscribe(
-                    [weak, key = request->Key,
-                     connectionId](const TChannelFuture& future)
+                    [weak, key = request->Key, connectionId](
+                        const TChannelFuture& future)
                     {
                         if (auto self = weak.lock()) {
-                            self->OnChannel(key, connectionId,
-                                            future.GetValue());
+                            self->OnChannel(
+                                key,
+                                connectionId,
+                                future.GetValue());
                         }
                     });
             FinishCallback();
@@ -183,7 +196,8 @@ public:
                 [self = shared_from_this(), pending = std::move(pending), bytes]
                 {
                     const auto error = MakeError(
-                        E_CANCELLED, "IC V2 request client is stopping");
+                        E_CANCELLED,
+                        "IC V2 request client is stopping");
                     for (const auto& [id, request]: pending) {
                         request->Promise.SetValue(error);
                     }
@@ -201,8 +215,10 @@ public:
     }
 
 private:
-    void OnChannel(const TString& cellId, ui64 connectionId,
-                   const TChannelResult& result)
+    void OnChannel(
+        const TString& cellId,
+        ui64 connectionId,
+        const TChannelResult& result)
     {
         THashSet<ui64> requests;
         {
@@ -252,17 +268,18 @@ private:
         const std::weak_ptr<IRequestChannel> weakChannel = channel;
         channel->Request(std::move(event), remaining)
             .Subscribe(
-                [weak, id, weakChannel](const TResponseFuture& future)
+                [weak, id, weakChannel](TResponseFuture future)
                 {
                     if (auto self = weak.lock()) {
-                        if (HasError(future.GetValue().GetError())) {
-                            self->Complete(id, future.GetValue().GetError());
+                        auto [event, error] = future.ExtractValue();
+                        if (HasError(error)) {
+                            self->Complete(id, error);
                         } else {
                             self->Complete(
                                 id,
                                 TRequestClientResponse{
-                                    future.GetValue().GetResult(),
-                                    weakChannel});
+                                    .Event = std::move(event),
+                                    .Channel = weakChannel});
                         }
                     }
                 });
@@ -289,7 +306,8 @@ private:
         }
         Completions->ExecuteSimple(
             [self = shared_from_this(),
-             request, result = std::move(result)]() mutable
+             request,
+             result = std::move(result)]() mutable
             {
                 bool stopping;
                 {
@@ -299,7 +317,8 @@ private:
                 const auto now = self->Timer->Now();
                 if (stopping) {
                     result = MakeError(
-                        E_CANCELLED, "IC V2 request client is stopping");
+                        E_CANCELLED,
+                        "IC V2 request client is stopping");
                 } else if (now >= request->Deadline) {
                     result = MakeTimeoutError();
                 }
@@ -316,8 +335,9 @@ private:
             if (Stopping || TimerArmed || Deadlines.empty()) {
                 return;
             }
-            deadline = Min(Deadlines.begin()->first,
-                           Timer->Now() + TDuration::MilliSeconds(10));
+            deadline =
+                Min(Deadlines.begin()->first,
+                    Timer->Now() + TDuration::MilliSeconds(10));
             TimerArmed = true;
         }
         const std::weak_ptr<TRequestClient> weak = shared_from_this();
@@ -399,18 +419,26 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<IRequestClientPtr> CreateRequestClient(
-    TRequestClientConfig config, TChannelProvider provider, ITimerPtr timer,
-    ISchedulerPtr scheduler, ITaskQueuePtr completions)
+    TRequestClientConfig config,
+    TChannelProvider provider,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ITaskQueuePtr completions)
 {
     if (!config.MaxPendingRequests || !config.MaxPayloadBytes || !provider ||
         !timer || !scheduler || !completions)
     {
-        return MakeError(E_ARGUMENT,
-                         "invalid IC V2 request client configuration");
+        return MakeError(
+            E_ARGUMENT,
+            "invalid IC V2 request client configuration");
     }
-    return IRequestClientPtr(std::make_shared<TRequestClient>(
-        config, std::move(provider), std::move(timer), std::move(scheduler),
-        std::move(completions)));
+    return IRequestClientPtr(
+        std::make_shared<TRequestClient>(
+            config,
+            std::move(provider),
+            std::move(timer),
+            std::move(scheduler),
+            std::move(completions)));
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2
