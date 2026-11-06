@@ -153,6 +153,10 @@ ssh -L 8766:localhost:8766 <vm_ip>
   Add `--cell2` to create the same set in cell-2, with `-cell2` appended to
   disk and placement-group names. It attempts all creations even if an earlier
   command fails (for example, because a placement group already exists).
+- `9-attach-qemu.sh` opens an SSH session to the QEMU guest; pass a command to
+  execute it, for example `./9-attach-qemu.sh 'lsblk; fio --version'`.
+  Add `--cell2` for port 18679 instead of 8679; `QEMU_SSH_PORT` overrides
+  either default. The script prepares and removes a private copy of the test key.
 - `copy_volume.py` exercises volume links to copy a volume.
 - `cleanup.sh` removes generated configs, backups, and runtime symlinks. Stop all
   processes first. The persistent files in `$PERSISTENT_TMP_DIR` remain on disk.
