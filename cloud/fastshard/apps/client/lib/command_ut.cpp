@@ -100,6 +100,7 @@ TEST(TFastShardClientTest, ShouldListEveryStorageNodeMethod)
         "readpages",
         "releasedevices",
         "writelogrecord",
+        "writepages",
     };
     EXPECT_EQ(expected, GetCommandNames());
 
@@ -519,7 +520,32 @@ TEST(TFastShardClientTest, ShouldSpeakProtoText)
     NCloud::NProto::TAcquireDevicesResponse resp;
     ParseFromTextFormat(*f.Output, resp);
     EXPECT_EQ(E_REJECTED, resp.GetError().GetCode());
-    EXPECT_EQ("not now", resp.GetError().GetMessage());
+}
+
+TEST(TFastShardClientTest, ShouldWritePages)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run(
+        "writepages",
+        {"--device-uuid", "d1", "--first-page-no", "3", "--page-size", "2",
+         "--acquire"},
+        "abcd"));
+
+    ASSERT_EQ(1u, f.Storage->WritePagesCalls.size());
+    const auto& write = f.Storage->WritePagesCalls[0];
+    EXPECT_EQ("d1", write.GetDeviceUUID());
+    ASSERT_EQ(1u, write.PageGroupsSize());
+    EXPECT_EQ(3u, write.GetPageGroups(0).GetFirstPageNo());
+    ASSERT_EQ(2u, write.GetPageGroups(0).ContentSize());
+    EXPECT_EQ("ab", write.GetPageGroups(0).GetContent(0));
+    EXPECT_EQ("cd", write.GetPageGroups(0).GetContent(1));
+    EXPECT_EQ("OK\n", f.Output->Str());
+    ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
+    EXPECT_EQ("d1", f.Storage->AcquireCalls[0].GetDeviceUUIDs(0));
+    EXPECT_EQ(1u, f.Storage->ReleaseCalls.size());
+
+    TFixture g;
+    EXPECT_THROW(g.Run("writepages", {}), NLastGetopt::TUsageException);
 }
 
 TEST(TFastShardClientTest, ShouldReturnOnShutdownWhileRequestIsInFlight)

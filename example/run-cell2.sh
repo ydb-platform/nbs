@@ -18,6 +18,7 @@ export NBS_CLIENT_PORT=${NBS_CLIENT_PORT:-19766}
 export JOURNAL_PORT=${JOURNAL_PORT:-39900}
 export QEMU_QMP_PORT=${QEMU_QMP_PORT:-18678}
 export QEMU_SSH_PORT=${QEMU_SSH_PORT:-18679}
+export QEMU_GDB_PORT=${QEMU_GDB_PORT:-11234}
 
 case "$script" in
     1-start_storage.sh)

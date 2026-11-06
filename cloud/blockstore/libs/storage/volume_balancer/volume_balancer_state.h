@@ -87,11 +87,7 @@ public:
 
     bool GetEnabled() const
     {
-        // TODO: Remove preemption type check after VolumeBalancerEnabled option
-        // integration
-        return StorageConfig->GetVolumePreemptionType() !=
-                   NProto::PREEMPTION_NONE &&
-               IsEnabled;
+        return IsEnabled;
     }
 
     void SetVolumeInProgress(TString volume)

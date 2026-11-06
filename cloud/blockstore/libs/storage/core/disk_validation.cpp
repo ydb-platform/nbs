@@ -27,7 +27,7 @@ NCloud::NProto::TError ValidateBlockSize(
     return {};
 }
 
-NProto::TError ValidateMediaKindForDiskFromDevices(
+NProto::TError ValidateMediaKindForDiskFromDevice(
     NProto::EStorageMediaKind mediaKind)
 {
     if (!IsDiskRegistryMediaKind(mediaKind) ||

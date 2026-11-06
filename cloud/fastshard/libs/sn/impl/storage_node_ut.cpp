@@ -284,6 +284,40 @@ TEST(NaiveFileStorageNodeTest, EmptyWriteReturnsSuccess)
     EXPECT_EQ(0, r);
 }
 
+TEST(NaiveFileStorageNodeTest, WritePagesRoundTripsSinglePage)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TFixture fx;
+
+            NCloud::NProto::TWritePagesRequest wreq;
+            auto* pg = wreq.AddPageGroups();
+            pg->SetFirstPageNo(5);
+            pg->AddContent(Pattern('w', PageSize));
+            auto wresp = fx.Node->WritePages(fx.Ctx, std::move(wreq));
+            EXPECT_FALSE(HasError(wresp.GetError()));
+
+            NCloud::NProto::TReadPagesRequest rreq;
+            auto* ref = rreq.AddPageGroupRefs();
+            ref->SetFirstPageNo(5);
+            ref->SetPageCount(1);
+            ref->SetPageSize(PageSize);
+            auto rresp = fx.Node->ReadPages(fx.Ctx, std::move(rreq));
+            EXPECT_FALSE(HasError(rresp.GetError()));
+            EXPECT_EQ(1U, rresp.PageGroupsSize());
+            if (rresp.PageGroupsSize() != 1) {
+                return 1;
+            }
+            EXPECT_EQ(
+                Pattern('w', PageSize),
+                rresp.GetPageGroups(0).GetContent(0));
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
 TEST(NaiveFileStorageNodeTest, ThrowsWhenFileMissing)
 {
     EXPECT_THROW(

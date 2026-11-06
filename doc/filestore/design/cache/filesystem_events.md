@@ -63,8 +63,9 @@ nonzero TTL means the client is subscribed to the corresponding key.
 - Event sources:
   - entry created / removed -> `InvalidateNodeRef`
   - node removed or its attrs changed -> `InvalidateNode`
-  - time-only changes (e.g. MTime upon write) don't produce events; explicit
-    time changes via SetNodeAttr do
+  - time-only changes produce `InvalidateNode` as well: the file MTime/CTime
+    upon writes (even within the file size) and the parent directory
+    MTime/CTime upon entry creation / removal / rename
   - XAttr created / changed -> `InvalidateNodeXAttr` (creation invalidates the
     cached absence)
 - Events are sent only after the in-memory index cache is updated - otherwise

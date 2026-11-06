@@ -269,6 +269,16 @@ public:
         return device->AdvanceLsnLowWatermark(std::move(request));
     }
 
+    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
+        -> TFuture<NProto::TWritePagesResponse> final
+    {
+        Y_UNUSED(request);
+
+        return MakeFuture<NProto::TWritePagesResponse>(TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            "WritePages is not implemented"));
+    }
+
 private:
     // Runs an operation on every device with at most |limit| of them in
     // flight: each device that completes lets the next one in.

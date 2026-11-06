@@ -4,7 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-function loadTraceReportApi() {
+function loadTraceReportSource() {
   const templateDirectory = path.join(
     __dirname,
     "templates",
@@ -16,9 +16,13 @@ function loadTraceReportApi() {
   );
   const names = [...wrapper.matchAll(/{% include "trace_report\/(.+\.js)" %}/g)]
     .map((match) => match[1]);
-  const source = names
+  return names
     .map((name) => fs.readFileSync(path.join(templateDirectory, name), "utf8"))
     .join("\n");
+}
+
+function loadTraceReportApi() {
+  const source = loadTraceReportSource();
   const loadedModule = { exports: {} };
   new Function("module", "exports", source)(
     loadedModule,
@@ -65,3 +69,4 @@ function spanIndexes(rows) {
 }
 
 Object.assign(globalThis, { makeSpan, spanIndexes });
+module.exports = { loadTraceReportSource };

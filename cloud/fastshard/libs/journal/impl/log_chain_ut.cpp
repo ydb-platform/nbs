@@ -128,7 +128,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldExtendTheRunOnlyOverReadyRecords)
+    Y_UNIT_TEST(ShouldExtendRunOnlyOverReadyRecords)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -156,7 +156,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetSortedLsns(EraseBelow(chain, 31)));
     }
 
-    Y_UNIT_TEST(ShouldReturnTheHeldRecordForAnExactDuplicate)
+    Y_UNIT_TEST(ShouldReturnHeldRecordForExactDuplicate)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -193,7 +193,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(10, chain.GetOldest()->PrevLsn);
     }
 
-    Y_UNIT_TEST(ShouldRejectForkFromTheSameLsn)
+    Y_UNIT_TEST(ShouldRejectForkFromSameLsn)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -211,7 +211,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldRejectRecordStartingInsideTheChainedRun)
+    Y_UNIT_TEST(ShouldRejectRecordStartingInsideChainedRun)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -236,7 +236,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(10, 10)));
     }
 
-    Y_UNIT_TEST(ShouldNotDetectOverlapPastAGap)
+    Y_UNIT_TEST(ShouldNotDetectOverlapPastGap)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -276,7 +276,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(!chain.GetNext(100));
     }
 
-    Y_UNIT_TEST(ShouldReturnTheLowestRecordAsOldest)
+    Y_UNIT_TEST(ShouldReturnLowestRecordAsOldest)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -311,7 +311,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldRestoreTheRunWhenARemovedRecordIsReinserted)
+    Y_UNIT_TEST(ShouldRestoreRunWhenRemovedRecordIsReinserted)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -336,7 +336,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetSortedLsns(EraseBelow(chain, 41)));
     }
 
-    Y_UNIT_TEST(ShouldExtendTheRunThroughWaitingRecords)
+    Y_UNIT_TEST(ShouldExtendRunThroughWaitingRecords)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -383,7 +383,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(!chain.GetNext(100));
     }
 
-    Y_UNIT_TEST(ShouldNotGetTheNextAcrossAGap)
+    Y_UNIT_TEST(ShouldNotGetNextAcrossGap)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -397,7 +397,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldReturnAnEmptyRunWhenEmpty)
+    Y_UNIT_TEST(ShouldReturnEmptyRunWhenEmpty)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -405,7 +405,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.GetReadyRun(0, 10).empty());
     }
 
-    Y_UNIT_TEST(ShouldReturnTheReadyRunAfterLsn)
+    Y_UNIT_TEST(ShouldReturnReadyRunAfterLsn)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -430,7 +430,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.GetReadyRun(100, 10).empty());
     }
 
-    Y_UNIT_TEST(ShouldLimitTheRunByMaxRecordCount)
+    Y_UNIT_TEST(ShouldLimitRunByMaxRecordCount)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -455,7 +455,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(10, Max<ui64>())));
     }
 
-    Y_UNIT_TEST(ShouldReturnAnEmptyRunWhenAfterLsnIsNotARecordBoundary)
+    Y_UNIT_TEST(ShouldReturnEmptyRunWhenAfterLsnIsNotRecordBoundary)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -470,7 +470,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.GetReadyRun(25, 10).empty());
     }
 
-    Y_UNIT_TEST(ShouldStopTheRunAtAGap)
+    Y_UNIT_TEST(ShouldStopRunAtGap)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -505,7 +505,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.GetReadyRun(40, 0).empty());
     }
 
-    Y_UNIT_TEST(ShouldStopTheRunAtTheFirstRecordThatIsNotReady)
+    Y_UNIT_TEST(ShouldStopRunAtFirstRecordThatIsNotReady)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -527,7 +527,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(10, 10)));
     }
 
-    Y_UNIT_TEST(ShouldReturnAnEmptyRunWhenTheFirstRecordIsNotReady)
+    Y_UNIT_TEST(ShouldReturnEmptyRunWhenFirstRecordIsNotReady)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -550,7 +550,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(10, 10)));
     }
 
-    Y_UNIT_TEST(ShouldNotMarkARemovedRecordAsErased)
+    Y_UNIT_TEST(ShouldNotMarkRemovedRecordAsErased)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -585,7 +585,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldEraseNothingBelowTheOldestLsn)
+    Y_UNIT_TEST(ShouldEraseNothingBelowOldestLsn)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -601,7 +601,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(!chain.GetOldest());
     }
 
-    Y_UNIT_TEST(ShouldDropReadyRecordsStrandedBelowTheWatermark)
+    Y_UNIT_TEST(ShouldDropReadyRecordsStrandedBelowWatermark)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -633,7 +633,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(30, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldRejectARecordAtOrBelowLastErasedLsn)
+    Y_UNIT_TEST(ShouldRejectRecordAtOrBelowLastErasedLsn)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -671,7 +671,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldRejectEraseBelowPastTheChainedRun)
+    Y_UNIT_TEST(ShouldRejectEraseBelowPastChainedRun)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);

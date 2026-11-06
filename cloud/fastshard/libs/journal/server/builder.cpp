@@ -212,12 +212,14 @@ TResultOrError<IJournalledDevicePtr> TJournalledDeviceV2Factory::Create(
         Logging,
         createAdapter(0, logMetaBlockCount),
         logMetaBlockCount,
-        blockSize);
+        blockSize,
+        CalculateMinRecordBufferSize());
 
     auto logDataStore = CreateDevicePageStore(
         createAdapter(logMetaBlockCount, logDataBlockCount),
         logDataBlockCount,
-        blockSize);
+        blockSize,
+        EDevicePageStoreMode::Checked);
 
     auto dataStore =
         createAdapter(logMetaBlockCount + logDataBlockCount, dataBlockCount);

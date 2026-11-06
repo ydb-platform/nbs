@@ -295,6 +295,24 @@ void TCommand::ReleaseDevice(const TString& deviceUUID)
     }
 }
 
+void TCommand::ReadPageGroup(
+    ui64 firstPageNo,
+    ui32 pageSize,
+    NCloud::NProto::TDevicePageGroup* group)
+{
+    const TString data = GetInputStream().ReadAll();
+    if (data.empty() || data.size() % pageSize) {
+        ythrow yexception()
+            << "input size " << data.size()
+            << " is not a positive multiple of page size " << pageSize;
+    }
+
+    group->SetFirstPageNo(firstPageNo);
+    for (size_t offset = 0; offset < data.size(); offset += pageSize) {
+        group->AddContent(data.substr(offset, pageSize));
+    }
+}
+
 void TCommand::SetInputStream(std::unique_ptr<IInputStream> is)
 {
     InputStream = std::move(is);

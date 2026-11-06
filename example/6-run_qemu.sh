@@ -5,7 +5,7 @@ original_args=("$@")
 
 show_help() {
     cat << EOF
-Usage: ./7-run_qemu.sh [--cell2] [-hkds]
+Usage: ./6-run_qemu.sh [--cell2] [-hkds]
 Run qemu
 -h, --help                     Display help
 -d, --diskid                   NBS Disk ID
@@ -98,6 +98,7 @@ sleep 1
 # run qemu with secondary disk
 qmp_port=${QEMU_QMP_PORT:-8678}
 ssh_port=${QEMU_SSH_PORT:-8679}
+gdb_port=${QEMU_GDB_PORT:-1234}
 
 MACHINE_ARGS=" \
     -L $QEMU_FIRMWARE \
@@ -141,4 +142,4 @@ $QEMU \
     $NBS_ARGS \
     -nographic \
     -serial stdio \
-    -s
+    -gdb tcp:127.0.0.1:${gdb_port}

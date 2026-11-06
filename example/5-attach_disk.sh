@@ -9,7 +9,7 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./6-attach_disk.sh [-hvd]
+Usage: ./5-attach_disk.sh [-hvd]
 Creates disk with requested kind and attach it to device
 -h, --help         Display help
 -v, --disk-id      Disk id

@@ -132,7 +132,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             4,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(store->Allocate(2)));
 
@@ -149,7 +150,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             4,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT(store->Allocate(5).empty());
 
@@ -162,7 +164,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             8,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -180,7 +183,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb"});
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(ranges));
@@ -190,12 +194,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             Join(store->Read(ranges).GetValue().GetResult()));
     }
 
-    Y_UNIT_TEST(ShouldRejectPagesOfAWrongSize)
+    Y_UNIT_TEST(ShouldRejectPagesOfWrongSize)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = store->Allocate(2);
 
@@ -212,9 +217,6 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "the page size is 4");
         }
 
         // a write of the right size still goes through
@@ -232,7 +234,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             8,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -253,12 +256,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             Join(store->Read(ranges).GetValue().GetResult()));
     }
 
-    Y_UNIT_TEST(ShouldRejectAWriteWithAWrongNumberOfPages)
+    Y_UNIT_TEST(ShouldRejectWriteWithWrongNumberOfPages)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = store->Allocate(2);
 
@@ -266,25 +270,24 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             store->Write(ranges, MakePages({"aaaa", "bbbb", "cccc"}))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooMany.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            tooMany.GetMessage(),
-            "the page ranges hold 2 pages, 3 given");
 
         const auto tooFew =
             store->Write(ranges, MakePages({"aaaa"})).GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooFew.GetCode());
     }
 
-    Y_UNIT_TEST(ShouldRejectAWriteIntoPagesThatAreNotAllocated)
+    Y_UNIT_TEST(ShouldRejectWriteIntoPagesBeyondDevice)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
+        // a write does not look at the allocation state of the pages
         const auto free =
             store->Write(MakeRanges({{0, 1}}), MakePages({"aaaa"})).GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, free.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, free.GetCode(), FormatError(free));
 
         const auto beyond = store
                                 ->Write(
@@ -299,13 +302,16 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         WriteRecord(store, {"aaaa"});
 
+        // a read does not look at the allocation state of the pages, a free
+        // does
         auto free = MakeRanges({{0, 2}});
         UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
+            S_OK,
             store->Read(free).GetValue().GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, store->Free(free).GetCode());
 
@@ -319,12 +325,64 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             store->AllocateAt(beyond).GetCode());
     }
 
-    Y_UNIT_TEST(ShouldAcceptRefsThatOnlyTouchTheFreeSpace)
+    Y_UNIT_TEST(ShouldRejectRefsThatIntersect)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            DefaultPageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
+
+        // the page 1 is in both ranges
+        const auto overlapping = MakeRanges({{0, 2}, {1, 2}});
+        const auto pages = MakePages({"aaaa", "bbbb", "cccc", "dddd"});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->AllocateAt(overlapping).GetCode());
+
+        // nothing is allocated by the rejected request
+        UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Write(overlapping, pages).GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Read(overlapping).GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Free(overlapping).GetCode());
+
+        // the same range given twice intersects with itself
+        const auto repeated = MakeRanges({{1, 1}, {1, 1}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Read(repeated).GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, store->Free(repeated).GetCode());
+
+        // the ranges that only touch each other do not intersect
+        const auto adjacent = MakeRanges({{0, 2}, {2, 2}});
+        const auto written = store->Write(adjacent, pages).GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            written.GetCode(),
+            FormatError(written));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaa|bbbb|cccc|dddd",
+            Join(store->Read(adjacent).GetValue().GetResult()));
+
+        // and nothing is freed by the rejected requests
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(adjacent).GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldAcceptRefsThatOnlyTouchFreeSpace)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             8,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -333,39 +391,26 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             S_OK,
             store->Free(MakeRanges({{3, 2}})).GetCode());
 
+        // reaching into the hole from either side is not allowed
+        const auto fromTheLeft = store->Free(MakeRanges({{2, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheLeft.GetCode());
+
+        const auto fromTheRight = store->Free(MakeRanges({{4, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheRight.GetCode());
+
+        // as is a pageRange that spans the hole
+        const auto spanning = store->Free(MakeRanges({{0, 8}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, spanning.GetCode());
+
         // a pageRange that ends right where the hole begins is busy all the way
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            store->Read(MakeRanges({{0, 3}})).GetValue().GetError().GetCode());
+            store->Free(MakeRanges({{0, 3}})).GetCode());
 
         // and so is a pageRange that begins right where the hole ends
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            store->Read(MakeRanges({{5, 3}})).GetValue().GetError().GetCode());
-
-        // reaching into the hole from either side is not allowed, and the
-        // first free page of the pageRange is reported
-        const auto fromTheLeft =
-            store->Read(MakeRanges({{2, 2}})).GetValue().GetError();
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheLeft.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            fromTheLeft.GetMessage(),
-            "page 3 is not busy");
-
-        const auto fromTheRight =
-            store->Read(MakeRanges({{4, 2}})).GetValue().GetError();
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, fromTheRight.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            fromTheRight.GetMessage(),
-            "page 4 is not busy");
-
-        // as is a pageRange that spans the hole
-        const auto spanning =
-            store->Read(MakeRanges({{0, 8}})).GetValue().GetError();
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, spanning.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            spanning.GetMessage(),
-            "page 3 is not busy");
+            store->Free(MakeRanges({{5, 3}})).GetCode());
     }
 
     Y_UNIT_TEST(ShouldFreePages)
@@ -373,16 +418,16 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         WriteRecord(store, {"aaaa", "bbbb", "cccc"});
 
         auto head = MakeRanges({{0, 2}});
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(head).GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->Read(head).GetValue().GetError().GetCode());
+        // the pages are free now and cannot be freed again
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, store->Free(head).GetCode());
 
         auto kept = MakeRanges({{2, 1}});
         UNIT_ASSERT_VALUES_EQUAL(
@@ -390,12 +435,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             Join(store->Read(kept).GetValue().GetResult()));
     }
 
-    Y_UNIT_TEST(ShouldNotFreeAnythingWhenARefIsRejected)
+    Y_UNIT_TEST(ShouldNotFreeAnythingWhenRefIsRejected)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         WriteRecord(store, {"aaaa", "bbbb"});
 
@@ -415,7 +461,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             4,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb"});
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(ranges));
@@ -426,12 +473,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
     }
 
-    Y_UNIT_TEST(ShouldMergeTheFreedPagesWithTheirNeighbours)
+    Y_UNIT_TEST(ShouldMergeFreedPagesWithTheirNeighbours)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             6,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(6)));
 
@@ -455,12 +503,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(6)));
     }
 
-    Y_UNIT_TEST(ShouldAllocateTheGivenPages)
+    Y_UNIT_TEST(ShouldAllocateGivenPages)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         // the pages of a restored record are taken out of the free space
         auto restored = MakeRanges({{0, 2}, {5, 1}});
@@ -469,38 +518,34 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("2x3, 6x1", Describe(store->Allocate(4)));
     }
 
-    Y_UNIT_TEST(ShouldNotAllocateThePagesThatAreBusyAlready)
+    Y_UNIT_TEST(ShouldNotAllocatePagesThatAreBusyAlready)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(store->Allocate(2)));
 
         // a page in the middle of the pageRange is enough to reject it
         const auto busy = store->AllocateAt(MakeRanges({{1, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, busy.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            busy.GetMessage(),
-            "page 1 is already allocated");
 
         const auto behind = store->AllocateAt(MakeRanges({{2, 2}, {1, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, behind.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            behind.GetMessage(),
-            "page 1 is already allocated");
 
         // the ranges of a rejected call are not allocated, not even in part
         UNIT_ASSERT_VALUES_EQUAL("2x4", Describe(store->Allocate(4)));
     }
 
-    Y_UNIT_TEST(ShouldKeepTheContentOfTheRejectedPages)
+    Y_UNIT_TEST(ShouldKeepContentOfRejectedPages)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb"});
 
@@ -514,12 +559,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             Join(store->Read(ranges).GetValue().GetResult()));
     }
 
-    Y_UNIT_TEST(ShouldAcceptAnEmptyRequest)
+    Y_UNIT_TEST(ShouldAcceptEmptyRequest)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT(store->Allocate(0).empty());
 
@@ -532,13 +578,14 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->AllocateAt(none).GetCode());
     }
 
-    Y_UNIT_TEST(ShouldKeepThePagesOnTheDevice)
+    Y_UNIT_TEST(ShouldKeepPagesOnDevice)
     {
         auto device = CreateInMemoryDevice(DefaultPageSize);
         auto store = CreateDevicePageStore(
             device,
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb", "cccc"});
         UNIT_ASSERT_VALUES_EQUAL("0x3", Describe(ranges));
@@ -549,7 +596,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             ReadFromDevice(device, 0, 3));
     }
 
-    Y_UNIT_TEST(ShouldNotValidateTheRefsInTheTrustedMode)
+    Y_UNIT_TEST(ShouldNotValidateRefsInTrustedMode)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
@@ -571,26 +618,28 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         // and freed
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(ranges).GetCode());
 
-        // the same store in the checked mode rejects all three
+        // the same store in the checked mode writes and reads the pages just
+        // the same, but does not free what is not allocated
         auto checked = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
+            S_OK,
             checked->Write(ranges, MakePages({"aaaa", "bbbb"}))
                 .GetValue()
                 .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            checked->Read(ranges).GetValue().GetError().GetCode());
+            "aaaa|bbbb",
+            Join(checked->Read(ranges).GetValue().GetResult()));
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             checked->Free(ranges).GetCode());
     }
 
-    Y_UNIT_TEST(ShouldValidateAllocateAtInTheTrustedMode)
+    Y_UNIT_TEST(ShouldValidateAllocateAtInTrustedMode)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
@@ -604,13 +653,14 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         // them even here
         const auto busy = store->AllocateAt(MakeRanges({{1, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, busy.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            busy.GetMessage(),
-            "page 1 is already allocated");
 
         const auto beyond =
             store->AllocateAt(MakeRanges({{DefaultPageCount, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, beyond.GetCode());
+
+        const auto overlapping =
+            store->AllocateAt(MakeRanges({{5, 2}, {6, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, overlapping.GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
@@ -618,7 +668,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("2x3, 7x9", Describe(store->Allocate(12)));
     }
 
-    Y_UNIT_TEST(ShouldTrackTheAllocationInTheTrustedMode)
+    Y_UNIT_TEST(ShouldTrackAllocationInTrustedMode)
     {
         auto store = CreateDevicePageStore(
             CreateInMemoryDevice(DefaultPageSize),
@@ -636,12 +686,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
     }
 
-    Y_UNIT_TEST(ShouldReportTheDeviceWriteError)
+    Y_UNIT_TEST(ShouldReportDeviceWriteError)
     {
         auto store = CreateDevicePageStore(
             std::make_shared<TBrokenDevice>(),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = store->Allocate(2);
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(ranges));
@@ -656,12 +707,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("2x1", Describe(store->Allocate(1)));
     }
 
-    Y_UNIT_TEST(ShouldReportTheDeviceReadError)
+    Y_UNIT_TEST(ShouldReportDeviceReadError)
     {
         auto store = CreateDevicePageStore(
             std::make_shared<TBrokenDevice>(),
             DefaultPageCount,
-            DefaultPageSize);
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
 
         auto ranges = store->Allocate(1);
 

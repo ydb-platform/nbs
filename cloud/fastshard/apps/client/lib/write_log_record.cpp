@@ -69,22 +69,10 @@ protected:
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {
-            const TString data = GetInputStream().ReadAll();
-            if (data.empty() || data.size() % PageSize) {
-                ythrow yexception()
-                    << "input size " << data.size()
-                    << " is not a positive multiple of page size " << PageSize;
-            }
-
             request.SetDeviceUUID(DeviceUUID);
             request.SetLogSequenceNumber(Lsn);
             request.SetPrevLogSequenceNumber(PrevLsn);
-
-            auto* group = request.AddPageGroups();
-            group->SetFirstPageNo(FirstPageNo);
-            for (size_t offset = 0; offset < data.size(); offset += PageSize) {
-                group->AddContent(data.substr(offset, PageSize));
-            }
+            ReadPageGroup(FirstPageNo, PageSize, request.AddPageGroups());
         }
         PrepareHeaders(*request.MutableHeaders());
 
