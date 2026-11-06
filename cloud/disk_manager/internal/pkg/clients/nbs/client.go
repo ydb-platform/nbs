@@ -1462,7 +1462,7 @@ func (c *client) MountRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRO")(&err)
 
@@ -1493,7 +1493,7 @@ func (c *client) MountLocalRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountLocalRO")(&err)
 
@@ -1526,7 +1526,7 @@ func (c *client) MountRW(
 	fillGeneration uint64,
 	fillSeqNumber uint64,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRW")(&err)
 

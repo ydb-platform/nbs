@@ -201,7 +201,7 @@ func writeBlocks(
 func writeBlocksToSession(
 	t *testing.T,
 	ctx context.Context,
-	session *nbs.Session,
+	session nbs.Session,
 	startIndex uint64,
 	blockCount uint32,
 ) {
