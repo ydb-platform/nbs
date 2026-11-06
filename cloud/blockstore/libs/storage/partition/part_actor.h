@@ -466,11 +466,7 @@ private:
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
+        TPartitionBlobAndBlockCounts initialCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
@@ -758,6 +754,10 @@ private:
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
+
+    void StartMetadataRebuildBlockCount(
+        const NActors::TActorContext& ctx,
+        ui32 batchSize);
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,

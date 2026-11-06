@@ -2178,7 +2178,7 @@ void TPartitionActor::HandleCompaction(
 
     // Wait for all previous commits to complete before starting the new
     // compaction.
-    SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
+    SharedState->WaitCommit(ctx, std::move(tx), commitId);
 }
 
 void TPartitionActor::ProcessCommitQueue(const TActorContext& ctx)
