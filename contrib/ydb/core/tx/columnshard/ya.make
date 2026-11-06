@@ -28,10 +28,10 @@ SRCS(
     tables_manager.cpp
 )
 
-GENERATE_ENUM_SERIALIZATION(columnshard.h)
 GENERATE_ENUM_SERIALIZATION(columnshard_impl.h)
 
 PEERDIR(
+    contrib/ydb/core/tx/columnshard/public
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
     contrib/ydb/core/control
