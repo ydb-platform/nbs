@@ -1278,6 +1278,15 @@ private:
                      .ModuleStats = handleOpsQueue->GetModuleStats()});
             }
 
+            auto metadataCacheStats = CreateMetadataCacheModuleStats();
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = metadataCacheStats});
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -1287,6 +1296,7 @@ private:
                 Session,
                 RequestStats,
                 DirectoryHandleStats,
+                std::move(metadataCacheStats),
                 CompletionQueue,
                 std::move(handleOpsQueue),
                 std::move(directoryHandleStorage),
