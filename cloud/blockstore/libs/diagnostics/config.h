@@ -209,4 +209,9 @@ TDuration GetDowntimeThreshold(
     const TDiagnosticsConfig& config,
     NCloud::NProto::EStorageMediaKind kind);
 
+// Returns the PerfSettings corresponding to the media kind.
+TVolumePerfSettings GetPerfSettings(
+    const TDiagnosticsConfig& config,
+    NCloud::NProto::EStorageMediaKind kind);
+
 }   // namespace NCloud::NBlockStore
