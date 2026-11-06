@@ -477,6 +477,11 @@ struct IFileSystem
         ui64 parentNodeId,
         const TString& name) = 0;
 
+    // Invalidate a cached extended attribute (its value or its absence)
+    virtual void InvalidateCachedNodeXAttr(
+        ui64 nodeId,
+        const TString& name) = 0;
+
     // Invalidate all the cached metadata - used when invalidations may have
     // been lost
     virtual void InvalidateAllCachedMetadata() = 0;
