@@ -283,7 +283,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
 
         CreateNode(tablet, TCreateNodeArgs::Directory(dirId, "subdir"));
 
-        THashMap<ui32, NProtoPrivate::TQuotaUsage> usageByQuotaId;
+        THashMap<ui32, NProto::TQuotaUsage> usageByQuotaId;
         {
             auto response = tablet.ListQuotas();
             for (const auto& usage: response->Record.GetUsages()) {

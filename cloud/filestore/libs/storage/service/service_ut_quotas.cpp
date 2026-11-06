@@ -8,6 +8,8 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
@@ -26,24 +28,6 @@ NProto::TStorageConfig MakeStorageConfigWithDirectoryCreationInShards()
     NProto::TStorageConfig config;
     config.SetDirectoryCreationInShardsEnabled(true);
     return config;
-}
-
-void SetQuota(
-    TServiceClient& service,
-    const TString& fsId,
-    ui32 quotaId,
-    ui64 maxBytes,
-    ui64 maxNodes)
-{
-    NProtoPrivate::TSetQuotaRequest request;
-    request.SetFileSystemId(fsId);
-    request.SetQuotaId(quotaId);
-    request.SetMaxBytes(maxBytes);
-    request.SetMaxNodes(maxNodes);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-    service.ExecuteAction("setquota", buf);
 }
 
 void ForceRefreshAggregateQuotaUsage(TServiceClient& service, const TString& fsId)
@@ -154,9 +138,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
-        SetQuota(service, fsId, 42, 1_GB, 100);
-
         auto headers = service.InitSession(fsId, "client");
+
+        service.SetQuota(headers, fsId, 42, 1_GB, 100);
 
         const auto dirId =
             service
@@ -221,9 +205,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
-        SetQuota(service, fsId, 42, 1_GB, 100);
-
         auto headers = service.InitSession(fsId, "client");
+
+        service.SetQuota(headers, fsId, 42, 1_GB, 100);
 
         const auto dirId =
             service
@@ -259,11 +243,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
+        auto headers = service.InitSession(fsId, "client");
+
         // the dir's own attach point already counts as 1 node, so only 1
         // more node fits under this limit
-        SetQuota(service, fsId, 42, 1_GB, 2);
-
-        auto headers = service.InitSession(fsId, "client");
+        service.SetQuota(headers, fsId, 42, 1_GB, 2);
 
         const auto dirId =
             service
@@ -293,9 +277,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
-        SetQuota(service, fsId, 42, 100, 100);
-
         auto headers = service.InitSession(fsId, "client");
+
+        service.SetQuota(headers, fsId, 42, 100, 100);
 
         const auto dirId =
             service
@@ -330,10 +314,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         auto& service = *fixture.Service;
         const auto& fsId = fixture.FsId;
 
-        // MaxBytes == 0 means unlimited
-        SetQuota(service, fsId, 42, 0, 100);
-
         auto headers = service.InitSession(fsId, "client");
+
+        // MaxBytes == 0 means unlimited
+        service.SetQuota(headers, fsId, 42, 0, 100);
 
         const auto dirId =
             service
@@ -354,6 +338,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         // filesystems are small (ShardBlockCount * 4KB ~= 4MB), so this
         // has to stay comfortably under that too
         service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(fileId).SetSize(1_MB));
+    }
+
+    SERVICE_TEST(ShouldRejectSetQuotaWithZeroQuotaId)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        auto response =
+            service.AssertSetQuotaFailed(THeaders{}, fsId, 0, 1_GB, 100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (ui32)E_ARGUMENT,
+            STATUS_FROM_CODE(response->GetError().GetCode()));
     }
 }
 
