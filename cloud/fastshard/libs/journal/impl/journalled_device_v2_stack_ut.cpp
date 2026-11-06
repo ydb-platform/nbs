@@ -4,6 +4,7 @@
 #include "device_page_store.h"
 #include "journal.h"
 #include "key_buffer_store.h"
+#include "log_record.h"
 #include "memory_device.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>

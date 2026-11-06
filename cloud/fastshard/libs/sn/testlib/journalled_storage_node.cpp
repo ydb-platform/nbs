@@ -59,7 +59,8 @@ TJournalledStorageNode::TJournalledStorageNode(
         CreateDevicePageStore(
             LogDataDevice,
             Layout.LogDataPageCount,
-            Layout.PageSize),
+            Layout.PageSize,
+            EDevicePageStoreMode::Checked),
         Layout.DataPageCount);
 
     Device = CreateJournalledDeviceV2(
