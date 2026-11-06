@@ -30,6 +30,7 @@ private:
     {
         TString ShardId;
         ui64 NodeId = 0;
+        TString NodeType;
         ui64 RequestCount = 0;
         double AccessScore = 0;
         ui64 LastAccessedTimestampUs = 0;
@@ -58,6 +59,20 @@ private:
     };
 
     using TLatencyResult = NAggregation::TResult<TLatency>;
+
+    static TString NodeTypeToString(ui32 type)
+    {
+        switch (type) {
+            case NProto::E_REGULAR_NODE:
+                return "file";
+            case NProto::E_DIRECTORY_NODE:
+                return "dir";
+            case NProto::E_INVALID_NODE:
+                return "unknown";
+            default:
+                return "other";
+        }
+    }
 
     ui32 TopLoaded;
     TString SortBy;
@@ -288,6 +303,7 @@ private:
             accessRows.push_back(
                 {stats.GetShardId(),
                  stats.GetNodeId(),
+                 NodeTypeToString(stats.GetNodeType()),
                  stats.GetRequestCount(),
                  stats.GetAccessScore(),
                  stats.GetLastAccessedTimestampUs()});
@@ -304,7 +320,8 @@ private:
             row.Labels = {
                 ToString(stats.GetNodeId()),
                 stats.GetShardId(),
-                stats.GetRequestType()};
+                stats.GetRequestType(),
+                NodeTypeToString(stats.GetNodeType())};
             row.Data.RequestCount = stats.GetRequestCount();
             row.Data.TotalLatencyUs = stats.GetTotalLatencyUs();
             row.Data.TotalDecayedLatencyUs =
@@ -325,13 +342,18 @@ private:
             const bool hasNodeId = !aggregate.Labels[0].empty();
             const bool hasShardId = !aggregate.Labels[1].empty();
             const bool hasRequestType = !aggregate.Labels[2].empty();
+            const bool hasNodeType = !aggregate.Labels[3].empty();
 
-            if (hasNodeId && hasShardId && hasRequestType) {
-                nodeLatencyRows.push_back(std::move(aggregate));
-            } else if (!hasNodeId && hasShardId && hasRequestType) {
-                requestLatencyRows.push_back(std::move(aggregate));
-            } else if (!hasNodeId && hasShardId && !hasRequestType) {
-                shardLatencyRows.push_back(std::move(aggregate));
+            if (hasNodeId && hasShardId && hasRequestType && hasNodeType) {
+                nodeLatencyRows.push_back(aggregate);
+            } else if (
+                !hasNodeId && hasShardId && hasRequestType && !hasNodeType)
+            {
+                requestLatencyRows.push_back(aggregate);
+            } else if (
+                !hasNodeId && hasShardId && !hasRequestType && !hasNodeType)
+            {
+                shardLatencyRows.push_back(aggregate);
             }
         }
     }
@@ -500,6 +522,7 @@ private:
             tableRows.push_back(
                 {ToString(i + 1),
                  ToString(row.NodeId),
+                 row.NodeType,
                  row.ShardId,
                  ToString(row.RequestCount),
                  ToString(row.AccessScore),
@@ -510,7 +533,13 @@ private:
 
         PrintTable(
             TStringBuilder() << "Node access stats (top " << limit << ")",
-            {"#", "Node", "Shard", "Requests", "Access score", "Last accessed"},
+            {"#",
+             "Node",
+             "Type",
+             "Shard",
+             "Requests",
+             "Access score",
+             "Last accessed"},
             tableRows,
             HighlightMaximums(values));
     }
@@ -528,6 +557,7 @@ private:
             tableRows.push_back(
                 {ToString(i + 1),
                  row.Labels[0],
+                 row.Labels[3],
                  row.Labels[1],
                  row.Labels[2],
                  ToString(latency),
@@ -540,6 +570,7 @@ private:
             TStringBuilder() << "Node latency stats (top " << limit << ")",
             {"#",
              "Node",
+             "Type",
              "Shard",
              "Request type",
              "Avg latency",
@@ -622,6 +653,7 @@ private:
         NJson::TJsonValue result(NJson::JSON_MAP);
         result["shard_id"] = row.ShardId;
         result["node_id"] = row.NodeId;
+        result["node_type"] = row.NodeType;
         result["request_count"] = row.RequestCount;
         result["access_score"] = row.AccessScore;
         result["last_accessed_timestamp_us"] = row.LastAccessedTimestampUs;
@@ -635,6 +667,7 @@ private:
     {
         NJson::TJsonValue result(NJson::JSON_MAP);
         result["node_id"] = FromString<ui64>(row.Labels[0]);
+        result["node_type"] = row.Labels[3];
         result["shard_id"] = row.Labels[1];
         result["request_type"] = row.Labels[2];
         result["avg_latency_decayed"] =

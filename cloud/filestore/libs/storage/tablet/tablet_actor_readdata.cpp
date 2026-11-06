@@ -711,9 +711,13 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(msg->NodeId, ctx.Now()) ||
+    if (!UpdateAccessStats(
+            msg->NodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now()) ||
         !UpdateLatencyStats(
             msg->NodeId,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             ctx.Now(),
             msg->Time))
@@ -794,7 +798,7 @@ void TIndexTabletActor::HandleDescribeData(
         : GetCurrentCommitId();
 
     NProtoPrivate::TDescribeDataResponse result;
-    const bool filled = TryFillDescribeResult(
+    const bool filled = handle && TryFillDescribeResult(
         nodeId,
         msg->Record.GetHandle(),
         commitId,
@@ -813,9 +817,15 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        if (!UpdateAccessStats(nodeId, ctx.Now()) ||
+        // A cache hit here requires a handle, and handles currently target
+        // regular nodes only.
+        if (!UpdateAccessStats(
+                nodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 nodeId,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
                 ctx.Now() - requestInfo->StartedTs))
@@ -1088,9 +1098,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                args.NodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::DescribeData,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))
@@ -1182,9 +1196,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+        if (!UpdateAccessStats(
+                args.NodeId,
+                NProto::E_REGULAR_NODE,
+                ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
+                NProto::E_REGULAR_NODE,
                 EFileStoreRequest::ReadData,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))
