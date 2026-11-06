@@ -18,6 +18,8 @@ message MigrateDiskRequest {
     string DstPlacementGroupId = 3;
     uint32 DstPlacementPartitionIndex = 4;
     bool IsMigrationBetweenCells = 5;
+    // Fixed when scheduling; independent of the executing worker configuration.
+    bool UseDiskOperationGuard = 6;
 }
 
 // Should be in sync with statuses from public API.
