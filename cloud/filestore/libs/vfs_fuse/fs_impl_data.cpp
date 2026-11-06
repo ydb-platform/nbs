@@ -328,8 +328,8 @@ void TFileSystem::Create(
                     }
                 }
 
-                self->InvalidateCachedNode(parent);
-                self->InvalidateCachedNode(response.GetNodeAttr().GetId());
+                self->InvalidateCachedNodeAttrs(parent);
+                self->InvalidateCachedNodeAttrs(response.GetNodeAttr().GetId());
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
@@ -387,7 +387,7 @@ void TFileSystem::Open(
             const auto& response = future.GetValue();
 
             if (HasFlag(flags, NProto::TCreateHandleRequest::E_TRUNCATE)) {
-                self->InvalidateCachedNode(ino);
+                self->InvalidateCachedNodeAttrs(ino);
             }
 
             if (response.GetHandleCreatedAsync()) {

@@ -193,6 +193,11 @@ void TXAttrCache::Invalidate(ui64 ino, const TString& name, ui64 version)
     }
 }
 
+size_t TXAttrCache::GetEntryCount() const
+{
+    return Cache.Size();
+}
+
 void TXAttrCache::InvalidateAll(ui64 version)
 {
     Invalidations.InvalidateAll(version);

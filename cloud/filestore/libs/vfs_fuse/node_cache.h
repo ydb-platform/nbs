@@ -298,6 +298,11 @@ public:
      */
     void InvalidateAll(ui64 version);
 
+    /**
+     * @return - Number of the cached xattrs (values and absences).
+     */
+    size_t GetEntryCount() const;
+
 private:
     bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
     TInstant GetDeadline(TDuration cacheTTL) const;

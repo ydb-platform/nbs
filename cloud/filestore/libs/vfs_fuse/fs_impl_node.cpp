@@ -22,7 +22,10 @@ void TFileSystem::Lookup(
         return;
     }
 
-    if (TryReplyEntryFromCache(*callContext, req, parent, name)) {
+    const bool cacheHit =
+        TryReplyEntryFromCache(*callContext, req, parent, name);
+    MetadataCacheStats->CountLookup(cacheHit);
+    if (cacheHit) {
         return;
     }
 
@@ -153,7 +156,7 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedNode(parent);
+                self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -260,7 +263,7 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedNode(parent);
+                self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -400,7 +403,7 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedNode(parent);
+                self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
@@ -446,8 +449,8 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->InvalidateCachedNode(newparent);
-                self->InvalidateCachedNode(ino);
+                self->InvalidateCachedNodeAttrs(newparent);
+                self->InvalidateCachedNodeAttrs(ino);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,

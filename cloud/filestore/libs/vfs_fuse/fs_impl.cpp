@@ -44,6 +44,7 @@ TFileSystem::TFileSystem(
         IFileStorePtr session,
         IRequestStatsPtr stats,
         TDirectoryHandleModuleStatsPtr directoryHandleStats,
+        TMetadataCacheModuleStatsPtr metadataCacheStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandleStoragePtr directoryHandleStorage,
@@ -58,6 +59,7 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , MetadataCacheStats(std::move(metadataCacheStats))
     , NodeAttrsCache(Config->GetNodeAttrsCacheLimit(), CACHE_SHARD_COUNT)
     , NodeRefCache(Config->GetNodeRefCacheLimit(), CACHE_SHARD_COUNT)
     , DirectoryEntryVersionCache(
@@ -327,6 +329,12 @@ bool TFileSystem::TryReplyAttrFromCache(
 
 void TFileSystem::InvalidateCachedNode(ui64 nodeId)
 {
+    MetadataCacheStats->IncrementInvalidateNodeEventCount();
+    InvalidateCachedNodeAttrs(nodeId);
+}
+
+void TFileSystem::InvalidateCachedNodeAttrs(ui64 nodeId)
+{
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating cached node: " << nodeId
@@ -339,6 +347,8 @@ void TFileSystem::InvalidateCachedNodeRef(
     ui64 parentNodeId,
     const TString& name)
 {
+    MetadataCacheStats->IncrementInvalidateNodeRefEventCount();
+
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating cached node ref: " << parentNodeId
@@ -352,6 +362,12 @@ void TFileSystem::InvalidateCachedNodeXAttr(
     ui64 nodeId,
     const TString& name)
 {
+    MetadataCacheStats->IncrementInvalidateNodeXAttrEventCount();
+    InvalidateCachedXAttr(nodeId, name);
+}
+
+void TFileSystem::InvalidateCachedXAttr(ui64 nodeId, const TString& name)
+{
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating cached xattr: " << nodeId
@@ -362,8 +378,24 @@ void TFileSystem::InvalidateCachedNodeXAttr(
     XAttrCache.Invalidate(nodeId, name, version);
 }
 
+TMetadataCacheSizes TFileSystem::GetMetadataCacheSizes()
+{
+    TMetadataCacheSizes sizes{
+        .NodeAttrsCacheSize = NodeAttrsCache.GetEntryCount(),
+        .NodeRefCacheSize = NodeRefCache.GetEntryCount(),
+    };
+
+    with_lock (XAttrCacheLock) {
+        sizes.XAttrCacheSize = XAttrCache.GetEntryCount();
+    }
+
+    return sizes;
+}
+
 void TFileSystem::InvalidateAllCachedMetadata()
 {
+    MetadataCacheStats->IncrementInvalidateAllCount();
+
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_INFO("invalidating all cached metadata, version: " << version);

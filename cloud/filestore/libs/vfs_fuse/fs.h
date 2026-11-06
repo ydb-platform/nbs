@@ -4,6 +4,7 @@
 
 #include "directory_handle_stats.h"
 #include "fuse.h"
+#include "metadata_cache_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -498,6 +499,7 @@ IFileSystemPtr CreateFileSystem(
     IFileStorePtr session,
     IRequestStatsPtr stats,
     TDirectoryHandleModuleStatsPtr directoryHandleStats,
+    TMetadataCacheModuleStatsPtr metadataCacheStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
     TDirectoryHandleStoragePtr directoryHandleStorage,
