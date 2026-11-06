@@ -1,0 +1,464 @@
+diff --git a/contrib/ydb/core/control/immediate_control_board_actor.cpp b/contrib/ydb/core/control/immediate_control_board_actor.cpp
+index 54f2fa3d816..4f0180949be 100644
+--- a/contrib/ydb/core/control/immediate_control_board_actor.cpp
++++ b/contrib/ydb/core/control/immediate_control_board_actor.cpp
+@@ -17,12 +17,15 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
+         TString ParamName;
+         TAtomicBase PrevValue;
+         TAtomicBase NewValue;
++        // Operator action label owned by this history record for its lifetime.
++        TString Action;
+ 
+-        TLogRecord(TInstant timestamp, TString paramName, TAtomicBase prevValue, TAtomicBase newValue)
++        TLogRecord(TInstant timestamp, TString paramName, TAtomicBase prevValue, TAtomicBase newValue, TString action)
+             : Timestamp(timestamp)
+             , ParamName(paramName)
+             , PrevValue(prevValue)
+             , NewValue(newValue)
++            , Action(action)
+         {}
+ 
+         TString TimestampToStr() {
+@@ -65,26 +68,33 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
+     }
+ 
+ private:
++    // Record an operator action only when it changes a control value.
++    void RecordChange(const TString& name, TAtomicBase prevValue, TAtomicBase newValue, const TString& action) {
++        if (prevValue != newValue) {
++            HistoryLog.emplace_back(TInstant::Now(), name, prevValue, newValue, action);
++        }
++    }
++
+     void HandlePostParams(const TCgiParameters &cgi) {
++        if (cgi.Has("restoreDefault")) {
++            const TString& controlName = cgi.Get("restoreDefault");
++            TAtomicBase prevValue;
++            TAtomicBase newValue;
++            if (Board->RestoreDefault(controlName, prevValue, newValue)) {
++                RecordChange(controlName, prevValue, newValue, "Restore default");
++            }
++            return;
++        }
+         if (cgi.Has("restoreDefaults")) {
+             Board->RestoreDefaults();
+-            HistoryLog.emplace_back(TInstant::Now(), "RestoreDefaults", 0, 0);
+-            *HasChanged = 0;
+-            *ChangedCount = 0;
++            HistoryLog.emplace_back(TInstant::Now(), "RestoreDefaults", 0, 0, "Restore defaults");
++            return;
+         }
+         for (const auto &param : cgi) {
+             TAtomicBase newValue = strtoull(param.second.data(), nullptr, 10);
+             TAtomicBase prevValue = newValue;
+-            bool isDefault = Board->SetValue(param.first, newValue, prevValue);
+-            if (prevValue != newValue) {
+-                HistoryLog.emplace_back(TInstant::Now(), param.first, prevValue, newValue);
+-                if (isDefault) {
+-                    ChangedCount->Dec();
+-                } else {
+-                    ChangedCount->Inc();
+-                }
+-                *HasChanged = (ui64)ChangedCount->Val() > 0;
+-            }
++            Board->SetValue(param.first, newValue, prevValue);
++            RecordChange(param.first, prevValue, newValue, "Set value");
+         }
+     }
+ 
+@@ -94,7 +104,10 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
+             HandlePostParams(ev->Get()->Request.GetPostParams());
+         }
+         TStringStream str;
+-        str << Board->RenderAsHtml();
++        ui64 changedCount;
++        str << Board->RenderAsHtml(&changedCount);
++        *ChangedCount = changedCount;
++        *HasChanged = changedCount > 0;
+         HTML(str) {
+             str << "<h3>History</h3>";
+             TABLE_SORTABLE_CLASS("historyLogTable") {
+@@ -104,6 +117,7 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
+                         TABLEH() {str << "Parameter"; }
+                         TABLEH() {str << "PrevValue"; }
+                         TABLEH() {str << "NewValue"; }
++                        TABLEH() {str << "Action"; }
+                     }
+                 }
+                 TABLEBODY() {
+@@ -113,6 +127,7 @@ class TImmediateControlActor : public TActorBootstrapped<TImmediateControlActor>
+                             TABLED() { str << record.ParamName; }
+                             TABLED() { str << record.PrevValue; }
+                             TABLED() { str << record.NewValue; }
++                            TABLED() { str << record.Action; }
+                         }
+                     }
+                 }
+diff --git a/contrib/ydb/core/control/immediate_control_board_actor_ut.cpp b/contrib/ydb/core/control/immediate_control_board_actor_ut.cpp
+index bb7bf035c20..1e355af3f41 100644
+--- a/contrib/ydb/core/control/immediate_control_board_actor_ut.cpp
++++ b/contrib/ydb/core/control/immediate_control_board_actor_ut.cpp
+@@ -430,6 +430,141 @@ class TTestHttpPostReaction : public TBaseTest {
+     {}
+ };
+ 
++// Monitoring actor scenario owns a shared control and request across POST responses.
++// Run<TTestRestoreActionsAndCounters> creates it to check restore actions and gauges.
++class TTestRestoreActionsAndCounters : public TBaseTest {
++public:
++    // Create a test actor with one control and a reusable POST request.
++    TTestRestoreActionsAndCounters(TTestConfig* cfg);
++
++private:
++    // Shared control with default 200, registered for this test's lifetime.
++    TControlWrapper Control{200};
++
++    // POST request reused after each monitoring response.
++    TAutoPtr<THttpRequest> HttpRequest;
++
++    // Monitoring request view valid while HttpRequest exists.
++    NMonitoring::TMonService2HttpRequest MonService2HttpRequest;
++
++    // Exercise repeated assignments, named restore, bulk restore, and unknown names.
++    void TestFSM(const TActorContext& ctx) override;
++};
++
++// Create the request after the control so both remain valid for the actor lifetime.
++TTestRestoreActionsAndCounters::TTestRestoreActionsAndCounters(TTestConfig* cfg)
++    : TBaseTest(cfg)
++    , HttpRequest(new THttpRequest(HTTP_METHOD_POST))
++    , MonService2HttpRequest(nullptr, HttpRequest.Get(), nullptr, nullptr, "", nullptr)
++{}
++
++// Check that each completed POST reports current control state and records its action.
++// Use one control so repeated non-default assignments cannot increase the gauge.
++void TTestRestoreActionsAndCounters::TestFSM(const TActorContext& ctx) {
++    auto counters = GetServiceCounters(Counters, "utils");
++    if (TestStep) {
++        ASSERT_YTHROW(LastResponse.HttpResult && LastResponse.HttpResult->Type() == NActors::NMon::HttpInfoRes,
++            "Unexpected response message type, expected HttpInfoRes");
++    }
++
++    switch (TestStep) {
++        case 0:
++            // Register one control and submit its first non-default value.
++            Icb->RegisterSharedControl(Control, "control");
++            HttpRequest->CgiParameters.emplace("control", "500");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 10:
++            // Verify the first change, its button and history, then change it again.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "First POST did not change the control");
++            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 1,
++                "First override was not counted");
++            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 1,
++                "First override was not marked changed");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("name='restoreDefault' value='control'") != TString::npos,
++                "Named restore button is missing");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>control</td><td>200</td><td>500</td><td>Set value</td>") != TString::npos,
++                "Value assignment was not recorded");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("control", "600");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 20:
++            // Verify that a second override still counts one control.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 600, "Second POST did not change the control");
++            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 1,
++                "Repeated override increased the changed-control count");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("control", "200");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 30:
++            // Verify that assigning the default clears both gauges.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Third POST did not restore the default");
++            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
++                "Returning to default did not clear the count");
++            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 0,
++                "Returning to default did not clear the indicator");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("control", "500");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 40:
++            // Restore by name while ignoring the text input in the same form.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "Fourth POST did not change the control");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("control", "600");
++            HttpRequest->CgiParameters.emplace("restoreDefault", "control");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 50:
++            // Verify that named restore clears the gauges and records its value transition.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Named restore did not recover the default");
++            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
++                "Named restore did not clear the count");
++            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 0,
++                "Named restore did not clear the indicator");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>control</td><td>500</td><td>200</td><td>Restore default</td>") != TString::npos,
++                "Named restore was not recorded");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("name='restoreDefault' value='control'") == TString::npos,
++                "Named restore button remained after restoration");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("control", "500");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 60:
++            // Submit bulk restore with a value that must not override it.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "Fifth POST did not change the control");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("restoreDefaults", "");
++            HttpRequest->CgiParameters.emplace("control", "600");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 70:
++            // Verify bulk restoration and submit an unknown named restore.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Bulk restore was overridden");
++            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
++                "Bulk restore did not clear the count");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>RestoreDefaults</td><td>0</td><td>0</td><td>Restore defaults</td>") != TString::npos,
++                "Bulk restore was not recorded");
++            HttpRequest->CgiParameters.clear();
++            HttpRequest->CgiParameters.emplace("restoreDefault", "unknown");
++            HttpRequest->CgiParameters.emplace("control", "600");
++            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
++            break;
++        case 80:
++            // Verify that an unknown name leaves controls and history intact.
++            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Unknown restore changed the control");
++            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>unknown</td>") == TString::npos,
++                "Unknown restore was recorded in history");
++            SignalDoneEvent();
++            break;
++        default:
++            ythrow TWithBackTrace<yexception>() << "Unexpected TestStep " << TestStep << Endl;
++    }
++    TestStep += 10;
++}
++
+ Y_UNIT_TEST_SUITE(IcbAsActorTests) {
+     Y_UNIT_TEST(TestHttpGetResponse) {
+         Run<TTestHttpGetResponse>();
+@@ -438,6 +573,11 @@ Y_UNIT_TEST_SUITE(IcbAsActorTests) {
+     Y_UNIT_TEST(TestHttpPostReaction) {
+         Run<TTestHttpPostReaction>();
+     }
++
++    // Verify counters and restore actions through a sequence of HTTP POST requests.
++    Y_UNIT_TEST(TestRestoreActionsAndCounters) {
++        Run<TTestRestoreActionsAndCounters>();
++    }
+ };
+ 
+ } // namespace NKikimr
+diff --git a/contrib/ydb/core/control/immediate_control_board_control.cpp b/contrib/ydb/core/control/immediate_control_board_control.cpp
+index 6acb68e985b..017cd749800 100644
+--- a/contrib/ydb/core/control/immediate_control_board_control.cpp
++++ b/contrib/ydb/core/control/immediate_control_board_control.cpp
+@@ -17,7 +17,7 @@ void TControl::Set(TAtomicBase newValue) {
+ 
+ void TControl::Reset(TAtomicBase defaultValue, TAtomicBase lowerBound, TAtomicBase upperBound) {
+     Value = defaultValue;
+-    Default = defaultValue;
++    AtomicSet(Default, defaultValue);
+     LowerBound = lowerBound;
+     UpperBound = upperBound;
+ }
+@@ -43,7 +43,15 @@ TAtomicBase TControl::GetDefault() const {
+ }
+ 
+ void TControl::RestoreDefault() {
+-    AtomicSet(Value, Default);
++    TAtomicBase prevValue;
++    TAtomicBase newValue;
++    RestoreDefault(prevValue, newValue);
++}
++
++// Restore the default and report the values at the atomic update of Value.
++void TControl::RestoreDefault(TAtomicBase& outPrevValue, TAtomicBase& outNewValue) {
++    outNewValue = AtomicGet(Default);
++    outPrevValue = AtomicSwap(&Value, outNewValue);
+ }
+ 
+ bool TControl::IsDefault() const {
+diff --git a/contrib/ydb/core/control/immediate_control_board_control.h b/contrib/ydb/core/control/immediate_control_board_control.h
+index 5e5ddc901cf..d596ef325d5 100644
+--- a/contrib/ydb/core/control/immediate_control_board_control.h
++++ b/contrib/ydb/core/control/immediate_control_board_control.h
+@@ -26,6 +26,9 @@ class TControl : public TThrRefBase {
+ 
+     void RestoreDefault();
+ 
++    // Restore the default and report the value transition made by this call.
++    void RestoreDefault(TAtomicBase& outPrevValue, TAtomicBase& outNewValue);
++
+     bool IsDefault() const;
+ 
+     TString RangeAsString() const;
+diff --git a/contrib/ydb/core/control/immediate_control_board_impl.cpp b/contrib/ydb/core/control/immediate_control_board_impl.cpp
+index 40336f4df9e..de8222f5e05 100644
+--- a/contrib/ydb/core/control/immediate_control_board_impl.cpp
++++ b/contrib/ydb/core/control/immediate_control_board_impl.cpp
+@@ -37,10 +37,19 @@ void TControlBoard::RestoreDefaults() {
+ }
+ 
+ void TControlBoard::RestoreDefault(TString name) {
++    TAtomicBase prevValue;
++    TAtomicBase newValue;
++    RestoreDefault(name, prevValue, newValue);
++}
++
++// Restore one registered control and leave both outputs untouched for an unknown name.
++bool TControlBoard::RestoreDefault(TString name, TAtomicBase& outPrevValue, TAtomicBase& outNewValue) {
+     TIntrusivePtr<TControl> control;
+     if (Board.Get(name, control)) {
+-        control->RestoreDefault();
++        control->RestoreDefault(outPrevValue, outNewValue);
++        return true;
+     }
++    return false;
+ }
+ 
+ bool TControlBoard::SetValue(TString name, TAtomic value, TAtomic &outPrevValue) {
+@@ -61,8 +70,9 @@ void TControlBoard::GetValue(TString name, TAtomic &outValue, bool &outIsControl
+     }
+ }
+ 
+-TString TControlBoard::RenderAsHtml() const {
++TString TControlBoard::RenderAsHtml(ui64* outChangedCount) const {
+     TStringStream str;
++    ui64 changedCount = 0;
+     HTML(str) {
+         TABLE_SORTABLE_CLASS("table") {
+             TABLEHEAD() {
+@@ -79,18 +89,20 @@ TString TControlBoard::RenderAsHtml() const {
+                 for (const auto& bucket : Board.Buckets) {
+                     TReadGuard guard(bucket.GetLock());
+                     for (const auto &item : bucket.GetMap()) {
++                        const bool isDefault = item.second->IsDefault();
++                        changedCount += !isDefault;
+                         TABLER() {
+                             TABLED() { str << item.first; }
+                             TABLED() { str << item.second->RangeAsString(); }
+                             TABLED() {
+-                                if (item.second->IsDefault()) {
++                                if (isDefault) {
+                                     str << "<p>" << item.second->Get() << "</p>";
+                                 } else {
+                                     str << "<p style='color:red;'><b>" << item.second->Get() << " </b></p>";
+                                 }
+                             }
+                             TABLED() {
+-                                if (item.second->IsDefault()) {
++                                if (isDefault) {
+                                     str << "<p>" << item.second->GetDefault() << "</p>";
+                                 } else {
+                                     str << "<p style='color:red;'><b>" << item.second->GetDefault() << " </b></p>";
+@@ -101,18 +113,26 @@ TString TControlBoard::RenderAsHtml() const {
+                                 str << "<input name='" << item.first << "' type='text' value='"
+                                     << item.second->Get() << "'/>";
+                                 str << "<button type='submit' style='color:red;'><b>Change</b></button>";
++                                if (!isDefault) {
++                                    str << "<button type='submit' name='restoreDefault' value='" << item.first
++                                        << "' style='color:green; margin-left:4px; white-space:nowrap;'>"
++                                        << "<b>Restore Default</b></button>";
++                                }
+                                 str << "</form>";
+                             }
+-                            TABLED() { str << !item.second->IsDefault(); }
++                            TABLED() { str << !isDefault; }
+                         }
+                     }
+                 }
+             }
+         }
+         str << "<form class='form_horizontal' method='post'>";
+-        str << "<button type='submit' name='restoreDefaults' style='color:green;'><b>Restore Default</b></button>";
++        str << "<button type='submit' name='restoreDefaults' style='color:green;'><b>Restore Defaults</b></button>";
+         str << "</form>";
+     }
++    if (outChangedCount) {
++        *outChangedCount = changedCount;
++    }
+     return str.Str();
+ }
+ 
+diff --git a/contrib/ydb/core/control/immediate_control_board_impl.h b/contrib/ydb/core/control/immediate_control_board_impl.h
+index 9a941684b54..f14ee94561b 100644
+--- a/contrib/ydb/core/control/immediate_control_board_impl.h
++++ b/contrib/ydb/core/control/immediate_control_board_impl.h
+@@ -20,12 +20,15 @@ class TControlBoard : public TThrRefBase {
+ 
+     void RestoreDefault(TString name);
+ 
++    // Restore a named control and report its value transition if it exists.
++    bool RestoreDefault(TString name, TAtomicBase& outPrevValue, TAtomicBase& outNewValue);
++
+     bool SetValue(TString name, TAtomic value, TAtomic &outPrevValue);
+ 
+     // Only for tests
+     void GetValue(TString name, TAtomic &outValue, bool &outIsControlExists) const;
+ 
+-    TString RenderAsHtml() const;
++    TString RenderAsHtml(ui64* outChangedCount = nullptr) const;
+ };
+ 
+ }
+diff --git a/contrib/ydb/core/control/immediate_control_board_ut.cpp b/contrib/ydb/core/control/immediate_control_board_ut.cpp
+index 35ca7524dee..1597165ea09 100644
+--- a/contrib/ydb/core/control/immediate_control_board_ut.cpp
++++ b/contrib/ydb/core/control/immediate_control_board_ut.cpp
+@@ -57,6 +57,31 @@ Y_UNIT_TEST_SUITE(ControlImplementationTests) {
+         }
+     }
+ 
++    // Verify that a shared wrapper restores the latest default after a control changes.
++    Y_UNIT_TEST(TestWrapperRestoresDefault) {
++        TControlWrapper control(10, 0, 20);
++        TControlWrapper shared = control;
++        TIntrusivePtr<TControlBoard> board(new TControlBoard);
++        board->RegisterSharedControl(control, "control");
++
++        // Change the shared control through the board.
++        TAtomic previous = 0;
++        board->SetValue("control", 15, previous);
++        UNIT_ASSERT_VALUES_EQUAL(static_cast<i64>(shared), 15);
++
++        // Restore through the other wrapper and verify the shared value.
++        shared.RestoreDefault();
++        UNIT_ASSERT_VALUES_EQUAL(static_cast<i64>(control), 10);
++        UNIT_ASSERT(control.IsDefault());
++
++        // Reset the default and verify that restoration reads the new value.
++        control.Reset(12, 0, 20);
++        board->SetValue("control", 18, previous);
++        control.RestoreDefault();
++        UNIT_ASSERT_VALUES_EQUAL(static_cast<i64>(shared), 12);
++        UNIT_ASSERT_VALUES_EQUAL(shared.GetDefault(), 12);
++    }
++
+     Y_UNIT_TEST(TestControlWrapperAsI64) {
+         NPrivate::TMersenne64 randGen(Seed());
+         TControlWrapper wrapper1;
+@@ -140,4 +165,3 @@ Y_UNIT_TEST_SUITE(ControlImplementationTests) {
+ }
+ 
+ } // namespace NKikimr
+-
+diff --git a/contrib/ydb/core/control/immediate_control_board_wrapper.h b/contrib/ydb/core/control/immediate_control_board_wrapper.h
+index ab12dc3bba3..3a1d2974aff 100644
+--- a/contrib/ydb/core/control/immediate_control_board_wrapper.h
++++ b/contrib/ydb/core/control/immediate_control_board_wrapper.h
+@@ -29,6 +29,11 @@ class TControlWrapper {
+         return Control->GetDefault();
+     }
+ 
++    // Restore the current default in the shared control.
++    void RestoreDefault() {
++        Control->RestoreDefault();
++    }
++
+     i64 operator=(i64 value) {
+         Control->Set(value);
+         return value;
