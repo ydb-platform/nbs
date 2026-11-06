@@ -3,6 +3,18 @@ name: Build and test NBS on demand
 on:
   workflow_dispatch:
     inputs:
+      code_checkout_ref:
+        type: string
+        default: ""
+        description: "App branch, tag or commit; empty uses the workflow branch"
+      affected_tests:
+        type: boolean
+        default: false
+        description: "Select affected test targets by comparing build graphs"
+      affected_base_ref:
+        type: string
+        default: "origin/main"
+        description: "Compare app head with its merge base against this ref"
       component:
         type: string
         default: ""
@@ -91,6 +103,12 @@ on:
       code_rebase_ref:
         type: string
         default: ""
+      affected_tests:
+        type: boolean
+        default: false
+      affected_base_ref:
+        type: string
+        default: "origin/main"
       component:
         type: string
         default: ""
@@ -199,7 +217,7 @@ jobs:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ inputs.actions_checkout_ref || inputs.code_checkout_ref || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.actions_checkout_ref || (github.event_name == 'workflow_dispatch' && github.sha) || inputs.code_checkout_ref || github.event.pull_request.head.sha || github.sha }}
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false
@@ -241,9 +259,11 @@ jobs:
     needs:
       - provide-runner
     with:
-      actions_checkout_ref: ${{ inputs.actions_checkout_ref }}
+      actions_checkout_ref: ${{ inputs.actions_checkout_ref || (github.event_name == 'workflow_dispatch' && github.sha) || '' }}
       code_checkout_ref: ${{ inputs.code_checkout_ref }}
       code_rebase_ref: ${{ inputs.code_rebase_ref }}
+      affected_tests: ${{ inputs.affected_tests || false }}
+      affected_base_ref: ${{ inputs.affected_base_ref || 'origin/main' }}
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
       runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
@@ -302,7 +322,7 @@ jobs:
           submodules: false
           sparse-checkout: '.github'
           clean: true
-          ref: ${{ inputs.actions_checkout_ref || inputs.code_checkout_ref || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.actions_checkout_ref || (github.event_name == 'workflow_dispatch' && github.sha) || inputs.code_checkout_ref || github.event.pull_request.head.sha || github.sha }}
       - name: disable sparse checkout (workaround for actions/checkout/issues/2249)
         if: ${{ always() }}
         run: git config core.sparseCheckout false

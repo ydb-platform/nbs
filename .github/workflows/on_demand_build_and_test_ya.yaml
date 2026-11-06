@@ -12,6 +12,12 @@ on:
       code_rebase_ref:
         type: string
         default: ""
+      affected_tests:
+        type: boolean
+        default: false
+      affected_base_ref:
+        type: string
+        default: "origin/main"
       component:
         type: string
         default: ""
@@ -137,7 +143,7 @@ jobs:
         submodules: true
         clean: true
         ref: ${{ inputs.code_checkout_ref || github.event.pull_request.head.sha }}
-        fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+        fetch-depth: ${{ !inputs.affected_tests && !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
     - name: Rebase PR
       if: ${{ (inputs.code_checkout_ref || github.event.pull_request.head.sha) && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
@@ -160,6 +166,7 @@ jobs:
       with:
         submodules: true
         clean: true
+        fetch-depth: ${{ !inputs.affected_tests && 1 || 0 }}
 
     - name: Checkout workflow actions
       if: ${{ inputs.actions_checkout_ref != '' }}
@@ -252,10 +259,13 @@ jobs:
     - name: Run tests
       uses: ./.github/actions/test
       id: test
-      if: inputs.run_tests
+      if: ${{ inputs.run_tests || inputs.affected_tests }}
       with:
         component: ${{ inputs.component }}
         test_target: ${{ inputs.test_target }}
+        affected_tests: ${{ inputs.affected_tests }}
+        affected_base_ref: ${{ inputs.affected_base_ref }}
+        selection_only: ${{ !inputs.run_tests }}
         build_preset: ${{ inputs.build_preset }}
         test_size: ${{ inputs.test_size }}
         test_type: ${{ inputs.test_type }}
@@ -303,7 +313,7 @@ jobs:
         workload_check_status: cancelled
 
     - name: mark workload as completed
-      if: ${{ always() && steps.build.outcome != 'failure' && (steps.test.outputs.report_generated == 'yes' || (!cancelled() && !inputs.run_tests)) && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      if: ${{ always() && steps.build.outcome != 'failure' && (steps.test.outputs.report_generated == 'yes' || (!cancelled() && (!inputs.run_tests || steps.test.outputs.no_affected_tests == 'true'))) && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
       uses: ./.github/actions/workload_comment
       with:
         command: update

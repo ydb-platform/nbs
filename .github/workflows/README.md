@@ -4,6 +4,72 @@ For validating syntax use action-validator
 find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read path; do echo Checking $path; action-validator --verbose $path; done
 ```
 
+## Affected tests on demand
+
+Run the existing **Build and test NBS on demand** workflow
+(`on_demand_build_and_test.yaml`) from the branch containing the workflow
+changes and enable `affected_tests`. This entry point can be dispatched before
+these changes merge. **Use workflow from** selects the workflow and action
+code; `code_checkout_ref` independently selects the app branch, tag, or commit
+(empty uses the dispatch commit). Runner provisioning and cleanup also use
+the dispatch commit.
+
+`affected_base_ref` defaults to `origin/main`. The comparison starts at the merge base
+of that ref and the app commit, covering all changes on the app branch even
+when main has advanced. The summary records the resolved workflow, app, and
+base commits. `test_target`, `test_size`, `test_type`, and `build_preset` bound
+the tests considered. Disable both `run_build` and `run_tests` to inspect
+selection only. With `run_tests=true`, the existing test action runs the selected
+targets with its usual retries, timeouts, cache settings, and reports.
+`run_build` independently controls the existing build stage; disable it to
+build only what the affected tests require. `affected_tests` defaults to false.
+
+To inspect the selection using workflow changes from an unmerged branch:
+
+```bash
+gh workflow run on_demand_build_and_test.yaml --ref my-workflow-branch \
+  -f code_checkout_ref=my-app-branch -f affected_tests=true \
+  -f affected_base_ref=origin/main -f test_target=cloud/blockstore \
+  -f run_build=false -f run_tests=false
+```
+
+The test action owns selection, execution, cache settings, retries, and reports.
+It passes its build flags and test filters to a helper that only generates and
+compares graphs; the helper never runs tests or handles cache credentials.
+The helper generates JSON graphs with the app head's pinned `ya` and
+`--cache-tests -j0`, using identical options and the same disposable checkout
+path for both revisions. It compares the test node UIDs, which include code,
+test data, build configuration, and transitive build dependencies. Split
+chunks are grouped into suites. Added or changed suites select their target;
+removed suites are reported but cannot run at the head revision. A graph
+generation error fails the job, and an empty selection skips execution.
+
+Execution uses normal `ya make --retest --ignore-recurses` for the selected
+targets. All matching suites in those directories run, including unchanged
+sibling suites; child targets are not recursively added. The summary and
+`selection.json` distinguish affected suites from this expanded execution set.
+Selection depends on the inputs declared in the build graph; external services
+and undeclared dependencies cannot be tracked this way.
+
+Both graphs, selection details, target paths, and graph generation logs are
+uploaded to `$S3_BUCKET_PATH/affected-tests/${COMPONENT_DIR}`. The job summary
+links to those files on S3. Partial results are also uploaded if selection fails.
+Test results use the existing workflow reports.
+The existing PR and nightly workflows keep their default behavior.
+The implementation works with our current `ya`; it does not require graph/context
+export commands or external graph-diff tools.
+
+To select tests locally (committed changes only; the working tree is untouched):
+
+```bash
+python3 .github/scripts/affected_tests.py --base-ref=origin/main \
+  --targets=cloud/blockstore --output=/tmp/affected-tests \
+  -- --build=relwithdebinfo --test-size=small -DGITHUB_CI=yes
+```
+
+Use an empty output directory. Add `--exact-base` to compare directly against
+`--base-ref` instead of its merge base. Use the workflow to execute selected tests.
+
 ## Static execution traces
 
 Each `ya make` test attempt writes these files beside `summary.json`:
