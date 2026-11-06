@@ -5,7 +5,7 @@ original_args=("$@")
 
 show_help() {
     cat << EOF
-Usage: ./7-run_qemu.sh [--cell2] [-hkds]
+Usage: ./6-run_qemu.sh [--cell2] [-hkds]
 Run qemu
 -h, --help                     Display help
 -d, --diskid                   NBS Disk ID

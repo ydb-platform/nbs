@@ -106,7 +106,7 @@ in `nbs/nbs-rdma.txt`.
 ## Create and attach disk
 Run the following command in a new tab to create new disk:
 ```bash
-./5-create_disk.sh -k ssd
+./4-create_disk.sh -k ssd
 ```
 Add `--cell2` to create the disk in the second cell. By default, it is created
 in the first cell.
@@ -119,13 +119,13 @@ Storage kind may by overridden by ```-k``` option, following values are supporte
 
 Run the following command to attach created disk to your machine via nbd:
 ```bash
-./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
+./5-attach_disk.sh --disk-id vol0 -d /dev/nbd0
 ```
 
 For example, nonreplicated disk could be created and attached with the following commands:
 ```bash
-./5-create_disk.sh -k nonreplicated --disk-id nrd10
-./6-attach_disk.sh --disk-id nrd10 -d /dev/nbd1
+./4-create_disk.sh -k nonreplicated --disk-id nrd10
+./5-attach_disk.sh --disk-id nrd10 -d /dev/nbd1
 ```
 
 ## Try to access your disk
@@ -146,15 +146,15 @@ ssh -L 8766:localhost:8766 <vm_ip>
 
 - `blockstore-client.sh` passes arguments to the local client (API 9766).
 - `disk-agent.sh` starts one agent using `LOCATION_FILE` and `DISK_AGENT_FILE`.
-- `7-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
+- `6-run_qemu.sh --diskid vol0` starts the packaged QEMU guest with a vhost endpoint;
   it requires KVM and the QEMU binary and guest image from `buildall`.
   Add `--cell2` to use the second cell, its socket suffix, and its QMP/SSH ports.
-- `8-make-disks.sh` creates a selection of disks and placement groups in cell-1.
+- `7-make-disks.sh` creates a selection of disks and placement groups in cell-1.
   Add `--cell2` to create the same set in cell-2, with `-cell2` appended to
   disk and placement-group names. It attempts all creations even if an earlier
   command fails (for example, because a placement group already exists).
-- `9-attach-qemu.sh` opens an SSH session to the QEMU guest; pass a command to
-  execute it, for example `./9-attach-qemu.sh 'lsblk; fio --version'`.
+- `8-attach-qemu.sh` opens an SSH session to the QEMU guest; pass a command to
+  execute it, for example `./8-attach-qemu.sh 'lsblk; fio --version'`.
   Add `--cell2` for port 18679 instead of 8679; `QEMU_SSH_PORT` overrides
   either default. The script prepares and removes a private copy of the test key.
 - `copy_volume.py` exercises volume links to copy a volume.
@@ -216,7 +216,7 @@ Use `--cell2` to create a disk in the second cell and the client wrapper to
 inspect it:
 
 ```bash
-./5-create_disk.sh --cell2 -k ssd --disk-id cell2-volume
+./4-create_disk.sh --cell2 -k ssd --disk-id cell2-volume
 ./blockstore-client_cell2.sh describevolume --disk-id cell2-volume
 # Mount the second cell's volume through the first cell's NBS:
 ./blockstore-client.sh startendpoint --ipc-type vhost \
@@ -233,11 +233,11 @@ nonreplicated or mirrored disks.
 `3-start_nbs_cell2.sh` starts both NBS nodes and all five disk agents within
 cell-2. `--one-nbs`, `--skip-nbs`, and `--skip-da` work the same way as in the
 first cell.
-`run-cell2.sh` also supports `6-attach_disk.sh`, `7-run_qemu.sh`, and `cleanup.sh`.
+`run-cell2.sh` also supports `5-attach_disk.sh`, `6-run_qemu.sh`, and `cleanup.sh`.
 Start QEMU against the second cell directly:
 
 ```bash
-./7-run_qemu.sh --cell2 --diskid cell2-volume
+./6-run_qemu.sh --cell2 --diskid cell2-volume
 ```
 
 QEMU uses separate QMP and SSH ports, 18678 and 18679. Select a different NBD

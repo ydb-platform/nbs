@@ -6,7 +6,7 @@ source "$EXAMPLE_DIR/prepare_binaries.sh"
 
 show_help() {
     cat << EOF
-Usage: ./9-attach-qemu.sh [--cell2] [--] [COMMAND...]
+Usage: ./8-attach-qemu.sh [--cell2] [--] [COMMAND...]
 Connect to the QEMU guest or execute a command over SSH.
 -h, --help       Display help
 --cell2          Connect to cell-2 (default: cell-1)
@@ -14,8 +14,8 @@ Connect to the QEMU guest or execute a command over SSH.
 QEMU_SSH_PORT overrides the default SSH port (8679 or 18679).
 
 Examples:
-  ./9-attach-qemu.sh
-  ./9-attach-qemu.sh --cell2 'lsblk; fio --version'
+  ./8-attach-qemu.sh
+  ./8-attach-qemu.sh --cell2 'lsblk; fio --version'
 EOF
 }
 
