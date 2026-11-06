@@ -1,9 +1,16 @@
 import errno
+import hashlib
+import json
 import logging
 import os
 import signal
 import stat
+import subprocess
 import time
+from pathlib import Path
+
+import yatest.common as common
+from yatest.common.network import PortManager
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
 
@@ -42,30 +49,79 @@ class VirtioFsServer:
         return self.daemon.daemon.process.pid
 
     def start(self, output_path, tag):
-        cmd = [
-            self.virtiofs_server_binary,
-            "--socket-path", self.socket_path,
-            "--shared-dir", self.fspath,
-            #
-            # The default sandbox pivot_root/mount()s inside a fresh
-            # user namespace; that needs CAP_SYS_ADMIN in the caller's
-            # effective set. Non-root Docker containers don't have it
-            # even with --cap-add SYS_ADMIN (caps land in bounding, not
-            # effective). "--sandbox none" skips the isolation entirely,
-            # which is fine for tests since we already control which
-            # paths we hand to --shared-dir.
-            #
-            "--sandbox", "none",
-            # For debug: "--log-level", "trace",
-        ]
+        # Keep the export symlink out of collected test artifacts; reuse state
+        # when restarting the same socket during migration.
+        state = Path(common.work_path("virtiofs-state-" + hashlib.sha256(
+            os.path.abspath(self.socket_path).encode()).hexdigest()[:16]))
+        shared = Path(self.fspath).resolve(strict=True)
+        if not shared.is_dir():
+            raise ValueError("shared directory is not a directory: {}".format(shared))
+        paths = ("root", "sessions", "endpoints", "handles", "cache", "directories")
+        for name in paths:
+            (state / name).mkdir(parents=True, exist_ok=True)
+        export = state / "root" / "nfs_shared"
+        if export.is_symlink():
+            if export.resolve() != shared:
+                raise ValueError("socket state belongs to another shared directory")
+        else:
+            export.symlink_to(shared, target_is_directory=True)
+        config = state / "vhost.txt"
+        config.write_text('''VhostServiceConfig {
+  ServiceEndpoints {}
+  LocalServiceConfig {
+    RootPath: %(root)s
+    StatePath: %(sessions)s
+    PathPrefix: "nfs_"
+    OpenNodeByHandleEnabled: false
+  }
+  EndpointStorageType: ENDPOINT_STORAGE_FILE
+  EndpointStorageDir: %(endpoints)s
+  HandleOpsQueuePath: %(handles)s
+  WriteBackCachePath: %(cache)s
+  DirectoryHandlesStoragePath: %(directories)s
+  DirectoryHandlesInitialDataSize: 1048576
+}
+''' % {name: json.dumps(str(state / name)) for name in paths})
+        with PortManager() as ports:
+            endpoint_port = ports.get_port()
+            self.local_port = ports.get_port()
+            self.virtiofs_server = Daemon(
+                [self.virtiofs_server_binary, "--service", "local",
+                 "--app-config", str(config), "--server-port", str(endpoint_port),
+                 "--local-service-port", str(self.local_port)],
+                output_path,
+                timeout=180,
+                **daemon_log_files(prefix="virtiofs-server-{}".format(tag), cwd=output_path))
+            try:
+                self.virtiofs_server.start()
+                self._run_client(self.local_port, [
+                    "create", "--filesystem", "shared", "--cloud", "test",
+                    "--folder", "test", "--block-size", "4096", "--blocks-count", "26214400"])
+                self._run_client(endpoint_port, [
+                    "startendpoint", "--filesystem", "shared",
+                    "--socket-path", os.path.abspath(self.socket_path), "--client-id", "virtiofs-shared"])
+            except BaseException:
+                self.stop(tag)
+                raise
 
-        self.virtiofs_server = Daemon(
-            cmd,
-            output_path,
-            timeout=180,
-            **daemon_log_files(prefix="virtiofs-server-{}".format(tag), cwd=output_path))
-
-        self.virtiofs_server.start()
+    def _run_client(self, port, args):
+        deadline = time.monotonic() + 60
+        error = ""
+        while time.monotonic() < deadline:
+            if not self.daemon.is_alive():
+                raise RuntimeError("filestore-vhost exited during startup")
+            try:
+                result = subprocess.run(
+                    [common.binary_path("cloud/filestore/apps/client/filestore-client"),
+                     *args, "--server-port", str(port)],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
+                if result.returncode == 0:
+                    return
+                error = result.stdout.decode(errors="replace")
+            except subprocess.TimeoutExpired as e:
+                error = str(e)
+            time.sleep(0.1)
+        raise RuntimeError("filestore-client {} failed: {}".format(args[0], error))
 
     def stop(self, tag=None, timeout=10):
         daemon = self.daemon.daemon

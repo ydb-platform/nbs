@@ -16,23 +16,31 @@ def _iter_profile_log_lines(profile_tool_bin_path,
     # file into memory.  Supplying an open file marks stdout as caller-owned,
     # so the execution helper leaves it on disk and does not materialize it.
     # Keep the name until the command succeeds so failed output is preserved.
-    with tempfile.NamedTemporaryFile(
-            mode="w+b",
-            dir=common.output_path(),
-            prefix="filestore-profile-tool.dumpevents.",
-            suffix=".out",
-            delete=False) as output:
-        common.execute(
-            [profile_tool_bin_path, "dumpevents",
-             "--profile-log", profile_log_path,
-             "--fs-id", fs_name],
-            stdout=output)
+    dump_succeeded = False
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w+b",
+                dir=common.output_path(),
+                prefix="filestore-profile-tool.dumpevents.",
+                suffix=".out",
+                delete=False) as output:
+            common.execute(
+                [profile_tool_bin_path, "dumpevents",
+                 "--profile-log", profile_log_path,
+                 "--fs-id", fs_name],
+                stdout=output)
+            dump_succeeded = True
 
-        # Continue reading through the descriptor without keeping an artifact.
-        os.unlink(output.name)
-        output.seek(0)
-        for line in output:
-            yield line.decode("utf-8", errors="replace")
+            # Keep the file linked while reading: local-service-backed virtiofs
+            # mounts can return ESTALE for reads after unlinking an open file.
+            output.seek(0)
+            for line in output:
+                yield line.decode("utf-8", errors="replace")
+    finally:
+        # Close before unlinking, including when the iterator is closed early.
+        # Preserve the output if dumpevents itself failed.
+        if dump_succeeded:
+            os.unlink(output.name)
 
 
 def _split_profile_log_event(line):

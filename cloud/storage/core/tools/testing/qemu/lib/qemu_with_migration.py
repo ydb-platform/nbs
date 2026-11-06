@@ -19,7 +19,7 @@ from .qemu import Qemu
 from .recipe import recipe_get_env
 
 VIRTIOFS_SERVER_BINARY = (
-    "cloud/storage/core/tools/testing/virtiofs_server/bin/virtiofs-server")
+    "cloud/filestore/apps/vhost/filestore-vhost")
 
 
 class QemuWithMigration:
