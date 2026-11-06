@@ -76,4 +76,3 @@ else
 rmdir ${n1}
 quick_exit
 fi
-

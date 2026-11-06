@@ -124,4 +124,3 @@ quick_exit
 fi
 
 #/home/linux/rpmbuild/ntfs/fstest/pjd-fstest/fstest -u 65533 getfacl ${d0} access
-
