@@ -7,6 +7,7 @@
         "12978105235": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/fio-static-fio-3.42-x86_64.tgz",
         "12978105361": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/fio-static-fio-3.42-aarch64.tgz",
         "4449551218": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/qemu-static.tgz",
+        "44495512181": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/qemu-static-v10.1.5-x86_64.tgz",
         "14444444444": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/qemu-static-v11.0.2-aarch64.tgz",
         "12500613127": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/rootfs.noble.amd64.img",
         "12500624574": "https://storage.eu-north2.nebius.cloud/nbs-oss-resources/rootfs.noble.arm64.img",
