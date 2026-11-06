@@ -91,12 +91,14 @@ struct TStorageNodeFixture
 // Test fixture:
 // * creates N storage node fixtures
 // * sets up shard config using the endpoints of those storage nodes
+// * creates the shard and tears it down at the end
 
 struct TStorageFixture
 {
     static constexpr ui32 NodeCount = 3;
     TVector<TStorageNodeFixture> Nodes;
     NProtoPrivate::TPersistentFastShardConfig Config;
+    IFileSystemShardPtr Shard;
 
     TStorageFixture()
         : Nodes(NodeCount)
@@ -112,6 +114,18 @@ struct TStorageFixture
         Config.SetNodesPerGroup(NodesPerGroup);
         Config.SetExpectedGroupCapacity(FileSize / 2);
         Config.SetPageSize(PageSize);
+
+        Shard = CreateHashTableIndexFileSystemShard(
+            "fs0",
+            ShardNo,
+            1 /* generation */,
+            CreateStorageGroupFactory(),
+            Config);
+    }
+
+    ~TStorageFixture()
+    {
+        Shard->TearDown();
     }
 };
 
@@ -136,12 +150,7 @@ TEST(HashTableIndexShardTest, CreatesFiles)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -210,12 +219,7 @@ TEST(HashTableIndexShardTest, ValidatesRequests)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -288,12 +292,7 @@ TEST(HashTableIndexShardTest, CreatesHandles)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -500,12 +499,7 @@ TEST(HashTableIndexShardTest, Formats)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -637,12 +631,7 @@ TEST(HashTableIndexShardTest, WritesAndReadsFiles)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -766,12 +755,7 @@ TEST(HashTableIndexShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -1003,12 +987,7 @@ TEST(HashTableIndexShardTest, UnalignedAppend)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -1112,12 +1091,7 @@ TEST(HashTableIndexShardTest, DeallocatesPagesUponUnlink)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
@@ -1259,12 +1233,7 @@ TEST(HashTableIndexShardTest, DeallocatesPagesUponTruncate)
 
     TStorageFixture fx;
 
-    auto shard = CreateHashTableIndexFileSystemShard(
-        "fs0",
-        ShardNo,
-        1 /* generation */,
-        CreateStorageGroupFactory(),
-        fx.Config);
+    auto shard = fx.Shard;
     {
         auto e = shard->Init().GetValueSync();
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
