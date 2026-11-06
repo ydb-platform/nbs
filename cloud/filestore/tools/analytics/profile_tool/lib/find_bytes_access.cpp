@@ -121,18 +121,17 @@ public:
                 handle.GetRef());
         }
 
-        const auto until = CommonFilterParams.GetUntil(parseResult);
-        if (until.Defined()) {
+        const auto timeRange = CommonFilterParams.GetTimeRange(parseResult);
+        if (timeRange.Until.Defined()) {
             filter = CreateRequestFilterUntil(
                 std::move(filter),
-                until.GetRef().MicroSeconds());
+                timeRange.Until.GetRef().MicroSeconds());
         }
 
-        const auto since = CommonFilterParams.GetSince(parseResult);
-        if (since.Defined()) {
+        if (timeRange.Since.Defined()) {
             filter = CreateRequestFilterSince(
                 std::move(filter),
-                since.GetRef().MicroSeconds());
+                timeRange.Since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId = CommonFilterParams.GetFileSystemId(parseResult);
