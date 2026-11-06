@@ -14,6 +14,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var ErrDiskOperationInProgress = fmt.Errorf("disk operation is in progress")
+
+////////////////////////////////////////////////////////////////////////////////
+
 type diskStatus uint32
 
 func (s *diskStatus) UnmarshalYDB(res persistence.RawValue) error {
@@ -78,6 +82,10 @@ type diskState struct {
 	scanFoundBrokenBlobs bool
 
 	fillGeneration uint64
+
+	// The task with this ID holds exclusive access to the disk.
+	// An empty ID means that no exclusive owner is registered.
+	lockTaskID string
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
@@ -106,6 +114,7 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		ScanFoundBrokenBlobs: s.scanFoundBrokenBlobs,
 
 		FillGeneration: s.fillGeneration,
+		LockTaskID:     s.lockTaskID,
 	}
 }
 
@@ -140,6 +149,10 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
 
 		persistence.StructFieldValue("fill_generation", persistence.Uint64Value(s.fillGeneration)),
+		persistence.StructFieldValue(
+			"lock_task_id",
+			persistence.UTF8Value(s.lockTaskID),
+		),
 	)
 }
 
@@ -169,6 +182,10 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
+		persistence.OptionalWithDefault(
+			"lock_task_id",
+			&state.lockTaskID,
+		),
 	)
 	return
 }
@@ -222,7 +239,8 @@ func diskStateStructTypeString() string {
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
 
-		fill_generation: Uint64>`
+		fill_generation: Uint64,
+		lock_task_id: Utf8>`
 }
 
 func diskStateTableDescription() persistence.CreateTableDescription {
@@ -256,6 +274,10 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("fill_generation", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn(
+			"lock_task_id",
+			persistence.Optional(persistence.TypeUTF8),
+		),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -532,6 +554,10 @@ func (s *storageYDB) deleteDisk(
 			return state.toDiskMeta(), nil
 		}
 
+		if state.lockTaskID != "" {
+			return nil, errors.NewInterruptExecutionError()
+		}
+
 		state.status = diskStatusDeleting
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
@@ -736,6 +762,7 @@ func (s *storageYDB) incrementFillGeneration(
 	ctx context.Context,
 	session *persistence.Session,
 	diskID string,
+	lockTaskID string,
 ) (uint64, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -778,6 +805,22 @@ func (s *storageYDB) incrementFillGeneration(
 	}
 
 	state := states[0]
+
+	if lockTaskID != "" && state.lockTaskID != lockTaskID {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return 0, err
+		}
+
+		return 0, errors.NewNonRetriableError(
+			fmt.Errorf(
+				"%w: task %q does not own the lock for disk %q",
+				ErrDiskOperationInProgress,
+				lockTaskID,
+				diskID,
+			),
+		)
+	}
 
 	state.fillGeneration++
 
@@ -867,11 +910,11 @@ func (s *storageYDB) diskScanned(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) getDiskState(
+func (s *storageYDB) findDiskState(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-) (state diskState, err error) {
+) (state *diskState, err error) {
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -895,17 +938,36 @@ func (s *storageYDB) getDiskState(
 	}
 
 	if len(states) == 0 {
+		return nil, nil
+	}
+
+	return &states[0], nil
+}
+
+func (s *storageYDB) getDiskState(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+) (diskState, error) {
+
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return diskState{}, err
+	}
+
+	if state == nil {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return state, err
+			return diskState{}, err
 		}
 
-		return state, errors.NewSilentNonRetriableErrorf(
+		return diskState{}, errors.NewSilentNonRetriableErrorf(
 			"unable to find disk %q",
 			diskID,
 		)
 	}
-	return states[0], nil
+
+	return *state, nil
 }
 
 func (s *storageYDB) updateDiskState(
@@ -1045,6 +1107,7 @@ func (s *storageYDB) ListDisks(
 func (s *storageYDB) IncrementFillGeneration(
 	ctx context.Context,
 	diskID string,
+	lockTaskID string,
 ) (uint64, error) {
 
 	var fillGeneration uint64
@@ -1057,6 +1120,7 @@ func (s *storageYDB) IncrementFillGeneration(
 				ctx,
 				session,
 				diskID,
+				lockTaskID,
 			)
 			return err
 		},
@@ -1092,11 +1156,18 @@ func (s *storageYDB) DiskRelocated(
 	diskID string,
 	srcZoneID string,
 	dstZoneID string,
+	lockTaskID string,
 ) error {
 
 	state, err := s.getDiskState(ctx, tx, diskID)
 	if err != nil {
 		return err
+	}
+
+	// A migration may have already deleted its source disk, so losing lock
+	// ownership must keep the task resumable rather than fail it.
+	if lockTaskID != "" && state.lockTaskID != lockTaskID {
+		return errors.NewInterruptExecutionError()
 	}
 
 	oldZoneID := state.zoneID
@@ -1178,4 +1249,78 @@ func dropDisksYDBTables(
 	logging.Info(ctx, "Dropped tables for disks")
 
 	return nil
+}
+
+// LockDisk must run in the task's SaveStateWithPreparation transaction.
+// The owner may repeat its request, but other tasks cannot acquire the lock.
+func (s *storageYDB) LockDisk(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	input LockDiskInput,
+) (*DiskMeta, error) {
+
+	if input.DiskID == "" || input.TaskID == "" {
+		return nil, errors.NewNonRetriableErrorf(
+			"disk operation identity must be specified",
+		)
+	}
+
+	state, err := s.getDiskState(ctx, tx, input.DiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if state.status != diskStatusReady {
+		return nil, errors.NewNonRetriableErrorf(
+			"disk %q is not ready for exclusive access",
+			input.DiskID,
+		)
+	}
+
+	if state.lockTaskID != "" &&
+		state.lockTaskID != input.TaskID {
+
+		return nil, errors.NewInterruptExecutionError()
+	}
+
+	if state.lockTaskID == input.TaskID {
+		return state.toDiskMeta(), nil
+	}
+
+	state.lockTaskID = input.TaskID
+	if err := s.updateDiskState(ctx, tx, state); err != nil {
+		return nil, err
+	}
+
+	return state.toDiskMeta(), nil
+}
+
+// UnlockDisk releases only this task's exclusive ownership.
+// It is safe to repeat and never releases another task's lock.
+func (s *storageYDB) UnlockDisk(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	taskID string,
+) error {
+
+	if diskID == "" || taskID == "" {
+		return errors.NewNonRetriableErrorf(
+			"disk operation identity must be specified",
+		)
+	}
+
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+
+	// Releasing an absent or already released lock is a no-op.
+	// Never release a lock owned by another task.
+	if state == nil || state.lockTaskID != taskID {
+		return nil
+	}
+
+	state.lockTaskID = ""
+	return s.updateDiskState(ctx, tx, *state)
 }

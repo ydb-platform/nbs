@@ -12,6 +12,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// LockDiskInput identifies the disk and the task requesting exclusive access.
+type LockDiskInput struct {
+	DiskID string
+	TaskID string
+}
+
 type DiskMeta struct {
 	ID                      string `json:"id"`
 	ZoneID                  string `json:"zone_id"`
@@ -39,6 +45,9 @@ type DiskMeta struct {
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
 
 	FillGeneration uint64 `json:"fill_generation"`
+
+	// LockTaskID identifies the task holding exclusive disk access.
+	LockTaskID string `json:"lock_task_id"`
 }
 
 type ImageMeta struct {
@@ -472,9 +481,14 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
+	// A nonempty lockTaskID identifies the parent migration task that owns
+	// the disk lock. Validate ownership against this ID, not a cleanup ID.
+	// An empty ID skips validation for tasks whose saved request has
+	// PreventConcurrentDiskModifications=false, including an absent field.
 	IncrementFillGeneration(
 		ctx context.Context,
 		diskID string,
+		lockTaskID string,
 	) (uint64, error)
 
 	DiskScanned(
@@ -484,11 +498,38 @@ type Storage interface {
 		foundBrokenBlobs bool,
 	) error
 
+	// A nonempty lockTaskID identifies the parent migration task that owns
+	// the disk lock. Validate ownership against this ID, not a cleanup ID.
+	// An empty ID skips validation for tasks whose saved request has
+	// PreventConcurrentDiskModifications=false, including an absent field.
 	DiskRelocated(
 		ctx context.Context,
 		tx *persistence.Transaction,
 		diskID string,
 		srcZoneID string,
 		dstZoneID string,
+		lockTaskID string,
+	) error
+
+	// LockDisk acquires exclusive access for the given task on a Ready disk.
+	// Repeating a request with the same task ID is idempotent.
+	// Another task cannot acquire the lock until its owner releases it.
+	// Use the transaction from SaveStateWithPreparation so acquisition and task
+	// generation validation commit atomically.
+	LockDisk(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		input LockDiskInput,
+	) (*DiskMeta, error)
+
+	// UnlockDisk releases only this task's exclusive ownership.
+	// It is idempotent and never releases another task's lock.
+	// Use a task-state transaction to validate the execution generation.
+	// Commit successful task completion and release in the same transaction.
+	UnlockDisk(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		diskID string,
+		taskID string,
 	) error
 }
