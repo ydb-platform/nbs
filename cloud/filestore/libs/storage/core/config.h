@@ -82,6 +82,7 @@ public:
     TDuration GetEstablishSessionTimeout() const;
     TDuration GetIdleSessionTimeout() const;
     ui32 GetMaxDeleteSessionHandlesPerTx() const;
+    bool GetSessionOrphaningEnabled() const;
 
     ui32 GetWriteBlobThreshold() const;
 
