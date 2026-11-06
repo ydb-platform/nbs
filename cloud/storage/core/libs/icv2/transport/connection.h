@@ -10,6 +10,15 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ESendResult
+{
+    Accepted,
+    NotActive,
+    QueueFull,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IConnectionHandler
 {
     virtual ~IConnectionHandler() = default;
@@ -30,10 +39,10 @@ struct IConnection
     // Registration failure returns false and invokes HandleDisconnect().
     virtual bool Activate() = 0;
 
-    // Returns true if accepted for sending. Delivery is not guaranteed.
-    // Rejects events exceeding the transport's shared output queue byte limit.
-    // Requires a non-null ev.
-    virtual bool Send(std::unique_ptr<NActors::IEventHandle> ev) = 0;
+    // Consumes a non-null ev on every result. Accepted does not guarantee
+    // delivery. NotActive includes calls before activation and after closure.
+    // QueueFull means the shared output byte limit would be exceeded.
+    virtual ESendResult Send(std::unique_ptr<NActors::IEventHandle> ev) = 0;
 
     // Does not wait for callbacks; use WhenClosed() to await completion.
     // Safe from callbacks. Local closure does not invoke HandleDisconnect().
