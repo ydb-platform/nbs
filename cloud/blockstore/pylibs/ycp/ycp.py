@@ -63,15 +63,13 @@ class YcpCmdEngine:
             text=True,
         )
         match = re.fullmatch(
-            r"(\d+)\.(\d+)\.(\d+)(?P<prerelease>-[^\s+]+)?(?:\+\S+)?",
+            r"(\d+)\.(\d+)\.(\d+)(?:[-+]\S+)?",
             result.stdout.strip(),
         )
         if result.returncode != 0 or match is None:
             return False
 
-        version = tuple(map(int, match.group(1, 2, 3)))
-        if match.group("prerelease") is not None:
-            return version > _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
+        version = tuple(map(int, match.groups()))
         return version >= _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
 
     def exec(self, command, input, err):
