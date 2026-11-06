@@ -65,17 +65,13 @@ TPartitionActor::TPartitionActor(
     ui32 partitionIndex,
     ui32 siblingCount,
     const TActorId& volumeActorId,
-    ui64 volumeTabletId)
+    ui64 volumeTabletId,
+    bool freshBlocksWriterEnabled)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
-    , FreshBlocksWriterEnabled(
-          Config->GetFreshBlocksWriterEnabled() ||
-          Config->IsFreshBlocksWriterFeatureEnabled(
-              PartitionConfig.GetCloudId(),
-              PartitionConfig.GetFolderId(),
-              PartitionConfig.GetDiskId()))
+    , FreshBlocksWriterEnabled(freshBlocksWriterEnabled)
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),

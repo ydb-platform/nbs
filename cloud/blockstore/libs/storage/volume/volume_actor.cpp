@@ -644,11 +644,7 @@ bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
         return false;
     }
 
-    return Config->GetFreshBlocksWriterEnabled() ||
-           Config->IsFreshBlocksWriterFeatureEnabled(
-               State->GetConfig().GetCloudId(),
-               State->GetConfig().GetFolderId(),
-               State->GetConfig().GetDiskId());
+    return part->FreshBlocksWriterEnabled;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
