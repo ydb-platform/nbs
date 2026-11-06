@@ -817,6 +817,17 @@ void TVolumeActor::HandleBootExternalResponse(
 
     const auto* appData = AppData(ctx);
 
+    // Keep Partition and its writer wrapper in the same mode even if
+    // FreshBlocksWriterEnabled changes during Partition boot (e.g. through
+    // ICB).
+    part->FreshBlocksWriterEnabled =
+        (part->StorageInfo->TabletType == TTabletTypes::BlockStorePartition) &&
+        (Config->GetFreshBlocksWriterEnabled() ||
+         Config->IsFreshBlocksWriterFeatureEnabled(
+             part->PartitionConfig.GetCloudId(),
+             part->PartitionConfig.GetFolderId(),
+             part->PartitionConfig.GetDiskId()));
+    auto freshBlocksWriterEnabled = part->FreshBlocksWriterEnabled;
     auto config = Config;
     auto partitionConfig = part->PartitionConfig;
     auto diagnosticsConfig = DiagnosticsConfig;
@@ -849,7 +860,8 @@ void TVolumeActor::HandleBootExternalResponse(
                        partitionIndex,
                        siblingCount,
                        selfId,
-                       volumeTabletId)
+                       volumeTabletId,
+                       freshBlocksWriterEnabled)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(

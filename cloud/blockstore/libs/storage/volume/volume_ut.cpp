@@ -8067,6 +8067,132 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    void DoTestShouldKeepFreshBlocksWriterModeDuringDynamicParameterChange(
+        bool startupFreshBlocksWriter)
+    {
+        // Start Partition v1 and hold its startup notification.
+        NProto::TStorageServiceConfig config;
+        config.SetFreshBlocksWriterEnabled(startupFreshBlocksWriter);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+        TAutoPtr<IEventHandle> started;
+        bool holdStarted = true;
+        TActorId writerActor;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvBootExternalResponse: {
+                        // Select Partition v1, the tablet type that supports
+                        // the fresh-block writer.
+                        auto* msg =
+                            event->Get<TEvHiveProxy::TEvBootExternalResponse>();
+                        const_cast<TTabletStorageInfo*>(msg->StorageInfo.Get())
+                            ->TabletType = TTabletTypes::BlockStorePartition;
+                        break;
+                    }
+                    case TEvBootstrapper::EvStatus: {
+                        // Delay STARTED delivery to Volume so the test can
+                        // change ICB after Partition selects its mode and
+                        // before Volume creates the writer wrapper.
+                        const auto* msg =
+                            event->Get<TEvBootstrapper::TEvStatus>();
+                        if (holdStarted &&
+                            msg->Status == TEvBootstrapper::STARTED)
+                        {
+                            started = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case NFreshBlocksWriter::TEvFreshBlocksWriter::
+                        EvWaitReadyRequest: {
+                        // Record the writer actor to check that its presence
+                        // matches the selected mode and that it is distinct
+                        // from Partition.
+                        writerActor = event->GetRecipientRewrite();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        const auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+
+        for (ui32 boot = 0; boot < 2; ++boot) {
+            const bool writerEnabled =
+                boot ? !startupFreshBlocksWriter : startupFreshBlocksWriter;
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return bool(started);
+            };
+            runtime->DispatchEvents(options);
+            UNIT_ASSERT(started);
+            volume.SendWaitReadyRequest();
+            const auto partitionActor =
+                started->Get<TEvBootstrapper::TEvStatus>()->TabletUser;
+
+            // Change the actual ICB control after Partition chose its mode.
+            TAtomic previousValue = {};
+            runtime->GetAppData().Icb->SetValue(
+                "BlockStore_FreshBlocksWriterEnabled",
+                !writerEnabled,
+                previousValue);
+            UNIT_ASSERT_VALUES_EQUAL(writerEnabled, previousValue);
+            UNIT_ASSERT_VALUES_EQUAL(
+                !writerEnabled,
+                volume.GetStorageConfig()
+                    ->Record.GetStorageConfig()
+                    .GetFreshBlocksWriterEnabled());
+
+            // Complete startup using the original topology and serve I/O.
+            holdStarted = false;
+            runtime->Send(started.Release());
+            volume.RecvWaitReadyResponse();
+            UNIT_ASSERT_VALUES_EQUAL(writerEnabled, bool(writerActor));
+            UNIT_ASSERT_VALUES_UNEQUAL(partitionActor, writerActor);
+            volume.AddClient(client);
+            const auto range = TBlockRange64::MakeOneBlock(0);
+            volume.WriteBlocks(range, client.GetClientId(), 'x');
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                volume.ReadBlocks(range, client.GetClientId())
+                    ->Record.GetBlocks()
+                    .GetBuffers(0));
+            // Check the empty-buffer representation of a zeroed block.
+            volume.ZeroBlocks(range, client.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "",
+                volume.ReadBlocks(range, client.GetClientId())
+                    ->Record.GetBlocks()
+                    .GetBuffers(0));
+
+            // Restart through Volume and repeat the opposite ICB switch.
+            if (!boot) {
+                holdStarted = true;
+                writerActor = {};
+                volume.ChangeStorageConfig(NProto::TStorageServiceConfig{});
+            }
+        }
+    }
+
+    // Verify that Partition and its writer wrapper keep the same mode when
+    // FreshBlocksWriterEnabled changes (e.g. through ICB) during initial
+    // Partition boot and Partition restart.
+    Y_UNIT_TEST(ShouldKeepFreshBlocksWriterModeDuringDynamicParameterChange)
+    {
+        for (const bool startupFreshBlocksWriter: {true, false}) {
+            DoTestShouldKeepFreshBlocksWriterModeDuringDynamicParameterChange(
+                startupFreshBlocksWriter);
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculateDiskRegistryPartitionParameters)
     {
         const auto expectedBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount

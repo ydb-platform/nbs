@@ -138,6 +138,9 @@ struct TPartitionInfo
     TRetryPolicy RetryPolicy;
     NActors::TSchedulerCookieHolder RetryCookie;
 
+    // Fresh-block writer mode selected for the current partition boot.
+    bool FreshBlocksWriterEnabled = false;
+
     bool RequestingBootExternal = false;
     ui32 SuggestedGeneration = 0;
     NKikimr::TTabletStorageInfoPtr StorageInfo;

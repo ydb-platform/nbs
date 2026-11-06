@@ -494,7 +494,8 @@ void InitTestActorRuntime(
             0,   // partitionIndex
             1,   // siblingCount
             VolumeActorId,
-            0   // volumeTabletId
+            0,   // volumeTabletId
+            configs->StorageConfig->GetFreshBlocksWriterEnabled()
         );
         return tablet.release();
     };
