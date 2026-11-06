@@ -13,7 +13,7 @@ n2=`namegen`
 rm -rf ${d0}
 #
 # skip the test if ACLs are not implemented
-#  
+#
 mkdir ${n1}
 if setfacl -m 'm::5' ${n1} 2> /dev/null
 then
