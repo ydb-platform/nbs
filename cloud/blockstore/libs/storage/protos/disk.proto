@@ -1644,6 +1644,14 @@ message TUpdatePlacementGroupSettingsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// List of devices UUIDs.
+
+message TDeviceList
+{
+    repeated string DeviceUUIDs = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Volume create from devices request/response.
 
 message TCreateVolumeFromDevicesRequest
@@ -1670,6 +1678,16 @@ message TCreateVolumeFromDevicesRequest
     // DiskRegistry-based media kinds are allowed. STORAGE_MEDIA_SSD_LOCAL is
     // used if not specified.
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
+
+    // Replicas of the disk (for mirrored disks).
+    repeated TDeviceList Replicas = 8;
+
+    // Force dangerous actions.
+    bool Force = 9;
+
+    // If false, the block count will be cast to unadjusted.
+    // Currently for mirrored disks it is always true.
+    bool KeepBlockCount = 10;
 }
 
 message TCreateVolumeFromDevicesResponse

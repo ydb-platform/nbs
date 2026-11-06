@@ -1262,6 +1262,8 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
+        const TVector<TVector<TString>> Replicas;
+        const bool KeepBlockCount;
 
         NProto::TError Error;
         ui64 LogicalBlockCount = 0;
@@ -1272,13 +1274,17 @@ struct TTxDiskRegistry
                 TString diskId,
                 ui32 blockSize,
                 NProto::EStorageMediaKind mediaKind,
-                TVector<NProto::TDeviceConfig> devices)
+                TVector<NProto::TDeviceConfig> devices,
+                TVector<TVector<TString>> replicas,
+                bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Devices(std::move(devices))
+            , Replicas(std::move(replicas))
+            , KeepBlockCount(keepBlockCount)
         {}
 
         void Clear()
@@ -1291,15 +1297,25 @@ struct TTxDiskRegistry
         {
             TStringStream ss;
 
-            ss << "Force=" << Force
-                << " DiskId=" << DiskId
-                << " BlockSize=" << BlockSize
-                << " Devices=[ ";
-            for (auto& d: Devices) {
-                ss << "("
-                    << d.GetAgentId() << " "
-                    << d.GetDeviceName()
-                    << ") ";
+            ss << "Force=" << Force << " DiskId=" << DiskId
+               << " BlockSize=" << BlockSize
+               << " KeepBlockCount=" << KeepBlockCount;
+            if (!Devices.empty()) {
+                ss << " Devices=[ ";
+                for (auto& d: Devices) {
+                    ss << "(" << d.GetAgentId() << " " << d.GetDeviceName()
+                       << ") ";
+                }
+            }
+            if (!Replicas.empty()) {
+                ss << " Replicas=[ ";
+                for (const auto& r: Replicas) {
+                    ss << "[";
+                    for (const auto& d: r) {
+                        ss << d << " ";
+                    }
+                    ss << "] ";
+                }
             }
             ss << "]";
             return ss.Str();

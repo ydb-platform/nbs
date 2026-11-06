@@ -173,11 +173,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                 auto error = state.CreateDiskFromDevices(
                     TInstant::Zero(),
                     db,
-                    /*force=*/true,
                     "vol0",
-                    4_KB,
-                    NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    TDiskRegistryState::TCreateDiskFromDevicesParams(
+                        4_KB,
+                        NProto::STORAGE_MEDIA_SSD_LOCAL,
+                        /*force=*/true,
+                        /*keepBlockCount=*/false),
                     {device},
+                    {},
                     &result);
 
                 UNIT_ASSERT_VALUES_EQUAL_C(error.GetCode(), S_OK, error);
