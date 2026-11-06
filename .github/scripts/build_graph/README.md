@@ -67,23 +67,13 @@ image disk and cache limits to fit the selected resources. `--keep-temps` is not
 needed. Source changes that introduce new resource IDs require another warmup.
 Downloads implemented directly inside build commands, tests or recipes are
 outside this script's scope. It does not run those commands or populate caches
-of compiled outputs. The generated graph format is an internal ya interface;
-rerun the integration test when upgrading ya.
+of compiled outputs. The generated graph format is an internal ya interface.
 
 Validation:
 
 ```bash
 python3 -m pytest -q .github/scripts/build_graph
-
-# Optional: real ya, a local HTTP server, then cache reuse with the server stopped.
-# Use an already installed ya-bin; all fixture data and caches are temporary.
-YA_PREFETCH_INTEGRATION_BINARY=/path/to/ya-bin \
-    python3 -m pytest -q .github/scripts/build_graph -k native
 ```
-
-Also set `YA_PREFETCH_INTEGRATION_TC_BINARY=/path/to/ya-tc` to exercise the daemon
-tool/build caches used by this checkout's `ya.conf`. Without it, the test uses
-ya's filesystem caches. The test stops its own cache daemon on completion.
 
 ## Cloud Reachability Check
 
