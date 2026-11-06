@@ -92,8 +92,16 @@ void TXAttrCache::Add(
     ui64 ino,
     const TString& name,
     const TString& value,
-    ui64 version)
+    ui64 version,
+    ui64 cacheVersion)
 {
+    if (!Invalidations.IsCacheable(
+            TXAttrCacheKey{.NodeId = ino, .Name = name},
+            cacheVersion))
+    {
+        return;
+    }
+
     const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
@@ -108,8 +116,18 @@ void TXAttrCache::Add(
     }
 }
 
-void TXAttrCache::AddAbsent(ui64 ino, const TString& name)
+void TXAttrCache::AddAbsent(
+    ui64 ino,
+    const TString& name,
+    ui64 cacheVersion)
 {
+    if (!Invalidations.IsCacheable(
+            TXAttrCacheKey{.NodeId = ino, .Name = name},
+            cacheVersion))
+    {
+        return;
+    }
+
     Cache.Update(
         TKey{ino, name},
         TXAttr{
@@ -154,12 +172,22 @@ void TXAttrCache::Invalidate(ui64 ino)
     );
 }
 
-void TXAttrCache::Forget(ui64 ino, const TString& name)
+void TXAttrCache::Invalidate(ui64 ino, const TString& name, ui64 version)
 {
+    Invalidations.Invalidate(
+        TXAttrCacheKey{.NodeId = ino, .Name = name},
+        version);
+
     auto it = Cache.Find({ino, name});
     if (it != Cache.End()) {
         Cache.Erase(it);
     }
+}
+
+void TXAttrCache::InvalidateAll(ui64 version)
+{
+    Invalidations.InvalidateAll(version);
+    Cache.Clear();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

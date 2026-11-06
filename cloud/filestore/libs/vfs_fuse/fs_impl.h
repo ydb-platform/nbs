@@ -358,6 +358,9 @@ public:
     void InvalidateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name) override;
+    void InvalidateCachedNodeXAttr(
+        ui64 nodeId,
+        const TString& name) override;
     void InvalidateAllCachedMetadata() override;
 
 private:
@@ -489,7 +492,8 @@ private:
         const TString& name,
         const TString& value,
         ui64 version,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        ui64 cacheVersion);
 
     void ReplyCreateWithCache(
         TCallContext& callContext,

@@ -1,7 +1,9 @@
 #include "fs_ut_bootstrap.h"
 #include "node_attrs_cache.h"
+#include "node_cache.h"
 #include "node_ref_cache.h"
 
+#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/vhost/request.h>
 
@@ -55,6 +57,8 @@ struct TMetadataCachingEnv
     std::atomic<ui32> GetAttrCount = 0;
     std::atomic<ui32> NodeCacheTTL = CacheTTLMs;
     std::atomic<ui32> NodeRefCacheTTL = CacheTTLMs;
+    std::atomic<ui32> XAttrCount = 0;
+    std::atomic<bool> XAttrExists = true;
 
     TMetadataCachingEnv()
         : Bootstrap(
@@ -74,6 +78,13 @@ struct TMetadataCachingEnv
             {
                 Y_UNUSED(callContext);
                 return MakeFuture(HandleGetNodeAttr(*request));
+            });
+        Bootstrap.Service->SetHandlerGetNodeXAttr(
+            [this] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                return MakeFuture(HandleGetNodeXAttr());
             });
 
         Bootstrap.Start();
@@ -105,6 +116,47 @@ struct TMetadataCachingEnv
         node->SetMode(0644);
         response.SetNodeCacheTTL(NodeCacheTTL);
         return response;
+    }
+
+    NProto::TGetNodeXAttrResponse HandleGetNodeXAttr()
+    {
+        const ui32 count = ++XAttrCount;
+        if (!XAttrExists) {
+            return TErrorResponse(ErrorAttributeDoesNotExist("user.a"));
+        }
+
+        NProto::TGetNodeXAttrResponse response;
+        response.SetValue(ToString(count));
+        response.SetVersion(count);
+        return response;
+    }
+
+    TString GetXAttr()
+    {
+        auto getXAttr = Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.a",
+            FileNodeId);
+        return getXAttr.GetValue(WaitTimeout);
+    }
+
+    void AssertXAttrAbsent()
+    {
+        auto getXAttr = Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.a",
+            FileNodeId);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            getXAttr.GetValue(WaitTimeout),
+            TSystemError,
+            [] (const TSystemError& e) { return e.Status() == ENODATA; });
+    }
+
+    void SendXAttrEvent()
+    {
+        NProto::TFileSystemEvent event;
+        auto* invalidate = event.MutableInvalidateNodeXAttr();
+        invalidate->SetNodeId(FileNodeId);
+        invalidate->SetName("user.a");
+        SendEvent(event);
     }
 
     void Lookup(const TString& name)
@@ -254,6 +306,74 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.EventHandler->OnDisconnect(1 /* tabletId */);
         env.GetAttr(FileNodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateXAttrCacheUponEvents)
+    {
+        TMetadataCachingEnv env;
+
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.XAttrCount.load());
+
+        env.SendXAttrEvent();
+        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
+
+        //
+        // The cached absence is invalidated as well.
+        //
+
+        env.XAttrExists = false;
+        env.SendXAttrEvent();
+        env.AssertXAttrAbsent();
+        env.AssertXAttrAbsent();
+        UNIT_ASSERT_VALUES_EQUAL(3, env.XAttrCount.load());
+
+        env.XAttrExists = true;
+        env.SendXAttrEvent();
+        UNIT_ASSERT_VALUES_EQUAL("4", env.GetXAttr());
+
+        //
+        // A disconnect invalidates everything.
+        //
+
+        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        UNIT_ASSERT_VALUES_EQUAL("5", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(5, env.XAttrCount.load());
+    }
+
+    Y_UNIT_TEST(ShouldNotCacheXAttrsRacingWithInvalidations)
+    {
+        TMetadataCachingEnv env;
+
+        auto promise = NewPromise<NProto::TGetNodeXAttrResponse>();
+        env.Bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                auto response = env.HandleGetNodeXAttr();
+                if (env.XAttrCount == 1) {
+                    return promise.GetFuture().Apply(
+                        [response] (const auto&) { return response; });
+                }
+                return MakeFuture(response);
+            });
+
+        auto getXAttr = env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.a",
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return env.XAttrCount == 1; }));
+
+        env.SendXAttrEvent();
+        promise.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL("1", getXAttr.GetValue(WaitTimeout));
+
+        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
     }
 
     Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidations)
@@ -460,6 +580,53 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
         UNIT_ASSERT(cache.Get(4, t0));
         cache.Add(MakeFileAttr(2), 5 /* version */, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(2, t0));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
+{
+    Y_UNIT_TEST(ShouldNotCacheXAttrsFetchedBeforeInvalidation)
+    {
+        TXAttrCache cache(
+            std::make_shared<TTestTimer>(),
+            10 /* maxSize */,
+            TDuration::Seconds(15));
+
+        cache.Add(1, "a", "v1", 1 /* version */, 1 /* cacheVersion */);
+        UNIT_ASSERT(cache.Get(1, "a"));
+
+        //
+        // The cached value is erased, the values fetched by the requests
+        // started before the invalidation are not cached.
+        //
+
+        cache.Invalidate(1, "a", 5 /* version */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+        cache.Add(1, "a", "v2", 2 /* version */, 4 /* cacheVersion */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+        cache.AddAbsent(1, "a", 4 /* cacheVersion */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+
+        cache.AddAbsent(1, "a", 6 /* cacheVersion */);
+        const auto* xattr = cache.Get(1, "a");
+        UNIT_ASSERT(xattr && !xattr->Value);
+
+        //
+        // Other xattrs are not affected.
+        //
+
+        cache.Add(1, "b", "v3", 3 /* version */, 4 /* cacheVersion */);
+        UNIT_ASSERT(cache.Get(1, "b"));
+
+        cache.InvalidateAll(10 /* version */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+        UNIT_ASSERT(!cache.Get(1, "b"));
+        cache.Add(1, "b", "v4", 4 /* version */, 9 /* cacheVersion */);
+        UNIT_ASSERT(!cache.Get(1, "b"));
+        cache.Add(1, "b", "v5", 5 /* version */, 10 /* cacheVersion */);
+        UNIT_ASSERT_VALUES_EQUAL("v5", *cache.Get(1, "b")->Value);
     }
 }
 

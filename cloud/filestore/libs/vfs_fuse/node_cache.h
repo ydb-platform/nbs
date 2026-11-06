@@ -2,12 +2,15 @@
 
 #include "public.h"
 
+#include "ttl_cache.h"
+
 #include <cloud/filestore/libs/service/filestore.h>
 
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <library/cpp/cache/cache.h>
 
+#include <util/digest/multi.h>
 #include <util/generic/hash.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
@@ -145,6 +148,30 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TXAttrCacheKey
+{
+    ui64 NodeId = 0;
+    TString Name;
+
+    bool operator==(const TXAttrCacheKey& rhs) const = default;
+};
+
+}   // namespace NCloud::NFileStore::NFuse
+
+template <>
+struct THash<NCloud::NFileStore::NFuse::TXAttrCacheKey>
+{
+    size_t operator()(
+        const NCloud::NFileStore::NFuse::TXAttrCacheKey& key) const
+    {
+        return MultiHash(key.NodeId, key.Name);
+    }
+};
+
+namespace NCloud::NFileStore::NFuse {
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TXAttr
 {
     TString Name;
@@ -153,6 +180,14 @@ struct TXAttr
     TInstant UpdateTime;
 };
 
+/*
+ * Caches the xattr values and absences for XAttrCacheTimeout. The xattrs are
+ * invalidated upon the local changes and upon the FileSystemEvents. The
+ * values fetched by the requests started before an invalidation of the same
+ * xattr are not cached, see TInvalidations.
+ *
+ * Not thread-safe.
+ */
 class TXAttrCache
 {
 private:
@@ -169,6 +204,7 @@ private:
     ITimerPtr Timer;
     TCache Cache;
     TDuration Timeout;
+    TInvalidations<TXAttrCacheKey> Invalidations;
 
 public:
     TXAttrCache(
@@ -178,17 +214,58 @@ public:
         : Timer{std::move(timer)}
         , Cache{maxSize}
         , Timeout{timeout}
+        , Invalidations{maxSize}
     {}
 
+    /**
+     * Caches an xattr value unless the xattr has been invalidated after
+     * cacheVersion or a newer value is cached.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @param value - Xattr value.
+     * @param version - Xattr version returned by the backend.
+     * @param cacheVersion - Cache version at which the request that has
+     *  fetched the value has started.
+     */
     void Add(
         ui64 ino,
         const TString& name,
         const TString& value,
-        ui64 version);
-    void AddAbsent(ui64 ino, const TString& name);
+        ui64 version,
+        ui64 cacheVersion);
+
+    /**
+     * Caches the absence of an xattr unless the xattr has been invalidated
+     * after cacheVersion.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @param cacheVersion - Cache version at which the request that has
+     *  found out the absence has started.
+     */
+    void AddAbsent(ui64 ino, const TString& name, ui64 cacheVersion);
+
     const TXAttr* Get(ui64 ino, const TString& name);
     void Invalidate(ui64 ino);
-    void Forget(ui64 ino, const TString& name);
+
+    /**
+     * Erases a cached xattr (value or absence) and prevents caching it by
+     * the requests started before version.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @param version - Cache version of the invalidation.
+     */
+    void Invalidate(ui64 ino, const TString& name, ui64 version);
+
+    /**
+     * Erases all the cached xattrs and prevents caching by the requests
+     * started before version.
+     *
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateAll(ui64 version);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

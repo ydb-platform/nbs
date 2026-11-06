@@ -130,6 +130,10 @@ private:
             "[f:%s] InvalidateNodeXAttr: %lu",
             FileSystemId.Quote().c_str(),
             nodeId);
+
+        if (auto fileSystem = FileSystem.lock()) {
+            fileSystem->InvalidateCachedNodeXAttr(nodeId, name);
+        }
     }
 };
 
