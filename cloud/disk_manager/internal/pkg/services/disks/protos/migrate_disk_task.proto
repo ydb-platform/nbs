@@ -3,6 +3,7 @@ syntax = "proto3";
 package disks;
 
 import "cloud/disk_manager/internal/pkg/types/types.proto";
+import "cloud/disk_manager/internal/pkg/services/disks/protos/disk_operation_task.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos";
 
@@ -18,6 +19,8 @@ message MigrateDiskRequest {
     string DstPlacementGroupId = 3;
     uint32 DstPlacementPartitionIndex = 4;
     bool IsMigrationBetweenCells = 5;
+    // Fixed when scheduling; independent of the executing worker configuration.
+    bool UseDiskOperationGuard = 6;
 }
 
 // Should be in sync with statuses from public API.
@@ -45,4 +48,5 @@ message MigrateDiskTaskState {
     MigrationStatus Status = 10;
 
     RelocateInfo RelocateInfo = 11;
+    DiskOperationTaskState Operation = 100;
 }

@@ -1,6 +1,7 @@
 package disks
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -10,12 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
+	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
@@ -711,4 +716,121 @@ func TestCreateDiskSsdDirectMirror3Of5GroupRejectsEncryption(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "don't support encryption")
+}
+
+func TestDiskOperationGuardModePersistsAcrossWorkerConfigs(t *testing.T) {
+	for _, operation := range []struct {
+		name     string
+		taskType string
+		kind     string
+		schedule func(context.Context, *service) (string, error)
+	}{
+		{"resize", "disks.ResizeDisk", resources.DiskOperationResize, func(ctx context.Context, svc *service) (string, error) {
+			return svc.ResizeDisk(ctx, &disk_manager.ResizeDiskRequest{
+				DiskId: &disk_manager.DiskId{ZoneId: "cell", DiskId: "disk"}, Size: 8192,
+			})
+		}},
+		{"alter", "disks.AlterDisk", resources.DiskOperationAlter, func(ctx context.Context, svc *service) (string, error) {
+			return svc.AlterDisk(ctx, &disk_manager.AlterDiskRequest{
+				DiskId: &disk_manager.DiskId{ZoneId: "cell", DiskId: "disk"}, CloudId: "cloud", FolderId: "folder",
+			})
+		}},
+		{"migrate", "disks.MigrateDisk", resources.DiskOperationMigrate, func(ctx context.Context, svc *service) (string, error) {
+			return svc.MigrateDisk(ctx, &disk_manager.MigrateDiskRequest{
+				DiskId: &disk_manager.DiskId{ZoneId: "cell", DiskId: "disk"}, DstZoneId: "target",
+			})
+		}},
+	} {
+		for _, mode := range []struct {
+			name    string
+			enabled bool
+		}{{"default-disabled", false}, {"enabled", true}} {
+			t.Run(operation.name+"/"+mode.name, func(t *testing.T) {
+				ctx := logging.SetLogger(context.Background(), logging.NewStderrLogger(logging.DebugLevel))
+				storage := storage_mocks.NewStorageMock()
+				scheduler := tasks_mocks.NewSchedulerMock()
+				factory := nbs_mocks.NewFactoryMock()
+				exec := tasks_mocks.NewExecutionContextMock()
+				config := &disks_config.DisksConfig{}
+				if mode.enabled {
+					config.EnableDiskOperationGuard = proto.Bool(true)
+				}
+				svc := &service{config: config, resourceStorage: storage, taskScheduler: scheduler}
+				storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "cell"}, nil).Once()
+				var request []byte
+				scheduler.On("ScheduleTask", ctx, operation.taskType, "", mock.Anything).Run(func(args mock.Arguments) {
+					message := args.Get(3).(interface {
+						proto.Message
+						GetDisk() *types.Disk
+						GetUseDiskOperationGuard() bool
+					})
+					require.Equal(t, "disk", message.GetDisk().GetDiskId())
+					require.Equal(t, "cell", message.GetDisk().GetZoneId())
+					require.Equal(t, mode.enabled, message.GetUseDiskOperationGuard())
+					var err error
+					request, err = proto.Marshal(message)
+					require.NoError(t, err)
+				}).Return("operation", nil).Once()
+				taskID, err := operation.schedule(ctx, svc)
+				require.NoError(t, err)
+				require.Equal(t, "operation", taskID)
+
+				// Execute on a fresh worker with the opposite local setting.
+				workerConfig := &disks_config.DisksConfig{EnableDiskOperationGuard: proto.Bool(!mode.enabled)}
+				registry := tasks.NewRegistry()
+				scheduler.On("ScheduleRegularTasks", ctx, "disks.ClearDeletedDisks", mock.Anything).Once()
+				require.NoError(t, RegisterForExecution(ctx, workerConfig, nil, "", storage, nil, registry, scheduler, nil, factory, nil))
+				task, err := registry.NewTask(operation.taskType)
+				require.NoError(t, err)
+				var initialState []byte
+				if operation.name == "migrate" {
+					initialState, err = proto.Marshal(&protos.MigrateDiskTaskState{
+						Status: protos.MigrationStatus_Replicating, ReplicateTaskID: "replicate", FillGeneration: 7,
+					})
+					require.NoError(t, err)
+					scheduler.On("WaitTask", ctx, mock.Anything, "replicate").Return(nil, errors.NewInterruptExecutionError()).Once()
+				} else {
+					factory.On("GetClient", ctx, "cell").Return(nil, errors.NewInterruptExecutionError()).Once()
+				}
+				exec.On("GetTaskID").Return("operation").Maybe()
+				if mode.enabled {
+					expectDiskOperationCheckpoint(t, ctx, exec, nil)
+					storage.On("ReserveDiskOperation", ctx, mock.Anything, resources.DiskOperation{
+						DiskID: "disk", CellID: "cell", TaskID: "operation", Kind: operation.kind,
+					}).Return(&resources.DiskMeta{}, nil).Once()
+				}
+				require.NoError(t, task.Load(request, initialState))
+				require.ErrorIs(t, task.Run(ctx, exec), errors.NewInterruptExecutionError())
+				state, err := task.Save()
+				require.NoError(t, err)
+				guarded := task.(*diskOperationTask)
+				if mode.enabled {
+					require.True(t, guarded.state().Acquired)
+				} else {
+					require.True(t, bytes.Equal(initialState, state), "unguarded execution must preserve the original task state")
+				}
+
+				// Cancellation after reload follows the same persisted mode.
+				restored, err := registry.NewTask(operation.taskType)
+				require.NoError(t, err)
+				require.NoError(t, restored.Load(request, state))
+				if operation.name == "migrate" {
+					target := nbs_mocks.NewClientMock()
+					exec.On("HasEvent", ctx, int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION)).Return(false).Once()
+					factory.On("GetClient", ctx, "target").Return(target, nil).Once()
+					target.On("DeleteWithFillGeneration", ctx, "disk", uint64(7)).Return(nil).Once()
+					defer target.AssertExpectations(t)
+				}
+				if mode.enabled {
+					expectDiskOperationCheckpoint(t, ctx, exec, nil)
+					storage.On("ReleaseDiskOperation", ctx, mock.Anything, "disk", "operation").Return(nil).Once()
+				}
+				require.NoError(t, restored.Cancel(ctx, exec))
+				if mode.enabled {
+					require.True(t, restored.(*diskOperationTask).state().Released)
+				}
+				mock.AssertExpectationsForObjects(t, storage, scheduler, factory, exec)
+			})
+		}
+	}
 }

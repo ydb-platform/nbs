@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -77,7 +78,9 @@ type diskState struct {
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
 
-	fillGeneration uint64
+	fillGeneration           uint64
+	exclusiveOperationTaskID string
+	activeOperationTaskIDs   []string
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
@@ -104,7 +107,9 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		ScannedAt:            s.scannedAt,
 		ScanFoundBrokenBlobs: s.scanFoundBrokenBlobs,
 
-		FillGeneration: s.fillGeneration,
+		FillGeneration:           s.fillGeneration,
+		ExclusiveOperationTaskID: s.exclusiveOperationTaskID,
+		ActiveOperationTaskIDs:   s.activeOperationTaskIDs,
 	}
 }
 
@@ -139,10 +144,13 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
 
 		persistence.StructFieldValue("fill_generation", persistence.Uint64Value(s.fillGeneration)),
+		persistence.StructFieldValue("exclusive_operation_task_id", persistence.UTF8Value(s.exclusiveOperationTaskID)),
+		persistence.StructFieldValue("active_operation_task_ids", persistence.StringValue(common.MarshalStrings(s.activeOperationTaskIDs))),
 	)
 }
 
 func scanDiskState(res persistence.Result) (state diskState, err error) {
+	var activeOperationTaskIDs []byte
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("zone_id", &state.zoneID),
@@ -168,7 +176,13 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
+		persistence.OptionalWithDefault("exclusive_operation_task_id", &state.exclusiveOperationTaskID),
+		persistence.OptionalWithDefault("active_operation_task_ids", &activeOperationTaskIDs),
 	)
+	if err != nil {
+		return
+	}
+	state.activeOperationTaskIDs, err = common.UnmarshalStrings(activeOperationTaskIDs)
 	return
 }
 
@@ -221,7 +235,9 @@ func diskStateStructTypeString() string {
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
 
-		fill_generation: Uint64>`
+		fill_generation: Uint64,
+		exclusive_operation_task_id: Utf8,
+		active_operation_task_ids: String>`
 }
 
 func diskStateTableDescription() persistence.CreateTableDescription {
@@ -255,6 +271,8 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("fill_generation", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("exclusive_operation_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("active_operation_task_ids", persistence.Optional(persistence.TypeString)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -531,6 +549,9 @@ func (s *storageYDB) deleteDisk(
 			return state.toDiskMeta(), nil
 		}
 
+		if state.exclusiveOperationTaskID != "" {
+			return nil, errors.NewRetriableError(fmt.Errorf("%w: disk %q is owned by %q", ErrDiskOperationInProgress, diskID, state.exclusiveOperationTaskID))
+		}
 		state.status = diskStatusDeleting
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
@@ -778,6 +799,9 @@ func (s *storageYDB) incrementFillGeneration(
 
 	state := states[0]
 
+	if state.exclusiveOperationTaskID != "" {
+		return 0, errors.NewNonRetriableError(fmt.Errorf("%w: fill generation of disk %q is locked", ErrDiskOperationInProgress, diskID))
+	}
 	state.fillGeneration++
 
 	err = s.updateDiskState(ctx, tx, state)
@@ -866,11 +890,11 @@ func (s *storageYDB) diskScanned(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) getDiskState(
+func (s *storageYDB) findDiskState(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-) (state diskState, err error) {
+) (state *diskState, err error) {
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -894,17 +918,20 @@ func (s *storageYDB) getDiskState(
 	}
 
 	if len(states) == 0 {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return state, err
-		}
-
-		return state, errors.NewSilentNonRetriableErrorf(
-			"unable to find disk %q",
-			diskID,
-		)
+		return nil, nil
 	}
-	return states[0], nil
+	return &states[0], nil
+}
+
+func (s *storageYDB) getDiskState(ctx context.Context, tx *persistence.Transaction, diskID string) (diskState, error) {
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return diskState{}, err
+	}
+	if state == nil {
+		return diskState{}, errors.NewSilentNonRetriableErrorf("unable to find disk %q", diskID)
+	}
+	return *state, nil
 }
 
 func (s *storageYDB) updateDiskState(
@@ -1098,6 +1125,9 @@ func (s *storageYDB) DiskRelocated(
 		return err
 	}
 
+	if state.exclusiveOperationTaskID != "" {
+		return errors.NewNonRetriableError(fmt.Errorf("%w: relocation of disk %q is blocked", ErrDiskOperationInProgress, diskID))
+	}
 	oldZoneID := state.zoneID
 	if oldZoneID != srcZoneID {
 		return errors.NewNonRetriableErrorf(
@@ -1177,4 +1207,120 @@ func dropDisksYDBTables(
 	logging.Info(ctx, "Dropped tables for disks")
 
 	return nil
+}
+
+var ErrDiskOperationInProgress = fmt.Errorf("disk operation is in progress")
+
+// ReserveDiskOperation must run in the task's SaveStateWithPreparation transaction.
+// Ordinary operations register concurrently. Exclusive operations require the disk
+// to have neither ordinary operations nor another exclusive owner.
+func (s *storageYDB) ReserveDiskOperation(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	operation DiskOperation,
+) (*DiskMeta, error) {
+
+	if operation.DiskID == "" || operation.TaskID == "" || operation.Kind == "" {
+		return nil, errors.NewNonRetriableErrorf("disk operation identity must be specified")
+	}
+	state, err := s.getDiskState(ctx, tx, operation.DiskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only exclusive operations require a Ready disk. Ordinary tasks keep their
+	// existing behavior when another ordinary task creates or deletes the disk.
+	if operation.Exclusive && state.status != diskStatusReady {
+		return nil, errors.NewNonRetriableErrorf(
+			"disk %q is not ready for %s", operation.DiskID, operation.Kind,
+		)
+	}
+
+	// An exclusive owner blocks every other task, but may repeat its own request.
+	if state.exclusiveOperationTaskID != "" && state.exclusiveOperationTaskID != operation.TaskID {
+		return nil, errors.NewNonRetriableError(fmt.Errorf(
+			"%w: disk %q is exclusively owned by %q",
+			ErrDiskOperationInProgress, operation.DiskID, state.exclusiveOperationTaskID,
+		))
+	}
+
+	// Identity and location checks belong to the new exclusive operation.
+	// Ordinary tasks keep their existing validation and execution behavior.
+	if operation.Exclusive {
+		diskInstanceChanged := operation.CreateTaskID != "" && state.createTaskID != operation.CreateTaskID
+		if diskInstanceChanged {
+			return nil, errors.NewNonRetriableErrorf(
+				"disk %q changed before operation resume", operation.DiskID,
+			)
+		}
+		cellChanged := operation.CellID != "" && state.zoneID != operation.CellID
+		if cellChanged {
+			return nil, errors.NewNonRetriableErrorf(
+				"disk %q changed before operation resume", operation.DiskID,
+			)
+		}
+	}
+
+	active := common.NewStringSet(state.activeOperationTaskIDs...)
+	if operation.Exclusive {
+		// Exclusive admission requires every ordinary task, including its
+		// cancellation cleanup, to have released its registration.
+		if active.Size() != 0 {
+			return nil, errors.NewNonRetriableError(fmt.Errorf(
+				"%w: disk %q has active operations %v",
+				ErrDiskOperationInProgress, operation.DiskID, active.List(),
+			))
+		}
+		if state.exclusiveOperationTaskID == operation.TaskID {
+			return state.toDiskMeta(), nil
+		}
+		// Resume verifies existing ownership; it must not silently reacquire it.
+		if operation.Resume {
+			return nil, errors.NewNonRetriableErrorf("exclusive disk operation reservation was lost")
+		}
+		state.exclusiveOperationTaskID = operation.TaskID
+	} else {
+		if state.exclusiveOperationTaskID == operation.TaskID {
+			return nil, errors.NewNonRetriableErrorf("disk operation access mode changed")
+		}
+		// Other ordinary task IDs do not prevent admission. An existing entry
+		// makes repeated requests idempotent and avoids a duplicate registration.
+		if active.Has(operation.TaskID) {
+			return state.toDiskMeta(), nil
+		}
+		// Restore missing bookkeeping on resume without changing the ordinary
+		// task's execution rules. The exclusive-owner check above still applies.
+		active.Add(operation.TaskID)
+		state.activeOperationTaskIDs = active.List()
+	}
+
+	if err := s.updateDiskState(ctx, tx, state); err != nil {
+		return nil, err
+	}
+	return state.toDiskMeta(), nil
+}
+
+// Release removes only this task's registration or exclusive ownership.
+// It is safe to repeat and never releases other tasks.
+func (s *storageYDB) ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error {
+	if diskID == "" || taskID == "" {
+		return errors.NewNonRetriableErrorf("disk operation identity must be specified")
+	}
+	state, err := s.findDiskState(ctx, tx, diskID)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return nil
+	}
+	active := common.NewStringSet(state.activeOperationTaskIDs...)
+	if state.exclusiveOperationTaskID != taskID && !active.Has(taskID) {
+		return nil
+	}
+	if state.exclusiveOperationTaskID == taskID {
+		state.exclusiveOperationTaskID = ""
+	}
+	active.Remove(taskID)
+	state.activeOperationTaskIDs = active.List()
+	return s.updateDiskState(ctx, tx, *state)
 }

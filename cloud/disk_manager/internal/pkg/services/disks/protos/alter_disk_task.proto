@@ -3,6 +3,7 @@ syntax = "proto3";
 package disks;
 
 import "cloud/disk_manager/internal/pkg/types/types.proto";
+import "cloud/disk_manager/internal/pkg/services/disks/protos/disk_operation_task.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos";
 
@@ -12,6 +13,10 @@ message AlterDiskRequest {
     types.Disk Disk = 1;
     string CloudId = 2;
     string FolderId = 3;
+    // Fixed when scheduling; independent of the executing worker configuration.
+    bool UseDiskOperationGuard = 4;
 }
 
-message AlterDiskTaskState {}
+message AlterDiskTaskState {
+    DiskOperationTaskState Operation = 100;
+}
