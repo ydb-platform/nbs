@@ -11,6 +11,24 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	DiskOperationTransfer = "transfer_via_link"
+	DiskOperationResize   = "resize"
+	DiskOperationAlter    = "alter"
+	DiskOperationMigrate  = "migrate"
+)
+
+type DiskOperation struct {
+	DiskID       string
+	TaskID       string
+	Kind         string
+	CellID       string
+	CreateTaskID string
+	Resume       bool
+	// Exclusive operations cannot overlap any other operation on the disk.
+	Exclusive bool
+}
+
 type DiskMeta struct {
 	ID                      string `json:"id"`
 	ZoneID                  string `json:"zone_id"`
@@ -34,7 +52,9 @@ type DiskMeta struct {
 	ScannedAt            time.Time `json:"scanned_at"`
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
 
-	FillGeneration uint64 `json:"fill_generation"`
+	FillGeneration           uint64   `json:"fill_generation"`
+	ExclusiveOperationTaskID string   `json:"exclusive_operation_task_id"`
+	ActiveOperationTaskIDs   []string `json:"active_operation_task_ids"`
 }
 
 type ImageMeta struct {
@@ -120,6 +140,9 @@ type PlacementGroupMeta struct {
 }
 
 type Storage interface {
+	ReserveDiskOperation(ctx context.Context, tx *persistence.Transaction, operation DiskOperation) (*DiskMeta, error)
+	ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error
+
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	CreateDisk(ctx context.Context, disk DiskMeta) (*DiskMeta, error)
 

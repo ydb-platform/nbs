@@ -32,4 +32,6 @@ message DisksConfig {
     // Same as EnableDiskRegistryBasedDisksCreationFromBaseDisks, but for the
     // listed folders only.
     repeated string DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList = 17;
+    // Captured in newly scheduled resize, alter, and migration task requests.
+    optional bool EnableDiskOperationGuard = 18 [default = false];
 }
