@@ -1,7 +1,10 @@
 package tests
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"hash/crc32"
 	"strings"
 	"testing"
 	"time"
@@ -1428,4 +1431,229 @@ func TestImageServiceCreateImageFromDiskWithRootKmsEncryption(t *testing.T) {
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestImageServiceCreateImageFromDiskWithPartialChunk(t *testing.T) {
+	const blockSize = uint64(4096)
+	const diskSize = uint64(5*1024*1024) + blockSize
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: defaultZoneID,
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
+	diskContentInfo, err := nbsClient.FillEncryptedDiskWithChunkSize(
+		ctx,
+		diskID,
+		diskSize,
+		blockSize,
+		nil, // encryption
+	)
+	require.NoError(t, err)
+
+	imageID := t.Name()
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID,
+			},
+		},
+		DstImageId: imageID,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response := disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), response.Size)
+
+	meta := disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+
+	if diskParams.IsDiskRegistryBasedDisk {
+		testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
+	} else {
+		testcommon.RequireCheckpoint(t, ctx, diskID, imageID)
+	}
+
+	checkUnencryptedImage(
+		t,
+		client,
+		ctx,
+		imageID,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+	)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
+		ImageId: imageID,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func testCreateImageFromURLWithPartialChunk(
+	t *testing.T,
+	url string,
+	imageSize uint64,
+	diskCRC32 uint32,
+) {
+
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	const blockSize = uint64(4096)
+	const chunkSize = uint64(4 * 1024 * 1024)
+	require.NotZero(t, imageSize%chunkSize)
+	imageID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
+		Src: &disk_manager.CreateImageRequest_SrcUrl{
+			SrcUrl: &disk_manager.ImageUrl{
+				Url: url,
+			},
+		},
+		DstImageId: imageID,
+		FolderId:   "folder",
+		Pooled:     true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	imageResponse := disk_manager.CreateImageResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse)
+	require.NoError(t, err)
+	require.Equal(t, int64(imageSize), imageResponse.Size)
+
+	meta := disk_manager.CreateImageMetadata{}
+	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
+	require.NoError(t, err)
+	require.Equal(t, float64(1), meta.Progress)
+
+	minimumDiskSize := (imageSize + blockSize - 1) / blockSize * blockSize
+	// Restoring into a larger disk also exposes padding stored in the image.
+	diskSizes := []uint64{
+		minimumDiskSize,
+		(imageSize + chunkSize - 1) / chunkSize * chunkSize,
+	}
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
+	for _, diskSize := range diskSizes {
+		diskID := fmt.Sprintf("%v-disk-%v", imageID, diskSize)
+		reqCtx = testcommon.GetRequestContext(t, ctx)
+		operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+			Src:  &disk_manager.CreateDiskRequest_SrcImageId{SrcImageId: imageID},
+			Size: int64(diskSize),
+			Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId: &disk_manager.DiskId{
+				ZoneId: defaultZoneID,
+				DiskId: diskID,
+			},
+			ForceNotLayered: true,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, operation)
+		err = internal_client.WaitOperation(ctx, client, operation.Id)
+		require.NoError(t, err)
+
+		session, err := nbsClient.MountRO(ctx, diskID, nil)
+		require.NoError(t, err)
+		require.Equal(t, blockSize, uint64(session.BlockSize()))
+		require.Equal(t, diskSize/blockSize, session.BlockCount())
+		checksum := crc32.NewIEEE()
+		for offset := uint64(0); offset < diskSize; offset += chunkSize {
+			data := make([]byte, min(chunkSize, diskSize-offset))
+			zero := false
+			err = session.Read(ctx, offset/blockSize, uint32(len(data))/uint32(blockSize), "", data, &zero)
+			require.NoError(t, err)
+			contentSize := uint64(0)
+			if offset < imageSize {
+				contentSize = min(uint64(len(data)), imageSize-offset)
+			}
+			_, err = checksum.Write(data[:contentSize])
+			require.NoError(t, err)
+			require.True(t, bytes.Equal(make([]byte, uint64(len(data))-contentSize), data[contentSize:]),
+				"image padding contains non-zero data for disk %s", diskID)
+		}
+		session.Close(ctx)
+		require.Equal(t, diskCRC32, checksum.Sum32())
+	}
+
+	// A smaller disk is invalid even when it needs the same number of chunks.
+	diskID := imageID + "-too-small"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src:  &disk_manager.CreateDiskRequest_SrcImageId{SrcImageId: imageID},
+		Size: int64(minimumDiskSize - blockSize),
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: defaultZoneID,
+			DiskId: diskID,
+		},
+		ForceNotLayered: true,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.ErrorContains(t, err, "smaller than snapshot size")
+	testcommon.DeleteDisk(t, ctx, client, diskID)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestImageServiceCreateRawImageFromURLWithPartialChunk(t *testing.T) {
+	url, size, checksum := testcommon.GetGeneratedImage(t, "partial_chunk_raw")
+	testCreateImageFromURLWithPartialChunk(t, url, size, checksum)
+}
+
+func TestImageServiceCreateRawImageFromURLWithPartialBlock(t *testing.T) {
+	url, size, checksum := testcommon.GetGeneratedImage(t, "partial_block_raw")
+	testCreateImageFromURLWithPartialChunk(t, url, size, checksum)
+}
+
+func TestImageServiceCreateVMDKImageFromURLWithPartialChunk(t *testing.T) {
+	url, size, checksum := testcommon.GetGeneratedImage(t, "partial_chunk_vmdk")
+	testCreateImageFromURLWithPartialChunk(t, url, size, checksum)
 }
