@@ -31,9 +31,9 @@
 #endif
 
 #include <assert.h>
-#include <acl/libacl.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -99,6 +99,59 @@ enum action
 #define TYPE_OPTIONAL 0x0100
 
 #define MAX_ARGS 8
+
+/*
+ * libacl is not part of the hermetic build sysroot.  Keep the commands
+ * available unconditionally and resolve the small API surface they need at
+ * runtime instead.
+ */
+typedef void* acl_t;
+typedef unsigned int acl_type_t;
+
+#define ACL_TYPE_ACCESS 0x8000
+#define ACL_TYPE_DEFAULT 0x4000
+
+struct acl_api
+{
+    void* Handle;
+    int (*DeleteDefFile)(const char*);
+    int (*Free)(void*);
+    acl_t (*FromText)(const char*);
+    acl_t (*GetFile)(const char*, acl_type_t);
+    int (*SetFile)(const char*, acl_type_t, acl_t);
+    char* (*ToText)(acl_t, ssize_t*);
+};
+
+static struct acl_api* get_acl_api(void)
+{
+    static struct acl_api api;
+    static int initialized = 0;
+
+    if (!initialized) {
+        initialized = 1;
+        api.Handle = dlopen("libacl.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (api.Handle) {
+            api.DeleteDefFile = dlsym(api.Handle, "acl_delete_def_file");
+            api.Free = dlsym(api.Handle, "acl_free");
+            api.FromText = dlsym(api.Handle, "acl_from_text");
+            api.GetFile = dlsym(api.Handle, "acl_get_file");
+            api.SetFile = dlsym(api.Handle, "acl_set_file");
+            api.ToText = dlsym(api.Handle, "acl_to_text");
+
+            if (!api.DeleteDefFile || !api.Free || !api.FromText ||
+                !api.GetFile || !api.SetFile || !api.ToText) {
+                dlclose(api.Handle);
+                memset(&api, 0, sizeof(api));
+            }
+        }
+    }
+
+    if (!api.Handle) {
+        errno = ENOSYS;
+        return NULL;
+    }
+    return &api;
+}
 
 struct syscall_desc
 {
@@ -423,6 +476,7 @@ static void show_stats(struct stat64* sp, char* what)
  */
 static int do_getfacl(const char* path, const char* filter)
 {
+    struct acl_api* api;
     char* textacl;
     acl_t acl;
     ssize_t size;
@@ -432,10 +486,15 @@ static int do_getfacl(const char* path, const char* filter)
     int def;
     int k;
 
+    api = get_acl_api();
+    if (!api) {
+        return (-errno);
+    }
+
     errno = 0;
     def = !strcmp(filter, "default");
     if (def || !strcmp(filter, "access")) {
-        acl = acl_get_file(path, def ? ACL_TYPE_DEFAULT : ACL_TYPE_ACCESS);
+        acl = api->GetFile(path, def ? ACL_TYPE_DEFAULT : ACL_TYPE_ACCESS);
         if (acl) {
             /*
              * When there is no extended ACL, acl_get_file() may set ENODATA.
@@ -445,7 +504,7 @@ static int do_getfacl(const char* path, const char* filter)
             if (errno == ENODATA) {
                 errno = 0;
             }
-            textacl = acl_to_text(acl, &size);
+            textacl = api->ToText(acl, &size);
 
             k = 0;
             p = textacl;
@@ -476,14 +535,14 @@ static int do_getfacl(const char* path, const char* filter)
                 }
             }
             if (textacl) {
-                acl_free(textacl);
+                api->Free(textacl);
             }
             if (k) {
                 putchar('\n');
             } else {
                 printf("void\n");
             }
-            acl_free(acl);
+            api->Free(acl);
 
             /* The ACL conversion functions may set errno on success. */
             errno = 0;
@@ -506,6 +565,7 @@ static int do_setfacl(
     const char* options,
     const char* textacl)
 {
+    struct acl_api* api;
     int r;
     int type;
     acl_t acl;
@@ -514,6 +574,11 @@ static int do_setfacl(
     int dom;
     struct stat st;
     char textmode[30];
+
+    api = get_acl_api();
+    if (!api) {
+        return (-errno);
+    }
 
     r = 0;
     dob = strchr(options, 'b') != NULL;
@@ -525,7 +590,7 @@ static int do_setfacl(
         r = -1;
     } else {
         if (dob || dok) {
-            r = acl_delete_def_file(path);
+            r = api->DeleteDefFile(path);
         }
         if (dob && !r) {
             if (!stat(path, &st)) {
@@ -541,10 +606,10 @@ static int do_setfacl(
                     st.st_mode & 0004 ? 'r' : '-',
                     st.st_mode & 0002 ? 'w' : '-',
                     st.st_mode & 0001 ? 'x' : '-');
-                acl = acl_from_text(textmode);
+                acl = api->FromText(textmode);
                 if (acl) {
-                    r = acl_set_file(path, ACL_TYPE_ACCESS, acl);
-                    acl_free(acl);
+                    r = api->SetFile(path, ACL_TYPE_ACCESS, acl);
+                    api->Free(acl);
                 } else {
                     r = -1;
                 }
@@ -554,10 +619,10 @@ static int do_setfacl(
         }
         if (!r && dom) {
             type = strchr(options, 'd') ? ACL_TYPE_DEFAULT : ACL_TYPE_ACCESS;
-            acl = acl_from_text(textacl);
+            acl = api->FromText(textacl);
             if (acl) {
-                r = acl_set_file(path, type, acl);
-                acl_free(acl);
+                r = api->SetFile(path, type, acl);
+                api->Free(acl);
             } else {
                 r = -1;
             }
