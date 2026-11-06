@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
+#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut.h>
 
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 
@@ -142,6 +143,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -169,6 +171,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -196,6 +199,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -222,7 +226,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -270,7 +277,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
 
         TInstant now = TInstant::Seconds(0);
 
@@ -297,7 +307,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -363,7 +376,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         auto overlappingPullDelay =
             storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         // Push vol0
@@ -427,6 +443,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -543,6 +560,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
 
