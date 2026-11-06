@@ -27,9 +27,11 @@ class TLogicRedo {
 
     TCommitManager * const CommitManager;
     TAutoPtr<NPageCollection::TSteppedCookieAllocator> Cookies;
+    TAutoPtr<NPageCollection::TSteppedCookieAllocator> RawCookies;
     TAutoPtr<NRedo::TBatch> Batch;
     TAutoPtr<NRedo::TQueue> Queue;
     NPageCollection::TSlicer Slicer;
+    NPageCollection::TSlicer RawSlicer;
 
     TExecutorCounters *Counters = nullptr;
     TTabletCountersWithTxTypes *AppTxCounters = nullptr;
@@ -54,7 +56,7 @@ public:
         bool NeedFlush;
     };
 
-    TLogicRedo(TAutoPtr<NPageCollection::TSteppedCookieAllocator>, TCommitManager*, TAutoPtr<NRedo::TQueue>);
+    TLogicRedo(TAutoPtr<NPageCollection::TSteppedCookieAllocator>, TAutoPtr<NPageCollection::TSteppedCookieAllocator>, TCommitManager*, TAutoPtr<NRedo::TQueue>);
     ~TLogicRedo();
 
     void Describe(IOutputStream &out) const noexcept;
