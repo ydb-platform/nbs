@@ -4,8 +4,9 @@
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
-#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 

@@ -1,7 +1,5 @@
 #include "page_store.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-
 #include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
 

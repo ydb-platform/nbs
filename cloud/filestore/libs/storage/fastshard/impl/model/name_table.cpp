@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/service/error.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////

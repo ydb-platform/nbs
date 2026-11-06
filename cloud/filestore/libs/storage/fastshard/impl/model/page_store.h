@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/buffer.h>
 

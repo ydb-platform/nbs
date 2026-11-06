@@ -2,7 +2,7 @@
 
 #include "helpers.h"
 
-#include <util/random/random.h>
+#include <cloud/filestore/libs/service/error.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 

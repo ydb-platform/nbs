@@ -2,7 +2,7 @@
 
 #include "page_store.h"
 
-#include <cloud/filestore/libs/service/error.h>
+#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
