@@ -52,7 +52,7 @@ IKeyBufferStore              IDevicePageStore
 (key_buffer_store.cpp)       (device_page_store.cpp)
 "log meta": one entry        "log data": page allocator
 per record, keyed by         over a device, holds the
-PrevLsn                      record payloads
+Lsn                          record payloads
       |                             |
    IDevice                       IDevice
 ```
@@ -109,7 +109,7 @@ it occupies in the log data and on the data device.
 
 `IKeyBufferStore` (`key_buffer_store.h`) is a small persistent map of `ui64`
 key to buffer: restore everything, upsert a key, erase every key below a bound.
-The journal keeps one entry per record under its `PrevLsn` and the journal
+The journal keeps one entry per record under its `Lsn` and the journal
 metadata (format version and `LsnLowWatermark`) under a reserved key.
 
 On the device the map is laid out so that no write can corrupt what is already
@@ -144,12 +144,18 @@ pages orphaned by a crash mid-write come back as free.
 2. Insert the record into the chain. A record overlapping one already held is
    rejected; an exact duplicate (a retry) gets the held record's future
    instead of being written again.
-3. Allocate pages in the log data (`E_REJECTED` when the journal is full) and
-   write the payload.
-4. The page mappings are now known, so serialize the record and write it to
-   the log metadata under the key `PrevLsn`. The payload is written first and
-   the record second: the record is what a restore finds, so it may only point
-   at pages that are already written.
+3. Allocate pages in the log data (`E_REJECTED` when the journal is full). The
+   page mappings are now known, as is the crc32c of the payload, so serialize
+   the record with both.
+4. Write the payload to the log data and the record to the log metadata in
+   parallel, and wait for both. The record write is issued first: if the log
+   metadata rejects it right away, the payload is not written at all and its
+   pages are freed at once. The record is what a restore finds, and its
+   crc tells the restore whether the payload is there too - so a crash in
+   between the two writes leaves a torn record behind, never a record that
+   points at unwritten pages. The record of a failed payload write stays in the log
+   metadata until its lsn is written again or erased: the restore drops it by
+   its crc.
 5. Mark the record ready and walk forward from it, applying every ready record
    that continues the chain to the page index and completing each one's promise
    as it goes.
@@ -206,13 +212,19 @@ The device runs the cycle in the background, rescheduling it every 100 ms:
 
 `Start` restores the journal before serving anything:
 
-1. read every entry back from the log metadata and sort by key (`PrevLsn`);
+1. read every entry back from the log metadata and sort by key (`Lsn`);
 2. take `LsnLowWatermark` from the journal metadata entry;
-3. deserialize the records in chain order and initialize the chain, the index
-   and the flushed barrier from the first one;
-4. re-claim each record's pages in a freshly built page store, so the
+3. deserialize the records and put them in chain order, reading the pages of
+   each record above the watermark back to check them against its crc: a torn
+   one, or one whose pages cannot be read, is dropped, since the writer never
+   had it acked, and the chain ends before it. A record at or below the
+   watermark is acked, which means both its writes are done, so it is trusted
+   without a read;
+4. initialize the chain, the index and the flushed barrier from the first
+   record;
+5. re-claim each record's pages in a freshly built page store, so the
    allocation state is derived from the records;
-5. insert each record, mark it ready and apply it to the index.
+6. insert each record, mark it ready and apply it to the index.
 
 The result is `LastIndexedLsn`, which the device uses to initialize the indexed
 barrier, and then the flush cycle starts.
