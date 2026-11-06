@@ -3,6 +3,7 @@ from dateutil import parser as dateparser
 from functools import cached_property
 import jinja2
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,9 @@ from typing import Any, Dict, List
 import uuid
 
 from library.python import resource
+
+
+_YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION = (1, 19, 0)
 
 
 class _Command(list[str]):
@@ -49,17 +53,28 @@ def _remove_parameters(cmd: list[str]):
 class YcpCmdEngine:
 
     @cached_property
-    def _supports_legacy_syntax(self) -> bool:
-        # Older versions can accept unknown flags when displaying top-level help.
-        return subprocess.run(
-            ["ycp", "--syntax", "1", "version"],
+    def _needs_legacy_syntax(self) -> bool:
+        result = subprocess.run(
+            ["ycp", "version", "--semantic"],
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-        ).returncode == 0
+            text=True,
+        )
+        match = re.fullmatch(
+            r"(\d+)\.(\d+)\.(\d+)(?P<prerelease>-[^\s+]+)?(?:\+\S+)?",
+            result.stdout.strip(),
+        )
+        if result.returncode != 0 or match is None:
+            return False
+
+        version = tuple(map(int, match.group(1, 2, 3)))
+        if match.group("prerelease") is not None:
+            return version > _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
+        return version >= _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
 
     def exec(self, command, input, err):
-        if self._supports_legacy_syntax:
+        if self._needs_legacy_syntax:
             command = [command[0], "--syntax", "1", *command[1:]]
 
         return subprocess.check_output(
