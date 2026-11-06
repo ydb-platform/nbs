@@ -29,6 +29,12 @@ auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
     -> TRdmaEndpointBootstrapResult
 {
+    if (!bootstrap.RdmaClient || !config.GetRdmaPort()) {
+        return MakeError(
+            E_ARGUMENT,
+            "RDMA cell data transport is not configured");
+    }
+
     NClient::TRdmaEndpointConfig rdmaEndpoint{
         .Address = config.GetFqdn(),
         .Port = config.GetRdmaPort(),

@@ -41,6 +41,9 @@ struct ITransportSwitcher
     virtual NCloud::NStorage::NRdma::IClientEndpointHandlerPtr
         GetEndpointHandler() = 0;
 
+    // Enables router updates after the prepared binding has been installed.
+    virtual void Activate() = 0;
+
     // whether the data goes over the preferred transport now, rather than
     // the fallback
     virtual bool IsPreferredActive() = 0;
@@ -48,7 +51,9 @@ struct ITransportSwitcher
 
 using ITransportSwitcherPtr = std::shared_ptr<ITransportSwitcher>;
 
-ITransportSwitcherPtr StartTransportSwitching(
+// Creates the preferred endpoint without changing the router. Until Activate,
+// endpoint callbacks only record its connection state.
+TResultOrError<ITransportSwitcherPtr> PrepareTransportSwitching(
     ITransportTargetPtr target,
     IBlockStorePtr fallback,
     TEndpointFactory factory,

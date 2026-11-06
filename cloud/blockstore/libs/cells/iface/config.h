@@ -72,6 +72,8 @@ public:
         return Fqdn;
     }
 
+    void SetTransport(NProto::ECellDataTransport transport);
+
     NProto::ECellDataTransport GetTransport() const
     {
         return Transport;
