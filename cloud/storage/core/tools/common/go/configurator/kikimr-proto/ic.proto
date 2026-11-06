@@ -23,4 +23,5 @@ message TInterconnectConfig {
     optional ESocketSendOptimization SocketSendOptimization = 6;
     optional bool UseRdma = 7;
     optional TDuration LostConnectionDuration = 8;
+    optional string RdmaInterface = 9;
 }
