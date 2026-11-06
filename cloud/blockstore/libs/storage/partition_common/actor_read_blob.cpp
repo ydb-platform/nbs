@@ -1,6 +1,7 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
@@ -47,7 +48,8 @@ TReadBlobActor::TReadBlobActor(
     std::unique_ptr<TRequest> request,
     TDuration longRunningThreshold,
     ui64 bsGroupOperationId,
-    bool passTraceIdToBlobstorage)
+    bool passTraceIdToBlobstorage,
+    TBlobCompressorPtr blobCompressor)
     : TLongRunningOperationCompanion(
           partitionActorId,
           volumeActorId,
@@ -63,7 +65,10 @@ TReadBlobActor::TReadBlobActor(
     , Request(std::move(request))
     , BSGroupOperationId(bsGroupOperationId)
     , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
+    , BlobCompressor(std::move(blobCompressor))
 {
+    Y_ABORT_UNLESS(!Request->CompressionInfo || BlobCompressor);
+
     THashSet<ui16> offsets;
     for (const auto offset: Request->BlobOffsets) {
         STORAGE_VERIFY_C(
@@ -91,9 +96,16 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
     SendGetRequest(ctx);
 }
 
-TBlobCompressor::TReadPlan TReadBlobActor::GetQueries() const
+TResultOrError<TBlobCompressor::TReadPlan> TReadBlobActor::GetQueries() const
 {
     using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
+
+    if (Request->CompressionInfo) {
+        return BlobCompressor->PlanReadBlob(
+            Request->BlobId,
+            *Request->CompressionInfo,
+            Request->BlobOffsets);
+    }
 
     size_t blocksCount = Request->BlobOffsets.size();
 
@@ -125,7 +137,18 @@ TBlobCompressor::TReadPlan TReadBlobActor::GetQueries() const
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
-    auto [queries, queriesCount, blockOffsetsForEachRequest] = GetQueries();
+    auto planOrError = GetQueries();
+    if (HasError(planOrError.GetError())) {
+        ReportCompressedBlobReadError(
+            "Failed to plan compressed blob read",
+            {{"tabletId", PartitionTabletId},
+             {"blobId", Request->BlobId.ToString()},
+             {"error", FormatError(planOrError.GetError())}});
+        ReplyAndDie(ctx, std::make_unique<TResponse>(planOrError.GetError()));
+        return;
+    }
+    auto [queries, queriesCount, blockOffsetsForEachRequest] =
+        planOrError.ExtractResult();
     BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest);
 
     auto request = std::make_unique<TEvBlobStorage::TEvGet>(
@@ -302,6 +325,42 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
         .Responses = std::move(responses)};
 }
 
+TResultOrError<TVector<ui32>> TReadBlobActor::DecompressReadResultToSglist(
+    TVector<TEvBlobStorage::TEvGetResult::TResponse>& responses,
+    const TSgList& sglist,
+    const TVector<ui16>& blockOffsets,
+    const NActors::TActorContext&)
+{
+    TVector<TRope> compressedBuffers;
+    for (auto& response: responses) {
+        STORAGE_VERIFY(
+            response.Status == NKikimrProto::OK,
+            TWellKnownEntityTypes::TABLET,
+            PartitionTabletId);
+        compressedBuffers.push_back(std::move(response.Buffer));
+    }
+
+    TVector<ui32> blockChecksums;
+
+    auto error = BlobCompressor->DecompressBlob(
+        compressedBuffers,
+        *Request->CompressionInfo,
+        Request->BlobId.BlobSize(),
+        blockOffsets,
+        sglist,
+        ShouldCalculateChecksums ? &blockChecksums : nullptr);
+    if (HasError(error)) {
+        ReportCompressedBlobReadError(
+            "Failed to decompress blob",
+            {{"tabletId", PartitionTabletId},
+             {"blobId", Request->BlobId.ToString()},
+             {"error", FormatError(error)}});
+        return error;
+    }
+
+    return std::move(blockChecksums);
+}
+
 TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
     TVector<TEvBlobStorage::TEvGetResult::TResponse>& responses,
     const TSgList& sglist,
@@ -444,11 +503,21 @@ void TReadBlobActor::HandleGetResult(
             }
         }
 
-        auto checksumsOrError = CopyReadResultToSglist(
-            newResponses,
-            newSglist,
-            newBlockOffsets,
-            ctx);
+        TResultOrError<TVector<ui32>> checksumsOrError = [&]()
+        {
+            if (Request->CompressionInfo) {
+                return DecompressReadResultToSglist(
+                    newResponses,
+                    newSglist,
+                    newBlockOffsets,
+                    ctx);
+            }
+            return CopyReadResultToSglist(
+                newResponses,
+                newSglist,
+                newBlockOffsets,
+                ctx);
+        }();
 
         if (HasError(checksumsOrError.GetError())) {
             ReplyError(ctx, *msg, checksumsOrError.GetError().GetMessage());

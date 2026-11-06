@@ -23,6 +23,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,18 +98,21 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
+        std::optional<NProto::TCompressionMetadata> CompressionInfo;
 
         TReadBlobRequest() = default;
 
         TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async,
-                TInstant deadline,
-                bool shouldCalculateChecksums)
+            const NKikimr::TLogoBlobID& blobId,
+            NActors::TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TGuardedSgList sglist,
+            ui32 groupId,
+            bool async,
+            TInstant deadline,
+            bool shouldCalculateChecksums,
+            std::optional<NProto::TCompressionMetadata> compressionInfo =
+                std::nullopt)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -116,6 +121,7 @@ struct TEvPartitionCommonPrivate
             , Async(async)
             , Deadline(deadline)
             , ShouldCalculateChecksums(shouldCalculateChecksums)
+            , CompressionInfo(std::move(compressionInfo))
         {}
     };
 
