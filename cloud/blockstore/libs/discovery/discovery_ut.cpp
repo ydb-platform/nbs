@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -108,6 +109,51 @@ struct TTestHealthChecker
     }
 };
 
+struct TDelayedHealthChecker
+    : TTestHealthChecker
+{
+    ui32 CompletedChecks = 0;
+    ui32 PendingChecks = 0;
+
+    NThreading::TFuture<void> UpdateStatus(TInstanceList& instances) override
+    {
+        with_lock (instances.Lock) {
+            if (instances.Instances.empty()) {
+                ++CompletedChecks;
+                return NThreading::MakeFuture();
+            }
+        }
+
+        ++PendingChecks;
+        return Promise;
+    }
+};
+
+struct TCountingInstanceFetcher
+    : IInstanceFetcher
+{
+    ui32 StartCount = 0;
+    ui32 StopCount = 0;
+    ui32 FetchCount = 0;
+
+    void Start() override
+    {
+        ++StartCount;
+    }
+
+    void Stop() override
+    {
+        ++StopCount;
+    }
+
+    NThreading::TFuture<void> FetchInstances(TInstanceList& instances) override
+    {
+        Y_UNUSED(instances);
+        ++FetchCount;
+        return NThreading::MakeFuture();
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,6 +192,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
                 Instance("host2", 2),
                 Instance("host3", 3),
             }),
+            CreateInstanceFetcherStub(),
             CreateHealthCheckerStub(),
             std::make_shared<TTestBalancingPolicy>(
                 TVector<TString>{
@@ -217,6 +264,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
             CreateBanListStub(),
             CreateInstanceFetcherStub({Instance("host1", 1)}),
             CreateInstanceFetcherStub({Instance("host2", 2)}),
+            CreateInstanceFetcherStub(),
             hc,
             std::make_shared<TTestBalancingPolicy>(TVector<TString>{})
         );
@@ -266,6 +314,229 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         discovery->Stop();
     }
 
+    Y_UNIT_TEST(ShouldServeEdsOnlyAfterItsFirstHealthCheck)
+    {
+        TEnv env;
+        auto scheduler = std::make_shared<TTestScheduler>();
+        auto healthChecker = std::make_shared<TDelayedHealthChecker>();
+        auto discovery = CreateDiscoveryService(
+            env.Config,
+            CreateWallClockTimer(),
+            scheduler,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateBanListStub(),
+            CreateInstanceFetcherStub(),
+            CreateInstanceFetcherStub(),
+            CreateInstanceFetcherStub({
+                Instance("eds-host", 1),
+                Instance("eds-best", 2),
+            }),
+            healthChecker,
+            std::make_shared<TTestBalancingPolicy>(
+                TVector<TString>{"eds-best"})
+        );
+
+        discovery->Start();
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, healthChecker->CompletedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, healthChecker->PendingChecks);
+
+        NProto::TDiscoverInstancesRequest request;
+        request.SetLimit(10);
+        NProto::TDiscoverInstancesResponse response;
+        discovery->ServeRequest(request, &response);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.InstancesSize());
+
+        healthChecker->Promise.SetValue();
+        response.Clear();
+        discovery->ServeRequest(request, &response);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-best", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(0).GetPort());
+        UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(1).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(1).GetPort());
+
+        discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldMergeEdsWithOtherSourcesAndFilterUniqueEndpoints)
+    {
+        NProto::TDiscoveryServiceConfig config;
+        config.SetBannedInstanceListFile(SetupBanFile({"banned\t4"}));
+        TEnv env(std::move(config));
+        auto scheduler = std::make_shared<TTestScheduler>();
+        auto logging = CreateLoggingService("console");
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto plainDual = Instance("dual", 11);
+        plainDual.IsSecurePort = false;
+        auto discovery = CreateDiscoveryService(
+            env.Config,
+            CreateWallClockTimer(),
+            scheduler,
+            logging,
+            monitoring,
+            CreateBanList(env.Config, logging, monitoring),
+            CreateInstanceFetcherStub({
+                Instance("overlap", 1),
+                Instance("static", 2),
+                plainDual,
+                Instance("static-tie", 7),
+            }),
+            CreateInstanceFetcherStub({
+                Instance("overlap", 1),
+                Instance("conductor", 3),
+                Instance("dual", 11),
+                Instance("conductor-tie", 8),
+                Instance("banned", 4),
+            }),
+            CreateInstanceFetcherStub({
+                Instance("overlap", 1),
+                Instance("eds-best", 6),
+                Instance("eds-secure", 10),
+                Instance("eds-tie", 9),
+                Instance("banned", 4),
+            }),
+            CreateHealthCheckerStub(),
+            std::make_shared<TTestBalancingPolicy>(TVector<TString>{
+                "banned",
+                "eds-best",
+                "overlap",
+                "eds-secure",
+                "conductor",
+                "static",
+                "dual",
+            })
+        );
+
+        discovery->Start();
+        scheduler->RunAllScheduledTasks();
+
+        auto check = [&] (
+            NProto::EDiscoveryPortFilter filter,
+            ui32 limit,
+            std::initializer_list<std::pair<TString, ui16>> expected)
+        {
+            NProto::TDiscoverInstancesRequest request;
+            request.SetInstanceFilter(filter);
+            request.SetLimit(limit);
+            NProto::TDiscoverInstancesResponse response;
+            discovery->ServeRequest(request, &response);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), response.InstancesSize());
+            ui32 index = 0;
+            for (const auto& [host, port]: expected) {
+                UNIT_ASSERT_VALUES_EQUAL(host, response.GetInstances(index).GetHost());
+                UNIT_ASSERT_VALUES_EQUAL(port, response.GetInstances(index).GetPort());
+                ++index;
+            }
+        };
+
+        check(NProto::DISCOVERY_ANY_PORT, 20, {
+            {"eds-best", 6},
+            {"overlap", 1},
+            {"eds-secure", 10},
+            {"conductor", 3},
+            {"static", 2},
+            // Plain and secure sources expose the same address in the response.
+            {"dual", 11},
+            {"conductor-tie", 8},
+            {"static-tie", 7},
+            {"eds-tie", 9},
+        });
+        check(NProto::DISCOVERY_INSECURE_PORT, 4, {
+            {"eds-best", 6},
+            {"overlap", 1},
+            {"conductor", 3},
+            {"static", 2},
+        });
+        check(NProto::DISCOVERY_INSECURE_PORT, 20, {
+            {"eds-best", 6},
+            {"overlap", 1},
+            {"conductor", 3},
+            {"static", 2},
+            {"dual", 11},
+            {"conductor-tie", 8},
+            {"static-tie", 7},
+            {"eds-tie", 9},
+        });
+        check(NProto::DISCOVERY_SECURE_PORT, 20, {
+            {"eds-secure", 10},
+            {"dual", 11},
+        });
+
+        discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldScheduleEdsIndependentlyAndStopItsFetcher)
+    {
+        NProto::TDiscoveryServiceConfig config;
+        config.MutableEds()->SetRequestInterval(3000);
+        config.SetConductorRequestInterval(7000);
+        config.SetLocalFilesReloadInterval(11000);
+        TEnv env(std::move(config));
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        auto staticFetcher = std::make_shared<TCountingInstanceFetcher>();
+        auto conductorFetcher = std::make_shared<TCountingInstanceFetcher>();
+        auto edsFetcher = std::make_shared<TCountingInstanceFetcher>();
+        auto discovery = CreateDiscoveryService(
+            env.Config,
+            timer,
+            scheduler,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            CreateBanListStub(),
+            staticFetcher,
+            conductorFetcher,
+            edsFetcher,
+            CreateHealthCheckerStub(),
+            std::make_shared<TTestBalancingPolicy>(TVector<TString>{})
+        );
+
+        auto advance = [&] (TDuration duration) {
+            timer->AdvanceTime(duration);
+            scheduler->AdvanceTime(duration);
+            scheduler->RunAllScheduledTasksUntilNow();
+        };
+
+        discovery->Start();
+        for (const auto& fetcher: {staticFetcher, conductorFetcher, edsFetcher}) {
+            UNIT_ASSERT_VALUES_EQUAL(1, fetcher->StartCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, fetcher->FetchCount);
+        }
+
+        advance(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(1, edsFetcher->FetchCount);
+        advance(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, edsFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, conductorFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, staticFetcher->FetchCount);
+
+        advance(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(2, edsFetcher->FetchCount);
+        advance(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, edsFetcher->FetchCount);
+        advance(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, edsFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, conductorFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, staticFetcher->FetchCount);
+
+        discovery->Stop();
+        for (const auto& fetcher: {staticFetcher, conductorFetcher, edsFetcher}) {
+            UNIT_ASSERT_VALUES_EQUAL(1, fetcher->StopCount);
+        }
+
+        advance(TDuration::Days(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, edsFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, conductorFetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, staticFetcher->FetchCount);
+    }
+
     void ShouldFilterInstancesImpl(NProto::EDiscoveryPortFilter filter)
     {
         NProto::TDiscoveryServiceConfig config;
@@ -305,6 +576,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
                 Instance("host3", 3),
                 Instance("host3", 30),
             }),
+            CreateInstanceFetcherStub(),
             CreateHealthCheckerStub(),
             std::make_shared<TTestBalancingPolicy>(
                 TVector<TString>{
