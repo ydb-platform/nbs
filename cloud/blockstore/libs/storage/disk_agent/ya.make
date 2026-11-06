@@ -47,9 +47,9 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/model
 
-    cloud/fastshard/journal/iface
-    cloud/fastshard/journal/impl
-    cloud/fastshard/journal/server
+    cloud/fastshard/libs/journal/iface
+    cloud/fastshard/libs/journal/impl
+    cloud/fastshard/libs/journal/server
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/rdma/iface

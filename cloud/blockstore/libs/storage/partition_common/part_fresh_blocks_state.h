@@ -128,7 +128,7 @@ public:
 class TPartitionFreshBlobState
 {
 private:
-    struct TUntrimmedFreshBlob
+    struct TUnflushedFreshBlob
     {
         ui64 ByteCount = 0;
         TInstant Timestamp;
@@ -137,11 +137,11 @@ private:
     ui64 TabletID = 0;
 
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TMap<ui64, TUntrimmedFreshBlob> UntrimmedFreshBlobsByCommitId;
+    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
+    TMap<ui64, TUnflushedFreshBlob> UnflushedFreshBlobsByCommitId;
 
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
@@ -166,9 +166,10 @@ public:
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    // Usually the oldest timestamp, but ordering is not guaranteed across
-    // tablet restarts.
-    [[nodiscard]] TInstant GetFirstUntrimmedFreshBlobTimestamp() const;
+    // Returns the timestamp of the first unflushed blob after the trim
+    // boundary.
+    [[nodiscard]] TInstant GetFirstUnflushedFreshBlobTimestamp(
+        ui64 trimFreshLogToCommitId) const;
 
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
     void TrimFreshBlobs(ui64 commitId);

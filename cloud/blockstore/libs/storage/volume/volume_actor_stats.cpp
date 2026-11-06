@@ -47,6 +47,8 @@ constexpr double GetMetricsMultiplicator(
 #define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
     xxx(MixedBytesCount,                                           __VA_ARGS__)\
     xxx(MergedBytesCount,                                          __VA_ARGS__)\
+    xxx(LogicalMixedBytesCount,                                    __VA_ARGS__)\
+    xxx(LogicalMergedBytesCount,                                   __VA_ARGS__)\
     xxx(FreshBytesCount,                                           __VA_ARGS__)\
     xxx(UsedBytesCount,                                            __VA_ARGS__)\
     xxx(LogicalUsedBytesCount,                                     __VA_ARGS__)\

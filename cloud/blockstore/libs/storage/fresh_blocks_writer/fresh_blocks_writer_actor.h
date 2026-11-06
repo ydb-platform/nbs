@@ -41,7 +41,6 @@ private:
     const EStorageAccessMode StorageAccessMode;
     const ui64 PartitionTabletID;
     const NActors::TActorId PartitionActorId;
-    const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;

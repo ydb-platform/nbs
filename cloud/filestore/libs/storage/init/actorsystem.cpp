@@ -22,6 +22,7 @@
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -32,6 +33,7 @@
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
+#include <cloud/storage/core/libs/tablet_proxy/tablet_proxy.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -129,6 +131,26 @@ public:
             MakeSSProxyServiceId(),
             TActorSetupCmd(
                 ssProxy.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
+
+        //
+        // TabletProxy
+        //
+
+        auto tabletProxyService = CreateTabletProxy({
+            .LogComponent = TFileStoreComponents::TABLET_PROXY_SERVICE,
+            .PipeClientRetryCount =
+                Args.StorageConfig->GetPipeClientRetryCount(),
+            .PipeClientMinRetryTime =
+                Args.StorageConfig->GetPipeClientMinRetryTime(),
+            .PipeClientMaxRetryTime =
+                Args.StorageConfig->GetPipeClientMaxRetryTime()});
+
+        setup->LocalServices.emplace_back(
+            MakeTabletProxyServiceId(),
+            TActorSetupCmd(
+                tabletProxyService.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
 

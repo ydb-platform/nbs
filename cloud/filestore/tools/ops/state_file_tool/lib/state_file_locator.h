@@ -22,6 +22,8 @@ struct IStateFileLocator
 
     // An empty sessionId matches all sessions. An empty fileType matches all
     // file types. Paths outside the filters are not inspected.
+    // The returned file is open but unlocked. The caller must acquire any lock
+    // needed while accessing it.
     virtual TResultOrError<TFile> LocateAndOpenStateFile(
         const TString& fsId,
         const TString& sessionId,

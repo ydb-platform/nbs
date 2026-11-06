@@ -51,25 +51,31 @@ private:
 
 public:
     /** Creates or opens an existing file ring buffer stored in the file.
-    *
-    * Argument dataCapacity specifies the size of the data area in bytes.
-    * When opening an existing buffer, and its capacity differs from the
-    * argument, buffer will be resized (see SetTargetDataCapacity for details).
-    *
-    * Argument metadataCapacity specifies the size of the metadata area in
-    * bytes. If the existing buffer has different metadata capacity, the
-    * metadata area is resized to the specified capacity, preserving existing
-    * metadata. If the size of the existing metadata is greater than the
-    * specified capacity, the metadata area is shrunk to fit the existing
-    * metadata.
-    *
-    * Argument version specifies the version of the file ring buffer format.
-    * It affects capabilities (like storing tags, enforcing checksum calculation
-    * for headers etc).
-    */
+     *
+     * Argument stateFileSize specifies the desired size of the state file in
+     * bytes, including the reserved header, metadata and alignment padding.
+     * Data capacity is calculated from this size and metadataCapacity, and is
+     * zero if the size is too small. The file may grow beyond this size to fit
+     * the header and preserve existing metadata. An existing nonempty file
+     * smaller than sizeof(TFileRingBufferHeader) is rejected as corrupted
+     * before resizing. When opening an existing buffer, data capacity changes
+     * are deferred until the buffer is empty
+     * (see SetTargetStateFileSize for details).
+     *
+     * Argument metadataCapacity specifies the size of the metadata area in
+     * bytes. If the existing buffer has different metadata capacity, the
+     * metadata area is resized to the specified capacity, preserving existing
+     * metadata. If the size of the existing metadata is greater than the
+     * specified capacity, the metadata area is shrunk to fit the existing
+     * metadata.
+     *
+     * Argument version specifies the version of the file ring buffer format.
+     * It affects capabilities (like storing tags, enforcing checksum
+     * calculation for headers etc).
+     */
     TFileRingBuffer(
         const TString& filePath,
-        ui64 dataCapacity,
+        ui64 stateFileSize,
         ui64 metadataCapacity,
         EFileRingBufferVersion version);
 
@@ -304,20 +310,14 @@ public:
     [[nodiscard]] TSetMetadataResult SetMetadata(TStringBuf data);
 
     /**
-     * Sets the desired data capacity value.
+     * Sets the desired state file size using the constructor's sizing rules.
+     * Sizes greater than Max<i64>() are rejected without changing the buffer.
      *
-     * Resizing the file results in its remap and changing memory addresses for
-     * existing entries that can be referenced by an external code. Therefore,
-     * the buffer can be safely done only when it is empty.
-     *
-     * The buffer is resized immediately if it is empty, otherwise adding new
-     * entries will be blocked until the buffer is emptied and resize will take
-     * place.
-     *
-     * Note: while adding new entries is blocked, the buffer behaves like it is
-     * full.
+     * Resizing remaps the file and invalidates entry pointers. It happens
+     * immediately if the buffer is empty; otherwise, new allocations behave as
+     * if the buffer were full until it drains.
      */
-    [[nodiscard]] NProto::TError SetTargetDataCapacity(ui64 dataCapacity);
+    [[nodiscard]] NProto::TError SetTargetStateFileSize(ui64 stateFileSize);
 };
 
 #undef FILE_RING_BUFFER_RESULT_STRUCT

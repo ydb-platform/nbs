@@ -44,7 +44,7 @@ TFuture<void> TExecutor::RunAction(ui32 action)
     auto future = promise.GetFuture();
 
     ThreadPool.SafeAddFunc(
-        [action = std::move(Actions[action]), promise = std::move(promise)] () mutable {
+        [action = Actions[action], promise = std::move(promise)] () mutable {
             try {
                 action();
                 promise.SetValue();

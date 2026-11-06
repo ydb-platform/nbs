@@ -66,6 +66,10 @@ using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
     xxx(MergedBlocksCount)                                                     \
     xxx(MixedBlobsCount)                                                       \
     xxx(MergedBlobsCount)                                                      \
+    xxx(MixedChannelBlobsCount)                                                \
+    xxx(MergedChannelBlobsCount)                                               \
+    xxx(MixedChannelBlocksCount)                                               \
+    xxx(MergedChannelBlocksCount)                                              \
     xxx(MixedIndexBlocksCount)                                                 \
     xxx(MergedIndexBlocksCount)                                                \
     xxx(MixedIndexBlobsCount)                                                  \
@@ -311,7 +315,7 @@ private:
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
-    const bool UseBlobChannelDataKindForCounters;
+    const bool ExtendedBlobCountersEnabled;
 
     TPartitionThreadSafeStatePtr ThreadSafeState;
 
@@ -338,23 +342,16 @@ public:
         ui64 tabletId,
         const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
-        bool useBlobChannelDataKindForCounters,
-        bool compactionStatsTrackerEnabled);
+        bool compactionStatsTrackerEnabled,
+        bool extendedBlobCountersEnabled);
 
 private:
     bool LoadStateFinished = false;
 
 public:
-    bool ShouldUseBlobChannelDataKindForCounters() const
-    {
-        return UseBlobChannelDataKindForCounters;
-    }
-
     ui64 GetTotalBlobsCount() const
     {
-        return UseBlobChannelDataKindForCounters
-            ? GetMixedIndexBlobsCount() + GetMergedIndexBlobsCount()
-            : GetMixedBlobsCount() + GetMergedBlobsCount();
+        return GetMixedBlobsCount() + GetMergedBlobsCount();
     }
 
     void FinishLoadState()
@@ -911,12 +908,14 @@ public:
         ui64 mixedChannel,
         ui64 mergedChannel)
     {
-        if (UseBlobChannelDataKindForCounters) {
+        if (ExtendedBlobCountersEnabled) {
             AccessStats().SetMixedIndexBlocksCount(mixedIndex);
             AccessStats().SetMergedIndexBlocksCount(mergedIndex);
+            AccessStats().SetMixedChannelBlocksCount(mixedChannel);
+            AccessStats().SetMergedChannelBlocksCount(mergedChannel);
         }
-        AccessStats().SetMixedBlocksCount(mixedChannel);
-        AccessStats().SetMergedBlocksCount(mergedChannel);
+        AccessStats().SetMixedBlocksCount(mixedIndex);
+        AccessStats().SetMergedBlocksCount(mergedIndex);
     }
 
     //
@@ -971,33 +970,10 @@ public:
     //
 
 private:
-    struct TBlobCountToCleanupEstimate
-    {
-        ui32 BlobCount = 0;
-        ui64 CleanupCommitId = 0;
-        ui64 MilestoneCommitId = 0;
-        TPartialBlobId MilestoneBlobId;
-
-        TBlobCountToCleanupEstimate() = default;
-
-        TBlobCountToCleanupEstimate(
-            ui32 blobCount,
-            ui64 cleanupCommitId,
-            ui64 milestoneCommitId,
-            const TPartialBlobId& milestoneBlobId)
-            : BlobCount(blobCount)
-            , CleanupCommitId(cleanupCommitId)
-            , MilestoneCommitId(milestoneCommitId)
-            , MilestoneBlobId(milestoneBlobId)
-        {}
-    };
-
     TOperationState CleanupState;
     TCleanupQueue CleanupQueue;
     TTsRingBuffer<ui32> CleanupScoreHistory;
     const bool CheckpointAwareCleanupEnabled;
-
-    mutable TBlobCountToCleanupEstimate BlobCountToCleanupEstimate;
 
     TDuration LastCleanupExecTime;
     TInstant LastCleanupFinishTs;
@@ -1078,12 +1054,6 @@ public:
     {
         bool removed = CleanupQueue.Remove(item);
         Y_ABORT_UNLESS(removed);
-
-        // BlobCountToCleanupEstimate is not perfectly synchronized with
-        // CleanupQueue: it can actually be smaller.
-        if (BlobCountToCleanupEstimate.BlobCount) {
-            --BlobCountToCleanupEstimate.BlobCount;
-        }
     }
 
     TTsRingBuffer<ui32>& GetCleanupScoreHistory()
@@ -1336,6 +1306,22 @@ public:
     {
         return *Meta.MutableStats();
     }
+
+    ui64 GetMixedBytesCount() const;
+    ui64 GetMergedBytesCount() const;
+    ui64 GetMixedIndexBytesCount() const;
+    ui64 GetMergedIndexBytesCount() const;
+
+    bool AreExtendedBlobCountersEnabled() const
+    {
+        return ExtendedBlobCountersEnabled;
+    }
+
+    void UpdateBlobCounters(
+        const TPartialBlobId& blobId,
+        EChannelDataKind indexKind,
+        ui64 blocksCount,
+        bool added);
 
 #define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name)                             \
     ui64 Get##name() const                                                     \

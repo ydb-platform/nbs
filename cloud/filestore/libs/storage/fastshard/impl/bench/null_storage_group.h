@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/fastshard/testlib/delay_policy.h>
+#include <cloud/fastshard/libs/sn/testlib/delay_policy.h>
 
 #include <cloud/filestore/libs/storage/fastshard/impl/factory/public.h>
 

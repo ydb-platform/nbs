@@ -52,10 +52,13 @@ void TIndexTabletActor::HandleGetNodeAttr(
     const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TMethod = TEvService::TGetNodeAttrMethod;
     auto* msg = ev->Get();
+
+    const auto pipeServerId = RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        msg->Record.GetHeaders());
 
     const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
     if (behaveAsShard) {
@@ -79,7 +82,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-    requestInfo->PipeServerId = ev->Recipient;
+    requestInfo->PipeServerId = pipeServerId;
 
     auto& requestMetrics = behaveAsShard
         ? Metrics->GetNodeAttrInShard : Metrics->GetNodeAttr;
@@ -188,22 +191,28 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
     if (SUCCEEDED(args.Error.GetCode())) {
         //
         // The client may cache the NodeRef (lookup) and the Node attrs. The
-        // attrs of an external node are cached from the shard's response.
+        // attrs of an external node are cached from the shard's response. The
+        // shard-internal NodeRefs (looked up by the service in the shards)
+        // are not visible to the client.
         //
 
         const auto& pipeServerId = args.RequestInfo->PipeServerId;
-        if (args.Name) {
+        const auto cacheTTL =
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds();
+        if (args.Name && !IsShardInternalNodeRef(args.NodeId)) {
             AddFileSystemEventNodeRefSubscriber(
                 ctx,
                 pipeServerId,
                 args.NodeId,
                 args.Name);
+            response->Record.SetNodeRefCacheTTL(cacheTTL);
         }
         if (!args.ShardId) {
             AddFileSystemEventNodeSubscriber(
                 ctx,
                 pipeServerId,
                 args.TargetNodeId);
+            response->Record.SetNodeCacheTTL(cacheTTL);
         }
 
         auto* node = response->Record.MutableNode();
@@ -249,10 +258,13 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
     const TEvIndexTablet::TEvGetNodeAttrBatchRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TMethod = TEvIndexTablet::TGetNodeAttrBatchMethod;
     auto* msg = ev->Get();
+
+    const auto pipeServerId = RegisterFileSystemEventClient(
+        ev->Recipient,
+        ev->Sender,
+        msg->Record.GetHeaders());
 
     const bool behaveAsShard = BehaveAsShard(msg->Record.GetHeaders());
     if (behaveAsShard) {
@@ -276,7 +288,7 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
-    requestInfo->PipeServerId = ev->Recipient;
+    requestInfo->PipeServerId = pipeServerId;
 
     AddInFlightRequest<TEvIndexTablet::TGetNodeAttrBatchMethod>(*requestInfo);
 
@@ -417,25 +429,30 @@ void TIndexTabletActor::CompleteTx_GetNodeAttrBatch(
     auto response = std::make_unique<TResponse>(args.Error);
     TABLET_VERIFY(args.Response.ResponsesSize() == args.Request.NamesSize());
     if (!HasError(args.Error)) {
-        const auto& pipeServerId = args.RequestInfo->PipeServerId;
-        for (ui32 i = 0; i < args.Response.ResponsesSize(); ++i) {
-            const auto& nodeResponse = args.Response.GetResponses(i);
-            if (HasError(nodeResponse.GetError())) {
-                continue;
-            }
+        //
+        // The NodeRefs looked up by GetNodeAttrBatch are shard-internal - the
+        // client caches only the attrs of the local nodes.
+        //
 
-            AddFileSystemEventNodeRefSubscriber(
-                ctx,
-                pipeServerId,
-                args.Request.GetNodeId(),
-                args.Request.GetNames(i));
-            AddFileSystemEventNodeSubscriber(
-                ctx,
-                pipeServerId,
-                nodeResponse.GetNode().GetId());
+        const auto& pipeServerId = args.RequestInfo->PipeServerId;
+        if (IsFileSystemListingEventsEnabled()) {
+            for (const auto& nodeResponse: args.Response.GetResponses()) {
+                if (HasError(nodeResponse.GetError()) ||
+                    nodeResponse.GetNode().GetShardFileSystemId())
+                {
+                    continue;
+                }
+
+                AddFileSystemEventNodeSubscriber(
+                    ctx,
+                    pipeServerId,
+                    nodeResponse.GetNode().GetId());
+            }
         }
 
         response->Record = std::move(args.Response);
+        response->Record.SetNodeCacheTTL(
+            GetFileSystemListingEventsCacheTTL(pipeServerId).MilliSeconds());
 
         Metrics->GetNodeAttrInShard.Update(
             args.Request.NamesSize(),

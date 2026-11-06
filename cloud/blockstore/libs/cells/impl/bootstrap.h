@@ -27,7 +27,7 @@ struct TBootstrap
     ITraceSerializerPtr TraceSerializer;
 
     NCloud::ICertificateProviderPtr CertProvider;
-    NClient::IMultiHostClientPtr GrpcClient;
+    NClient::IEndpointFactoryPtr GrpcClient;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
     // the node's own service, queried alongside the cells on a describe/search

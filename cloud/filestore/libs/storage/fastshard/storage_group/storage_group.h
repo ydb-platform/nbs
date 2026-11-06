@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -102,6 +102,9 @@ struct TStorageGroupConfig
     TDuration ReacquirePeriod = TDuration::Seconds(4);
 
     ui32 PageSize = DefaultBlockSize;
+
+    // Inflight threshold to restrict write quick path.
+    ui32 WriteBackpressureThreshold = 1024;
 };
 
 /**
@@ -114,10 +117,8 @@ struct TStorageGroupConfig
  *
  * @param config - See TStorageGroupConfig.
  * @param devices - Storage devices to mirror the data across.
- * @param timer - Time source for the retry deadline checks and backoff
- *                sleeps. Production callers should pass the timer returned
- *                by CreateFiberTimer(). Tests can pass TTestTimer to make
- *                retries deterministic.
+ * @param timer - Time source for the retry deadline checks. Production
+ *                callers should pass the timer returned by CreateFiberTimer().
  * @return - The constructed group.
  */
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
@@ -126,8 +127,8 @@ IStorageGroupPtr CreateNaiveMirroredStorageGroup(
     ITimerPtr timer);
 
 /**
- * Returns an ITimer which sleeps by suspending the calling silk fiber, so
- * backoffs do not block the fiber scheduler threads.
+ * Returns an ITimer which sleeps by suspending the calling silk fiber, so a
+ * sleep never blocks a fiber scheduler thread.
  *
  * @return - The constructed timer.
  */

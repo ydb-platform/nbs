@@ -185,7 +185,7 @@ class TLocalNVMeService final
     };
 
 private:
-    const TLocalNVMeConfigPtr Config;
+    const TLocalNVMeConfigConstPtr Config;
     const ILoggingServicePtr Logging;
     const IMonitoringServicePtr Monitoring;
     const ILocalNVMeDeviceProviderPtr DeviceProvider;
@@ -212,7 +212,7 @@ private:
 
 public:
     TLocalNVMeService(
-        TLocalNVMeConfigPtr config,
+        TLocalNVMeConfigConstPtr config,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring,
         ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -318,7 +318,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TLocalNVMeService::TLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -1474,7 +1474,7 @@ auto TLocalNVMeService::ListDevices() const -> TVector<NProto::TNVMeDevice>
 ////////////////////////////////////////////////////////////////////////////////
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,
@@ -1495,7 +1495,7 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
 }
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,

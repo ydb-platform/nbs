@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -1258,17 +1259,18 @@ func (s *storageYDB) acquireBaseDiskSlot(
 		}
 
 		slot := &slot{
-			overlayDiskID:   overlayDiskID,
-			overlayDiskKind: st.OverlayDiskKind,
-			overlayDiskSize: st.OverlayDiskSize,
-			baseDiskID:      baseDisk.id,
-			imageID:         baseDisk.imageID,
-			zoneID:          zoneID,
-			status:          slotStatusAcquired,
+			overlayDiskID:             overlayDiskID,
+			overlayDiskKind:           st.OverlayDiskKind,
+			overlayDiskSize:           st.OverlayDiskSize,
+			expectedReadBandwidthMiBs: st.ExpectedReadBandwidthMiBs,
+			baseDiskID:                baseDisk.id,
+			imageID:                   baseDisk.imageID,
+			zoneID:                    zoneID,
+			status:                    slotStatusAcquired,
 		}
 
 		baseDiskOldState := baseDisk
-		err = acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
+		err = s.acquireUnitsAndSlots(ctx, tx, &baseDisk, slot)
 		if err != nil {
 			return BaseDisk{}, err
 		}
@@ -1761,7 +1763,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 	baseDiskOldState := baseDisk
 	slotOldState := slot
 
-	err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, &slot)
+	err = s.acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, &slot)
 	if err != nil {
 		return err
 	}
@@ -2334,7 +2336,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	// size and capacity are measured in slots, not base disks.
 	wantToCreate := config.capacity - pool.size
 	// TODO: introduce new capacity param that is measured in units
-	wantToCreate = divideWithRoundingUp(
+	wantToCreate = common.DivideWithRoundingUp(
 		wantToCreate,
 		baseDiskTemplate.freeSlots(),
 	)
@@ -3632,7 +3634,7 @@ func (s *storageYDB) retireBaseDisk(
 			continue
 		}
 
-		err := acquireTargetUnitsAndSlots(ctx, tx, target, slot)
+		err := s.acquireTargetUnitsAndSlots(ctx, tx, target, slot)
 		if err != nil {
 			return nil, err
 		}

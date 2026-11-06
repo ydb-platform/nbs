@@ -203,6 +203,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
                 req.BlobContent.GetGuardedSgList(),
                 0,      // blockSizeForChecksums
                 true,   // async
+                false,  // compressedSizeEstimationCandidate
                 BlobStorageAsyncRequestTimeout
                     ? ctx.Now() + BlobStorageAsyncRequestTimeout
                     : TInstant::Max()   // deadline
@@ -439,25 +440,53 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
 {
-    if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
-        // already enqueued
-        return;
-    }
-
     const ui32 freshBlockByteCount =
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool shouldFlush =
-        !State->IsLoadStateFinished() ||
-        freshBlockByteCount >= Config->GetFlushThreshold() ||
-        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+    const bool isSSD =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD;
+    const ui32 flushThreshold =
+        isSSD ? Config->GetFlushThresholdSSD() : Config->GetFlushThresholdHDD();
+    const ui32 freshBlobCountFlushThreshold =
+        isSSD ? Config->GetFreshBlobCountFlushThresholdSSD()
+              : Config->GetFreshBlobCountFlushThresholdHDD();
+    const ui32 freshBlobByteCountFlushThreshold =
+        isSSD ? Config->GetFreshBlobByteCountFlushThresholdSSD()
+              : Config->GetFreshBlobByteCountFlushThresholdHDD();
 
-    if (!shouldFlush) {
+    if (!State->IsLoadStateFinished() ||
+        freshBlockByteCount >= flushThreshold ||
+        freshBlobCount >= freshBlobCountFlushThreshold ||
+        freshBlobByteCount >= freshBlobByteCountFlushThreshold)
+    {
+        return true;
+    }
+
+    const auto ageThreshold = GetFreshBlobAgeFlushThreshold();
+    if (!ageThreshold) {
+        return false;
+    }
+
+    const auto timestamp = State->GetFirstUnflushedFreshBlobTimestamp(
+        State->GetTrimFreshLogToCommitId());
+    const auto now = SharedState->GetFreshWriteTimestamp(ctx);
+    return now - timestamp >= ageThreshold;
+}
+
+void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
+{
+    if (State->GetFlushState().GetOperationState().Status !=
+        EOperationStatus::Idle)
+    {
+        // already enqueued
+        return;
+    }
+
+    if (!ShouldFlush(ctx)) {
         return;
     }
 

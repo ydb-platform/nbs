@@ -53,7 +53,7 @@ class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
 {
 private:
-    TStorageConfigPtr StorageConfig;
+    const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
@@ -221,7 +221,11 @@ TAlterFileStoreActor::TAlterFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TAlterFileStoreRequest& request)
-    : StorageConfig(std::move(storageConfig))
+    // Copying is important: the config is shared by the whole service, and
+    // some functions here change it in place (e.g. PatchStorageConfig()).
+    // Without the copy, a change made for one filesystem would apply to all
+    // the filesystems on this host.
+    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
@@ -241,7 +245,11 @@ TAlterFileStoreActor::TAlterFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TResizeFileStoreRequest& request)
-    : StorageConfig(std::move(storageConfig))
+    // Copying is important: the config is shared by the whole service, and
+    // some functions here change it in place (e.g. PatchStorageConfig()).
+    // Without the copy, a change made for one filesystem would apply to all
+    // the filesystems on this host.
+    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , PerformanceProfile(request.GetPerformanceProfile())

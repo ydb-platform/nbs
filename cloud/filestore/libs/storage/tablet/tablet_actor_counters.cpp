@@ -230,6 +230,11 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
 // FILESTORE_TABLET_MERGE_COUNTER
 
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_MERGE_COUNTER)
+    FILESTORE_TABLET_MERGE_COUNTER(FreshBytesItemCount)
+    FILESTORE_TABLET_MERGE_COUNTER(UnconfirmedDataCount)
+    FILESTORE_TABLET_MERGE_COUNTER(ConfirmedDataCount)
+    FILESTORE_TABLET_MERGE_COUNTER(UsedCompactionRanges)
+    FILESTORE_TABLET_MERGE_COUNTER(AllocatedCompactionRanges)
 
 #undef FILESTORE_TABLET_MERGE_COUNTER
 
@@ -354,7 +359,8 @@ void TIndexTabletActor::UpdateMetrics(
     const TBlobMetaMapStats& blobMetaMapStats,
     const TIndexTabletState::TBackpressureThresholds& backpressureThresholds,
     const TIndexTabletState::TBackpressureValues& backpressureValues,
-    const THandlesStats& handlesStats)
+    const THandlesStats& handlesStats,
+    const TFileSystemEventSubscriptions::TStats& subscriptionsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -554,6 +560,22 @@ void TIndexTabletActor::UpdateMetrics(
         Metrics->DeferredNodeDestructionCount,
         miscNodeStats.DeferredNodeDestructionCount);
 
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeCount,
+        subscriptionsStats.NodeCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeRefCount,
+        subscriptionsStats.NodeRefCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryClientCount,
+        subscriptionsStats.ClientCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryExtraPageCount,
+        subscriptionsStats.ExtraPageCount);
+    Store(
+        Metrics->FileSystemEventsSubscriberRegistryNodeXAttrCount,
+        subscriptionsStats.NodeXAttrCount);
+
     Metrics->BusyIdleCalc.OnUpdateStats();
     Metrics->UpdatePerformanceMetrics(now, diagConfig, fileSystem);
 
@@ -619,7 +641,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
 
     // TabletStartTimestamp should be set only once
     i64 expected = 0;
@@ -705,7 +728,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetBlobMetaMapStats(),
         BuildBackpressureThresholds(),
         GetBackpressureValues(),
-        GetHandlesStats());
+        GetHandlesStats(),
+        FileSystemEventSubscriptions.GetStats());
     CalculateActorCPUUsage(ctx);
     SendMetricsToExecutor(ctx);
 
@@ -906,8 +930,13 @@ void TIndexTabletActor::HandleGetStorageStats(
         // TAggregateStatsActor
         #define FILESTORE_TABLET_CLEAR_COUNTER(name, ...)                      \
             stats->Clear##name();                                              \
-        // FILESTORE_TABLET_MERGE_COUNTER
+        // FILESTORE_TABLET_CLEAR_COUNTER
         FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
+        FILESTORE_TABLET_CLEAR_COUNTER(FreshBytesItemCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(UnconfirmedDataCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(ConfirmedDataCount)
+        FILESTORE_TABLET_CLEAR_COUNTER(UsedCompactionRanges)
+        FILESTORE_TABLET_CLEAR_COUNTER(AllocatedCompactionRanges)
         #undef FILESTORE_TABLET_CLEAR_COUNTER
     }
 

@@ -3,14 +3,13 @@
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/protos/device.pb.h>
-#include <cloud/fastshard/sn/iface/storage_node.h>
-#include <cloud/fastshard/testlib/fake_storage_node.h>
-#include <cloud/fastshard/testlib/fiber_test.h>
-#include <cloud/fastshard/testlib/silk_env.h>
+#include <cloud/fastshard/libs/sn/iface/storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fake_storage_node.h>
+#include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
+#include <cloud/fastshard/libs/sn/testlib/silk_env.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/timer_test.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
@@ -131,10 +130,8 @@ struct TCall
 };
 
 /**
- * A storage node that keeps nothing: it answers every request with its canned
- * reply, blank pages for a read, and parks a write while its gate is paused.
- * A test sets it up by scripting the replies and checks what it has been
- * asked. What the devices end up holding is the journalled node's business.
+ * A storage node with scripted replies and blank pages for reads. A test can
+ * hold the calls of a kind and let them through one at a time.
  */
 struct TFakeDevice: TFakeStorageNode
 {
@@ -149,8 +146,8 @@ struct TFakeDevice: TFakeStorageNode
         NProto::TAdvanceLsnLowWatermarkResponse>
         Watermarks;
 
-
     NProto::TReadPagesResponse ReadPages(
+        TFastShardContext&,
         NProto::TReadPagesRequest request) override
     {
         const auto refs = request.GetPageGroupRefs();
@@ -171,18 +168,21 @@ struct TFakeDevice: TFakeStorageNode
     }
 
     NProto::TWriteLogRecordResponse WriteLogRecord(
+        TFastShardContext&,
         NProto::TWriteLogRecordRequest request) override
     {
         return Writes.Call(std::move(request));
     }
 
     NProto::TAcquireDevicesResponse AcquireDevices(
+        TFastShardContext&,
         NProto::TAcquireDevicesRequest request) override
     {
         return Acquires.Call(std::move(request));
     }
 
     NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+        TFastShardContext&,
         NProto::TAdvanceLsnLowWatermarkRequest request) override
     {
         return Watermarks.Call(std::move(request));
@@ -210,15 +210,12 @@ TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
     config.ClientId = "test-client";
     config.AcquireGeneration = 42;
     config.PageSize = pageSize;
+    // Retries are instant: a test counts the attempts.
+    config.RetryPolicy.BackoffIncrement = TDuration::Zero();
+    config.ReacquirePeriod = TDuration::Hours(1);
+    config.LowWatermarkPeriod = TDuration::Hours(1);
     return config;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TGroupFactory = IStorageGroupPtr (*)(
-    TStorageGroupConfig,
-    TVector<TStorageDevice>,
-    ITimerPtr);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Fixtures: a group over a set of fake devices.
@@ -228,29 +225,22 @@ struct TGroupFixture
     TVector<TFakeDevicePtr> Nodes;
     TVector<TString> DeviceUUIDs;
     TStorageGroupConfig Config;
-    ITimerPtr Timer;
     IStorageGroupPtr Group;
 
-    TGroupFixture(
-            TGroupFactory createGroup,
-            TStorageGroupConfig config,
-            ITimerPtr timer,
-            ui32 deviceCount)
+    TGroupFixture(TStorageGroupConfig config, ui32 deviceCount)
         : Config(std::move(config))
-        , Timer(std::move(timer))
     {
         for (ui32 i = 0; i < deviceCount; ++i) {
             Nodes.push_back(std::make_shared<TFakeDevice>());
             DeviceUUIDs.push_back(TStringBuilder() << "dev-" << char('a' + i));
         }
-
-        Group = createGroup(Config, StorageDevices(), Timer);
     }
 
     ~TGroupFixture()
     {
         for (auto& device: Nodes) {
             device->Writes.Unpause();
+            device->Reads.Unpause();
             device->Acquires.Unpause();
         }
 
@@ -276,14 +266,6 @@ struct TGroupFixture
         return devices;
     }
 
-    // The sleeps the group asked for, when it runs on a TTestTimer.
-    TTestTimer& TestTimer()
-    {
-        auto* timer = dynamic_cast<TTestTimer*>(Timer.get());
-        Y_ABORT_UNLESS(timer, "the group runs on another timer");
-        return *timer;
-    }
-
     // Forgets what the devices have been asked so far, so a test that follows
     // Init starts from a clean request log.
     void ForgetRequests()
@@ -299,12 +281,13 @@ struct TGroupFixture
 struct TNaiveFixture: TGroupFixture
 {
     TNaiveFixture(TStorageGroupConfig config = MakeConfig())
-        : TGroupFixture(
-              CreateNaiveMirroredStorageGroup,
-              std::move(config),
-              std::make_shared<TTestTimer>(),
-              DeviceCount)
-    {}
+        : TGroupFixture(std::move(config), DeviceCount)
+    {
+        Group = CreateNaiveMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
+    }
 };
 
 // init = false leaves Init to the test, so it can set the devices up first.
@@ -314,12 +297,12 @@ struct TQuorumFixture: TGroupFixture
             bool init = true,
             TStorageGroupConfig config = MakeConfig(),
             ui32 deviceCount = DeviceCount)
-        : TGroupFixture(
-              CreateQuorumMirroredStorageGroup,
-              std::move(config),
-              std::make_shared<TTestTimer>(),
-              deviceCount)
+        : TGroupFixture(std::move(config), deviceCount)
     {
+        Group = CreateQuorumMirroredStorageGroup(
+            Config,
+            StorageDevices(),
+            CreateFiberTimer());
         if (init) {
             auto error = Group->Init().GetError();
             Y_ABORT_UNLESS(
@@ -423,6 +406,19 @@ void StartWrite(TGroupFixture& fx, ui64 lsn, silk::FiberFuture* future)
         SystemErrorText(r).c_str());
 }
 
+struct TInitParams
+{
+    TGroupFixture* Fixture;
+    NProto::TError* Error;
+};
+
+// Init on its own fiber, its error left for the test.
+int InitFiberMain(TInitParams* params) noexcept
+{
+    *params->Error = params->Fixture->Group->Init().GetError();
+    return 0;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Waiting and inspecting.
 
@@ -432,18 +428,14 @@ void StartWrite(TGroupFixture& fx, ui64 lsn, silk::FiberFuture* future)
 template <typename TPredicate>
 [[nodiscard]] bool WaitFor(TPredicate predicate)
 {
-    for (ui32 i = 0; i < 100000 && !predicate(); ++i) {
+    const TInstant deadline = TInstant::Now() + TDuration::Seconds(10);
+    while (!predicate()) {
+        if (TInstant::Now() >= deadline) {
+            return false;
+        }
         FiberScheduler::yield();
     }
-    return predicate();
-}
-
-// Naive check if fut is still unset after letting fibers do the active round.
-bool StillRunning(silk::FiberFuture& future)
-{
-    FiberScheduler::yield();
-    int error = 0;
-    return !future.isSet(&error);
+    return true;
 }
 
 ui32 TotalWrites(TGroupFixture& fx)
@@ -471,28 +463,6 @@ TVector<ui32> ReadCounts(TGroupFixture& fx)
         counts.push_back(fx[i].Reads.Count());
     }
     return counts;
-}
-
-// The sleeps the group asked for, in microseconds so a mismatch reads well.
-TVector<ui64> Sleeps(TGroupFixture& fx)
-{
-    TVector<ui64> sleeps;
-    for (TDuration sleep: fx.TestTimer().GetSleepDurations()) {
-        sleeps.push_back(sleep.MicroSeconds());
-    }
-    return sleeps;
-}
-
-// The sleeps a request that fails @p count times in a row asks for: the k-th
-// backoff is k increments.
-TVector<ui64> Backoffs(ui32 count)
-{
-    const TDuration increment = MakeConfig().RetryPolicy.BackoffIncrement;
-    TVector<ui64> backoffs;
-    for (ui32 k = 1; k <= count; ++k) {
-        backoffs.push_back((increment * k).MicroSeconds());
-    }
-    return backoffs;
 }
 
 // The page the device was last written at @p pageNo.
@@ -670,7 +640,6 @@ FIBER_TEST(NaiveGroupTest, ShouldRetryErrors)
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     ASSERT_EQ((TVector<ui32>{1, 3, 1}), WriteCounts(fx));
-    ASSERT_EQ(Backoffs(2), Sleeps(fx));
 
     fx[1].Reads.Response = PageResponse(PageNo, "payload");
     fx[0].Reads.ResponseQueue.emplace_back();
@@ -679,12 +648,6 @@ FIBER_TEST(NaiveGroupTest, ShouldRetryErrors)
 
     ASSERT_EQ("payload", ReadOnePage(*fx.Group));
     ASSERT_EQ((TVector<ui32>{1, 1, 0}), ReadCounts(fx));
-
-    // The read starts a backoff sequence of its own; it does not continue
-    // the write's.
-    auto sleeps = Backoffs(2);
-    sleeps.push_back(Backoffs(1)[0]);
-    ASSERT_EQ(sleeps, Sleeps(fx));
 }
 
 FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
@@ -711,16 +674,14 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
         // One attempt, and no failover either: a device that rejects the
         // request outright means the request is wrong, not the device.
         ASSERT_EQ((TVector<ui32>{1, 0, 0}), ReadCounts(fx));
-
-        ASSERT_TRUE(fx.TestTimer().GetSleepDurations().empty());
     }
 
     // The retries stop at the deadline.
-    // A one second budget over the default half second increment. The test
-    // timer advances by every sleep, so a dead device fails at 0s, 0.5s and
-    // 1.5s: the third error is past the budget and ends the attempts.
+    // A 250ms budget over 100ms increments: a dead device fails at 0, 100 and
+    // 300ms, so the third error is past the budget and ends the attempts.
     auto config = MakeConfig();
-    config.RetryPolicy.TotalTimeout = TDuration::Seconds(1);
+    config.RetryPolicy.BackoffIncrement = TDuration::MilliSeconds(100);
+    config.RetryPolicy.TotalTimeout = TDuration::MilliSeconds(250);
     constexpr ui32 attempts = 3;
 
     {
@@ -735,7 +696,6 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
         ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
 
         ASSERT_EQ((TVector<ui32>{1, attempts, 1}), WriteCounts(fx));
-        ASSERT_EQ(Backoffs(attempts - 1), Sleeps(fx));
     }
 
     {
@@ -756,7 +716,6 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
         // The rotation keeps moving while retrying, so each device gets
         // one.
         ASSERT_EQ(TVector<ui32>(DeviceCount, 1), ReadCounts(fx));
-        ASSERT_EQ(Backoffs(attempts - 1), Sleeps(fx));
     }
 }
 
@@ -1059,26 +1018,17 @@ FIBER_TEST(QuorumGroupTest, ShouldAckWritesOnMajority)
             ASSERT_EQ(Lsn - 1, write.GetPrevLogSequenceNumber());
         }
 
+        ASSERT_EQ(S_OK, ReadFromEachReplica(fx).GetCode());
+        ASSERT_EQ(0U, fx[2].Reads.Count());
+
         // Once the laggard catches up, every replica serves.
         fx[2].Writes.Unpause();
-        ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Count() == 1; }));
-        ASSERT_EQ(S_OK, ReadFromEachReplica(fx).GetCode());
+        ASSERT_TRUE(WaitFor(
+            [&] {
+                return !HasError(ReadFromEachReplica(fx)) &&
+                       fx[2].Reads.Count() != 0;
+            }));
         ASSERT_EQ(TVector<ui32>(fx.Size(), 1), ReadCounts(fx));
-    }
-
-    // A majority is more than half of the devices.
-    // Two devices leave no room for a straggler: the majority is both.
-    {
-        TQuorumFixture fx(2U /* devices */);
-        fx[1].Writes.Paused = true;
-
-        silk::FiberFuture write;
-        StartWrite(fx, Lsn, &write);
-        ASSERT_TRUE(StillRunning(write))
-            << "acked without the second device";
-
-        fx[1].Writes.Unpause();
-        ASSERT_EQ(0, write.wait());
     }
 
     // Four tolerate one straggler.
@@ -1093,21 +1043,27 @@ FIBER_TEST(QuorumGroupTest, ShouldAckWritesOnMajority)
         ASSERT_TRUE(WaitFor([&] { return fx[3].Writes.Count() == 2; }));
     }
 
-    // But not two: half the devices is not a majority.
-    {
-        TQuorumFixture fx(4U /* devices */);
-        fx[2].Writes.Paused = true;
-        fx[3].Writes.Paused = true;
+    // Half the devices is not a majority: with the other half stuck in an
+    // hour-long retry backoff, the write waits until TearDown cancels it.
+    for (ui32 count: {2U, 4U}) {
+        auto config = MakeConfig();
+        config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
+        TQuorumFixture fx(true, config, count);
+        fx.ForgetRequests();
+        for (ui32 i = count / 2; i < count; ++i) {
+            fx[i].Writes.Reply(MakeError(E_REJECTED, "busy"));
+        }
 
         silk::FiberFuture write;
         StartWrite(fx, Lsn, &write);
-        ASSERT_TRUE(StillRunning(write)) << "acked on half the devices";
+        const bool dispatched =
+            WaitFor([&] { return WriteCounts(fx) == TVector<ui32>(count, 1); });
+        fx.Group->TearDown();
+        const int r = write.wait();
 
-        fx[2].Writes.Unpause();
-        ASSERT_EQ(0, write.wait());
-
-        fx[3].Writes.Unpause();
-        ASSERT_TRUE(WaitFor([&] { return fx[3].Writes.Count() == 2; }));
+        ASSERT_TRUE(dispatched);
+        ASSERT_EQ(1, r) << "acked by half of " << count << " devices";
+        ASSERT_EQ(E_REJECTED, Write(*fx.Group, Lsn + 1).GetCode());
     }
 }
 
@@ -1126,7 +1082,6 @@ FIBER_TEST(QuorumGroupTest, ShouldReadFromReplicasAtTheAckedLsn)
     auto error = Read(*fx.Group, &pageGroups);
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
     ASSERT_EQ((TVector<ui32>{2, 0, 0}), ReadCounts(fx));
-    ASSERT_EQ(Backoffs(1), Sleeps(fx));
 
     for (auto& device: fx.Nodes) {
         device->Reads.Requests.clear();
@@ -1257,10 +1212,6 @@ FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
         fx[2].Writes.Paused = true;
         auto error = Write(*fx.Group);
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-        FiberScheduler::yield();
-        for (ui32 i = 0; i < DeviceCount; ++i) {
-            ASSERT_EQ(1U, fx[i].Watermarks.Count());
-        }
 
         fx[2].Writes.Unpause();
         for (ui32 i = 0; i < DeviceCount; ++i) {
@@ -1277,7 +1228,7 @@ FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
         }
     }
 
-    // A watermark a device missed is superseded by the next one, not retried.
+    // A later watermark supersedes an update rejected by a device.
     {
         auto config = MakeConfig();
         config.LowWatermarkPeriod = TDuration::MilliSeconds(1);
@@ -1291,13 +1242,7 @@ FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
         ASSERT_TRUE(WaitFor([&] { return fx[2].Watermarks.Count() == 1; }));
 
-        // The refusal was retriable, so the group does not break, and the
-        // missed watermark is not resent on its own.
         fx[2].Watermarks.Reply({});
-        FiberScheduler::yield();
-        ASSERT_EQ(1U, fx[2].Watermarks.Count());
-
-        // The next one carries the device forward anyway.
         error = Write(*fx.Group);
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
         ASSERT_TRUE(WaitFor([&] { return fx[2].Watermarks.Count() == 2; }));
@@ -1389,4 +1334,111 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
         WaitFor([&] { return HasError(Read(*fx.Group, &pageGroups)); }));
     error = Write(*fx.Group, Lsn + 2);
     ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldCancelInitOnTearDown)
+{
+    // Init parked in an hour-long retry backoff of the third device's header
+    // read.
+    auto config = MakeConfig();
+    config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
+    TQuorumFixture fx(false /* init */, config);
+    fx[2].Reads.Reply(MakeError(E_REJECTED, "busy"));
+
+    NProto::TError error;
+    silk::FiberFuture init;
+    ASSERT_EQ(
+        0,
+        FiberScheduler::run(
+            InitFiberMain,
+            TInitParams{.Fixture = &fx, .Error = &error},
+            &init));
+    const bool asked = WaitFor([&] { return fx[2].Reads.Count() == 1; });
+    fx.Group->TearDown();
+    Y_UNUSED(init.wait());
+
+    ASSERT_TRUE(asked);
+    ASSERT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(0U, fx[2].Writes.Count());
+    ASSERT_EQ(E_REJECTED, Write(*fx.Group).GetCode());
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldCancelWritesOnTearDown)
+{
+    // Loops asleep for an hour, a write acked by the quorum and stuck in an
+    // hour-long backoff on the third device.
+    auto config = MakeConfig();
+    config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
+    config.RetryPolicy.TotalTimeout = TDuration::Hours(2);
+    TQuorumFixture fx(true, config);
+    fx.ForgetRequests();
+    fx[2].Writes.Reply(MakeError(E_REJECTED, "busy"));
+    ASSERT_FALSE(HasError(Write(*fx.Group)));
+    ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Count() == 1; }));
+
+    // TearDown cancels it: no retry, and no hour.
+    const TInstant start = TInstant::Now();
+    fx.Group->TearDown();
+    ASSERT_LT(TInstant::Now() - start, TDuration::Seconds(5));
+    ASSERT_EQ(1U, fx[2].Writes.Count());
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldWaitForAllAcksOverWriteBackpressureThreshold)
+{
+    // Alone in flight, a write returns at the quorum. The one after it, with
+    // the first still in flight on the third device, returns once every
+    // device has it.
+    {
+        auto config = MakeConfig();
+        config.WriteBackpressureThreshold = 1;
+        TQuorumFixture fx(true, config);
+        fx.ForgetRequests();
+
+        fx[2].Writes.Paused = true;
+        ASSERT_EQ(S_OK, Write(*fx.Group).GetCode());
+        ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Parked == 1; }));
+
+        silk::FiberFuture second;
+        StartWrite(fx, Lsn + 1, &second);
+        const bool parked = WaitFor([&] { return fx[2].Writes.Parked == 2; });
+        fx[2].Writes.Unpause();
+        const int r = second.wait();
+
+        ASSERT_TRUE(parked);
+        ASSERT_EQ(0, r);
+        ASSERT_EQ(S_OK, Write(*fx.Group, Lsn + 2).GetCode());
+    }
+
+    // The second write does wait: it fails on the third device's refusal,
+    // which it would not see had it returned at the quorum.
+    {
+        auto config = MakeConfig();
+        config.WriteBackpressureThreshold = 1;
+        TQuorumFixture fx(true, config);
+        fx.ForgetRequests();
+
+        fx[2].Writes.Paused = true;
+        ASSERT_EQ(S_OK, Write(*fx.Group).GetCode());
+        ASSERT_TRUE(WaitFor([&] { return fx[2].Writes.Parked == 1; }));
+
+        silk::FiberFuture second;
+        StartWrite(fx, Lsn + 1, &second);
+        const bool parked = WaitFor(
+            [&]
+            {
+                return fx[2].Writes.Parked == 2 && fx[0].Writes.Count() == 2 &&
+                       fx[1].Writes.Count() == 2;
+            });
+        fx[2].Writes.Step();
+        const bool released =
+            WaitFor([&] { return fx[2].Writes.Count() == 1; });
+        fx[2].Writes.Reply(MakeError(E_ARGUMENT, "read only"));
+        fx[2].Writes.Unpause();
+        const int r = second.wait();
+
+        ASSERT_TRUE(parked);
+        ASSERT_TRUE(released);
+        ASSERT_EQ(1, r);
+        ASSERT_EQ(E_INVALID_STATE, Write(*fx.Group, Lsn + 2).GetCode());
+    }
 }

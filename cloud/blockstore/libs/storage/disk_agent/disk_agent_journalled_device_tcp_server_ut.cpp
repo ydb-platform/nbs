@@ -6,7 +6,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
-#include <cloud/fastshard/protos/device.pb.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 

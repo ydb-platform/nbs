@@ -1507,7 +1507,7 @@ void TIndexTabletActor::HandleForcedOperationCompletedImpl(
         TOverloaded{
             [&](const TForcedRangeOperationState& state)
             {
-                LOG_DEBUG(
+                LOG_INFO(
                     ctx,
                     TFileStoreComponents::TABLET,
                     "%s ForcedRangeOperation mode=%u completed (%s)",
@@ -1517,7 +1517,7 @@ void TIndexTabletActor::HandleForcedOperationCompletedImpl(
             },
             [&](const TForcedTabletOperationState& state)
             {
-                LOG_DEBUG(
+                LOG_INFO(
                     ctx,
                     TFileStoreComponents::TABLET,
                     "%s ForcedTabletOperation mode=%u completed (%s)",
