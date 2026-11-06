@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from dateutil import parser as dateparser
-from functools import cached_property
 import jinja2
 import json
 import re
@@ -52,8 +51,10 @@ def _remove_parameters(cmd: list[str]):
 
 class YcpCmdEngine:
 
-    @cached_property
-    def _needs_legacy_syntax(self) -> bool:
+    def __init__(self):
+        self._needs_legacy_syntax = None
+
+    def _detect_legacy_syntax(self) -> bool:
         result = subprocess.run(
             ["ycp", "version", "--semantic"],
             stdin=subprocess.DEVNULL,
@@ -74,6 +75,8 @@ class YcpCmdEngine:
         return version >= _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
 
     def exec(self, command, input, err):
+        if self._needs_legacy_syntax is None:
+            self._needs_legacy_syntax = self._detect_legacy_syntax()
         if self._needs_legacy_syntax:
             command = [command[0], "--syntax", "1", *command[1:]]
 
