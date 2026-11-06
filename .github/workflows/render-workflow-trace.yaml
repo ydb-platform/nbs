@@ -108,7 +108,7 @@ jobs:
 
       - name: Keep trace as a GitHub artifact
         if: steps.trace.outputs.rendered == 'true'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: workflow-trace-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
           path: trace-output/
