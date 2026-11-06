@@ -300,7 +300,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             Logging,
             LogMetaDevice,
             MetaPageCount,
-            MetaPageSize);
+            MetaPageSize,
+            CalculateMinRecordBufferSize());
 
         // the journal is the only caller and hands the store back the pages
         // it has allocated itself, and the ranges of a client request are
