@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -87,6 +88,8 @@ enum action
     ACTION_LSTAT,
     ACTION_PATHCONF,
     ACTION_OPENDIR,
+    ACTION_GETFACL,
+    ACTION_SETFACL,
 };
 
 #define TYPE_NONE 0x0000
@@ -96,6 +99,59 @@ enum action
 #define TYPE_OPTIONAL 0x0100
 
 #define MAX_ARGS 8
+
+/*
+ * libacl is not part of the hermetic build sysroot.  Keep the commands
+ * available unconditionally and resolve the small API surface they need at
+ * runtime instead.
+ */
+typedef void* acl_t;
+typedef unsigned int acl_type_t;
+
+#define ACL_TYPE_ACCESS 0x8000
+#define ACL_TYPE_DEFAULT 0x4000
+
+struct acl_api
+{
+    void* Handle;
+    int (*DeleteDefFile)(const char*);
+    int (*Free)(void*);
+    acl_t (*FromText)(const char*);
+    acl_t (*GetFile)(const char*, acl_type_t);
+    int (*SetFile)(const char*, acl_type_t, acl_t);
+    char* (*ToText)(acl_t, ssize_t*);
+};
+
+static struct acl_api* get_acl_api(void)
+{
+    static struct acl_api api;
+    static int initialized = 0;
+
+    if (!initialized) {
+        initialized = 1;
+        api.Handle = dlopen("libacl.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (api.Handle) {
+            api.DeleteDefFile = dlsym(api.Handle, "acl_delete_def_file");
+            api.Free = dlsym(api.Handle, "acl_free");
+            api.FromText = dlsym(api.Handle, "acl_from_text");
+            api.GetFile = dlsym(api.Handle, "acl_get_file");
+            api.SetFile = dlsym(api.Handle, "acl_set_file");
+            api.ToText = dlsym(api.Handle, "acl_to_text");
+
+            if (!api.DeleteDefFile || !api.Free || !api.FromText ||
+                !api.GetFile || !api.SetFile || !api.ToText) {
+                dlclose(api.Handle);
+                memset(&api, 0, sizeof(api));
+            }
+        }
+    }
+
+    if (!api.Handle) {
+        errno = ENOSYS;
+        return NULL;
+    }
+    return &api;
+}
 
 struct syscall_desc
 {
@@ -137,6 +193,10 @@ static struct syscall_desc syscalls[] = {
     {"lstat", ACTION_LSTAT, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
     {"pathconf", ACTION_PATHCONF, { TYPE_STRING, TYPE_STRING, TYPE_NONE }},
     {"opendir", ACTION_OPENDIR, {TYPE_STRING, TYPE_NONE}},
+    {"getfacl", ACTION_GETFACL, {TYPE_STRING, TYPE_STRING, TYPE_NONE}},
+    {"setfacl",
+     ACTION_SETFACL,
+     {TYPE_STRING, TYPE_STRING, TYPE_STRING | TYPE_OPTIONAL, TYPE_NONE}},
     {NULL, -1, {TYPE_NONE}}};
 
 struct flag
@@ -408,6 +468,172 @@ static void show_stats(struct stat64* sp, char* what)
     printf("\n");
 }
 
+/*
+ * Get the current setting of an ACL.
+ *
+ * The filter may be "access" to get the access ACL or "default" to get the
+ * default ACL.
+ */
+static int do_getfacl(const char* path, const char* filter)
+{
+    struct acl_api* api;
+    char* textacl;
+    acl_t acl;
+    ssize_t size;
+    const char* p;
+    const char* loc;
+    char c;
+    int def;
+    int k;
+
+    api = get_acl_api();
+    if (!api) {
+        return (-errno);
+    }
+
+    errno = 0;
+    def = !strcmp(filter, "default");
+    if (def || !strcmp(filter, "access")) {
+        acl = api->GetFile(path, def ? ACL_TYPE_DEFAULT : ACL_TYPE_ACCESS);
+        if (acl) {
+            /*
+             * When there is no extended ACL, acl_get_file() may set ENODATA.
+             * Return a basic ACL (or "void" for a default ACL) without an
+             * error in that case.
+             */
+            if (errno == ENODATA) {
+                errno = 0;
+            }
+            textacl = api->ToText(acl, &size);
+
+            k = 0;
+            p = textacl;
+            while (p && *p) {
+                loc = p;
+                if (strchr("ugom", *loc)) {
+                    c = *loc;
+                    loc = strchr(loc, ':');
+                    if (loc) {
+                        if (k) {
+                            putchar(',');
+                            k++;
+                        }
+                        putchar(c);
+                        k++;
+                        while (*loc && *loc != '\n' && *loc != '\t') {
+                            c = *loc++;
+                            putchar(c);
+                            k++;
+                        }
+                    }
+                }
+                while (*p && *p != '\n') {
+                    p++;
+                }
+                if (*p) {
+                    p++;
+                }
+            }
+            if (textacl) {
+                api->Free(textacl);
+            }
+            if (k) {
+                putchar('\n');
+            } else {
+                printf("void\n");
+            }
+            api->Free(acl);
+
+            /* The ACL conversion functions may set errno on success. */
+            errno = 0;
+        }
+    } else {
+        errno = EBADRQC;
+    }
+    return (-errno);
+}
+
+/*
+ * Set a new ACL.
+ *
+ * Options may contain "k" (remove default entries), "b" (remove extended
+ * entries), or "m" (modify entries).  "m" may be combined with "d" to
+ * modify the default ACL; in that case the next argument contains the ACL.
+ */
+static int do_setfacl(
+    const char* path,
+    const char* options,
+    const char* textacl)
+{
+    struct acl_api* api;
+    int r;
+    int type;
+    acl_t acl;
+    int dob;
+    int dok;
+    int dom;
+    struct stat st;
+    char textmode[30];
+
+    api = get_acl_api();
+    if (!api) {
+        return (-errno);
+    }
+
+    r = 0;
+    dob = strchr(options, 'b') != NULL;
+    dok = strchr(options, 'k') != NULL;
+    dom = strchr(options, 'm') != NULL;
+    if ((dom && !textacl) ||
+        (!dom && (textacl || (!dok && !dob) || strchr(options, 'd')))) {
+        errno = EBADRQC;
+        r = -1;
+    } else {
+        if (dob || dok) {
+            r = api->DeleteDefFile(path);
+        }
+        if (dob && !r) {
+            if (!stat(path, &st)) {
+                sprintf(
+                    textmode,
+                    "u::%c%c%c,g::%c%c%c,o::%c%c%c",
+                    st.st_mode & 0400 ? 'r' : '-',
+                    st.st_mode & 0200 ? 'w' : '-',
+                    st.st_mode & 0100 ? 'x' : '-',
+                    st.st_mode & 0040 ? 'r' : '-',
+                    st.st_mode & 0020 ? 'w' : '-',
+                    st.st_mode & 0010 ? 'x' : '-',
+                    st.st_mode & 0004 ? 'r' : '-',
+                    st.st_mode & 0002 ? 'w' : '-',
+                    st.st_mode & 0001 ? 'x' : '-');
+                acl = api->FromText(textmode);
+                if (acl) {
+                    r = api->SetFile(path, ACL_TYPE_ACCESS, acl);
+                    api->Free(acl);
+                } else {
+                    r = -1;
+                }
+            } else {
+                r = -1;
+            }
+        }
+        if (!r && dom) {
+            type = strchr(options, 'd') ? ACL_TYPE_DEFAULT : ACL_TYPE_ACCESS;
+            acl = api->FromText(textacl);
+            if (acl) {
+                r = api->SetFile(path, type, acl);
+                api->Free(acl);
+            } else {
+                r = -1;
+            }
+        }
+    }
+    if (r) {
+        r = -errno;
+    }
+    return (r);
+}
+
 static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
 {
     struct stat64 sb;
@@ -619,6 +845,15 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
             }
             rval = -1;
         } break;
+        case ACTION_GETFACL:
+            rval = do_getfacl(STR(0), STR(1));
+            if (rval == 0) {
+                return (i);
+            }
+            break;
+        case ACTION_SETFACL:
+            rval = do_setfacl(STR(0), STR(1), STR(2));
+            break;
         default:
             fprintf(stderr, "unsupported syscall\n");
             exit(1);
