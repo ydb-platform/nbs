@@ -235,7 +235,8 @@ void TFileSystem::SetXAttr(
                 value,
                 response.GetVersion(),
                 error,
-                cacheVersion);
+                cacheVersion,
+                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyError(*callContext, error, req, 0);
             }
@@ -296,7 +297,8 @@ void TFileSystem::GetXAttr(
                 response.GetValue(),
                 response.GetVersion(),
                 error,
-                cacheVersion);
+                cacheVersion,
+                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyXAttrInt(
                     *callContext,

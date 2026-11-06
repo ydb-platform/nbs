@@ -493,7 +493,8 @@ private:
         const TString& value,
         ui64 version,
         const NProto::TError& error,
-        ui64 cacheVersion);
+        ui64 cacheVersion,
+        TDuration cacheTTL);
 
     void ReplyCreateWithCache(
         TCallContext& callContext,

@@ -426,8 +426,13 @@ void TFileSystem::InvalidateDirectoryEntryInCache(
 
 void TFileSystem::InvalidateXAttrCache(ui64 ino)
 {
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating cached xattrs: " << ino
+        << ", version: " << version);
+
     TGuard g{XAttrCacheLock};
-    XAttrCache.Invalidate(ino);
+    XAttrCache.Invalidate(ino, version);
 }
 
 void TFileSystem::UpdateXAttrCache(
@@ -436,17 +441,18 @@ void TFileSystem::UpdateXAttrCache(
     const TString& value,
     ui64 version,
     const NProto::TError& error,
-    ui64 cacheVersion)
+    ui64 cacheVersion,
+    TDuration cacheTTL)
 {
     TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
-            XAttrCache.AddAbsent(ino, name, cacheVersion);
+            XAttrCache.AddAbsent(ino, name, cacheVersion, cacheTTL);
         }
         return;
     }
 
-    XAttrCache.Add(ino, name, value, version, cacheVersion);
+    XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
 }
 
 void TFileSystem::ReplyCreateWithCache(

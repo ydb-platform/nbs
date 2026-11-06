@@ -177,14 +177,18 @@ struct TXAttr
     TString Name;
     TMaybe<TString> Value;
     ui64 Version;
-    TInstant UpdateTime;
+    // Cache version at which the request that has fetched the entry started.
+    ui64 CacheVersion;
+    TInstant Deadline;
 };
 
 /*
- * Caches the xattr values and absences for XAttrCacheTimeout. The xattrs are
- * invalidated upon the local changes and upon the FileSystemEvents. The
- * values fetched by the requests started before an invalidation of the same
- * xattr are not cached, see TInvalidations.
+ * Caches the xattr values and absences for XAttrCacheTTL returned by the
+ * backend or, if it is zero (FileSystemEvents are not supported), for
+ * XAttrCacheTimeout. The xattrs are invalidated upon the local changes and
+ * upon the FileSystemEvents, all the xattrs of a node are invalidated upon
+ * the node id reuse. The values fetched by the requests started before an
+ * invalidation are not cached, see TInvalidations.
  *
  * Not thread-safe.
  */
@@ -194,7 +198,7 @@ private:
     struct TWeighter {
         static TInstant Weight(const TXAttr& value)
         {
-            return value.UpdateTime;
+            return value.Deadline;
         }
     };
     using TKey = std::pair<ui64, TString>;
@@ -205,6 +209,7 @@ private:
     TCache Cache;
     TDuration Timeout;
     TInvalidations<TXAttrCacheKey> Invalidations;
+    TInvalidations<ui64> NodeInvalidations;
 
 public:
     TXAttrCache(
@@ -215,6 +220,7 @@ public:
         , Cache{maxSize}
         , Timeout{timeout}
         , Invalidations{maxSize}
+        , NodeInvalidations{maxSize}
     {}
 
     /**
@@ -227,13 +233,16 @@ public:
      * @param version - Xattr version returned by the backend.
      * @param cacheVersion - Cache version at which the request that has
      *  fetched the value has started.
+     * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
+     *  that XAttrCacheTimeout is used.
      */
     void Add(
         ui64 ino,
         const TString& name,
         const TString& value,
         ui64 version,
-        ui64 cacheVersion);
+        ui64 cacheVersion,
+        TDuration cacheTTL);
 
     /**
      * Caches the absence of an xattr unless the xattr has been invalidated
@@ -243,11 +252,33 @@ public:
      * @param name - Xattr name.
      * @param cacheVersion - Cache version at which the request that has
      *  found out the absence has started.
+     * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
+     *  that XAttrCacheTimeout is used.
      */
-    void AddAbsent(ui64 ino, const TString& name, ui64 cacheVersion);
+    void AddAbsent(
+        ui64 ino,
+        const TString& name,
+        ui64 cacheVersion,
+        TDuration cacheTTL);
 
+    /**
+     * Looks up a cached xattr value or absence.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @return - The cached entry or nullptr if there is no valid entry.
+     */
     const TXAttr* Get(ui64 ino, const TString& name);
-    void Invalidate(ui64 ino);
+
+    /**
+     * Invalidates all the cached xattrs of a node (e.g. upon the node id
+     * reuse) and prevents caching them by the requests started before
+     * version.
+     *
+     * @param ino - Node id.
+     * @param version - Cache version of the invalidation.
+     */
+    void Invalidate(ui64 ino, ui64 version);
 
     /**
      * Erases a cached xattr (value or absence) and prevents caching it by
@@ -266,6 +297,10 @@ public:
      * @param version - Cache version of the invalidation.
      */
     void InvalidateAll(ui64 version);
+
+private:
+    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
+    TInstant GetDeadline(TDuration cacheTTL) const;
 };
 
 }   // namespace NCloud::NFileStore::NFuse
