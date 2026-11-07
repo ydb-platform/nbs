@@ -7,6 +7,7 @@
 #include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "metadata_cache_stats.h"
 #include "node_attrs_cache.h"
 #include "node_cache.h"
 #include "node_ref_cache.h"
@@ -91,6 +92,7 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
+    TMetadataCacheModuleStatsPtr MetadataCacheStats;
     TNodeAttrsCache NodeAttrsCache;
     TNodeRefCache NodeRefCache;
 
@@ -123,6 +125,7 @@ public:
         IFileStorePtr session,
         IRequestStatsPtr stats,
         TDirectoryHandleModuleStatsPtr directoryHandleStats,
+        TMetadataCacheModuleStatsPtr metadataCacheStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandleStoragePtr directoryHandleStorage,
@@ -358,7 +361,12 @@ public:
     void InvalidateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name) override;
+    void InvalidateCachedNodeXAttr(
+        ui64 nodeId,
+        const TString& name) override;
     void InvalidateAllCachedMetadata() override;
+
+    TMetadataCacheSizes GetMetadataCacheSizes();
 
 private:
     template <typename T>
@@ -479,6 +487,8 @@ private:
 
     void InvalidateNodeInCache(ui64 nodeId);
     void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
+    void InvalidateCachedNodeAttrs(ui64 nodeId);
+    void InvalidateCachedXAttr(ui64 nodeId, const TString& name);
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,
         const TString& name);
@@ -489,7 +499,9 @@ private:
         const TString& name,
         const TString& value,
         ui64 version,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        ui64 cacheVersion,
+        TDuration cacheTTL);
 
     void ReplyCreateWithCache(
         TCallContext& callContext,

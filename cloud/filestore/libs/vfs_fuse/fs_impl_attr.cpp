@@ -121,7 +121,9 @@ void TFileSystem::GetAttr(
         return;
     }
 
-    if (TryReplyAttrFromCache(*callContext, req, ino)) {
+    const bool cacheHit = TryReplyAttrFromCache(*callContext, req, ino);
+    MetadataCacheStats->CountGetAttr(cacheHit);
+    if (cacheHit) {
         return;
     }
 
@@ -215,6 +217,9 @@ void TFileSystem::SetXAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
+    const ui64 cacheVersion =
+        GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->SetNodeXAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -231,7 +236,9 @@ void TFileSystem::SetXAttr(
                 name,
                 value,
                 response.GetVersion(),
-                error);
+                error,
+                cacheVersion,
+                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyError(*callContext, error, req, 0);
             }
@@ -257,7 +264,9 @@ void TFileSystem::GetXAttr(
     }
 
     with_lock (XAttrCacheLock) {
-        if (auto xattr = XAttrCache.Get(ino, name)) {
+        const auto* xattr = XAttrCache.Get(ino, name);
+        MetadataCacheStats->CountGetXAttr(xattr != nullptr);
+        if (xattr) {
             if (xattr->Value) {
                 ReplyXAttrInt(*callContext, {}, req, *xattr->Value, size);
             } else {
@@ -274,6 +283,9 @@ void TFileSystem::GetXAttr(
     auto request = StartRequest<NProto::TGetNodeXAttrRequest>(ino);
     request->SetName(name);
 
+    const ui64 cacheVersion =
+        GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->GetNodeXAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -288,7 +300,9 @@ void TFileSystem::GetXAttr(
                 name,
                 response.GetValue(),
                 response.GetVersion(),
-                error);
+                error,
+                cacheVersion,
+                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyXAttrInt(
                     *callContext,
@@ -374,9 +388,12 @@ void TFileSystem::RemoveXAttr(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (self->CheckNodeError(*callContext, req, error)) {
-                with_lock (self->XAttrCacheLock) {
-                    self->XAttrCache.Forget(ino, name);
-                }
+                //
+                // Also prevents caching the responses to the requests that
+                // are in flight.
+                //
+
+                self->InvalidateCachedXAttr(ino, name);
 
                 self->ReplyError(*callContext, error, req, 0);
             }
