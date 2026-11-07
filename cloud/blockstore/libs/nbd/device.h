@@ -16,10 +16,12 @@ namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// failures are returned as TError values instead of exceptional futures
 struct IDevice
 {
     virtual ~IDevice() = default;
 
+    // S_ALREADY indicates that an existing device was reused
     virtual NThreading::TFuture<NProto::TError> Start() = 0;
 
     // some devices can be reconfigured, so we want to differentiate between
@@ -48,6 +50,9 @@ struct IDeviceFactory
         ui64 blockCount,
         ui32 blockSize) = 0;
 
+    // Selects an unused device matching devicePrefix. After Start succeeds,
+    // GetPath returns a stable path that can be persisted and passed to Create
+    // during endpoint restoration
     virtual IDevicePtr CreateFree(
         const TNetworkAddress& connectAddress,
         TString devicePrefix,

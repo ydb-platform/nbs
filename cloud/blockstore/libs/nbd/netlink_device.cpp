@@ -260,7 +260,11 @@ TFuture<NProto::TError> TNetlinkDevice::Reconfigure()
                         static_cast<ui32>(Socket))))
         .Apply([self = shared_from_this()](const auto& result) {
             result.TryRethrow();
-            return self->Resize(self->Handler->GetExportInfo().Size);
+            return self->Resize(self->Handler->GetExportInfo().Size)
+                .Apply([](const auto& result) {
+                    const auto& error = result.GetValue();
+                    return HasError(error) ? error : MakeError(S_ALREADY);
+                });
         });
 }
 
@@ -304,7 +308,7 @@ TFuture<NProto::TError> TNetlinkDevice::Disconnect()
                 auto& Log = self->Log;
                 STORAGE_INFO("disconnect " << self->GetDevice());
                 return MakeError(S_OK);
-            } catch (const TServiceError& e) {
+            } catch (const std::exception& e) {
                 return self->MakeNetlinkError("disconnect", e);
             }
         });
@@ -327,7 +331,7 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
                 auto& Log = self->Log;
                 STORAGE_INFO("resize " << self->GetDevice());
                 return MakeError(S_OK);
-            } catch (const TServiceError& e) {
+            } catch (const std::exception& e) {
                 return self->MakeNetlinkError("resize", e);
             }
         });
