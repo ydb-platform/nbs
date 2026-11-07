@@ -7,6 +7,7 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -18,6 +19,7 @@ import (
 type service struct {
 	taskScheduler tasks.Scheduler
 	config        *config.SnapshotsConfig
+	exportConfig  *server_config.ExportConfig
 }
 
 func (s *service) CreateSnapshot(
@@ -39,6 +41,10 @@ func (s *service) CreateSnapshot(
 	useS3 := common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
 
+	proxyOverlayDiskZoneBlacklist := s.config.GetUseProxyOverlayDiskZoneBlacklist()
+	useProxyOverlayDisk := s.config.GetUseProxyOverlayDisk() &&
+		!common.Find(proxyOverlayDiskZoneBlacklist, req.Src.ZoneId)
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"snapshots.CreateSnapshotFromDisk",
@@ -51,7 +57,7 @@ func (s *service) CreateSnapshot(
 			DstSnapshotId:                    req.SnapshotId,
 			FolderId:                         req.FolderId,
 			UseS3:                            useS3,
-			UseProxyOverlayDisk:              s.config.GetUseProxyOverlayDisk(),
+			UseProxyOverlayDisk:              useProxyOverlayDisk,
 			RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 		},
 	)
@@ -85,10 +91,17 @@ func (s *service) DeleteSnapshot(
 func NewService(
 	taskScheduler tasks.Scheduler,
 	config *config.SnapshotsConfig,
+	exportConfigs ...*server_config.ExportConfig,
 ) Service {
+
+	var exportConfig *server_config.ExportConfig
+	if len(exportConfigs) != 0 {
+		exportConfig = exportConfigs[0]
+	}
 
 	return &service{
 		taskScheduler: taskScheduler,
 		config:        config,
+		exportConfig:  exportConfig,
 	}
 }

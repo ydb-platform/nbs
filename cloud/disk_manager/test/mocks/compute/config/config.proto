@@ -1,0 +1,22 @@
+syntax = "proto2";
+
+package compute_mock;
+
+import "contrib/ydb/public/api/client/yc_private/compute/export.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/test/mocks/compute/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ExportCredentials {
+    oneof Resource {
+        string SnapshotId = 1;
+        string ImageId = 2;
+    }
+    required yandex.cloud.priv.compute.v1.ExportS3Credentials Credentials = 3;
+}
+
+message ComputeServiceMockConfig {
+    optional string ListenAddress = 1 [default = "127.0.0.1:9798"];
+    repeated ExportCredentials ExportCredentials = 2;
+}

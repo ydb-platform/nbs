@@ -11,6 +11,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    delete_placement_group_disabled_zones_test.go
     placementgroup_test.go
 )
 

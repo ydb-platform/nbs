@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"google.golang.org/grpc"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"google.golang.org/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +45,19 @@ func (s *imageService) Delete(
 ) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.DeleteImage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
+func (s *imageService) Export(
+	ctx context.Context,
+	req *disk_manager.ExportImageRequest,
+) (*disk_manager.Operation, error) {
+
+	taskID, err := s.service.ExportImage(ctx, req)
 	if err != nil {
 		return nil, err
 	}

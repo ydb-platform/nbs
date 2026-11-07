@@ -10,6 +10,7 @@ SRCS(
     channel_with_cancellation.go
     channel_with_inflight_queue.go
     cond.go
+    disabled_zones.go
     disk_kind.go
     errors.go
     grpc_client_tls_provider.go
@@ -21,6 +22,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    disabled_zones_test.go
     disk_kind_test.go
     grpc_tls_provider_test.go
     inflight_queue_test.go
