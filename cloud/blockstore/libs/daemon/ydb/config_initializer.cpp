@@ -158,11 +158,6 @@ void TConfigInitializerYdb::InitStorageConfig()
     SystemTabletBackupPathFromFile =
         storageConfig.GetSystemTabletBackupDirPath();
 
-    if (GetDynamicYamlConfigurationStaticallyEnabled()) {
-        StorageConfigControls =
-            std::make_shared<NStorage::TStorageConfigControls>();
-    }
-
     SetStorageConfig(std::move(storageConfig));
 }
 
@@ -300,7 +295,8 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
     config.SetServiceVersionInfo(GetFullVersionString());
 }
 
-// Replace StorageConfig using the ICB controls selected during initialization.
+// Replace the startup configuration while retaining the same controls.
+// Update their defaults before starting readers or registering the board.
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
@@ -308,10 +304,13 @@ void TConfigInitializerYdb::SetStorageConfig(
         config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
     }
 
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-        std::move(config),
+    auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
+        config,
         FeaturesConfig,
         StorageConfigControls);
+    StorageConfigControls = storageConfig->GetControls();
+    StorageConfigControls->UpdateDefaults(config);
+    StorageConfig = std::move(storageConfig);
 
     ApplySystemTabletBackupPath(
         StorageConfig->GetSystemTabletBackupDirPath(),

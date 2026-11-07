@@ -255,11 +255,15 @@ void TConfigsManagerActor::Handle(
     }
 
     const auto currentConfig = ConfigHolder->Get();
+    const auto mergedConfig =
+        MergeBlockstoreConfig(StaticConfig, dynamicConfig);
     auto newConfig = MakeBlockstoreConfig(
-        StaticConfig,
-        dynamicConfig,
+        mergedConfig,
+        {},
         StorageConfigControls,
         GetBlockstoreConfigExtraParameters(*currentConfig));
+
+    StorageConfigControls->UpdateDefaults(mergedConfig.GetStorageService());
 
     // Publish before notifying consumers and acknowledging the dispatcher
     // so the new configuration is already available to readers.
