@@ -13,6 +13,7 @@
 #include <util/system/rwlock.h>
 
 #include <functional>
+#include <utility>
 
 namespace NMonitoring {
     struct TCounterForPtr;
@@ -280,6 +281,18 @@ namespace NMonitoring {
             const TString& value,
             bool derivative = false,
             TCountableBase::EVisibility visibility = TCountableBase::EVisibility::Public);
+
+        using TCounterPair = std::pair<TCounterPtr, TCounterPtr>;
+
+        // Install both members of a cooperating counter pair atomically.
+        // Existing pairs are reused without replacing pointers held by other
+        // users. Neither name may already be registered on its own. The factory
+        // runs under the registry lock and must not access this registry.
+        TCounterPair GetNamedCounterPair(
+            const TString& name,
+            const TString& firstValue,
+            const TString& secondValue,
+            const std::function<TCounterPair()>& createCounters);
 
         THistogramPtr GetHistogram(
             const TString& value,

@@ -50,6 +50,7 @@ class TCountingEncryptor final: public IEncryptor
 {
 public:
     ui32 DecryptCount = 0;
+    bool FailDecrypt = false;
 
     NProto::TError Encrypt(
         TBlockDataRef src,
@@ -68,6 +69,9 @@ public:
     {
         Y_UNUSED(blockIndex);
         ++DecryptCount;
+        if (FailDecrypt) {
+            return MakeError(E_FAIL, "test decryption failure");
+        }
         std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
         return {};
     }
@@ -202,6 +206,9 @@ public:
 void ExpectNoSuccessStats(const TAtomicStats& stats, vhd_bdev_io_type type)
 {
     EXPECT_EQ(0u, stats.Requests[type].Count.load());
+    const auto [count, bytes] = stats.Requests[type].GetIoSize();
+    EXPECT_EQ(0u, count);
+    EXPECT_EQ(0u, bytes);
     EXPECT_EQ(0u, GetTotalCount(stats.Times[type]));
     EXPECT_EQ(0u, GetTotalCount(stats.Sizes[type]));
 }
@@ -818,6 +825,9 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundReadIfAllPartsSucceeded)
 
     EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
     EXPECT_EQ(1u, stats.Requests[VHD_BDEV_READ].Count.load());
+    const auto [count, bytes] = stats.Requests[VHD_BDEV_READ].GetIoSize();
+    EXPECT_EQ(1u, count);
+    EXPECT_EQ(size, bytes);
     EXPECT_EQ(1u, GetTotalCount(stats.Times[VHD_BDEV_READ]));
     EXPECT_EQ(1u, GetTotalCount(stats.Sizes[VHD_BDEV_READ]));
 }
@@ -856,12 +866,18 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             ASSERT_EQ(3u, subs.size());
 
             TAtomicStats stats;
-            for (size_t i: order) {
+            for (size_t position = 0; position != order.size(); ++position) {
+                const size_t i = order[position];
                 CompleteSubRequest(
                     subs[i],
                     static_cast<int>(i) == failedPart ? VHD_BDEV_IOERR
                                                       : VHD_BDEV_SUCCESS,
                     stats);
+                if (position + 1 != order.size()) {
+                    EXPECT_TRUE(CompletedBios.empty());
+                    ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
+                    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].Bytes.load());
+                }
             }
 
             ASSERT_EQ(1u, CompletedBios.size());
@@ -869,8 +885,68 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             EXPECT_EQ(
                 failedPart == -1 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
                 CompletedBios[0].Status);
+
+            const auto& requestStat = stats.Requests[VHD_BDEV_WRITE];
+            EXPECT_EQ(size, requestStat.Bytes.load());
+            EXPECT_EQ(failedPart != -1, requestStat.Errors.load());
+            if (failedPart == -1) {
+                EXPECT_EQ(1u, requestStat.Count.load());
+                const auto [count, bytes] = requestStat.GetIoSize();
+                EXPECT_EQ(1u, count);
+                EXPECT_EQ(size, bytes);
+                EXPECT_EQ(1u, GetTotalCount(stats.Times[VHD_BDEV_WRITE]));
+                EXPECT_EQ(1u, GetTotalCount(stats.Sizes[VHD_BDEV_WRITE]));
+            } else {
+                ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
+            }
         } while (std::next_permutation(order.begin(), order.end()));
     }
+}
+
+TEST_P(TRequestAIOTest, ShouldCountCompoundIoSizeBeforeDecryption)
+{
+    InitDevices(1_MB);
+
+    const ui64 offset = 1_MB - 8_KB;   // devices #0 & #1
+    const ui64 size = 16_KB;
+    TVector<char> guest(size, 'G');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_READ,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    TCountingEncryptor encryptor;
+    encryptor.FailDecrypt = true;
+    auto subs = PrepareCompoundIO(bio, &encryptor);
+    ASSERT_EQ(2u, subs.size());
+
+    auto* req = subs[0]->GetParentRequest();
+    std::memset(req->Buffer.get(), 'R', req->BufferSize);
+
+    TAtomicStats stats;
+    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
+    EXPECT_TRUE(CompletedBios.empty());
+    ExpectNoSuccessStats(stats, VHD_BDEV_READ);
+
+    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+    EXPECT_EQ(TVector<char>(size, 'G'), guest);
+    EXPECT_EQ(1u, stats.EncryptorErrors.load());
+
+    // Device I/O succeeded, so both counters retain the pre-decryption policy.
+    const auto& requestStat = stats.Requests[VHD_BDEV_READ];
+    EXPECT_EQ(1u, requestStat.Count.load());
+    EXPECT_EQ(0u, requestStat.Errors.load());
+    const auto [count, bytes] = requestStat.GetIoSize();
+    EXPECT_EQ(1u, count);
+    EXPECT_EQ(size, bytes);
+    EXPECT_EQ(0u, GetTotalCount(stats.Times[VHD_BDEV_READ]));
+    EXPECT_EQ(0u, GetTotalCount(stats.Sizes[VHD_BDEV_READ]));
 }
 
 INSTANTIATE_TEST_SUITE_P(
