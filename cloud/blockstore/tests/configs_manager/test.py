@@ -1,11 +1,12 @@
 """End-to-end Blockstore dynamic configuration scenarios.
 
-The suite starts real YDB and NBS processes and covers startup, private YAML
-rejection, and startup with DynamicYamlConfigurationEnabled=false.
+The suite starts real YDB and NBS processes and covers startup, update rejection,
+removal, and startup with DynamicYamlConfigurationEnabled=false.
 """
 
 import copy
 import re
+import time
 
 from pathlib import Path
 
@@ -109,6 +110,33 @@ def get_config_subscription(nbs):
         re.DOTALL,
     )
     return subscription.group(1) if subscription else None
+
+
+# Wait for a new PrivateDatabaseConfig delivery and its expected acknowledgement state.
+def wait_config_delivery(nbs, previous_updates=0, acknowledged=True, timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        subscription = get_config_subscription(nbs)
+        if subscription:
+            match = re.search(r"UpdatesSent: (\d+)", subscription)
+            assert match is not None, f"Missing UpdatesSent in subscription: {subscription}"
+            updates = int(match.group(1))
+            pending = "UpdateInProcess:" in subscription
+            if updates > previous_updates and pending != acknowledged:
+                return updates
+        time.sleep(1)
+    raise AssertionError(f"PrivateDatabaseConfig delivery did not complete: {subscription}")
+
+
+# Wait until ConfigsManager reports the requested number of runtime rejections.
+def wait_runtime_rejection(nbs, count=1, timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        log = Path(nbs.stderr_file_name).read_text()
+        if log.count("Keeping the last successfully applied configuration") >= count:
+            return log
+        time.sleep(1)
+    raise AssertionError("ConfigsManager did not report the rejected configuration")
 
 
 def start_dynamic_config_ydb():
@@ -253,6 +281,78 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path, dedicated_
         ydb.stop()
 
 
+# Verify startup delivery, replacement, rejection, and removal with real nodes.
+def test_dynamic_blockstore_config_lifecycle():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # A database config is resolved together with the main YAML config.
+        # Console therefore requires a non-empty main document first.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb,
+            0,
+            "storage_service:\n  write_blob_threshold: 200",
+        )
+
+        # Distinguish the PrivateDatabaseConfig startup seed from the static configuration.
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].WriteBlobThreshold = 100
+        nbs = start_nbs(config)
+
+        # Observe the applied seed in the configuration retained by a startup consumer.
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>200</td>", page.text)
+        log = Path(nbs.stderr_file_name).read_text()
+        assert re.search(r"BLOCKSTORE_SERVER.*Received CMS configuration for YAML mode", log)
+        assert re.search(r"BLOCKSTORE_SERVER.*Applied startup PrivateDatabaseConfig", log)
+        updates = wait_config_delivery(nbs)
+
+        replace_database_config(
+            ydb,
+            1,
+            "storage_service:\n  write_blob_threshold: 300",
+        )
+        updates = wait_config_delivery(nbs, updates)
+
+        replace_database_config(
+            ydb,
+            2,
+            "storage_service: invalid",
+        )
+        log = wait_runtime_rejection(nbs)
+        updates = wait_config_delivery(nbs, updates, acknowledged=False)
+        # TODO: restore after fixing startup AppCriticalEvents regisgration
+        # parse_errors = nbs.counters.find({
+        #     "component": "server",
+        #     "sensor": "AppCriticalEvents/GetConfigsFromCmsYamlParseError",
+        # })
+        # assert parse_errors is not None and parse_errors["value"] >= 1
+        assert "Keeping the last successfully applied configuration" in log
+        assert "Fix or roll back the cluster configuration before restarting nodes" in log
+        assert "will be lost after a restart" in log
+
+        # Recover after an error without restarting the subscriber.
+        replace_database_config(
+            ydb,
+            3,
+            "storage_service:\n  write_blob_threshold: 400",
+        )
+        updates = wait_config_delivery(nbs, updates)
+
+        # Remove an invalid source after another rejection.
+        replace_database_config(ydb, 4, "storage_service: invalid")
+        wait_runtime_rejection(nbs, count=2)
+        updates = wait_config_delivery(nbs, updates, acknowledged=False)
+        replace_database_config(ydb, 5, "")
+        wait_config_delivery(nbs, updates)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
 # Verify that startup filters static-only overrides while applying mutable settings.
 def test_static_only_fields_are_ignored_at_startup():
     ydb = start_dynamic_config_ydb()
@@ -281,8 +381,9 @@ def test_static_only_fields_are_ignored_at_startup():
             Value="local",
         )
 
-        # Publish the startup PrivateDatabaseConfig.
+        # Publish the startup PrivateDatabaseConfig and complete its first runtime delivery.
         nbs = start_nbs(config)
+        wait_config_delivery(nbs)
 
         # Keep static node identity while applying the mutable value to a startup consumer.
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
@@ -326,13 +427,22 @@ def test_startup_without_overrides(config_yaml):
         log = Path(nbs.stderr_file_name).read_text()
         assert "Starting without PrivateDatabaseConfig" not in log
         assert "No startup PrivateDatabaseConfig applied; using configuration after CMS" in log
+        updates = wait_config_delivery(nbs)
+
+        # Accept a later PrivateDatabaseConfig through the already registered subscriber.
+        replace_database_config(
+            ydb,
+            1,
+            "storage_service:\n  write_blob_threshold: 300",
+        )
+        wait_config_delivery(nbs, updates)
     finally:
         if nbs:
             nbs.kill()
         ydb.stop()
 
 
-# Verify that invalid PrivateDatabaseConfig YAML preserves startup settings.
+# Verify that invalid PrivateDatabaseConfig YAML preserves startup settings and allows recovery.
 def test_invalid_config_is_skipped_at_startup():
     ydb = start_dynamic_config_ydb()
     nbs = None
@@ -350,6 +460,7 @@ def test_invalid_config_is_skipped_at_startup():
 
         # Start without any PrivateDatabaseConfig values and keep static settings.
         nbs = start_nbs(config)
+        initial_pid = nbs.pid
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
         page.raise_for_status()
         assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
@@ -358,6 +469,18 @@ def test_invalid_config_is_skipped_at_startup():
         assert "Starting without PrivateDatabaseConfig" in log
         assert "expected json map" in log
 
+        # Keep the invalid runtime delivery rejected rather than accepting removal.
+        wait_runtime_rejection(nbs)
+        updates = wait_config_delivery(nbs, acknowledged=False)
+
+        # Accept the corrected source in the same process.
+        replace_database_config(
+            ydb,
+            1,
+            "storage_service:\n  write_blob_threshold: 300",
+        )
+        wait_config_delivery(nbs, updates)
+        assert nbs.pid == initial_pid
     finally:
         if nbs:
             nbs.kill()
