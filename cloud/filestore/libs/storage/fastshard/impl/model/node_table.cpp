@@ -103,6 +103,10 @@ NProto::TError TNodeTable::ResizeNode(
         return error;
     }
 
+    if (slot.Size == newSize) {
+        return {};
+    }
+
     slot.Size = Max(slot.Size, newSize);
 
     return Slots
