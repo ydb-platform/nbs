@@ -24,16 +24,18 @@ public:
     // Exchanges w last successful write lsn
     virtual ui64 LinkRecord(ui64 lsn) = 0;
 
-    virtual ui64 GetPageSize() const = 0;
-    virtual void CommitPages(const TVector<ui64>& pages) = 0;
-    virtual void RollbackPages(const TVector<ui64>& pages) = 0;
+    [[nodiscard]] virtual ui64 GetPageSize() const = 0;
+    virtual void CommitPages(ui64 lsn, const TVector<ui64>& pages) = 0;
+    virtual void RollbackPages(ui64 lsn, const TVector<ui64>& pages) = 0;
     [[nodiscard]] virtual NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
         TBuffer page,
         TVector<TPageGroup>& logRecord) = 0;
     [[nodiscard]] virtual NProto::TError
-    ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
+    ReadPageForLookup(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
+    [[nodiscard]] virtual NProto::TError
+    ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
 
     /**
      * Drops all cached pages. Only committed pages may be cached at the
@@ -93,7 +95,7 @@ public:
     {
         if (!Context.PagesCollected) {
             auto pages = CollectPages(Context);
-            Store.RollbackPages(pages);
+            Store.RollbackPages(Context.Lsn, pages);
         }
 
         // TODO(#5895) - notify storage that this Lsn was skipped
