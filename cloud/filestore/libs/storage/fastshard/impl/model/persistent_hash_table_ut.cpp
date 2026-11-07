@@ -202,6 +202,48 @@ TEST(PersistentHashTableTest, Delete)
     EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
 }
 
+TEST(PersistentHashTableTest, PutReusesTombstoneInFullTable)
+{
+    auto pageStore = CreateMemPageStore(PageSize);
+    TPersistentHashTable<ui64, TSlot> ht(
+        0,   // firstPageNo
+        1,   // pageCount
+        PageSize,
+        sizeof(TSlot),
+        tombstone,
+        pageStore,
+        [](const TSlot& slot) { return slot.B; },
+        [](const ui64& key) { return IntHash(key); });
+
+    const ui64 slotCount = PageSize / sizeof(TSlot);
+    TVector<TPageGroup> pageGroups;
+    for (ui64 key = 0; key < slotCount; ++key) {
+        const auto error = ht.Put(
+            pageStore->AllocateLsn(),
+            TSlot{.B = key},
+            pageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(pageGroups, *pageStore);
+    }
+
+    auto error =
+        ht.Put(pageStore->AllocateLsn(), TSlot{.B = slotCount}, pageGroups);
+    EXPECT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
+
+    TSlot slot;
+    error = ht.Delete(pageStore->AllocateLsn(), 7, &slot, pageGroups);
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *pageStore);
+
+    error = ht.Put(pageStore->AllocateLsn(), TSlot{.B = slotCount}, pageGroups);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+    Flush(pageGroups, *pageStore);
+
+    ui64 slotNo = 0;
+    error = ht.Get(0 /* lsn */, slotCount, &slot, &slotNo);
+    EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+}
+
 TEST(PersistentHashTableTest, PutGetUpdateRandomized)
 {
     TFixture fx;
