@@ -2286,6 +2286,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
     Y_UNIT_TEST(DataObservedByROTxUponCompletionShouldNeverBeStale)
     {
+        if (IsRdmaForced()) {
+            // the filter would see each response twice
+            return;
+        }
+
         TTestEnv env;
 
         ui32 nodeIdx = env.AddDynamicNode();

@@ -23,6 +23,27 @@ package NCloud.NFileStore.NProtoPrivate;
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
+// RDMA tablet side channel envelope.
+//
+// The serialized request/response body travels in the data segment of the RDMA
+// message, not in these protos.
+
+message TTabletRdmaRequest
+{
+    // Target index tablet.
+    uint64 TabletId = 1;
+
+    // Event type of the wrapped request.
+    uint32 MethodId = 2;
+}
+
+message TTabletRdmaResponse
+{
+    // Event type of the wrapped response.
+    uint32 MethodId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // WaitReady request/response.
 
 message TWaitReadyRequest

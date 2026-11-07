@@ -1,6 +1,7 @@
 #pragma once
 
 #include "helpers.h"
+#include "rdma_tablet_injector.h"
 #include "test_env.h"
 
 #include <cloud/filestore/libs/storage/api/service.h>
@@ -9,12 +10,15 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/events/tablet_private.h>
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_server_handler.h>
 
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/testlib/test_client.h>
 #include <contrib/ydb/core/filestore/core/filestore.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/system/env.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -97,6 +101,14 @@ inline ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex)
 
 constexpr i32 DefaultPid = 123;
 
+// NFS_FORCE_RDMA routes tablet requests through the RDMA side channel
+inline bool IsRdmaForced()
+{
+    return !GetEnv("NFS_FORCE_RDMA").empty();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletClient
 {
 private:
@@ -113,6 +125,8 @@ private:
 
     TStorageConfig StorageConfig;
 
+    std::unique_ptr<TRdmaTabletInjector> RdmaInjector;
+
 public:
     TIndexTabletClient(
             NKikimr::TTestActorRuntime& runtime,
@@ -127,6 +141,11 @@ public:
         , StorageConfig(storageConfig)
     {
         Sender = Runtime.AllocateEdgeActor(NodeIdx);
+
+        if (IsRdmaForced()) {
+            RdmaInjector =
+                std::make_unique<TRdmaTabletInjector>(Runtime, NodeIdx);
+        }
 
         ReconnectPipe();
 
@@ -163,6 +182,20 @@ public:
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
+        if constexpr (requires { request->Record; }) {
+            if (RdmaInjector && IsRdmaTabletMethod(TRequest::EventType) &&
+                !request->GetPayloadCount())
+            {
+                RdmaInjector->Send(
+                    TabletId,
+                    TRequest::EventType,
+                    request->Record,
+                    Sender,
+                    cookie);
+                return;
+            }
+        }
+
         Runtime.SendToPipe(
             PipeClient,
             Sender,
