@@ -353,7 +353,7 @@ NThreading::TFuture<NProto::TError> TDiscoveryService::FetchInstances(
             {
                 p->ScheduleFetch(interval, fetcher, instances);
             }
-            return future;
+            return future.GetValue();
         }
     );
 }
