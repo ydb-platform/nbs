@@ -140,6 +140,7 @@ private:
         IInstanceFetcher& fetcher,
         TInstanceList& instances);
     NThreading::TFuture<NProto::TError> FetchInstances(
+        const TDuration interval,
         IInstanceFetcher& fetcher,
         TInstanceList& instances);
 
@@ -276,7 +277,7 @@ void TDiscoveryService::InitializeInstances(
     }
 
     auto weak_ptr = weak_from_this();
-    FetchInstances(fetcher, instances).Subscribe(
+    FetchInstances(interval, fetcher, instances).Subscribe(
         [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (const auto& future) {
             auto p = weak_ptr.lock();
             if (!p || AtomicGet(p->ShouldStop)) {
@@ -318,19 +319,14 @@ void TDiscoveryService::ScheduleFetch(
         Timer->Now() + interval,
         [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] {
             if (auto p = weak_ptr.lock()) {
-                p->FetchInstances(fetcher, instances).Subscribe(
-                    [weak_ptr, interval, &fetcher, &instances] (const auto&) {
-                        if (auto p = weak_ptr.lock()) {
-                            p->ScheduleFetch(interval, fetcher, instances);
-                        }
-                    }
-                );
+                p->FetchInstances(interval, fetcher, instances);
             }
         }
     );
 }
 
 NThreading::TFuture<NProto::TError> TDiscoveryService::FetchInstances(
+    const TDuration interval,
     IInstanceFetcher& fetcher,
     TInstanceList& instances)
 {
@@ -338,14 +334,28 @@ NThreading::TFuture<NProto::TError> TDiscoveryService::FetchInstances(
         return NThreading::MakeFuture(NProto::TError{});
     }
 
+    NThreading::TFuture<NProto::TError> response;
     try {
-        return fetcher.FetchInstances(instances);
+        response = fetcher.FetchInstances(instances);
     } catch (...) {
         const auto message = CurrentExceptionMessage();
         STORAGE_ERROR("unexpected fetch error: " << message);
         Counters.OnUnexpectedFetchError();
-        return NThreading::MakeFuture(MakeError(E_FAIL, message));
+        response = NThreading::MakeFuture(MakeError(E_FAIL, message));
     }
+
+    auto weak_ptr = weak_from_this();
+    return response.Apply(
+        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (const auto& future) {
+            auto p = weak_ptr.lock();
+            if (p && !AtomicGet(p->ShouldStop)
+                    && AtomicGet(instances.HealthCheckDone))
+            {
+                p->ScheduleFetch(interval, fetcher, instances);
+            }
+            return future;
+        }
+    );
 }
 
 void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)

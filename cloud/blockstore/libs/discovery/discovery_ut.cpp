@@ -18,6 +18,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
+
 #include <util/stream/file.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
@@ -166,11 +168,15 @@ struct TControlledInstanceFetcher
 {
     TInstanceList* Instances = nullptr;
     NThreading::TPromise<NProto::TError> Response;
+    bool FailSynchronously = false;
 
     NThreading::TFuture<NProto::TError> FetchInstances(
         TInstanceList& instances) override
     {
         ++FetchCount;
+        if (FailSynchronously) {
+            ythrow yexception() << "synchronous fetch failure";
+        }
         Instances = &instances;
         Response = NThreading::NewPromise<NProto::TError>();
         return Response;
@@ -608,6 +614,38 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             checksBeforeRetry + 1,
             env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetrySynchronousPeriodicFetchFailure)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Complete({Instance("eds-old", 1)});
+        env.HealthChecker->Promise.SetValue();
+
+        env.Fetcher->FailSynchronously = true;
+        env.AdvanceTime(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-old", response.GetInstances(0).GetHost());
+
+        env.Fetcher->FailSynchronously = false;
+        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+        env.Fetcher->Complete({Instance("eds-new", 2)});
+
+        env.AdvanceTime(TDuration::Seconds(1));
+        response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-new", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(0).GetPort());
         UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
 
         env.Discovery->Stop();
