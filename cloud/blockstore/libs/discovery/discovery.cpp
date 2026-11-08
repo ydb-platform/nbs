@@ -294,12 +294,11 @@ void TDiscoveryService::InitializeInstances(
                     return;
                 }
                 p->HealthCheckInstances(instances).Subscribe(
-                    [weak_ptr, interval, &fetcher, &instances] (const auto& future) {
+                    [weak_ptr, interval, &fetcher, &instances] (const auto&) {
                         if (auto p = weak_ptr.lock()) {
                             if (AtomicGet(p->ShouldStop)) {
                                 return;
                             }
-                            future.GetValue();
                             p->ScheduleFetch(interval, fetcher, instances);
                             p->ScheduleHealthCheck(instances);
                         }
@@ -395,12 +394,11 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
                     return;
                 }
                 p->HealthCheckInstances(instances).Subscribe(
-                    [weak_ptr, &instances] (const auto& future) {
+                    [weak_ptr, &instances] (const auto&) {
                         if (auto p = weak_ptr.lock()) {
                             if (AtomicGet(p->ShouldStop)) {
                                 return;
                             }
-                            future.GetValue();
                             p->ScheduleHealthCheck(instances);
                         }
                     }
@@ -419,12 +417,11 @@ NThreading::TFuture<void> TDiscoveryService::HealthCheckInstances(
 
     auto weak_ptr = weak_from_this();
     return HealthChecker->UpdateStatus(instances).Apply(
-        [weak_ptr = std::move(weak_ptr), &instances] (const auto& future) {
+        [weak_ptr = std::move(weak_ptr), &instances] (const auto&) {
             if (auto p = weak_ptr.lock()) {
                 if (AtomicGet(p->ShouldStop)) {
                     return;
                 }
-                future.GetValue();
                 p->BalancingPolicy->Reorder(instances);
                 AtomicSet(instances.HealthCheckDone, true);
             }
