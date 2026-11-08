@@ -297,7 +297,6 @@ void TDiscoveryService::InitializeInstances(
                 [weak_ptr, interval, &fetcher, &instances] (const auto&) {
                     if (auto p = weak_ptr.lock()) {
                         p->ScheduleFetch(interval, fetcher, instances);
-                        p->ScheduleHealthCheck(instances);
                     }
                 }
             );
@@ -360,13 +359,7 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
         Timer->Now() + Config->GetHealthCheckInterval(),
         [weak_ptr = std::move(weak_ptr), &instances] {
             if (auto p = weak_ptr.lock()) {
-                p->HealthCheckInstances(instances).Subscribe(
-                    [weak_ptr, &instances] (const auto&) {
-                        if (auto p = weak_ptr.lock()) {
-                            p->ScheduleHealthCheck(instances);
-                        }
-                    }
-                );
+                p->HealthCheckInstances(instances);
             }
         }
     );
@@ -388,6 +381,7 @@ NThreading::TFuture<void> TDiscoveryService::HealthCheckInstances(
                 }
                 p->BalancingPolicy->Reorder(instances);
                 AtomicSet(instances.HealthCheckDone, true);
+                p->ScheduleHealthCheck(instances);
             }
         }
     );
