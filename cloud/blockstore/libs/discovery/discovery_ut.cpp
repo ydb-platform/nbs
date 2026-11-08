@@ -525,23 +525,15 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         env.Discovery->Stop();
     }
 
-    Y_UNIT_TEST(ShouldRetryInitialHealthCheckBeforeStartingPeriodicFetch)
+    Y_UNIT_TEST(ShouldStartPeriodicFetchOnceAfterInitialHealthCheck)
     {
         TEdsStartupTestEnv env;
         env.Fetcher->Complete({Instance("eds-host", 1)});
-        env.HealthChecker->Promise.SetException("initial healthcheck failed");
-        env.HealthChecker->Promise = NThreading::NewPromise();
         env.AssertNotReady();
 
-        env.AdvanceTime(TDuration::MilliSeconds(999));
-        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
-        env.AdvanceTime(TDuration::MilliSeconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
-        env.AssertNotReady();
-
-        env.AdvanceTime(TDuration::Seconds(3));
+        env.AdvanceTime(TDuration::Seconds(4));
         UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
         env.AssertNotReady();
 
         env.HealthChecker->Promise.SetValue();
@@ -553,7 +545,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         for (ui32 i = 0; i < 2; ++i) {
             env.AdvanceTime(TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
-            UNIT_ASSERT_VALUES_EQUAL(3 + i, env.HealthChecker->TrackedChecks);
+            UNIT_ASSERT_VALUES_EQUAL(2 + i, env.HealthChecker->TrackedChecks);
         }
         env.AdvanceTime(TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
@@ -633,6 +625,22 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
         UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->CompletedChecks);
         UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->PendingChecks);
+        env.AssertNotReady();
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreInitialHealthCheckCompletedAfterStop)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        env.AssertNotReady();
+
+        env.Discovery->Stop();
+        env.HealthChecker->Promise.SetValue();
+        env.AdvanceTime(TDuration::Seconds(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
         env.AssertNotReady();
     }
 
