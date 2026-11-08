@@ -19,7 +19,6 @@
 #include <util/generic/hash_set.h>
 
 #include <array>
-#include <functional>
 #include <utility>
 
 using namespace NMonitoring;
@@ -150,11 +149,15 @@ private:
         bool initial);
 
     void ScheduleHealthCheck(
+        const TDuration interval,
+        IInstanceFetcher& fetcher,
         TInstanceList& instances,
-        std::function<void()> onInitialized);
+        bool initial);
     void HealthCheckInstances(
+        const TDuration interval,
+        IInstanceFetcher& fetcher,
         TInstanceList& instances,
-        std::function<void()> onInitialized);
+        bool initial);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -327,12 +330,10 @@ void TDiscoveryService::FetchInstances(
                         }
                         if (initial) {
                             p->HealthCheckInstances(
+                                interval,
+                                fetcher,
                                 instances,
-                                [weak_ptr, interval, &fetcher, &instances] {
-                                    if (auto p = weak_ptr.lock()) {
-                                        p->ScheduleFetch(interval, fetcher, instances, false);
-                                    }
-                                }
+                                initial
                             );
                             return;
                         }
@@ -355,8 +356,10 @@ void TDiscoveryService::FetchInstances(
 }
 
 void TDiscoveryService::ScheduleHealthCheck(
+    const TDuration interval,
+    IInstanceFetcher& fetcher,
     TInstanceList& instances,
-    std::function<void()> onInitialized)
+    bool initial)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -365,17 +368,19 @@ void TDiscoveryService::ScheduleHealthCheck(
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + Config->GetHealthCheckInterval(),
-        [weak_ptr = std::move(weak_ptr), &instances, onInitialized] {
+        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances, initial] {
             if (auto p = weak_ptr.lock()) {
-                p->HealthCheckInstances(instances, onInitialized);
+                p->HealthCheckInstances(interval, fetcher, instances, initial);
             }
         }
     );
 }
 
 void TDiscoveryService::HealthCheckInstances(
+    const TDuration interval,
+    IInstanceFetcher& fetcher,
     TInstanceList& instances,
-    std::function<void()> onInitialized)
+    bool initial)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -384,7 +389,7 @@ void TDiscoveryService::HealthCheckInstances(
     try {
         auto weak_ptr = weak_from_this();
         HealthChecker->UpdateStatus(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), &instances, onInitialized] (auto future) {
+            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances, initial] (auto future) {
                 if (auto p = weak_ptr.lock()) {
                     if (AtomicGet(p->ShouldStop)) {
                         return;
@@ -398,13 +403,13 @@ void TDiscoveryService::HealthCheckInstances(
                         STORAGE_ERROR("healthcheck error: "
                             << CurrentExceptionMessage());
                         p->Counters.OnUnexpectedHealthCheckError();
-                        p->ScheduleHealthCheck(instances, onInitialized);
+                        p->ScheduleHealthCheck(interval, fetcher, instances, initial);
                         return;
                     }
-                    if (onInitialized) {
-                        onInitialized();
+                    if (initial) {
+                        p->ScheduleFetch(interval, fetcher, instances, false);
                     }
-                    p->ScheduleHealthCheck(instances, {});
+                    p->ScheduleHealthCheck(interval, fetcher, instances, false);
                 }
             }
         );
@@ -412,7 +417,7 @@ void TDiscoveryService::HealthCheckInstances(
         STORAGE_ERROR("unexpected healthcheck error: "
             << CurrentExceptionMessage());
         Counters.OnUnexpectedHealthCheckError();
-        ScheduleHealthCheck(instances, onInitialized);
+        ScheduleHealthCheck(interval, fetcher, instances, initial);
     }
 }
 

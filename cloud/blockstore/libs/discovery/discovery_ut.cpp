@@ -525,6 +525,48 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         env.Discovery->Stop();
     }
 
+    Y_UNIT_TEST(ShouldRetryInitialHealthCheckBeforeStartingPeriodicFetch)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        env.HealthChecker->Promise.SetException("initial healthcheck failed");
+        env.HealthChecker->Promise = NThreading::NewPromise();
+        env.AssertNotReady();
+
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        env.AssertNotReady();
+
+        env.AdvanceTime(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        env.AssertNotReady();
+
+        env.HealthChecker->Promise.SetValue();
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
+
+        for (ui32 i = 0; i < 2; ++i) {
+            env.AdvanceTime(TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+            UNIT_ASSERT_VALUES_EQUAL(3 + i, env.HealthChecker->TrackedChecks);
+        }
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
     Y_UNIT_TEST(ShouldKeepServingInstancesWhenPeriodicEdsFetchFails)
     {
         TEdsStartupTestEnv env;
