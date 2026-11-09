@@ -66,7 +66,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
         // A flushed blob does not count even before it is trimmed.
-        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1));
         UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
@@ -74,8 +74,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2, 1));
-        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3, 1));
+        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2));
+        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
@@ -105,7 +105,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         // A flushed blob above the trim boundary waits for the write that
         // holds the boundary.
-        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3, 0));
+        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
@@ -116,7 +116,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
 
-        UNIT_ASSERT_VALUES_EQUAL(50, state.FlushFreshBlob(5, 3));
+        UNIT_ASSERT_VALUES_EQUAL(50, state.FlushFreshBlob(5));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
     }
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
         state.AddFreshBlob(3, 30, TInstant::Zero());
-        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2, 1));
+        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
@@ -165,7 +165,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
-        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
@@ -173,12 +173,12 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2, 1));
+        UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2));
         UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(2));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
                                  state.GetFirstUnflushedFreshBlobTimestamp(2));
 
-        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3, 2));
+        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3));
         UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(3));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
@@ -191,7 +191,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         state.AddFreshBlob(2, 20, TInstant::Zero());
         state.AddFreshBlob(3, 30, TInstant::Zero());
 
-        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(10, state.FlushFreshBlob(1));
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetUnflushedFreshBlobCount());
         UNIT_ASSERT_VALUES_EQUAL(50, state.GetUnflushedFreshBlobByteCount());
 
@@ -202,11 +202,11 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
 
         // A flush that captured trimmed blob 2 counts nothing.
-        UNIT_ASSERT_VALUES_EQUAL(0, state.FlushFreshBlob(2, 2));
+        UNIT_ASSERT_VALUES_EQUAL(0, state.FlushFreshBlob(2));
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetUnflushedFreshBlobCount());
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUnflushedFreshBlobByteCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3, 2));
+        UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobCount());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobByteCount());
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
@@ -214,7 +214,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(3));
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -2068,6 +2068,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         TPartitionThreadSafeStatePtr sharedState;
         bool holdAddBlobs = false;
         std::unique_ptr<IEventHandle> addBlobs;
+        size_t flushedFreshBlobCount = 0;
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
@@ -2096,6 +2097,13 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
                     holdAddBlobs = false;
                     addBlobs.reset(event.Release());
                     return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushCompleted)
+                {
+                    flushedFreshBlobCount =
+                        event->Get<TEvPartitionPrivate::TEvFlushCompleted>()
+                            ->FlushedFreshBlobCommitIds.size();
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -2134,6 +2142,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             S_OK,
             partition.RecvFlushResponse()->GetStatus());
         runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(3, flushedFreshBlobCount);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             sharedState->UnflushedFreshBlobByteCount.load());
