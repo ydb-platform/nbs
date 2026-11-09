@@ -443,14 +443,7 @@ void TStatsServiceActor::UpdateVolumePartCounters(
 
     volume->PerfCounters.DiskCounters.Add(*partCounters.DiskCounters);
     volume->PerfCounters.YdbDiskCounters.Add(*partCounters.DiskCounters);
-
-    const auto& diff = partCounters.DiskCounters->RequestCounters;
-    auto& total = volume->TotalBlobIoCounters;
-
-    total.ReadBlob.Count += diff.ReadBlob.Count;
-    total.ReadBlob.Bytes += diff.ReadBlob.RequestBytes;
-    total.WriteBlob.Count += diff.WriteBlob.Count;
-    total.WriteBlob.Bytes += diff.WriteBlob.RequestBytes;
+    volume->TotalBlobIoCounters.Add(partCounters.DiskCounters->RequestCounters);
 
     State.GetTotalCounters().UpdatePartCounters(*partCounters.DiskCounters);
 
