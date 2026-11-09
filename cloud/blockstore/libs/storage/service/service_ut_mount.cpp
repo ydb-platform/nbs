@@ -5402,6 +5402,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             options.FinalEvents.emplace_back(TEvTablet::EvTabletDead);
             env.GetRuntime().DispatchEvents(options);
         }
+        // The volume proxy still points the disk id at the destroyed tablet
+        // and learns about its death from the first request, which is
+        // rejected.
+        service.SendCreateVolumeRequest(
+            DefaultDiskId,
+            512,
+            DefaultBlockSize,
+            TString(),
+            TString()
+        );
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            service.RecvCreateVolumeResponse()->GetStatus());
         service.CreateVolume(
             DefaultDiskId,
             512,

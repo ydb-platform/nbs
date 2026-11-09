@@ -30,6 +30,7 @@ SRCS(
     storage_request_counters.cpp
     tablet.cpp
     tablet_counters.cpp
+    tablet_proxy_config.cpp
     tablet_schema.cpp
     tenant.cpp
     ts_ring_buffer.cpp
@@ -57,6 +58,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/features
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/libs/tablet_proxy
 
     contrib/libs/openssl
 

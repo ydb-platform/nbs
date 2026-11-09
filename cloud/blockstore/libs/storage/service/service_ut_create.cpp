@@ -18,6 +18,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -1548,8 +1549,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             });
 
         for (size_t i = 0; i < sentMediaKinds.size(); ++i) {
+            const TString diskId = DefaultDiskId + ToString(i);
             service.CreateVolume(
-                DefaultDiskId,
+                diskId,
                 DefaultBlocksCount,
                 DefaultBlockSize,
                 TString(),
@@ -1557,7 +1559,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 sentMediaKinds[i]);
             UNIT_ASSERT(createBlockStoreVolumeEventCount == (i + 1));
 
-            service.DestroyVolume();
+            service.DestroyVolume(diskId);
         }
     }
 
@@ -1680,26 +1682,27 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
         }
 
-        service.CreateVolume();
+        const TString diskId = "vol1";
+        service.CreateVolume(diskId);
         client.SetInstanceId("i");
         client.SetDisconnectTimestamp(runtime.GetCurrentTime().MicroSeconds());
 
         // clients with fresh disconnect timestamps should prevent disk
         // destruction
-        service.SendDestroyVolumeRequest(DefaultDiskId);
+        service.SendDestroyVolumeRequest(diskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 
-        service.DescribeVolume();
+        service.DescribeVolume(diskId);
 
         client.SetDisconnectTimestamp(
             (runtime.GetCurrentTime() - TDuration::Seconds(61)).MicroSeconds());
 
         // clients who disconected a long time ago should not prevent disk
         // destruction
-        service.SendDestroyVolumeRequest(DefaultDiskId);
+        service.SendDestroyVolumeRequest(diskId);
         {
             auto response = service.RecvDestroyVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
