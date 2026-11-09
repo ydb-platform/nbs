@@ -101,19 +101,21 @@ TPartitionActor::TPartitionActor(
     const auto codec =
         ParseBlobCompressionCodec(Config->GetBlobCompressionCodec());
     // An unsupported codec disables compression estimation.
-    if (!HasError(codec.GetError())) {
-        BlobCompressor = std::make_shared<TBlobCompressor>(
-            PartitionConfig.GetBlockSize(),
-            codec.GetResult(),
-            TBlobCompressor::TMetricsConfig{
-                .CompressionRate = Config->GetBlobCompressionRate(),
-                .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
-                .PartCounters = SharedState->GetPartCounters()});
-    } else {
+    if (HasError(codec.GetError())) {
         ReportInvalidBlobCompressionCodec(
             FormatError(codec.GetError()),
             {{"disk", PartitionConfig.GetDiskId()}});
     }
+
+    BlobCompressor = std::make_shared<TBlobCompressor>(
+        PartitionConfig.GetBlockSize(),
+        HasError(codec.GetError())
+            ? NProto::TCompressionMetadata::COMPRESSION_NONE
+            : codec.GetResult(),
+        TBlobCompressor::TMetricsConfig{
+            .CompressionRate = Config->GetBlobCompressionRate(),
+            .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
+            .PartCounters = SharedState->GetPartCounters()});
 }
 
 TPartitionActor::~TPartitionActor()

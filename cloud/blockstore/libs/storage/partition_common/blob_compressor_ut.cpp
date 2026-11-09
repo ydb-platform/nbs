@@ -372,6 +372,70 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPlanAndDecompressWithoutConfiguredCodec)
+    {
+        const TBlobCompressor writer(
+            BlockSize,
+            ChunkSize,
+            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
+            std::nullopt);
+        const TString payload = TString(ChunkSize, 'a') +
+                                TString(ChunkSize, 'b') +
+                                TString(BlockSize, 'c');
+        const auto blob =
+            GetResultOrFail(writer.CompressBlob(MakeSgList(payload)));
+        const TBlobCompressor readers[] = {
+            {BlockSize, TCompression::COMPRESSION_NONE, std::nullopt},
+            {BlockSize,
+             ChunkSize,
+             TCompression::COMPRESSION_NONE,
+             std::nullopt}};
+        const TVector<ui16> blocks = {1, 2, 16};
+
+        for (const auto& reader: readers) {
+            const auto plan = GetResultOrFail(reader.PlanReadBlob(
+                MakeBlobId(blob.Data.size()),
+                blob.Compression,
+                blocks));
+            UNIT_ASSERT_VALUES_EQUAL(2, plan.QueriesCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, plan.Queries[0].Shift);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetChunkSize(blob.Compression, blob.Data.size(), 0),
+                plan.Queries[0].Size);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetChunkSize(blob.Compression, blob.Data.size(), 0) +
+                    GetChunkSize(blob.Compression, blob.Data.size(), 1),
+                plan.Queries[1].Shift);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetChunkSize(blob.Compression, blob.Data.size(), 2),
+                plan.Queries[1].Size);
+
+            TVector<TRope> inputs;
+            for (const auto& query:
+                 MakeArrayRef(plan.Queries.Get(), plan.QueriesCount))
+            {
+                inputs.emplace_back(TString(
+                    TStringBuf(blob.Data).SubStr(query.Shift, query.Size)));
+            }
+            TString result(blocks.size() * BlockSize, '?');
+            const auto error = reader.DecompressBlob(
+                inputs,
+                blob.Compression,
+                blob.Data.size(),
+                blocks,
+                MakeSgList(result),
+                nullptr);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            for (size_t i = 0; i < blocks.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TStringBuf(payload).SubStr(
+                        blocks[i] * BlockSize,
+                        BlockSize),
+                    TStringBuf(result).SubStr(i * BlockSize, BlockSize));
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldCompressSeparateBlockBuffers)
     {
         const TBlobCompressor compressor(

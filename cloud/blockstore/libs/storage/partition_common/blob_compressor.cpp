@@ -17,28 +17,30 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NProto;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TCompressionCodec
 {
-    NProto::TCompressionMetadata::ECompressionType Type;
+    TCompressionMetadata::ECompressionType Type;
     TStringBuf Family;
     TStringBuf Name;
 };
 
 constexpr TCompressionCodec CompressionCodecs[] = {
-    {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+    {TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
      "lz4",
      "lz4-fast14-safe"},
-    {NProto::TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
-    {NProto::TCompressionMetadata::COMPRESSION_ZLIB_6, "zlib", "zlib-6"},
-    {NProto::TCompressionMetadata::COMPRESSION_LZMA_5, "lzma", "lzma-5"},
-    {NProto::TCompressionMetadata::COMPRESSION_BZIP2_6, "bzip2", "bzip2-6"},
-    {NProto::TCompressionMetadata::COMPRESSION_FASTLZ_0, "fastlz", "fastlz-0"},
-    {NProto::TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"},
-    {NProto::TCompressionMetadata::COMPRESSION_BROTLI_GENERIC_11,
+    {TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
+    {TCompressionMetadata::COMPRESSION_ZLIB_6, "zlib", "zlib-6"},
+    {TCompressionMetadata::COMPRESSION_LZMA_5, "lzma", "lzma-5"},
+    {TCompressionMetadata::COMPRESSION_BZIP2_6, "bzip2", "bzip2-6"},
+    {TCompressionMetadata::COMPRESSION_FASTLZ_0, "fastlz", "fastlz-0"},
+    {TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"},
+    {TCompressionMetadata::COMPRESSION_BROTLI_GENERIC_11,
      "brotli",
      "brotli_11"}};
 
@@ -52,7 +54,7 @@ std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
 }
 
 TResultOrError<const NBlockCodecs::ICodec*> GetCodec(
-    NProto::TCompressionMetadata::ECompressionType codec)
+    TCompressionMetadata::ECompressionType codec)
 {
     try {
         for (const auto& entry: CompressionCodecs) {
@@ -77,7 +79,7 @@ TResultOrError<const NBlockCodecs::ICodec*> GetCodec(
     }
 }
 
-NProto::TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
+TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
 {
     if (!blockSize) {
         return MakeError(E_ARGUMENT, "Block size must be nonzero");
@@ -91,7 +93,7 @@ NProto::TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
     return {};
 }
 
-NProto::TError ValidateCompressBlobInput(
+TError ValidateCompressBlobInput(
     ui32 blockSize,
     const std::optional<ui32>& chunkSize,
     const TSgList& blobPayload)
@@ -115,7 +117,7 @@ NProto::TError ValidateCompressBlobInput(
 }
 
 ui32 GetCompressedChunkSize(
-    const NProto::TCompressionMetadata& compression,
+    const TCompressionMetadata& compression,
     ui32 lastChunkSize,
     size_t chunk)
 {
@@ -126,10 +128,10 @@ ui32 GetCompressedChunkSize(
     return values[chunk];
 }
 
-NProto::TError ValidateReadBlobInput(
+TError ValidateReadBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
-    const NProto::TCompressionMetadata& compression,
+    const TCompressionMetadata& compression,
     ui32 blobSize,
     const TVector<ui16>& blockOffsets,
     ui32& lastChunkSize)
@@ -171,10 +173,10 @@ NProto::TError ValidateReadBlobInput(
     return {};
 }
 
-NProto::TError ValidateDecompressBlobInput(
+TError ValidateDecompressBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
-    const NProto::TCompressionMetadata& compression,
+    const TCompressionMetadata& compression,
     ui32 blobSize,
     const TVector<ui16>& blockOffsets,
     const TSgList& outputBuffers,
@@ -210,7 +212,7 @@ NProto::TError ValidateDecompressBlobInput(
     return {};
 }
 
-NProto::TError DecodeChunk(
+TError DecodeChunk(
     const NBlockCodecs::ICodec& codec,
     TStringBuf compressed,
     ui32 blockSize,
@@ -249,7 +251,7 @@ NProto::TError DecodeChunk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<NProto::TCompressionMetadata::ECompressionType>
+TResultOrError<TCompressionMetadata::ECompressionType>
 ParseBlobCompressionCodec(TStringBuf codecName)
 {
     for (const auto& entry: CompressionCodecs) {
@@ -269,7 +271,10 @@ TBlobCompressor::TBlobCompressor(
     ECompressionType codec,
     std::optional<TMetricsConfig> metricsConfig)
     : CompressionType(codec)
-    , BlobCodec(GetCodec(codec))
+    , BlobCodec(
+          codec == TCompressionMetadata::COMPRESSION_NONE
+              ? MakeError(E_ARGUMENT, "Compression type is not provided")
+              : GetCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
     , BlockSize(blockSize)
     , ChunkSize(chunkSize)
@@ -280,7 +285,10 @@ TBlobCompressor::TBlobCompressor(
     ECompressionType codec,
     std::optional<TMetricsConfig> metricsConfig)
     : CompressionType(codec)
-    , BlobCodec(GetCodec(codec))
+    , BlobCodec(
+          codec == TCompressionMetadata::COMPRESSION_NONE
+              ? MakeError(E_ARGUMENT, "Compression type is not provided")
+              : GetCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
     , BlockSize(blockSize)
     , ChunkSize(std::nullopt)
@@ -343,9 +351,9 @@ TResultOrError<TBlobCompressor::TCompressedBlob> TBlobCompressor::CompressBlob(
     return result;
 }
 
-NProto::TError TBlobCompressor::DecompressBlob(
+TError TBlobCompressor::DecompressBlob(
     const TVector<TRope>& compressedBuffers,
-    const NProto::TCompressionMetadata& compression,
+    const TCompressionMetadata& compression,
     const ui32 blobSize,
     const TVector<ui16>& blockOffsets,
     const TSgList& outputBuffers,
@@ -454,7 +462,7 @@ NProto::TError TBlobCompressor::DecompressBlob(
 
 TResultOrError<TBlobCompressor::TReadPlan> TBlobCompressor::PlanReadBlob(
     const NKikimr::TLogoBlobID& blobId,
-    const NProto::TCompressionMetadata& compression,
+    const TCompressionMetadata& compression,
     const TVector<ui16>& blockOffsets) const
 {
     if (blockOffsets.empty()) {
