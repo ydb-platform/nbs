@@ -10,7 +10,13 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/vector.h>
+
 namespace NCloud::NJournalled {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TJournalRecords = TVector<NProto::TJournalRecord>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -47,8 +53,10 @@ struct IJournal
     // Background cleanup
     //
 
-    [[nodiscard]] virtual auto GetRecordToFlush(ui64 maxAllowedLsn) const
-        -> NThreading::TFuture<TResultOrError<NProto::TJournalRecord>> = 0;
+    [[nodiscard]] virtual auto GetRecordsToFlush(
+        ui64 maxAllowedLsn,
+        ui64 maxPageCount) const
+        -> NThreading::TFuture<TResultOrError<TJournalRecords>> = 0;
 
     virtual void MarkRecordAsFlushed(ui64 lsn) = 0;
 
