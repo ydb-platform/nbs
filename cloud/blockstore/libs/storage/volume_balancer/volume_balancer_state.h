@@ -5,9 +5,9 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
@@ -23,17 +23,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
-    struct TYdbDiskLoadCounters
-    {
-        struct TBlobCounters
-        {
-            ui64 Count = 0;
-            ui64 Bytes = 0;
-        };
-        TBlobCounters ReadBlob;
-        TBlobCounters WriteBlob;
-    };
-
     struct TVolumeInfo
     {
         TString CloudId;
