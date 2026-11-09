@@ -99,6 +99,14 @@ bool TXAttrCache::IsCacheable(
            NodeInvalidations.IsCacheable(ino, cacheVersion);
 }
 
+void TXAttrCache::Erase(ui64 ino, const TString& name)
+{
+    auto it = Cache.Find({ino, name});
+    if (it != Cache.End()) {
+        Cache.Erase(it);
+    }
+}
+
 TInstant TXAttrCache::GetDeadline(TDuration cacheTTL) const
 {
     return Timer->Now() + (cacheTTL ? cacheTTL : Timeout);
@@ -112,11 +120,21 @@ void TXAttrCache::Add(
     ui64 cacheVersion,
     TDuration cacheTTL)
 {
+    const auto* current = Get(ino, name);
     if (!IsCacheable(ino, name, cacheVersion)) {
+        //
+        // The value may be outdated, but it is still newer than a cached
+        // value with a lower version or a cached absence - such an entry is
+        // stale (e.g. it has been fetched by a GetNodeXAttr which has raced
+        // with the client's own SetNodeXAttr).
+        //
+
+        if (current && current->Version < version) {
+            Erase(ino, name);
+        }
         return;
     }
 
-    const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
             TKey{ino, name},
@@ -137,6 +155,18 @@ void TXAttrCache::AddAbsent(
     ui64 cacheVersion,
     TDuration cacheTTL)
 {
+    //
+    // The absence has no version (see the E_FS_NOXATTR responses) - it can't
+    // be ordered against a cached value, e.g. against the value set by the
+    // client's own SetNodeXAttr. Neither of them is kept then.
+    //
+
+    const auto* current = Get(ino, name);
+    if (current && current->Value) {
+        Erase(ino, name);
+        return;
+    }
+
     if (!IsCacheable(ino, name, cacheVersion)) {
         return;
     }
@@ -187,10 +217,7 @@ void TXAttrCache::Invalidate(ui64 ino, const TString& name, ui64 version)
         TXAttrCacheKey{.NodeId = ino, .Name = name},
         version);
 
-    auto it = Cache.Find({ino, name});
-    if (it != Cache.End()) {
-        Cache.Erase(it);
-    }
+    Erase(ino, name);
 }
 
 size_t TXAttrCache::GetEntryCount() const

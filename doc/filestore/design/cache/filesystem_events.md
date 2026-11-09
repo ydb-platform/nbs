@@ -58,6 +58,15 @@ nonzero TTL means the client is subscribed to the corresponding key.
   - GetNodeAttr: NodeRef TTL from the main tablet, Node TTL from the shard
   - ListNodes: Node TTL = min over the main tablet and the shards
 - Negative caching is allowed for XAttrs only
+- XAttr values carry a version (a per-tablet counter incremented upon each
+  XAttr write) which orders the values of the same XAttr; `E_FS_NOXATTR`
+  responses carry no version, so an absence can't be ordered against a
+  value - the client drops both instead of caching the absence over a cached
+  value
+- A response which may not be cached (it has raced with an invalidation)
+  still erases the cached value with a lower version and the cached absence -
+  otherwise a response to a GetNodeXAttr racing with the client's own
+  SetNodeXAttr could stay in the cache and break read-after-write
 - XAttrCacheTTL = 0: the client falls back to the legacy time-based
   expiration (`XAttrCacheTimeout`) - the cache predates FileSystemEvents
 

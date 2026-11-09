@@ -225,7 +225,9 @@ public:
 
     /**
      * Caches an xattr value unless the xattr has been invalidated after
-     * cacheVersion or a newer value is cached.
+     * cacheVersion or a newer value is cached. A value which may not be
+     * cached still erases the cached value with a lower version and the
+     * cached absence.
      *
      * @param ino - Node id.
      * @param name - Xattr name.
@@ -246,7 +248,8 @@ public:
 
     /**
      * Caches the absence of an xattr unless the xattr has been invalidated
-     * after cacheVersion.
+     * after cacheVersion. The absence has no version, so if a value is
+     * cached, the value is erased and the absence is not cached.
      *
      * @param ino - Node id.
      * @param name - Xattr name.
@@ -305,6 +308,7 @@ public:
 
 private:
     bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
+    void Erase(ui64 ino, const TString& name);
     TInstant GetDeadline(TDuration cacheTTL) const;
 };
 
