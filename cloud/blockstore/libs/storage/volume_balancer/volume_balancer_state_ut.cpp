@@ -493,6 +493,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 /*volumeBalancerEnabled=*/true,
                 70,
                 /*featuresConfig=*/nullptr),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
@@ -518,7 +519,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             /*featuresConfig=*/nullptr);
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(false));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(false));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
