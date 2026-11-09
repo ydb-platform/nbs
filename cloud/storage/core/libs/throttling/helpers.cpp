@@ -59,7 +59,7 @@ TDuration CostPerIO(
 {
     Y_DEBUG_ABORT_UNLESS(maxIops);
 
-    double cost = ioCount / static_cast<double>(maxIops);
+    double cost = static_cast<double>(ioCount) / static_cast<double>(maxIops);
 
     // 0 is special value which disables throttling by byteCount
     if (maxBandwidth) {

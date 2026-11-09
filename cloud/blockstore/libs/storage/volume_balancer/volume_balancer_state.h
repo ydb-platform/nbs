@@ -25,10 +25,13 @@ class TVolumeBalancerState
 {
     struct TYdbDiskLoadCounters
     {
-        ui64 ReadBlobCount = 0;
-        ui64 WriteBlobCount = 0;
-        ui64 ReadBlobBytes = 0;
-        ui64 WriteBlobBytes = 0;
+        struct TBlobCounters
+        {
+            ui64 Count = 0;
+            ui64 Bytes = 0;
+        };
+        TBlobCounters ReadBlob;
+        TBlobCounters WriteBlob;
     };
 
     struct TVolumeInfo
@@ -142,8 +145,8 @@ private:
         const TVolumeInfo& volume,
         TInstant now) const;
 
-    std::optional<TDuration> CalculateCost(
-        const TVolumeInfo& info,
+    std::optional<TDuration> CalculateCostPerIO(
+        const TVolumeInfo& prevInfo,
         const TYdbDiskLoadCounters& currentLoad) const;
 };
 

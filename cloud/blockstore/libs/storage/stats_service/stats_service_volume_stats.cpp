@@ -150,8 +150,8 @@ void TStatsServiceActor::HandleGetVolumeStats(
                 const auto& counters =
                     volume->PerfCounters.YdbDiskCounters.RequestCounters;
                 v.SetReadBlobCount(counters.ReadBlob.GetCount());
-                v.SetWriteBlobCount(counters.WriteBlob.GetCount());
                 v.SetReadBlobBytes(counters.ReadBlob.GetRequestBytes());
+                v.SetWriteBlobCount(counters.WriteBlob.GetCount());
                 v.SetWriteBlobBytes(counters.WriteBlob.GetRequestBytes());
             } else {
                 v.SetIsLocal(false);

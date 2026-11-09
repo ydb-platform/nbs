@@ -1,10 +1,12 @@
 #pragma once
 
-#include "cloud/storage/core/libs/common/proto_helpers.h"
-
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
+
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace {
 

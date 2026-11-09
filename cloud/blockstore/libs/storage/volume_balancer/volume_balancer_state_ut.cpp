@@ -1,7 +1,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
-#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut.h>
+#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 

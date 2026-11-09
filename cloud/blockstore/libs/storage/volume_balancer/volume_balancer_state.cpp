@@ -84,13 +84,19 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
         if (info.IsLocal) {
             TYdbDiskLoadCounters currentLoadCounters{
-                v.GetReadBlobCount(),
-                v.GetWriteBlobCount(),
-                v.GetReadBlobBytes(),
-                v.GetWriteBlobBytes(),
+                .ReadBlob =
+                    {
+                        .Count = v.GetReadBlobCount(),
+                        .Bytes = v.GetReadBlobBytes(),
+                    },
+                .WriteBlob =
+                    {
+                        .Count = v.GetWriteBlobCount(),
+                        .Bytes = v.GetWriteBlobBytes(),
+                    },
             };
 
-            info.Cost = CalculateCost(info, currentLoadCounters);
+            info.Cost = CalculateCostPerIO(info, currentLoadCounters);
             info.LoadCounters = currentLoadCounters;
         } else {
             info.Cost = std::nullopt;
@@ -338,28 +344,28 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
            volume.NextPullAttempt <= now && !VolumesInProgress.count(diskId);
 }
 
-std::optional<TDuration> TVolumeBalancerState::CalculateCost(
-    const TVolumeInfo& info,
+std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
+    const TVolumeInfo& prevInfo,
     const TYdbDiskLoadCounters& currentLoad) const
 {
-    if (!info.LoadCounters.has_value()) {
+    if (!prevInfo.LoadCounters.has_value()) {
         // Unable to calculate cost: No counters from previous iteration
         return std::nullopt;
     }
 
-    const auto& last = info.LoadCounters.value();
+    const auto& last = prevInfo.LoadCounters.value();
 
-    if (currentLoad.WriteBlobBytes < last.WriteBlobBytes ||
-        currentLoad.WriteBlobCount < last.WriteBlobCount ||
-        currentLoad.ReadBlobBytes < last.ReadBlobBytes ||
-        currentLoad.ReadBlobCount < last.ReadBlobCount)
+    if (currentLoad.WriteBlob.Bytes < last.WriteBlob.Bytes ||
+        currentLoad.WriteBlob.Count < last.WriteBlob.Count ||
+        currentLoad.ReadBlob.Bytes < last.ReadBlob.Bytes ||
+        currentLoad.ReadBlob.Count < last.ReadBlob.Count)
     {
         // Unable to calculate cost: Negative counters diff
         return std::nullopt;
     }
 
     const auto perfSettings =
-        GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
+        GetPerfSettings(*DiagnosticsConfig, prevInfo.MediaKind);
 
     if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
@@ -374,16 +380,16 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCost(
         CostPerIO(
             perfSettings.Write.Iops,
             perfSettings.Write.Bandwidth,
-            currentLoad.WriteBlobBytes - last.WriteBlobBytes,
-            currentLoad.WriteBlobCount - last.WriteBlobCount);
+            currentLoad.WriteBlob.Bytes - last.WriteBlob.Bytes,
+            currentLoad.WriteBlob.Count - last.WriteBlob.Count);
 
     const TDuration readCost =
         expectedParallelism *
         CostPerIO(
             perfSettings.Read.Iops,
             perfSettings.Read.Bandwidth,
-            currentLoad.ReadBlobBytes - last.ReadBlobBytes,
-            currentLoad.ReadBlobCount - last.ReadBlobCount);
+            currentLoad.ReadBlob.Bytes - last.ReadBlob.Bytes,
+            currentLoad.ReadBlob.Count - last.ReadBlob.Count);
 
     return writeCost + readCost;
 }
