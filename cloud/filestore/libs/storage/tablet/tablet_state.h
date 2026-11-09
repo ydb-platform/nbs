@@ -913,7 +913,8 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
-        const NProto::TSessionOptions& sessionOptions);
+        const NProto::TSessionOptions& sessionOptions,
+        const NProto::TPersistentSessionOptions& persistentSessionOptions);
 
     void RemoveSession(
         IIndexTabletDatabase& db,
