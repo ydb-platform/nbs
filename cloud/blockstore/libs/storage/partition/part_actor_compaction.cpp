@@ -1291,6 +1291,7 @@ class TCompactionTriggerer
 private:
     const TStorageConfigConstPtr Config;
     TPartitionState& State;
+    const bool TidyUpPartitionMode;
 
     TRangeStat TopRangeStat;
     TRangeStat TopByBlobCount;
@@ -1344,12 +1345,12 @@ public:
     };
 
 public:
-    TCompactionTriggerer(
-        const TStorageConfigConstPtr config,
-        TPartitionState& state,
-        TInstant now)
+    TCompactionTriggerer(const TStorageConfigConstPtr config,
+                         TPartitionState& state, TInstant now,
+                         bool tidyUpPartitionMode)
         : Config(config)
         , State(state)
+        , TidyUpPartitionMode(tidyUpPartitionMode)
     {
         const auto& cm = State.GetCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
@@ -1456,10 +1457,16 @@ private:
     TriggerBlobCountCompactionIfNeeded() const
     {
         const ui64 blobCount = State.GetTotalBlobsCount();
-        if (!State.GetMaxBlobsPerDisk() ||
-            blobCount <= State.GetMaxBlobsPerDisk() +
-                             State.GetCleanupQueue().GetCount() ||
-            TopByBlobCount.BlobCount < 2)
+        const bool tidyUpCompaction =
+            TidyUpPartitionMode &&
+            static_cast<ui64>(TopByBlobCount.BlockCount) *
+                    State.GetBlockSize() >=
+                Config->GetTidyUpCompactionMinBytes();
+        if (TopByBlobCount.BlobCount < 2 ||
+            (!tidyUpCompaction &&
+             (!State.GetMaxBlobsPerDisk() ||
+              blobCount <= State.GetMaxBlobsPerDisk() +
+                               State.GetCleanupQueue().GetCount())))
         {
             return std::nullopt;
         }
@@ -1468,7 +1475,9 @@ private:
             TopByBlobCount.CompactionScore.Score <
             Config->GetCompactionScoreLimitForThrottling();
 
-        const bool fullCompaction =
+        // Incremental compaction may keep a large blob and rewrite just one
+        // small blob without reducing the blob count. Tidy-up must converge.
+        const bool fullCompaction = tidyUpCompaction ||
             GetGarbagePercentage() >= Config->GetCompactionGarbageThreshold();
 
         return TTriggerInfo(
@@ -1871,6 +1880,13 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TPartitionActor::HasPendingCompaction(const TActorContext& ctx)
+{
+    TCompactionTriggerer triggerer(Config, *State, ctx.Now(),
+                                   TidyUpPartitionMode);
+    return triggerer.TriggerCompactionIfNeeded().has_value();
+}
+
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
     // Sending compaction request in non-work state can lead to rejection, which
@@ -1895,7 +1911,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     auto now = ctx.Now();
-    TCompactionTriggerer triggerer(Config, *State, now);
+    TCompactionTriggerer triggerer(Config, *State, now, TidyUpPartitionMode);
 
     auto info = triggerer.TriggerCompactionIfNeeded();
     if (!info) {
@@ -2295,6 +2311,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
+    DriveTidyUp(ctx);
     ProcessCommitQueue(ctx);
 }
 

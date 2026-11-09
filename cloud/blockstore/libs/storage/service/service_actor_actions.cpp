@@ -66,6 +66,7 @@ void TServiceActor::HandleExecuteAction(
         {"reassigndiskregistry",              &TServiceActor::CreateReassignDiskRegistryActionActor        },
         {"rebasevolume",                      &TServiceActor::CreateRebaseVolumeActionActor                },
         {"rebindvolumes",                     &TServiceActor::CreateRebindVolumesActionActor               },
+        {"tidyuppartitions",                  &TServiceActor::CreateTidyUpPartitionsActionActor          },
         {"rebuildmetadata",                   &TServiceActor::CreateRebuildMetadataActionActor             },
         {"replacedevice",                     &TServiceActor::CreateReplaceDeviceActionActor               },
         {"resettablet",                       &TServiceActor::CreateResetTabletActionActor                 },

@@ -54,32 +54,27 @@ const TString PartitionTransactions[] = {
 };
 
 TPartitionActor::TPartitionActor(
-    const TActorId& owner,
-    TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
-    IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    const TActorId& owner, TTabletStorageInfoPtr storage,
+    TStorageConfigConstPtr config, TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IProfileLogPtr profileLog, IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode,
-    ui32 partitionIndex,
-    ui32 siblingCount,
-    const TActorId& volumeActorId,
-    ui64 volumeTabletId)
+    EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+    ui32 siblingCount, const TActorId& volumeActorId, ui64 volumeTabletId,
+    bool tidyUpPartitionMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
+    , TidyUpPartitionMode(tidyUpPartitionMode)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
-    , FreshBlocksWriterEnabled(
-          Config->GetFreshBlocksWriterEnabled() ||
-          Config->IsFreshBlocksWriterFeatureEnabled(
-              PartitionConfig.GetCloudId(),
-              PartitionConfig.GetFolderId(),
-              PartitionConfig.GetDiskId()))
-    , VolumeLabels(MakeVolumeLabels(
-          PartitionConfig.GetDiskId(),
-          PartitionConfig.GetCloudId(),
-          PartitionConfig.GetFolderId()))
+    ,
+    FreshBlocksWriterEnabled(
+        Config->GetFreshBlocksWriterEnabled() ||
+        Config->IsFreshBlocksWriterFeatureEnabled(PartitionConfig.GetCloudId(),
+                                                  PartitionConfig.GetFolderId(),
+                                                  PartitionConfig.GetDiskId()))
+    , VolumeLabels(MakeVolumeLabels(PartitionConfig.GetDiskId(),
+                                    PartitionConfig.GetCloudId(),
+                                    PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -88,13 +83,11 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
-    , LogTitle(
-          StartTime,
-          TLogTitle::TPartition{
-              .TabletId = TabletID(),
-              .DiskId = PartitionConfig.GetDiskId(),
-              .PartitionIndex = partitionIndex,
-              .PartitionCount = siblingCount})
+    , LogTitle(StartTime,
+               TLogTitle::TPartition{.TabletId = TabletID(),
+                                     .DiskId = PartitionConfig.GetDiskId(),
+                                     .PartitionIndex = partitionIndex,
+                                     .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
     SharedState = std::make_shared<TPartitionThreadSafeState>(
@@ -156,6 +149,7 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 
     State->FinishLoadState();
+    DriveTidyUp(ctx);
 
     ctx.Schedule(
         Config->GetResourceMetricsUpdateInterval(),
@@ -677,6 +671,53 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
         ));
 }
 
+void TPartitionActor::HandleStopTidyUp(
+    const TEvPartition::TEvStopTidyUp::TPtr& ev, const TActorContext& ctx)
+{
+    Y_UNUSED(ev, ctx);
+    TidyUpPartitionMode = false;
+}
+
+void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
+{
+    if (!TidyUpPartitionMode || TidyUpCompleted || CurrentState != STATE_WORK) {
+        return;
+    }
+
+    EnqueueFlushIfNeeded(ctx);
+    EnqueueTrimFreshLogIfNeeded(ctx);
+    EnqueueCompactionIfNeeded(ctx);
+    EnqueueCleanupIfNeeded(ctx);
+    EnqueueCollectGarbageIfNeeded(ctx);
+
+    // Enqueue methods also account for thresholds, barriers and retries. A
+    // scheduled operation is still outstanding, even before its actor starts.
+    if (CompactionMapLoadState || !State->GetStartupGcExecuted() ||
+        State->GetFlushState().GetOperationState().Status !=
+            EOperationStatus::Idle ||
+        State->GetTrimFreshLogState().Status != EOperationStatus::Idle ||
+        State->GetCompactionState(ECompactionType::Tablet).Status !=
+            EOperationStatus::Idle ||
+        State->GetCleanupState().Status != EOperationStatus::Idle ||
+        State->GetCollectGarbageState().Status != EOperationStatus::Idle ||
+        HasPendingCompaction(ctx) ||
+        State->HasBlobCountToCleanupReachedThreshold(
+            State->GetCleanupCommitId(), 1) ||
+        State->GetAddConfirmedBlobsState().Status != EOperationStatus::Idle ||
+        State->GetUnconfirmedBlobCount() || State->GetConfirmedBlobCount() ||
+        State->GetFreshBlocksInFlight() ||
+        State->GetUnflushedFreshBlocksCount() ||
+        State->GetUnflushedFreshBlobCount() ||
+        State->GetTrimFreshLogToCommitId() !=
+            State->GetLastTrimFreshLogToCommitId())
+    {
+        return;
+    }
+
+    TidyUpCompleted = true;
+    SendGarbageCollectorCompleted(ctx);
+}
+
 void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
@@ -723,6 +764,7 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+    DriveTidyUp(ctx);
 
     if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
         EnqueueFlushIfNeeded(ctx);
@@ -1142,6 +1184,7 @@ STFUNC(TPartitionActor::StateBoot)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1172,6 +1215,7 @@ STFUNC(TPartitionActor::StateInit)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1220,6 +1264,7 @@ STFUNC(TPartitionActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
@@ -1324,6 +1369,7 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvTablet::TEvTabletStop);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);

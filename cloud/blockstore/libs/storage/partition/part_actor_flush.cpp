@@ -458,7 +458,8 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
         isSSD ? Config->GetFreshBlobByteCountFlushThresholdSSD()
               : Config->GetFreshBlobByteCountFlushThresholdHDD();
 
-    if (!State->IsLoadStateFinished() ||
+    if ((TidyUpPartitionMode && (freshBlockByteCount || freshBlobCount)) ||
+        !State->IsLoadStateFinished() ||
         freshBlockByteCount >= flushThreshold ||
         freshBlobCount >= freshBlobCountFlushThreshold ||
         freshBlobByteCount >= freshBlobByteCountFlushThreshold)
@@ -878,6 +879,7 @@ void TPartitionActor::HandleFlushCompleted(
     EnqueueTrimFreshLogIfNeeded(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
+    DriveTidyUp(ctx);
     ProcessCommitQueue(ctx);
 }
 

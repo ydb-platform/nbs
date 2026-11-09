@@ -13,17 +13,12 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreatePartitionTablet(
-    const NActors::TActorId& owner,
-    NKikimr::TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
-    IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    const NActors::TActorId& owner, NKikimr::TTabletStorageInfoPtr storage,
+    TStorageConfigConstPtr config, TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IProfileLogPtr profileLog, IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode,
-    ui32 partitionIndex,
-    ui32 siblingCount,
-    const NActors::TActorId& volumeActorId,
-    ui64 volumeTabletId);
+    EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+    ui32 siblingCount, const NActors::TActorId& volumeActorId,
+    ui64 volumeTabletId, bool tidyUpPartitionMode = false);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

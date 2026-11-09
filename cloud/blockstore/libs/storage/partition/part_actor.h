@@ -111,6 +111,9 @@ class TPartitionActor final
     friend TIOCompanionClient;
 
 private:
+    bool TidyUpPartitionMode = false;
+    bool TidyUpCompleted = false;
+
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
@@ -181,18 +184,14 @@ private:
 
 public:
     TPartitionActor(
-        const NActors::TActorId& owner,
-        NKikimr::TTabletStorageInfoPtr storage,
+        const NActors::TActorId& owner, NKikimr::TTabletStorageInfoPtr storage,
         TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
+        TDiagnosticsConfigConstPtr diagnosticsConfig, IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode,
-        ui32 partitionIndex,
-        ui32 siblingCount,
-        const NActors::TActorId& volumeActorId,
-        ui64 volumeTabletId);
+        EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+        ui32 siblingCount, const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId, bool tidyUpPartitionMode = false);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
@@ -237,6 +236,11 @@ private:
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
     bool ShouldFlush(const NActors::TActorContext& ctx);
+    bool HasPendingCompaction(const NActors::TActorContext& ctx);
+    void DriveTidyUp(const NActors::TActorContext& ctx);
+    void HandleStopTidyUp(const TEvPartition::TEvStopTidyUp::TPtr& ev,
+                          const NActors::TActorContext& ctx);
+
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);

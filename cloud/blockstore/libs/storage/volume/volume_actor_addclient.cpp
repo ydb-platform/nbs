@@ -703,6 +703,10 @@ void TVolumeActor::CompleteAddClient(
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }
 
+    if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        StartPartitionsIfNeeded(ctx);
+    }
+
     OnClientListUpdate(ctx);
 
     const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();

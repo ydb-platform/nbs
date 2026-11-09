@@ -17,6 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 // clang-format off
 
 #define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
+    xxx(TidyUpPartitions,                                          __VA_ARGS__)\
     xxx(AddClient,                                                 __VA_ARGS__)\
     xxx(RemoveClient,                                              __VA_ARGS__)\
     xxx(WaitReady,                                                 __VA_ARGS__)\
@@ -399,6 +400,9 @@ struct TEvVolume
 
         EvDescribeBlobRequest = EvBegin + 74,
         EvDescribeBlobResponse = EvBegin + 75,
+
+        EvTidyUpPartitionsRequest = EvBegin + 76,
+        EvTidyUpPartitionsResponse = EvBegin + 77,
 
         EvEnd
     };

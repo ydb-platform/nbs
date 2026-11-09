@@ -221,6 +221,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(HDDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
             NProto::CT_DEFAULT                                                )\
+    xxx(TidyUpCompactionMinBytes,          ui64,      4_MB                   )\
     xxx(CompactionGarbageThreshold,         ui32,      20                     )\
     xxx(CompactionGarbageBlobLimit,         ui32,      100                    )\
     xxx(CompactionGarbageBlockLimit,        ui32,      10240                  )\

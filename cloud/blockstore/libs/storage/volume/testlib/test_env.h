@@ -481,6 +481,9 @@ public:
     std::unique_ptr<NMon::TEvRemoteHttpInfo> CreateRemoteHttpInfo(
         const TString& params);
 
+    std::unique_ptr<TEvVolume::TEvTidyUpPartitionsRequest>
+    CreateTidyUpPartitionsRequest(const TString& diskId = {});
+
     std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest> CreateGetVolumeInfoRequest();
 
     std::unique_ptr<TEvVolume::TEvUpdateVolumeParamsRequest> CreateUpdateVolumeParamsRequest(

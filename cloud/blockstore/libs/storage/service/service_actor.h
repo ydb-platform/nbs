@@ -310,6 +310,9 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateTidyUpPartitionsActionActor(
+        TRequestInfoPtr requestInfo, TString input);
+
     TResultOrError<NActors::IActorPtr> CreateDeleteCheckpointDataActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

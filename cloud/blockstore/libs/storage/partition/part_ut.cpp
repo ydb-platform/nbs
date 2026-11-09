@@ -267,14 +267,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitTestActorRuntime(
-    TTestActorRuntime& runtime,
-    const NProto::TStorageServiceConfig& config,
-    ui32 blockCount,
-    ui32 channelCount,
+    TTestActorRuntime& runtime, const NProto::TStorageServiceConfig& config,
+    ui32 blockCount, ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {},
+    std::shared_ptr<bool> tidyUpPartitionMode = {})
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
@@ -310,24 +309,24 @@ void InitTestActorRuntime(
 
     auto diagConfig = CreateTestDiagnosticsConfig(std::move(diagnosticsConfig));
 
-    auto createFunc =
-        [=] (const TActorId& owner, TTabletStorageInfo* info) {
-            auto tablet = CreatePartitionTablet(
-                owner,
-                info,
-                storageConfig,
-                diagConfig,
-                CreateProfileLogStub(),
-                CreateBlockDigestGeneratorStub(),
-                partConfig,
-                storageAccessMode,
-                0,  // partitionIndex
-                1,  // siblingCount
-                VolumeActorId,
-                0  // volumeTabletId
-            );
-            return tablet.release();
-        };
+    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
+    {
+        auto tablet = CreatePartitionTablet(
+            owner,
+            info,
+            storageConfig,
+            diagConfig,
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            partConfig,
+            storageAccessMode,
+            0,   // partitionIndex
+            1,   // siblingCount
+            VolumeActorId,
+            0,   // volumeTabletId
+            tidyUpPartitionMode && *tidyUpPartitionMode);
+        return tablet.release();
+    };
 
     auto bootstrapper = CreateTestBootstrapper(runtime, tabletInfo.release(), createFunc);
     runtime.EnableScheduleForActor(bootstrapper);
@@ -395,7 +394,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {},
+    std::shared_ptr<bool> tidyUpPartitionMode = {})
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -437,15 +437,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     }
 
     InitTestActorRuntime(
-        *runtime,
-        config,
-        blockCount,
+        *runtime, config, blockCount,
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
-        std::move(tabletInfo),
-        testPartitionInfo,
-        storageAccessMode,
-        std::move(diagnosticsConfig)
-    );
+        std::move(tabletInfo), testPartitionInfo, storageAccessMode,
+        std::move(diagnosticsConfig), std::move(tidyUpPartitionMode));
 
     return runtime;
 }
@@ -12446,6 +12441,154 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         checkScanDisk(100);
         partition.RebootTablet();
         checkScanDisk(1);
+    }
+
+    Y_UNIT_TEST(ShouldTidyUpBelowMaintenanceThresholds)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetCleanupThreshold(1000);
+        config.SetCollectGarbageThreshold(1000);
+        config.SetTidyUpCompactionMinBytes(2 * DefaultBlockSize);
+        config.SetHDDMaxBlobsPerRange(1000);
+        config.SetCompactionGarbageThreshold(1000);
+        config.SetCompactionRangeGarbageThreshold(1000);
+        auto tidyUp = std::make_shared<bool>(false);
+        auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
+                                               EStorageAccessMode::Default,
+                                               {}, tidyUp);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Leave obsolete blobs below the cleanup/GC thresholds and a small
+        // fresh write below the flush threshold before restarting for GC.
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+        partition.WriteBlocks(0, 2);
+        partition.Flush();
+        partition.WriteBlocks(1, 3);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        bool completed = false;
+        ui32 compactions = 0;
+        TAutoPtr<IEventHandle> trim;
+        auto observer = runtime->SetObserverFunc(
+            [&](auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogCompleted)
+                {
+                    trim = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    ++compactions;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartition::EvGarbageCollectorCompleted)
+                {
+                    completed = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        *tidyUp = true;
+        partition.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(trim);
+        UNIT_ASSERT(!completed);
+        runtime->SetObserverFunc(
+            [&](auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    ++compactions;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartition::EvGarbageCollectorCompleted)
+                {
+                    completed = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        runtime->Send(trim.Release());
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartition::EvGarbageCollectorCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(completed);
+        UNIT_ASSERT(compactions);
+        const auto response = partition.StatPartition();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, response->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, response->Record.GetStats().GetCleanupQueueBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, response->Record.GetStats().GetGarbageQueueSize());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(2),
+                                 GetBlockContent(partition.ReadBlocks(0)));
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(3),
+                                 GetBlockContent(partition.ReadBlocks(1)));
+        runtime->SetObserverFunc(observer);
+    }
+
+    Y_UNIT_TEST(ShouldRespectTidyUpCompactionMinBytes)
+    {
+        for (const ui64 minBytes: {2 * DefaultBlockSize, 3 * DefaultBlockSize})
+        {
+            auto config = DefaultConfig();
+            config.SetWriteBlobThreshold(1);
+            config.SetIncrementalCompactionEnabled(true);
+            config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+            config.SetTargetCompactionBytesPerOp(DefaultBlockSize);
+            config.SetHDDMaxBlobsPerRange(1000);
+            config.SetCompactionGarbageThreshold(1000);
+            config.SetCompactionRangeGarbageThreshold(1000);
+            config.SetTidyUpCompactionMinBytes(minBytes);
+            auto tidyUp = std::make_shared<bool>(false);
+            auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
+                                                   EStorageAccessMode::Default,
+                                                   {}, tidyUp);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+            partition.WriteBlocks(0, 1);
+            partition.Flush();
+            partition.WriteBlocks(1, 2);
+            partition.Flush();
+            const auto before = partition.StatPartition();
+            UNIT_ASSERT_VALUES_EQUAL(2,
+                before->Record.GetStats().GetMixedBlobsCount() +
+                before->Record.GetStats().GetMergedBlobsCount());
+            bool completed = false;
+            ui32 compactions = 0;
+            runtime->SetObserverFunc(
+                [&](auto& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvCompactionRequest)
+                    {
+                        ++compactions;
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvPartition::EvGarbageCollectorCompleted)
+                    {
+                        completed = true;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+            *tidyUp = true;
+            partition.RebootTablet();
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT(completed);
+            const auto after = partition.StatPartition();
+            UNIT_ASSERT_VALUES_EQUAL(minBytes == 2 * DefaultBlockSize ? 1 : 2,
+                after->Record.GetStats().GetMixedBlobsCount() +
+                after->Record.GetStats().GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(minBytes == 2 * DefaultBlockSize,
+                                     compactions != 0);
+        }
     }
 
     Y_UNIT_TEST(ShouldFirstGarbageCollectionFlagReboot)

@@ -591,7 +591,9 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         size_t pendingBlobs = State->GetGarbageQueue().GetNewBlobsCount(commitId)
                             + State->GetGarbageQueue().GetGarbageBlobsCount(commitId);
 
-        if (pendingBlobs < Config->GetCollectGarbageThreshold() &&
+        if (pendingBlobs < (TidyUpPartitionMode
+                                ? 1
+                                : Config->GetCollectGarbageThreshold()) &&
             State->GetStartupGcExecuted())
         {
             // not ready
@@ -791,7 +793,9 @@ void TPartitionActor::HandleCollectGarbageCompleted(
         State->SetStartupGcExecuted();
         if (!IsFirstGarbageCollectionCompleted()) {
             SetFirstGarbageCollectionCompleted();
-            SendGarbageCollectorCompleted(ctx);
+            if (!TidyUpPartitionMode) {
+                SendGarbageCollectorCompleted(ctx);
+            }
         }
     }
 
@@ -804,6 +808,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueCollectGarbageIfNeeded(ctx);
+    DriveTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.CollectGarbage.AddRequest(time);

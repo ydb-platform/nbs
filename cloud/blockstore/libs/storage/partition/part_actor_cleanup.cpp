@@ -53,7 +53,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
-            Config->GetCleanupThreshold()))
+            TidyUpPartitionMode ? 1 : Config->GetCleanupThreshold()))
     {
         // Not ready
         return;
@@ -278,6 +278,7 @@ void TPartitionActor::CompleteCleanup(
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+    DriveTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);
