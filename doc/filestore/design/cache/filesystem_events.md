@@ -67,6 +67,8 @@ nonzero TTL means the client is subscribed to the corresponding key.
   changes, it leaves a tombstone upon the response arrival - otherwise a
   GetNodeXAttr processed by the backend before the SetNodeXAttr could cache
   the older value or its absence and break read-after-write
+- The absence found out by the client's own SetNodeXAttr with `F_REPLACE` is
+  handled the same way
 - XAttrCacheTTL = 0: the client falls back to the legacy time-based
   expiration (`XAttrCacheTimeout`) - the cache predates FileSystemEvents
 

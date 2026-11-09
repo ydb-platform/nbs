@@ -663,6 +663,65 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             false /* xattrExists */);
     }
 
+    Y_UNIT_TEST(ShouldNotCacheXAttrsRacingWithOwnFailedReplace)
+    {
+        TMetadataCachingEnv env;
+        env.XAttrCacheTTL = 0;
+
+        //
+        // GetXAttr is processed by the backend before the xattr is removed by
+        // another client, its response arrives after the response to the own
+        // failed SetXAttr with XATTR_REPLACE.
+        //
+
+        auto promise = NewPromise<NProto::TGetNodeXAttrResponse>();
+        std::atomic<bool> requested = false;
+        env.Bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                auto response = env.HandleGetNodeXAttr();
+                if (!requested.exchange(true)) {
+                    return promise.GetFuture().Apply(
+                        [response] (const auto&) { return response; });
+                }
+                return MakeFuture(response);
+            });
+        env.Bootstrap.Service->SetHandlerSetNodeXAttr(
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TSetNodeXAttrResponse>(
+                    TErrorResponse(ErrorAttributeDoesNotExist("user.a")));
+            });
+
+        auto getXAttr = env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.a",
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+
+        auto setXAttr =
+            env.Bootstrap.Fuse->SendRequest<TSetXAttrValueRequest>(
+                "user.a",
+                "new",
+                FileNodeId);
+        UNIT_ASSERT(setXAttr.Wait(WaitTimeout));
+        env.XAttrExists = false;
+
+        //
+        // The older value is not cached, the own absence is kept.
+        //
+
+        promise.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL("1", getXAttr.GetValue(WaitTimeout));
+        env.AssertXAttrAbsent();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
+    }
+
     Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidations)
     {
         TMetadataCachingEnv env;
@@ -944,10 +1003,10 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             10 /* maxSize */,
             TDuration::Seconds(15));
 
-        cache.AddOwnValue(
+        cache.AddOwn(
             1,
             "a",
-            "v2",
+            TString("v2"),
             2 /* version */,
             1 /* cacheVersion */,
             5 /* invalidationVersion */,
@@ -980,10 +1039,10 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         cache.InvalidateAll(10 /* version */);
         cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
         UNIT_ASSERT(cache.Get(1, "a"));
-        cache.AddOwnValue(
+        cache.AddOwn(
             1,
             "a",
-            "v4",
+            TString("v4"),
             4 /* version */,
             9 /* cacheVersion */,
             11 /* invalidationVersion */,
@@ -991,6 +1050,28 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         UNIT_ASSERT(!cache.Get(1, "a"));
         cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
+
+        //
+        // The own absence (F_REPLACE) is handled the same way.
+        //
+
+        cache.AddOwn(
+            1,
+            "b",
+            Nothing(),
+            0 /* version */,
+            11 /* cacheVersion */,
+            12 /* invalidationVersion */,
+            {} /* cacheTTL */);
+        cache.Add(
+            1,
+            "b",
+            "v5",
+            5 /* version */,
+            11 /* cacheVersion */,
+            {} /* cacheTTL */);
+        xattr = cache.Get(1, "b");
+        UNIT_ASSERT(xattr && !xattr->Value);
     }
 
     Y_UNIT_TEST(ShouldInvalidateAllXAttrsOfNode)

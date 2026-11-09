@@ -161,10 +161,10 @@ void TXAttrCache::AddAbsent(
     );
 }
 
-void TXAttrCache::AddOwnValue(
+void TXAttrCache::AddOwn(
     ui64 ino,
     const TString& name,
-    const TString& value,
+    const TMaybe<TString>& value,
     ui64 version,
     ui64 cacheVersion,
     ui64 invalidationVersion,
@@ -175,7 +175,11 @@ void TXAttrCache::AddOwnValue(
         return;
     }
 
-    Add(ino, name, value, version, cacheVersion, cacheTTL);
+    if (value) {
+        Add(ino, name, *value, version, cacheVersion, cacheTTL);
+    } else {
+        AddAbsent(ino, name, cacheVersion, cacheTTL);
+    }
 
     //
     // The cached value is kept, the tombstone prevents only the caching of
