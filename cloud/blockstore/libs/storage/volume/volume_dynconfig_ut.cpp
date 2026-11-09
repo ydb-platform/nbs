@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
+#include <contrib/ydb/core/base/tablet.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -188,18 +190,37 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
             response->Record.GetStorageConfig().GetMaxMigrationBandwidth());
     }
 
-    void DoShouldDeliverConfigToPartitionAfterDelayedStartup()
+    // Verify that Partition (of type tabletType) apply configuration updates
+    // received before executor activation. Keep each partition in StateBoot
+    // until the update arrives, then finish startup and check that reads
+    // exceeding the new MaxReadWriteRangeSize are rejected.
+    void DoShouldDeliverConfigToPartitionAfterDelayedStartup(
+        NKikimr::TTabletTypes::EType tabletType)
     {
         // Create Partition with a limit that permits a two-block request.
         NProto::TStorageServiceConfig config;
         config.SetMaxReadWriteRangeSize(2 * DefaultBlockSize);
         auto runtime = PrepareTestActorRuntime(config);
         TActorId volumeActor;
+        TActorId partitionActor;
+        ui64 partitionTabletId = 0;
         TAutoPtr<IEventHandle> started;
-        bool holdStarted = true;
+        TAutoPtr<IEventHandle> restored;
+        bool holdStartup = true;
+        bool configDelivered = false;
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
+                if (event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvBootExternalResponse)
+                {
+                    const auto* msg =
+                        event->Get<TEvHiveProxy::TEvBootExternalResponse>();
+                    partitionTabletId = msg->StorageInfo->TabletID;
+                    const_cast<NKikimr::TTabletStorageInfo*>(
+                        msg->StorageInfo.Get())
+                        ->TabletType = tabletType;
+                }
                 if (event->GetTypeRewrite() ==
                     TEvVolume::EvGetStorageConfigRequest)
                 {
@@ -207,7 +228,21 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
                     // configuration update directly to that actor.
                     volumeActor = event->GetRecipientRewrite();
                 }
-                if (holdStarted &&
+                if (holdStartup &&
+                    event->GetTypeRewrite() == TEvTablet::EvRestored)
+                {
+                    // Keep the executor in StateBoot without delaying
+                    // the separate notification sent to its bootstrapper.
+                    const auto* msg = event->Get<TEvTablet::TEvRestored>();
+                    if (msg->TabletID == partitionTabletId &&
+                        event->GetRecipientRewrite() == msg->UserTabletActor)
+                    {
+                        partitionActor = msg->UserTabletActor;
+                        restored = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                if (holdStartup &&
                     event->GetTypeRewrite() == TEvBootstrapper::EvStatus &&
                     event->Get<TEvBootstrapper::TEvStatus>()->Status ==
                         TEvBootstrapper::STARTED)
@@ -219,6 +254,12 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
                     started = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
                 }
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvDynamicConfigUpdate &&
+                    event->GetRecipientRewrite() == partitionActor)
+                {
+                    configDelivered = true;
+                }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
         TVolumeClient volume(*runtime);
@@ -228,10 +269,11 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
         TDispatchOptions options;
         options.CustomFinalCondition = [&]
         {
-            return bool(started);
+            return started && restored;
         };
         runtime->DispatchEvents(options);
         UNIT_ASSERT(started);
+        UNIT_ASSERT(restored);
 
         // Publish a new range limit before Volume handles STARTED.
         NProto::TBlockstoreConfig publication;
@@ -248,9 +290,20 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
                 ->Record.GetStorageConfig()
                 .GetMaxReadWriteRangeSize());
 
-        // Complete startup and serve I/O before checking the new limit.
-        holdStarted = false;
+        // Deliver the delayed STARTED notification to Volume and wait for it to
+        // send the latest configuration to Partition. Keep Partition in
+        // StateBoot until this update is delivered.
+        holdStartup = false;
         runtime->Send(started.Release());
+        options.CustomFinalCondition = [&]
+        {
+            return configDelivered;
+        };
+        runtime->DispatchEvents(options);
+        UNIT_ASSERT(configDelivered);
+
+        // Complete startup and serve I/O before checking the new limit.
+        runtime->Send(restored.Release());
         volume.RecvWaitReadyResponse();
         const auto client = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
@@ -273,11 +326,16 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
             volume.RecvReadBlocksResponse()->GetStatus());
     }
 
-    // Verify that a configuration published during Partition boot reaches
-    // the partition after Volume receives its delayed STARTED event.
+    // Verify that Partition v1 and v2 apply configuration updates received
+    // before executor activation.
     Y_UNIT_TEST(ShouldDeliverConfigToPartitionAfterDelayedStartup)
     {
-        DoShouldDeliverConfigToPartitionAfterDelayedStartup();
+        for (const auto tabletType:
+             {NKikimr::TTabletTypes::BlockStorePartition,
+              NKikimr::TTabletTypes::BlockStorePartition2})
+        {
+            DoShouldDeliverConfigToPartitionAfterDelayedStartup(tabletType);
+        }
     }
 
     void DoShouldKeepRunningLaggingDeviceMode(bool startupAllowed)
