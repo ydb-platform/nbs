@@ -1,4 +1,6 @@
 #include "cell_manager.h"
+
+#include "cell_manager_impl.h"
 #include "describe_volume.h"
 #include "mon.h"
 
@@ -26,11 +28,10 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
-#include <util/stream/str.h>
-
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/stream/str.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -169,7 +170,9 @@ private:
 public:
     explicit TTestServerBuilder(TTestContext testContext)
         : TestContext(std::move(testContext))
-    {}
+    {
+        ServerAppConfig.MutableServerConfig()->SetDataPort(0);
+    }
 
     TTestServerBuilder& SetPort(ui16 port)
     {
@@ -290,6 +293,19 @@ public:
 
 Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
+    Y_UNIT_TEST(ShouldRejectTransportSelectionWithoutConnectionRegistry)
+    {
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(NProto::TCellsConfig{}),
+            TBootstrap{});
+        const auto error = manager
+                               .SwitchDataTransport(
+                                   "connection",
+                                   NProto::CELL_DATA_TRANSPORT_GRPC)
+                               .GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_INVALID_STATE);
+    }
+
     Y_UNIT_TEST(ShouldHandleCellDescribeRequestsOverInsecureChannel)
     {
         TPortManager portManager;
@@ -842,9 +858,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         const auto selected = cellManager
                                   ->SwitchDataTransport(
-                                      "xyz",
-                                      "disk-1",
-                                      "client-1",
+                                      mounts[0].ConnectionId,
                                       NProto::CELL_DATA_TRANSPORT_GRPC)
                                   .GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(selected), FormatError(selected));
@@ -855,9 +869,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             NProto::CELL_DATA_TRANSPORT_GRPC);
         const auto noRdma = cellManager
                                 ->SwitchDataTransport(
-                                    "xyz",
-                                    "disk-1",
-                                    "client-1",
+                                    mounts[0].ConnectionId,
                                     NProto::CELL_DATA_TRANSPORT_RDMA)
                                 .GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(noRdma.GetCode(), E_ARGUMENT);

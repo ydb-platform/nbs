@@ -146,14 +146,10 @@ struct TTestCellManager: public ICellManager
     }
 
     NThreading::TFuture<NProto::TError> SwitchDataTransport(
-        TString cellId,
-        TString diskId,
-        TString clientId,
+        TString connectionId,
         NProto::ECellDataTransport transport) override
     {
-        Y_UNUSED(cellId);
-        Y_UNUSED(diskId);
-        Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
         Y_UNUSED(transport);
 
         return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));

@@ -112,11 +112,15 @@ TCellsSnapshot TCellManager::GetSnapshot()
 }
 
 NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
-    TString cellId,
-    TString diskId,
-    TString clientId,
+    TString connectionId,
     NProto::ECellDataTransport transport)
 {
+    if (!Bootstrap.Connections) {
+        return NThreading::MakeFuture(MakeError(
+            E_INVALID_STATE,
+            "Cell connection registry is unavailable"));
+    }
+
     auto promise = NThreading::NewPromise<NProto::TError>();
     with_lock (TransportUpdatesLock) {
         if (!TransportUpdatesEnabled) {
@@ -127,9 +131,7 @@ NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
         TransportUpdates->ExecuteSimple(
             [connections = Bootstrap.Connections,
              logging = Bootstrap.Logging,
-             cellId = std::move(cellId),
-             diskId = std::move(diskId),
-             clientId = std::move(clientId),
+             connectionId = std::move(connectionId),
              transport,
              promise]() mutable
             {
@@ -137,9 +139,7 @@ NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
                 try {
                     error = SwitchCellDataTransport(
                         *connections,
-                        cellId,
-                        diskId,
-                        clientId,
+                        connectionId,
                         transport);
                 } catch (...) {
                     error = MakeError(E_FAIL, CurrentExceptionMessage());
@@ -147,9 +147,8 @@ NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
                 if (HasError(error)) {
                     auto Log = logging->CreateLog("BLOCKSTORE_CELLS");
                     STORAGE_WARN(
-                        "Cell data transport switch failed: cell="
-                        << cellId << " disk=" << diskId
-                        << " client=" << clientId
+                        "Cell data transport switch failed: connection="
+                        << connectionId
                         << " to=" << NProto::ECellDataTransport_Name(transport)
                         << " error=" << FormatError(error));
                 }

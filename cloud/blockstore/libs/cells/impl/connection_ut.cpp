@@ -397,11 +397,16 @@ struct TTestEnv
         const TString& clientId,
         NProto::ECellDataTransport transport)
     {
+        TString connectionId = "missing";
+        for (const auto& mount: GetCellMounts(*Bootstrap.Connections)) {
+            if (mount.DiskId == diskId && mount.ClientId == clientId) {
+                connectionId = mount.ConnectionId;
+                break;
+            }
+        }
         return SwitchCellDataTransport(
             *Bootstrap.Connections,
-            "cell-1",
-            diskId,
-            clientId,
+            connectionId,
             transport);
     }
 
@@ -420,15 +425,161 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TCellConnectionTest)
 {
+    Y_UNIT_TEST(ShouldRejectManualRdmaWithoutFallbackBeforePreparingEndpoint)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_ARGUMENT);
+        UNIT_ASSERT(!env.EndpointsSetup->RdmaHandler);
+        UNIT_ASSERT_VALUES_EQUAL(connection->GetHost(), "host-a");
+        const auto count = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.GrpcClient->Service->RequestCount,
+            count + 1);
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
+        UNIT_ASSERT(!mounts[0].CanSelectRdma);
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].DataTransport, "grpc");
+    }
+
+    Y_UNIT_TEST(ShouldSwitchSelectedConnectionWithDuplicateMountIdentity)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
+        auto oldConnection = env.Connect("host-a");
+        auto currentConnection = env.Connect("host-a");
+        env.MountDisk(oldConnection, "disk", "client");
+        env.MountDisk(currentConnection, "disk", "client");
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 2);
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            mounts[0].ConnectionId,
+            mounts[1].ConnectionId);
+        const auto error = SwitchCellDataTransport(
+            *env.Bootstrap.Connections,
+            mounts[1].ConnectionId,
+            NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
+        const auto count = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(oldConnection);
+        TTestEnv::Read(currentConnection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.GrpcClient->Service->RequestCount,
+            count + 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.RdmaServices.at("host-a")->RequestCount,
+            1);
+
+        const auto unknown = SwitchCellDataTransport(
+            *env.Bootstrap.Connections,
+            "missing",
+            NProto::CELL_DATA_TRANSPORT_GRPC);
+        UNIT_ASSERT_VALUES_EQUAL(unknown.GetCode(), E_NOT_FOUND);
+    }
+
+    Y_UNIT_TEST(ShouldSwitchCurrentMountAndRejectUnmountedConnection)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "old-disk", "old-client");
+        const auto connectionId =
+            GetCellMounts(*env.Bootstrap.Connections).at(0).ConnectionId;
+        env.MountDisk(connection, "new-disk", "new-client");
+        const auto error = SwitchCellDataTransport(
+            *env.Bootstrap.Connections,
+            connectionId,
+            NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.RdmaServices.at("host-a")->RequestCount,
+            1);
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].ConnectionId, connectionId);
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].DiskId, "new-disk");
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].ClientId, "new-client");
+
+        auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
+        request->SetDiskId("new-disk");
+        const auto unmounted = connection->GetService()
+                                   ->UnmountVolume(
+                                       MakeIntrusive<TCallContext>(),
+                                       std::move(request))
+                                   .GetValue();
+        UNIT_ASSERT_C(!HasError(unmounted), FormatError(unmounted.GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            SwitchCellDataTransport(
+                *env.Bootstrap.Connections,
+                connectionId,
+                NProto::CELL_DATA_TRANSPORT_GRPC)
+                .GetCode(),
+            E_NOT_FOUND);
+    }
+
+    Y_UNIT_TEST(ShouldKeepTransportIfMountChangesDuringPreparation)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "old-disk", "old-client");
+        const auto connectionId =
+            GetCellMounts(*env.Bootstrap.Connections).at(0).ConnectionId;
+        env.EndpointsSetup->OnRdmaHandlerCreated = [&](const TString& fqdn)
+        {
+            Y_UNUSED(fqdn);
+
+            env.MountDisk(connection, "new-disk", "new-client");
+        };
+        const auto error = SwitchCellDataTransport(
+            *env.Bootstrap.Connections,
+            connectionId,
+            NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_NOT_FOUND);
+
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].ConnectionId, connectionId);
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].DiskId, "new-disk");
+        UNIT_ASSERT_VALUES_EQUAL(mounts[0].DataTransport, "grpc");
+        UNIT_ASSERT(
+            mounts[0].SelectedTransport == NProto::CELL_DATA_TRANSPORT_GRPC);
+    }
+
+    Y_UNIT_TEST(ShouldPreservePingVerdictAcrossTransportChangeAndHostRecovery)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        env.EndpointsSetup->OnRdmaHandlerCreated = [&](const TString& fqdn)
+        {
+            if (fqdn == "host-a") {
+                env.Pool->SetHostAlive("host-a", false);
+                env.Pool->SetHostAlive("host-a", true);
+            }
+        };
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(connection->GetHost(), "host-b");
+    }
+
     Y_UNIT_TEST(ShouldSwitchOnlySelectedMountAndPreserveControlPath)
     {
-        TTestEnv env;
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
         auto first = env.Connect("host-a");
         auto second = env.Connect("host-a");
         env.MountDisk(first, "disk", "client-1");
         env.MountDisk(second, "disk", "client-2");
         UNIT_ASSERT(!HasError(
             env.Switch("disk", "client-1", NProto::CELL_DATA_TRANSPORT_RDMA)));
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
         const auto grpcCount = env.GrpcClient->Service->RequestCount;
         TTestEnv::Read(first);
         TTestEnv::Read(second);
@@ -452,36 +603,34 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
     Y_UNIT_TEST(ShouldKeepOldTransportWhenRdmaCannotBePrepared)
     {
-        for (bool grpcDataFallback: {false, true}) {
-            TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, grpcDataFallback);
-            auto connection = env.Connect("host-a");
-            env.MountDisk(connection, "disk", "client");
-            env.EndpointsSetup->RefuseRdmaFor = "host-a";
-            const auto error =
-                env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
-            UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_REJECTED);
-            const auto count = env.GrpcClient->Service->RequestCount;
-            TTestEnv::Read(connection);
-            UNIT_ASSERT_VALUES_EQUAL(
-                env.GrpcClient->Service->RequestCount,
-                count + 1);
-            const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
-            UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(mounts.front().DataTransport, "grpc");
-            UNIT_ASSERT(
-                mounts.front().SelectedTransport ==
-                NProto::CELL_DATA_TRANSPORT_GRPC);
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        env.EndpointsSetup->RefuseRdmaFor = "host-a";
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_REJECTED);
+        const auto count = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.GrpcClient->Service->RequestCount,
+            count + 1);
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.front().DataTransport, "grpc");
+        UNIT_ASSERT(
+            mounts.front().SelectedTransport ==
+            NProto::CELL_DATA_TRANSPORT_GRPC);
 
-            env.EndpointsSetup->RefuseRdmaFor.clear();
-            const auto retried =
-                env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
-            UNIT_ASSERT_C(!HasError(retried), FormatError(retried));
-            env.EndpointsSetup->RdmaHandler->HandleConnected();
-            TTestEnv::Read(connection);
-            UNIT_ASSERT_VALUES_EQUAL(
-                env.RdmaServices.at("host-a")->RequestCount,
-                1);
-        }
+        env.EndpointsSetup->RefuseRdmaFor.clear();
+        const auto retried =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(retried), FormatError(retried));
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.RdmaServices.at("host-a")->RequestCount,
+            1);
     }
 
     Y_UNIT_TEST(ShouldKeepOldDataPathUntilTransportPreparationCompletes)
@@ -517,7 +666,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
     Y_UNIT_TEST(ShouldFollowMountResponseAfterTransportSwitchOnSameHost)
     {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
         auto connection = env.Connect("host-a");
         env.MountDisk(connection, "disk", "client");
 
@@ -540,7 +689,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
     Y_UNIT_TEST(ShouldIgnoreOldMountResponseAfterTransportSwitchAndMigration)
     {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
         auto connection = env.Connect("host-a");
         env.MountDisk(connection, "disk", "client");
 
@@ -564,7 +713,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
     Y_UNIT_TEST(ShouldPreserveManualTransportAfterHostMigration)
     {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
         auto connection = env.Connect("host-a");
         env.MountDisk(connection, "disk", "client");
         UNIT_ASSERT(!HasError(
@@ -572,6 +721,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.GrpcClient->Service->TabletHostToReport = "host-b";
         env.MountDisk(connection, "disk", "client");
         UNIT_ASSERT_VALUES_EQUAL(connection->GetHost(), "host-b");
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
         TTestEnv::Read(connection);
         UNIT_ASSERT_VALUES_EQUAL(
             env.RdmaServices.at("host-b")->RequestCount,
@@ -604,7 +754,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
     Y_UNIT_TEST(ShouldRejectSwitchWhileHostMigrationIsInFlight)
     {
-        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
         auto connection = env.Connect("host-a");
         env.MountDisk(connection, "disk", "client");
         env.EndpointsSetup->DeferForFqdn = "host-b";

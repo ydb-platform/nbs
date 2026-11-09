@@ -17,13 +17,15 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
         const TCellsConfig config(std::move(proto));
         TCellsSnapshot snapshot;
         snapshot.Mounts.push_back(
-            {.DiskId = "disk<&\"'",
+            {.ConnectionId = "connection<&\"'",
+             .DiskId = "disk<&\"'",
              .ClientId = "client<&\"'",
              .CellId = "remote<&\"'",
              .Host = "localhost",
              .DataTransport = "grpc fallback",
              .TabletHost = "localhost",
-             .SelectedTransport = NProto::CELL_DATA_TRANSPORT_RDMA});
+             .SelectedTransport = NProto::CELL_DATA_TRANSPORT_RDMA,
+             .CanSelectRdma = true});
         TStringStream out;
         RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
@@ -34,6 +36,9 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "<select name='Transport'");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
+            "name='ConnectionId' value='connection&lt;&amp;&quot;&#39;'");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
             "value='CELL_DATA_TRANSPORT_GRPC'>gRPC</option>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
@@ -42,6 +47,28 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "disk&lt;&amp;&quot;&#39;");
         UNIT_ASSERT_STRING_CONTAINS(html, "client&lt;&amp;&quot;&#39;");
         UNIT_ASSERT_STRING_CONTAINS(html, "remote&lt;&amp;&quot;&#39;");
+    }
+    Y_UNIT_TEST(ShouldDisableManualRdmaSelectionWithoutFallback)
+    {
+        const TCellsConfig config(NProto::TCellsConfig{});
+        TCellsSnapshot snapshot;
+        snapshot.Mounts.push_back({
+            .ConnectionId = "connection",
+            .DiskId = "disk",
+            .ClientId = "client",
+            .CellId = "remote",
+            .Host = "localhost",
+            .DataTransport = "grpc",
+            .SelectedTransport = NProto::CELL_DATA_TRANSPORT_GRPC,
+        });
+        TStringStream out;
+        RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "name='ConnectionId' value='connection'");
+        UNIT_ASSERT_STRING_CONTAINS(html, "CELL_DATA_TRANSPORT_RDMA' disabled");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Requires gRPC data fallback");
     }
 }
 

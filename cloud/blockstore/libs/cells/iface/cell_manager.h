@@ -60,6 +60,7 @@ struct TCellHostStatus
 // A disk this node has mounted through a cell connection.
 struct TCellMountStatus
 {
+    TString ConnectionId;
     TString DiskId;
     TString ClientId;
     TString CellId;
@@ -68,6 +69,7 @@ struct TCellMountStatus
     TString TabletHost;      // where the mount found the volume tablet
     NProto::ECellDataTransport SelectedTransport =
         NProto::CELL_DATA_TRANSPORT_UNSET;
+    bool CanSelectRdma = false;
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no
@@ -105,14 +107,13 @@ struct ICellManager: public IStartable
 
     [[nodiscard]] virtual TCellsSnapshot GetSnapshot() = 0;
 
-    // Runtime override for one mounted disk/client on this node. Existing I/O
-    // retains its endpoint. The selection follows host migration and expires
-    // with the connection; preparation failure leaves the old path intact.
+    // Use ConnectionId from the snapshot to select its current mount.
+    // RDMA selection requires gRPC fallback. Existing I/O retains its endpoint.
+    // Selection follows host migration and expires with the connection.
+    // Preparation failure leaves the old path intact.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
     SwitchDataTransport(
-        TString cellId,
-        TString diskId,
-        TString clientId,
+        TString connectionId,
         NProto::ECellDataTransport transport) = 0;
 
     [[nodiscard]] virtual NThreading::TFuture<TVector<TCellDescribeResult>>

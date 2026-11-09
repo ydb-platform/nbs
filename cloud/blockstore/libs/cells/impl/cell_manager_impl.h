@@ -57,9 +57,7 @@ struct TCellManager: public ICellManager
     [[nodiscard]] TCellsSnapshot GetSnapshot() override;
 
     [[nodiscard]] NThreading::TFuture<NProto::TError> SwitchDataTransport(
-        TString cellId,
-        TString diskId,
-        TString clientId,
+        TString connectionId,
         NProto::ECellDataTransport transport) override;
 
     [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>

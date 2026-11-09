@@ -35,9 +35,7 @@ TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry);
 
 NProto::TError SwitchCellDataTransport(
     TCellConnectionRegistry& registry,
-    const TString& cellId,
-    const TString& diskId,
-    const TString& clientId,
+    const TString& connectionId,
     NProto::ECellDataTransport transport);
 
 }   // namespace NCloud::NBlockStore::NCells

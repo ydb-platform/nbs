@@ -428,12 +428,8 @@ void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
 {
     out << "<form method='post' action='cells' class='form-inline'>"
         << "<input type='hidden' name='action' value='switchTransport'>"
-        << "<input type='hidden' name='CellId' value='"
-        << EncodeHtmlPcdata(mount.CellId) << "'>"
-        << "<input type='hidden' name='Volume' value='"
-        << EncodeHtmlPcdata(mount.DiskId) << "'>"
-        << "<input type='hidden' name='ClientId' value='"
-        << EncodeHtmlPcdata(mount.ClientId) << "'>"
+        << "<input type='hidden' name='ConnectionId' value='"
+        << EncodeHtmlPcdata(mount.ConnectionId) << "'>"
         << "<select name='Transport' class='form-control input-sm'>";
     constexpr std::array transports = {
         NProto::CELL_DATA_TRANSPORT_GRPC,
@@ -444,6 +440,11 @@ void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
             << NProto::ECellDataTransport_Name(transports[i]) << "'";
         if (mount.SelectedTransport == transports[i]) {
             out << " selected";
+        }
+        if (transports[i] == NProto::CELL_DATA_TRANSPORT_RDMA &&
+            !mount.CanSelectRdma)
+        {
+            out << " disabled title='Requires gRPC data fallback'";
         }
         out << ">" << names[i] << "</option>";
     }
@@ -672,7 +673,7 @@ private:
                 &transport) ||
             (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
              transport != NProto::CELL_DATA_TRANSPORT_RDMA) ||
-            params.Get("CellId").empty() || params.Get("Volume").empty())
+            params.Get("ConnectionId").empty())
         {
             ReplyTransportChanged(
                 ctx,
@@ -680,18 +681,13 @@ private:
                 ev->Cookie,
                 MakeError(
                     E_ARGUMENT,
-                    "Expected POST with cell, disk and gRPC/RDMA "
+                    "Expected POST with connection and gRPC/RDMA "
                     "transport"));
             return;
         }
         auto* actorSystem = ctx.ActorSystem();
         const auto self = SelfId();
-        CellManager
-            ->SwitchDataTransport(
-                params.Get("CellId"),
-                params.Get("Volume"),
-                params.Get("ClientId"),
-                transport)
+        CellManager->SwitchDataTransport(params.Get("ConnectionId"), transport)
             .Subscribe(
                 [actorSystem, self, replyTo = ev->Sender, cookie = ev->Cookie](
                     const auto& future)
@@ -713,6 +709,7 @@ private:
     {
         if (!HasError(error)) {
             // The browser must land on a GET, so reload does not repeat Apply.
+            // Viewer prepends /node/<id> to this root-relative location.
             ctx.Send(
                 replyTo,
                 new NMon::TEvHttpInfoRes(

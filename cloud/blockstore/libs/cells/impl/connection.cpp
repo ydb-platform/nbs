@@ -14,6 +14,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/guid.h>
 #include <util/generic/scope.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
@@ -284,6 +285,7 @@ class TCellConnection final
     , public std::enable_shared_from_this<TCellConnection>
 {
 private:
+    const TString ConnectionId = CreateGuidAsString();
     const TCellHostPoolPtr Pool;
     const TBootstrap Bootstrap;
     const NClient::TClientAppConfigPtr ClientConfig;
@@ -410,6 +412,11 @@ public:
         }
     }
 
+    const TString& GetConnectionId() const
+    {
+        return ConnectionId;
+    }
+
     TCellMountStatus GetMountStatus() const
     {
         THostBindingPtr binding;
@@ -429,13 +436,12 @@ public:
         status.Host = binding->HostConfig.GetFqdn();
         status.DataTransport = DescribeDataTransport(*binding, switcher);
         status.SelectedTransport = binding->HostConfig.GetTransport();
+        status.ConnectionId = ConnectionId;
+        status.CanSelectRdma = binding->HostConfig.GetGrpcDataFallbackEnabled();
         return status;
     }
 
-    NProto::TError SwitchDataTransport(
-        const TString& diskId,
-        const TString& clientId,
-        NProto::ECellDataTransport transport)
+    NProto::TError SwitchDataTransport(NProto::ECellDataTransport transport)
     {
         if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
             transport != NProto::CELL_DATA_TRANSPORT_RDMA)
@@ -444,8 +450,10 @@ public:
         }
 
         THostBindingPtr old;
+        TString diskId;
+        TString clientId;
         with_lock (Lock) {
-            if (MountedDiskId != diskId || MountedClientId != clientId) {
+            if (MountedDiskId.empty()) {
                 return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
             }
             if (!BindingInstalled || MigrationInFlight) {
@@ -453,12 +461,21 @@ public:
                     E_REJECTED,
                     "Cell connection is changing; retry");
             }
+            if (transport == NProto::CELL_DATA_TRANSPORT_RDMA &&
+                !Binding->HostConfig.GetGrpcDataFallbackEnabled())
+            {
+                return MakeError(
+                    E_ARGUMENT,
+                    "Manual RDMA selection requires gRPC data fallback");
+            }
             if (Binding->HostConfig.GetTransport() == transport) {
                 TransportOverride = transport;
                 return {};
             }
             MigrationInFlight = true;
             old = Binding;
+            diskId = MountedDiskId;
+            clientId = MountedClientId;
         }
 
         Y_DEFER
@@ -562,8 +579,6 @@ public:
 
     void OnHostUnavailable(const TString& fqdn, ui64 epoch) noexcept override
     {
-        ui64 generation = 0;
-
         with_lock (Lock) {
             const bool aboutCurrentHost =
                 fqdn == Binding->HostConfig.GetFqdn();
@@ -589,10 +604,10 @@ public:
                 return;
             }
 
-            generation = Binding->Generation;
+            MoveAwayRequests.insert(Binding->Generation);
         }
 
-        RequestMoveAway(generation);
+        RunPendingMoveAway();
     }
 
     // Without a fallback this host serves nothing at all while its rdma is
@@ -784,15 +799,10 @@ private:
 
         auto binding = built.ExtractResult();
         binding->ChannelEpoch = old.ChannelEpoch;
-        auto error = PrepareDataPath(binding);
+        binding->Generation = ReserveGeneration();
         binding->ControlGeneration = old.ControlGeneration;
         binding->BoundControlService = old.BoundControlService;
-        if (HasError(error)) {
-            return error;
-        }
-        if (transport != NProto::CELL_DATA_TRANSPORT_RDMA ||
-            !config.GetGrpcDataFallbackEnabled())
-        {
+        if (transport != NProto::CELL_DATA_TRANSPORT_RDMA) {
             return binding;
         }
 
@@ -813,6 +823,13 @@ private:
         with_lock (Lock) {
             if (MountedDiskId != diskId || MountedClientId != clientId) {
                 return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+            }
+            const auto* avoidance =
+                Avoid.FindPtr(binding->HostConfig.GetFqdn());
+            if (MoveAwayRequests.contains(Binding->Generation) && avoidance &&
+                avoidance->PingUntil > Bootstrap.Timer->Now())
+            {
+                MoveAwayRequests.insert(binding->Generation);
             }
             Binding = binding;
             TransportOverride = binding->HostConfig.GetTransport();
@@ -1414,23 +1431,16 @@ public:
     }
 
     NProto::TError SwitchDataTransport(
-        const TString& cellId,
-        const TString& diskId,
-        const TString& clientId,
+        const TString& connectionId,
         NProto::ECellDataTransport transport)
     {
-        if (cellId.empty() || diskId.empty()) {
-            return MakeError(E_ARGUMENT, "Cell and disk must be specified");
+        if (connectionId.empty()) {
+            return MakeError(E_ARGUMENT, "Connection must be specified");
         }
+
         for (const auto& connection: GetLiveConnections()) {
-            const auto status = connection->GetMountStatus();
-            if (status.CellId == cellId && status.DiskId == diskId &&
-                status.ClientId == clientId)
-            {
-                return connection->SwitchDataTransport(
-                    diskId,
-                    clientId,
-                    transport);
+            if (connection->GetConnectionId() == connectionId) {
+                return connection->SwitchDataTransport(transport);
             }
         }
         return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
@@ -1464,12 +1474,10 @@ TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry)
 
 NProto::TError SwitchCellDataTransport(
     TCellConnectionRegistry& registry,
-    const TString& cellId,
-    const TString& diskId,
-    const TString& clientId,
+    const TString& connectionId,
     NProto::ECellDataTransport transport)
 {
-    return registry.SwitchDataTransport(cellId, diskId, clientId, transport);
+    return registry.SwitchDataTransport(connectionId, transport);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
