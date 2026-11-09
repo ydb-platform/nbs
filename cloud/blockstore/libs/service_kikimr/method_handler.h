@@ -158,9 +158,11 @@ public:
     {
         auto state = ExtractRequest(ev->Cookie);
         if (!state) {
-            ReportServiceProxyReceivedUnknownCookie(
-                {{"request", GetBlockStoreRequestName(T::Request)},
-                 {"cookie", ev->Cookie}});
+            if constexpr (IsWriteRequest(T::Request)) {
+                ReportServiceProxyReceivedUnknownCookie(
+                    {{"request", GetBlockStoreRequestName(T::Request)},
+                     {"cookie", ev->Cookie}});
+            }
             return;
         }
 
