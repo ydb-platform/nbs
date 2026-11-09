@@ -508,29 +508,31 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
         return;
     }
 
-    TGuard g{XAttrCacheLock};
-    if (XAttrCache.IsCacheable(ino, name, cacheVersion)) {
-        XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
-        return;
-    }
-
     //
-    // The value set by this client may not be cached, but the responses to
-    // the requests which have started before this point may contain the
+    // Like the other local changes, the change invalidates the xattr: the
+    // responses to the requests started before this point may contain the
     // older value or its absence (they may have been processed by the
-    // backend before this SetNodeXAttr) - they must not be cached, otherwise
-    // read-after-write would be broken. The requests started after this
-    // point see the new value.
+    // backend before this SetNodeXAttr), the requests started after this
+    // point see the new value. Unlike the other local changes, the set value
+    // itself is cached.
     //
 
     const ui64 invalidationVersion =
         GenerateCacheVersion(GlobalCacheVersion);
 
-    STORAGE_TRACE("invalidating cached xattr upon SetXAttr: " << ino
+    STORAGE_TRACE("caching own xattr: " << ino
         << " " << name.Quote()
         << ", version: " << invalidationVersion);
 
-    XAttrCache.Invalidate(ino, name, invalidationVersion);
+    TGuard g{XAttrCacheLock};
+    XAttrCache.AddOwnValue(
+        ino,
+        name,
+        value,
+        version,
+        cacheVersion,
+        invalidationVersion,
+        cacheTTL);
 }
 
 void TFileSystem::ReplyCreateWithCache(

@@ -246,8 +246,7 @@ public:
 
     /**
      * Caches the absence of an xattr unless the xattr has been invalidated
-     * after cacheVersion. The absence has no version, so if a value is
-     * cached, the value is erased and the absence is not cached.
+     * after cacheVersion.
      *
      * @param ino - Node id.
      * @param name - Xattr name.
@@ -263,15 +262,32 @@ public:
         TDuration cacheTTL);
 
     /**
-     * Checks whether the data fetched by a request may be cached.
+     * Caches the value set by the client itself (if it may be cached, see
+     * Add) and prevents caching the responses to the requests started before
+     * invalidationVersion: they may have been processed by the backend
+     * before this change and contain the older value or its absence. The
+     * absences carry no version, so they can be ordered against this value
+     * only this way.
      *
      * @param ino - Node id.
      * @param name - Xattr name.
-     * @param cacheVersion - Cache version at which the request has started.
-     * @return - False if the xattr or all the xattrs of the node have been
-     *  invalidated after cacheVersion.
+     * @param value - Xattr value.
+     * @param version - Xattr version returned by the backend.
+     * @param cacheVersion - Cache version at which the request that has set
+     *  the value has started.
+     * @param invalidationVersion - Cache version generated upon the response
+     *  arrival.
+     * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
+     *  that XAttrCacheTimeout is used.
      */
-    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
+    void AddOwnValue(
+        ui64 ino,
+        const TString& name,
+        const TString& value,
+        ui64 version,
+        ui64 cacheVersion,
+        ui64 invalidationVersion,
+        TDuration cacheTTL);
 
     /**
      * Looks up a cached xattr value or absence.
@@ -316,6 +332,7 @@ public:
     size_t GetEntryCount() const;
 
 private:
+    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
     void Erase(ui64 ino, const TString& name);
     TInstant GetDeadline(TDuration cacheTTL) const;
 };

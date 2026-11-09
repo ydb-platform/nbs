@@ -60,11 +60,11 @@ nonzero TTL means the client is subscribed to the corresponding key.
 - Negative caching is allowed for XAttrs only
 - XAttr values carry a version (a per-tablet counter incremented upon each
   XAttr write) which orders the values of the same XAttr; `E_FS_NOXATTR`
-  responses carry no version, so an absence can't be ordered against a
-  value - the client drops both instead of caching the absence over a cached
-  value
-- A response to the client's own SetNodeXAttr which may not be cached (it has
-  raced with an invalidation) invalidates the XAttr itself - otherwise a
+  responses carry no version, so an absence can't be ordered against a value
+  by versions
+- Unlike the other local changes, the client's own SetNodeXAttr caches the
+  set value (if the response passes the race check). Like the other local
+  changes, it leaves a tombstone upon the response arrival - otherwise a
   GetNodeXAttr processed by the backend before the SetNodeXAttr could cache
   the older value or its absence and break read-after-write
 - XAttrCacheTTL = 0: the client falls back to the legacy time-based

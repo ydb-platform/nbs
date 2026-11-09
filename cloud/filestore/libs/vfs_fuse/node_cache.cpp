@@ -145,18 +145,6 @@ void TXAttrCache::AddAbsent(
     ui64 cacheVersion,
     TDuration cacheTTL)
 {
-    //
-    // The absence has no version (see the E_FS_NOXATTR responses) - it can't
-    // be ordered against a cached value, e.g. against the value set by the
-    // client's own SetNodeXAttr. Neither of them is kept then.
-    //
-
-    const auto* current = Get(ino, name);
-    if (current && current->Value) {
-        Erase(ino, name);
-        return;
-    }
-
     if (!IsCacheable(ino, name, cacheVersion)) {
         return;
     }
@@ -171,6 +159,32 @@ void TXAttrCache::AddAbsent(
             .Deadline = GetDeadline(cacheTTL)
         }
     );
+}
+
+void TXAttrCache::AddOwnValue(
+    ui64 ino,
+    const TString& name,
+    const TString& value,
+    ui64 version,
+    ui64 cacheVersion,
+    ui64 invalidationVersion,
+    TDuration cacheTTL)
+{
+    if (!IsCacheable(ino, name, cacheVersion)) {
+        Invalidate(ino, name, invalidationVersion);
+        return;
+    }
+
+    Add(ino, name, value, version, cacheVersion, cacheTTL);
+
+    //
+    // The cached value is kept, the tombstone prevents only the caching of
+    // the responses to the requests started before this point.
+    //
+
+    Invalidations.Invalidate(
+        TXAttrCacheKey{.NodeId = ino, .Name = name},
+        invalidationVersion);
 }
 
 const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)

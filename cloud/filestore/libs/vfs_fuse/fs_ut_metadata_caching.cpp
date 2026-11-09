@@ -637,8 +637,8 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL("new", env.GetXAttr());
 
         //
-        // The absence can't be ordered against the cached value - the value
-        // is erased.
+        // The absence has been found out by a request started before the
+        // SetXAttr response - it is not cached, the set value is kept.
         //
 
         promise.SetValue({});
@@ -647,9 +647,8 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             TSystemError,
             [] (const TSystemError& e) { return e.Status() == ENODATA; });
 
-        env.XAttrExists = true;
-        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL("new", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldReadAfterSetXAttrRacingWithDelayedGetXAttr)
@@ -938,32 +937,60 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         UNIT_ASSERT(!cache.Get(1, "a"));
     }
 
-    Y_UNIT_TEST(ShouldNotCacheAbsenceOverValue)
+    Y_UNIT_TEST(ShouldNotCacheResponsesStartedBeforeOwnValue)
     {
         TXAttrCache cache(
             std::make_shared<TTestTimer>(),
             10 /* maxSize */,
             TDuration::Seconds(15));
 
+        cache.AddOwnValue(
+            1,
+            "a",
+            "v2",
+            2 /* version */,
+            1 /* cacheVersion */,
+            5 /* invalidationVersion */,
+            {} /* cacheTTL */);
+        UNIT_ASSERT_VALUES_EQUAL("v2", *cache.Get(1, "a")->Value);
+
+        //
+        // The responses to the requests started before the own value has
+        // been cached are not cached, the own value is kept.
+        //
+
+        cache.AddAbsent(1, "a", 4 /* cacheVersion */, {} /* cacheTTL */);
         cache.Add(
             1,
             "a",
-            "v1",
-            1 /* version */,
-            1 /* cacheVersion */,
+            "v3",
+            3 /* version */,
+            4 /* cacheVersion */,
             {} /* cacheTTL */);
+        UNIT_ASSERT_VALUES_EQUAL("v2", *cache.Get(1, "a")->Value);
 
-        //
-        // The absence has no version - neither the value nor the absence is
-        // kept.
-        //
-
-        cache.AddAbsent(1, "a", 1 /* cacheVersion */, {} /* cacheTTL */);
-        UNIT_ASSERT(!cache.Get(1, "a"));
-
-        cache.AddAbsent(1, "a", 1 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(1, "a", 5 /* cacheVersion */, {} /* cacheTTL */);
         const auto* xattr = cache.Get(1, "a");
         UNIT_ASSERT(xattr && !xattr->Value);
+
+        //
+        // An own value which may not be cached erases the cached entry.
+        //
+
+        cache.InvalidateAll(10 /* version */);
+        cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
+        UNIT_ASSERT(cache.Get(1, "a"));
+        cache.AddOwnValue(
+            1,
+            "a",
+            "v4",
+            4 /* version */,
+            9 /* cacheVersion */,
+            11 /* invalidationVersion */,
+            {} /* cacheTTL */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+        cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateAllXAttrsOfNode)
