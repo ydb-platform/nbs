@@ -614,11 +614,21 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
         return static_cast<size_t>(Count(postedOpcodes, opcode));
     };
 
-    auto waitPosted = [&](ibv_wr_opcode opcode, size_t count)
+    auto waitFor = [](auto condition)
     {
-        while (countPosted(opcode) != count) {
+        const auto deadline = TInstant::Now() + TDuration::Seconds(30);
+        while (!condition()) {
+            if (TInstant::Now() > deadline) {
+                return false;
+            }
             SpinLockPause();
         }
+        return true;
+    };
+
+    auto waitPosted = [&](ibv_wr_opcode opcode, size_t count)
+    {
+        return waitFor([&] { return countPosted(opcode) == count; });
     };
 
     std::atomic<ui32> acceptedEagerBytes{Max<ui32>()};
@@ -659,9 +669,8 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
     auto activeRecv = counters->GetCounter("ActiveRecv");
     auto errors = counters->GetCounter("Errors");
 
-    while (activeRecv->Val() != 2) {
-        SpinLockPause();
-    }
+    ASSERT_TRUE(waitFor([&] { return activeRecv->Val() == 2; }))
+        << "RECVs were not posted";
 
     ASSERT_EQ(8_KB, acceptedEagerBytes.load());
 
@@ -675,9 +684,9 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
             auto* recv = context->RecvEvents.back();
             context->RecvEvents.pop_back();
 
-            ASSERT_EQ(2, recv->num_sge);
-            ASSERT_EQ(sizeof(TRequestMessage), recv->sg_list[0].length);
-            ASSERT_EQ(8_KB, recv->sg_list[1].length);
+            EXPECT_EQ(2, recv->num_sge);
+            EXPECT_EQ(sizeof(TRequestMessage), recv->sg_list[0].length);
+            EXPECT_EQ(8_KB, recv->sg_list[1].length);
 
             auto* msg =
                 reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
@@ -718,9 +727,8 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
 
     receive(7, payload.size(), sizeof(TRequestMessage) + payload.size());
 
-    while (handler->Calls.load() != 1) {
-        SpinLockPause();
-    }
+    ASSERT_TRUE(waitFor([&] { return handler->Calls.load() == 1; }))
+        << "eager request was not executed";
     ASSERT_EQ(eagerBuffer, reinterpret_cast<ui64>(handler->In.data()));
     ASSERT_NE(nullptr, handler->Context);
     ASSERT_EQ(0u, countPosted(IBV_WR_RDMA_READ));
@@ -737,18 +745,18 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
     ASSERT_EQ(payload, TString(handler->In));
 
     endpoint->SendResponse(handler->Context, 16);
-    waitPosted(IBV_WR_RDMA_WRITE, 1);
-    waitPosted(IBV_WR_SEND, 1);
+    ASSERT_TRUE(waitPosted(IBV_WR_RDMA_WRITE, 1));
+    ASSERT_TRUE(waitPosted(IBV_WR_SEND, 1));
 
     // payload length does not match the header: rejected without execution
 
     receive(8, 2000, sizeof(TRequestMessage) + 3000);
 
-    while (errors->Val() != 1) {
-        SpinLockPause();
-    }
-    waitPosted(IBV_WR_RDMA_WRITE, 2);
-    waitPosted(IBV_WR_SEND, 2);
+    ASSERT_TRUE(waitFor([&] { return errors->Val() >= 1; }))
+        << "malformed request was not rejected";
+    ASSERT_EQ(1, errors->Val());
+    ASSERT_TRUE(waitPosted(IBV_WR_RDMA_WRITE, 2));
+    ASSERT_TRUE(waitPosted(IBV_WR_SEND, 2));
     ASSERT_EQ(1, handler->Calls.load());
 
     // request above the negotiated limit is fetched with RDMA_READ and the
@@ -758,9 +766,8 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
 
     receive(9, 16_KB, sizeof(TRequestMessage));
 
-    while (handler->Calls.load() != 2) {
-        SpinLockPause();
-    }
+    ASSERT_TRUE(waitFor([&] { return handler->Calls.load() == 2; }))
+        << "request above the eager limit was not executed";
     ASSERT_EQ(1u, countPosted(IBV_WR_RDMA_READ));
     ASSERT_EQ(16_KB, handler->In.size());
     ASSERT_NE(keptBuffer, reinterpret_cast<ui64>(handler->In.data()));
@@ -771,8 +778,8 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
     }
 
     endpoint->SendResponse(handler->Context, 16);
-    waitPosted(IBV_WR_RDMA_WRITE, 3);
-    waitPosted(IBV_WR_SEND, 3);
+    ASSERT_TRUE(waitPosted(IBV_WR_RDMA_WRITE, 3));
+    ASSERT_TRUE(waitPosted(IBV_WR_SEND, 3));
     ASSERT_EQ(1, errors->Val());
 }
 
