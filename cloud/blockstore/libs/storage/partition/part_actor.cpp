@@ -1189,6 +1189,10 @@ STFUNC(TPartitionActor::StateBoot)
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCountersRequest);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvPartition)
 
         HFunc(TEvents::TEvWakeup, HandleWakeupOnBoot);
