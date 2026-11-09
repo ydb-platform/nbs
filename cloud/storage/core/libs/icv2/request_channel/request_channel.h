@@ -44,6 +44,8 @@ struct IIncomingRequest
 
     // One attempt, including failures. Use the matching response type.
     // Consumes response; success means accepted for sending, not delivered.
+    // Overload returns E_REJECTED; an unavailable channel returns
+    // E_INVALID_STATE.
     virtual NProto::TError Reply(
         std::unique_ptr<NActors::IEventBase> response) = 0;
 
@@ -75,11 +77,11 @@ struct IRequestChannel
     virtual bool Activate() = 0;
 
     // Send a serializable event and await its configured response type.
-    // A mismatched response to a pending request closes the channel with
-    // E_BADMSG. If the deadline expires before acceptance, the event is not
-    // sent. E_TIMEOUT does not cancel an accepted request: it may still be
-    // sent or executed remotely. Overload returns E_REJECTED without sending.
-    // Rejected calls return already completed futures.
+    // After E_TIMEOUT, the request may still be sent or executed remotely.
+    // Refusals: E_REJECTED for overload, E_INVALID_STATE for an inactive/closed
+    // channel. Refused requests are not sent.
+    // A mismatched response closes the channel: E_BADMSG for that request and
+    // WhenClosed(), E_ABORTED for the other pending requests.
     virtual TResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) = 0;
@@ -90,9 +92,10 @@ struct IRequestChannel
     // for WhenClosed(), or stop/destroy the executor from its own worker.
     virtual void Close() = 0;
 
-    // Ready after connection callbacks and admitted result continuations
-    // finish. An external thread may then stop and release the completion
-    // executor. Returns the first closure reason; local Close succeeds.
+    // Ready after connection callbacks and result continuations finish, and
+    // discarded events are released. An external thread may then stop and
+    // release the completion executor. Returns the first closure reason; local
+    // Close succeeds.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
     WhenClosed() const = 0;
 };

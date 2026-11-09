@@ -11,7 +11,6 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/threading/future
-    library/cpp/time_provider
 )
 
 END()

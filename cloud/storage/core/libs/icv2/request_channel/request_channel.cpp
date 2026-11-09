@@ -1,14 +1,14 @@
 #include "request_channel.h"
 
-#include <contrib/ydb/library/actors/core/scheduler_cookie.h>
-
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/set.h>
 #include <util/generic/vector.h>
+#include <util/generic/yexception.h>
 #include <util/system/mutex.h>
 
 #include <atomic>
+#include <optional>
 #include <tuple>
 
 namespace NCloud::NIcV2 {
@@ -37,7 +37,21 @@ NProto::TError MakeSendError(ESendResult result)
         return MakeError(E_REJECTED, "IC V2 output queue limit reached");
     }
 
-    return MakeError(E_REJECTED, "IC V2 connection is not active");
+    return MakeError(E_INVALID_STATE, "IC V2 connection is not active");
+}
+
+NProto::TError MakeRequestClosureError(const NProto::TError& error)
+{
+    if (error.GetCode() == E_BADMSG) {
+        return MakeError(
+            E_ABORTED,
+            "IC V2 channel closed after a protocol error");
+    }
+    if (HasError(error)) {
+        return error;
+    }
+
+    return MakeError(E_REJECTED, "IC V2 request channel closed");
 }
 
 TResultOrError<TEventTypes> BuildEventTypes(const TRequestChannelConfig& config)
@@ -106,14 +120,12 @@ public:
     struct TTask
     {
         TInstant Deadline;
-        ui64 Generation = 0;
-        std::shared_ptr<NActors::TSchedulerCookieHolder> Cookie;
+        ui64 Generation;
     };
 
 private:
     const ISchedulerPtr Scheduler;
-    NActors::TSchedulerCookieHolder Cookie;
-    TInstant Deadline;
+    TInstant Deadline = TInstant::Max();
     ui64 Generation = 0;
 
 public:
@@ -121,59 +133,47 @@ public:
         : Scheduler(std::move(scheduler))
     {}
 
-    // TODO: Remove cancelled tasks from the scheduler before their deadlines.
-    TTask Prepare(TInstant deadline)
+    std::optional<TTask> Prepare(TInstant deadline)
     {
-        if (Cookie.Get() && Deadline <= deadline) {
+        // Reuse the earlier wakeup even if its request has already completed.
+        if (Deadline <= deadline) {
             return {};
         }
 
-        auto* cookie = NActors::ISchedulerCookie::Make2Way();
-        auto scheduledCookie =
-            std::make_shared<NActors::TSchedulerCookieHolder>(cookie);
-        Cookie.Reset(cookie);
         Deadline = deadline;
-        return {
+        return TTask{
             .Deadline = deadline,
             .Generation = ++Generation,
-            .Cookie = std::move(scheduledCookie),
         };
-    }
-
-    void Cancel()
-    {
-        Cookie.Detach();
     }
 
     [[nodiscard]] bool IsCurrent(ui64 generation) const
     {
-        return generation == Generation && Cookie.Get() != nullptr;
+        return generation == Generation;
     }
 
     void Finish(ui64 generation)
     {
         if (generation == Generation) {
-            Cancel();
+            Deadline = TInstant::Max();
         }
     }
 
-    void Schedule(TTask task, std::weak_ptr<IRequestTimerClient> client) const
+    void Schedule(
+        std::optional<TTask> task,
+        std::weak_ptr<IRequestTimerClient> client) const
     {
-        if (!task.Cookie) {
+        if (!task) {
             return;
         }
 
         Scheduler->Schedule(
             nullptr,
-            task.Deadline,
-            [client = std::move(client),
-             generation = task.Generation,
-             cookie = std::move(task.Cookie)]
+            task->Deadline,
+            [client = std::move(client), generation = task->Generation]
             {
-                if (cookie->Detach()) {
-                    if (auto owner = client.lock()) {
-                        owner->HandleTimeout(generation);
-                    }
+                if (auto owner = client.lock()) {
+                    owner->HandleTimeout(generation);
                 }
             });
     }
@@ -232,16 +232,18 @@ public:
         TPromise<TResponseResult> promise)
     {
         ui64 cookie = 0;
-        TRequestTimer::TTask timer;
+        std::optional<TRequestTimer::TTask> timer;
         {
             TGuard<TMutex> guard(Mutex);
-            if (Phase != EPhase::Open ||
-                Outstanding.load(std::memory_order_relaxed) >=
-                    MaxPendingRequests)
-            {
+            if (Phase != EPhase::Open) {
                 return MakeError(
-                    E_REJECTED,
-                    "IC V2 channel closed or request limit reached");
+                    E_INVALID_STATE,
+                    "IC V2 request channel closed");
+            }
+            if (Outstanding.load(std::memory_order_relaxed) >=
+                MaxPendingRequests)
+            {
+                return MakeError(E_REJECTED, "IC V2 request limit reached");
             }
             if (Timer->Now() >= deadline) {
                 return MakeError(E_TIMEOUT, "IC V2 request timed out");
@@ -260,7 +262,7 @@ public:
             Outstanding.fetch_add(1, std::memory_order_relaxed);
             timer = PrepareTimerLocked();
         }
-        RequestTimer.Schedule(std::move(timer), weak_from_this());
+        RequestTimer.Schedule(timer, weak_from_this());
         return cookie;
     }
 
@@ -288,39 +290,47 @@ public:
         TPromise<TResponseResult> promise;
         bool timedOut = false;
         bool badResponse = false;
-        TRequestTimer::TTask timer;
         {
             TGuard<TMutex> guard(Mutex);
             const auto it = Pending.find(cookie);
-            if (it == Pending.end()) {
+            if (it != Pending.end()) {
+                timedOut = !HasError(result.GetError()) &&
+                           Timer->Now() >= it->second.Deadline;
+                badResponse =
+                    !HasError(result.GetError()) && !timedOut &&
+                    result.GetResult()->Type != it->second.ResponseType;
+                promise = std::move(it->second.Promise);
+                Deadlines.erase(
+                    TRequestDeadline{
+                        .Deadline = it->second.Deadline,
+                        .Cookie = cookie,
+                    });
+                Pending.erase(it);
+            } else if (!result.GetResult()) {
                 return;
             }
-            timedOut = !HasError(result.GetError()) &&
-                       Timer->Now() >= it->second.Deadline;
-            badResponse = !HasError(result.GetError()) && !timedOut &&
-                          result.GetResult()->Type != it->second.ResponseType;
-            promise = std::move(it->second.Promise);
-            Deadlines.erase(
-                TRequestDeadline{
-                    .Deadline = it->second.Deadline,
-                    .Cookie = cookie,
-                });
-            Pending.erase(it);
             ++CompletionOperations;
-            timer = PrepareTimerLocked();
         }
-        RequestTimer.Schedule(std::move(timer), weak_from_this());
+        NProto::TError error;
         if (timedOut) {
-            // Releasing a response may run its event destructor. Keep this
-            // outside the state lock, just like promise continuations.
-            result = MakeError(E_TIMEOUT, "IC V2 request timed out");
+            error = MakeError(E_TIMEOUT, "IC V2 request timed out");
         } else if (badResponse) {
-            result = MakeError(
+            error = MakeError(
                 E_BADMSG,
                 "unexpected IC V2 response type for cookie");
-            Close(result.GetError());
+            Close(error);
         }
-        PublishResult(std::move(promise), std::move(result));
+        PublishCompletion(
+            std::move(promise),
+            std::move(result),
+            std::move(error));
+    }
+
+    // Connection callbacks keep the executor available until this is queued.
+    void DiscardEvent(std::unique_ptr<NActors::IEventHandle> event)
+    {
+        ++CompletionOperations;
+        PublishCompletion({}, std::move(event), {});
     }
 
     void Close(const NProto::TError& error)
@@ -335,7 +345,6 @@ public:
                 CloseError = error;
                 pending.swap(Pending);
                 Deadlines.clear();
-                RequestTimer.Cancel();
                 CompletionOperations += pending.size() + 1;
                 first = true;
             }
@@ -348,12 +357,9 @@ public:
         if (!first) {
             return;
         }
-        const auto requestError =
-            HasError(error)
-                ? error
-                : MakeError(E_REJECTED, "IC V2 request channel closed");
+        const auto requestError = MakeRequestClosureError(error);
         for (auto& [cookie, request]: pending) {
-            PublishResult(std::move(request.Promise), requestError);
+            PublishCompletion(std::move(request.Promise), requestError, {});
         }
         FinishCompletionOperation();
     }
@@ -369,35 +375,6 @@ public:
     TFuture<NProto::TError> WhenClosed() const
     {
         return Closed.GetFuture();
-    }
-
-private:
-    void PublishResult(
-        TPromise<TResponseResult> promise,
-        TResponseResult result)
-    {
-        // Enqueue may return after the task finishes; wait for both.
-        ++CompletionOperations;
-        Completions->ExecuteSimple(
-            [self = shared_from_this(),
-             promise = std::move(promise),
-             result = std::move(result)]() mutable
-            {
-                self->ReleaseRequest();
-                promise.SetValue(std::move(result));
-                self->FinishCompletionOperation();
-            });
-        FinishCompletionOperation();
-    }
-
-    TRequestTimer::TTask PrepareTimerLocked()
-    {
-        if (Phase != EPhase::Open || Deadlines.empty()) {
-            RequestTimer.Cancel();
-            return {};
-        }
-
-        return RequestTimer.Prepare(Deadlines.begin()->Deadline);
     }
 
     void HandleTimeout(ui64 generation) override
@@ -420,13 +397,50 @@ private:
         for (ui64 cookie: expired) {
             Complete(cookie, MakeError(E_TIMEOUT, "IC V2 request timed out"));
         }
-        TRequestTimer::TTask timer;
+        std::optional<TRequestTimer::TTask> timer;
         {
             TGuard<TMutex> guard(Mutex);
             RequestTimer.Finish(generation);
             timer = PrepareTimerLocked();
         }
-        RequestTimer.Schedule(std::move(timer), weak_from_this());
+        RequestTimer.Schedule(timer, weak_from_this());
+    }
+
+private:
+    void PublishCompletion(
+        TPromise<TResponseResult> promise,
+        TResponseResult result,
+        NProto::TError error)
+    {
+        // Enqueue may return after the task finishes; wait for both.
+        ++CompletionOperations;
+        Completions->ExecuteSimple(
+            [self = shared_from_this(),
+             promise = std::move(promise),
+             result = std::move(result),
+             error = std::move(error)]() mutable
+            {
+                if (HasError(error)) {
+                    result = std::move(error);
+                }
+                if (promise.Initialized()) {
+                    self->ReleaseRequest();
+                    promise.SetValue(std::move(result));
+                }
+                // Drop unsolicited payloads before publishing WhenClosed().
+                result.ExtractResult().reset();
+                self->FinishCompletionOperation();
+            });
+        FinishCompletionOperation();
+    }
+
+    std::optional<TRequestTimer::TTask> PrepareTimerLocked()
+    {
+        if (Phase != EPhase::Open || Deadlines.empty()) {
+            return {};
+        }
+
+        return RequestTimer.Prepare(Deadlines.begin()->Deadline);
     }
 
     void ReleaseRequest()
@@ -481,7 +495,6 @@ public:
 
 class TRequestChannel final
     : public IRequestChannel
-    , public IConnectionHandler
     , public std::enable_shared_from_this<TRequestChannel>
 {
     const TEventTypes EventTypes;
@@ -493,20 +506,13 @@ class TRequestChannel final
 public:
     TRequestChannel(
         TEventTypes eventTypes,
-        ui32 maxPendingRequests,
         ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ITaskQueuePtr completions,
-        IRequestChannelHandlerPtr handler)
+        IRequestChannelHandlerPtr handler,
+        std::shared_ptr<TRequestState> state)
         : EventTypes(std::move(eventTypes))
         , Timer(std::move(timer))
         , Handler(std::move(handler))
-        , State(
-              std::make_shared<TRequestState>(
-                  Timer,
-                  std::move(scheduler),
-                  std::move(completions),
-                  maxPendingRequests))
+        , State(std::move(state))
     {}
 
     ~TRequestChannel() override
@@ -554,18 +560,11 @@ public:
             promise.SetValue(std::move(error));
             return future;
         }
-        const auto result = Send(cookie, std::move(event));
-        if (result != ESendResult::Accepted) {
-            State->Complete(cookie, MakeSendError(result));
+        auto sendError = Send(cookie, std::move(event));
+        if (HasError(sendError)) {
+            State->Complete(cookie, std::move(sendError));
         }
         return future;
-    }
-
-    ESendResult SendResponse(
-        ui64 cookie,
-        std::unique_ptr<NActors::IEventBase> event)
-    {
-        return Send(cookie, std::move(event));
     }
 
     void Close() override
@@ -579,10 +578,10 @@ public:
         return State->WhenClosed();
     }
 
-    void HandleEvent(
-        std::unique_ptr<NActors::IEventHandle> event) noexcept override
+    void HandleEvent(std::unique_ptr<NActors::IEventHandle> event) noexcept
     {
         if (!State->IsOpen()) {
+            State->DiscardEvent(std::move(event));
             return;
         }
         try {
@@ -597,6 +596,7 @@ public:
                         std::move(event),
                         *responseType));
             } else {
+                State->DiscardEvent(std::move(event));
                 State->Close(MakeError(
                     E_BADMSG,
                     "unexpected IC V2 event type or cookie"));
@@ -606,21 +606,30 @@ public:
         }
     }
 
-    void HandleDisconnect(const TString& reason) noexcept override
+    void HandleDisconnect(const TString& reason) noexcept
     {
         State->Close(MakeError(E_TRANSPORT_ERROR, reason));
     }
 
-private:
-    ESendResult Send(ui64 cookie, std::unique_ptr<NActors::IEventBase> event)
+    NProto::TError Send(
+        ui64 cookie,
+        std::unique_ptr<NActors::IEventBase> event) noexcept
     {
-        return Connection->Send(
-            std::make_unique<NActors::IEventHandle>(
-                NActors::TActorId(),
-                NActors::TActorId(),
-                event.release(),
-                0,
-                cookie));
+        try {
+            return MakeSendError(Connection->Send(
+                std::make_unique<NActors::IEventHandle>(
+                    NActors::TActorId(),
+                    NActors::TActorId(),
+                    event.release(),
+                    0,
+                    cookie)));
+        } catch (...) {
+            auto error = MakeError(
+                E_TRANSPORT_ERROR,
+                "IC V2 send failed: " + CurrentExceptionMessage());
+            State->Close(error);
+            return error;
+        }
     }
 };
 
@@ -653,10 +662,9 @@ NProto::TError TIncomingRequest::Reply(
 
     auto channel = Channel.lock();
     if (!channel) {
-        return MakeError(E_REJECTED, "IC V2 request channel destroyed");
+        return MakeError(E_INVALID_STATE, "IC V2 request channel destroyed");
     }
-    return MakeSendError(
-        channel->SendResponse(Event->Cookie, std::move(response)));
+    return channel->Send(Event->Cookie, std::move(response));
 }
 
 void TIncomingRequest::CloseChannel()
@@ -673,10 +681,14 @@ void TIncomingRequest::CloseChannel()
 class TWeakHandler final: public IConnectionHandler
 {
     const std::weak_ptr<TRequestChannel> Channel;
+    const std::shared_ptr<TRequestState> State;
 
 public:
-    explicit TWeakHandler(std::weak_ptr<TRequestChannel> channel)
+    TWeakHandler(
+        std::weak_ptr<TRequestChannel> channel,
+        std::shared_ptr<TRequestState> state)
         : Channel(std::move(channel))
+        , State(std::move(state))
     {}
 
     void HandleEvent(
@@ -684,6 +696,8 @@ public:
     {
         if (auto channel = Channel.lock()) {
             channel->HandleEvent(std::move(event));
+        } else {
+            State->DiscardEvent(std::move(event));
         }
     }
 
@@ -727,17 +741,20 @@ TResultOrError<IRequestChannelPtr> CreateRequestChannel(
         return error;
     }
 
-    auto channel = std::make_shared<TRequestChannel>(
-        std::move(eventTypes),
-        config.MaxPendingRequests,
-        std::move(timer),
+    auto state = std::make_shared<TRequestState>(
+        timer,
         std::move(scheduler),
         std::move(completions),
-        std::move(handler));
+        config.MaxPendingRequests);
+    auto channel = std::make_shared<TRequestChannel>(
+        std::move(eventTypes),
+        std::move(timer),
+        std::move(handler),
+        state);
     auto connection = transport->CreateConnection(
         std::move(socket),
         std::move(xdcSocket),
-        std::make_shared<TWeakHandler>(channel),
+        std::make_shared<TWeakHandler>(channel, std::move(state)),
         config.SendPings);
     if (!connection) {
         return MakeError(

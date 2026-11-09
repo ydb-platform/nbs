@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/icv2/handshake/handshake.h>
 #include <cloud/storage/core/libs/icv2/tcp/testlib/socket_test.h>
 
+#include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
@@ -24,6 +25,7 @@
 #include <atomic>
 #include <functional>
 #include <future>
+#include <stdexcept>
 #include <thread>
 
 namespace NCloud::NIcV2 {
@@ -147,6 +149,42 @@ void ReplyWithPayload(IIncomingRequest& request)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <ui32 EventType>
+class TTrackedEvent final
+    : public NActors::TEventLocal<TTrackedEvent<EventType>, EventType>
+{
+    NThreading::TPromise<std::thread::id> Destroyed;
+
+public:
+    explicit TTrackedEvent(NThreading::TPromise<std::thread::id> destroyed)
+        : Destroyed(std::move(destroyed))
+    {}
+
+    ~TTrackedEvent() override
+    {
+        Destroyed.SetValue(std::this_thread::get_id());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TResponse = TEvDiagnostic::TEvPingResponse>
+TEvent MakeTrackedResponse(
+    ui64 cookie,
+    NThreading::TPromise<std::thread::id> destroyed)
+{
+    auto event = std::make_unique<TTrackedEvent<TResponse::EventType>>(
+        std::move(destroyed));
+    return std::make_unique<NActors::IEventHandle>(
+        NActors::TActorId(),
+        NActors::TActorId(),
+        event.release(),
+        0,
+        cookie);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTestConnection final: public IConnection
 {
     enum class EPhase
@@ -167,6 +205,7 @@ class TTestConnection final: public IConnection
 public:
     std::function<void(NActors::IEventHandle&)> OnSend;
     std::function<void()> BeforeClose;
+    std::function<void()> BeforeReceive;
     ESendResult SendResult = ESendResult::Accepted;
 
     explicit TTestConnection(std::shared_ptr<IConnectionHandler> handler)
@@ -256,6 +295,9 @@ public:
                 handler.reset();
                 FinishOperation();
             };
+            if (BeforeReceive) {
+                BeforeReceive();
+            }
             handler->HandleEvent(std::move(event));
         }
     }
@@ -436,6 +478,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void RunCompletionsOffThread(const std::shared_ptr<TManualTaskQueue>& queue)
+{
+    auto run = std::async(std::launch::async, [queue] { queue->RunAll(); });
+    run.get();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TBlockingTaskQueue final: public ITaskQueue
 {
 public:
@@ -553,6 +603,8 @@ public:
 
 struct TFixture
 {
+    const ITaskQueuePtr OwnedCompletions;
+
     std::shared_ptr<TTestTransport> Transport =
         std::make_shared<TTestTransport>();
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
@@ -561,10 +613,17 @@ struct TFixture
     IRequestChannelPtr Channel;
 
     explicit TFixture(
-        TTestRequestHandler::TCallback handler = [](IIncomingRequestPtr) {},
+        TTestRequestHandler::TCallback handler = [](IIncomingRequestPtr request)
+        { Y_UNUSED(request); },
         TRequestChannelConfig config = Config,
-        ITaskQueuePtr completions = CreateTaskQueueStub())
+        ITaskQueuePtr completions = {})
+        : OwnedCompletions(
+              completions ? nullptr : CreateThreadPool("ICV2Fixture", 1))
     {
+        if (OwnedCompletions) {
+            OwnedCompletions->Start();
+            completions = OwnedCompletions;
+        }
         auto [channel, error] = CreateRequestChannel(
             Transport,
             CreateTestSocket(),
@@ -584,6 +643,14 @@ struct TFixture
             Channel->Close();
         }
         Transport->Stop();
+        if (OwnedCompletions) {
+            if (Channel) {
+                Y_ABORT_UNLESS(
+                    Channel->WhenClosed().Wait(TDuration::Seconds(15)),
+                    "test channel did not close");
+            }
+            OwnedCompletions->Stop();
+        }
     }
 
     TResponseFuture Request(
@@ -604,6 +671,7 @@ struct TNetworkFixture
     std::shared_ptr<TTestScheduler> Scheduler =
         std::make_shared<TTestScheduler>();
     std::array<ITransportPtr, 2> Transports;
+    std::array<ITaskQueuePtr, 2> Completions;
     std::array<IRequestChannelPtr, 2> Channels;
 
     explicit TNetworkFixture(
@@ -667,6 +735,8 @@ struct TNetworkFixture
                 0,
                 {});
             UNIT_ASSERT(Transports[i]);
+            Completions[i] = CreateThreadPool("ICV2Network", 1);
+            Completions[i]->Start();
             auto [channel, error] = CreateRequestChannel(
                 Transports[i],
                 connection.Socket,
@@ -674,7 +744,7 @@ struct TNetworkFixture
                 config,
                 Timer,
                 Scheduler,
-                CreateTaskQueueStub(),
+                Completions[i],
                 std::make_shared<TTestRequestHandler>(
                     [this](IIncomingRequestPtr request)
                     {
@@ -712,6 +782,16 @@ struct TNetworkFixture
                 transport->Stop();
             }
         }
+        for (size_t i = 0; i < Channels.size(); ++i) {
+            if (Channels[i]) {
+                Y_ABORT_UNLESS(
+                    Channels[i]->WhenClosed().Wait(TDuration::Seconds(15)),
+                    "network test channel did not close");
+            }
+            if (Completions[i]) {
+                Completions[i]->Stop();
+            }
+        }
     }
 };
 
@@ -744,7 +824,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
                 std::make_shared<TCountingScheduler>(),
                 CreateTaskQueueStub(),
                 std::make_shared<TTestRequestHandler>(
-                    [](IIncomingRequestPtr) {}));
+                    [](IIncomingRequestPtr request) { Y_UNUSED(request); }));
             UNIT_ASSERT(!channel);
             UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_ARGUMENT);
             UNIT_ASSERT(!transport->Connection);
@@ -753,7 +833,9 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
 
     Y_UNIT_TEST(CorrelatesParallelMixedRequestsAndOutOfOrderResponses)
     {
-        TFixture fixture([](IIncomingRequestPtr) {}, MultiConfig);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            MultiConfig);
         fixture.Channel->Activate();
         std::array<std::future<TResponseFuture>, 32> callers;
         for (size_t i = 0; i < callers.size(); ++i) {
@@ -807,7 +889,10 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
     {
         for (bool other: {false, true}) {
             auto queue = std::make_shared<TManualTaskQueue>();
-            TFixture fixture([](IIncomingRequestPtr) {}, MultiConfig, queue);
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                MultiConfig,
+                queue);
             fixture.Channel->Activate();
             auto first = fixture.Request();
             auto second = fixture.Channel->Request(
@@ -823,20 +908,25 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
                         sent[0]->Cookie,
                         "wrong response"));
             }
+            UNIT_ASSERT_VALUES_EQUAL(sent.size(), 2);
             UNIT_ASSERT(!first.HasValue());
             UNIT_ASSERT(!second.HasValue());
             UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
             UNIT_ASSERT_VALUES_EQUAL(
                 WaitResponse(fixture.Request()).GetError().GetCode(),
-                E_REJECTED);
+                E_INVALID_STATE);
             queue->RunAll();
             UNIT_ASSERT_VALUES_EQUAL(
                 WaitResponse(first).GetError().GetCode(),
-                E_BADMSG);
+                other ? E_ABORTED : E_BADMSG);
             UNIT_ASSERT_VALUES_EQUAL(
                 WaitResponse(second).GetError().GetCode(),
+                other ? E_BADMSG : E_ABORTED);
+            UNIT_ASSERT(
+                fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                fixture.Channel->WhenClosed().GetValue().GetCode(),
                 E_BADMSG);
-            UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
         }
     }
 
@@ -844,7 +934,9 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         LateConfiguredResponseTypeDoesNotCloseChannelOrCompleteAnotherCall)
     {
         for (bool runTimer: {false, true}) {
-            TFixture fixture([](IIncomingRequestPtr) {}, MultiConfig);
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                MultiConfig);
             fixture.Channel->Activate();
             auto first = fixture.Request("short", TDuration::MilliSeconds(10));
             auto second = fixture.Channel->Request(
@@ -870,11 +962,49 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         }
     }
 
+    Y_UNIT_TEST(ClosedChannelIsNotReportedAsRequestLimit)
+    {
+        auto queue = std::make_shared<TManualTaskQueue>();
+        auto config = Config;
+        config.MaxPendingRequests = 1;
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            config,
+            queue);
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        auto pending = fixture.Request();
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(fixture.Request()).GetError().GetCode(),
+            E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Transport->Connection->TakeSent().size(),
+            1);
+
+        fixture.Channel->Close();
+        UNIT_ASSERT(!pending.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(fixture.Request()).GetError().GetCode(),
+            E_INVALID_STATE);
+        UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
+
+        queue->RunAll();
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(pending).GetError().GetCode(),
+            E_REJECTED);
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(fixture.Request()).GetError().GetCode(),
+            E_INVALID_STATE);
+    }
+
     Y_UNIT_TEST(RequestAdmissionLimitIsSharedAcrossEventTypes)
     {
         auto config = MultiConfig;
         config.MaxPendingRequests = 1;
-        TFixture fixture([](IIncomingRequestPtr) {}, config);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            config);
         fixture.Channel->Activate();
         auto first = fixture.Request();
         auto rejected = fixture.Channel->Request(
@@ -914,7 +1044,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT(!HasError(fixture.Channel->WhenClosed().GetValue()));
     }
 
-    Y_UNIT_TEST(CompletedRequestCancelsItsTimer)
+    Y_UNIT_TEST(IdleTimerDoesNotRearmWithoutPendingRequests)
     {
         TFixture fixture;
         fixture.Channel->Activate();
@@ -928,6 +1058,94 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 0);
         UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 1);
         UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
+
+        auto next = fixture.Request();
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 2);
+        fixture.Timer->AdvanceTime(TDuration::Seconds(5));
+        fixture.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(next).GetError().GetCode(),
+            E_TIMEOUT);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 2);
+    }
+
+    Y_UNIT_TEST(ReusesTimerAcrossSequentialRequests)
+    {
+        for (auto sendResult: {ESendResult::Accepted, ESendResult::QueueFull}) {
+            auto config = Config;
+            config.MaxPendingRequests = 1;
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                config);
+            UNIT_ASSERT(fixture.Channel->Activate());
+
+            fixture.Transport->Connection->SendResult = sendResult;
+            for (size_t i = 0; i < 10000; ++i) {
+                auto response = fixture.Request("ping", TDuration::Hours(1));
+                auto sent = fixture.Transport->Connection->TakeSent();
+                if (sendResult == ESendResult::Accepted) {
+                    UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
+
+                    fixture.Transport->Connection->Receive(
+                        MakeResponse(sent[0]->Cookie, "reply"));
+                    UNIT_ASSERT_VALUES_EQUAL(GetPayload(response), "reply");
+                } else {
+                    UNIT_ASSERT(sent.empty());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        WaitResponse(response).GetError().GetCode(),
+                        E_REJECTED);
+                }
+                fixture.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+            }
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 1);
+
+            fixture.Channel->Close();
+            UNIT_ASSERT(
+                fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+            fixture.Timer->AdvanceTime(TDuration::Hours(1));
+            fixture.Scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 1);
+        }
+    }
+
+    Y_UNIT_TEST(ReusedTimerRearmsForPendingRequest)
+    {
+        TFixture fixture;
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        auto first = fixture.Request();
+        auto sent = fixture.Transport->Connection->TakeSent();
+        UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
+
+        fixture.Transport->Connection->Receive(
+            MakeResponse(sent[0]->Cookie, "reply"));
+        UNIT_ASSERT_VALUES_EQUAL(GetPayload(first), "reply");
+
+        fixture.Timer->AdvanceTime(TDuration::Seconds(4));
+        const auto deadline = fixture.Timer->Now() + TDuration::Seconds(5);
+        auto second = fixture.Request();
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 1);
+
+        fixture.Timer->AdvanceTime(TDuration::Seconds(1));
+        fixture.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT(!second.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Scheduler->LastDeadline.load(),
+            deadline.MicroSeconds());
+
+        fixture.Timer->AdvanceTime(TDuration::Seconds(4));
+        fixture.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(second).GetError().GetCode(),
+            E_TIMEOUT);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Tasks.load(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.Scheduler->Scheduled.load(), 2);
     }
 
     Y_UNIT_TEST(SchedulesAtDeadlineAndRearmsForEarlierRequest)
@@ -970,7 +1188,10 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         auto queue = std::make_shared<TManualTaskQueue>();
         auto config = Config;
         config.MaxPendingRequests = 1;
-        TFixture fixture([](IIncomingRequestPtr) {}, config, queue);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            config,
+            queue);
         fixture.Channel->Activate();
         auto first = fixture.Request();
         auto sent = fixture.Transport->Connection->TakeSent();
@@ -993,14 +1214,17 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(second).GetError().GetCode(),
             E_REJECTED);
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
     }
 
     Y_UNIT_TEST(CloseCompletesIndependentRequestsOnSeparateWorkers)
     {
-        auto queue = CreateThreadPool("ICV2CloseTest", 2);
+        auto queue = CreateLongRunningTaskExecutor("ICV2CloseTest");
         queue->Start();
-        TFixture fixture([](IIncomingRequestPtr) {}, Config, queue);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            Config,
+            queue);
         fixture.Channel->Activate();
         auto first = fixture.Request("first");
         auto second = fixture.Request("second");
@@ -1034,7 +1258,10 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         for (size_t completion: {size_t(0), size_t(1), size_t(2)}) {
             auto queue = CreateThreadPool("ICV2TestResult", 1);
             queue->Start();
-            TFixture fixture([](IIncomingRequestPtr) {}, Config, queue);
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                Config,
+                queue);
             fixture.Channel->Activate();
             auto response = fixture.Request();
             auto entered = NThreading::NewPromise<void>();
@@ -1142,6 +1369,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         const auto timeout = TDuration::MilliSeconds(10);
         auto transport = std::make_shared<TTestTransport>();
         auto scheduler = std::make_shared<TCountingScheduler>();
+        auto completions = std::make_shared<TManualTaskQueue>();
         auto config = Config;
         config.MaxPendingRequests = 1;
         auto [channel, error] = CreateRequestChannel(
@@ -1151,7 +1379,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             config,
             std::make_shared<TAdvancingTimer>(timeout),
             scheduler,
-            CreateTaskQueueStub(),
+            completions,
             std::make_shared<TTestRequestHandler>(
                 [](IIncomingRequestPtr request) { Y_UNUSED(request); }));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
@@ -1160,6 +1388,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         {
             channel->Close();
             transport->Stop();
+            completions->RunAll();
         };
         UNIT_ASSERT(channel->Activate());
 
@@ -1174,10 +1403,11 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
 
         transport->Connection->Receive(MakeResponse(sent[0]->Cookie, "reply"));
+        completions->RunAll();
         UNIT_ASSERT_VALUES_EQUAL(GetPayload(next), "reply");
     }
 
-    Y_UNIT_TEST(TimeoutDuringTimerSchedulingDoesNotPreventSend)
+    Y_UNIT_TEST(HandlesTimeoutDuringTimerScheduling)
     {
         TFixture fixture;
         fixture.Channel->Activate();
@@ -1191,12 +1421,16 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_TIMEOUT);
-        UNIT_ASSERT_VALUES_EQUAL(
-            fixture.Transport->Connection->TakeSent().size(),
-            1);
+        auto sent = fixture.Transport->Connection->TakeSent();
+        UNIT_ASSERT(sent.size() <= 1);
+        for (const auto& request: sent) {
+            fixture.Transport->Connection->Receive(
+                MakeResponse(request->Cookie, "late"));
+        }
+        UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
     }
 
-    Y_UNIT_TEST(TimeoutAfterAdmissionDoesNotPreventSend)
+    Y_UNIT_TEST(HandlesTimeoutDuringSend)
     {
         TFixture fixture;
         fixture.Channel->Activate();
@@ -1210,9 +1444,13 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_TIMEOUT);
-        UNIT_ASSERT_VALUES_EQUAL(
-            fixture.Transport->Connection->TakeSent().size(),
-            1);
+        auto sent = fixture.Transport->Connection->TakeSent();
+        UNIT_ASSERT(sent.size() <= 1);
+        for (const auto& request: sent) {
+            fixture.Transport->Connection->Receive(
+                MakeResponse(request->Cookie, "late"));
+        }
+        UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
     }
 
     Y_UNIT_TEST(ChecksDeadlineEvenBeforeTimerCallbackRuns)
@@ -1247,7 +1485,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
                 fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
             UNIT_ASSERT_VALUES_EQUAL(
                 WaitResponse(fixture.Request()).GetError().GetCode(),
-                E_REJECTED);
+                E_INVALID_STATE);
         }
     }
 
@@ -1260,7 +1498,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_TRANSPORT_ERROR);
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
     }
 
     Y_UNIT_TEST(DroppingChannelClosesConnectionAndReleasesTimerState)
@@ -1385,7 +1623,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
                 UNIT_ASSERT(fixture.Channel->Activate());
             }
             fixture.Channel->Close();
-            UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+            UNIT_ASSERT(
+                fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
             queue.reset();
             UNIT_ASSERT(weak.expired());
         }
@@ -1394,12 +1633,31 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
     Y_UNIT_TEST(ContinuationCanReleaseLastChannelReference)
     {
         TFixture fixture;
-        fixture.Channel->Activate();
+        UNIT_ASSERT(fixture.Channel->Activate());
+
         auto response = fixture.Request();
         auto closed = fixture.Channel->WhenClosed();
         std::weak_ptr<IRequestChannel> weak = fixture.Channel;
-        response.Subscribe([&](const auto&) { fixture.Channel.reset(); });
+        auto release = NThreading::NewPromise<void>();
+        auto released = NThreading::NewPromise<void>();
+        Y_DEFER
+        {
+            release.TrySetValue();
+        };
+        response.Subscribe(
+            [owner = fixture.Channel, release, released](
+                const auto& result) mutable
+            {
+                Y_UNUSED(result);
+
+                release.GetFuture().GetValueSync();
+                owner.reset();
+                released.SetValue();
+            });
         fixture.Channel->Close();
+        fixture.Channel.reset();
+        release.SetValue();
+        UNIT_ASSERT(released.GetFuture().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(weak.expired());
         UNIT_ASSERT(closed.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1440,15 +1698,15 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             std::async(std::launch::async, [&] { fixture.Channel->Close(); });
         UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
         fixture.Channel->Close();
-        const bool rejected = HasError(incoming->Reply(MakeReply("closed")));
+        const auto replyError = incoming->Reply(MakeReply("closed"));
         release.SetValue();
         first.get();
         fixture.Transport->Connection->BeforeClose = {};
-        UNIT_ASSERT(rejected);
+        UNIT_ASSERT_VALUES_EQUAL(replyError.GetCode(), E_INVALID_STATE);
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_REJECTED);
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
     }
 
     Y_UNIT_TEST(CloseFromRequestCallbackWaitsForItsReturn)
@@ -1466,11 +1724,13 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         fixture.Transport->Connection->Receive(
             MakeResponse<TEvDiagnostic::TEvPingRequest>(42, "request"));
         UNIT_ASSERT(incoming);
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
         std::weak_ptr<IRequestChannel> weak = fixture.Channel;
         fixture.Channel.reset();
         UNIT_ASSERT(weak.expired());
-        UNIT_ASSERT(HasError(incoming->Reply(MakeReply("closed"))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            incoming->Reply(MakeReply("closed")).GetCode(),
+            E_INVALID_STATE);
         incoming->CloseChannel();
     }
 
@@ -1517,7 +1777,31 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         release.SetValue();
         receive.get();
         UNIT_ASSERT(fixture.Transport->Connection->WhenClosed().HasValue());
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+    }
+
+    Y_UNIT_TEST(IncomingReplyReportsSendRefusals)
+    {
+        for (auto sendResult: {ESendResult::QueueFull, ESendResult::NotActive})
+        {
+            IIncomingRequestPtr incoming;
+            TFixture fixture([&](IIncomingRequestPtr request)
+                             { incoming = std::move(request); });
+            UNIT_ASSERT(fixture.Channel->Activate());
+
+            fixture.Transport->Connection->Receive(
+                MakeResponse<TEvDiagnostic::TEvPingRequest>(42, "request"));
+            UNIT_ASSERT(incoming);
+
+            fixture.Transport->Connection->SendResult = sendResult;
+            const ui32 expected = sendResult == ESendResult::QueueFull
+                                      ? E_REJECTED
+                                      : E_INVALID_STATE;
+            UNIT_ASSERT_VALUES_EQUAL(
+                incoming->Reply(MakeReply("reply")).GetCode(),
+                expected);
+            UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
+        }
     }
 
     Y_UNIT_TEST(IncomingRequestAllowsOneMatchingReply)
@@ -1592,7 +1876,10 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         auto queue = std::make_shared<TManualTaskQueue>();
         auto config = Config;
         config.MaxPendingRequests = 1;
-        TFixture fixture([](IIncomingRequestPtr) {}, config, queue);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            config,
+            queue);
         fixture.Channel->Activate();
         auto first = fixture.Request("first");
         TResponseFuture second;
@@ -1703,7 +1990,9 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
 
     Y_UNIT_TEST(ResponseTimeoutAndCloseRaceCompleteEachRequestOnce)
     {
-        TFixture fixture([](IIncomingRequestPtr) {}, MultiConfig);
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            MultiConfig);
         fixture.Channel->Activate();
         std::atomic<size_t> completions = 0;
         TVector<TResponseFuture> responses;
@@ -1740,8 +2029,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             const auto code = WaitResponse(response).GetError().GetCode();
             UNIT_ASSERT(code == E_TIMEOUT || code == E_REJECTED);
         }
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(completions.load(), responses.size());
-        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
     }
 
     Y_UNIT_TEST(ResponseOwnershipSurvivesFutureAndChannelDestruction)
@@ -1761,6 +2050,222 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(
             event->Get<TEvDiagnostic::TEvPingResponse>()->Record.GetSomeData(0),
             "owned response");
+    }
+
+    Y_UNIT_TEST(SendExceptionClosesChannelAndCompletesPendingRequests)
+    {
+        TFixture fixture;
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        auto first = fixture.Request();
+        fixture.Transport->Connection->OnSend = [](NActors::IEventHandle& event)
+        {
+            Y_UNUSED(event);
+
+            throw std::runtime_error("send failed");
+        };
+        auto failed = fixture.Request();
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(failed).GetError().GetCode(),
+            E_TRANSPORT_ERROR);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(first).GetError().GetCode(),
+            E_TRANSPORT_ERROR);
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Channel->WhenClosed().GetValue().GetCode(),
+            E_TRANSPORT_ERROR);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(fixture.Request()).GetError().GetCode(),
+            E_INVALID_STATE);
+    }
+
+    Y_UNIT_TEST(SendExceptionDoesNotOverwriteReceivedResponse)
+    {
+        TFixture fixture;
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        fixture.Transport->Connection->OnSend =
+            [&](NActors::IEventHandle& event)
+        {
+            fixture.Transport->Connection->Receive(
+                MakeResponse(event.Cookie, "reply"));
+            throw std::runtime_error("send failed after receiving a response");
+        };
+        UNIT_ASSERT_VALUES_EQUAL(GetPayload(fixture.Request()), "reply");
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Channel->WhenClosed().GetValue().GetCode(),
+            E_TRANSPORT_ERROR);
+    }
+
+    Y_UNIT_TEST(ReplyExceptionClosesChannelAndReturnsError)
+    {
+        IIncomingRequestPtr incoming;
+        TFixture fixture([&](IIncomingRequestPtr request)
+                         { incoming = std::move(request); });
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        fixture.Transport->Connection->Receive(
+            MakeResponse<TEvDiagnostic::TEvPingRequest>(42, "request"));
+        UNIT_ASSERT(incoming);
+
+        fixture.Transport->Connection->OnSend = [](NActors::IEventHandle& event)
+        {
+            Y_UNUSED(event);
+
+            throw std::runtime_error("reply failed");
+        };
+        UNIT_ASSERT_VALUES_EQUAL(
+            incoming->Reply(MakeReply("reply")).GetCode(),
+            E_TRANSPORT_ERROR);
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Channel->WhenClosed().GetValue().GetCode(),
+            E_TRANSPORT_ERROR);
+        UNIT_ASSERT_VALUES_EQUAL(
+            incoming->Reply(MakeReply("again")).GetCode(),
+            E_INVALID_STATE);
+    }
+
+    Y_UNIT_TEST(ReleasesLateResponsesOnCompletionExecutor)
+    {
+        for (bool runTimer: {false, true}) {
+            auto queue = std::make_shared<TManualTaskQueue>();
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                Config,
+                queue);
+            Y_DEFER
+            {
+                fixture.Channel->Close();
+                queue->RunAll();
+            };
+            UNIT_ASSERT(fixture.Channel->Activate());
+
+            auto response =
+                fixture.Request("request", TDuration::MilliSeconds(1));
+            auto sent = fixture.Transport->Connection->TakeSent();
+            UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
+
+            fixture.Timer->AdvanceTime(TDuration::MilliSeconds(1));
+            if (runTimer) {
+                fixture.Scheduler->RunAllScheduledTasks();
+            }
+            auto destroyed = NThreading::NewPromise<std::thread::id>();
+            fixture.Transport->Connection->Receive(
+                MakeTrackedResponse(sent[0]->Cookie, destroyed));
+            UNIT_ASSERT(!destroyed.GetFuture().HasValue());
+
+            fixture.Channel->Close();
+            UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
+            RunCompletionsOffThread(queue);
+            UNIT_ASSERT(destroyed.GetFuture().Wait(TDuration::Seconds(5)));
+            UNIT_ASSERT(
+                destroyed.GetFuture().GetValue() != std::this_thread::get_id());
+            UNIT_ASSERT(
+                fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                WaitResponse(response).GetError().GetCode(),
+                E_TIMEOUT);
+        }
+    }
+
+    Y_UNIT_TEST(ReleasesMismatchedResponseOnCompletionExecutor)
+    {
+        auto queue = std::make_shared<TManualTaskQueue>();
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            MultiConfig,
+            queue);
+        Y_DEFER
+        {
+            fixture.Channel->Close();
+            queue->RunAll();
+        };
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        auto response = fixture.Request();
+        auto sent = fixture.Transport->Connection->TakeSent();
+        UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
+
+        auto destroyed = NThreading::NewPromise<std::thread::id>();
+        fixture.Transport->Connection->Receive(
+            MakeTrackedResponse<TOtherResponse>(sent[0]->Cookie, destroyed));
+        UNIT_ASSERT(!destroyed.GetFuture().HasValue());
+        UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
+
+        RunCompletionsOffThread(queue);
+        UNIT_ASSERT(destroyed.GetFuture().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(
+            destroyed.GetFuture().GetValue() != std::this_thread::get_id());
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(response).GetError().GetCode(),
+            E_BADMSG);
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Channel->WhenClosed().GetValue().GetCode(),
+            E_BADMSG);
+    }
+
+    Y_UNIT_TEST(DiscardedEventsRemainInCloseBarrier)
+    {
+        enum class EState
+        {
+            Open,
+            Closing,
+            OwnerGone,
+            UnexpectedType,
+        };
+        for (auto state:
+             {EState::Open,
+              EState::Closing,
+              EState::OwnerGone,
+              EState::UnexpectedType})
+        {
+            auto queue = std::make_shared<TManualTaskQueue>();
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                Config,
+                queue);
+            Y_DEFER
+            {
+                if (fixture.Channel) {
+                    fixture.Channel->Close();
+                }
+                queue->RunAll();
+            };
+            UNIT_ASSERT(fixture.Channel->Activate());
+
+            auto closed = fixture.Channel->WhenClosed();
+            if (state == EState::Closing) {
+                fixture.Transport->Connection->BeforeReceive = [&]
+                {
+                    fixture.Channel->Close();
+                };
+            } else if (state == EState::OwnerGone) {
+                fixture.Transport->Connection->BeforeReceive = [&]
+                {
+                    fixture.Channel.reset();
+                };
+            }
+            auto destroyed = NThreading::NewPromise<std::thread::id>();
+            fixture.Transport->Connection->Receive(
+                state == EState::UnexpectedType
+                    ? MakeTrackedResponse<TOtherResponse>(42, destroyed)
+                    : MakeTrackedResponse(42, destroyed));
+            UNIT_ASSERT(!destroyed.GetFuture().HasValue());
+
+            if (fixture.Channel) {
+                fixture.Channel->Close();
+            }
+            UNIT_ASSERT(!closed.HasValue());
+            RunCompletionsOffThread(queue);
+            UNIT_ASSERT(destroyed.GetFuture().Wait(TDuration::Seconds(5)));
+            UNIT_ASSERT(
+                destroyed.GetFuture().GetValue() != std::this_thread::get_id());
+            UNIT_ASSERT(closed.Wait(TDuration::Seconds(5)));
+        }
     }
 
     Y_UNIT_TEST(ReportsQueueLimitAndRecovers)
@@ -1788,7 +2293,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         TFixture fixture;
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(fixture.Request()).GetError().GetCode(),
-            E_REJECTED);
+            E_INVALID_STATE);
         fixture.Channel->Activate();
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(fixture.Channel->Request({}, TDuration::Seconds(5)))
@@ -1817,7 +2322,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
                 0));
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(pending).GetError().GetCode(),
-            E_BADMSG);
+            E_ABORTED);
     }
 
     Y_UNIT_TEST(BidirectionalPingOverTcpAndHelloWithoutActorSystem)
