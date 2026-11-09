@@ -2,10 +2,12 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -20,6 +22,7 @@ type compoundStorage struct {
 
 	storageFolder string
 	storage       Storage
+	listTimeout   time.Duration
 }
 
 func (s *compoundStorage) invoke(
@@ -52,6 +55,113 @@ func (s *compoundStorage) visit(
 	return call(s.storage)
 }
 
+// listAvailable returns tasks from every folder that could be read.
+// A failure in one folder must not hide tasks in the other folder.
+func (s *compoundStorage) listAvailable(
+	ctx context.Context,
+	operation string,
+	list func(context.Context, Storage) ([]TaskInfo, error),
+) ([]TaskInfo, error) {
+	type result struct {
+		legacy bool
+		tasks  []TaskInfo
+		err    error
+	}
+
+	// Table().Do retries retriable errors until its context ends. Bound each
+	// folder read so an unavailable folder cannot hold up the other forever.
+	listTimeout := s.listTimeout
+	if listTimeout <= 0 {
+		listTimeout = 30 * time.Second
+	}
+	listCtx, cancel := context.WithTimeout(ctx, listTimeout)
+	defer cancel()
+
+	results := make(chan result, 2)
+	go func() {
+		tasks, err := list(listCtx, s.legacyStorage)
+		results <- result{legacy: true, tasks: tasks, err: err}
+	}()
+	go func() {
+		tasks, err := list(listCtx, s.storage)
+		results <- result{tasks: tasks, err: err}
+	}()
+
+	var legacy, current []TaskInfo
+	var legacyErr, currentErr error
+	var gotLegacy, gotCurrent bool
+	for !gotLegacy || !gotCurrent {
+		select {
+		case res := <-results:
+			if res.legacy {
+				legacy, legacyErr = res.tasks, res.err
+				gotLegacy = true
+			} else {
+				current, currentErr = res.tasks, res.err
+				gotCurrent = true
+			}
+		case <-listCtx.Done():
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !gotLegacy {
+				legacyErr = listCtx.Err()
+			}
+			if !gotCurrent {
+				currentErr = listCtx.Err()
+			}
+			goto finished
+		}
+	}
+
+finished:
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if legacyErr != nil {
+		logging.Warn(
+			ctx,
+			"%s failed for legacy storage folder %q: %v",
+			operation,
+			s.legacyStorageFolder,
+			legacyErr,
+		)
+		legacy = nil
+	}
+	if currentErr != nil {
+		logging.Warn(
+			ctx,
+			"%s failed for current storage folder %q: %v",
+			operation,
+			s.storageFolder,
+			currentErr,
+		)
+		current = nil
+	}
+
+	if legacyErr != nil && currentErr != nil {
+		return nil, fmt.Errorf(
+			"%s failed for legacy folder %q: %v; current folder %q: %w",
+			operation,
+			s.legacyStorageFolder,
+			legacyErr,
+			s.storageFolder,
+			currentErr,
+		)
+	}
+
+	for i := range legacy {
+		legacy[i].StorageFolder = s.legacyStorageFolder
+	}
+	for i := range current {
+		current[i].StorageFolder = s.storageFolder
+	}
+
+	return append(legacy, current...), nil
+}
+
 func (s *compoundStorage) dispatch(
 	ctx context.Context,
 	storageFolder string,
@@ -70,6 +180,30 @@ func (s *compoundStorage) dispatch(
 		s.legacyStorageFolder,
 		s.storageFolder,
 	)
+}
+
+func (s *compoundStorage) invokeForTaskInfo(
+	ctx context.Context,
+	info TaskInfo,
+	call func(Storage) error,
+) error {
+	if info.StorageFolder != "" {
+		return s.dispatch(ctx, info.StorageFolder, call)
+	}
+
+	return s.invoke(ctx, call)
+}
+
+func (s *compoundStorage) invokeForTaskState(
+	ctx context.Context,
+	state TaskState,
+	call func(Storage) error,
+) error {
+	if state.StorageFolder != "" {
+		return s.dispatch(ctx, state.StorageFolder, call)
+	}
+
+	return s.invoke(ctx, call)
 }
 
 func (s *compoundStorage) CreateTask(
@@ -109,9 +243,13 @@ func (s *compoundStorage) CreateRegularTasks(
 	state TaskState,
 	schedule TaskSchedule,
 ) error {
+	if state.StorageFolder == "" {
+		return s.storage.CreateRegularTasks(ctx, state, schedule)
+	}
 
-	// Don't need to use legacyStorage here.
-	return s.storage.CreateRegularTasks(ctx, state, schedule)
+	return s.dispatch(ctx, state.StorageFolder, func(part Storage) error {
+		return part.CreateRegularTasks(ctx, state, schedule)
+	})
 }
 
 func (s *compoundStorage) GetTask(
@@ -147,36 +285,20 @@ func (s *compoundStorage) ListTasksReadyToRun(
 	ctx context.Context,
 	limit uint64,
 	taskTypeWhitelist []string,
-) (taskInfos []TaskInfo, err error) {
-
-	err = s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksReadyToRun(
-			ctx,
-			limit,
-			taskTypeWhitelist,
-		)
-		taskInfos = append(taskInfos, values...)
-		return err
+) ([]TaskInfo, error) {
+	return s.listAvailable(ctx, "ListTasksReadyToRun", func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+		return part.ListTasksReadyToRun(listCtx, limit, taskTypeWhitelist)
 	})
-	return taskInfos, err
 }
 
 func (s *compoundStorage) ListTasksReadyToCancel(
 	ctx context.Context,
 	limit uint64,
 	taskTypeWhitelist []string,
-) (taskInfos []TaskInfo, err error) {
-
-	err = s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksReadyToCancel(
-			ctx,
-			limit,
-			taskTypeWhitelist,
-		)
-		taskInfos = append(taskInfos, values...)
-		return err
+) ([]TaskInfo, error) {
+	return s.listAvailable(ctx, "ListTasksReadyToCancel", func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+		return part.ListTasksReadyToCancel(listCtx, limit, taskTypeWhitelist)
 	})
-	return taskInfos, err
 }
 
 func (s *compoundStorage) ListTasksStallingWhileRunning(
@@ -184,19 +306,19 @@ func (s *compoundStorage) ListTasksStallingWhileRunning(
 	excludingHostname string,
 	limit uint64,
 	taskTypeWhitelist []string,
-) (taskInfos []TaskInfo, err error) {
-
-	err = s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksStallingWhileRunning(
-			ctx,
-			excludingHostname,
-			limit,
-			taskTypeWhitelist,
-		)
-		taskInfos = append(taskInfos, values...)
-		return err
-	})
-	return taskInfos, err
+) ([]TaskInfo, error) {
+	return s.listAvailable(
+		ctx,
+		"ListTasksStallingWhileRunning",
+		func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+			return part.ListTasksStallingWhileRunning(
+				listCtx,
+				excludingHostname,
+				limit,
+				taskTypeWhitelist,
+			)
+		},
+	)
 }
 
 func (s *compoundStorage) ListTasksStallingWhileCancelling(
@@ -204,19 +326,19 @@ func (s *compoundStorage) ListTasksStallingWhileCancelling(
 	excludingHostname string,
 	limit uint64,
 	taskTypeWhitelist []string,
-) (taskInfos []TaskInfo, err error) {
-
-	err = s.visit(ctx, func(storage Storage) error {
-		values, err := storage.ListTasksStallingWhileCancelling(
-			ctx,
-			excludingHostname,
-			limit,
-			taskTypeWhitelist,
-		)
-		taskInfos = append(taskInfos, values...)
-		return err
-	})
-	return taskInfos, err
+) ([]TaskInfo, error) {
+	return s.listAvailable(
+		ctx,
+		"ListTasksStallingWhileCancelling",
+		func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+			return part.ListTasksStallingWhileCancelling(
+				listCtx,
+				excludingHostname,
+				limit,
+				taskTypeWhitelist,
+			)
+		},
+	)
 }
 
 func (s *compoundStorage) ListTasksRunning(
@@ -314,6 +436,31 @@ func (s *compoundStorage) ListSlowTasks(
 	return tasks, err
 }
 
+func (s *compoundStorage) GetDelayedTaskStats(
+	ctx context.Context,
+	now time.Time,
+) (DelayedTaskStats, error) {
+
+	var result DelayedTaskStats
+	err := s.visit(ctx, func(part Storage) error {
+		stats, err := part.GetDelayedTaskStats(ctx, now)
+		if err != nil {
+			return err
+		}
+
+		result.Total += stats.Total
+		result.Due += stats.Due
+		result.TotalOverdueSeconds += stats.TotalOverdueSeconds
+		if stats.MaxOverdueSeconds > result.MaxOverdueSeconds {
+			result.MaxOverdueSeconds = stats.MaxOverdueSeconds
+		}
+
+		return nil
+	})
+
+	return result, err
+}
+
 func (s *compoundStorage) LockTaskToRun(
 	ctx context.Context,
 	taskInfo TaskInfo,
@@ -322,7 +469,7 @@ func (s *compoundStorage) LockTaskToRun(
 	runner string,
 ) (state TaskState, err error) {
 
-	err = s.invoke(ctx, func(storage Storage) error {
+	err = s.invokeForTaskInfo(ctx, taskInfo, func(storage Storage) error {
 		state, err = storage.LockTaskToRun(
 			ctx,
 			taskInfo,
@@ -343,7 +490,7 @@ func (s *compoundStorage) LockTaskToCancel(
 	runner string,
 ) (state TaskState, err error) {
 
-	err = s.invoke(ctx, func(storage Storage) error {
+	err = s.invokeForTaskInfo(ctx, taskInfo, func(storage Storage) error {
 		state, err = storage.LockTaskToCancel(
 			ctx,
 			taskInfo,
@@ -375,7 +522,7 @@ func (s *compoundStorage) UpdateTaskWithPreparation(
 	preparation func(context.Context, *persistence.Transaction) error,
 ) (res TaskState, err error) {
 
-	err = s.invoke(ctx, func(storage Storage) error {
+	err = s.invokeForTaskState(ctx, state, func(storage Storage) error {
 		res, err = storage.UpdateTaskWithPreparation(ctx, state, preparation)
 		return err
 	})
@@ -387,7 +534,7 @@ func (s *compoundStorage) UpdateTask(
 	state TaskState,
 ) (res TaskState, err error) {
 
-	err = s.invoke(ctx, func(storage Storage) error {
+	err = s.invokeForTaskState(ctx, state, func(storage Storage) error {
 		res, err = storage.UpdateTask(ctx, state)
 		return err
 	})
@@ -405,6 +552,23 @@ func (s *compoundStorage) SendEvent(
 		return err
 	})
 	return err
+}
+
+func (s *compoundStorage) ReconcileReadyToRunDelayed(
+	ctx context.Context,
+	limit int,
+	cursor DelayedQueueCursor,
+) (DelayedQueueCursor, error) {
+	if cursor.StorageFolder == "" {
+		cursor.StorageFolder = s.storageFolder
+	}
+	next := cursor
+	err := s.dispatch(ctx, cursor.StorageFolder, func(storage Storage) error {
+		var err error
+		next, err = storage.ReconcileReadyToRunDelayed(ctx, limit, cursor)
+		return err
+	})
+	return next, err
 }
 
 func (s *compoundStorage) ClearEndedTasks(
@@ -539,6 +703,14 @@ func NewStorage(
 		return storage, nil
 	}
 
+	listTimeout, err := time.ParseDuration(config.GetCompoundStorageListTimeout())
+	if err != nil {
+		return nil, fmt.Errorf("invalid CompoundStorageListTimeout: %w", err)
+	}
+	if listTimeout <= 0 {
+		return nil, fmt.Errorf("CompoundStorageListTimeout must be positive")
+	}
+
 	// Ignore legacy metrics.
 	legacyStorage := newStorage(
 		config.GetLegacyStorageFolder(),
@@ -551,6 +723,7 @@ func NewStorage(
 
 		storageFolder: config.GetStorageFolder(),
 		storage:       storage,
+		listTimeout:   listTimeout,
 	}, nil
 }
 

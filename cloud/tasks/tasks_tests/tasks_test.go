@@ -2319,3 +2319,425 @@ func TestTasksNonCancellableTaskIsAllowedToFailWithNonCancellableError(
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonCancellableFailure")
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestDelayedTasksDoNotOccupyRunner(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	cfg := newDefaultConfig()
+	cfg.RunnersCount = proto.Uint64(1)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.RegularSystemTasksEnabled = proto.Bool(false)
+
+	s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+	require.NoError(t, registerDoublerTask(s.registry))
+	require.NoError(t, s.startRunners(ctx))
+
+	now := time.Now()
+	var delayedIDs []string
+
+	for i := 0; i < 10; i++ {
+		id, err := s.scheduler.ScheduleTaskAt(
+			getRequestContext(t, ctx),
+			"doubler",
+			"",
+			tasks.TaskScheduleTiming{
+				ReceivedAt: now,
+				NotBefore:  now.Add(time.Hour),
+			},
+			&wrappers.UInt64Value{Value: 1},
+		)
+		require.NoError(t, err)
+
+		delayedIDs = append(delayedIDs, id)
+	}
+
+	// The only runner must remain available for an ordinary task.
+	ordinaryID, err := scheduleDoublerTask(
+		getRequestContext(t, ctx),
+		s.scheduler,
+		123,
+	)
+	require.NoError(t, err)
+
+	value, err := waitTaskWithTimeout(ctx, s.scheduler, ordinaryID, 10*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, uint64(246), value)
+
+	for _, id := range delayedIDs {
+		state, err := s.storage.GetTask(ctx, id)
+		require.NoError(t, err)
+		require.True(t, state.FirstRunStartedAt.IsZero())
+	}
+
+	// A delayed task must also be cancellable without waiting for its deadline.
+	_, err = s.scheduler.CancelTask(ctx, delayedIDs[0])
+	require.NoError(t, err)
+	require.NoError(
+		t,
+		s.scheduler.WaitTaskEndedWithTimeout(ctx, delayedIDs[0], 10*time.Second),
+	)
+
+	state, err := s.storage.GetTask(ctx, delayedIDs[0])
+	require.NoError(t, err)
+	require.Equal(t, tasks_storage.TaskStatusCancelled, state.Status)
+	require.True(t, state.FirstRunStartedAt.IsZero())
+}
+
+func TestDelayedTaskSurvivesSchedulerRestart(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	cfg := newDefaultConfig()
+	cfg.RunnersCount = proto.Uint64(1)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.RegularSystemTasksEnabled = proto.Bool(false)
+
+	oldCtx, stopOld := context.WithCancel(ctx)
+	defer stopOld()
+	old := createServicesWithConfig(t, oldCtx, db, cfg, metrics_empty.NewRegistry())
+
+	now := time.Now()
+	id, err := old.scheduler.ScheduleTaskAt(
+		getRequestContext(t, oldCtx),
+		"doubler",
+		"",
+		tasks.TaskScheduleTiming{
+			ReceivedAt: now,
+			NotBefore:  now.Add(3 * time.Second),
+		},
+		&wrappers.UInt64Value{Value: 123},
+	)
+	require.NoError(t, err)
+
+	before, err := old.storage.GetTask(ctx, id)
+	require.NoError(t, err)
+
+	stopOld()
+
+	// New objects have no in-memory state from the old scheduler.
+	store, err := tasks_storage.NewStorage(cfg, metrics_empty.NewRegistry(), db)
+	require.NoError(t, err)
+
+	registry := tasks.NewRegistry()
+	require.NoError(t, registerDoublerTask(registry))
+
+	scheduler, err := tasks.NewScheduler(
+		ctx,
+		registry,
+		store,
+		cfg,
+		metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	for _, host := range []string{"worker-a", "worker-b"} {
+		require.NoError(t, tasks.StartRunners(
+			ctx,
+			store,
+			registry,
+			metrics_empty.NewRegistry(),
+			cfg,
+			host,
+		))
+	}
+
+	value, err := waitTaskWithTimeout(ctx, scheduler, id, 20*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, uint64(246), value)
+
+	after, err := store.GetTask(ctx, id)
+	require.NoError(t, err)
+	require.True(t, before.AvailableAt.Equal(after.AvailableAt))
+	require.False(t, after.FirstRunStartedAt.Before(before.AvailableAt))
+}
+
+// The task remains active until the test cancels its context, avoiding elapsed
+// wall-clock waits for hanging detection and exercising the actual runner path.
+type hangingTimeoutProbeTask struct {
+	reported chan bool
+}
+
+func (t *hangingTimeoutProbeTask) Save() ([]byte, error)  { return nil, nil }
+func (t *hangingTimeoutProbeTask) Load(_, _ []byte) error { return nil }
+func (t *hangingTimeoutProbeTask) GetMetadata(context.Context) (proto.Message, error) {
+	return &empty.Empty{}, nil
+}
+func (t *hangingTimeoutProbeTask) GetResponse() proto.Message { return &empty.Empty{} }
+func (t *hangingTimeoutProbeTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	select {
+	case t.reported <- execCtx.IsHanging():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (t *hangingTimeoutProbeTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	return t.Run(ctx, execCtx)
+}
+
+func TestRunnersUseHangingTimeoutByType(t *testing.T) {
+	for _, status := range []tasks_storage.TaskStatus{
+		tasks_storage.TaskStatusReadyToRun,
+		tasks_storage.TaskStatusReadyToCancel,
+		tasks_storage.TaskStatusRunning,
+		tasks_storage.TaskStatusCancelling,
+	} {
+		t.Run(tasks_storage.TaskStatusToString(status), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			db := newYDB(ctx, t)
+			defer db.Close(context.Background())
+			defer cancel()
+			cfg := newDefaultConfig()
+			cfg.RegularSystemTasksEnabled = proto.Bool(false)
+			cfg.RunnersCount = proto.Uint64(1)
+			cfg.StalkingRunnersCount = proto.Uint64(0)
+			if status == tasks_storage.TaskStatusRunning || status == tasks_storage.TaskStatusCancelling {
+				cfg.RunnersCount = proto.Uint64(0)
+				cfg.StalkingRunnersCount = proto.Uint64(1)
+			}
+			cfg.HangingTaskTimeout = proto.String("1h")
+			cfg.HangingTaskTimeoutByType = map[string]string{"probe": "15m"}
+			s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+			reported := make(chan bool, 1)
+			require.NoError(t, s.registry.RegisterForExecution("probe", func() tasks.Task {
+				return &hangingTimeoutProbeTask{reported: reported}
+			}))
+			var availableAt, cancelRequestedAt time.Time
+			if tasks_storage.IsCancellationRequested(status) {
+				availableAt = time.Now().Add(time.Hour)
+				cancelRequestedAt = time.Now().Add(-30 * time.Minute)
+			}
+			_, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+				AvailableAt:       availableAt,
+				CancelRequestedAt: cancelRequestedAt,
+				IdempotencyKey:    "probe",
+				TaskType:          "probe",
+				Status:            status,
+				CreatedAt:         time.Now().Add(-30 * time.Minute),
+				ModifiedAt:        time.Now().Add(-time.Minute),
+				LastHost:          "previous-host",
+				Dependencies:      common.NewStringSet(),
+			})
+			require.NoError(t, err)
+			require.NoError(t, s.startRunners(ctx))
+			select {
+			case hanging := <-reported:
+				require.True(t, hanging)
+			case <-time.After(10 * time.Second):
+				t.Fatal("runner did not execute probe task")
+			}
+		})
+	}
+}
+
+func TestReconciliationTaskClearsOrphanedDelayedQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	db := newYDB(ctx, t)
+	defer db.Close(context.Background())
+	defer cancel()
+	cfg := newDefaultConfig()
+	// CollectListerMetrics occupies one runner for the entire test.
+	cfg.RunnersCount = proto.Uint64(3)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.ReconcileReadyToRunDelayedTaskScheduleInterval = proto.String("100ms")
+	cfg.ReconcileReadyToRunDelayedLimit = proto.Uint32(1)
+	s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+	// Correct future rows must not be re-read forever after each yield.
+	for i := 0; i < 3; i++ {
+		_, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+			IdempotencyKey: fmt.Sprintf("future-%d", i), TaskType: "unregistered",
+			Status:    tasks_storage.TaskStatusReadyToRun,
+			CreatedAt: time.Now(), ModifiedAt: time.Now(),
+			AvailableAt:  time.Now().Add(30 * time.Minute),
+			Dependencies: common.NewStringSet(),
+		})
+		require.NoError(t, err)
+	}
+	res, err := db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $at as Timestamp;
+		UPSERT INTO ready_to_run_delayed (available_at, id, generation_id, task_type, zone_id)
+		VALUES ($at, 'orphan-a', 0u, 'unregistered', ''),
+		($at, 'orphan-b', 0u, 'unregistered', ''),
+		($at, 'orphan-c', 0u, 'unregistered', '');
+	`, db.AbsolutePath(cfg.GetStorageFolder())),
+		persistence.ValueParam("$at", persistence.TimestampValue(time.Now().Add(time.Hour))),
+	)
+	require.NoError(t, err)
+	res.Close()
+	require.NoError(t, s.startRunners(ctx))
+	require.Eventually(t, func() bool {
+		res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			SELECT COUNT(*) AS count FROM ready_to_run_delayed;
+		`, db.AbsolutePath(cfg.GetStorageFolder())))
+		if err != nil {
+			return false
+		}
+		defer res.Close()
+		if !res.NextResultSet(ctx) || !res.NextRow() {
+			return false
+		}
+		var count uint64
+		return res.ScanNamed(persistence.OptionalWithDefault("count", &count)) == nil &&
+			res.Err() == nil && count == 3
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+func TestEarlyCancellationIsReportedByListerMetrics(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	db := newYDB(ctx, t)
+	defer db.Close(context.Background())
+	defer cancel()
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+	cfg := newHangingTaskTestConfig()
+	cfg.HangingTaskTimeout = proto.String("1h")
+	cfg.HangingTaskTimeoutByType = map[string]string{"long": "10m"}
+	s := createServicesWithConfig(t, ctx, db, cfg, registry)
+	require.NoError(t, registerLongTaskNotForExecution(s.registry))
+	now := time.Now()
+	id, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+		IdempotencyKey: "early-cancel", TaskType: "long",
+		Status:    tasks_storage.TaskStatusReadyToCancel,
+		CreatedAt: now.Add(-time.Hour), ModifiedAt: now,
+		AvailableAt: now.Add(time.Hour), CancelRequestedAt: now.Add(-20 * time.Minute),
+		Dependencies: common.NewStringSet(),
+	})
+	require.NoError(t, err)
+	reported := make(chan struct{}, 1)
+	registry.GetGauge("hangingTasks", map[string]string{"type": "long", "id": id}).
+		On("Set", float64(1)).Return(mock.Anything).Run(func(_ mock.Arguments) {
+		select {
+		case reported <- struct{}{}:
+		default:
+		}
+	})
+	require.NoError(t, s.startRunners(ctx))
+	select {
+	case <-reported:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the lister did not report an overdue cancellation before its execution deadline")
+	}
+}
+
+func TestReconciliationContinuesWhenOtherFolderIsUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		breakCurrent bool
+	}{
+		{name: "legacy unavailable"},
+		{name: "current unavailable", breakCurrent: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			defer cancel()
+
+			db := newYDB(ctx, t)
+			defer db.Close(context.Background())
+
+			cfg := newDefaultConfig()
+			legacyFolder := fmt.Sprintf("tasks_ydb_test/%s/legacy", t.Name())
+			cfg.LegacyStorageFolder = &legacyFolder
+			cfg.RunnersCount = proto.Uint64(3)
+			cfg.StalkingRunnersCount = proto.Uint64(1)
+			cfg.ReconcileReadyToRunDelayedTaskScheduleInterval = proto.String("100ms")
+			cfg.ReconcileReadyToRunDelayedLimit = proto.Uint32(1)
+
+			s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+
+			healthyFolder := cfg.GetStorageFolder()
+			brokenFolder := legacyFolder
+			expectedType := "tasks.ReconcileReadyToRunDelayed"
+			if tc.breakCurrent {
+				healthyFolder = legacyFolder
+				brokenFolder = cfg.GetStorageFolder()
+				expectedType = "tasks.ReconcileLegacyReadyToRunDelayed"
+			}
+
+			// Прямой storage нужен для проверки здоровой папки:
+			// compoundStorage.GetTask обращается сначала к legacy.
+			healthyConfig := &tasks_config.TasksConfig{
+				StorageFolder: &healthyFolder,
+			}
+			healthyStorage, err := tasks_storage.NewStorage(
+				healthyConfig,
+				metrics_empty.NewRegistry(),
+				db,
+			)
+			require.NoError(t, err)
+
+			res, err := db.ExecuteRW(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $at as Timestamp;
+				UPSERT INTO ready_to_run_delayed
+					(available_at, id, generation_id, task_type, zone_id)
+				VALUES ($at, 'orphan', 0u, 'unregistered', '');
+			`, db.AbsolutePath(healthyFolder)),
+				persistence.ValueParam(
+					"$at",
+					persistence.TimestampValue(time.Now().Add(time.Hour)),
+				),
+			)
+			require.NoError(t, err)
+			res.Close()
+
+			var taskID string
+			require.Eventually(t, func() bool {
+				infos, err := healthyStorage.ListTasksReadyToRun(ctx, 100, nil)
+				if err != nil {
+					return false
+				}
+				for _, info := range infos {
+					if info.TaskType == expectedType {
+						taskID = info.ID
+						return true
+					}
+				}
+				return false
+			}, 10*time.Second, 100*time.Millisecond)
+
+			// Одна таблица ломает listing; другая — прежний
+			// legacy-first путь LockTaskToRun/UpdateTask.
+			require.NoError(t, db.DropTable(ctx, brokenFolder, "ready_to_run"))
+			require.NoError(t, db.DropTable(ctx, brokenFolder, "tasks"))
+
+			require.NoError(t, s.startRunners(ctx))
+			require.Eventually(t, func() bool {
+				state, err := healthyStorage.GetTask(ctx, taskID)
+				return err == nil &&
+					state.Status == tasks_storage.TaskStatusFinished
+			}, 30*time.Second, 100*time.Millisecond)
+
+			res, err = db.ExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				SELECT COUNT(*) AS count FROM ready_to_run_delayed;
+			`, db.AbsolutePath(healthyFolder)))
+			require.NoError(t, err)
+			defer res.Close()
+
+			require.True(t, res.NextResultSet(ctx))
+			require.True(t, res.NextRow())
+
+			var count uint64
+			require.NoError(t, res.ScanNamed(
+				persistence.OptionalWithDefault("count", &count),
+			))
+			require.NoError(t, res.Err())
+			require.Zero(t, count)
+		})
+	}
+}

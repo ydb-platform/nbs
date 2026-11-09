@@ -129,6 +129,10 @@ type TaskState struct {
 	Regular                   bool
 	Description               string
 	StorageFolder             string
+	ReceivedAt                time.Time
+	AvailableAt               time.Time
+	FirstRunStartedAt         time.Time
+	CancelRequestedAt         time.Time // First cancellation request, preserved across retries.
 	CreatedAt                 time.Time
 	CreatedBy                 string
 	ModifiedAt                time.Time
@@ -171,6 +175,10 @@ type TaskState struct {
 	// by client.
 	// TODO: Should be extracted from TaskState.
 	dependants common.StringSet
+
+	// Set only in the result of the first successful LockTaskToRun.
+	// Transient: intentionally not included in the YDB mapping.
+	FirstRun bool
 }
 
 func (s *TaskState) DeepCopy() TaskState {
@@ -202,9 +210,10 @@ func (s *TaskState) SetError(e error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type TaskInfo struct {
-	ID           string
-	GenerationID uint64
-	TaskType     string
+	ID            string
+	GenerationID  uint64
+	TaskType      string
+	StorageFolder string
 }
 
 type TaskSchedule struct {
@@ -218,7 +227,30 @@ type TaskSchedule struct {
 	Min        int  // (0 - 59)
 }
 
+type DelayedTaskStats struct {
+	Total               uint64
+	Due                 uint64
+	MaxOverdueSeconds   float64
+	TotalOverdueSeconds float64
+}
+
 ////////////////////////////////////////////////////////////////////////////////
+
+// DelayedQueueKey is the ordered primary key of ready_to_run_delayed.
+type DelayedQueueKey struct {
+	AvailableAt time.Time
+	ID          string
+}
+
+// DelayedQueueCursor is persisted by the reconciliation task. Upper bounds a
+// pass so concurrent insertions cannot extend it indefinitely. Nil After means
+// the first page; nil Upper means the pass has not started.
+type DelayedQueueCursor struct {
+	StorageFolder string
+	After         *DelayedQueueKey
+	Upper         *DelayedQueueKey
+	Done          bool
+}
 
 type Storage interface {
 	// Attempt to register new task in the storage. TaskState.ID is ignored.
@@ -290,6 +322,8 @@ type Storage interface {
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
 	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
 
+	GetDelayedTaskStats(ctx context.Context, now time.Time) (DelayedTaskStats, error)
+
 	// Fails with WrongGenerationError, if generationID does not match.
 	LockTaskToRun(
 		ctx context.Context,
@@ -328,6 +362,15 @@ type Storage interface {
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
 	// Used for garbage collecting of ended and outdated tasks.
+	// Reconcile the delayed queue with tasks, scanning at most limit rows per transaction.
+	// Repairs at most limit rows in one storage folder. The caller must persist
+	// the returned cursor after success; replaying a step is safe.
+	ReconcileReadyToRunDelayed(
+		ctx context.Context,
+		limit int,
+		cursor DelayedQueueCursor,
+	) (DelayedQueueCursor, error)
+
 	ClearEndedTasks(ctx context.Context, endedBefore time.Time, limit int) error
 
 	// NOTE: used for SRE operations only.

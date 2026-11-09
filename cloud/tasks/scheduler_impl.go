@@ -52,6 +52,27 @@ func (s *scheduler) ScheduleTask(
 		description,
 		"",    // zoneID
 		false, // nonCancellable
+		TaskScheduleTiming{},
+		request,
+	)
+}
+
+func (s *scheduler) ScheduleTaskAt(
+	ctx context.Context,
+	taskType string,
+	description string,
+	timing TaskScheduleTiming,
+	request proto.Message,
+) (string, error) {
+
+	ctx = withComponentLoggingField(ctx)
+	return s.scheduleTaskImpl(
+		ctx,
+		taskType,
+		description,
+		"",    // zoneID
+		false, // nonCancellable
+		timing,
 		request,
 	)
 }
@@ -71,6 +92,7 @@ func (s *scheduler) ScheduleZonalTask(
 		description,
 		zoneID,
 		false, // nonCancellable
+		TaskScheduleTiming{},
 		request,
 	)
 }
@@ -90,6 +112,7 @@ func (s *scheduler) ScheduleNonCancellableTask(
 		description,
 		zoneID,
 		true, // nonCancellable
+		TaskScheduleTiming{},
 		request,
 	)
 }
@@ -97,6 +120,15 @@ func (s *scheduler) ScheduleNonCancellableTask(
 func (s *scheduler) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
+	schedule TaskSchedule,
+) {
+	s.scheduleRegularTasksInFolder(ctx, taskType, "", schedule)
+}
+
+func (s *scheduler) scheduleRegularTasksInFolder(
+	ctx context.Context,
+	taskType string,
+	folder string,
 	schedule TaskSchedule,
 ) {
 
@@ -176,16 +208,17 @@ func (s *scheduler) ScheduleRegularTasks(
 			}
 
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
-				ID:           "",
-				TaskType:     taskType,
-				Description:  "",
-				CreatedAt:    createdAt,
-				CreatedBy:    headers.GetAccountID(ctx),
-				ModifiedAt:   createdAt,
-				GenerationID: 0,
-				Status:       tasks_storage.TaskStatusReadyToRun,
-				Metadata:     metadata,
-				Dependencies: common.NewStringSet(),
+				ID:            "",
+				TaskType:      taskType,
+				StorageFolder: folder,
+				Description:   "",
+				CreatedAt:     createdAt,
+				CreatedBy:     headers.GetAccountID(ctx),
+				ModifiedAt:    createdAt,
+				GenerationID:  0,
+				Status:        tasks_storage.TaskStatusReadyToRun,
+				Metadata:      metadata,
+				Dependencies:  common.NewStringSet(),
 			}, schedule)
 			if err != nil {
 				logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
@@ -570,12 +603,26 @@ func (s *scheduler) ScheduleBlankTask(ctx context.Context) (string, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func ceilTaskTimestamp(value time.Time) time.Time {
+	if value.IsZero() {
+		return value
+	}
+
+	result := value.UTC().Truncate(time.Microsecond)
+	if result.Before(value) {
+		result = result.Add(time.Microsecond)
+	}
+
+	return result
+}
+
 func (s *scheduler) scheduleTaskImpl(
 	ctx context.Context,
 	taskType string,
 	description string,
 	zoneID string,
 	nonCancellable bool,
+	timing TaskScheduleTiming,
 	request proto.Message,
 ) (string, error) {
 
@@ -607,6 +654,8 @@ func (s *scheduler) scheduleTaskImpl(
 		TaskType:       taskType,
 		Description:    description,
 		StorageFolder:  storageFolder,
+		ReceivedAt:     timing.ReceivedAt,
+		AvailableAt:    ceilTaskTimestamp(timing.NotBefore),
 		CreatedAt:      createdAt,
 		CreatedBy:      headers.GetAccountID(ctx),
 		ModifiedAt:     createdAt,
@@ -675,6 +724,10 @@ func (s *scheduler) registerAndScheduleRegularSystemTasks(
 			MaxTasksInflight: 1,
 		},
 	)
+
+	if err := s.registerAndScheduleDelayedQueueReconciliation(ctx, config); err != nil {
+		return err
+	}
 
 	listerMetricsCollectionInterval, err := time.ParseDuration(
 		config.GetListerMetricsCollectionInterval(),
