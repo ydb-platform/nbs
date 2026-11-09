@@ -233,7 +233,7 @@ message TCompressionMetadata
         // Compressed sizes in bytes of all chunks except the last.
         // N chunks have N-1 sizes; the last size is the blob size minus
         // their sum.
-        repeated uint32 ChunkSize = 1;
+        repeated uint32 CompressedChunkSize = 1;
     }
 
     oneof Chunks

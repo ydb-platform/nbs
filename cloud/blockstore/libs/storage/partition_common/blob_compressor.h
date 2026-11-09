@@ -54,7 +54,8 @@ struct TReadPlan
 };
 
 /**
- * Compresses a blob in independently decodable chunks using the given codec.
+ * Compresses a blob in independently decodable chunks using the codec resolved
+ * from the given compression type.
  * Chunks contain whole blocks; only the final chunk may be shorter than
  * chunkSize. Compressed chunks are concatenated in blob order. Returns an
  * error if the settings or payload are invalid, or compression fails.
@@ -62,9 +63,8 @@ struct TReadPlan
  * @param blockSize - Nonzero size of one uncompressed block in bytes.
  * @param chunkSize - Uncompressed chunk size in bytes; must be a multiple
  *  of and at least blockSize.
- * @param codec - Resolved codec used to compress chunks.
- * @param compressionType - Compression type recorded in the blob metadata;
- *  must match the supplied codec.
+ * @param compressionType - Compression type used to select the codec and
+ *  recorded in the blob metadata.
  * @param blobPayload - Uncompressed blocks in blob order, with one buffer
  *  of exactly blockSize bytes per block. Null data represents a zero block.
  *
@@ -76,7 +76,6 @@ struct TReadPlan
 [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
-    const NBlockCodecs::ICodec& codec,
     NProto::TCompressionMetadata::ECompressionType compressionType,
     const TSgList& blobPayload);
 

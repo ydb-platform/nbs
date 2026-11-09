@@ -118,7 +118,7 @@ ui32 GetCompressedChunkSize(
     ui32 lastChunkSize,
     size_t chunk)
 {
-    const auto& values = compression.GetPlainChunks().GetChunkSize();
+    const auto& values = compression.GetPlainChunks().GetCompressedChunkSize();
     if (chunk == static_cast<size_t>(values.size())) {
         return lastChunkSize;
     }
@@ -144,7 +144,7 @@ TError ValidateReadBlobInput(
     if (!compression.HasPlainChunks()) {
         return MakeError(E_ARGUMENT, "Missing compressed chunk metadata");
     }
-    const auto& values = compression.GetPlainChunks().GetChunkSize();
+    const auto& values = compression.GetPlainChunks().GetCompressedChunkSize();
     ui32 previousOffset = 0;
     for (const auto value: values) {
         const ui64 offset = static_cast<ui64>(previousOffset) + value;
@@ -285,7 +285,6 @@ ParseBlobCompressionCodec(TStringBuf codecName)
 TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
-    const NBlockCodecs::ICodec& codec,
     TCompressionMetadata::ECompressionType compressionType,
     const TSgList& blobPayload)
 {
@@ -295,6 +294,12 @@ TResultOrError<TCompressedBlob> CompressBlob(
     {
         return error;
     }
+    auto codecOrError = GetCodec(compressionType);
+    if (HasError(codecOrError.GetError())) {
+        return codecOrError.GetError();
+    }
+    const auto* codec = codecOrError.GetResult();
+
     TCompressedBlob result;
     result.Compression.SetCodec(compressionType);
     result.Compression.SetChunkSize(chunkSize);
@@ -318,7 +323,7 @@ TResultOrError<TCompressedBlob> CompressBlob(
             dest += blockSize;
         }
         try {
-            codec.Encode(chunk, compressedChunk);
+            codec->Encode(chunk, compressedChunk);
         } catch (...) {
             return MakeError(
                 E_FAIL,
@@ -329,7 +334,8 @@ TResultOrError<TCompressedBlob> CompressBlob(
             return MakeError(E_ARGUMENT, "Compressed blob size exceeds ui32");
         }
         if (blockIndex + blockCount < blobPayload.size()) {
-            chunks->AddChunkSize(static_cast<ui32>(compressedChunk.size()));
+            chunks->AddCompressedChunkSize(
+                static_cast<ui32>(compressedChunk.size()));
         }
         result.Data.append(compressedChunk);
         blockIndex += blockCount;
@@ -386,7 +392,7 @@ TError DecompressBlob(
     TString decoded;
 
     const size_t chunkCount =
-        compression.GetPlainChunks().GetChunkSize().size() + 1;
+        compression.GetPlainChunks().GetCompressedChunkSize().size() + 1;
     size_t currentChunk = chunkCount;
     for (size_t i = 0; i < blockOffsets.size(); ++i) {
         const ui64 blockStart = static_cast<ui64>(blockOffsets[i]) * blockSize;
