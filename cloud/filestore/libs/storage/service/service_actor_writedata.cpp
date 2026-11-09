@@ -247,8 +247,7 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        Y_ABORT_UNLESS(RequestState);
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         if (!state.UseThreeStageWrite) {
             LOG_DEBUG(
@@ -316,10 +315,12 @@ public:
     }
 
 private:
-    void Cleanup()
+    TRequestState& GetState()
     {
-        RequestState.reset();
+        Y_ABORT_UNLESS(RequestState);
+        return *RequestState;
     }
+
 
     STFUNC(StateWork)
     {
@@ -357,7 +358,7 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         auto* msg = ev->Get();
@@ -412,7 +413,7 @@ private:
 
     void WriteBlobs(const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         FILESTORE_TRACK(
@@ -538,7 +539,7 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         if (HasError(state.WriteBlobError)) {
@@ -612,7 +613,7 @@ private:
     template <typename TRecord>
     void AddStorageStatusInfo(TRecord& record)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         record.MutableStorageStatusFlags()->Reserve(
             state.StorageStatusFlags.size());
@@ -633,7 +634,7 @@ private:
         TRecord& record,
         bool addWriteRangeInfo)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         auto callContext = MakeIntrusive<TCallContext>(
             state.RequestInfo->CallContext->FileSystemId,
@@ -679,7 +680,7 @@ private:
 
     void AddData(const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -727,7 +728,7 @@ private:
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         auto* msg = ev->Get();
@@ -751,7 +752,7 @@ private:
 
     void ConfirmAddData(const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -789,7 +790,7 @@ private:
 
     void CancelAddData(const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -826,7 +827,7 @@ private:
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         auto* msg = ev->Get();
@@ -861,7 +862,7 @@ private:
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         auto* msg = ev->Get();
@@ -893,7 +894,7 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         Y_UNUSED(ev);
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
@@ -922,7 +923,7 @@ private:
         ETabletRetryRequest retryRequest,
         const NProto::TError& error)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         const auto delay =
@@ -950,7 +951,7 @@ private:
 
     void ResetTabletProxyRetryState()
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         state.TabletProxyRetries = 0;
         state.TabletRetryRequest = ETabletRetryRequest::None;
@@ -961,7 +962,7 @@ private:
         const TActorContext& ctx,
         const NProto::TError& error)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         LOG_WARN(
             ctx,
@@ -984,7 +985,7 @@ private:
      */
     void WriteData(const TActorContext& ctx, bool isFallback)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
@@ -1014,7 +1015,7 @@ private:
         const TEvService::TEvWriteDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         auto* msg = ev->Get();
 
@@ -1036,7 +1037,7 @@ private:
         const TActorContext& ctx,
         NProto::TWriteDataResponse record)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
@@ -1046,13 +1047,12 @@ private:
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(record);
         NCloud::Reply(ctx, *state.RequestInfo, std::move(response));
-        Cleanup();
         Die(ctx);
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
 
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
@@ -1062,7 +1062,6 @@ private:
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *state.RequestInfo, std::move(response));
-        Cleanup();
         Die(ctx);
     }
 
@@ -1078,7 +1077,7 @@ private:
         google::protobuf::RepeatedPtrField<NProtoPrivate::TFreshDataRange>&
             ranges)
     {
-        auto& state = *RequestState;
+        auto& state = GetState();
         const auto& LogTag = state.LogTag;
 
         if (state.Range.Offset < state.BlobRange.Offset) {

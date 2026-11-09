@@ -75,8 +75,8 @@ private:
         IRequestStatsPtr RequestStats;
         const TActorId Sender;
         const ui64 Cookie;
-        TCallContextPtr CallContext;          // invalid after Bootstrap()
-        TChecksumCalcInfo ChecksumCalcInfo;   // invalid after Bootstrap()
+        TCallContextPtr CallContext; // invalid after Bootstrap()
+        TChecksumCalcInfo ChecksumCalcInfo; // invalid after Bootstrap()
         const TInstant StartTime;
         const ui64 RequestCookie;
         TString ClientId;   // invalid after Bootstrap()
@@ -110,7 +110,8 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
-    // Keeps the storage containing MainInFlightRequest alive.
+    // holding this IntrusivePtr to guarantee that MainInFlightRequest is not
+    // deallocated
     const TInFlightRequestStoragePtr InFlightRequests;
 
     std::optional<TRequestState> RequestState;
@@ -145,7 +146,7 @@ public:
 private:
     STFUNC(StateWork);
 
-    void Cleanup();
+    TReadDataActor::TRequestState& GetState();
 
     void DescribeData(const TActorContext& ctx);
 
@@ -282,15 +283,15 @@ void TReadDataActor::Initialize(
         zeroCopyReadEnabled);
 }
 
-void TReadDataActor::Cleanup()
+TReadDataActor::TRequestState& TReadDataActor::GetState()
 {
-    RequestState.reset();
+    Y_ABORT_UNLESS(RequestState);
+    return *RequestState;
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(RequestState);
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     if (state.UseTwoStageRead) {
         if (!state.ZeroCopyReadEnabled) {
@@ -335,7 +336,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
 
 void TReadDataActor::DescribeData(const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     FILESTORE_TRACK(
         RequestReceived_ServiceWorker,
@@ -469,7 +470,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
     const auto& LogTag = state.LogTag;
 
     auto* msg = ev->Get();
@@ -510,7 +511,7 @@ void TReadDataActor::HandleDescribeDataResponse(
 
 void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     if (state.DescribeResponse.GetFakeResponse() || state.ReadBlobDisabled) {
         if (state.ReadBlobDisabled) {
@@ -617,7 +618,7 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
     const auto& LogTag = state.LogTag;
 
     if (state.ReadDataFallbackEnabled) {
@@ -785,7 +786,7 @@ void TReadDataActor::ReadData(
     const TActorContext& ctx,
     const TString& fallbackReason)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     FILESTORE_TRACK(
         RequestReceived_ServiceWorker,
@@ -830,7 +831,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     const TRope& payload,
     NProto::TReadDataResponse& readDataResponse)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     ui64 bufferSize = readDataResponse.GetLength();
     if (payload.size() != bufferSize) {
@@ -900,7 +901,7 @@ void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     bool isResponseParsed = false;
@@ -979,7 +980,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
     const TActorContext& ctx,
     NProto::TReadDataResponse& response)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     if (state.ReadRequest.GetIovecs().empty() || response.GetBuffer().empty()) {
         return;
@@ -1026,7 +1027,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
 
 void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
 
@@ -1090,7 +1091,7 @@ void TReadDataActor::SendResponseAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvReadDataResponse> response)
 {
-    auto& state = *RequestState;
+    auto& state = GetState();
 
     FILESTORE_TRACK(
         ResponseSent_ServiceWorker,
@@ -1106,7 +1107,6 @@ void TReadDataActor::SendResponseAndDie(
 
     ctx.Send(state.Sender, response.release(), 0 /* flags */, state.Cookie);
 
-    Cleanup();
     Die(ctx);
 }
 
