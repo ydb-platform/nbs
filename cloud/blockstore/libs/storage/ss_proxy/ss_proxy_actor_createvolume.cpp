@@ -150,8 +150,9 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
         diskId.Quote().data(),
         volumePath.data());
 
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        volumePath,
+        true /* addPathToError */);
 
     NCloud::Send(
         ctx,
@@ -236,8 +237,9 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
         VolumeConfig.GetDiskId().Quote().data(),
         volumePath.data());
 
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        volumePath,
+        true /* addPathToError */);
 
     NCloud::Send(
         ctx,

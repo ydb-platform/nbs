@@ -7,7 +7,10 @@
 #include "directory_handle_cache.h"
 #include "fs.h"
 #include "handle_ops_queue.h"
+#include "metadata_cache_stats.h"
+#include "node_attrs_cache.h"
 #include "node_cache.h"
+#include "node_ref_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -89,6 +92,9 @@ private:
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
     TNodeCache NodeCache;
+    TMetadataCacheModuleStatsPtr MetadataCacheStats;
+    TNodeAttrsCache NodeAttrsCache;
+    TNodeRefCache NodeRefCache;
 
     TDirectoryEntryVersionCachePtr DirectoryEntryVersionCache;
 
@@ -119,6 +125,7 @@ public:
         IFileStorePtr session,
         IRequestStatsPtr stats,
         TDirectoryHandleModuleStatsPtr directoryHandleStats,
+        TMetadataCacheModuleStatsPtr metadataCacheStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandleStoragePtr directoryHandleStorage,
@@ -350,6 +357,17 @@ public:
         fuse_file_info* fi,
         int op) override;
 
+    void InvalidateCachedNode(ui64 nodeId) override;
+    void InvalidateCachedNodeRef(
+        ui64 parentNodeId,
+        const TString& name) override;
+    void InvalidateCachedNodeXAttr(
+        ui64 nodeId,
+        const TString& name) override;
+    void InvalidateAllCachedMetadata() override;
+
+    TMetadataCacheSizes GetMetadataCacheSizes();
+
 private:
     template <typename T>
     static std::shared_ptr<T> StartRequest()
@@ -448,7 +466,29 @@ private:
         fuse_entry_param& entry,
         ui64 version);
 
+    TInstant GetCacheDeadline(ui32 cacheTTL) const;
+    void UpdateCachedNodeRef(
+        ui64 parentNodeId,
+        const TString& name,
+        const NProto::TGetNodeAttrResponse& response,
+        ui64 version);
+    void UpdateCachedNodeAttrs(
+        const NProto::TGetNodeAttrResponse& response,
+        ui64 version);
+    bool TryReplyEntryFromCache(
+        TCallContext& callContext,
+        fuse_req_t req,
+        ui64 parentNodeId,
+        const TString& name);
+    bool TryReplyAttrFromCache(
+        TCallContext& callContext,
+        fuse_req_t req,
+        ui64 nodeId);
+
     void InvalidateNodeInCache(ui64 nodeId);
+    void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
+    void InvalidateCachedNodeAttrs(ui64 nodeId);
+    void InvalidateCachedXAttr(ui64 nodeId, const TString& name);
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,
         const TString& name);
@@ -459,7 +499,9 @@ private:
         const TString& name,
         const TString& value,
         ui64 version,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        ui64 cacheVersion,
+        TDuration cacheTTL);
 
     void ReplyCreateWithCache(
         TCallContext& callContext,

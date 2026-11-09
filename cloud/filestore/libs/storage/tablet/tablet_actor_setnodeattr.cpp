@@ -247,15 +247,6 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
         attrs,
         args.Node->Attrs);
 
-    //
-    // UpdateNode skips InvalidateNode for time-only changes. An explicit
-    // time change (e.g. utimes) still has to invalidate the cached attrs.
-    //
-
-    if (!HasNonTimeAttrChanges(attrs, args.Node->Attrs)) {
-        AddInvalidateNodeEvent(args.FileSystemEvents, args.NodeId);
-    }
-
     args.Node->Attrs = std::move(attrs);
 
     EnqueueTruncateIfNeeded(ctx);
@@ -275,14 +266,6 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
 
         auto* node = response->Record.MutableNode();
         ConvertNodeFromAttrs(*node, args.NodeId, args.Node->Attrs);
-
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* changed = sessionEvent.AddNodeChanged();
-            changed->SetNodeId(args.NodeId);
-            changed->SetKind(NProto::TSessionEvent::NODE_ATTR_CHANGED);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     CompleteResponse<TEvService::TSetNodeAttrMethod>(

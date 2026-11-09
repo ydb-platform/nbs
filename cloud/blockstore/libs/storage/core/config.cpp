@@ -133,6 +133,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(DiskRegistrySplitTransactionCounter,         ui32,         10000      )\
     xxx(DiskRegistryBackupPeriod,                    TDuration,    Days(1)    )\
     xxx(DiskRegistryBackupDirPath,                   TString,      ""         )\
+    xxx(SystemTabletBackupDirPath,                   TString,      ""         )\
                                                                                \
     xxx(DiskRegistryMetricsCachePeriod, TDuration,   Days(14)                 )\
     xxx(DiskRegistryCountersHost,       TString,     ""                       )\
@@ -205,9 +206,14 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
     xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
-    xxx(FlushThreshold,                ui32,      4_MB                        )\
-    xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
-    xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
+    xxx(FlushThresholdHDD,             ui32,      4_MB                        )\
+    xxx(FlushThresholdSSD,             ui32,      4_MB                        )\
+    xxx(FreshBlobCountFlushThresholdHDD,       ui32,      3200                )\
+    xxx(FreshBlobCountFlushThresholdSSD,       ui32,      3200                )\
+    xxx(FreshBlobByteCountFlushThresholdHDD,   ui32,      16_MB               )\
+    xxx(FreshBlobByteCountFlushThresholdSSD,   ui32,      16_MB               )\
+    xxx(FreshBlobAgeFlushThresholdSSD, TDuration, TDuration::Zero()           )\
+    xxx(FreshBlobAgeFlushThresholdHDD, TDuration, TDuration::Zero()           )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
@@ -384,6 +390,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
     xxx(ThrottlingEnabledSSD,          bool,      false                       )\
+    xxx(ChangeThrottlingPolicyEnabled, bool,      false                       )\
     xxx(ThrottlingBurstPercentage,     ui32,      100                         )\
     xxx(ThrottlingMaxPostponedWeight,  ui32,      128_MB                      )\
     xxx(DefaultPostponedRequestWeight, ui32,      1_KB                        )\
@@ -405,10 +412,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionScoreThresholdForBackpressure,        ui32,   100           )\
     xxx(CompactionScoreFeatureMaxValue,                 ui32,   10            )\
                                                                                \
-    xxx(FreshByteCountLimitForBackpressure,             ui32,   128_MB        )\
-    xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
+    xxx(FreshByteCountLimitForBackpressureHDD,          ui32,   128_MB        )\
+    xxx(FreshByteCountLimitForBackpressureSSD,          ui32,   128_MB        )\
+    xxx(FreshByteCountThresholdForBackpressureHDD,      ui32,   40_MB         )\
+    xxx(FreshByteCountThresholdForBackpressureSSD,      ui32,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
-    xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+    xxx(FreshByteCountHardLimitHDD,                     ui32,   256_MB        )\
+    xxx(FreshByteCountHardLimitSSD,                     ui32,   256_MB        )\
     xxx(FreshLogicalBlocksByteCountHardLimit,           ui64,   0             )\
                                                                                \
     xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\
@@ -737,7 +747,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksFilterRangesToLoadPerTx,         ui64,       100           )\
     xxx(MixedBlocksFilterAllowedCpuTimePerSecond,   TDuration,  MSeconds(10)  )\
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
-    xxx(UseBlobChannelDataKindForCounters,          bool,       false         )\
+    xxx(ExtendedBlobCountersEnabled,                bool,       false         )\
     xxx(MixedBlocksCountCompactionEnabledHDD,       bool,       false         )\
     xxx(MixedBlocksCountCompactionEnabledSSD,       bool,       false         )\
     xxx(MixedBytesCountCompactionThresholdHDD,      ui32,       0             )\
@@ -752,6 +762,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionStatsTrackerEnabled,              bool,       false         )\
     xxx(MixedBlocksCompactionMinStoredBytesHDD,     ui64,       1_GB          )\
     xxx(MixedBlocksCompactionMinStoredBytesSSD,     ui64,       1_GB          )\
+    xxx(IgnorePartitionCountInMaxBlobsPerRange,     bool,       false         )\
+    xxx(VolumeBalancerEnabled,                      bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -1217,12 +1229,6 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
-    void SetVolumePreemptionType(
-        NProto::EVolumePreemptionType volumePreemptionType)
-    {
-        StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
-    }
-
     NProto::TStorageServiceConfig GetEffectiveStorageConfigProto() const
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
@@ -1298,12 +1304,6 @@ void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigConstPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
-}
-
-void TStorageConfig::SetVolumePreemptionType(
-    NProto::EVolumePreemptionType volumePreemptionType)
-{
-    Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
 void TStorageConfig::Register(TControlBoard& controlBoard) const

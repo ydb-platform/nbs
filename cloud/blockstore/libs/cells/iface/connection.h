@@ -20,6 +20,8 @@ struct ICellConnectionObserver
 
     virtual void OnTabletHostChanged(TString fqdn) noexcept = 0;
 
+    // On connect and after every move, one at a time, from the thread that
+    // completed it; may wait on the volume stats lock.
     virtual void OnServingHostChanged(TString fqdn) noexcept
     {
         Y_UNUSED(fqdn);

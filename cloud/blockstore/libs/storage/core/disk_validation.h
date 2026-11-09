@@ -16,4 +16,7 @@ NProto::TError ValidateBlockSize(
     ui64 blockSize,
     NProto::EStorageMediaKind mediaKind);
 
+NProto::TError ValidateMediaKindForDiskFromDevice(
+    NProto::EStorageMediaKind mediaKind);
+
 }   // namespace NCloud::NBlockStore::NStorage

@@ -212,6 +212,8 @@ public:
         const TString& diskId,
         const TString& agentId,
         const TString& path,
+        NCloud::NProto::EStorageMediaKind mediaKind =
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
         const TString& folderId = "yc.nbs",
         const TString& cloudId = "yc.nbs-test")
             -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>;
@@ -258,12 +260,14 @@ public:
     std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
     CreateCreateVolumeLinkRequest(
         const TString& leaderDiskId,
-        const TString& followerDiskId);
+        const TString& followerDiskId,
+        const TString& followerCellId = {});
 
     std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
     CreateDestroyVolumeLinkRequest(
         const TString& leaderDiskId,
-        const TString& followerDiskId);
+        const TString& followerDiskId,
+        const TString& followerCellId = {});
 
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 

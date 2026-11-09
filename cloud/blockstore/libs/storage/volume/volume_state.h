@@ -113,10 +113,10 @@ struct TPartitionStatInfo
             const TString& diskId,
             const ui64 tabletId,
             EPublishingPolicy countersPolicy,
-            EHistogramCounterOptions histCounterOptions)
+            const TDiagnosticsConfig& diagnosticsConfig)
         : DiskId(diskId)
         , TabletId(tabletId)
-        , CachedCounters(countersPolicy, histCounterOptions)
+        , CachedCounters(countersPolicy, diagnosticsConfig)
     {}
 };
 

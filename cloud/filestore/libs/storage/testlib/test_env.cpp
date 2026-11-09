@@ -17,11 +17,13 @@
 #include <cloud/filestore/libs/storage/tablet_proxy/tablet_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
+#include <cloud/storage/core/libs/tablet_proxy/tablet_proxy.h>
 
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/client/minikql_compile/mkql_compile_service.h>
@@ -280,6 +282,23 @@ ui32 TTestEnv::AddDynamicNode()
     Runtime.RegisterService(
         MakeHiveProxyServiceId(),
         hiveProxyId,
+        nodeIdx);
+
+    auto tabletProxyService = CreateTabletProxy({
+        .LogComponent = TFileStoreComponents::TABLET_PROXY_SERVICE,
+        .PipeClientRetryCount = StorageConfig->GetPipeClientRetryCount(),
+        .PipeClientMinRetryTime = StorageConfig->GetPipeClientMinRetryTime(),
+        .PipeClientMaxRetryTime = StorageConfig->GetPipeClientMaxRetryTime()});
+    auto tabletProxyServiceId = Runtime.Register(
+        tabletProxyService.release(),
+        nodeIdx,
+        appData.UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(tabletProxyServiceId);
+    Runtime.RegisterService(
+        MakeTabletProxyServiceId(),
+        tabletProxyServiceId,
         nodeIdx);
 
     return nodeIdx;

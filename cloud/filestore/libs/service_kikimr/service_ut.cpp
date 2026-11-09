@@ -166,52 +166,6 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
         service->Stop();
     }
-
-    Y_UNIT_TEST(ShouldGetSessionEventsStream)
-    {
-        TActorId eventHandler;
-
-        auto serviceActor = std::make_unique<TTestServiceActor>();
-        serviceActor->GetSessionEventsHandler =
-            [&] (const TEvService::TEvGetSessionEventsRequest::TPtr& ev) {
-                Y_ABORT_UNLESS(ev->Cookie == TEvService::StreamCookie);
-                eventHandler = ev->Sender;
-                return std::make_unique<TEvService::TEvGetSessionEventsResponse>();
-            };
-
-        auto actorSystem = MakeIntrusive<TTestActorSystem>();
-        actorSystem->RegisterTestService(std::move(serviceActor));
-
-        auto service = CreateKikimrFileStore(
-            actorSystem,
-            nullptr /* sideChannel */,
-            0 /* permanentActorCount */);
-        service->Start();
-
-        auto context = MakeIntrusive<TCallContext>();
-        auto request = std::make_shared<NProto::TGetSessionEventsRequest>();
-
-        auto responseHandler = std::make_shared<TResponseHandler>();
-
-        service->GetSessionEventsStream(
-            std::move(context),
-            std::move(request),
-            responseHandler);
-
-        actorSystem->DispatchEvents(WaitTimeout);
-        Y_ABORT_UNLESS(eventHandler);
-
-        auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>();
-        auto* event = response->Record.AddEvents();
-        event->SetSeqNo(1);
-
-        actorSystem->Send(eventHandler, std::move(response));
-
-        actorSystem->DispatchEvents(WaitTimeout);
-        UNIT_ASSERT(responseHandler->GotResponse());
-
-        service->Stop();
-    }
 }
 
 }   // namespace NCloud::NFileStore

@@ -88,18 +88,13 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
 #define FILESTORE_DECLARE_METHOD_VHOST(name, ...) \
     FILESTORE_DECLARE_METHOD(name##Vhost, name, name, __VA_ARGS__)
 
-#define FILESTORE_DECLARE_METHOD_STREAM(name, ...) \
-    FILESTORE_DECLARE_METHOD(name##Stream, name, name##Stream, __VA_ARGS__)
-
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_SHARED_MEMORY_METHODS(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
-FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
 #undef FILESTORE_DECLARE_METHOD
 #undef FILESTORE_DECLARE_METHOD_FS
 #undef FILESTORE_DECLARE_METHOD_VHOST
-#undef FILESTORE_DECLARE_METHOD_STREAM
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -378,239 +373,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TAppContext, typename TMethod>
-class TStreamRequestHandler final
-    : public NStorage::NGrpc::TRequestHandlerBase
-{
-    using TRequest = typename TMethod::TRequest;
-    using TResponse = typename TMethod::TResponse;
-
-private:
-    TAppContext& AppCtx;
-    TExecutorContext& ExecutorCtx;
-
-    grpc::ClientContext Context;
-    std::unique_ptr<grpc::ClientAsyncReader<TResponse>> Reader;
-
-    TCallContextPtr CallContext;
-    std::shared_ptr<TRequest> Request;
-    IResponseHandlerPtr<TResponse> ResponseHandler;
-
-    TResponse Response;
-    grpc::Status Status;
-
-    enum {
-        WaitingForRequest = 0,
-        SendingRequest = 1,
-        WaitingForResponse = 2,
-        WaitingForCompletion = 3,
-        RequestCompleted = 4,
-    };
-    TAtomic RequestState = WaitingForRequest;
-
-    TProtoMessagePrinter ProtoMessagePrinter;
-
-public:
-    TStreamRequestHandler(
-            TAppContext& appCtx,
-            TExecutorContext& executorCtx,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            IResponseHandlerPtr<TResponse> responseHandler)
-        : AppCtx(appCtx)
-        , ExecutorCtx(executorCtx)
-        , CallContext(std::move(callContext))
-        , Request(std::move(request))
-        , ResponseHandler(std::move(responseHandler))
-    {}
-
-    static void Start(
-        TAppContext& appCtx,
-        TExecutorContext& executorCtx,
-        TCallContextPtr callContext,
-        std::shared_ptr<TRequest> request,
-        IResponseHandlerPtr<TResponse> responseHandler)
-    {
-        auto handler = std::make_unique<TStreamRequestHandler<TAppContext, TMethod>>(
-            appCtx,
-            executorCtx,
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-
-        handler = executorCtx.EnqueueRequestHandler(std::move(handler));
-
-        if (handler) {
-            handler->Status = grpc::Status::CANCELLED;
-            handler->HandleCompletion();
-        }
-    }
-
-    void Process(bool ok) override
-    {
-        if (AtomicGet(AppCtx.ShouldStop)) {
-            AtomicSet(RequestState, RequestCompleted);
-
-            Response.Clear();
-            Status = grpc::Status::CANCELLED;
-        }
-
-        for (;;) {
-            switch (AtomicGet(RequestState)) {
-                case WaitingForRequest:
-                    if (AtomicCas(&RequestState, SendingRequest, WaitingForRequest)) {
-                        SendRequest();
-
-                        // request is in progress now
-                        return;
-                    }
-                    break;
-
-                case SendingRequest:
-                    if (AtomicCas(&RequestState, WaitingForResponse, SendingRequest)) {
-                        ReadResponse();
-
-                        // request is in progress now
-                        return;
-                    }
-                    break;
-
-                case WaitingForResponse:
-                    if (ok) {
-                        HandleResponse();
-                        ReadResponse();
-
-                        // request is in progress now
-                        return;
-                    }
-                    if (AtomicCas(&RequestState, WaitingForCompletion, WaitingForResponse)) {
-                        ReadCompletion();
-
-                        // request is in progress now
-                        return;
-                    }
-                    break;
-
-                case WaitingForCompletion:
-                    if (AtomicCas(&RequestState, RequestCompleted, WaitingForCompletion)) {
-                    }
-                    break;
-
-                case RequestCompleted:
-                    HandleCompletion();
-
-                    // request completed and could be safely destroyed
-                    ExecutorCtx.RequestsInFlight.Unregister(this);
-                    return;
-            }
-        }
-    }
-
-    void Cancel() override
-    {
-        Context.TryCancel();
-    }
-
-private:
-    void SendRequest()
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName
-            << " send request: " << ProtoMessagePrinter.ToString(*Request));
-
-        Reader = TMethod::Execute(
-            *AppCtx.Service,
-            &Context,
-            *Request,
-            ExecutorCtx.CompletionQueue.get(),
-            AcquireCompletionTag());
-
-        // no more need Request; try to free memory
-        Request.reset();
-    }
-
-    void ReadResponse()
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName << " read response");
-
-        Reader->Read(&Response, AcquireCompletionTag());
-    }
-
-    void ReadCompletion()
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName << " read completion");
-
-        Reader->Finish(&Status, AcquireCompletionTag());
-    }
-
-    void HandleResponse()
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName
-            << " response received: "
-            << ProtoMessagePrinter.ToString(Response));
-
-        try {
-            ResponseHandler->HandleResponse(Response);
-        } catch (...) {
-            STORAGE_ERROR(TMethod::RequestName
-                << " exception in callback: " << CurrentExceptionMessage());
-        }
-    }
-
-    void HandleCompletion()
-    {
-        auto& Log = AppCtx.Log;
-
-        auto error = MakeGrpcError(Status);
-        STORAGE_TRACE(TMethod::RequestName
-            << " completion received: " << FormatError(error));
-
-        try {
-            ResponseHandler->HandleCompletion(error);
-        } catch (...) {
-            STORAGE_ERROR(TMethod::RequestName
-                << " exception in callback: " << CurrentExceptionMessage());
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TClient>
-class TUdsClient
-    : public TUdsSocketClient<TClient, TCallContextPtr>
-{
-public:
-    using TBase = TUdsSocketClient<TClient, TCallContextPtr>;
-    using TBase::TBase;
-
-protected:
-    template <typename TMethod>
-    void ExecuteStreamRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename TMethod::TRequest> request,
-        IResponseHandlerPtr<typename TMethod::TResponse> responseHandler)
-    {
-        if (!TBase::IncInflightCounter()) {
-            TBase::Connect();
-            responseHandler->HandleResponse(
-                TErrorResponse(E_GRPC_UNAVAILABLE, "Broken pipe"));
-            return;
-        }
-
-        TBase::template ExecuteStreamRequest<TMethod>(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-    }
-};
+using TUdsClient = TUdsSocketClient<TClient, TCallContextPtr>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -678,20 +442,6 @@ public:
             promise);
 
         return promise.GetFuture();
-    }
-
-    template <typename TMethod>
-    void ExecuteStreamRequest(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename TMethod::TRequest> request,
-        IResponseHandlerPtr<typename TMethod::TResponse> responseHandler)
-    {
-        TStreamRequestHandler<TAppContext, TMethod>::Start(
-            AppCtx,
-            PickExecutor(),
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
     }
 
 protected:
@@ -847,17 +597,6 @@ public:
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
-
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
-    {
-        TBase::template ExecuteStreamRequest<TGetSessionEventsStreamMethod>(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-    }
 };
 
 using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;

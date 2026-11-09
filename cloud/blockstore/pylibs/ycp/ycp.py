@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from dateutil import parser as dateparser
 import jinja2
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,9 @@ from typing import Any, Dict, List
 import uuid
 
 from library.python import resource
+
+
+_YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION = (1, 19, 0)
 
 
 class _Command(list[str]):
@@ -47,7 +51,33 @@ def _remove_parameters(cmd: list[str]):
 
 class YcpCmdEngine:
 
+    def __init__(self):
+        self._needs_legacy_syntax = None
+
+    def _detect_legacy_syntax(self) -> bool:
+        result = subprocess.run(
+            ["ycp", "version", "--semantic"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        match = re.fullmatch(
+            r"(\d+)\.(\d+)\.(\d+)(?:[-+]\S+)?",
+            result.stdout.strip(),
+        )
+        if result.returncode != 0 or match is None:
+            return False
+
+        version = tuple(map(int, match.groups()))
+        return version >= _YCP_EXPLICIT_LEGACY_SYNTAX_MIN_VERSION
+
     def exec(self, command, input, err):
+        if self._needs_legacy_syntax is None:
+            self._needs_legacy_syntax = self._detect_legacy_syntax()
+        if self._needs_legacy_syntax:
+            command = [command[0], "--syntax", "1", *command[1:]]
+
         return subprocess.check_output(
             command,
             input=bytes(input if input else "{}", "utf8"),

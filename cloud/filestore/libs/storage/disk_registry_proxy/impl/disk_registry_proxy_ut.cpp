@@ -10,6 +10,7 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
 #include <contrib/ydb/core/base/tablet.h>
+#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/base/tabletid.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executed.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
@@ -19,6 +20,7 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <util/generic/algorithm.h>
 #include <util/string/join.h>
 
 #include <functional>
@@ -320,8 +322,9 @@ struct TDiskRegistryProxyEnv
     TActorId Sender;
 
     explicit TDiskRegistryProxyEnv(
-        bool withDiskRegistry = true,
-        NProto::TStorageConfig config = DefaultConfig())
+            bool withDiskRegistry = true,
+            NProto::TStorageConfig config = DefaultConfig())
+        : Env({}, config)
     {
         NodeIdx = Env.AddDynamicNode();
         auto& runtime = Env.GetRuntime();
@@ -354,21 +357,30 @@ struct TDiskRegistryProxyEnv
     }
 
     template <typename TRequest>
-    void Send(std::unique_ptr<TRequest> request)
+    void Send(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
         Env.GetRuntime().Send(
             new IEventHandle(
                 MakeFileStoreDiskRegistryProxyId(),
                 Sender,
-                request.release()),
+                request.release(),
+                0,   // flags
+                cookie),
             NodeIdx);
+    }
+
+    template <typename TResponse>
+    std::unique_ptr<IEventHandle> RecvHandle()
+    {
+        TAutoPtr<IEventHandle> handle;
+        Env.GetRuntime().GrabEdgeEventRethrow<TResponse>(handle);
+        return std::unique_ptr<IEventHandle>(handle.Release());
     }
 
     template <typename TResponse>
     std::unique_ptr<TResponse> Recv()
     {
-        TAutoPtr<IEventHandle> handle;
-        Env.GetRuntime().GrabEdgeEventRethrow<TResponse>(handle);
+        std::unique_ptr<IEventHandle> handle = RecvHandle<TResponse>();
         return std::unique_ptr<TResponse>(
             handle->Release<TResponse>().Release());
     }
@@ -386,21 +398,20 @@ struct TDiskRegistryProxyEnv
             .CustomFinalCondition = std::move(condition)});
     }
 
-    // The proxy refuses requests until it resolves the tablet. It creates the
-    // pipe in the same handler, so the connect event proves the lookup is done.
+    // The proxy refuses requests until it resolves the tablet.
     void WaitForTablet()
     {
         auto& runtime = Env.GetRuntime();
-        bool connected = false;
+        bool resolved = false;
         auto filter = runtime.SetEventFilter(
             [&] (auto&, TAutoPtr<IEventHandle>& event)
             {
-                connected |= event->GetTypeRewrite() ==
-                    TEvTabletPipe::EvClientConnected;
+                resolved |= event->GetTypeRewrite() ==
+                    TEvHiveProxy::EvLookupTabletResponse;
                 return false;
             });
 
-        WaitFor([&] { return connected; });
+        WaitFor([&] { return resolved; });
         runtime.SetEventFilter(std::move(filter));
     }
 };
@@ -521,8 +532,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         const auto& request = env.DiskRegistry->Allocate;
         UNIT_ASSERT_VALUES_EQUAL("fs", request.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, request.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(42, request.GetExternalVolumeTabletId());
         UNIT_ASSERT_VALUES_EQUAL("cloud", request.GetCloudId());
         UNIT_ASSERT_VALUES_EQUAL("folder", request.GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, request.GetBlockSize());
@@ -557,15 +567,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             std::make_unique<TEvDiskRegistryProxy::TEvMarkForCleanupRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.MarkForCleanup.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, dr.MarkForCleanup.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            dr.MarkForCleanup.GetExternalVolumeTabletId());
 
         env.Execute<TEvDiskRegistryProxy::TEvDeallocateDevicesResponse>(
             std::make_unique<TEvDiskRegistryProxy::TEvDeallocateDevicesRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.Deallocate.GetDiskId());
-        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
-        // UNIT_ASSERT_VALUES_EQUAL(42, dr.Deallocate.GetOwnerVolumeTabletId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            dr.Deallocate.GetExternalVolumeTabletId());
         UNIT_ASSERT(!dr.Deallocate.GetSync());
 
         env.Execute<TEvDiskRegistryProxy::TEvFinishRepairResponse>(
@@ -713,31 +725,39 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             std::make_unique<TEvDescribe>("fs"));
         UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
 
-        // Keep the next one in flight.
+        // Keep the next two in flight.
         bool drop = true;
-        bool dropped = false;
+        ui32 dropped = 0;
         runtime.SetEventFilter([&] (auto&, auto& event) {
             if (drop && event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvDescribeDiskRequest)
             {
-                dropped = true;
+                ++dropped;
                 return true;
             }
             return false;
         });
-        env.Send(std::make_unique<TEvDescribe>("fs"));
-        env.WaitFor([&] { return dropped; });
+        env.Send(std::make_unique<TEvDescribe>("fs-1"), 1 /*cookie*/);
+        env.Send(std::make_unique<TEvDescribe>("fs-2"), 2 /*cookie*/);
+        env.WaitFor([&] { return dropped == 2; });
 
+        // Each request gets its own reply, with its own cookie.
         RebootTablet(runtime, env.TabletId, env.Sender, env.NodeIdx);
-        response = env.Recv<TEvDescribeResponse>();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            response->GetStatus(),
-            response->GetErrorReason());
+        TVector<ui64> cookies;
+        for (ui32 i = 0; i < 2; ++i) {
+            auto handle = env.RecvHandle<TEvDescribeResponse>();
+            const auto* msg = handle->Get<TEvDescribeResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                msg->GetStatus(),
+                msg->GetErrorReason());
+            cookies.push_back(handle->Cookie);
+        }
+        Sort(cookies);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({1, 2}), cookies);
 
-        // Reconnected on its own after the delay.
+        // The next request opens a new pipe.
         drop = false;
-        runtime.AdvanceCurrentTime(env.Config->GetPipeClientMinRetryTime());
         response = env.Execute<TEvDescribeResponse>(
             std::make_unique<TEvDescribe>("fs"));
         UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
@@ -875,6 +895,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         TEvVolume::TEvReallocateDiskRequest sent;
         sent.Record.SetDiskId("fs");
+        sent.Record.SetExternalVolumeTabletId(42);
         sent.Record.MutableHeaders()->SetTraceId("trace");
         sent.Record.MutableHeaders()->SetClientId("dr");
         const TString bytes = SerializeEvent(sent);

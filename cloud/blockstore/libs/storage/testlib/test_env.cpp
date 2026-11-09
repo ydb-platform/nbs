@@ -224,7 +224,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
     NYdbStats::IYdbVolumesStatsUploaderPtr ydbStatsUploader,
-    TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes)
+    TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes,
+    TString cellId)
 {
     ui32 nodeIdx = NextDynamicNode++;
     UNIT_ASSERT(nodeIdx < StaticNodeCount + DynamicNodeCount);
@@ -423,8 +424,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
         CreateVolumeStatsStub(),
         std::move(manuallyPreemptedVolumes),
         CreateRootKmsKeyProviderMock(),
-        false   // temporaryServer
-    );
+        false,   // temporaryServer
+        std::move(cellId));
 
     auto storageServiceId = Runtime.Register(
         storageService.release(),

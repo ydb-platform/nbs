@@ -148,7 +148,7 @@ class TConductorInstanceFetcher final
     : public IInstanceFetcher
 {
 private:
-    TDiscoveryConfigPtr Config;
+    TDiscoveryConfigConstPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
     ITimerPtr Timer;
@@ -161,7 +161,7 @@ private:
 
 public:
     TConductorInstanceFetcher(
-            TDiscoveryConfigPtr config,
+            TDiscoveryConfigConstPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring,
             ITimerPtr timer,
@@ -354,7 +354,7 @@ class TStaticInstanceFetcher final
     : public IInstanceFetcher
 {
 private:
-    TDiscoveryConfigPtr Config;
+    TDiscoveryConfigConstPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
 
@@ -363,7 +363,7 @@ private:
 
 public:
     TStaticInstanceFetcher(
-            TDiscoveryConfigPtr config,
+            TDiscoveryConfigConstPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring)
         : Config(std::move(config))
@@ -439,11 +439,11 @@ public:
             auto e = instances.Instances.size() - deletedIndices.size();
             instances.Instances.resize(e + newInstances.size());
             for (auto& [newInstance, secure] : newInstances) {
-                auto& ii = instances.Instances[e];
+                TInstanceInfo ii;
                 ii.Host = newInstance.first;
                 ii.Port = newInstance.second;
                 ii.IsSecurePort = secure;
-                ++e;
+                instances.Instances[e++] = std::move(ii);
             }
 
             Counters.SetInstanceCount(instances.Instances.size());
@@ -479,7 +479,7 @@ public:
     TFuture<void> FetchInstances(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
-            if (instances.Instances.empty()) {
+            if (Instances.empty() || instances.Instances.empty()) {
                 instances.Instances = Instances;
             }
         }
@@ -493,7 +493,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IInstanceFetcherPtr CreateConductorInstanceFetcher(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ITimerPtr timer,
@@ -509,7 +509,7 @@ IInstanceFetcherPtr CreateConductorInstanceFetcher(
 }
 
 IInstanceFetcherPtr CreateStaticInstanceFetcher(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring)
 {

@@ -27,6 +27,9 @@ Tests {
         }
         IODepth: 4
         TestDuration: 60
+        IndexConsistencyValidation: {
+            Enabled: true
+        }
     }
 }
 Tests {
@@ -58,5 +61,8 @@ Tests {
         }
         IODepth: 4
         TestDuration: 60
+        IndexConsistencyValidation: {
+            Enabled: true
+        }
     }
 }

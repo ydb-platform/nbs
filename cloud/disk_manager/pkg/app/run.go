@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -119,6 +120,12 @@ func run(
 	logging.Info(ctx, "Starting monitoring")
 	mon := monitoring.NewMonitoring(config.MonitoringConfig, newMetricsRegistry)
 	mon.Start(ctx)
+
+	var disableAuthorization float64
+	if config.GetAuthConfig().GetDisableAuthorization() {
+		disableAuthorization = 1
+	}
+	mon.NewRegistry("auth").Gauge("disableAuthorization").Set(disableAuthorization)
 
 	accounting.Init(mon.NewRegistry("accounting"))
 
@@ -264,11 +271,32 @@ func run(
 			return err
 		}
 
-		backupS3 = backup.NewS3(
+		kekFile := backupConfig.GetKekFile()
+		kekID := backupConfig.GetKekId()
+		var kek []byte
+		if len(kekFile) != 0 || len(kekID) != 0 {
+			if len(kekFile) == 0 || len(kekID) == 0 {
+				return fmt.Errorf(
+					"set kek file and kek id together",
+				)
+			}
+
+			kek, err = os.ReadFile(kekFile)
+			if err != nil {
+				return err
+			}
+		}
+
+		backupS3, err = backup.NewS3(
 			s3Client,
 			backupConfig.GetS3Bucket(),
 			backupConfig.GetS3KeyPrefix(),
+			kekID,
+			kek,
 		)
+		if err != nil {
+			return err
+		}
 	}
 
 	dataplaneConfig := config.GetDataplaneConfig()

@@ -141,6 +141,8 @@ ui64 CalculateByteCount<NProto::TReadDataResponse>(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Indexed by EFileStoreRequest. The ReservedN request types keep their
+// original names so that the old profile logs can still be decoded.
 static const TString RequestNames[] = {
     "Ping",
     "PingSession",

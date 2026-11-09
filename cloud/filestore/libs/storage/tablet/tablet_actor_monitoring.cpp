@@ -14,6 +14,7 @@
 
 #include <contrib/ydb/library/actors/protos/actors.pb.h>
 
+#include <util/generic/overloaded.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 #include <util/string/join.h>
@@ -338,11 +339,48 @@ void DumpOperationState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpCompactionInfo(
+void DumpForcedOperation(
     IOutputStream& out,
-    const TIndexTabletState::TForcedRangeOperationState& state)
+    const TIndexTabletState::TForcedOperationState& state)
 {
-    DumpProgress(out, state.Current, state.RangesToCompact.size());
+    std::visit(
+        TOverloaded{
+            [&](const TIndexTabletState::TForcedRangeOperationState& state)
+            {
+                std::string opName;
+                using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+                switch (state.Mode) {
+                    case EMode::Cleanup:
+                        opName = "Cleanup";
+                        break;
+                    case EMode::Compaction:
+                        opName = "Compaction";
+                        break;
+                    case EMode::DeleteZeroCompactionRanges:
+                        opName = "DeleteZeroCompactionRanges";
+                        break;
+                }
+                out << "Forced " << opName << ":";
+                DumpProgress(out, state.Current, state.RangesToCompact.size());
+            },
+            [&](const TIndexTabletState::TForcedTabletOperationState& state)
+            {
+                std::string opName;
+                using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+                switch (state.Mode) {
+                    case EMode::Flush:
+                        opName = "Flush";
+                        break;
+                    case EMode::FlushBytes:
+                        opName = "FlushBytes";
+                        break;
+                    case EMode::CollectGarbage:
+                        opName = "CollectGarbage";
+                        break;
+                }
+                out << "Forced " << opName << ": in progress...";
+            }},
+        state);
 }
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
@@ -731,6 +769,7 @@ void DumpSessions(
                     TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
                     TABLEH() { out << "Deadline"; }
+                    TABLEH() { out << "GuestPosixAclEnabled"; }
                 }
             }
             for (const auto& session: sessions) {
@@ -754,6 +793,12 @@ void DumpSessions(
                         TABLED() { out << ss.OwnerGeneration; }
                         TABLED() { out << ToString(ss.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
+                        TABLED() {
+                            out << (session.ProtoInfo.GetPersistentOptions()
+                                            .GetGuestPosixAclEnabled()
+                                        ? "True"
+                                        : "False");
+                        }
                     }
                 };
                 if (session.SubSessions.empty()) {
@@ -1296,14 +1341,14 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
 #undef DUMP_INFO_FIELD
 
         TAG(TH3) {
-            if (!IsForcedRangeOperationRunning()) {
+            if (!IsForcedOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
             out << "CompactionQueue";
         }
 
-        if (IsForcedRangeOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedRangeOperationState());
+        if (IsForcedOperationRunning()) {
+            DumpForcedOperation(out, *GetForcedOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
@@ -1495,7 +1540,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (IsForcedRangeOperationRunning()) {
+    if (IsForcedOperationRunning()) {
         SendHttpResponse(
             ctx,
             TabletID(),
@@ -1552,7 +1597,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     }
 
     EnqueueForcedRangeOperation(mode, std::move(ranges), {});
-    EnqueueForcedRangeOperationIfNeeded(ctx);
+    EnqueueForcedOperationIfNeeded(ctx);
 
     SendHttpResponse(
         ctx,

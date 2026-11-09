@@ -201,7 +201,8 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(guardedSglist),
             BlockSizeForChecksums,
-            false); // async
+            false,  // async
+            true);  // compressedSizeEstimationCandidate
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(

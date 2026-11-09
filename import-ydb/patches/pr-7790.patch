@@ -1,0 +1,181 @@
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/mem_pool.cpp b/contrib/ydb/library/actors/interconnect/rdma/mem_pool.cpp
+index 3c80c3d445..cb6dffe4db 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/mem_pool.cpp
++++ b/contrib/ydb/library/actors/interconnect/rdma/mem_pool.cpp
+@@ -638,13 +638,9 @@ namespace NInterconnect::NRdma {
+         void Tick(NMonotonic::TMonotonic time) noexcept override {
+             constexpr TDuration holdTime = TDuration::Seconds(15);
+ 
++            const std::lock_guard<std::mutex> lock(Mutex);
+             ui64 prevMax = MaxAllocated.Counter->Val();
+-            ui64 maxAllocated = 0;
+-
+-            {
+-                const std::lock_guard<std::mutex> lock(Mutex);
+-                maxAllocated = ExtractMaxAllocatedForAllChunks();
+-            }
++            ui64 maxAllocated = ExtractMaxAllocatedForAllChunks();
+ 
+             if (time - MaxAllocated.Time > holdTime) {
+                 MaxAllocated.Counter->Set(maxAllocated);
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/rdma.cpp b/contrib/ydb/library/actors/interconnect/rdma/rdma.cpp
+index 6af6ca9f07..0561e59087 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/rdma.cpp
++++ b/contrib/ydb/library/actors/interconnect/rdma/rdma.cpp
+@@ -451,6 +451,14 @@ ibv_send_wr* TIbVerbsBuilderImpl::BuildListOfVerbs(std::vector<TWr*>& wr, size_t
+         attach(i);
+     }
+ 
++    // Publish the whole batch with one fence. TSan still needs a distinct
++    // synchronization address for every work request to avoid making
++    // unrelated completions appear synchronized.
++    atomic_thread_fence(std::memory_order_release);
++    for (TWr* item : wr) {
++        item->TsanReleaseForCompletion();
++    }
++
+     return &WorkBuf[0].Wr;
+ }
+ 
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/rdma_impl.h b/contrib/ydb/library/actors/interconnect/rdma/rdma_impl.h
+index b8a18d0ee9..313f57318c 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/rdma_impl.h
++++ b/contrib/ydb/library/actors/interconnect/rdma/rdma_impl.h
+@@ -27,17 +27,15 @@
+ 
+ namespace NInterconnect::NRdma {
+ 
+-void Y_FORCE_INLINE MemoryOrderAcquire(void* addr) {
+-    atomic_thread_fence(std::memory_order_acquire);
++void Y_FORCE_INLINE TsanAcquire(const void* addr) {
+ #if defined(_tsan_enabled_)
+-    __tsan_acquire(addr);
++    __tsan_acquire(const_cast<void*>(addr));
+ #else
+     Y_UNUSED(addr);
+ #endif
+ }
+ 
+-void Y_FORCE_INLINE MemoryOrderRlease(void* addr) {
+-    atomic_thread_fence(std::memory_order_release);
++void Y_FORCE_INLINE TsanRelease(void* addr) {
+ #if defined(_tsan_enabled_)
+     __tsan_release(addr);
+ #else
+@@ -45,6 +43,11 @@ void Y_FORCE_INLINE MemoryOrderRlease(void* addr) {
+ #endif
+ }
+ 
++void Y_FORCE_INLINE MemoryOrderAcquire(const void* addr) {
++    atomic_thread_fence(std::memory_order_acquire);
++    TsanAcquire(addr);
++}
++
+ NMonitoring::TDynamicCounterPtr MakeCounters(NMonitoring::TDynamicCounters* counters);
+ 
+ class TWr;
+@@ -467,7 +470,6 @@ public:
+     }
+ 
+     void Reply(NActors::TActorSystem* as, const ibv_wc* wc) noexcept {
+-        MemoryOrderAcquire(&Cb);
+         if (Cb) {
+             if (wc) {
+                 if (wc->status == IBV_WC_SUCCESS) {
+@@ -501,7 +503,16 @@ public:
+ 
+     void AttachCb(std::function<void(NActors::TActorSystem* as, TEvRdmaIoDone*)> cb) noexcept {
+         Cb = std::move(cb);
+-        MemoryOrderRlease(&Cb);
++    }
++
++    void TsanReleaseForCompletion() noexcept {
++        // The release fence is shared by the batch in BuildListOfVerbs.
++        TsanRelease(&Cb);
++    }
++
++    void TsanAcquireForCompletion() const noexcept {
++        // The acquire fence is shared by the completion batch in HandleWc.
++        TsanAcquire(&Cb);
+     }
+ 
+     void ResetTimer() noexcept {
+@@ -723,7 +734,7 @@ public:
+         TThread::SetCurrentThreadName("RdmaCqThread");
+         SetSigHandler();
+         TSimpleCqBase* cq = reinterpret_cast<TSimpleCqBase*>(p);
+-        cq->CqThreadId = pthread_self();
++        cq->CqThreadId.store(pthread_self(), std::memory_order_relaxed);
+         cq->Loop();
+         return nullptr;
+     }
+@@ -798,6 +809,7 @@ public:
+ 
+ 
+     void HandleWc(ibv_wc* wc, size_t sz) noexcept {
++        atomic_thread_fence(std::memory_order_acquire);
+         for (size_t i = 0; i < sz; i++, wc++) {
+             if (wc->wr_id & TSrq::SRQ_WR_MASK) {
+                 Srq.ProcessCommands();
+@@ -806,6 +818,7 @@ public:
+                 }
+             } else {
+                 TWr* wr = &WrBuf[wc->wr_id];
++                wr->TsanAcquireForCompletion();
+                 double passed = wr->GetTimePassed();
+                 RdmaDeviceVerbTimeUs->Collect(passed * 1000000.0);
+                 wr->Reply(As, wc);
+@@ -826,14 +839,16 @@ public:
+     }
+ 
+     void Awake() noexcept {
+-        if (CqThreadId) {
+-            pthread_kill(CqThreadId, SIGUSR1);
++        const pthread_t cqThreadId = CqThreadId.load(std::memory_order_relaxed);
++        if (cqThreadId) {
++            pthread_kill(cqThreadId, SIGUSR1);
+         }
+     }
+ 
+ protected:
+     bool IsCqThread() const noexcept {
+-        return CqThreadId && pthread_equal(pthread_self(), CqThreadId);
++        const pthread_t cqThreadId = CqThreadId.load(std::memory_order_relaxed);
++        return cqThreadId && pthread_equal(pthread_self(), cqThreadId);
+     }
+ 
+     // External terminal notifications may arrive through async_fd while the poller
+@@ -879,7 +894,7 @@ protected:
+     ui64 SrqRefillRetryCounter = 0;
+     NMonitoring::THistogramPtr RdmaDeviceVerbTimeUs;
+ private:
+-    pthread_t CqThreadId = {};
++    std::atomic<pthread_t> CqThreadId = {};
+ };
+ 
+ }
+diff --git a/contrib/ydb/library/actors/interconnect/ut/lib/node.h b/contrib/ydb/library/actors/interconnect/ut/lib/node.h
+index cd79f15a8d..138d36e1c0 100644
+--- a/contrib/ydb/library/actors/interconnect/ut/lib/node.h
++++ b/contrib/ydb/library/actors/interconnect/ut/lib/node.h
+@@ -16,6 +16,10 @@
+ 
+ #include <library/cpp/logger/backend.h>
+ 
++#include <util/string/cast.h>
++#include <util/system/env.h>
++#include <util/system/sanitizers.h>
++
+ #include "tls/tls.h"
+ 
+ using namespace NActors;
+@@ -60,7 +64,8 @@ public:
+         common->ClusterUUID = "cluster";
+         common->AcceptUUID = {common->ClusterUUID};
+         common->TechnicalSelfHostName = address;
+-        common->Settings.Handshake = TDuration::Seconds(1);
++        common->Settings.Handshake = NSan::PlainOrUnderSanitizer(
++            TDuration::Seconds(1), TDuration::Seconds(15));
+         common->Settings.DeadPeer = deadPeerTimeout;
+         common->Settings.CloseOnIdle = TDuration::Minutes(1);
+         common->Settings.SendBufferDieLimitInMB = 512;

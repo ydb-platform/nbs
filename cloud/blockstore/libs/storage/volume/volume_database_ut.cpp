@@ -503,6 +503,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 stats.SetCleanupQueueBytes(9 * i);
                 stats.SetGarbageQueueBytes(10 * i);
                 stats.SetLogicalUsedBytesCount(11 * i);
+                stats.SetLogicalMixedBytesCount(12 * i);
+                stats.SetLogicalMergedBytesCount(13 * i);
 
                 db.WritePartStats(i, stats);
             }
@@ -527,6 +529,12 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(9 * i, stat.GetCleanupQueueBytes());
                 UNIT_ASSERT_VALUES_EQUAL(10 * i, stat.GetGarbageQueueBytes());
                 UNIT_ASSERT_VALUES_EQUAL(11 * i, stat.GetLogicalUsedBytesCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    12 * i,
+                    stat.GetLogicalMixedBytesCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    13 * i,
+                    stat.GetLogicalMergedBytesCount());
             }
         });
     }
@@ -552,6 +560,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 stats.SetCleanupQueueBytes(9 * i);
                 stats.SetGarbageQueueBytes(10 * i);
                 stats.SetLogicalUsedBytesCount(11 * i);
+                stats.SetLogicalMixedBytesCount(12 * i);
+                stats.SetLogicalMergedBytesCount(13 * i);
 
                 db.WriteNonReplPartStats(i, stats);
             }
@@ -576,6 +586,12 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(9 * i, stat.GetCleanupQueueBytes());
                 UNIT_ASSERT_VALUES_EQUAL(10 * i, stat.GetGarbageQueueBytes());
                 UNIT_ASSERT_VALUES_EQUAL(11 * i, stat.GetLogicalUsedBytesCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    12 * i,
+                    stat.GetLogicalMixedBytesCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    13 * i,
+                    stat.GetLogicalMergedBytesCount());
             }
         });
     }
@@ -1293,9 +1309,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "x",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_HDD};
 
         TFollowerDiskInfo follower2{
@@ -1303,9 +1319,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "y",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol2",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
             .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD,
             .MigratedBytes = 1_MB};
@@ -1393,9 +1409,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "x",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .CreatedAt = TInstant::Now(),
             .State = TLeaderDiskInfo::EState::None,
             .ErrorMessage = ""};

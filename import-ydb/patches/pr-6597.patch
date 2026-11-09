@@ -1,0 +1,2545 @@
+diff --git a/.mapping.json b/.mapping.json
+index 19ec0b03733..b5ad8a0b174 100644
+--- a/.mapping.json
++++ b/.mapping.json
+@@ -2427,11 +2427,6 @@
+   "contrib/libs/openssl/crypto/CMakeLists.linux-x86_64.txt":"",
+   "contrib/libs/openssl/crypto/CMakeLists.txt":"",
+   "contrib/libs/openssl/crypto/CMakeLists.windows-x86_64.txt":"",
+-  "contrib/libs/opentelemetry-proto/CMakeLists.darwin-x86_64.txt":"",
+-  "contrib/libs/opentelemetry-proto/CMakeLists.linux-aarch64.txt":"",
+-  "contrib/libs/opentelemetry-proto/CMakeLists.linux-x86_64.txt":"",
+-  "contrib/libs/opentelemetry-proto/CMakeLists.txt":"",
+-  "contrib/libs/opentelemetry-proto/CMakeLists.windows-x86_64.txt":"",
+   "contrib/libs/pcre/CMakeLists.darwin-x86_64.txt":"",
+   "contrib/libs/pcre/CMakeLists.linux-aarch64.txt":"",
+   "contrib/libs/pcre/CMakeLists.linux-x86_64.txt":"",
+@@ -2571,6 +2566,11 @@
+   "contrib/libs/zstd06/CMakeLists.linux-x86_64.txt":"",
+   "contrib/libs/zstd06/CMakeLists.txt":"",
+   "contrib/libs/zstd06/CMakeLists.windows-x86_64.txt":"",
++  "contrib/proto/opentelemetry/CMakeLists.darwin-x86_64.txt":"",
++  "contrib/proto/opentelemetry/CMakeLists.linux-aarch64.txt":"",
++  "contrib/proto/opentelemetry/CMakeLists.linux-x86_64.txt":"",
++  "contrib/proto/opentelemetry/CMakeLists.txt":"",
++  "contrib/proto/opentelemetry/CMakeLists.windows-x86_64.txt":"",
+   "contrib/restricted/CMakeLists.darwin-x86_64.txt":"",
+   "contrib/restricted/CMakeLists.linux-aarch64.txt":"",
+   "contrib/restricted/CMakeLists.linux-x86_64.txt":"",
+@@ -8363,4 +8363,4 @@
+   "util/draft/CMakeLists.windows-x86_64.txt":"",
+   "ya":"devtools/ya/opensource/ya",
+   "ya.conf":"devtools/ya/opensource/ya.conf"
+-}
+\ No newline at end of file
++}
+diff --git a/cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h b/cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h
+index 5ebfc08e6a6..ea7c71a2ce2 100644
+--- a/cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h
++++ b/cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h
+@@ -5,7 +5,7 @@
+ #include <cloud/storage/core/libs/common/error.h>
+ #include <cloud/storage/core/libs/common/startable.h>
+
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
+
+ #include <library/cpp/threading/future/future.h>
+
+diff --git a/cloud/storage/core/libs/opentelemetry/iface/ya.make b/cloud/storage/core/libs/opentelemetry/iface/ya.make
+index d9cbc3d4cf7..23bacb7da19 100644
+--- a/cloud/storage/core/libs/opentelemetry/iface/ya.make
++++ b/cloud/storage/core/libs/opentelemetry/iface/ya.make
+@@ -7,7 +7,7 @@ SRCS(
+ PEERDIR(
+     cloud/blockstore/config
+
+-    contrib/libs/opentelemetry-proto
++    contrib/proto/opentelemetry
+
+     library/cpp/threading/future
+ )
+diff --git a/cloud/storage/core/libs/opentelemetry/impl/trace_convert.cpp b/cloud/storage/core/libs/opentelemetry/impl/trace_convert.cpp
+index b4bec8a8340..20738f5c448 100644
+--- a/cloud/storage/core/libs/opentelemetry/impl/trace_convert.cpp
++++ b/cloud/storage/core/libs/opentelemetry/impl/trace_convert.cpp
+@@ -2,8 +2,8 @@
+
+ #include "helpers.h"
+
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.pb.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
+
+ #include <library/cpp/protobuf/util/pb_io.h>
+
+diff --git a/cloud/storage/core/libs/opentelemetry/impl/trace_convert.h b/cloud/storage/core/libs/opentelemetry/impl/trace_convert.h
+index b4407b44a9c..28b3efe1243 100644
+--- a/cloud/storage/core/libs/opentelemetry/impl/trace_convert.h
++++ b/cloud/storage/core/libs/opentelemetry/impl/trace_convert.h
+@@ -2,7 +2,7 @@
+
+ #include <cloud/storage/core/protos/media.pb.h>
+
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
+
+ #include <library/cpp/lwtrace/log.h>
+
+diff --git a/cloud/storage/core/libs/opentelemetry/impl/trace_reader.cpp b/cloud/storage/core/libs/opentelemetry/impl/trace_reader.cpp
+index aa1b9e6543d..e9c628c44d8 100644
+--- a/cloud/storage/core/libs/opentelemetry/impl/trace_reader.cpp
++++ b/cloud/storage/core/libs/opentelemetry/impl/trace_reader.cpp
+@@ -5,7 +5,7 @@
+ #include <cloud/storage/core/libs/diagnostics/logging.h>
+ #include <cloud/storage/core/libs/opentelemetry/iface/trace_service_client.h>
+
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/resource/v1/resource.pb.h>
+
+ #include <library/cpp/logger/log.h>
+ #include <library/cpp/protobuf/util/pb_io.h>
+diff --git a/cloud/storage/core/libs/opentelemetry/impl/trace_service_client.cpp b/cloud/storage/core/libs/opentelemetry/impl/trace_service_client.cpp
+index 1906655136c..cc68fb267c6 100644
+--- a/cloud/storage/core/libs/opentelemetry/impl/trace_service_client.cpp
++++ b/cloud/storage/core/libs/opentelemetry/impl/trace_service_client.cpp
+@@ -10,8 +10,8 @@
+ #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+ #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
+ #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
+
+ #include <util/string/builder.h>
+ #include <util/string/join.h>
+diff --git a/cloud/storage/core/libs/opentelemetry/impl/ya.make b/cloud/storage/core/libs/opentelemetry/impl/ya.make
+index 658fa138b9a..21f79abe1d7 100644
+--- a/cloud/storage/core/libs/opentelemetry/impl/ya.make
++++ b/cloud/storage/core/libs/opentelemetry/impl/ya.make
+@@ -13,7 +13,7 @@ PEERDIR(
+     cloud/storage/core/libs/grpc
+     cloud/storage/core/libs/common
+
+-    contrib/libs/opentelemetry-proto
++    contrib/proto/opentelemetry
+     contrib/libs/grpc
+
+     library/cpp/threading/future
+diff --git a/contrib/libs/opentelemetry-proto/CONTRIBUTING.md b/contrib/libs/opentelemetry-proto/CONTRIBUTING.md
+deleted file mode 100644
+index 426dafe3aeb..00000000000
+--- a/contrib/libs/opentelemetry-proto/CONTRIBUTING.md
++++ /dev/null
+@@ -1,14 +0,0 @@
+-# Contributing
+-
+-Read OpenTelemetry project [contributing
+-guide](https://github.com/open-telemetry/community/blob/main/CONTRIBUTING.md)
+-for general information about the project.
+-
+-## Prerequisites
+-
+-- `Docker`
+-
+-## Making changes to the .proto files
+-
+-After making any changes to .proto files make sure to generate all
+-implementation by running `make gen-all`.
+diff --git a/contrib/libs/opentelemetry-proto/RELEASING.md b/contrib/libs/opentelemetry-proto/RELEASING.md
+deleted file mode 100644
+index 207d234a90c..00000000000
+--- a/contrib/libs/opentelemetry-proto/RELEASING.md
++++ /dev/null
+@@ -1,89 +0,0 @@
+-# How to Create a Release of OpenTelemetry Proto (for Maintainers Only)
+-
+-## Tagging the Release
+-
+-Our release branches follow the naming convention of `v<major>.<minor>.x`, while
+-the tags include the patch version `v<major>.<minor>.<patch>`. For example, the
+-same branch `v0.3.x` would be used to create all `v0.3` tags (e.g. `v0.3.0`,
+-`v0.3.1`).
+-
+-In this section upstream repository refers to the main opentelemetry-proto
+-github repository.
+-
+-Before any push to the upstream repository you need to create a [personal access
+-token](https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line/).
+-
+-1. Create the release branch and push it to GitHub:
+-
+-    ```bash
+-    MAJOR=0 MINOR=3 PATCH=0 # Set appropriately for new release
+-    git checkout -b v$MAJOR.$MINOR.x main
+-    git push upstream v$MAJOR.$MINOR.x
+-    ```
+-
+-2. Enable branch protection for the new branch, if you have admin access.
+-   Otherwise, let someone with admin access know that there is a new release
+-   branch.
+-
+-    - Open the branch protection settings for the new branch, by following
+-      [Github's instructions](https://help.github.com/articles/configuring-protected-branches/).
+-    - Copy the settings from a previous branch, i.e., check
+-      - `Protect this branch`
+-      - `Require pull request reviews before merging`
+-      - `Require status checks to pass before merging`
+-      - `Include administrators`
+-
+-      Enable the following required status checks:
+-      - `cla/linuxfoundation`
+-      - `ci/circleci: build`
+-    - Uncheck everything else.
+-    - Click "Save changes".
+-
+-3. For `vMajor.Minor.x` branch:
+-
+-    - Create and push a tag:
+-
+-    ```bash
+-    git checkout v$MAJOR.$MINOR.x
+-    git pull upstream v$MAJOR.$MINOR.x
+-    git tag -a v$MAJOR.$MINOR.$PATCH -m "Version $MAJOR.$MINOR.$PATCH"
+-    git push upstream v$MAJOR.$MINOR.$PATCH
+-    ```
+-
+-## Patch Release
+-
+-All patch releases should include only bug-fixes, and must avoid
+-adding/modifying the public APIs. To cherry-pick one commit use the following
+-instructions:
+-
+-- Create and push a tag:
+-
+-```bash
+-COMMIT=1224f0a # Set the right commit hash.
+-git checkout -b cherrypick v$MAJOR.$MINOR.x
+-git cherry-pick -x $COMMIT
+-git commit -a -m "Cherry-pick commit $COMMIT"
+-```
+-
+-- Go through PR review and merge it to GitHub v$MAJOR.$MINOR.x branch.
+-
+-- Tag a new patch release when all commits are merged.
+-
+-## Announcement
+-
+-Once deployment is done, go to Github [release
+-page](https://github.com/open-telemetry/opentelemetry-proto/releases), press
+-`Draft a new release` to write release notes about the new release.
+-
+-You can use `git log upstream/v$MAJOR.$((MINOR-1)).x..upstream/v$MAJOR.$MINOR.x --graph --first-parent`
+-or the Github [compare tool](https://github.com/open-telemetry/opentelemetry-proto/compare/)
+-to view a summary of all commits since last release as a reference.
+-
+-In addition, you can refer to [CHANGELOG.md](CHANGELOG.md)
+-for a list of major changes since last release.
+-
+-## Update release versions in documentations and CHANGELOG files
+-
+-After releasing is done, you need to update [README.md](README.md) and [CHANGELOG.md](CHANGELOG.md).
+-
+-Create a PR to mark the new release in [CHANGELOG.md](CHANGELOG.md) on main branch.
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/pprofextended.proto b/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/pprofextended.proto
+deleted file mode 100644
+index bd300835546..00000000000
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/pprofextended.proto
++++ /dev/null
+@@ -1,386 +0,0 @@
+-// Copyright 2023, OpenTelemetry Authors
+-//
+-// Licensed under the Apache License, Version 2.0 (the "License");
+-// you may not use this file except in compliance with the License.
+-// You may obtain a copy of the License at
+-//
+-//     http://www.apache.org/licenses/LICENSE-2.0
+-//
+-// Unless required by applicable law or agreed to in writing, software
+-// distributed under the License is distributed on an "AS IS" BASIS,
+-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-// See the License for the specific language governing permissions and
+-// limitations under the License.
+-//
+-// This file includes work covered by the following copyright and permission notices:
+-//
+-// Copyright 2016 Google Inc. All Rights Reserved.
+-//
+-// Licensed under the Apache License, Version 2.0 (the "License");
+-// you may not use this file except in compliance with the License.
+-// You may obtain a copy of the License at
+-//
+-//     http://www.apache.org/licenses/LICENSE-2.0
+-//
+-// Unless required by applicable law or agreed to in writing, software
+-// distributed under the License is distributed on an "AS IS" BASIS,
+-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-// See the License for the specific language governing permissions and
+-// limitations under the License.
+-
+-// Profile is a common stacktrace profile format.
+-//
+-// Measurements represented with this format should follow the
+-// following conventions:
+-//
+-// - Consumers should treat unset optional fields as if they had been
+-//   set with their default value.
+-//
+-// - When possible, measurements should be stored in "unsampled" form
+-//   that is most useful to humans.  There should be enough
+-//   information present to determine the original sampled values.
+-//
+-// - On-disk, the serialized proto must be gzip-compressed.
+-//
+-// - The profile is represented as a set of samples, where each sample
+-//   references a sequence of locations, and where each location belongs
+-//   to a mapping.
+-// - There is a N->1 relationship from sample.location_id entries to
+-//   locations. For every sample.location_id entry there must be a
+-//   unique Location with that index.
+-// - There is an optional N->1 relationship from locations to
+-//   mappings. For every nonzero Location.mapping_id there must be a
+-//   unique Mapping with that index.
+-
+-syntax = "proto3";
+-
+-package opentelemetry.proto.profiles.v1experimental;
+-
+-import "opentelemetry/proto/common/v1/common.proto";
+-
+-option csharp_namespace = "OpenTelemetry.Proto.Profiles.V1Experimental";
+-option go_package = "go.opentelemetry.io/proto/otlp/profiles/v1experimental";
+-
+-// Represents a complete profile, including sample types, samples,
+-// mappings to binaries, locations, functions, string table, and additional metadata.
+-message Profile {
+-  // A description of the samples associated with each Sample.value.
+-  // For a cpu profile this might be:
+-  //   [["cpu","nanoseconds"]] or [["wall","seconds"]] or [["syscall","count"]]
+-  // For a heap profile, this might be:
+-  //   [["allocations","count"], ["space","bytes"]],
+-  // If one of the values represents the number of events represented
+-  // by the sample, by convention it should be at index 0 and use
+-  // sample_type.unit == "count".
+-  repeated ValueType sample_type = 1;
+-  // The set of samples recorded in this profile.
+-  repeated Sample sample = 2;
+-  // Mapping from address ranges to the image/binary/library mapped
+-  // into that address range.  mapping[0] will be the main binary.
+-  repeated Mapping mapping = 3;
+-  // Locations referenced by samples via location_indices.
+-  repeated Location location = 4;
+-  // Array of locations referenced by samples.
+-  repeated int64 location_indices = 15;
+-  // Functions referenced by locations.
+-  repeated Function function = 5;
+-  // Lookup table for attributes.
+-  repeated opentelemetry.proto.common.v1.KeyValue attribute_table = 16;
+-  // Represents a mapping between Attribute Keys and Units.
+-  repeated AttributeUnit attribute_units = 17;
+-  // Lookup table for links.
+-  repeated Link link_table = 18;
+-  // A common table for strings referenced by various messages.
+-  // string_table[0] must always be "".
+-  repeated string string_table = 6;
+-  // frames with Function.function_name fully matching the following
+-  // regexp will be dropped from the samples, along with their successors.
+-  int64 drop_frames = 7;   // Index into string table.
+-  // frames with Function.function_name fully matching the following
+-  // regexp will be kept, even if it matches drop_frames.
+-  int64 keep_frames = 8;  // Index into string table.
+-
+-  // The following fields are informational, do not affect
+-  // interpretation of results.
+-
+-  // Time of collection (UTC) represented as nanoseconds past the epoch.
+-  int64 time_nanos = 9;
+-  // Duration of the profile, if a duration makes sense.
+-  int64 duration_nanos = 10;
+-  // The kind of events between sampled occurrences.
+-  // e.g [ "cpu","cycles" ] or [ "heap","bytes" ]
+-  ValueType period_type = 11;
+-  // The number of events between sampled occurrences.
+-  int64 period = 12;
+-  // Free-form text associated with the profile. The text is displayed as is
+-  // to the user by the tools that read profiles (e.g. by pprof). This field
+-  // should not be used to store any machine-readable information, it is only
+-  // for human-friendly content. The profile must stay functional if this field
+-  // is cleaned.
+-  repeated int64 comment = 13; // Indices into string table.
+-  // Index into the string table of the type of the preferred sample
+-  // value. If unset, clients should default to the last sample value.
+-  int64 default_sample_type = 14;
+-}
+-
+-// Represents a mapping between Attribute Keys and Units.
+-message AttributeUnit {
+-  // Index into string table.
+-  int64 attribute_key = 1;
+-  // Index into string table.
+-  int64 unit = 2;
+-}
+-
+-// A pointer from a profile Sample to a trace Span.
+-// Connects a profile sample to a trace span, identified by unique trace and span IDs.
+-message Link {
+-  // A unique identifier of a trace that this linked span is part of. The ID is a
+-  // 16-byte array.
+-  bytes trace_id = 1;
+-
+-  // A unique identifier for the linked span. The ID is an 8-byte array.
+-  bytes span_id = 2;
+-}
+-
+-// Specifies the method of aggregating metric values, either DELTA (change since last report)
+-// or CUMULATIVE (total since a fixed start time).
+-enum AggregationTemporality {
+-  /* UNSPECIFIED is the default AggregationTemporality, it MUST not be used. */
+-  AGGREGATION_TEMPORALITY_UNSPECIFIED = 0;
+-
+-  /** DELTA is an AggregationTemporality for a profiler which reports
+-  changes since last report time. Successive metrics contain aggregation of
+-  values from continuous and non-overlapping intervals.
+-
+-  The values for a DELTA metric are based only on the time interval
+-  associated with one measurement cycle. There is no dependency on
+-  previous measurements like is the case for CUMULATIVE metrics.
+-
+-  For example, consider a system measuring the number of requests that
+-  it receives and reports the sum of these requests every second as a
+-  DELTA metric:
+-
+-  1. The system starts receiving at time=t_0.
+-  2. A request is received, the system measures 1 request.
+-  3. A request is received, the system measures 1 request.
+-  4. A request is received, the system measures 1 request.
+-  5. The 1 second collection cycle ends. A metric is exported for the
+-      number of requests received over the interval of time t_0 to
+-      t_0+1 with a value of 3.
+-  6. A request is received, the system measures 1 request.
+-  7. A request is received, the system measures 1 request.
+-  8. The 1 second collection cycle ends. A metric is exported for the
+-      number of requests received over the interval of time t_0+1 to
+-      t_0+2 with a value of 2. */
+-  AGGREGATION_TEMPORALITY_DELTA = 1;
+-
+-  /** CUMULATIVE is an AggregationTemporality for a profiler which
+-  reports changes since a fixed start time. This means that current values
+-  of a CUMULATIVE metric depend on all previous measurements since the
+-  start time. Because of this, the sender is required to retain this state
+-  in some form. If this state is lost or invalidated, the CUMULATIVE metric
+-  values MUST be reset and a new fixed start time following the last
+-  reported measurement time sent MUST be used.
+-
+-  For example, consider a system measuring the number of requests that
+-  it receives and reports the sum of these requests every second as a
+-  CUMULATIVE metric:
+-
+-  1. The system starts receiving at time=t_0.
+-  2. A request is received, the system measures 1 request.
+-  3. A request is received, the system measures 1 request.
+-  4. A request is received, the system measures 1 request.
+-  5. The 1 second collection cycle ends. A metric is exported for the
+-      number of requests received over the interval of time t_0 to
+-      t_0+1 with a value of 3.
+-  6. A request is received, the system measures 1 request.
+-  7. A request is received, the system measures 1 request.
+-  8. The 1 second collection cycle ends. A metric is exported for the
+-      number of requests received over the interval of time t_0 to
+-      t_0+2 with a value of 5.
+-  9. The system experiences a fault and loses state.
+-  10. The system recovers and resumes receiving at time=t_1.
+-  11. A request is received, the system measures 1 request.
+-  12. The 1 second collection cycle ends. A metric is exported for the
+-      number of requests received over the interval of time t_1 to
+-      t_0+1 with a value of 1.
+-
+-  Note: Even though, when reporting changes since last report time, using
+-  CUMULATIVE is valid, it is not recommended. */
+-  AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+-}
+-
+-// ValueType describes the type and units of a value, with an optional aggregation temporality.
+-message ValueType {
+-  int64 type = 1; // Index into string table.
+-  int64 unit = 2; // Index into string table.
+-
+-  AggregationTemporality aggregation_temporality = 3;
+-}
+-
+-// Each Sample records values encountered in some program
+-// context. The program context is typically a stack trace, perhaps
+-// augmented with auxiliary information like the thread-id, some
+-// indicator of a higher level request being handled etc.
+-message Sample {
+-  // The indices recorded here correspond to locations in Profile.location.
+-  // The leaf is at location_index[0]. [deprecated, superseded by locations_start_index / locations_length]
+-  repeated uint64 location_index = 1;
+-  // locations_start_index along with locations_length refers to to a slice of locations in Profile.location.
+-  // Supersedes location_index.
+-  uint64 locations_start_index = 7;
+-  // locations_length along with locations_start_index refers to a slice of locations in Profile.location.
+-  // Supersedes location_index.
+-  uint64 locations_length = 8;
+-  // A 128bit id that uniquely identifies this stacktrace, globally. Index into string table. [optional]
+-  uint32 stacktrace_id_index = 9;
+-  // The type and unit of each value is defined by the corresponding
+-  // entry in Profile.sample_type. All samples must have the same
+-  // number of values, the same as the length of Profile.sample_type.
+-  // When aggregating multiple samples into a single sample, the
+-  // result has a list of values that is the element-wise sum of the
+-  // lists of the originals.
+-  repeated int64 value = 2;
+-  // label includes additional context for this sample. It can include
+-  // things like a thread id, allocation size, etc.
+-  //
+-  // NOTE: While possible, having multiple values for the same label key is
+-  // strongly discouraged and should never be used. Most tools (e.g. pprof) do
+-  // not have good (or any) support for multi-value labels. And an even more
+-  // discouraged case is having a string label and a numeric label of the same
+-  // name on a sample.  Again, possible to express, but should not be used.
+-  // [deprecated, superseded by attributes]
+-  repeated Label label = 3;
+-  // References to attributes in Profile.attribute_table. [optional]
+-  repeated uint64 attributes = 10;
+-
+-  // Reference to link in Profile.link_table. [optional]
+-  uint64 link = 12;
+-
+-  // Timestamps associated with Sample represented in nanoseconds. These timestamps are expected
+-  // to fall within the Profile's time range. [optional]
+-  repeated uint64 timestamps_unix_nano = 13;
+-}
+-
+-// Provides additional context for a sample,
+-// such as thread ID or allocation size, with optional units. [deprecated]
+-message Label {
+-  int64 key = 1;   // Index into string table
+-
+-  // At most one of the following must be present
+-  int64 str = 2;   // Index into string table
+-  int64 num = 3;
+-
+-  // Should only be present when num is present.
+-  // Specifies the units of num.
+-  // Use arbitrary string (for example, "requests") as a custom count unit.
+-  // If no unit is specified, consumer may apply heuristic to deduce the unit.
+-  // Consumers may also  interpret units like "bytes" and "kilobytes" as memory
+-  // units and units like "seconds" and "nanoseconds" as time units,
+-  // and apply appropriate unit conversions to these.
+-  int64 num_unit = 4;  // Index into string table
+-}
+-
+-// Indicates the semantics of the build_id field.
+-enum BuildIdKind {
+-  // Linker-generated build ID, stored in the ELF binary notes.
+-  BUILD_ID_LINKER = 0;
+-  // Build ID based on the content hash of the binary. Currently no particular
+-  // hashing approach is standardized, so a given producer needs to define it
+-  // themselves and thus unlike BUILD_ID_LINKER this kind of hash is producer-specific.
+-  // We may choose to provide a standardized stable hash recommendation later.
+-  BUILD_ID_BINARY_HASH = 1;
+-}
+-
+-// Describes the mapping of a binary in memory, including its address range,
+-// file offset, and metadata like build ID
+-message Mapping {
+-  // Unique nonzero id for the mapping. [deprecated]
+-  uint64 id = 1;
+-  // Address at which the binary (or DLL) is loaded into memory.
+-  uint64 memory_start = 2;
+-  // The limit of the address range occupied by this mapping.
+-  uint64 memory_limit = 3;
+-  // Offset in the binary that corresponds to the first mapped address.
+-  uint64 file_offset = 4;
+-  // The object this entry is loaded from.  This can be a filename on
+-  // disk for the main binary and shared libraries, or virtual
+-  // abstractions like "[vdso]".
+-  int64 filename = 5;  // Index into string table
+-  // A string that uniquely identifies a particular program version
+-  // with high probability. E.g., for binaries generated by GNU tools,
+-  // it could be the contents of the .note.gnu.build-id field.
+-  int64 build_id = 6;  // Index into string table
+-  // Specifies the kind of build id. See BuildIdKind enum for more details [optional]
+-  BuildIdKind build_id_kind = 11;
+-  // References to attributes in Profile.attribute_table. [optional]
+-  repeated uint64 attributes = 12;
+-  // The following fields indicate the resolution of symbolic info.
+-  bool has_functions = 7;
+-  bool has_filenames = 8;
+-  bool has_line_numbers = 9;
+-  bool has_inline_frames = 10;
+-}
+-
+-// Describes function and line table debug information.
+-message Location {
+-  // Unique nonzero id for the location.  A profile could use
+-  // instruction addresses or any integer sequence as ids. [deprecated]
+-  uint64 id = 1;
+-  // The index of the corresponding profile.Mapping for this location.
+-  // It can be unset if the mapping is unknown or not applicable for
+-  // this profile type.
+-  uint64 mapping_index = 2;
+-  // The instruction address for this location, if available.  It
+-  // should be within [Mapping.memory_start...Mapping.memory_limit]
+-  // for the corresponding mapping. A non-leaf address may be in the
+-  // middle of a call instruction. It is up to display tools to find
+-  // the beginning of the instruction if necessary.
+-  uint64 address = 3;
+-  // Multiple line indicates this location has inlined functions,
+-  // where the last entry represents the caller into which the
+-  // preceding entries were inlined.
+-  //
+-  // E.g., if memcpy() is inlined into printf:
+-  //    line[0].function_name == "memcpy"
+-  //    line[1].function_name == "printf"
+-  repeated Line line = 4;
+-  // Provides an indication that multiple symbols map to this location's
+-  // address, for example due to identical code folding by the linker. In that
+-  // case the line information above represents one of the multiple
+-  // symbols. This field must be recomputed when the symbolization state of the
+-  // profile changes.
+-  bool is_folded = 5;
+-
+-  // Type of frame (e.g. kernel, native, python, hotspot, php). Index into string table.
+-  uint32 type_index = 6;
+-
+-  // References to attributes in Profile.attribute_table. [optional]
+-  repeated uint64 attributes = 7;
+-}
+-
+-// Details a specific line in a source code, linked to a function.
+-message Line {
+-  // The index of the corresponding profile.Function for this line.
+-  uint64 function_index = 1;
+-  // Line number in source code.
+-  int64 line = 2;
+-  // Column number in source code.
+-  int64 column = 3;
+-}
+-
+-// Describes a function, including its human-readable name, system name,
+-// source file, and starting line number in the source.
+-message Function {
+-  // Unique nonzero id for the function. [deprecated]
+-  uint64 id = 1;
+-  // Name of the function, in human-readable form if available.
+-  int64 name = 2; // Index into string table
+-  // Name of the function, as identified by the system.
+-  // For instance, it can be a C++ mangled name.
+-  int64 system_name = 3; // Index into string table
+-  // Source file containing the function.
+-  int64 filename = 4; // Index into string table
+-  // Line number in source file.
+-  int64 start_line = 5;
+-}
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/profiles.proto b/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/profiles.proto
+deleted file mode 100644
+index bbc2b2931da..00000000000
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/profiles/v1experimental/profiles.proto
++++ /dev/null
+@@ -1,191 +0,0 @@
+-// Copyright 2023, OpenTelemetry Authors
+-//
+-// Licensed under the Apache License, Version 2.0 (the "License");
+-// you may not use this file except in compliance with the License.
+-// You may obtain a copy of the License at
+-//
+-//     http://www.apache.org/licenses/LICENSE-2.0
+-//
+-// Unless required by applicable law or agreed to in writing, software
+-// distributed under the License is distributed on an "AS IS" BASIS,
+-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-// See the License for the specific language governing permissions and
+-// limitations under the License.
+-
+-syntax = "proto3";
+-
+-package opentelemetry.proto.profiles.v1experimental;
+-
+-import "opentelemetry/proto/common/v1/common.proto";
+-import "opentelemetry/proto/resource/v1/resource.proto";
+-import "opentelemetry/proto/profiles/v1experimental/pprofextended.proto";
+-
+-option csharp_namespace = "OpenTelemetry.Proto.Profiles.V1Experimental";
+-option java_multiple_files = true;
+-option java_package = "io.opentelemetry.proto.profiles.v1experimental";
+-option java_outer_classname = "ProfilesProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/profiles/v1experimental";
+-
+-//                Relationships Diagram
+-//
+-// ┌──────────────────┐                LEGEND
+-// │   ProfilesData   │
+-// └──────────────────┘            ─────▶ embedded
+-//   │
+-//   │ 1-n                         ─────▷ referenced by index
+-//   ▼
+-// ┌──────────────────┐
+-// │ ResourceProfiles │
+-// └──────────────────┘
+-//   │
+-//   │ 1-n
+-//   ▼
+-// ┌──────────────────┐
+-// │  ScopeProfiles   │
+-// └──────────────────┘
+-//   │
+-//   │ 1-n
+-//   ▼
+-// ┌──────────────────┐
+-// │ ProfileContainer │
+-// └──────────────────┘
+-//   │
+-//   │ 1-1
+-//   ▼
+-// ┌──────────────────┐
+-// │      Profile     │
+-// └──────────────────┘
+-//   │                                1-n
+-//   │ 1-n         ┌───────────────────────────────────────┐
+-//   ▼             │                                       ▽
+-// ┌──────────────────┐   1-n   ┌──────────────┐      ┌──────────┐
+-// │      Sample      │ ──────▷ │   KeyValue   │      │   Link   │
+-// └──────────────────┘         └──────────────┘      └──────────┘
+-//   │                    1-n       △      △
+-//   │ 1-n        ┌─────────────────┘      │ 1-n
+-//   ▽            │                        │
+-// ┌──────────────────┐   n-1   ┌──────────────┐
+-// │     Location     │ ──────▷ │   Mapping    │
+-// └──────────────────┘         └──────────────┘
+-//   │
+-//   │ 1-n
+-//   ▼
+-// ┌──────────────────┐
+-// │       Line       │
+-// └──────────────────┘
+-//   │
+-//   │ 1-1
+-//   ▽
+-// ┌──────────────────┐
+-// │     Function     │
+-// └──────────────────┘
+-//
+-
+-// ProfilesData represents the profiles data that can be stored in persistent storage,
+-// OR can be embedded by other protocols that transfer OTLP profiles data but do not
+-// implement the OTLP protocol.
+-//
+-// The main difference between this message and collector protocol is that
+-// in this message there will not be any "control" or "metadata" specific to
+-// OTLP protocol.
+-//
+-// When new fields are added into this message, the OTLP request MUST be updated
+-// as well.
+-message ProfilesData {
+-  // An array of ResourceProfiles.
+-  // For data coming from a single resource this array will typically contain
+-  // one element. Intermediary nodes that receive data from multiple origins
+-  // typically batch the data before forwarding further and in that case this
+-  // array will contain multiple elements.
+-  repeated ResourceProfiles resource_profiles = 1;
+-}
+-
+-
+-// A collection of ScopeProfiles from a Resource.
+-message ResourceProfiles {
+-  reserved 1000;
+-
+-  // The resource for the profiles in this message.
+-  // If this field is not set then no resource info is known.
+-  opentelemetry.proto.resource.v1.Resource resource = 1;
+-
+-  // A list of ScopeProfiles that originate from a resource.
+-  repeated ScopeProfiles scope_profiles = 2;
+-
+-  // The Schema URL, if known. This is the identifier of the Schema that the resource data
+-  // is recorded in. To learn more about Schema URL see
+-  // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+-  // This schema_url applies to the data in the "resource" field. It does not apply
+-  // to the data in the "scope_profiles" field which have their own schema_url field.
+-  string schema_url = 3;
+-}
+-
+-// A collection of ProfileContainers produced by an InstrumentationScope.
+-message ScopeProfiles {
+-  // The instrumentation scope information for the profiles in this message.
+-  // Semantically when InstrumentationScope isn't set, it is equivalent with
+-  // an empty instrumentation scope name (unknown).
+-  opentelemetry.proto.common.v1.InstrumentationScope scope = 1;
+-
+-  // A list of ProfileContainers that originate from an instrumentation scope.
+-  repeated ProfileContainer profiles = 2;
+-
+-  // The Schema URL, if known. This is the identifier of the Schema that the metric data
+-  // is recorded in. To learn more about Schema URL see
+-  // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+-  // This schema_url applies to all profiles in the "profiles" field.
+-  string schema_url = 3;
+-}
+-
+-// A ProfileContainer represents a single profile. It wraps pprof profile with OpenTelemetry specific metadata.
+-message ProfileContainer {
+-  // A globally unique identifier for a profile. The ID is a 16-byte array. An ID with
+-  // all zeroes is considered invalid.
+-  //
+-  // This field is required.
+-  bytes profile_id = 1;
+-
+-  // start_time_unix_nano is the start time of the profile.
+-  // Value is UNIX Epoch time in nanoseconds since 00:00:00 UTC on 1 January 1970.
+-  //
+-  // This field is semantically required and it is expected that end_time >= start_time.
+-  fixed64 start_time_unix_nano = 2;
+-
+-  // end_time_unix_nano is the end time of the profile.
+-  // Value is UNIX Epoch time in nanoseconds since 00:00:00 UTC on 1 January 1970.
+-  //
+-  // This field is semantically required and it is expected that end_time >= start_time.
+-  fixed64 end_time_unix_nano = 3;
+-
+-  // attributes is a collection of key/value pairs. Note, global attributes
+-  // like server name can be set using the resource API. Examples of attributes:
+-  //
+-  //     "/http/user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
+-  //     "/http/server_latency": 300
+-  //     "abc.com/myattribute": true
+-  //     "abc.com/score": 10.239
+-  //
+-  // The OpenTelemetry API specification further restricts the allowed value types:
+-  // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/README.md#attribute
+-  // Attribute keys MUST be unique (it is not allowed to have more than one
+-  // attribute with the same key).
+-  repeated opentelemetry.proto.common.v1.KeyValue attributes = 4;
+-
+-  // dropped_attributes_count is the number of attributes that were discarded. Attributes
+-  // can be discarded because their keys are too long or because there are too many
+-  // attributes. If this value is 0, then no attributes were dropped.
+-  uint32 dropped_attributes_count = 5;
+-
+-  // Specifies format of the original payload. Common values are defined in semantic conventions. [required if original_payload is present]
+-  string original_payload_format = 6;
+-
+-  // Original payload can be stored in this field. This can be useful for users who want to get the original payload.
+-  // Formats such as JFR are highly extensible and can contain more information than what is defined in this spec.
+-  // Inclusion of original payload should be configurable by the user. Default behavior should be to not include the original payload.
+-  // If the original payload is in pprof format, it SHOULD not be included in this field.
+-  // The field is optional, however if it is present `profile` MUST be present and contain the same profiling information.
+-  bytes original_payload = 7;
+-
+-  // This is a reference to a pprof profile. Required, even when original_payload is present.
+-  opentelemetry.proto.profiles.v1experimental.Profile profile = 8;
+-}
+diff --git a/contrib/libs/opentelemetry-proto/CHANGELOG.md b/contrib/proto/opentelemetry/CHANGELOG.md
+similarity index 61%
+rename from contrib/libs/opentelemetry-proto/CHANGELOG.md
+rename to contrib/proto/opentelemetry/CHANGELOG.md
+index 7af14f17624..e205735c130 100644
+--- a/contrib/libs/opentelemetry-proto/CHANGELOG.md
++++ b/contrib/proto/opentelemetry/CHANGELOG.md
+@@ -1,13 +1,143 @@
+ # Changelog
+
++The full list of changes can be found in the compare view for the respective release at <https://github.com/open-telemetry/opentelemetry-proto/releases>.
++
+ ## Unreleased
+
+-Full list of differences found in [this compare](https://github.com/open-telemetry/opentelemetry-proto/compare/v1.1.0...main).
++### Added
++
++### Changed
++
++### Fixed
++
++### Removed
++
++## 1.9.0 - 2025-10-31
++
++### Added
++
++- profiles: drop field profile.comment_strindices. [#729](https://github.com/open-telemetry/opentelemetry-proto/pull/729)
++- profiles: clarify the original payload field comments. [#722](https://github.com/open-telemetry/opentelemetry-proto/pull/722)
++- profiles: add a note about cardinality implications for attribute values. [#713](https://github.com/open-telemetry/opentelemetry-proto/pull/713)
++
++### Changed
++
++- profiles: clarify dictionary guidelines: duplicates and other restrictions. [#732](https://github.com/open-telemetry/opentelemetry-proto/pull/732)
++- profiles: clarify the original payload field comments. [#722](https://github.com/open-telemetry/opentelemetry-proto/pull/722)
++- profiles: rename line -> lines and sample -> samples since they are repeated fields. [#712](https://github.com/open-telemetry/opentelemetry-proto/pull/712)
++- profiles: document more explicitly the dictionary zero element requirement. [#711](https://github.com/open-telemetry/opentelemetry-proto/pull/711)
++- all: drop attribute values restrictions. [#707](https://github.com/open-telemetry/opentelemetry-proto/pull/707)<br>
++  ⚠️ **IMPORTANT**: OTLP consumers are expected to accept attribute values that were previously considered invalid.
++  All attributes can now contain:
++  - empty values,
++  - bytes values,
++  - array values different than array of string values, bool values, int values, double values,
++  - kvlist values.
++
++### Fixed
++
++- all: fix schema_url comments to include scope field coverage. [#727](https://github.com/open-telemetry/opentelemetry-proto/pull/727)
++- all: add missing field comments. [#717](https://github.com/open-telemetry/opentelemetry-proto/pull/717)
++
++### Removed
++
++- profiles: drop field profile.comment_strindices. [#729](https://github.com/open-telemetry/opentelemetry-proto/pull/729)
++- profiles: remove aggregation temporality enum and field. [#710](https://github.com/open-telemetry/opentelemetry-proto/pull/710)
++
++## 1.8.0 - 2025-09-02
++
++### Changed
++
++- profiles: drop gzip requirement. [#661](https://github.com/open-telemetry/opentelemetry-proto/pull/661)
++- profiles: avoid `optional` keyword usage. [#659](https://github.com/open-telemetry/opentelemetry-proto/pull/659)
++- profiles: make `profile_id` optional. [#665](https://github.com/open-telemetry/opentelemetry-proto/pull/665)
++- profiles: use single `Profile.sample_type` and clarify use of timestamps. [#649](https://github.com/open-telemetry/opentelemetry-proto/pull/649)
++- all: add notes about the attribute values restrictions. [#683](https://github.com/open-telemetry/opentelemetry-proto/pull/683)<br>
++  ⚠️ **IMPORTANT**: These restrictions can be dropped in a future minor release.
++- profiles: clarify usage of the zero value as the first element of tables in `ProfilesDictionary`. [#688](https://github.com/open-telemetry/opentelemetry-proto/pull/688), [#698](https://github.com/open-telemetry/opentelemetry-proto/pull/698)
++- profiles: unsigned `time_nanos` and `duration_nanos` in `Profile`. [#692](https://github.com/open-telemetry/opentelemetry-proto/pull/692)
++- profiles: improve attribute encoding in `ProfilesDictionary`. [#672](https://github.com/open-telemetry/opentelemetry-proto/pull/672)
++- profiles: simplify profile stack trace representation. [#708](https://github.com/open-telemetry/opentelemetry-proto/pull/708)
++
++### Fixed
++
++- examples: fix OTLP JSON Event example body. [#666](https://github.com/open-telemetry/opentelemetry-proto/pull/666)
++- docs: minor specification fixes around `UNAVAILABLE` and `RetryInfo`. [#669](https://github.com/open-telemetry/opentelemetry-proto/pull/669)
++
++### Removed
++
++- profiles: remove `default_sample_type`. [#679](https://github.com/open-telemetry/opentelemetry-proto/pull/679)
++- profiles: remove `has_*` debug info fields, they are moving to attributes. [#595](https://github.com/open-telemetry/opentelemetry-proto/pull/595)
++- profiles: remove `Location.is_folded`. [#690](https://github.com/open-telemetry/opentelemetry-proto/pull/690)
++
++## 1.7.0 - 2025-05-19
++
++### Added
++
++- profiles: introduce Dictionary message in ProfilesData, and move the lookup tables into it. [#650](https://github.com/open-telemetry/opentelemetry-proto/pull/650)
++
++## 1.6.0 - 2025-04-29
++
++### Added
++
++- resource: Add EntityRef. [#635](https://github.com/open-telemetry/opentelemetry-proto/pull/635)
++
++### Changed
++
++- logs: Stabilize `event_name` field in `LogRecord` message. [#643](https://github.com/open-telemetry/opentelemetry-proto/pull/643)
++- profiles: Move the lookup tables to ProfilesData. [#644](https://github.com/open-telemetry/opentelemetry-proto/pull/644)
++- profiles: Move default sample_type from the string table to sample_type. [#620](https://github.com/open-telemetry/opentelemetry-proto/pull/620)
++
++## 1.5.0 - 2024-12-12
++
++### Added
++
++- all: Add note about `schema_url` format (including version). [#605](https://github.com/open-telemetry/opentelemetry-proto/pull/605)
++- logs: Add top-level `event_name` field to log records instead of `event.name` attribute. [#600](https://github.com/open-telemetry/opentelemetry-proto/pull/600)
++
++### Removed
++
++- profiles: Remove unused `Label` definition. [#602](https://github.com/open-telemetry/opentelemetry-proto/pull/602)
++- profiles: drop duplicate `attributes` field in message Profile. [#606](https://github.com/open-telemetry/opentelemetry-proto/pull/606)
++
++## 1.4.0 - 2024-11-20
+
+ ### Added
+
++* metrics: Add resource attributes and scope to metrics proto diagram. [#519](https://github.com/open-telemetry/opentelemetry-proto/pull/519)
++* metrics: Added json example for exponential histogram. [#580](https://github.com/open-telemetry/opentelemetry-proto/pull/580)
++
++### Changed
++
++* metrics: Clarify aggregation temporality for Summary metric type. [#591](https://github.com/open-telemetry/opentelemetry-proto/pull/591)
++* docs: Remove HTTP 1.1 restriction from Protocol Details [#571](https://github.com/open-telemetry/opentelemetry-proto/pull/571)
++* docs: Update specification to include development profiles [#582](https://github.com/open-telemetry/opentelemetry-proto/pull/582)
++* docs: update references to logging exporter [#581](https://github.com/open-telemetry/opentelemetry-proto/pull/581)
++* Makefile: exclude Profiles protocol from breaking-changes [#576](https://github.com/open-telemetry/opentelemetry-proto/pull/576)
++* Makefile: exclude Profiles service from breaking changes too [#586](https://github.com/open-telemetry/opentelemetry-proto/pull/586/)
++* profiles: align type of index into string table [#557](https://github.com/open-telemetry/opentelemetry-proto/pull/557)
++* profiles: drop Sample.stacktrace_id_index [#575](https://github.com/open-telemetry/opentelemetry-proto/pull/575)
++* profiles: drop BuildIdKind [#584](https://github.com/open-telemetry/opentelemetry-proto/pull/584)
++* profiles: drop Sample.label [#583](https://github.com/open-telemetry/opentelemetry-proto/pull/583)
++* profiles: drop Location.type_index [#578](https://github.com/open-telemetry/opentelemetry-proto/pull/578)
++* profiles: Rename profiles v1experimental to v1development [#585](https://github.com/open-telemetry/opentelemetry-proto/pull/585)
++* profiles: Make mapping in Profile optional [#556](https://github.com/open-telemetry/opentelemetry-proto/pull/556)
++* profiles: Fold the content of pprofextended.proto into profiles.proto, removing ProfileContainer. [#590](https://github.com/open-telemetry/opentelemetry-proto/pull/590)
++* profiles: Improve lookup table pattern use in profiles. [#592](https://github.com/open-telemetry/opentelemetry-proto/pull/592)
++* profiles: Renovations to experimental profiling schema. [#596](https://github.com/open-telemetry/opentelemetry-proto/pull/596)
++
++## 1.3.2 - 2024-06-28
++
+ ### Changed
+
++* profiles: add missing java_package option to pprofextended. [#558](https://github.com/open-telemetry/opentelemetry-proto/pull/558)
++
++## 1.3.1 - 2024-05-07
++
++### Changed
++
++* profiles: fix versioning in selector. [#551](https://github.com/open-telemetry/opentelemetry-proto/pull/551)
++
+ ## 1.3.0 - 2024-04-24
+
+ ### Added
+@@ -23,6 +153,7 @@ Full list of differences found in [this compare](https://github.com/open-telemet
+   [#484](https://github.com/open-telemetry/opentelemetry-proto/pull/484)
+ * Add metric.metadata for supporting additional metadata on metrics
+   [#514](https://github.com/open-telemetry/opentelemetry-proto/pull/514)
++* Add example of an Event [#538](https://github.com/open-telemetry/opentelemetry-proto/pull/538)
+
+ ### Changed
+
+diff --git a/contrib/proto/opentelemetry/CONTRIBUTING.md b/contrib/proto/opentelemetry/CONTRIBUTING.md
+new file mode 100644
+index 00000000000..97804215cbe
+--- /dev/null
++++ b/contrib/proto/opentelemetry/CONTRIBUTING.md
+@@ -0,0 +1,43 @@
++# Contributing
++
++## Introduction
++
++Welcome, and thank you for your interest in contributing to the OpenTelemetry Protocol (OTLP) Specification! Your contributions — big or small — are invaluable in shaping and improving this essential part of the OpenTelemetry ecosystem.
++
++Whether you are fixing a small issue, updating documentation, or introducing a major improvement, we appreciate your efforts.
++If you're new to the project, don't hesitate to ask questions and seek guidance from the community.
++We are here to support you!
++
++Before contributing, we encourage you to read the OpenTelemetry project [contributing
++guide](https://github.com/open-telemetry/community/blob/main/guides/contributor/README.md)
++for general information about the project.
++
++## Prerequisites
++
++- `Docker`
++
++## Making changes to the .proto files
++
++After making any changes to .proto files make sure to generate all
++implementation by running `make gen-all`.
++
++## Style-Guide
++
++OpenTelemetry follows the [protocol buffer style guide](https://protobuf.dev/programming-guides/style/) with the following clarifications:
++
++- All Messages and fields should be documented via comments.
++- Field comments should document purpose or behavior with active verbs, or
++  a simple definition noun phrase (similar to a dictionary entry).
++  - valid: "Represents ..."
++    valid: "Additional attributes that describe the scope."
++  - not-valid: "used to represent..."
++- Message and field comments may reference the field or message by name.
++  - valid: "AnyValue ..."
++  - valid: "The value ..."
++
++## Further Help
++
++If you have any questions or need assistance while contributing, feel free to reach out to the [`#otel-specification`](https://cloud-native.slack.com/archives/C01N7PP1THC) Slack channel.
++View meeting notes of previous SIG calls in this [google doc](https://docs.google.com/spreadsheets/d/1SYKfjYhZdm2Wh2Cl6KVQalKg_m4NhTPZqq-8SzEVO6s/edit?gid=0#gid=0) as stated [here](https://github.com/open-telemetry/community/?tab=readme-ov-file#governing-bodies) to stay up to date.
++
++Also see the [specification](https://github.com/open-telemetry/opentelemetry-specification?tab=readme-ov-file#questions) repo for more info. Thank you.
+diff --git a/contrib/libs/opentelemetry-proto/LICENSE b/contrib/proto/opentelemetry/LICENSE
+similarity index 100%
+rename from contrib/libs/opentelemetry-proto/LICENSE
+rename to contrib/proto/opentelemetry/LICENSE
+diff --git a/contrib/libs/opentelemetry-proto/README.md b/contrib/proto/opentelemetry/README.md
+similarity index 55%
+rename from contrib/libs/opentelemetry-proto/README.md
+rename to contrib/proto/opentelemetry/README.md
+index b84446eecfd..47405594f58 100644
+--- a/contrib/libs/opentelemetry-proto/README.md
++++ b/contrib/proto/opentelemetry/README.md
+@@ -43,9 +43,9 @@ components as indicated by the Maturity table below.
+ | metrics/\*<br>collector/metrics/* | Stable | [Stable](docs/specification.md#json-protobuf-encoding) |
+ | trace/\*<br>collector/trace/* | Stable | [Stable](docs/specification.md#json-protobuf-encoding) |
+ | logs/\*<br>collector/logs/* | Stable | [Stable](docs/specification.md#json-protobuf-encoding) |
+-| profiles/\*<br>collector/profiles/* | Experimental | [Experimental](docs/specification.md#json-protobuf-encoding) |
++| profiles/\*<br>collector/profiles/* | Development | [Development](docs/specification.md#json-protobuf-encoding) |
+
+-(See [maturity-matrix.yaml](https://github.com/open-telemetry/community/blob/47813530864b9fe5a5146f466a58bd2bb94edc72/maturity-matrix.yaml#L57)
++(See [Versioning and Stability](https://github.com/open-telemetry/opentelemetry-specification/blob/a08d1f92f62acd4aafe4dfaa04ae7bf28600d49e/specification/versioning-and-stability.md)
+ for definition of maturity levels).
+
+ ## Stability Definition
+@@ -83,14 +83,59 @@ All the additive changes above must be accompanied by an explanation about how
+ new and old senders and receivers that implement the version of the protocol
+ before and after the change interoperate.
+
++## Experiments
++
++### New Experimental Components
++
++Sometimes we need to experiment with new components, for example to add a
++completely new signal to OpenTelemetry. In this case, to define new experimental
++components we recommend placing new proto files in a "development" sub-directory.
++Such isolated experimental components are excluded from
++above [stability requirements](#stability-definition).
++
++We recommend using
++`Development`, `Alpha`, `Beta`, `Release Candidate`
++[levels](https://github.com/open-telemetry/opentelemetry-specification/blob/main/oteps/0232-maturity-of-otel.md#maturity-levels)
++to communicate different grades of readiness of new components.
++
++Experimental components may be removed completely at the end of the experiment,
++provided that they are not referenced from any `Stable` component.
++
++Experiments which succeed, require a review to be marked `Stable`. Once marked
++`Stable` they become subject to the [stability requirements](#stability-definition).
++
++### Experimental Additions to Stable Components
++
++New experimental fields or messages may be added in `Development` state to `Stable`
++components. The experimental fields and messages within `Stable components` are subject
++to the full [stability requirements](#stability-definition), and in addition, they must be
++clearly labeled as `Development` (or as any other non-`Stable` level) in the .proto file
++source code.
++
++If an experiment concludes and the previously added field or message is not needed
++anymore, the field/message must stay, but it may be declared "deprecated". During all
++phases of experimentation it must be clearly specified that the field or message may be
++deprecated. Typically, deprecated fields are left empty by the senders and the recipients
++that participate in experiments must expect during all experimental phases (including
++_after_ the experiment is concluded) that the experimental field or message has an
++empty value.
++
++Experiments which succeed, require a review before the field or the message is marked
++`Stable`.
++
++## Generated Code
++
+ No guarantees are provided whatsoever about the stability of the code that
+ is generated from the .proto files by any particular code generator.
+
+-## Experiments
++## Maintainers
++
++- [OpenTelemetry Technical Committee](https://github.com/open-telemetry/community/blob/main/community-members.md#technical-committee)
++
++For more information about the maintainer role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#maintainer).
++
++## Approvers
+
+-In some cases we are trying to experiment with different features. In this case,
+-we recommend using an "experimental" sub-directory instead of adding them to any
+-protocol version. These protocols should not be used, except for
+-development/testing purposes.
++- [OpenTelemetry Specification Sponsors](https://github.com/open-telemetry/community/blob/main/community-members.md#specifications-and-proto)
+
+-Another review must be conducted for experimental protocols to join the main project.
++For more information about the approver role, see the [community repository](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md#approver).
+diff --git a/contrib/proto/opentelemetry/RELEASING.md b/contrib/proto/opentelemetry/RELEASING.md
+new file mode 100644
+index 00000000000..5546cd8e06f
+--- /dev/null
++++ b/contrib/proto/opentelemetry/RELEASING.md
+@@ -0,0 +1,22 @@
++# How to Create a Release
++
++_Instruction for Maintainers only._
++
++- Prepare the release by updating [CHANGELOG.md](CHANGELOG.md), see for example
++[this PR](https://github.com/open-telemetry/opentelemetry-proto/pull/537).
++Merge the PR. From this point on no new PRs can be merged until the release is complete.
++
++- Go to Github [release page](https://github.com/open-telemetry/opentelemetry-proto/releases),
++click `Draft a new release`.
++
++- Click "Choose a tag" and specify the next version number. The Target branch should be "main".
++
++- Click "Generate release notes" to get a draft release note. Remove editorial
++changes from the notes and any other changes that you don't want in the release notes.
++In addition, you can refer to [CHANGELOG.md](CHANGELOG.md) for a list of major changes since last release.
++
++- Click "Publish Release".
++
++Our tags follow the naming convention of `v1.<minor>.<patch>`. Increment `minor` by 1
++and use `patch` value of 0 for new minor version releases. For patch releases keep `minor`
++unchanged and increment the `patch`.
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/README.md b/contrib/proto/opentelemetry/opentelemetry/proto/collector/README.md
+similarity index 100%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/README.md
+rename to contrib/proto/opentelemetry/opentelemetry/proto/collector/README.md
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/logs/v1/logs_service.proto b/contrib/proto/opentelemetry/opentelemetry/proto/collector/logs/v1/logs_service.proto
+similarity index 94%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/logs/v1/logs_service.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/collector/logs/v1/logs_service.proto
+index 8260d8aaeb8..cc1f54af632 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/logs/v1/logs_service.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/collector/logs/v1/logs_service.proto
+@@ -22,14 +22,12 @@ option csharp_namespace = "OpenTelemetry.Proto.Collector.Logs.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.collector.logs.v1";
+ option java_outer_classname = "LogsServiceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/collector/logs/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // Service that can be used to push logs between one Application instrumented with
+ // OpenTelemetry and an collector, or between an collector and a central collector (in this
+ // case logs are sent/received to/from multiple Applications).
+ service LogsService {
+-  // For performance reasons, it is recommended to keep this RPC
+-  // alive for the entire life of the application.
+   rpc Export(ExportLogsServiceRequest) returns (ExportLogsServiceResponse) {}
+ }
+
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/metrics/v1/metrics_service.proto b/contrib/proto/opentelemetry/opentelemetry/proto/collector/metrics/v1/metrics_service.proto
+similarity index 94%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/metrics/v1/metrics_service.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/collector/metrics/v1/metrics_service.proto
+index dd48f1ad3a1..6fc5d50e53d 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/metrics/v1/metrics_service.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/collector/metrics/v1/metrics_service.proto
+@@ -22,14 +22,12 @@ option csharp_namespace = "OpenTelemetry.Proto.Collector.Metrics.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.collector.metrics.v1";
+ option java_outer_classname = "MetricsServiceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/collector/metrics/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // Service that can be used to push metrics between one Application
+ // instrumented with OpenTelemetry and a collector, or between a collector and a
+ // central collector.
+ service MetricsService {
+-  // For performance reasons, it is recommended to keep this RPC
+-  // alive for the entire life of the application.
+   rpc Export(ExportMetricsServiceRequest) returns (ExportMetricsServiceResponse) {}
+ }
+
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/profiles/v1experimental/profiles_service.proto b/contrib/proto/opentelemetry/opentelemetry/proto/collector/profiles/v1development/profiles_service.proto
+similarity index 86%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/profiles/v1experimental/profiles_service.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/collector/profiles/v1development/profiles_service.proto
+index d0e7894b29c..c7bf4305068 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/profiles/v1experimental/profiles_service.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/collector/profiles/v1development/profiles_service.proto
+@@ -14,21 +14,19 @@
+
+ syntax = "proto3";
+
+-package opentelemetry.proto.collector.profiles.v1experimental;
++package opentelemetry.proto.collector.profiles.v1development;
+
+-import "opentelemetry/proto/profiles/v1experimental/profiles.proto";
++import "opentelemetry/proto/profiles/v1development/profiles.proto";
+
+-option csharp_namespace = "OpenTelemetry.Proto.Collector.Profiles.V1Experimental";
++option csharp_namespace = "OpenTelemetry.Proto.Collector.Profiles.V1Development";
+ option java_multiple_files = true;
+-option java_package = "io.opentelemetry.proto.collector.profiles.v1experimental";
++option java_package = "io.opentelemetry.proto.collector.profiles.v1development";
+ option java_outer_classname = "ProfilesServiceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/collector/profiles/v1experimental";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // Service that can be used to push profiles between one Application instrumented with
+ // OpenTelemetry and a collector, or between a collector and a central collector.
+ service ProfilesService {
+-  // For performance reasons, it is recommended to keep this RPC
+-  // alive for the entire life of the application.
+   rpc Export(ExportProfilesServiceRequest) returns (ExportProfilesServiceResponse) {}
+ }
+
+@@ -38,7 +36,10 @@ message ExportProfilesServiceRequest {
+   // element. Intermediary nodes (such as OpenTelemetry Collector) that receive
+   // data from multiple origins typically batch the data before forwarding further and
+   // in that case this array will contain multiple elements.
+-  repeated opentelemetry.proto.profiles.v1experimental.ResourceProfiles resource_profiles = 1;
++  repeated opentelemetry.proto.profiles.v1development.ResourceProfiles resource_profiles = 1;
++
++  // The reference table containing all data shared by profiles across the message being sent.
++  opentelemetry.proto.profiles.v1development.ProfilesDictionary dictionary = 2;
+ }
+
+ message ExportProfilesServiceResponse {
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto b/contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.proto
+similarity index 94%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.proto
+index d6fe67f9e55..8a653c03dfe 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.proto
+@@ -22,14 +22,12 @@ option csharp_namespace = "OpenTelemetry.Proto.Collector.Trace.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.collector.trace.v1";
+ option java_outer_classname = "TraceServiceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/collector/trace/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // Service that can be used to push spans between one Application instrumented with
+ // OpenTelemetry and a collector, or between a collector and a central collector (in this
+ // case spans are sent/received to/from multiple Applications).
+ service TraceService {
+-  // For performance reasons, it is recommended to keep this RPC
+-  // alive for the entire life of the application.
+   rpc Export(ExportTraceServiceRequest) returns (ExportTraceServiceResponse) {}
+ }
+
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.proto b/contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.proto
+similarity index 55%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.proto
+index ff8a21a1fa0..c8bcada9c8c 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/common/v1/common.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.proto
+@@ -20,9 +20,9 @@ option csharp_namespace = "OpenTelemetry.Proto.Common.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.common.v1";
+ option java_outer_classname = "CommonProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/common/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+-// AnyValue is used to represent any type of attribute value. AnyValue may contain a
++// Represents any type of attribute value. AnyValue may contain a
+ // primitive value such as a string or integer or it may contain an arbitrary nested
+ // object containing arrays, key-value lists and primitives.
+ message AnyValue {
+@@ -54,28 +54,76 @@ message ArrayValue {
+ message KeyValueList {
+   // A collection of key/value pairs of key-value pairs. The list may be empty (may
+   // contain 0 elements).
++  //
+   // The keys MUST be unique (it is not allowed to have more than one
+   // value with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated KeyValue values = 1;
+ }
+
+-// KeyValue is a key-value pair that is used to store Span attributes, Link
++// Represents a key-value pair that is used to store Span attributes, Link
+ // attributes, etc.
+ message KeyValue {
++  // The key name of the pair.
+   string key = 1;
++
++  // The value of the pair.
+   AnyValue value = 2;
+ }
+
+ // InstrumentationScope is a message representing the instrumentation scope information
+ // such as the fully qualified name and version.
+ message InstrumentationScope {
++  // A name denoting the Instrumentation scope.
+   // An empty instrumentation scope name means the name is unknown.
+   string name = 1;
++
++  // Defines the version of the instrumentation scope.
++  // An empty instrumentation scope version means the version is unknown.
+   string version = 2;
+
+   // Additional attributes that describe the scope. [Optional].
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated KeyValue attributes = 3;
++
++  // The number of attributes that were discarded. Attributes
++  // can be discarded because their keys are too long or because there are too many
++  // attributes. If this value is 0, then no attributes were dropped.
+   uint32 dropped_attributes_count = 4;
+ }
++
++// A reference to an Entity.
++// Entity represents an object of interest associated with produced telemetry: e.g spans, metrics, profiles, or logs.
++//
++// Status: [Development]
++message EntityRef {
++  // The Schema URL, if known. This is the identifier of the Schema that the entity data
++  // is recorded in. To learn more about Schema URL see
++  // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
++  //
++  // This schema_url applies to the data in this message and to the Resource attributes
++  // referenced by id_keys and description_keys.
++  // TODO: discuss if we are happy with this somewhat complicated definition of what
++  // the schema_url applies to.
++  //
++  // This field obsoletes the schema_url field in ResourceMetrics/ResourceSpans/ResourceLogs.
++  string schema_url = 1;
++
++  // Defines the type of the entity. MUST not change during the lifetime of the entity.
++  // For example: "service" or "host". This field is required and MUST not be empty
++  // for valid entities.
++  string type = 2;
++
++  // Attribute Keys that identify the entity.
++  // MUST not change during the lifetime of the entity. The Id must contain at least one attribute.
++  // These keys MUST exist in the containing {message}.attributes.
++  repeated string id_keys = 3;
++
++  // Descriptive (non-identifying) attribute keys of the entity.
++  // MAY change over the lifetime of the entity. MAY be empty.
++  // These attribute keys are not part of entity's identity.
++  // These keys MUST exist in the containing {message}.attributes.
++  repeated string description_keys = 4;
++}
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/logs/v1/logs.proto b/contrib/proto/opentelemetry/opentelemetry/proto/logs/v1/logs.proto
+similarity index 89%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/logs/v1/logs.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/logs/v1/logs.proto
+index f9b97dd7451..468fea48557 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/logs/v1/logs.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/logs/v1/logs.proto
+@@ -23,7 +23,7 @@ option csharp_namespace = "OpenTelemetry.Proto.Logs.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.logs.v1";
+ option java_outer_classname = "LogsProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/logs/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // LogsData represents the logs data that can be stored in a persistent storage,
+ // OR can be embedded by other protocols that transfer OTLP logs data but do not
+@@ -56,7 +56,8 @@ message ResourceLogs {
+   repeated ScopeLogs scope_logs = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the resource data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+   // This schema_url applies to the data in the "resource" field. It does not apply
+   // to the data in the "scope_logs" field which have their own schema_url field.
+@@ -74,9 +75,11 @@ message ScopeLogs {
+   repeated LogRecord log_records = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the log data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+-  // This schema_url applies to all logs in the "logs" field.
++  // This schema_url applies to the data in the "scope" field and all logs in the
++  // "log_records" field.
+   string schema_url = 3;
+ }
+
+@@ -172,6 +175,7 @@ message LogRecord {
+   // Additional attributes that describe the specific event occurrence. [Optional].
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 6;
+   uint32 dropped_attributes_count = 7;
+
+@@ -208,4 +212,16 @@ message LogRecord {
+   //   - the field is not present,
+   //   - the field contains an invalid value.
+   bytes span_id = 10;
++
++  // A unique identifier of event category/type.
++  // All events with the same event_name are expected to conform to the same
++  // schema for both their attributes and their body.
++  //
++  // Recommended to be fully qualified and short (no longer than 256 characters).
++  //
++  // Presence of event_name on the log record identifies this record
++  // as an event.
++  //
++  // [Optional].
++  string event_name = 12;
+ }
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/metrics/v1/metrics.proto b/contrib/proto/opentelemetry/opentelemetry/proto/metrics/v1/metrics.proto
+similarity index 88%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/metrics/v1/metrics.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/metrics/v1/metrics.proto
+index 19bb7ff8d53..4cff4e72e0a 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/metrics/v1/metrics.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/metrics/v1/metrics.proto
+@@ -23,12 +23,30 @@ option csharp_namespace = "OpenTelemetry.Proto.Metrics.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.metrics.v1";
+ option java_outer_classname = "MetricsProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/metrics/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // MetricsData represents the metrics data that can be stored in a persistent
+ // storage, OR can be embedded by other protocols that transfer OTLP metrics
+ // data but do not implement the OTLP protocol.
+ //
++// MetricsData
++// └─── ResourceMetrics
++//   ├── Resource
++//   ├── SchemaURL
++//   └── ScopeMetrics
++//      ├── Scope
++//      ├── SchemaURL
++//      └── Metric
++//         ├── Name
++//         ├── Description
++//         ├── Unit
++//         └── data
++//            ├── Gauge
++//            ├── Sum
++//            ├── Histogram
++//            ├── ExponentialHistogram
++//            └── Summary
++//
+ // The main difference between this message and collector protocol is that
+ // in this message there will not be any "control" or "metadata" specific to
+ // OTLP protocol.
+@@ -56,7 +74,8 @@ message ResourceMetrics {
+   repeated ScopeMetrics scope_metrics = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the resource data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+   // This schema_url applies to the data in the "resource" field. It does not apply
+   // to the data in the "scope_metrics" field which have their own schema_url field.
+@@ -74,9 +93,11 @@ message ScopeMetrics {
+   repeated Metric metrics = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the metric data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+-  // This schema_url applies to all metrics in the "metrics" field.
++  // This schema_url applies to the data in the "scope" field and all metrics in the
++  // "metrics" field.
+   string schema_url = 3;
+ }
+
+@@ -85,7 +106,6 @@ message ScopeMetrics {
+ //
+ //   https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/data-model.md
+ //
+-//
+ // The data model and relation between entities is shown in the
+ // diagram below. Here, "DataPoint" is the term used to refer to any
+ // one of the specific data point value types, and "points" is the term used
+@@ -97,7 +117,7 @@ message ScopeMetrics {
+ // - DataPoint contains timestamps, attributes, and one of the possible value type
+ //   fields.
+ //
+-//     Metric
++//    Metric
+ //  +------------+
+ //  |name        |
+ //  |description |
+@@ -168,14 +188,14 @@ message ScopeMetrics {
+ message Metric {
+   reserved 4, 6, 8;
+
+-  // name of the metric.
++  // The name of the metric.
+   string name = 1;
+
+-  // description of the metric, which can be used in documentation.
++  // A description of the metric, which can be used in documentation.
+   string description = 2;
+
+-  // unit in which the metric value is reported. Follows the format
+-  // described by http://unitsofmeasure.org/ucum.html.
++  // The unit in which the metric value is reported. Follows the format
++  // described by https://unitsofmeasure.org/ucum.html.
+   string unit = 3;
+
+   // Data determines the aggregation type (if any) of the metric, what is the
+@@ -196,6 +216,7 @@ message Metric {
+   // for lossless roundtrip translation to / from another data model.
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue metadata = 12;
+ }
+
+@@ -209,25 +230,31 @@ message Metric {
+ // AggregationTemporality is not included. Consequently, this also means
+ // "StartTimeUnixNano" is ignored for all data points.
+ message Gauge {
++  // The time series data points.
++  // Note: Multiple time series may be included (same timestamp, different attributes).
+   repeated NumberDataPoint data_points = 1;
+ }
+
+ // Sum represents the type of a scalar metric that is calculated as a sum of all
+ // reported measurements over a time interval.
+ message Sum {
++  // The time series data points.
++  // Note: Multiple time series may be included (same timestamp, different attributes).
+   repeated NumberDataPoint data_points = 1;
+
+   // aggregation_temporality describes if the aggregator reports delta changes
+   // since last report time, or cumulative changes since a fixed start time.
+   AggregationTemporality aggregation_temporality = 2;
+
+-  // If "true" means that the sum is monotonic.
++  // Represents whether the sum is monotonic.
+   bool is_monotonic = 3;
+ }
+
+ // Histogram represents the type of a metric that is calculated by aggregating
+ // as a Histogram of all reported measurements over a time interval.
+ message Histogram {
++  // The time series data points.
++  // Note: Multiple time series may be included (same timestamp, different attributes).
+   repeated HistogramDataPoint data_points = 1;
+
+   // aggregation_temporality describes if the aggregator reports delta changes
+@@ -238,6 +265,8 @@ message Histogram {
+ // ExponentialHistogram represents the type of a metric that is calculated by aggregating
+ // as a ExponentialHistogram of all reported double measurements over a time interval.
+ message ExponentialHistogram {
++  // The time series data points.
++  // Note: Multiple time series may be included (same timestamp, different attributes).
+   repeated ExponentialHistogramDataPoint data_points = 1;
+
+   // aggregation_temporality describes if the aggregator reports delta changes
+@@ -247,11 +276,16 @@ message ExponentialHistogram {
+
+ // Summary metric data are used to convey quantile summaries,
+ // a Prometheus (see: https://prometheus.io/docs/concepts/metric_types/#summary)
+-// and OpenMetrics (see: https://github.com/OpenObservability/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45)
++// and OpenMetrics (see: https://github.com/prometheus/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45)
+ // data type. These data points cannot always be merged in a meaningful way.
+ // While they can be useful in some applications, histogram data points are
+ // recommended for new applications.
++// Summary metrics do not have an aggregation temporality field. This is
++// because the count and sum fields of a SummaryDataPoint are assumed to be
++// cumulative values.
+ message Summary {
++  // The time series data points.
++  // Note: Multiple time series may be included (same timestamp, different attributes).
+   repeated SummaryDataPoint data_points = 1;
+ }
+
+@@ -355,6 +389,7 @@ message NumberDataPoint {
+   // where this point belongs. The list may be empty (may contain 0 elements).
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
+
+   // StartTimeUnixNano is optional but strongly encouraged, see the
+@@ -403,6 +438,7 @@ message HistogramDataPoint {
+   // where this point belongs. The list may be empty (may contain 0 elements).
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 9;
+
+   // StartTimeUnixNano is optional but strongly encouraged, see the
+@@ -430,7 +466,7 @@ message HistogramDataPoint {
+   // events, and is assumed to be monotonic over the values of these events.
+   // Negative events *can* be recorded, but sum should not be filled out when
+   // doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
+-  // see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
++  // see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
+   optional double sum = 5;
+
+   // bucket_counts is an optional field contains the count values of histogram
+@@ -439,7 +475,9 @@ message HistogramDataPoint {
+   // The sum of the bucket_counts must equal the value in the count field.
+   //
+   // The number of elements in bucket_counts array must be by one greater than
+-  // the number of elements in explicit_bounds array.
++  // the number of elements in explicit_bounds array. The exception to this rule
++  // is when the length of bucket_counts is 0, then the length of explicit_bounds
++  // must also be 0.
+   repeated fixed64 bucket_counts = 6;
+
+   // explicit_bounds specifies buckets with explicitly defined bounds for values.
+@@ -455,6 +493,9 @@ message HistogramDataPoint {
+   // Histogram buckets are inclusive of their upper boundary, except the last
+   // bucket where the boundary is at infinity. This format is intentionally
+   // compatible with the OpenMetrics histogram definition.
++  //
++  // If bucket_counts length is 0 then explicit_bounds length must also be 0,
++  // otherwise the data point is invalid.
+   repeated double explicit_bounds = 7;
+
+   // (Optional) List of exemplars collected from
+@@ -482,6 +523,7 @@ message ExponentialHistogramDataPoint {
+   // where this point belongs. The list may be empty (may contain 0 elements).
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 1;
+
+   // StartTimeUnixNano is optional but strongly encouraged, see the
+@@ -497,21 +539,21 @@ message ExponentialHistogramDataPoint {
+   // 1970.
+   fixed64 time_unix_nano = 3;
+
+-  // count is the number of values in the population. Must be
++  // The number of values in the population. Must be
+   // non-negative. This value must be equal to the sum of the "bucket_counts"
+   // values in the positive and negative Buckets plus the "zero_count" field.
+   fixed64 count = 4;
+
+-  // sum of the values in the population. If count is zero then this field
++  // The sum of the values in the population. If count is zero then this field
+   // must be zero.
+   //
+   // Note: Sum should only be filled out when measuring non-negative discrete
+   // events, and is assumed to be monotonic over the values of these events.
+   // Negative events *can* be recorded, but sum should not be filled out when
+   // doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
+-  // see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
++  // see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
+   optional double sum = 5;
+-
++
+   // scale describes the resolution of the histogram.  Boundaries are
+   // located at powers of the base, where:
+   //
+@@ -529,7 +571,7 @@ message ExponentialHistogramDataPoint {
+   // values depend on the range of the data.
+   sint32 scale = 6;
+
+-  // zero_count is the count of values that are either exactly zero or
++  // The count of values that are either exactly zero or
+   // within the region considered zero by the instrumentation at the
+   // tolerated degree of precision.  This bucket stores values that
+   // cannot be expressed using the standard exponential formula as
+@@ -548,12 +590,12 @@ message ExponentialHistogramDataPoint {
+   // Buckets are a set of bucket counts, encoded in a contiguous array
+   // of counts.
+   message Buckets {
+-    // Offset is the bucket index of the first entry in the bucket_counts array.
+-    //
++    // The bucket index of the first entry in the bucket_counts array.
++    //
+     // Note: This uses a varint encoding as a simple form of compression.
+     sint32 offset = 1;
+
+-    // bucket_counts is an array of count values, where bucket_counts[i] carries
++    // An array of count values, where bucket_counts[i] carries
+     // the count of the bucket at index (offset+i). bucket_counts[i] is the count
+     // of values greater than base^(offset+i) and less than or equal to
+     // base^(offset+i+1).
+@@ -563,7 +605,7 @@ message ExponentialHistogramDataPoint {
+     // especially zeros, so uint64 has been selected to ensure
+     // varint encoding.
+     repeated uint64 bucket_counts = 2;
+-  }
++  }
+
+   // Flags that apply to this specific data point.  See DataPointFlags
+   // for the available flags and their meaning.
+@@ -573,10 +615,10 @@ message ExponentialHistogramDataPoint {
+   // measurements that were used to form the data point
+   repeated Exemplar exemplars = 11;
+
+-  // min is the minimum value over (start_time, end_time].
++  // The minimum value over (start_time, end_time].
+   optional double min = 12;
+
+-  // max is the maximum value over (start_time, end_time].
++  // The maximum value over (start_time, end_time].
+   optional double max = 13;
+
+   // ZeroThreshold may be optionally set to convey the width of the zero
+@@ -589,7 +631,8 @@ message ExponentialHistogramDataPoint {
+ }
+
+ // SummaryDataPoint is a single data point in a timeseries that describes the
+-// time-varying values of a Summary metric.
++// time-varying values of a Summary metric. The count and sum fields represent
++// cumulative values.
+ message SummaryDataPoint {
+   reserved 1;
+
+@@ -597,6 +640,7 @@ message SummaryDataPoint {
+   // where this point belongs. The list may be empty (may contain 0 elements).
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
+
+   // StartTimeUnixNano is optional but strongly encouraged, see the
+@@ -622,7 +666,7 @@ message SummaryDataPoint {
+   // events, and is assumed to be monotonic over the values of these events.
+   // Negative events *can* be recorded, but sum should not be filled out when
+   // doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
+-  // see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#summary
++  // see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#summary
+   double sum = 5;
+
+   // Represents the value at a given quantile of a distribution.
+diff --git a/contrib/proto/opentelemetry/opentelemetry/proto/profiles/v1development/profiles.proto b/contrib/proto/opentelemetry/opentelemetry/proto/profiles/v1development/profiles.proto
+new file mode 100644
+index 00000000000..6e9bd992bdb
+--- /dev/null
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/profiles/v1development/profiles.proto
+@@ -0,0 +1,480 @@
++// Copyright 2023, OpenTelemetry Authors
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++//
++// This file includes work covered by the following copyright and permission notices:
++//
++// Copyright 2016 Google Inc. All Rights Reserved.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++syntax = "proto3";
++
++package opentelemetry.proto.profiles.v1development;
++
++import "opentelemetry/proto/common/v1/common.proto";
++import "opentelemetry/proto/resource/v1/resource.proto";
++
++option csharp_namespace = "OpenTelemetry.Proto.Profiles.V1Development";
++option java_multiple_files = true;
++option java_package = "io.opentelemetry.proto.profiles.v1development";
++option java_outer_classname = "ProfilesProto";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
++
++//                Relationships Diagram
++//
++// ┌──────────────────┐                      LEGEND
++// │   ProfilesData   │ ─────┐
++// └──────────────────┘      │           ─────▶ embedded
++//   │                       │
++//   │ 1-n                   │           ─────▷ referenced by index
++//   ▼                       ▼
++// ┌──────────────────┐   ┌────────────────────┐
++// │ ResourceProfiles │   │ ProfilesDictionary │
++// └──────────────────┘   └────────────────────┘
++//   │
++//   │ 1-n
++//   ▼
++// ┌──────────────────┐
++// │  ScopeProfiles   │
++// └──────────────────┘
++//   │
++//   │ 1-n
++//   ▼
++// ┌──────────────────┐
++// │      Profile     │
++// └──────────────────┘
++//   │                                n-1
++//   │ 1-n         ┌───────────────────────────────────────┐
++//   ▼             │                                       ▽
++// ┌──────────────────┐   1-n   ┌─────────────────┐   ┌──────────┐
++// │      Sample      │ ──────▷ │ KeyValueAndUnit │   │   Link   │
++// └──────────────────┘         └─────────────────┘   └──────────┘
++//   │                              △      △
++//   │ n-1                          │      │ 1-n
++//   ▽                              │      │
++// ┌──────────────────┐             │      │
++// │      Stack       │             │      │
++// └──────────────────┘             │      │
++//   │                     1-n      │      │
++//   │ 1-n         ┌────────────────┘      │
++//   ▽             │                       │
++// ┌──────────────────┐   n-1   ┌─────────────┐
++// │     Location     │ ──────▷ │   Mapping   │
++// └──────────────────┘         └─────────────┘
++//   │
++//   │ 1-n
++//   ▼
++// ┌──────────────────┐
++// │       Line       │
++// └──────────────────┘
++//   │
++//   │ 1-1
++//   ▽
++// ┌──────────────────┐
++// │     Function     │
++// └──────────────────┘
++//
++
++// ProfilesDictionary represents the profiles data shared across the
++// entire message being sent. The following applies to all fields in this
++// message:
++//
++// - A dictionary is an array of dictionary items. Users of the dictionary
++//   compactly reference the items using the index within the array.
++//
++// - A dictionary MUST have a zero value encoded as the first element. This
++//   allows for _index fields pointing into the dictionary to use a 0 pointer
++//   value to indicate 'null' / 'not set'. Unless otherwise defined, a 'zero
++//   value' message value is one with all default field values, so as to
++//   minimize wire encoded size.
++//
++// - There SHOULD NOT be dupes in a dictionary. The identity of dictionary
++//   items is based on their value, recursively as needed. If a particular
++//   implementation does emit duplicated items, it MUST NOT attempt to give them
++//   meaning based on the index or order. A profile processor may remove
++//   duplicate items and this MUST NOT have any observable effects for
++//   consumers.
++//
++// - There SHOULD NOT be orphaned (unreferenced) items in a dictionary. A
++//   profile processor may remove ("garbage-collect") orphaned items and this
++//   MUST NOT have any observable effects for consumers.
++//
++message ProfilesDictionary {
++  // Mappings from address ranges to the image/binary/library mapped
++  // into that address range referenced by locations via Location.mapping_index.
++  //
++  // mapping_table[0] must always be zero value (Mapping{}) and present.
++  repeated Mapping mapping_table = 1;
++
++  // Locations referenced by samples via Stack.location_indices.
++  //
++  // location_table[0] must always be zero value (Location{}) and present.
++  repeated Location location_table = 2;
++
++  // Functions referenced by locations via Line.function_index.
++  //
++  // function_table[0] must always be zero value (Function{}) and present.
++  repeated Function function_table = 3;
++
++  // Links referenced by samples via Sample.link_index.
++  //
++  // link_table[0] must always be zero value (Link{}) and present.
++  repeated Link link_table = 4;
++
++  // A common table for strings referenced by various messages.
++  //
++  // string_table[0] must always be "" and present.
++  repeated string string_table = 5;
++
++  // A common table for attributes referenced by the Profile, Sample, Mapping
++  // and Location messages below through attribute_indices field. Each entry is
++  // a key/value pair with an optional unit. Since this is a dictionary table,
++  // multiple entries with the same key may be present, unlike direct attribute
++  // tables like Resource.attributes. The referencing attribute_indices fields,
++  // though, do maintain the key uniqueness requirement.
++  //
++  // It's recommended to use attributes for variables with bounded cardinality,
++  // such as categorical variables
++  // (https://en.wikipedia.org/wiki/Categorical_variable). Using an attribute of
++  // a floating point type (e.g., CPU time) in a sample can quickly make every
++  // attribute value unique, defeating the purpose of the dictionary and
++  // impractically increasing the profile size.
++  //
++  // Examples of attributes:
++  //     "/http/user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
++  //     "abc.com/myattribute": true
++  //     "allocation_size": 128 bytes
++  //
++  // attribute_table[0] must always be zero value (KeyValueAndUnit{}) and present.
++  repeated KeyValueAndUnit attribute_table = 6;
++
++  // Stacks referenced by samples via Sample.stack_index.
++  //
++  // stack_table[0] must always be zero value (Stack{}) and present.
++  repeated Stack stack_table = 7;
++}
++
++// ProfilesData represents the profiles data that can be stored in persistent storage,
++// OR can be embedded by other protocols that transfer OTLP profiles data but do not
++// implement the OTLP protocol.
++//
++// The main difference between this message and collector protocol is that
++// in this message there will not be any "control" or "metadata" specific to
++// OTLP protocol.
++//
++// When new fields are added into this message, the OTLP request MUST be updated
++// as well.
++message ProfilesData {
++  // An array of ResourceProfiles.
++  // For data coming from an SDK profiler, this array will typically contain one
++  // element. Host-level profilers will usually create one ResourceProfile per
++  // container, as well as one additional ResourceProfile grouping all samples
++  // from non-containerized processes.
++  // Other resource groupings are possible as well and clarified via
++  // Resource.attributes and semantic conventions.
++  // Tools that visualize profiles should prefer displaying
++  // resources_profiles[0].scope_profiles[0].profiles[0] by default.
++  repeated ResourceProfiles resource_profiles = 1;
++
++  // One instance of ProfilesDictionary
++  ProfilesDictionary dictionary = 2;
++}
++
++
++// A collection of ScopeProfiles from a Resource.
++message ResourceProfiles {
++  reserved 1000;
++
++  // The resource for the profiles in this message.
++  // If this field is not set then no resource info is known.
++  opentelemetry.proto.resource.v1.Resource resource = 1;
++
++  // A list of ScopeProfiles that originate from a resource.
++  repeated ScopeProfiles scope_profiles = 2;
++
++  // The Schema URL, if known. This is the identifier of the Schema that the resource data
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
++  // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
++  // This schema_url applies to the data in the "resource" field. It does not apply
++  // to the data in the "scope_profiles" field which have their own schema_url field.
++  string schema_url = 3;
++}
++
++// A collection of Profiles produced by an InstrumentationScope.
++message ScopeProfiles {
++  // The instrumentation scope information for the profiles in this message.
++  // Semantically when InstrumentationScope isn't set, it is equivalent with
++  // an empty instrumentation scope name (unknown).
++  opentelemetry.proto.common.v1.InstrumentationScope scope = 1;
++
++  // A list of Profiles that originate from an instrumentation scope.
++  repeated Profile profiles = 2;
++
++  // The Schema URL, if known. This is the identifier of the Schema that the profile data
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
++  // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
++  // This schema_url applies to the data in the "scope" field and all profiles in the
++  // "profiles" field.
++  string schema_url = 3;
++}
++
++// Profile is a common stacktrace profile format.
++//
++// Measurements represented with this format should follow the
++// following conventions:
++//
++// - Consumers should treat unset optional fields as if they had been
++//   set with their default value.
++//
++// - When possible, measurements should be stored in "unsampled" form
++//   that is most useful to humans.  There should be enough
++//   information present to determine the original sampled values.
++//
++// - The profile is represented as a set of samples, where each sample
++//   references a stack trace which is a list of locations, each belonging
++//   to a mapping.
++// - There is a N->1 relationship from Stack.location_indices entries to
++//   locations. For every Stack.location_indices entry there must be a
++//   unique Location with that index.
++// - There is an optional N->1 relationship from locations to
++//   mappings. For every nonzero Location.mapping_id there must be a
++//   unique Mapping with that index.
++
++// Represents a complete profile, including sample types, samples, mappings to
++// binaries, stacks, locations, functions, string table, and additional
++// metadata. It modifies and annotates pprof Profile with OpenTelemetry
++// specific fields.
++//
++// Note that whilst fields in this message retain the name and field id from pprof in most cases
++// for ease of understanding data migration, it is not intended that pprof:Profile and
++// OpenTelemetry:Profile encoding be wire compatible.
++message Profile {
++  // The type and unit of all Sample.values in this profile.
++  // For a cpu or off-cpu profile this might be:
++  //   ["cpu","nanoseconds"] or ["off_cpu","nanoseconds"]
++  // For a heap profile, this might be:
++  //   ["allocated_objects","count"] or ["allocated_space","bytes"],
++  ValueType sample_type = 1;
++  // The set of samples recorded in this profile.
++  repeated Sample samples = 2;
++
++  // The following fields 3-12 are informational, do not affect
++  // interpretation of results.
++
++  // Time of collection (UTC) represented as nanoseconds past the epoch.
++  fixed64 time_unix_nano = 3;
++  // Duration of the profile, if a duration makes sense.
++  uint64 duration_nano = 4;
++  // The kind of events between sampled occurrences.
++  // e.g [ "cpu","cycles" ] or [ "heap","bytes" ]
++  ValueType period_type = 5;
++  // The number of events between sampled occurrences.
++  int64 period = 6;
++
++  // A globally unique identifier for a profile. The ID is a 16-byte array. An ID with
++  // all zeroes is considered invalid. It may be used for deduplication and signal
++  // correlation purposes. It is acceptable to treat two profiles with different values
++  // in this field as not equal, even if they represented the same object at an earlier
++  // time.
++  // This field is optional; an ID may be assigned to an ID-less profile in a later step.
++  bytes profile_id = 7;
++
++  // The number of attributes that were discarded. Attributes
++  // can be discarded because their keys are too long or because there are too many
++  // attributes. If this value is 0, then no attributes were dropped.
++  uint32 dropped_attributes_count = 8;
++
++  // The original payload format. See also original_payload. Optional, but the
++  // format and the bytes must be set or unset together.
++  //
++  // The allowed values for the format string are defined by the OpenTelemetry
++  // specification. Some examples are "jfr", "pprof", "linux_perf".
++  //
++  // The original payload may be optionally provided when the conversion to the
++  // OLTP format was done from a different format with some loss of the fidelity
++  // and the receiver may want to store the original payload to allow future
++  // lossless export or reinterpretation. Some examples of the original format
++  // are JFR (Java Flight Recorder), pprof, Linux perf.
++  //
++  // Even when the original payload is in a format that is semantically close to
++  // OTLP, such as pprof, a conversion may still be lossy in some cases (e.g. if
++  // the pprof file contains custom extensions or conventions).
++  //
++  // The original payload can be large in size, so including the original
++  // payload should be configurable by the profiler or collector options. The
++  // default behavior should be to not include the original payload.
++  string original_payload_format = 9;
++  // The original payload bytes. See also original_payload_format. Optional, but
++  // format and the bytes must be set or unset together.
++  bytes original_payload = 10;
++
++  // References to attributes in attribute_table. [optional]
++  repeated int32 attribute_indices = 11;
++}
++
++// A pointer from a profile Sample to a trace Span.
++// Connects a profile sample to a trace span, identified by unique trace and span IDs.
++message Link {
++  // A unique identifier of a trace that this linked span is part of. The ID is a
++  // 16-byte array.
++  bytes trace_id = 1;
++
++  // A unique identifier for the linked span. The ID is an 8-byte array.
++  bytes span_id = 2;
++}
++
++// ValueType describes the type and units of a value.
++message ValueType {
++  // Index into ProfilesDictionary.string_table.
++  int32 type_strindex = 1;
++
++  // Index into ProfilesDictionary.string_table.
++  int32 unit_strindex = 2;
++}
++
++// Each Sample records values encountered in some program context. The program
++// context is typically a stack trace, perhaps augmented with auxiliary
++// information like the thread-id, some indicator of a higher level request
++// being handled etc.
++//
++// A Sample MUST have have at least one values or timestamps_unix_nano entry. If
++// both fields are populated, they MUST contain the same number of elements, and
++// the elements at the same index MUST refer to the same event.
++//
++// Examples of different ways of representing a sample with the total value of 10:
++//
++// Report of a stacktrace at 10 timestamps (consumers must assume the value is 1 for each point):
++//    values: []
++//    timestamps_unix_nano: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
++//
++// Report of a stacktrace with an aggregated value without timestamps:
++//   values: [10]
++//    timestamps_unix_nano: []
++//
++// Report of a stacktrace at 4 timestamps where each point records a specific value:
++//    values: [2, 2, 3, 3]
++//    timestamps_unix_nano: [1, 2, 3, 4]
++message Sample {
++  // Reference to stack in ProfilesDictionary.stack_table.
++  int32 stack_index = 1;
++  // The type and unit of each value is defined by Profile.sample_type.
++  repeated int64 values = 2;
++  // References to attributes in ProfilesDictionary.attribute_table. [optional]
++  repeated int32 attribute_indices = 3;
++
++  // Reference to link in ProfilesDictionary.link_table. [optional]
++  // It can be unset / set to 0 if no link exists, as link_table[0] is always a 'null' default value.
++  int32 link_index = 4;
++
++  // Timestamps associated with Sample represented in nanoseconds. These
++  // timestamps should fall within the Profile's time range.
++  repeated fixed64 timestamps_unix_nano = 5;
++}
++
++// Describes the mapping of a binary in memory, including its address range,
++// file offset, and metadata like build ID
++message Mapping {
++  // Address at which the binary (or DLL) is loaded into memory.
++  uint64 memory_start = 1;
++  // The limit of the address range occupied by this mapping.
++  uint64 memory_limit = 2;
++  // Offset in the binary that corresponds to the first mapped address.
++  uint64 file_offset = 3;
++  // The object this entry is loaded from.  This can be a filename on
++  // disk for the main binary and shared libraries, or virtual
++  // abstractions like "[vdso]".
++  int32 filename_strindex = 4;  // Index into ProfilesDictionary.string_table.
++  // References to attributes in ProfilesDictionary.attribute_table. [optional]
++  repeated int32 attribute_indices = 5;
++}
++
++// A Stack represents a stack trace as a list of locations.
++message Stack {
++  // References to locations in ProfilesDictionary.location_table.
++  // The first location is the leaf frame.
++  repeated int32 location_indices = 1;
++}
++
++// Describes function and line table debug information.
++message Location {
++  // Reference to mapping in ProfilesDictionary.mapping_table.
++  // It can be unset / set to 0 if the mapping is unknown or not applicable for
++  // this profile type, as mapping_table[0] is always a 'null' default mapping.
++  int32 mapping_index = 1;
++  // The instruction address for this location, if available.  It
++  // should be within [Mapping.memory_start...Mapping.memory_limit]
++  // for the corresponding mapping. A non-leaf address may be in the
++  // middle of a call instruction. It is up to display tools to find
++  // the beginning of the instruction if necessary.
++  uint64 address = 2;
++  // Multiple line indicates this location has inlined functions,
++  // where the last entry represents the caller into which the
++  // preceding entries were inlined.
++  //
++  // E.g., if memcpy() is inlined into printf:
++  //    lines[0].function_name == "memcpy"
++  //    lines[1].function_name == "printf"
++  repeated Line lines = 3;
++  // References to attributes in ProfilesDictionary.attribute_table. [optional]
++  repeated int32 attribute_indices = 4;
++}
++
++// Details a specific line in a source code, linked to a function.
++message Line {
++  // Reference to function in ProfilesDictionary.function_table.
++  int32 function_index = 1;
++  // Line number in source code. 0 means unset.
++  int64 line = 2;
++  // Column number in source code. 0 means unset.
++  int64 column = 3;
++}
++
++// Describes a function, including its human-readable name, system name,
++// source file, and starting line number in the source.
++message Function {
++  // The function name. Empty string if not available.
++  int32 name_strindex = 1;
++  // Function name, as identified by the system. For instance,
++  // it can be a C++ mangled name. Empty string if not available.
++  int32 system_name_strindex = 2;
++  // Source file containing the function. Empty string if not available.
++  int32 filename_strindex = 3;
++  // Line number in source file. 0 means unset.
++  int64 start_line = 4;
++}
++
++// A custom 'dictionary native' style of encoding attributes which is more convenient
++// for profiles than opentelemetry.proto.common.v1.KeyValue
++// Specifically, uses the string table for keys and allows optional unit information.
++message KeyValueAndUnit {
++  // The index into the string table for the attribute's key.
++  int32 key_strindex  = 1;
++  // The value of the attribute.
++  opentelemetry.proto.common.v1.AnyValue value = 2;
++  // The index into the string table for the attribute's unit.
++  // zero indicates implicit (by semconv) or non-defined unit.
++  int32 unit_strindex = 3;
++}
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.proto b/contrib/proto/opentelemetry/opentelemetry/proto/resource/v1/resource.proto
+similarity index 73%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/resource/v1/resource.proto
+index 6637560bc35..151abf0896c 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/resource/v1/resource.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/resource/v1/resource.proto
+@@ -22,16 +22,24 @@ option csharp_namespace = "OpenTelemetry.Proto.Resource.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.resource.v1";
+ option java_outer_classname = "ResourceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/resource/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // Resource information.
+ message Resource {
+   // Set of attributes that describe the resource.
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 1;
+
+-  // dropped_attributes_count is the number of dropped attributes. If the value is 0, then
++  // The number of dropped attributes. If the value is 0, then
+   // no attributes were dropped.
+   uint32 dropped_attributes_count = 2;
++
++  // Set of entities that participate in this Resource.
++  //
++  // Note: keys in the references MUST exist in attributes of this message.
++  //
++  // Status: [Development]
++  repeated opentelemetry.proto.common.v1.EntityRef entity_refs = 3;
+ }
+diff --git a/contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.proto b/contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.proto
+similarity index 89%
+rename from contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.proto
+rename to contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.proto
+index 5cb2f3ce1cd..f43c205dfad 100644
+--- a/contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.proto
++++ b/contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.proto
+@@ -23,7 +23,7 @@ option csharp_namespace = "OpenTelemetry.Proto.Trace.V1";
+ option java_multiple_files = true;
+ option java_package = "io.opentelemetry.proto.trace.v1";
+ option java_outer_classname = "TraceProto";
+-option go_package = "go.opentelemetry.io/proto/otlp/trace/v1";
++option go_package = "a.yandex-team.ru/contrib/proto/opentelemetry";
+
+ // TracesData represents the traces data that can be stored in a persistent storage,
+ // OR can be embedded by other protocols that transfer OTLP traces data but do
+@@ -56,7 +56,8 @@ message ResourceSpans {
+   repeated ScopeSpans scope_spans = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the resource data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+   // This schema_url applies to the data in the "resource" field. It does not apply
+   // to the data in the "scope_spans" field which have their own schema_url field.
+@@ -74,9 +75,11 @@ message ScopeSpans {
+   repeated Span spans = 2;
+
+   // The Schema URL, if known. This is the identifier of the Schema that the span data
+-  // is recorded in. To learn more about Schema URL see
++  // is recorded in. Notably, the last part of the URL path is the version number of the
++  // schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
+   // https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
+-  // This schema_url applies to all spans and span events in the "spans" field.
++  // This schema_url applies to the data in the "scope" field and all spans and span
++  // events in the "spans" field.
+   string schema_url = 3;
+ }
+
+@@ -180,7 +183,7 @@ message Span {
+   // and `SERVER` (callee) to identify queueing latency associated with the span.
+   SpanKind kind = 6;
+
+-  // start_time_unix_nano is the start time of the span. On the client side, this is the time
++  // The start time of the span. On the client side, this is the time
+   // kept by the local machine where the span execution starts. On the server side, this
+   // is the time when the server's application handler starts running.
+   // Value is UNIX Epoch time in nanoseconds since 00:00:00 UTC on 1 January 1970.
+@@ -188,7 +191,7 @@ message Span {
+   // This field is semantically required and it is expected that end_time >= start_time.
+   fixed64 start_time_unix_nano = 7;
+
+-  // end_time_unix_nano is the end time of the span. On the client side, this is the time
++  // The end time of the span. On the client side, this is the time
+   // kept by the local machine where the span execution ends. On the server side, this
+   // is the time when the server application handler stops running.
+   // Value is UNIX Epoch time in nanoseconds since 00:00:00 UTC on 1 January 1970.
+@@ -196,7 +199,7 @@ message Span {
+   // This field is semantically required and it is expected that end_time >= start_time.
+   fixed64 end_time_unix_nano = 8;
+
+-  // attributes is a collection of key/value pairs. Note, global attributes
++  // A collection of key/value pairs. Note, global attributes
+   // like server name can be set using the resource API. Examples of attributes:
+   //
+   //     "/http/user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
+@@ -204,13 +207,12 @@ message Span {
+   //     "example.com/myattribute": true
+   //     "example.com/score": 10.239
+   //
+-  // The OpenTelemetry API specification further restricts the allowed value types:
+-  // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/README.md#attribute
+   // Attribute keys MUST be unique (it is not allowed to have more than one
+   // attribute with the same key).
++  // The behavior of software that receives duplicated keys can be unpredictable.
+   repeated opentelemetry.proto.common.v1.KeyValue attributes = 9;
+
+-  // dropped_attributes_count is the number of attributes that were discarded. Attributes
++  // The number of attributes that were discarded. Attributes
+   // can be discarded because their keys are too long or because there are too many
+   // attributes. If this value is 0, then no attributes were dropped.
+   uint32 dropped_attributes_count = 10;
+@@ -218,27 +220,28 @@ message Span {
+   // Event is a time-stamped annotation of the span, consisting of user-supplied
+   // text description and key-value pairs.
+   message Event {
+-    // time_unix_nano is the time the event occurred.
++    // The time the event occurred.
+     fixed64 time_unix_nano = 1;
+
+-    // name of the event.
++    // The name of the event.
+     // This field is semantically required to be set to non-empty string.
+     string name = 2;
+
+-    // attributes is a collection of attribute key/value pairs on the event.
++    // A collection of attribute key/value pairs on the event.
+     // Attribute keys MUST be unique (it is not allowed to have more than one
+     // attribute with the same key).
++    // The behavior of software that receives duplicated keys can be unpredictable.
+     repeated opentelemetry.proto.common.v1.KeyValue attributes = 3;
+
+-    // dropped_attributes_count is the number of dropped attributes. If the value is 0,
++    // The number of dropped attributes. If the value is 0,
+     // then no attributes were dropped.
+     uint32 dropped_attributes_count = 4;
+   }
+
+-  // events is a collection of Event items.
++  // A collection of Event items.
+   repeated Event events = 11;
+
+-  // dropped_events_count is the number of dropped events. If the value is 0, then no
++  // The number of dropped events. If the value is 0, then no
+   // events were dropped.
+   uint32 dropped_events_count = 12;
+
+@@ -257,12 +260,13 @@ message Span {
+     // The trace_state associated with the link.
+     string trace_state = 3;
+
+-    // attributes is a collection of attribute key/value pairs on the link.
++    // A collection of attribute key/value pairs on the link.
+     // Attribute keys MUST be unique (it is not allowed to have more than one
+     // attribute with the same key).
++    // The behavior of software that receives duplicated keys can be unpredictable.
+     repeated opentelemetry.proto.common.v1.KeyValue attributes = 4;
+
+-    // dropped_attributes_count is the number of dropped attributes. If the value is 0,
++    // The number of dropped attributes. If the value is 0,
+     // then no attributes were dropped.
+     uint32 dropped_attributes_count = 5;
+
+@@ -286,11 +290,11 @@ message Span {
+     fixed32 flags = 6;
+   }
+
+-  // links is a collection of Links, which are references from this span to a span
++  // A collection of Links, which are references from this span to a span
+   // in the same or different trace.
+   repeated Link links = 13;
+
+-  // dropped_links_count is the number of dropped links after the maximum size was
++  // The number of dropped links after the maximum size was
+   // enforced. If this value is 0, then no links were dropped.
+   uint32 dropped_links_count = 14;
+
+diff --git a/contrib/libs/opentelemetry-proto/ya.make b/contrib/proto/opentelemetry/ya.make
+similarity index 66%
+rename from contrib/libs/opentelemetry-proto/ya.make
+rename to contrib/proto/opentelemetry/ya.make
+index fe3680b2c45..e520f3ef11a 100644
+--- a/contrib/libs/opentelemetry-proto/ya.make
++++ b/contrib/proto/opentelemetry/ya.make
+@@ -1,4 +1,4 @@
+-# Generated by devtools/yamaker from nixpkgs 22.11.
++# Generated by devtools/yamaker from nixpkgs 24.05.
+
+ PROTO_LIBRARY()
+
+@@ -6,15 +6,15 @@ LICENSE(Apache-2.0)
+
+ LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
+
+-VERSION(1.3.1)
++VERSION(1.9.0)
+
+-ORIGINAL_SOURCE(https://github.com/open-telemetry/opentelemetry-proto/archive/v1.3.1.tar.gz)
++ORIGINAL_SOURCE(https://github.com/open-telemetry/opentelemetry-proto/archive/v1.9.0.tar.gz)
+
+ PY_NAMESPACE(.)
+
+ PROTO_NAMESPACE(
+     GLOBAL
+-    contrib/libs/opentelemetry-proto
++    contrib/proto/opentelemetry
+ )
+
+ GRPC()
+@@ -22,13 +22,12 @@ GRPC()
+ SRCS(
+     opentelemetry/proto/collector/logs/v1/logs_service.proto
+     opentelemetry/proto/collector/metrics/v1/metrics_service.proto
+-    opentelemetry/proto/collector/profiles/v1experimental/profiles_service.proto
++    opentelemetry/proto/collector/profiles/v1development/profiles_service.proto
+     opentelemetry/proto/collector/trace/v1/trace_service.proto
+     opentelemetry/proto/common/v1/common.proto
+     opentelemetry/proto/logs/v1/logs.proto
+     opentelemetry/proto/metrics/v1/metrics.proto
+-    opentelemetry/proto/profiles/v1experimental/pprofextended.proto
+-    opentelemetry/proto/profiles/v1experimental/profiles.proto
++    opentelemetry/proto/profiles/v1development/profiles.proto
+     opentelemetry/proto/resource/v1/resource.proto
+     opentelemetry/proto/trace/v1/trace.proto
+ )
+diff --git a/contrib/ydb/library/actors/wilson/protos/ya.make b/contrib/ydb/library/actors/wilson/protos/ya.make
+index e9db290efd2..15ddc5df287 100644
+--- a/contrib/ydb/library/actors/wilson/protos/ya.make
++++ b/contrib/ydb/library/actors/wilson/protos/ya.make
+@@ -1,7 +1,7 @@
+ PROTO_LIBRARY()
+
+     PEERDIR(
+-        contrib/libs/opentelemetry-proto
++        contrib/proto/opentelemetry
+     )
+
+     EXCLUDE_TAGS(
+diff --git a/contrib/ydb/library/actors/wilson/wilson_span.h b/contrib/ydb/library/actors/wilson/wilson_span.h
+index 0dcc8879e47..07d44292f20 100644
+--- a/contrib/ydb/library/actors/wilson/wilson_span.h
++++ b/contrib/ydb/library/actors/wilson/wilson_span.h
+@@ -2,7 +2,7 @@
+
+ #include <contrib/ydb/library/actors/core/actor.h>
+ #include <contrib/ydb/library/actors/core/actorsystem.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
+ #include <util/generic/hash.h>
+ #include <util/generic/overloaded.h>
+ #include <util/datetime/cputimer.h>
+diff --git a/contrib/ydb/library/actors/wilson/wilson_uploader.cpp b/contrib/ydb/library/actors/wilson/wilson_uploader.cpp
+index f020a240165..95bdaac8cae 100644
+--- a/contrib/ydb/library/actors/wilson/wilson_uploader.cpp
++++ b/contrib/ydb/library/actors/wilson/wilson_uploader.cpp
+@@ -3,8 +3,8 @@
+ #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+ #include <contrib/ydb/library/actors/core/hfunc.h>
+ #include <contrib/ydb/library/actors/core/log.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/collector/trace/v1/trace_service.grpc.pb.h>
+ #include <library/cpp/string_utils/url/url.h>
+ #include <util/stream/file.h>
+ #include <util/string/hex.h>
+diff --git a/contrib/ydb/library/actors/wilson/wilson_uploader.h b/contrib/ydb/library/actors/wilson/wilson_uploader.h
+index 02064615a22..6bddc01dbcb 100644
+--- a/contrib/ydb/library/actors/wilson/wilson_uploader.h
++++ b/contrib/ydb/library/actors/wilson/wilson_uploader.h
+@@ -3,7 +3,7 @@
+ #include <contrib/ydb/library/actors/core/actor.h>
+ #include <contrib/ydb/library/actors/core/event_local.h>
+ #include <contrib/ydb/library/actors/core/events.h>
+-#include <contrib/libs/opentelemetry-proto/opentelemetry/proto/trace/v1/trace.pb.h>
++#include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
+ #include <grpc++/grpc++.h>
+
+ namespace NWilson {
+diff --git a/contrib/ydb/library/actors/wilson/ya.make b/contrib/ydb/library/actors/wilson/ya.make
+index 83dad5e04b5..46b2aa780e2 100644
+--- a/contrib/ydb/library/actors/wilson/ya.make
++++ b/contrib/ydb/library/actors/wilson/ya.make
+@@ -9,7 +9,7 @@ SRCS(
+ )
+
+ PEERDIR(
+-    contrib/libs/opentelemetry-proto
++    contrib/proto/opentelemetry
+     contrib/ydb/library/actors/core
+     contrib/ydb/library/actors/protos
+     contrib/ydb/library/actors/wilson/protos

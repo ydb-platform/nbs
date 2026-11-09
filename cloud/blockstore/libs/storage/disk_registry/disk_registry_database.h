@@ -97,6 +97,9 @@ public:
     bool ReadWritableState(bool& state);
     void WriteWritableState(bool state);
 
+    bool ReadSuspendSecureErase(bool& state);
+    void WriteSuspendSecureErase(bool state);
+
     // TODO: Remove legacy compatibility in next release
     void AddErrorNotification(const TString& diskId);
     void DeleteErrorNotification(const TString& diskId);

@@ -52,6 +52,7 @@ private:
     const IVolumeStatsPtr VolumeStats;
     const IRootKmsKeyProviderPtr RootKmsKeyProvider;
     const bool TemporaryServer;
+    const TString CellId;
 
     TSharedServiceCountersPtr SharedCounters;
 
@@ -81,7 +82,8 @@ public:
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
         IRootKmsKeyProviderPtr rootKmsKeyProvider,
-        bool temporaryServer);
+        bool temporaryServer,
+        TString cellId);
     ~TServiceActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -293,6 +295,10 @@ private:
         TString input);
 
     TResultOrError<NActors::IActorPtr> CreateWritableStateActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateSuspendSecureEraseActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

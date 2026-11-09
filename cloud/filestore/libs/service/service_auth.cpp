@@ -61,18 +61,6 @@ public:
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
-    {
-        // TODO: support auth for this method
-        Service->GetSessionEventsStream(
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
-    }
-
 private:
     template <typename TRequest, typename TResponse>
     TFuture<TResponse> ExecuteRequest(

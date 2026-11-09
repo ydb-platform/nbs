@@ -155,6 +155,9 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
+    SystemTabletBackupPathFromFile =
+        storageConfig.GetSystemTabletBackupDirPath();
+
     if (GetDynamicYamlConfigurationStaticallyEnabled()) {
         StorageConfigControls =
             std::make_shared<NStorage::TStorageConfigControls>();
@@ -301,10 +304,18 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
+    if (SystemTabletBackupPathFromFile) {
+        config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
+    }
+
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config),
         FeaturesConfig,
         StorageConfigControls);
+
+    ApplySystemTabletBackupPath(
+        StorageConfig->GetSystemTabletBackupDirPath(),
+        !Options->TemporaryServer);
 }
 
 void TConfigInitializerYdb::ApplyYdbStatsConfig(const TString& text)
@@ -568,22 +579,6 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
     }
 }
 
-void TConfigInitializerYdb::ApplyBlockstoreConfig(
-    const NKikimrConfig::TAppConfig& config)
-{
-    if (!config.HasBlockstoreConfig()) {
-        return;
-    }
-
-    STORAGE_INFO("Apply config from CMS: TAppConfig::BlockstoreConfig");
-
-    const auto& blockstoreConfig = config.GetBlockstoreConfig();
-
-    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
-        blockstoreConfig.GetVolumePreemptionType());
-    StorageConfig->SetVolumePreemptionType(volumePreemptionType);
-}
-
 void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
     const NKikimrConfig::TAppConfig& config)
 {
@@ -610,8 +605,6 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);
     }
-
-    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

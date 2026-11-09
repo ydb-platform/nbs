@@ -73,6 +73,7 @@ namespace NCloud::NFileStore{
     xxx(AvailabilityCountersMissingIntervals)                                  \
     xxx(PersistentStateSessionDirNotEmpty)                                     \
     xxx(ListNodesLocalNodeNotFound)                                            \
+    xxx(PersistentStateFileRequestedSizeTooSmall)                              \
     xxx(PersistentStateUnstatableEntry)                                        \
     xxx(PersistentStateUnlistableDir)                                          \
     xxx(DupCacheEntryRequestIdCollision)                                       \
@@ -116,6 +117,7 @@ namespace NCloud::NFileStore{
     xxx(WriteDataRequestWithBufferAndPayload)                                  \
     xxx(DiagnosticStatsInsertFailed)                                           \
     xxx(AvailabilityCountersDoubleRegistration)                                \
+    xxx(ForcedOperationUnexpectedState)                                        \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

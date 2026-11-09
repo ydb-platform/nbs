@@ -1728,9 +1728,21 @@ func TestBackupChunkQueue(t *testing.T) {
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
-		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.0",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.1",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      "t.snap2.0",
+			EncryptedDEK: []byte("dek"),
+		},
 	}
 	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
 	require.NoError(t, err)
@@ -1779,15 +1791,31 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.EqualValues(t, 0, length)
 }
 
-func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
+func TestClearCompletedBackupChunks(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.2"},
-		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.0",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.1",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.2",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      "t.snap2.0",
+			EncryptedDEK: []byte("dek"),
+		},
 	}
 	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
 	require.NoError(t, err)
@@ -1814,7 +1842,7 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	require.EqualValues(t, 2, completed)
 
 	for _, expected := range []int{1, 1, 0} {
-		cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+		cleared, err := f.storage.ClearCompletedBackupChunks(
 			f.ctx,
 			"snap1",
 			1, // limit
@@ -1830,7 +1858,7 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, completed)
 
-	cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+	cleared, err := f.storage.ClearCompletedBackupChunks(
 		f.ctx,
 		"snap2",
 		10, // limit

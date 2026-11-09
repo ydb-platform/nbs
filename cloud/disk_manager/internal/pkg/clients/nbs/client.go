@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
@@ -556,6 +557,36 @@ func areOverlayDisksSupported(mediaKind core_protos.EStorageMediaKind) bool {
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD
 }
 
+// Returns the blocks count of the first min(|maxSizeBytes|, volume size) bytes
+// of the volume, rounded up to the block size. Zero |maxSizeBytes| means the
+// whole volume.
+func boundedBlocksCount(
+	volume *protos.TVolume,
+	maxSizeBytes uint64,
+) (uint64, error) {
+
+	if maxSizeBytes == 0 {
+		return volume.BlocksCount, nil
+	}
+
+	if volume.BlockSize == 0 {
+		return 0, errors.NewNonRetriableErrorf(
+			"disk %v has zero block size",
+			volume.DiskId,
+		)
+	}
+
+	blocksCount := common.DivideWithRoundingUp(
+		maxSizeBytes,
+		uint64(volume.BlockSize),
+	)
+	if blocksCount > volume.BlocksCount {
+		return volume.BlocksCount, nil
+	}
+
+	return blocksCount, nil
+}
+
 func canBeBaseDisk(volume *protos.TVolume) bool {
 	return areOverlayDisksSupported(volume.StorageMediaKind) &&
 		volume.EncryptionDesc.Mode == protos.EEncryptionMode_NO_ENCRYPTION && // NBS-3297
@@ -859,6 +890,43 @@ func (c *client) CreateProxyOverlayDisk(
 		span.SetAttributes(tracing.AttributeBool("created", *created))
 	}(&created)
 
+	// Recognize an already existing overlay disk without describing its
+	// original base disk: this method is retried after a crash, and in the
+	// meantime the overlay disk may have been rebased onto another base disk
+	// and the original base disk deleted (see pools.RetireBaseDisk task).
+	existing, err := c.describeVolume(ctx, diskID)
+	if err == nil {
+		if len(existing.BaseDiskId) == 0 ||
+			existing.BaseDiskCheckpointId != baseDiskCheckpointID {
+
+			return false, errors.NewNonRetriableErrorf(
+				"disk %v already exists and is not an overlay disk on top of checkpoint %v: base disk %q, base disk checkpoint %q",
+				diskID,
+				baseDiskCheckpointID,
+				existing.BaseDiskId,
+				existing.BaseDiskCheckpointId,
+			)
+		}
+
+		// The previous attempt may have been interrupted before creating the
+		// checkpoint.
+		err = c.createCheckpoint(
+			ctx,
+			diskID,
+			baseDiskCheckpointID,
+			CheckpointTypeNormal.toProto(),
+		)
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	if !IsNotFoundError(err) {
+		return false, err
+	}
+
 	volume, err := c.describeVolume(ctx, baseDiskID)
 	if err != nil {
 		return false, err
@@ -875,10 +943,13 @@ func (c *client) CreateProxyOverlayDisk(
 		&nbs_client.CreateVolumeOpts{
 			BaseDiskId:           baseDiskID,
 			BaseDiskCheckpointId: baseDiskCheckpointID,
-			BlockSize:            volume.BlockSize,
-			StorageMediaKind:     core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
-			PartitionsCount:      1,
-			IsSystem:             true,
+			// The proxy overlay disk must have the same block size as the base
+			// disk. Otherwise, the underlying GetChangedBlocks operation cannot
+			// work correctly.
+			BlockSize:        volume.BlockSize,
+			StorageMediaKind: core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
+			PartitionsCount:  1,
+			IsSystem:         true,
 			EncryptionSpec: &protos.TEncryptionSpec{
 				Mode: volume.EncryptionDesc.Mode,
 				KeyParam: &protos.TEncryptionSpec_KeyHash{
@@ -1391,7 +1462,7 @@ func (c *client) MountRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRO")(&err)
 
@@ -1422,7 +1493,7 @@ func (c *client) MountLocalRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountLocalRO")(&err)
 
@@ -1455,7 +1526,7 @@ func (c *client) MountRW(
 	fillGeneration uint64,
 	fillSeqNumber uint64,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRW")(&err)
 
@@ -1596,12 +1667,15 @@ func (c *client) GetCheckpointSize(
 	}
 }
 
+// !Be careful!: |maxSizeBytes| sets the upper byte offset used to calculate
+// the amount of changed data. Data beyond this offset is ignored.
 func (c *client) GetChangedBytes(
 	ctx context.Context,
 	diskID string,
 	baseCheckpointID string,
 	checkpointID string,
 	ignoreBaseDisk bool,
+	maxSizeBytes uint64,
 ) (diff uint64, err error) {
 
 	defer c.metrics.StatRequest("GetChangedBytes")(&err)
@@ -1614,6 +1688,7 @@ func (c *client) GetChangedBytes(
 			tracing.AttributeString("base_checkpoint_id", baseCheckpointID),
 			tracing.AttributeString("checkpoint_id", checkpointID),
 			tracing.AttributeBool("ignore_base_disk", ignoreBaseDisk),
+			tracing.AttributeInt64("max_size_bytes", int64(maxSizeBytes)),
 		),
 	)
 	defer span.End()
@@ -1627,10 +1702,15 @@ func (c *client) GetChangedBytes(
 		return 0, err
 	}
 
-	for blockIndex := uint64(0); blockIndex < volume.BlocksCount; blockIndex += maxChangedBlockCountPerIteration {
+	totalBlockCount, err := boundedBlocksCount(volume, maxSizeBytes)
+	if err != nil {
+		return 0, err
+	}
+
+	for blockIndex := uint64(0); blockIndex < totalBlockCount; blockIndex += maxChangedBlockCountPerIteration {
 		blockCount := uint32(maxChangedBlockCountPerIteration)
-		if uint64(blockCount) > volume.BlocksCount-blockIndex {
-			blockCount = uint32(volume.BlocksCount - blockIndex)
+		if uint64(blockCount) > totalBlockCount-blockIndex {
+			blockCount = uint32(totalBlockCount - blockIndex)
 		}
 
 		blockMask, err := c.GetChangedBlocks(

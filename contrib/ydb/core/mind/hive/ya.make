@@ -9,6 +9,8 @@ SRCS(
     domain_info.cpp
     domain_info.h
     drain.cpp
+    event_history.cpp
+    event_history.h
     fill.cpp
     hive.cpp
     hive.h
@@ -93,6 +95,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/containers/ring_buffer
+    library/cpp/html/pcdata
     library/cpp/json
     library/cpp/monlib/dynamic_counters
     contrib/ydb/core/base

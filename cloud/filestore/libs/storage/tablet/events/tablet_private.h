@@ -37,6 +37,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(Flush,                                  __VA_ARGS__)                   \
     xxx(FlushBytes,                             __VA_ARGS__)                   \
     xxx(ForcedRangeOperation,                   __VA_ARGS__)                   \
+    xxx(ForcedTabletOperation,                  __VA_ARGS__)                   \
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
@@ -499,10 +500,12 @@ struct TEvIndexTabletPrivate
     {
         const ui32 RangeId;
         const bool FilterNodes;
+        const bool Forced;
 
-        TCompactionRequest(ui32 rangeId, bool filterNodes)
+        TCompactionRequest(ui32 rangeId, bool filterNodes, bool forced)
             : RangeId(rangeId)
             , FilterNodes(filterNodes)
+            , Forced(forced)
         {}
     };
 
@@ -651,6 +654,33 @@ struct TEvIndexTabletPrivate
         {
         }
     };
+
+    //
+    // ForcedTabletOperation
+    //
+
+    enum EForcedTabletOperationMode
+    {
+        Flush = 0,
+        FlushBytes = 1,
+        CollectGarbage = 2,
+    };
+
+    struct TForcedTabletOperationRequest
+    {
+        EForcedTabletOperationMode Mode;
+        TString OperationId;
+
+        TForcedTabletOperationRequest(
+                EForcedTabletOperationMode mode,
+                TString operationId)
+            : Mode(mode)
+            , OperationId(std::move(operationId))
+        {}
+    };
+
+    using TForcedTabletOperationResponse = TEmpty;
+    using TForcedTabletOperationCompleted = TEmpty;
 
     //
     // NodeCreatedInShard

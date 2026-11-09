@@ -13,7 +13,7 @@ PEERDIR(
 
     cloud/filestore/private/api/protos
 
-    cloud/fastshard/sn/client
+    cloud/fastshard/libs/sn/client
 )
 
 END()

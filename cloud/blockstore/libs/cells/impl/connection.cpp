@@ -255,7 +255,6 @@ private:
     const TBootstrap Bootstrap;
     const NClient::TClientAppConfigPtr ClientConfig;
     const ICellConnectionObserverPtr Observer;
-    const bool MigrationEnabled;
 
     // outlive any binding: this is what makes a move invisible from outside
     const IEndpointRouterPtr ControlRouter;
@@ -332,7 +331,6 @@ public:
         , Bootstrap(std::move(bootstrap))
         , ClientConfig(std::move(clientConfig))
         , Observer(std::move(observer))
-        , MigrationEnabled(binding->HostConfig.GetHostMigrationEnabled())
         , ControlRouter(std::move(controlRouter))
         , DataRouter(std::move(dataRouter))
         , Log(Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"))
@@ -456,9 +454,7 @@ public:
 
         // checked again inside, under the lock: the observer ran in between,
         // and so may have a move the pinger asked for
-        if (MigrationEnabled) {
-            MigrateTo(fqdn, "the volume tablet lives there", generation);
-        }
+        MigrateTo(fqdn, "the volume tablet lives there", generation);
     }
 
     void OnHostUnavailable(const TString& fqdn, ui64 epoch) noexcept override
@@ -501,10 +497,6 @@ public:
     // carries data does not apply here.
     void OnRdmaUnusable(ui64 generation, const TString& fqdn) noexcept
     {
-        if (!MigrationEnabled) {
-            return;
-        }
-
         with_lock (Lock) {
             // recorded here, by name, for the current binding and for one
             // still being prepared alike: whether we move because of this
@@ -587,6 +579,7 @@ public:
         // here ever holds both
         auto picked = Pool->PickHostExcept(except);
         if (HasError(picked)) {
+            Pool->GetCounters().NoMigrationTarget->Inc();
             STORAGE_WARN(
                 "[" << GetHost() << "] this host cannot serve us, and there "
                     << "is nowhere to move: "
@@ -656,6 +649,10 @@ public:
     // still being built happens now.
     void CompleteSetup()
     {
+        // before the flag goes up: until then no move can finish, so this
+        // cannot overtake the report a move makes
+        ReportServingHost(GetHost());
+
         with_lock (Lock) {
             BindingInstalled = true;
         }
@@ -671,6 +668,13 @@ public:
     }
 
 private:
+    void ReportServingHost(const TString& fqdn)
+    {
+        if (Observer) {
+            Observer->OnServingHostChanged(fqdn);
+        }
+    }
+
     // The hosts a move away must not land on. Under Lock.
     THashSet<TString> HostsToAvoidLocked()
     {
@@ -803,6 +807,7 @@ private:
         const TString& reason,
         bool channelAcquired)
     {
+        Pool->GetCounters().MigrationFailures->Inc();
         STORAGE_WARN(
             "[" << GetHost() << "] can't move to " << fqdn << ": " << reason
                 << ", staying where we are");
@@ -843,6 +848,9 @@ private:
                     << "transport switching did not start: "
                     << CurrentExceptionMessage());
         }
+
+        Pool->GetCounters().Migrations->Inc();
+        ReportServingHost(binding->HostConfig.GetFqdn());
 
         auto self = shared_from_this();
         const bool targetDead =
@@ -1333,12 +1341,10 @@ TCellConnectionFuture CreateCellConnection(
 
             connection->InstallBinding(built.GetResult());
 
-            if (hostConfig.GetHostMigrationEnabled()) {
-                if (pool->WatchHost(fqdn, connection)) {
-                    connection->OnHostUnavailable(
-                        fqdn,
-                        pool->GetChannelEpoch(fqdn));
-                }
+            if (pool->WatchHost(fqdn, connection)) {
+                connection->OnHostUnavailable(
+                    fqdn,
+                    pool->GetChannelEpoch(fqdn));
             }
 
             // last: from here on callbacks may act on their own

@@ -81,7 +81,8 @@ struct TBootstrap
 
     void Remove(ui64 sequenceId)
     {
-        RequestManager.Remove(std::move(PendingRequests[sequenceId]));
+        RequestManager.RemoveUnallocated(
+            std::move(PendingRequests[sequenceId]));
         PendingRequests.erase(sequenceId);
     }
 

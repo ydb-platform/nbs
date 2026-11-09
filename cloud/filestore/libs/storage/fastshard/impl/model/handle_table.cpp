@@ -2,8 +2,6 @@
 
 #include "helpers.h"
 
-#include <cloud/filestore/libs/storage/model/utils.h>
-
 #include <util/random/random.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -82,27 +80,6 @@ ui64 THandleTable::Init(
     Description = debuilder.Build();
 
     return totalPageCount;
-}
-
-NProto::TError THandleTable::AllocateHandle(ui64* handle) const
-{
-    while (true) {
-        *handle = ShardedId(RandomNumber<ui64>(), 0 /* shardNo */);
-
-        ui64 slotNo = 0;
-        THandleSlot slot{};
-        auto error = Handles->Get(0 /* lsn */, *handle, &slot, &slotNo);
-
-        if (!HasError(error)) {
-            continue;
-        }
-
-        if (error.GetCode() == E_FS_NOENT) {
-            return {};
-        }
-
-        return error;
-    }
 }
 
 NProto::TError THandleTable::Put(

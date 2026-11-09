@@ -29,7 +29,8 @@ TServiceActor::TServiceActor(
         IVolumeStatsPtr volumeStats,
         TManuallyPreemptedVolumesPtr preemptedVolumes,
         IRootKmsKeyProviderPtr rootKmsKeyProvider,
-        bool temporaryServer)
+        bool temporaryServer,
+        TString cellId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -42,6 +43,7 @@ TServiceActor::TServiceActor(
     , VolumeStats(std::move(volumeStats))
     , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
     , TemporaryServer(temporaryServer)
+    , CellId(std::move(cellId))
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))
     , State(std::move(preemptedVolumes))
 {}

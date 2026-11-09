@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -13,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
+
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
@@ -29,7 +31,9 @@
 #include <util/datetime/cputimer.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -365,9 +369,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                     EnableNodeBrokerDeltaProtocol: false
                     EnableVPatch: false
                 }
-                BlockstoreConfig {
-                    VolumePreemptionType: PREEMPTION_MOVE_LEAST_HEAVY
-                }
                 NamedConfigs {
                     Name: "Cloud.NBS.LogConfig"
                     Config: "DefaultLevel: 7"
@@ -403,9 +404,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 useYamlConfig ? localThreshold : 42,
                 ci.StorageConfig->GetWriteBlobThreshold());
-            UNIT_ASSERT_EQUAL(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
-                ci.StorageConfig->GetVolumePreemptionType());
             UNIT_ASSERT_VALUES_EQUAL(
                 useYamlConfig,
                 config.GetFeatureFlags().GetEnableNodeBrokerDeltaProtocol());
@@ -1174,6 +1172,209 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
         UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
         UNIT_ASSERT_VALUES_EQUAL("123", proto.GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldLoadSystemTabletBackupPathFromFile)
+    {
+        const TVector<TString> backupPaths = {"", "/var/backup/nbs"};
+        for (const auto& backupPath: backupPaths) {
+            TTempDir dir;
+            const auto configPath = dir.Path() / "nbs-service.txt";
+            TOFStream(configPath.GetPath())
+                .Write(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+
+            auto options = CreateOptions();
+            options->StorageConfig = configPath.GetPath();
+            auto ci = TConfigInitializerYdb(std::move(options));
+            ci.InitKikimrConfig();
+            ci.InitFeaturesConfig();
+            ci.InitStorageConfig();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.KikimrConfig->GetSystemTabletBackupConfig()
+                    .GetFilesystem()
+                    .GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldApplySystemTabletBackupPathFromCms)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitKikimrConfig();
+        InitStaticConfigs(ci);
+
+        const TVector<TString> backupPaths = {
+            "/var/backup/nbs",
+            "/var/backup/nbs-new",
+            ""};
+        for (const auto& backupPath: backupPaths) {
+            NKikimrConfig::TAppConfig appCfg;
+            auto* namedConfig = appCfg.AddNamedConfigs();
+            namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+            namedConfig->SetConfig(
+                TStringBuilder()
+                << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+            ci.ApplyCMSConfigs(std::move(appCfg));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            const auto& backupConfig =
+                ci.KikimrConfig->GetSystemTabletBackupConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                backupConfig.HasFilesystem());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                backupConfig.GetFilesystem().GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTakeOtherSystemTabletBackupSettingsFromCms)
+    {
+        const TVector<TString> localPaths = {"", "/var/backup/local"};
+        const TVector<TString> namedPaths = {"/var/backup/named-cms", ""};
+        for (const bool useYamlConfig: {false, true}) {
+            for (const auto& localPath: localPaths) {
+                TTempDir dir;
+                const auto configPath = dir.Path() / "nbs-service.txt";
+                TString storageText;
+                if (localPath) {
+                    storageText = TStringBuilder()
+                                  << "SystemTabletBackupDirPath: \""
+                                  << localPath << "\"";
+                }
+                TOFStream(configPath.GetPath()).Write(storageText);
+
+                const auto serverPath = dir.Path() / "nbs-server.txt";
+                TOFStream(serverPath.GetPath())
+                    .Write(
+                        TStringBuilder()
+                        << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                        << (useYamlConfig ? "true" : "false") << " }");
+
+                auto options = CreateOptions();
+                options->StorageConfig = configPath.GetPath();
+                options->ServerConfig = serverPath.GetPath();
+                auto ci = TConfigInitializerYdb(std::move(options));
+                ci.InitKikimrConfig();
+                InitStaticConfigs(ci);
+
+                for (const auto& namedPath: namedPaths) {
+                    NKikimrConfig::TAppConfig appCfg;
+                    auto* cmsBackupConfig =
+                        appCfg.MutableSystemTabletBackupConfig();
+                    cmsBackupConfig->MutableFilesystem()->SetPath(
+                        "/var/backup/cms");
+                    cmsBackupConfig->SetMaxBackupsLimit(7);
+                    cmsBackupConfig->AddExcludeTabletIds(123);
+                    auto* namedConfig = appCfg.AddNamedConfigs();
+                    namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+                    namedConfig->SetConfig(
+                        TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                         << namedPath << "\"");
+
+                    ci.ApplyCMSConfigs(std::move(appCfg));
+
+                    TString storagePath = localPath;
+                    if (!storagePath && !useYamlConfig) {
+                        storagePath = namedPath;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        storagePath,
+                        ci.StorageConfig->GetSystemTabletBackupDirPath());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        !storagePath.empty(),
+                        ci.KikimrConfig->HasSystemTabletBackupConfig());
+                    if (!storagePath) {
+                        continue;
+                    }
+
+                    const auto& backupConfig =
+                        ci.KikimrConfig->GetSystemTabletBackupConfig();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        storagePath,
+                        backupConfig.GetFilesystem().GetPath());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        7,
+                        backupConfig.GetMaxBackupsLimit());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1,
+                        backupConfig.GetExcludeTabletIds().size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        123,
+                        backupConfig.GetExcludeTabletIds(0));
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDisableSystemTabletBackupsForTemporaryServer)
+    {
+        const TVector<TString> localPaths = {"", "/var/backup/local"};
+        const TVector<TString> namedPaths = {"", "/var/backup/named-cms"};
+        for (const bool useYamlConfig: {false, true}) {
+            for (const auto& localPath: localPaths) {
+                TTempDir dir;
+                const auto configPath = dir.Path() / "nbs-service.txt";
+                TOFStream(configPath.GetPath())
+                    .Write(
+                        TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                         << localPath << "\"");
+
+                const auto serverPath = dir.Path() / "nbs-server.txt";
+                TOFStream(serverPath.GetPath())
+                    .Write(
+                        TStringBuilder()
+                        << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                        << (useYamlConfig ? "true" : "false") << " }");
+
+                auto options = CreateOptions();
+                options->ServerConfig = serverPath.GetPath();
+                options->TemporaryServer = true;
+                options->StorageConfig = configPath.GetPath();
+                auto ci = TConfigInitializerYdb(std::move(options));
+                ci.InitKikimrConfig();
+                InitStaticConfigs(ci);
+                UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
+
+                for (const bool useCmsBackupConfig: {false, true}) {
+                    for (const auto& namedPath: namedPaths) {
+                        NKikimrConfig::TAppConfig appCfg;
+                        if (useCmsBackupConfig) {
+                            auto* backupConfig =
+                                appCfg.MutableSystemTabletBackupConfig();
+                            backupConfig->MutableFilesystem()->SetPath(
+                                "/var/backup/cms");
+                            backupConfig->SetMaxBackupsLimit(7);
+                            backupConfig->AddExcludeTabletIds(123);
+                        }
+                        auto* namedConfig = appCfg.AddNamedConfigs();
+                        namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+                        namedConfig->SetConfig(
+                            TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                             << namedPath << "\"");
+
+                        ci.ApplyCMSConfigs(std::move(appCfg));
+
+                        UNIT_ASSERT(
+                            !ci.KikimrConfig->HasSystemTabletBackupConfig());
+                    }
+                }
+            }
+        }
     }
 }
 

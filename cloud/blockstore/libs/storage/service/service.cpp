@@ -21,7 +21,8 @@ IActorPtr CreateStorageService(
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes,
     IRootKmsKeyProviderPtr rootKmsKeyProvider,
-    bool temporaryServer)
+    bool temporaryServer,
+    TString cellId)
 {
     return std::make_unique<TServiceActor>(
         std::move(config),
@@ -36,7 +37,8 @@ IActorPtr CreateStorageService(
         std::move(volumeStats),
         std::move(preemptedVolumes),
         std::move(rootKmsKeyProvider),
-        temporaryServer);
+        temporaryServer,
+        std::move(cellId));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

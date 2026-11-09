@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/disk_validation.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
@@ -59,6 +60,8 @@ private:
 
     void CreateVolumeFromDevice(const TActorContext& ctx);
 
+    NProto::EStorageMediaKind GetStorageMediaKind() const;
+
     NKikimrBlockStore::TVolumeConfig CreateVolumeConfig() const;
 
 private:
@@ -101,6 +104,13 @@ void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
+    if (auto error = ValidateMediaKindForDiskFromDevice(GetStorageMediaKind());
+        HasError(error))
+    {
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
     Become(&TThis::StateWork);
 
     CreateVolumeFromDevice(ctx);
@@ -131,17 +141,31 @@ void TCreateVolumeFromDeviceActor::ReplyAndDie(
     Die(ctx);
 }
 
+NProto::EStorageMediaKind
+TCreateVolumeFromDeviceActor::GetStorageMediaKind() const
+{
+    if (Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
+        return NProto::STORAGE_MEDIA_SSD_LOCAL;
+    }
+
+    return Request.GetStorageMediaKind();
+}
+
 auto TCreateVolumeFromDeviceActor::CreateVolumeConfig() const
     -> NKikimrBlockStore::TVolumeConfig
 {
     NKikimrBlockStore::TVolumeConfig volume;
 
-    volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+    const auto mediaKind = GetStorageMediaKind();
+
+    volume.SetStorageMediaKind(mediaKind);
     volume.SetDiskId(Request.GetDiskId());
     volume.SetProjectId(Request.GetProjectId());
     volume.SetFolderId(Request.GetFolderId());
     volume.SetCloudId(Request.GetCloudId());
-    volume.SetBlockSize(DefaultLocalSSDBlockSize);
+    volume.SetBlockSize(
+        mediaKind == NProto::STORAGE_MEDIA_SSD_LOCAL ? DefaultLocalSSDBlockSize
+                                                     : DefaultBlockSize);
 
     return volume;
 }
@@ -251,13 +275,14 @@ void TServiceActor::HandleCreateVolumeFromDevice(
         msg->CallContext);
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Creating volume from device: %s, %s, %s, %s, %s, %s",
+        "Creating volume from device: %s, %s, %s, %s, %s, %s, %s",
         request.GetDiskId().Quote().c_str(),
         request.GetProjectId().Quote().c_str(),
         request.GetFolderId().Quote().c_str(),
         request.GetCloudId().Quote().c_str(),
         request.GetAgentId().Quote().c_str(),
-        request.GetPath().Quote().c_str());
+        request.GetPath().Quote().c_str(),
+        NProto::EStorageMediaKind_Name(request.GetStorageMediaKind()).c_str());
 
     NCloud::Register<TCreateVolumeFromDeviceActor>(
         ctx,

@@ -47,6 +47,7 @@ namespace {
     xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
     xxx(AttrTimeout,                 TDuration,     TDuration::Seconds(15)    )\
     xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
+    xxx(XAttrCacheLimit,             ui32,          0                         )\
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
     xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\

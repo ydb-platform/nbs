@@ -258,21 +258,24 @@ void RenderCell(
     const TCellConfig& cellConfig,
     const TVector<TCellHostStatus>& statuses)
 {
-    const auto alive = static_cast<ui32>(
-        CountIf(statuses, [](const auto& s) { return s.Alive; }));
+    const auto alive = static_cast<ui32>(CountIf(
+        statuses,
+        [](const auto& s) { return s.Liveness == EHostLiveness::Alive; }));
+    const auto dead = static_cast<ui32>(CountIf(
+        statuses,
+        [](const auto& s) { return s.Liveness == EHostLiveness::Dead; }));
     const auto total = static_cast<ui32>(statuses.size());
+    const auto unknown = total - alive - dead;
 
-    // without pings a host is alive only in the sense that nothing has said
-    // otherwise, so such a cell is never shown as healthy
-    const bool probed = cellConfig.GetHostMigrationEnabled();
-
+    // only the warm hosts are pinged, so most of a cell is never asked;
+    // healthy means nothing has been found dead
     TStringBuf health = "warning";
-    if (!total || (alive == total && !probed)) {
+    if (!total) {
         health = "default";
-    } else if (alive == total) {
-        health = "success";
-    } else if (!alive) {
+    } else if (dead == total) {
         health = "danger";
+    } else if (!dead) {
+        health = "success";
     }
 
     // a healthy cell folds away: its heading already says all there is
@@ -288,14 +291,17 @@ void RenderCell(
                           cellConfig.GetTransport(),
                           cellConfig.GetGrpcDataFallbackEnabled()));
     out << " ";
-    if (probed) {
-        RenderLabel(
-            out,
-            health,
-            TStringBuilder() << alive << " / " << total << " alive");
-    } else {
-        RenderLabel(out, "default", "not probed");
+    TStringBuilder label;
+    if (dead) {
+        label << dead << " down";
     }
+    if (alive) {
+        label << (label.empty() ? "" : ", ") << alive << " alive";
+    }
+    if (unknown) {
+        label << (label.empty() ? "" : ", ") << unknown << " not probed";
+    }
+    RenderLabel(out, health, label);
     out << "</summary>";
 
     HTML(out) {
@@ -324,12 +330,16 @@ void RenderCell(
                     TABLER() {
                         TABLED() { out << EncodeHtmlPcdata(status.Fqdn); }
                         TABLED() {
-                            if (!status.Alive) {
-                                RenderLabel(out, "danger", "down");
-                            } else if (!probed) {
-                                RenderLabel(out, "default", "not probed");
-                            } else {
-                                RenderLabel(out, "success", "alive");
+                            switch (status.Liveness) {
+                                case EHostLiveness::Dead:
+                                    RenderLabel(out, "danger", "down");
+                                    break;
+                                case EHostLiveness::Alive:
+                                    RenderLabel(out, "success", "alive");
+                                    break;
+                                case EHostLiveness::Unknown:
+                                    RenderLabel(out, "default", "not probed");
+                                    break;
                             }
                             if (status.Warm) {
                                 out << " ";
@@ -533,12 +543,12 @@ class TCellsMonActor final
 {
 private:
     const ICellManagerPtr CellManager;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
 
 public:
     TCellsMonActor(
             ICellManagerPtr cellManager,
-            TDiagnosticsConfigPtr diagnosticsConfig)
+            TDiagnosticsConfigConstPtr diagnosticsConfig)
         : CellManager(std::move(cellManager))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
     {}
@@ -686,7 +696,7 @@ void RenderCellsSearchResult(
 
 IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
-    TDiagnosticsConfigPtr diagnosticsConfig)
+    TDiagnosticsConfigConstPtr diagnosticsConfig)
 {
     return std::make_unique<TCellsMonActor>(
         std::move(cellManager),

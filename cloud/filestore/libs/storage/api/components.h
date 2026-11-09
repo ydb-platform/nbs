@@ -38,6 +38,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AUTH)                                                                  \
     xxx(USER_STATS)                                                            \
     xxx(TLS_CERTIFICATE_PROVIDER)                                              \
+    xxx(TABLET_PROXY_SERVICE)                                                  \
 // FILESTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////

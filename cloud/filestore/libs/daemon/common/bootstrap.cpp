@@ -30,6 +30,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -92,6 +93,7 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_START_COMPONENT(CertificateProvider);
 
     StartComponents();
@@ -122,6 +124,7 @@ void TBootstrapCommon::Stop()
     StopComponents();
 
     FILESTORE_LOG_STOP_COMPONENT(CertificateProvider);
+    FILESTORE_LOG_STOP_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);

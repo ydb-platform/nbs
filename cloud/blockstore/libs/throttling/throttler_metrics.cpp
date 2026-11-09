@@ -17,13 +17,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr std::array<NProto::EStorageMediaKind, 6> MonitoredMediaKinds = {
+constexpr std::array<NProto::EStorageMediaKind, 7> MonitoredMediaKinds = {
     NProto::STORAGE_MEDIA_SSD,
     NProto::STORAGE_MEDIA_HDD,
     NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
     NProto::STORAGE_MEDIA_SSD_MIRROR2,
     NProto::STORAGE_MEDIA_SSD_MIRROR3,
     NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+    NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP,
 };
 
 ////////////////////////////////////////////////////////////////////////////////

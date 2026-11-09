@@ -29,6 +29,8 @@ protected:
 
 private:
     TConfigHandlers ConfigHandlers;
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
 
 public:
     const TOptionsCommonPtr Options;

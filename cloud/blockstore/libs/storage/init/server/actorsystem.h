@@ -84,6 +84,7 @@ struct TServerActorSystemArgs
 
     bool IsDiskRegistrySpareNode = false;
     bool TemporaryServer = false;
+    TString CellId;
 
     bool IsHiveLocalServiceEnabled = false;
 };

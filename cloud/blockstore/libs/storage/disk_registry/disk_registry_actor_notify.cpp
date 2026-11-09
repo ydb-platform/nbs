@@ -35,7 +35,7 @@ public:
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
-        TVector<TDiskNotification> diskIds);
+        TVector<TDiskNotification> diskNotifications);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -66,14 +66,14 @@ TNotifyActor::TNotifyActor(
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
-        TVector<TDiskNotification> diskIds)
+        TVector<TDiskNotification> diskNotifications)
     : Owner(owner)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
           {{"TNotifyActor", std::monostate{}}}))
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
-    , DiskNotifications(std::move(diskIds))
+    , DiskNotifications(std::move(diskNotifications))
 {}
 
 void TNotifyActor::Bootstrap(const TActorContext& ctx)
@@ -119,7 +119,8 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
     PendingOperations = DiskNotifications.size();
 
     ui64 cookie = 0;
-    for (const auto& [diskId, seqNo]: DiskNotifications) {
+    for (const auto& notification: DiskNotifications) {
+        const auto& diskId = notification.DiskId;
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
@@ -129,6 +130,8 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 
         auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
         request->Record.SetDiskId(diskId);
+        request->Record.SetExternalVolumeTabletId(
+            notification.ExternalVolumeTabletId);
         NCloud::Send(
             ctx,
             MakeVolumeProxyServiceId(),
@@ -293,7 +296,10 @@ void TDiskRegistryActor::HandleNotifyDisks(
 
     DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
     for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
-        DisksBeingNotified.emplace_back(diskId, seqNo);
+        DisksBeingNotified.emplace_back(
+            diskId,
+            seqNo,
+            State->GetExternalVolumeTabletId(diskId));
     }
 
     auto actor = NCloud::Register<TNotifyActor>(

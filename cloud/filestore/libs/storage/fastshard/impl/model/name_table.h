@@ -1,7 +1,6 @@
 #pragma once
 
 #include "component.h"
-#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 

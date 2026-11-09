@@ -28,7 +28,7 @@ namespace {
 class TApp
 {
 private:
-    const ISysFsPtr SysFs = CreateSysFs("/sys");
+    const ISysFsPtr SysFs = CreateSysFs("/sys", "/dev");
 
     TOpts Opts;
 

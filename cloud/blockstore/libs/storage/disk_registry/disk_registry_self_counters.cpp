@@ -39,6 +39,7 @@ void TDiskRegistrySelfCounters::Init(
     DisksInWarningState = counters->GetCounter("DisksInWarningState");
     MaxWarningTime = counters->GetCounter("MaxWarningTime");
     MaxMigrationTime = counters->GetCounter("MaxMigrationTime");
+    SuspendSecureErase = counters->GetCounter("SuspendSecureErase");
 
     DevicesInMigrationState = counters->GetCounter("DevicesInMigrationState");
     DisksInTemporarilyUnavailableState = counters->GetCounter("DisksInTemporarilyUnavailableState");

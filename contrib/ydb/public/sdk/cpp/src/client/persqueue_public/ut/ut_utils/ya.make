@@ -17,12 +17,13 @@ PEERDIR(
     contrib/ydb/library/grpc/server
     library/cpp/testing/unittest
     library/cpp/threading/chunk_queue
-    contrib/ydb/core/testlib/default
+    contrib/ydb/core/testlib
     contrib/ydb/public/sdk/cpp/src/library/persqueue/topic_parser_public
     contrib/ydb/public/sdk/cpp/src/client/driver
     contrib/ydb/public/sdk/cpp/src/client/topic
     contrib/ydb/public/sdk/cpp/src/client/persqueue_public
     contrib/ydb/public/sdk/cpp/src/client/table
+    yql/essentials/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

@@ -829,6 +829,9 @@ message TCreateVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Cell of follower disk. Empty means the leader's cell.
+    string FollowerCellId = 4;
 }
 
 message TCreateVolumeLinkResponse
@@ -850,6 +853,9 @@ message TDestroyVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Cell of follower disk. Empty means the leader's cell.
+    string FollowerCellId = 4;
 }
 
 message TDestroyVolumeLinkResponse

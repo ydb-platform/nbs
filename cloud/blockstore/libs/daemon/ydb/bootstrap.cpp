@@ -301,6 +301,11 @@ TServerModuleFactories::TServerModuleFactories()
         return NIamClient::CreateIamTokenClientStub();
     };
 
+    EdsInstanceFetcherFactory = [](auto...)
+    {
+        return NDiscovery::CreateInstanceFetcherStub();
+    };
+
     ComputeClientFactory = [](auto...)
     {
         return CreateComputeClientStub();
@@ -724,7 +729,8 @@ void TBootstrapYdb::InitKikimrService()
 
     auto discoveryConfig = Configs->DiscoveryConfig;
     if (discoveryConfig->GetConductorGroups()
-            || discoveryConfig->GetInstanceListFile())
+            || discoveryConfig->GetInstanceListFile()
+            || discoveryConfig->GetEdsEndpoint())
     {
         auto banList = discoveryConfig->GetBannedInstanceListFile()
             ? CreateBanList(discoveryConfig, logging, monitoring)
@@ -743,6 +749,13 @@ void TBootstrapYdb::InitKikimrService()
                 monitoring,
                 Timer,
                 Scheduler
+            )
+            : CreateInstanceFetcherStub();
+        auto edsFetcher = discoveryConfig->GetEdsEndpoint()
+            ? ServerModuleFactories->EdsInstanceFetcherFactory(
+                discoveryConfig->GetConfig()->GetEds(),
+                logging,
+                monitoring
             )
             : CreateInstanceFetcherStub();
 
@@ -765,6 +778,7 @@ void TBootstrapYdb::InitKikimrService()
             std::move(banList),
             std::move(staticFetcher),
             std::move(conductorFetcher),
+            std::move(edsFetcher),
             std::move(healthChecker),
             std::move(balancingPolicy)
         );
@@ -903,6 +917,9 @@ void TBootstrapYdb::InitKikimrService()
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        args.CellId = Configs->CellsConfig->GetCellId();
+    }
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.PartitionBudgetManager = PartitionBudgetManager;
     args.LocalNVMeService = LocalNVMeService;
@@ -1020,17 +1037,9 @@ void TBootstrapYdb::SetupCellManager()
                 "Secure cells port is configured without certificates");
 
             cellCertProvider = CreateCertificateProvider(
-                Logging,
-                GetComponentName(
-                    TBlockStoreComponents::TLS_CERTIFICATE_PROVIDER),
-                Scheduler,
-                LongRunningTaskExecutor,
-                Monitoring->GetCounters()
-                    ->GetSubgroup("counters", "blockstore")
-                    ->GetSubgroup("component", "cells"),
+                CertificateWatcher,
                 grpcConfig.GetRootCertsFile(),
-                std::move(certList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
+                std::move(certList));
         }
 
         CellManager = CreateCellManager(

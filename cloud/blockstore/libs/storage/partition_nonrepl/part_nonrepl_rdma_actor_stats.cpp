@@ -30,7 +30,7 @@ TPartNonreplCountersData TNonreplicatedPartitionRdmaActor::ExtractPartCounters()
 
     auto partCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     return {
         .DiskCounters = std::exchange(PartCounters, std::move(partCounters)),

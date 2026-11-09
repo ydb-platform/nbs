@@ -35,6 +35,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateCmsHostState,                 __VA_ARGS__)                       \
     xxx(DeleteDiskStateUpdates,             __VA_ARGS__)                       \
     xxx(WritableState,                      __VA_ARGS__)                       \
+    xxx(SuspendSecureErase,                 __VA_ARGS__)                       \
     xxx(StartMigration,                     __VA_ARGS__)                       \
     xxx(StartForceMigration,                __VA_ARGS__)                       \
     xxx(FinishMigration,                    __VA_ARGS__)                       \
@@ -97,18 +98,21 @@ struct TTxDiskRegistry
         bool RestoreState = false;
         TInstant LastBackupTime;
         TDiskRegistryStateSnapshot Snapshot;
+        bool SuspendSecureErase = false;
 
         TLoadState() = default;
+        virtual ~TLoadState() = default;
 
         explicit TLoadState(TRequestInfoPtr requestInfo)
             : RequestInfo{std::move(requestInfo)}
         {}
 
-        void Clear()
+        virtual void Clear()
         {
             RestoreState = false;
             LastBackupTime = {};
             Snapshot.Clear();
+            SuspendSecureErase = false;
         }
     };
 
@@ -130,6 +134,7 @@ struct TTxDiskRegistry
         const TVector<TString> AgentIds;
         const TString PoolName;
         const NProto::EStorageMediaKind MediaKind;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
         TVector<NProto::TDeviceConfig> Devices;
@@ -153,7 +158,8 @@ struct TTxDiskRegistry
                 ui32 replicaCount,
                 TVector<TString> agentIds,
                 TString poolName,
-                NProto::EStorageMediaKind mediaKind)
+                NProto::EStorageMediaKind mediaKind,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , CloudId(std::move(cloudId))
@@ -166,6 +172,7 @@ struct TTxDiskRegistry
             , AgentIds(std::move(agentIds))
             , PoolName(std::move(poolName))
             , MediaKind(mediaKind)
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()
@@ -191,16 +198,19 @@ struct TTxDiskRegistry
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
         const bool Sync;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
 
         TRemoveDisk(
                 TRequestInfoPtr requestInfo,
                 TString diskId,
-                bool sync)
+                bool sync,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , Sync(sync)
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()
@@ -794,6 +804,28 @@ struct TTxDiskRegistry
     };
 
     //
+    // SuspendSecureErase
+    //
+
+    struct TSuspendSecureErase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const bool Suspend;
+
+        TSuspendSecureErase(
+                TRequestInfoPtr requestInfo,
+                bool suspend)
+            : RequestInfo(std::move(requestInfo))
+            , Suspend(suspend)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
     // FinishMigration
     //
 
@@ -885,14 +917,17 @@ struct TTxDiskRegistry
     {
         const TRequestInfoPtr RequestInfo;
         const TString DiskId;
+        const ui64 ExternalVolumeTabletId;
 
         NProto::TError Error;
 
         TMarkDiskForCleanup(
                 TRequestInfoPtr requestInfo,
-                TString diskId)
+                TString diskId,
+                ui64 externalVolumeTabletId)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
+            , ExternalVolumeTabletId(externalVolumeTabletId)
         {}
 
         void Clear()
@@ -905,22 +940,32 @@ struct TTxDiskRegistry
     // BackupDiskRegistryState
     //
 
-    struct TBackupDiskRegistryState
-        : TLoadState
+    struct TBackupDiskRegistryState: public TLoadState
     {
         const TString BackupFilePath;
         const NProto::EBackupDiskRegistryStateSource Source;
         NProto::TDiskRegistryStateBackup MemorySnapshot;
+        TInstant SnapshotTs;
 
         TBackupDiskRegistryState() = default;
+
         TBackupDiskRegistryState(
-                TRequestInfoPtr requestInfo,
-                TString backupFilePath,
-                NProto::EBackupDiskRegistryStateSource source)
+            TRequestInfoPtr requestInfo,
+            TString backupFilePath,
+            NProto::EBackupDiskRegistryStateSource source)
             : TLoadState{std::move(requestInfo)}
             , BackupFilePath{std::move(backupFilePath)}
             , Source{source}
         {}
+
+        ~TBackupDiskRegistryState() override = default;
+
+        void Clear() override
+        {
+            MemorySnapshot.Clear();
+            SnapshotTs = TInstant{};
+            TLoadState::Clear();
+        }
     };
 
     //
@@ -1237,6 +1282,8 @@ struct TTxDiskRegistry
         const ui32 BlockSize;
         const NProto::EStorageMediaKind MediaKind;
         const TVector<NProto::TDeviceConfig> Devices;
+        const TVector<TVector<TString>> Replicas;
+        const bool KeepBlockCount;
 
         NProto::TError Error;
         ui64 LogicalBlockCount = 0;
@@ -1247,13 +1294,17 @@ struct TTxDiskRegistry
                 TString diskId,
                 ui32 blockSize,
                 NProto::EStorageMediaKind mediaKind,
-                TVector<NProto::TDeviceConfig> devices)
+                TVector<NProto::TDeviceConfig> devices,
+                TVector<TVector<TString>> replicas,
+                bool keepBlockCount)
             : RequestInfo(std::move(requestInfo))
             , Force(force)
             , DiskId(std::move(diskId))
             , BlockSize(blockSize)
             , MediaKind(mediaKind)
             , Devices(std::move(devices))
+            , Replicas(std::move(replicas))
+            , KeepBlockCount(keepBlockCount)
         {}
 
         void Clear()
@@ -1266,15 +1317,25 @@ struct TTxDiskRegistry
         {
             TStringStream ss;
 
-            ss << "Force=" << Force
-                << " DiskId=" << DiskId
-                << " BlockSize=" << BlockSize
-                << " Devices=[ ";
-            for (auto& d: Devices) {
-                ss << "("
-                    << d.GetAgentId() << " "
-                    << d.GetDeviceName()
-                    << ") ";
+            ss << "Force=" << Force << " DiskId=" << DiskId
+               << " BlockSize=" << BlockSize
+               << " KeepBlockCount=" << KeepBlockCount;
+            if (!Devices.empty()) {
+                ss << " Devices=[ ";
+                for (auto& d: Devices) {
+                    ss << "(" << d.GetAgentId() << " " << d.GetDeviceName()
+                       << ") ";
+                }
+            }
+            if (!Replicas.empty()) {
+                ss << " Replicas=[ ";
+                for (const auto& r: Replicas) {
+                    ss << "[";
+                    for (const auto& d: r) {
+                        ss << d << " ";
+                    }
+                    ss << "] ";
+                }
             }
             ss << "]";
             return ss.Str();
