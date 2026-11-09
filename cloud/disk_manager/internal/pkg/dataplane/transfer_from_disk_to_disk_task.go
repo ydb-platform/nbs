@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -104,6 +105,21 @@ func (t *transferFromDiskToDiskTask) Run(
 		return err
 	}
 	defer target.Close(ctx)
+
+	// Pool maintenance can copy sparse base disks into smaller, chunk-aligned
+	// disks. A partial destination chunk could silently truncate source data.
+	// An explicit size bound excludes the source's rounded-up chunk tail.
+	sourceSize := source.Size()
+	if t.request.MaxSizeBytes != 0 && t.request.MaxSizeBytes < sourceSize {
+		sourceSize = t.request.MaxSizeBytes
+	}
+	if target.Size() < sourceSize && target.Size()%chunkSize != 0 {
+		return errors.NewNonRetriableErrorf(
+			"destination disk size %v is smaller than source disk size %v",
+			target.Size(),
+			sourceSize,
+		)
+	}
 
 	transferer := common.Transferer{
 		ReaderCount:         t.config.GetReaderCount(),
