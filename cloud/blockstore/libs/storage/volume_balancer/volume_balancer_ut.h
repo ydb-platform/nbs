@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-TDiagnosticsConfigPtr CreateDiagnosticsConfig()
+TDiagnosticsConfigConstPtr CreateDiagnosticsConfig()
 {
     NProto::TDiagnosticsConfig config;
     ParseProtoTextFromString(
@@ -24,7 +24,7 @@ TDiagnosticsConfigPtr CreateDiagnosticsConfig()
           }
         })",
         config);
-    return std::make_shared<TDiagnosticsConfig>(config);
+    return std::make_shared<const TDiagnosticsConfig>(config);
 }
 
 }   // namespace
