@@ -213,14 +213,15 @@ message TCompressionMetadata
     // Keep in sync with CompressionCodecs in partition_common/blob_compressor.cpp.
     enum ECompressionType
     {
-        COMPRESSION_LZ4_FAST14_SAFE = 0;
-        COMPRESSION_SNAPPY = 1;
-        COMPRESSION_ZLIB_6 = 2;
-        COMPRESSION_LZMA_5 = 3;
-        COMPRESSION_BZIP2_6 = 4;
-        COMPRESSION_FASTLZ_0 = 5;
-        COMPRESSION_ZSTD_3 = 6;
-        COMPRESSION_BROTLI_GENERIC_11 = 7;
+        COMPRESSION_NONE = 0;
+        COMPRESSION_LZ4_FAST14_SAFE = 1;
+        COMPRESSION_SNAPPY = 2;
+        COMPRESSION_ZLIB_6 = 3;
+        COMPRESSION_LZMA_5 = 4;
+        COMPRESSION_BZIP2_6 = 5;
+        COMPRESSION_FASTLZ_0 = 6;
+        COMPRESSION_ZSTD_3 = 7;
+        COMPRESSION_BROTLI_GENERIC_11 = 8;
     }
     ECompressionType Codec = 1;
 
@@ -229,9 +230,10 @@ message TCompressionMetadata
 
     message TPlainChunks
     {
-        // Cumulative compressed end offsets of all chunks except the last.
-        // N chunks have N-1 offsets; the last chunk ends at the blob size.
-        repeated uint32 ChunkOffset = 1;
+        // Compressed sizes in bytes of all chunks except the last.
+        // N chunks have N-1 sizes; the last size is the blob size minus
+        // their sum.
+        repeated uint32 ChunkSize = 1;
     }
 
     oneof Chunks

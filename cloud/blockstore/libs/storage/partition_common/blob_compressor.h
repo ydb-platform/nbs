@@ -36,8 +36,9 @@ ParseBlobCompressionCodec(TStringBuf codecName);
  *
  * Each chunk contains whole blocks; only the final chunk may be shorter than
  * the configured chunk size. Compressed chunks are concatenated in blob order,
- * with the N-1 internal boundaries, codec and uncompressed chunk size stored
- * in metadata. The final chunk ends at the compressed blob size.
+ * with the N-1 compressed chunk sizes, codec and uncompressed chunk size stored
+ * in metadata. The final chunk size is the compressed blob size minus their
+ * sum. Reads also support legacy metadata containing cumulative end offsets.
  * PlanReadBlob selects the byte ranges needed for a read, and DecompressBlob
  * restores the requested blocks from those ranges.
  *
@@ -67,7 +68,7 @@ public:
         // Compressed chunks concatenated in their original order.
         TString Data;
 
-        // Codec, uncompressed chunk size and N-1 cumulative end offsets.
+        // Codec, uncompressed chunk size and N-1 compressed chunk sizes.
         NProto::TCompressionMetadata Compression;
     };
 
@@ -186,6 +187,7 @@ public:
      * Plans reads of the complete compressed chunks needed for the requested
      * blocks, using the chunk size from the blob's metadata. Each requested
      * chunk is read once and adjacent chunks are coalesced into a single range.
+     * Cumulative chunk offsets are rebuilt from sizes for each read plan.
      * Returns E_ARGUMENT for invalid chunk metadata, offsets outside the chunk
      * list or read ranges extending beyond the compressed blob.
      *
