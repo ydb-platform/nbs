@@ -94,7 +94,8 @@ message THeaders
     bool BehaveAsDirectoryTablet = 13;
 
     // The sender doesn't cache the response: the tablet doesn't subscribe it
-    // to FileSystemEvents and returns zero NodeCacheTTL and NodeRefCacheTTL.
+    // to FileSystemEvents and returns zero NodeCacheTTL, NodeRefCacheTTL and
+    // XAttrCacheTTL.
     bool FileSystemEventSubscriptionDisabled = 14;
 }
 
