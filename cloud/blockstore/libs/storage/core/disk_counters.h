@@ -1040,7 +1040,7 @@ struct TBlobIoCounters
     TOperations ReadBlob;
     TOperations WriteBlob;
 
-    void Add(const THistogramRequestCounters& counters);
+    void Assign(const THistogramRequestCounters& counters);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

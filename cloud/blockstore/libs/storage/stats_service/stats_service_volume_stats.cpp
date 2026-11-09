@@ -147,7 +147,7 @@ void TStatsServiceActor::HandleGetVolumeStats(
     for (auto& v: ev->Get()->VolumeStats) {
         if (v.GetHost()) {
             if (const auto* volume = State.GetVolume(v.GetDiskId())) {
-                const auto& counters = volume->TotalBlobIoCounters;
+                const auto& counters = volume->BlobLoadCountersDiff;
 
                 v.SetReadBlobCount(counters.ReadBlob.Count);
                 v.SetReadBlobBytes(counters.ReadBlob.Bytes);

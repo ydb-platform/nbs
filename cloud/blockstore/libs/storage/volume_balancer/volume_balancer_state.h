@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
@@ -40,7 +41,6 @@ class TVolumeBalancerState
 
         ui32 SufferCount = 0;
 
-        std::optional<TBlobIoCounters> LoadCounters;
         std::optional<TDuration> Cost;
 
         TVolumeInfo(TDuration pullInterval);
@@ -134,8 +134,8 @@ private:
         TInstant now) const;
 
     std::optional<TDuration> CalculateCostPerIO(
-        const TVolumeInfo& prevInfo,
-        const TBlobIoCounters& currentLoad) const;
+        const TBlobIoCounters& counters,
+        const NProto::EStorageMediaKind& mediaKind) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

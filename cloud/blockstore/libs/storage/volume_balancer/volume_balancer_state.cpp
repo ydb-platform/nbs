@@ -83,7 +83,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         }
 
         if (info.IsLocal) {
-            TBlobIoCounters currentCounters{
+            TBlobIoCounters counters{
                 .ReadBlob =
                     {
                         .Count = v.GetReadBlobCount(),
@@ -96,11 +96,9 @@ void TVolumeBalancerState::UpdateVolumeStats(
                     },
             };
 
-            info.Cost = CalculateCostPerIO(info, currentCounters);
-            info.LoadCounters = currentCounters;
+            info.Cost = CalculateCostPerIO(counters, info.MediaKind);
         } else {
             info.Cost = std::nullopt;
-            info.LoadCounters = std::nullopt;
         }
 
         knownDisks.erase(v.GetDiskId());
@@ -345,27 +343,10 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
 }
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
-    const TVolumeInfo& prevInfo,
-    const TBlobIoCounters& currentLoad) const
+    const TBlobIoCounters& load,
+    const NProto::EStorageMediaKind& mediaKind) const
 {
-    if (!prevInfo.LoadCounters.has_value()) {
-        // Unable to calculate cost: No counters from previous iteration
-        return std::nullopt;
-    }
-
-    const auto& last = prevInfo.LoadCounters.value();
-
-    if (currentLoad.WriteBlob.Bytes < last.WriteBlob.Bytes ||
-        currentLoad.WriteBlob.Count < last.WriteBlob.Count ||
-        currentLoad.ReadBlob.Bytes < last.ReadBlob.Bytes ||
-        currentLoad.ReadBlob.Count < last.ReadBlob.Count)
-    {
-        // Unable to calculate cost: Negative counters diff
-        return std::nullopt;
-    }
-
-    const auto perfSettings =
-        GetPerfSettings(*DiagnosticsConfig, prevInfo.MediaKind);
+    const auto perfSettings = GetPerfSettings(*DiagnosticsConfig, mediaKind);
 
     if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
@@ -376,20 +357,18 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
         DiagnosticsConfig->GetExpectedIoParallelism();
 
     const TDuration writeCost =
-        expectedParallelism *
-        CostPerIO(
-            perfSettings.Write.Iops,
-            perfSettings.Write.Bandwidth,
-            currentLoad.WriteBlob.Bytes - last.WriteBlob.Bytes,
-            currentLoad.WriteBlob.Count - last.WriteBlob.Count);
+        expectedParallelism * CostPerIO(
+                                  perfSettings.Write.Iops,
+                                  perfSettings.Write.Bandwidth,
+                                  load.WriteBlob.Bytes,
+                                  load.WriteBlob.Count);
 
     const TDuration readCost =
-        expectedParallelism *
-        CostPerIO(
-            perfSettings.Read.Iops,
-            perfSettings.Read.Bandwidth,
-            currentLoad.ReadBlob.Bytes - last.ReadBlob.Bytes,
-            currentLoad.ReadBlob.Count - last.ReadBlob.Count);
+        expectedParallelism * CostPerIO(
+                                  perfSettings.Read.Iops,
+                                  perfSettings.Read.Bandwidth,
+                                  load.WriteBlob.Bytes,
+                                  load.WriteBlob.Count);
 
     return writeCost + readCost;
 }

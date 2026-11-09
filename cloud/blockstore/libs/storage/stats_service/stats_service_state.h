@@ -168,7 +168,7 @@ struct TVolumeStatsInfo
 
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
-    TBlobIoCounters TotalBlobIoCounters;
+    TBlobIoCounters BlobLoadCountersDiff;
 
     TVolumeStatsInfo(
         NProto::TVolume config,
