@@ -556,6 +556,86 @@ struct TTestIamTokenClient: public IIamTokenClient
 
 Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 {
+    Y_UNIT_TEST(ShouldValidateConnectionSettingsWithoutStatsTables)
+    {
+        NProto::TYdbStatsConfig config;
+        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+
+        config.SetDatabaseName("/Root");
+        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+
+        config.SetServerAddress("localhost:2135");
+        UNIT_ASSERT(TYdbStatsConfig(config).IsValid());
+
+        config.ClearDatabaseName();
+        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+    }
+
+    Y_UNIT_TEST(ShouldUploadGroupsAndPartitionsWithoutStatsAndHistory)
+    {
+        NProto::TYdbStatsConfig configProto;
+        configProto.SetDatabaseName("/Root");
+        configProto.SetServerAddress("localhost:2135");
+        configProto.SetGroupsTableName("groups");
+        configProto.SetPartitionsTableName("partitions");
+        auto config = std::make_shared<TYdbStatsConfig>(configProto);
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        THashMap<TString, ui32> uploads;
+        ydbTestStorage->UploadTestFunc = [&](TString tableName, NYdb::TValue)
+        {
+            ++uploads[tableName];
+            return MakeFuture(MakeError(S_OK));
+        };
+
+        for (ui32 i = 0; i < 2; ++i) {
+            auto response =
+                uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads["/Root/groups"]);
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads["/Root/partitions"]);
+        UNIT_ASSERT_VALUES_EQUAL(2, ydbTestStorage->DescribeTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(2, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->GetHistoryTablesCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DropTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->AlterTableCalls);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteUploadWithoutConfiguredTables)
+    {
+        NProto::TYdbStatsConfig configProto;
+        configProto.SetDatabaseName("/Root");
+        configProto.SetServerAddress("localhost:2135");
+        auto config = std::make_shared<TYdbStatsConfig>(configProto);
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        auto response = uploader->UploadStats(BuildTestYdbRowData());
+        UNIT_ASSERT(response.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DescribeTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->GetHistoryTablesCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DropTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->AlterTableCalls);
+    }
+
     Y_UNIT_TEST(ShouldCreateTablesIfNessesary)
     {
         auto config = CreateTestConfig();

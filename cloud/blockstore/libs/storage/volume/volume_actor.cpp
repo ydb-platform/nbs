@@ -513,7 +513,8 @@ void TVolumeActor::DoRegisterVolume(
             volume.GetDiskId(),
             TabletID(),
             std::move(volume),
-            SelfId());
+            SelfId(),
+            Info()->Channels);
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
     }
 }

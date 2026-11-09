@@ -73,8 +73,6 @@ const NProto::TYdbStatsConfig& TYdbStatsConfig::GetConfigProto() const
 bool TYdbStatsConfig::IsValid() const
 {
     return
-        YdbStatsConfig.GetStatsTableName() &&
-        YdbStatsConfig.GetHistoryTablePrefix() &&
         YdbStatsConfig.GetDatabaseName() &&
         YdbStatsConfig.GetServerAddress();
 }

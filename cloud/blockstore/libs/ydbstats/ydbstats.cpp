@@ -514,6 +514,10 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addPartitionsRows));
     }
 
+    if (dataForUpload.empty()) {
+        return MakeFuture(MakeError(S_OK));
+    }
+
     auto executor = std::make_shared<TBulkUpsertExecutor>(
         DbStorage,
         Config->GetDatabaseName(),
@@ -550,7 +554,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
                 });
         }
 
-        if (State == WORKING) {
+        if (State == WORKING && Config->GetHistoryTablePrefix()) {
             auto sinceLastCheck = (TInstant::Now() - LastCleanupCheck).Days();
             auto threshold = Config->GetHistoryTableLifetimeDays();
             if (!CleanupRunning && sinceLastCheck >= threshold) {
@@ -649,6 +653,9 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupStatsTable() const
 {
     auto tableName = Config->GetStatsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
     return SetupTable(tableName, TableSchemes.Stats).Apply(
         [=] (const auto& future) {
             return TSetupTableResult(future.GetValue(), tableName);
@@ -703,6 +710,10 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
 
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
 {
+    if (!Config->GetHistoryTablePrefix()) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK)));
+    }
+
     return DbStorage->GetHistoryTables().Apply(
         [=, this] (const auto& future) {
             const auto& result = future.GetValue();
@@ -825,6 +836,10 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
 
 bool TYdbStatsUploader::IsRotationRequired(TInstant ts) const
 {
+    if (!Config->GetHistoryTablePrefix()) {
+        return false;
+    }
+
     auto configValue = Config->GetStatsTableRotationAfterDays();
     auto currentDay = TInstant::Now().Days();
     return currentDay - ts.Days() >= configValue;

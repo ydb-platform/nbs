@@ -166,6 +166,9 @@ struct TVolumeStatsInfo
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
 
+    // Real disk ID maps to its Volume tablet ID and channels.
+    THashMap<TString, std::pair<ui64, TVector<NKikimr::TTabletChannelInfo>>>
+        VolumeChannelInfos;
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
