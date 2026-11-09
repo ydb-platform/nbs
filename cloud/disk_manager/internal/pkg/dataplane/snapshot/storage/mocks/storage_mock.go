@@ -263,6 +263,36 @@ func (s *StorageMock) ListSnapshots(
 	return args.Get(0).(tasks_common.StringSet), args.Error(1)
 }
 
+func (s *StorageMock) ListSnapshotsBefore(
+	ctx context.Context,
+	creatingBefore time.Time,
+	afterSnapshotID string,
+	limit uint64,
+) ([]string, error) {
+
+	args := s.Called(ctx, creatingBefore, afterSnapshotID, limit)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (s *StorageMock) AddSnapshotParents(
+	ctx context.Context,
+	snapshotID string,
+	parentIDs map[string]struct{},
+) error {
+
+	args := s.Called(ctx, snapshotID, parentIDs)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetSnapshotParents(
+	ctx context.Context,
+	snapshotID string,
+) ([]string, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Get(0).([]string), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorageMock() *StorageMock {

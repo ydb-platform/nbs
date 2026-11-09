@@ -46,6 +46,37 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.EstablishSnapshotInheritance",
+		func() tasks.Task {
+			return &establishSnapshotInheritanceTask{
+				storage: storage,
+				batchSize: int(
+					config.GetEstablishSnapshotInheritanceBatchSize(),
+				),
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.EstablishSnapshotInheritanceForAllSnapshots",
+		func() tasks.Task {
+			return &establishSnapshotInheritanceForAllSnapshotsTask{
+				storage:   storage,
+				scheduler: taskScheduler,
+				inflightLimit: uint64(
+					config.GetEstablishSnapshotInheritanceInflightLimit(),
+				),
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromSnapshot", func() tasks.Task {
 		return &createSnapshotFromSnapshotTask{
 			config:            config,
@@ -342,6 +373,12 @@ func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
 ////////////////////////////////////////////////////////////////////////////////
 
 var newTaskByTaskType = map[string]func() tasks.Task{
+	"dataplane.EstablishSnapshotInheritance": func() tasks.Task {
+		return &establishSnapshotInheritanceTask{}
+	},
+	"dataplane.EstablishSnapshotInheritanceForAllSnapshots": func() tasks.Task {
+		return &establishSnapshotInheritanceForAllSnapshotsTask{}
+	},
 	"dataplane.CreateSnapshotFromDisk":      func() tasks.Task { return &createSnapshotFromDiskTask{} },
 	"dataplane.CreateSnapshotFromSnapshot":  func() tasks.Task { return &createSnapshotFromSnapshotTask{} },
 	"dataplane.CreateSnapshotFromURL":       func() tasks.Task { return &createSnapshotFromURLTask{} },

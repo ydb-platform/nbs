@@ -14,6 +14,8 @@ SRCS(
     delete_disk_from_incremental.proto
     delete_snapshot_data_task.proto
     delete_snapshot_task.proto
+    establish_snapshot_inheritance_task.proto
+    establish_snapshot_inheritance_for_all_snapshots_task.proto
     migrate_snapshot_task.proto
     migrate_snapshot_database_task.proto
     replicate_disk_task.proto

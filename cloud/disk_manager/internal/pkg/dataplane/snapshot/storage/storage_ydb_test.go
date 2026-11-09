@@ -1937,12 +1937,346 @@ func TestReadChunkBlobStoredInYDB(t *testing.T) {
 }
 
 func TestGetSnapshotIDFromChunkID(t *testing.T) {
-	require.Equal(t, "snap1", getSnapshotIDFromChunkID("task1.snap1.7"))
-	require.Equal(t, "snap.1", getSnapshotIDFromChunkID("task1.snap.1.7"))
-	require.Empty(t, getSnapshotIDFromChunkID("task1.snap1"))
-	require.Empty(t, getSnapshotIDFromChunkID(""))
+	snapshotID := "snapshot"
+	chunkID := makeChunkID("task", snapshotID, dataplane_common.Chunk{Index: 7})
+	require.Equal(t, snapshotID, GetSnapshotIDFromChunkID(chunkID))
 
-	require.True(t, IsChunkCreatedBySnapshot("task1.snap.1.7", "snap.1"))
-	require.False(t, IsChunkCreatedBySnapshot("task1.snap1.7", "snap2"))
+	require.True(t, IsChunkCreatedBySnapshot(chunkID, snapshotID))
+	require.False(t, IsChunkCreatedBySnapshot(chunkID, "another-snapshot"))
 	require.False(t, IsChunkCreatedBySnapshot("", ""))
+}
+
+func TestAddSnapshotParents(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	for _, snapshotID := range []string{"child", "other-child"} {
+		_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: snapshotID})
+		require.NoError(t, err)
+	}
+
+	parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+	require.NoError(t, err)
+	require.Empty(t, parents)
+
+	// Parent metadata is not required. Replaying a batch must not duplicate
+	// edges, and a snapshot must never become its own parent.
+	for i := 0; i < 2; i++ {
+		err = f.storage.AddSnapshotParents(
+			f.ctx,
+			"child",
+			map[string]struct{}{
+				"missing-parent-a": {},
+				"missing-parent-b": {},
+				"child":            {},
+				"":                 {},
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	parents, err = f.storage.GetSnapshotParents(f.ctx, "child")
+	require.NoError(t, err)
+	require.Equal(t, []string{"missing-parent-a", "missing-parent-b"}, parents)
+
+	err = f.storage.AddSnapshotParents(
+		f.ctx,
+		"other-child",
+		map[string]struct{}{"other-parent": {}},
+	)
+	require.NoError(t, err)
+	parents, err = f.storage.GetSnapshotParents(f.ctx, "other-child")
+	require.NoError(t, err)
+	require.Equal(t, []string{"other-parent"}, parents)
+}
+
+func TestAddAndDeleteSnapshotParentsInBatches(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	for _, snapshotID := range []string{"child", "grandchild"} {
+		_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: snapshotID})
+		require.NoError(t, err)
+		err = f.storage.SnapshotCreated(f.ctx, snapshotID, 0, 0, 0, nil)
+		require.NoError(t, err)
+	}
+
+	// Exercise many full transactions and a final partial batch in one call.
+	const parentCount = 100_001
+	parentIDs := map[string]struct{}{"": {}, "child": {}}
+	expectedParents := make([]string, 0, parentCount)
+	for i := 0; i < parentCount; i++ {
+		parentID := fmt.Sprintf("parent-%06d", i)
+		parentIDs[parentID] = struct{}{}
+		expectedParents = append(expectedParents, parentID)
+	}
+
+	// Both the initial addition and a retry must persist every unique parent.
+	for i := 0; i < 2; i++ {
+		err := f.storage.AddSnapshotParents(f.ctx, "child", parentIDs)
+		require.NoError(t, err)
+		parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+		require.NoError(t, err)
+		require.Equal(t, expectedParents, parents)
+	}
+
+	err := f.storage.AddSnapshotParents(
+		f.ctx,
+		"grandchild",
+		map[string]struct{}{"child": {}, "parent-000000": {}},
+	)
+	require.NoError(t, err)
+
+	_, err = f.storage.DeletingSnapshot(f.ctx, "child", "delete-task")
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		err = f.storage.DeleteSnapshotData(f.ctx, "child")
+		require.NoError(t, err)
+		parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+		require.NoError(t, err)
+		require.Empty(t, parents)
+	}
+
+	deleting, err := f.storage.GetSnapshotsToDelete(
+		f.ctx,
+		time.Now().Add(time.Second),
+		10,
+	)
+	require.NoError(t, err)
+	require.Len(t, deleting, 1)
+	err = f.storage.ClearDeletingSnapshots(f.ctx, deleting)
+	require.NoError(t, err)
+	meta, err := f.storage.GetSnapshotMeta(f.ctx, "child")
+	require.NoError(t, err)
+	require.Nil(t, meta)
+	parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+	require.NoError(t, err)
+	require.Empty(t, parents)
+
+	// Deleting a snapshot must not erase its descendants' ancestry.
+	parents, err = f.storage.GetSnapshotParents(f.ctx, "grandchild")
+	require.NoError(t, err)
+	require.Equal(t, []string{"child", "parent-000000"}, parents)
+}
+
+func TestShallowCopyRecordsChunkCreators(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(
+			testCase.name,
+			func(t *testing.T) {
+				f := createFixture(t)
+				defer f.teardown()
+
+				snapshotIDs := []string{"creator", "intermediate", "child"}
+				for _, snapshotID := range snapshotIDs {
+					_, err := f.storage.CreateSnapshot(
+						f.ctx,
+						SnapshotMeta{ID: snapshotID},
+					)
+					require.NoError(t, err)
+				}
+
+				chunkID, err := f.storage.WriteChunk(
+					f.ctx,
+					"create-task",
+					"creator",
+					makeChunk(0, "inherited data"),
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+				err = f.storage.ShallowCopySnapshot(
+					f.ctx,
+					"creator",
+					"intermediate",
+					0,
+					nil,
+				)
+				require.NoError(t, err)
+				_, err = f.storage.WriteChunk(
+					f.ctx,
+					"create-task",
+					"intermediate",
+					makeChunk(1, "new data"),
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+				_, err = f.storage.WriteChunk(
+					f.ctx,
+					"create-task",
+					"intermediate",
+					makeZeroChunk(2),
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+
+				// Both the creator and the intermediate snapshot own chunks
+				// in the child. Replaying the copy does not duplicate edges.
+				for i := 0; i < 2; i++ {
+					err = f.storage.ShallowCopySnapshot(
+						f.ctx,
+						"intermediate",
+						"child",
+						0,
+						nil,
+					)
+					require.NoError(t, err)
+				}
+
+				parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+				require.NoError(t, err)
+				require.Equal(t, []string{"creator", "intermediate"}, parents)
+
+				// Zero and self-owned chunks introduce no parent.
+				ownChunkID, err := f.storage.WriteChunk(
+					f.ctx,
+					"create-task",
+					"child",
+					makeChunk(3, "own data"),
+					testCase.useS3,
+				)
+				require.NoError(t, err)
+				err = f.storage.ShallowCopyChunk(
+					f.ctx,
+					ChunkMapEntry{
+						ChunkIndex: 3,
+						ChunkID:    ownChunkID,
+						StoredInS3: testCase.useS3,
+					},
+					"child",
+				)
+				require.NoError(t, err)
+				parents, err = f.storage.GetSnapshotParents(f.ctx, "child")
+				require.NoError(t, err)
+				require.Equal(t, []string{"creator", "intermediate"}, parents)
+
+				// Removing the creator's data and metadata must preserve the
+				// ancestry of its still-referenced chunks.
+				_, err = f.storage.DeletingSnapshot(
+					f.ctx,
+					"creator",
+					"delete-task",
+				)
+				require.NoError(t, err)
+				err = f.storage.DeleteSnapshotData(f.ctx, "creator")
+				require.NoError(t, err)
+				deleting, err := f.storage.GetSnapshotsToDelete(
+					f.ctx,
+					time.Now().Add(time.Second),
+					10,
+				)
+				require.NoError(t, err)
+				require.Len(t, deleting, 1)
+				err = f.storage.ClearDeletingSnapshots(f.ctx, deleting)
+				require.NoError(t, err)
+				meta, err := f.storage.GetSnapshotMeta(f.ctx, "creator")
+				require.NoError(t, err)
+				require.Nil(t, meta)
+				parents, err = f.storage.GetSnapshotParents(f.ctx, "child")
+				require.NoError(t, err)
+				require.Equal(t, []string{"creator", "intermediate"}, parents)
+
+				// Copying after deletion still records the original creator
+				// without consulting its missing snapshot metadata.
+				err = f.storage.ShallowCopySnapshot(
+					f.ctx,
+					"child",
+					"later-child",
+					0,
+					nil,
+				)
+				require.NoError(t, err)
+				parents, err = f.storage.GetSnapshotParents(
+					f.ctx,
+					"later-child",
+				)
+				require.NoError(t, err)
+				require.Equal(
+					t,
+					[]string{"child", "creator", "intermediate"},
+					parents,
+				)
+				blobs := readChunkBlobs(f, testCase.useS3, chunkID)
+				require.Equal(
+					t,
+					[]chunkBlob{{chunkID, 3, []byte("inherited data")}},
+					blobs,
+				)
+			},
+		)
+	}
+}
+
+func TestShallowCopyRejectsMalformedChunkID(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	err := f.storage.ShallowCopyChunk(
+		f.ctx,
+		ChunkMapEntry{ChunkID: "malformed"},
+		"child",
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Empty(t, readChunkMap(f, "child"))
+	parents, err := f.storage.GetSnapshotParents(f.ctx, "child")
+	require.NoError(t, err)
+	require.Empty(t, parents)
+}
+
+func TestListSnapshotsBefore(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	beforeCreation := time.Now().Truncate(time.Microsecond)
+	for _, testCase := range []struct {
+		id     string
+		status snapshotStatus
+	}{
+		{"f-ready", snapshotStatusReady},
+		{"c-deleting", snapshotStatusDeleting},
+		{"b-ready", snapshotStatusReady},
+		{"a-creating", snapshotStatusCreating},
+		{"d-at-cutoff", snapshotStatusReady},
+		{"e-after", snapshotStatusReady},
+	} {
+		_, err := f.storage.CreateSnapshot(
+			f.ctx,
+			SnapshotMeta{ID: testCase.id},
+		)
+		require.NoError(t, err)
+
+		if testCase.status != snapshotStatusCreating {
+			err = f.storage.SnapshotCreated(f.ctx, testCase.id, 0, 0, 0, nil)
+			require.NoError(t, err)
+		}
+
+		if testCase.status == snapshotStatusDeleting {
+			_, err = f.storage.DeletingSnapshot(f.ctx, testCase.id, "delete-task")
+			require.NoError(t, err)
+		}
+	}
+
+	// Use the stored timestamp to check that the cutoff is exclusive.
+	snapshot, err := f.storage.(*storageYDB).getSnapshot(f.ctx, "d-at-cutoff")
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	cutoff := snapshot.creatingAt
+
+	ids, err := f.storage.ListSnapshotsBefore(f.ctx, cutoff, "", 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a-creating", "b-ready"}, ids)
+	ids, err = f.storage.ListSnapshotsBefore(f.ctx, cutoff, ids[len(ids)-1], 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"f-ready"}, ids)
+	ids, err = f.storage.ListSnapshotsBefore(f.ctx, cutoff, ids[len(ids)-1], 2)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+	ids, err = f.storage.ListSnapshotsBefore(
+		f.ctx,
+		beforeCreation,
+		"",
+		10,
+	)
+	require.NoError(t, err)
+	require.Empty(t, ids)
 }
