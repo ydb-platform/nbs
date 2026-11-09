@@ -168,6 +168,8 @@ struct TVolumeStatsInfo
 
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
+    TBlobIoCounters TotalBlobIoCounters;
+
     TVolumeStatsInfo(
         NProto::TVolume config,
         const TDiagnosticsConfig& diagnosticsConfig)

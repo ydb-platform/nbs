@@ -83,7 +83,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         }
 
         if (info.IsLocal) {
-            TYdbDiskLoadCounters currentLoadCounters{
+            TBlobIoCounters currentCounters{
                 .ReadBlob =
                     {
                         .Count = v.GetReadBlobCount(),
@@ -96,8 +96,8 @@ void TVolumeBalancerState::UpdateVolumeStats(
                     },
             };
 
-            info.Cost = CalculateCostPerIO(info, currentLoadCounters);
-            info.LoadCounters = currentLoadCounters;
+            info.Cost = CalculateCostPerIO(info, currentCounters);
+            info.LoadCounters = currentCounters;
         } else {
             info.Cost = std::nullopt;
             info.LoadCounters = std::nullopt;
@@ -346,7 +346,7 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
     const TVolumeInfo& prevInfo,
-    const TYdbDiskLoadCounters& currentLoad) const
+    const TBlobIoCounters& currentLoad) const
 {
     if (!prevInfo.LoadCounters.has_value()) {
         // Unable to calculate cost: No counters from previous iteration
