@@ -209,6 +209,84 @@ struct TMetadataCachingEnv
     }
 };
 
+void CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(bool xattrExists)
+{
+    TMetadataCachingEnv env;
+    env.XAttrCacheTTL = 0;
+    env.XAttrExists = xattrExists;
+
+    auto setPromise = NewPromise();
+    std::atomic<bool> setRequested = false;
+    env.Bootstrap.Service->SetHandlerSetNodeXAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            setRequested = true;
+            NProto::TSetNodeXAttrResponse response;
+            response.SetVersion(100);
+            return setPromise.GetFuture().Apply(
+                [response] (const auto&) { return response; });
+        });
+
+    auto getPromise = NewPromise();
+    std::atomic<bool> getRequested = false;
+    env.Bootstrap.Service->SetHandlerGetNodeXAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            auto response = env.HandleGetNodeXAttr();
+            if (!getRequested.exchange(true)) {
+                return getPromise.GetFuture().Apply(
+                    [response] (const auto&) { return response; });
+            }
+            return MakeFuture(response);
+        });
+
+    auto setXAttr = env.Bootstrap.Fuse->SendRequest<TSetXAttrValueRequest>(
+        "user.a",
+        "new",
+        FileNodeId);
+    UNIT_ASSERT(WaitForCondition(
+        WaitTimeout,
+        [&] { return setRequested.load(); }));
+
+    //
+    // GetXAttr starts after the invalidation and is processed by the backend
+    // before SetXAttr, but its response arrives after the SetXAttr response.
+    //
+
+    env.EventHandler->OnDisconnect(1 /* tabletId */);
+    auto getXAttr = env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+        "user.a",
+        FileNodeId);
+    UNIT_ASSERT(WaitForCondition(
+        WaitTimeout,
+        [&] { return getRequested.load(); }));
+
+    setPromise.SetValue();
+    UNIT_ASSERT_NO_EXCEPTION(setXAttr.GetValue(WaitTimeout));
+
+    getPromise.SetValue();
+    if (xattrExists) {
+        UNIT_ASSERT_VALUES_EQUAL("1", getXAttr.GetValue(WaitTimeout));
+    } else {
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            getXAttr.GetValue(WaitTimeout),
+            TSystemError,
+            [] (const TSystemError& e) { return e.Status() == ENODATA; });
+    }
+
+    //
+    // Neither the older value nor the absence is cached.
+    //
+
+    env.XAttrExists = true;
+    UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
+    UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
+}
+
 NProto::TNodeAttr MakeFileAttr(ui64 nodeId)
 {
     NProto::TNodeAttr attrs;
@@ -512,8 +590,8 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
 
         //
-        // The SetXAttr response may not be cached, but the older value is
-        // erased.
+        // The SetXAttr response may not be cached, but it invalidates the
+        // older value.
         //
 
         promise.SetValue();
@@ -572,6 +650,18 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.XAttrExists = true;
         UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterSetXAttrRacingWithDelayedGetXAttr)
+    {
+        CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(
+            true /* xattrExists */);
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterSetXAttrRacingWithDelayedAbsentXAttr)
+    {
+        CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(
+            false /* xattrExists */);
     }
 
     Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidations)
@@ -846,64 +936,6 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
 
         timer->AdvanceTime(TDuration::Seconds(45));
         UNIT_ASSERT(!cache.Get(1, "a"));
-    }
-
-    Y_UNIT_TEST(ShouldEraseStaleXAttrsUponNotCacheableValues)
-    {
-        TXAttrCache cache(
-            std::make_shared<TTestTimer>(),
-            10 /* maxSize */,
-            TDuration::Seconds(15));
-
-        cache.InvalidateAll(5 /* version */);
-        cache.Add(
-            1,
-            "a",
-            "v1",
-            1 /* version */,
-            5 /* cacheVersion */,
-            {} /* cacheTTL */);
-        cache.Add(
-            1,
-            "b",
-            "v1",
-            3 /* version */,
-            5 /* cacheVersion */,
-            {} /* cacheTTL */);
-        cache.AddAbsent(1, "c", 5 /* cacheVersion */, {} /* cacheTTL */);
-
-        //
-        // The values fetched by the requests started before the invalidation
-        // are not cached, but they erase the cached values with lower
-        // versions and the cached absences.
-        //
-
-        cache.Add(
-            1,
-            "a",
-            "v2",
-            2 /* version */,
-            4 /* cacheVersion */,
-            {} /* cacheTTL */);
-        UNIT_ASSERT(!cache.Get(1, "a"));
-
-        cache.Add(
-            1,
-            "b",
-            "v2",
-            2 /* version */,
-            4 /* cacheVersion */,
-            {} /* cacheTTL */);
-        UNIT_ASSERT_VALUES_EQUAL("v1", *cache.Get(1, "b")->Value);
-
-        cache.Add(
-            1,
-            "c",
-            "v2",
-            2 /* version */,
-            4 /* cacheVersion */,
-            {} /* cacheTTL */);
-        UNIT_ASSERT(!cache.Get(1, "c"));
     }
 
     Y_UNIT_TEST(ShouldNotCacheAbsenceOverValue)

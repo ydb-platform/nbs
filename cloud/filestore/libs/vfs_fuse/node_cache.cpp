@@ -120,21 +120,11 @@ void TXAttrCache::Add(
     ui64 cacheVersion,
     TDuration cacheTTL)
 {
-    const auto* current = Get(ino, name);
     if (!IsCacheable(ino, name, cacheVersion)) {
-        //
-        // The value may be outdated, but it is still newer than a cached
-        // value with a lower version or a cached absence - such an entry is
-        // stale (e.g. it has been fetched by a GetNodeXAttr which has raced
-        // with the client's own SetNodeXAttr).
-        //
-
-        if (current && current->Version < version) {
-            Erase(ino, name);
-        }
         return;
     }
 
+    const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
             TKey{ino, name},

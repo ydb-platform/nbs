@@ -225,9 +225,7 @@ public:
 
     /**
      * Caches an xattr value unless the xattr has been invalidated after
-     * cacheVersion or a newer value is cached. A value which may not be
-     * cached still erases the cached value with a lower version and the
-     * cached absence.
+     * cacheVersion or a newer value is cached.
      *
      * @param ino - Node id.
      * @param name - Xattr name.
@@ -263,6 +261,17 @@ public:
         const TString& name,
         ui64 cacheVersion,
         TDuration cacheTTL);
+
+    /**
+     * Checks whether the data fetched by a request may be cached.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @param cacheVersion - Cache version at which the request has started.
+     * @return - False if the xattr or all the xattrs of the node have been
+     *  invalidated after cacheVersion.
+     */
+    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
 
     /**
      * Looks up a cached xattr value or absence.
@@ -307,7 +316,6 @@ public:
     size_t GetEntryCount() const;
 
 private:
-    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
     void Erase(ui64 ino, const TString& name);
     TInstant GetDeadline(TDuration cacheTTL) const;
 };

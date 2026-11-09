@@ -63,10 +63,10 @@ nonzero TTL means the client is subscribed to the corresponding key.
   responses carry no version, so an absence can't be ordered against a
   value - the client drops both instead of caching the absence over a cached
   value
-- A response which may not be cached (it has raced with an invalidation)
-  still erases the cached value with a lower version and the cached absence -
-  otherwise a response to a GetNodeXAttr racing with the client's own
-  SetNodeXAttr could stay in the cache and break read-after-write
+- A response to the client's own SetNodeXAttr which may not be cached (it has
+  raced with an invalidation) invalidates the XAttr itself - otherwise a
+  GetNodeXAttr processed by the backend before the SetNodeXAttr could cache
+  the older value or its absence and break read-after-write
 - XAttrCacheTTL = 0: the client falls back to the legacy time-based
   expiration (`XAttrCacheTimeout`) - the cache predates FileSystemEvents
 
