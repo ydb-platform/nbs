@@ -213,10 +213,12 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     const auto& compactionFeature = BPConfig.CompactionScoreFeatureConfig;
     const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
+    // Every unflushed fresh blob is also untrimmed.
+    Y_DEBUG_ABORT_UNLESS(
+        GetUnflushedFreshBlobByteCount() <= GetUntrimmedFreshBlobByteCount());
+
     const ui64 freshByteCount =
-        Max<ui64>(
-            GetUntrimmedFreshBlobByteCount(),
-            GetUnflushedFreshBlobByteCount()) +
+        GetUntrimmedFreshBlobByteCount() +
         GetStats().GetFreshBlocksCount() * GetBlockSize();
 
     return {

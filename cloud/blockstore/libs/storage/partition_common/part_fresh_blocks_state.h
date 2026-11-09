@@ -138,6 +138,7 @@ private:
 
     ui64 UntrimmedFreshBlobByteCount = 0;
     TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+    ui64 TrimmedToCommitId = 0;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
@@ -178,7 +179,8 @@ public:
     // Returns the unflushed bytes removed.
     [[nodiscard]] ui64 TrimFreshBlobs(ui64 commitId);
 
-    ui64 FlushFreshBlob(ui64 commitId, ui64 trimmedToCommitId);
+    // Returns the unflushed bytes removed.
+    [[nodiscard]] ui64 FlushFreshBlob(ui64 commitId);
 
 private:
     ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);

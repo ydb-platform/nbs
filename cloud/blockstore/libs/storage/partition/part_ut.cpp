@@ -3144,18 +3144,28 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WriteBlocks(1, 2);
         partition.WriteBlocks(2, 3);
 
+        bool holdAddBlobs = true;
         TAutoPtr<IEventHandle> addBlobs;
+        size_t flushedFreshBlobCount = 0;
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
-                if (event->GetTypeRewrite() ==
+                if (holdAddBlobs &&
+                    event->GetTypeRewrite() ==
                         TEvPartitionPrivate::EvAddBlobsRequest &&
                     event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
-                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT &&
-                    !addBlobs)
+                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
                 {
+                    holdAddBlobs = false;
                     addBlobs = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushCompleted)
+                {
+                    flushedFreshBlobCount =
+                        event->Get<TEvPartitionPrivate::TEvFlushCompleted>()
+                            ->FlushedFreshBlobCommitIds.size();
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -3185,6 +3195,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto stats = partition.StatPartition()->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, flushedFreshBlobCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(2),
