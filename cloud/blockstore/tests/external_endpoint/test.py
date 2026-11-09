@@ -17,7 +17,7 @@ from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
-    start_disk_agent, get_fqdn
+    start_disk_agent, get_fqdn, wait_for_counter
 
 import yatest.common as yatest_common
 
@@ -294,24 +294,15 @@ def test_external_endpoint(nbs, vol0_id, fake_vhost_server):
         except requests.ConnectionError:
             pass
 
-        # wait for the counters to be updated
-        time.sleep(15)
-
-        crit = nbs.counters.find({
-            'sensor': 'AppCriticalEvents/ExternalEndpointUnexpectedExit'
-        })
-        assert crit is not None
-        assert crit['value'] == 1
+        # Observe the crash in the completed publication interval.
+        sensor = 'AppCriticalEvents/ExternalEndpointUnexpectedExit'
+        wait_for_counter(nbs, sensor, 1)
 
         wait_for_vhost_server()
 
         client.stop_endpoint(unix_socket.name)
 
-    # wait for the counters to be updated
-    time.sleep(15)
-
-    crit = nbs.counters.find({
-        'sensor': 'AppCriticalEvents/ExternalEndpointUnexpectedExit'
-    })
-    assert crit is not None
-    assert crit['value'] == 1   # the same value
+    # Observe the empty interval after shutdown and reject another crash report.
+    wait_for_counter(nbs, sensor, 0)
+    with open(nbs.stderr_file_name) as log:
+        assert log.read().count(f'CRITICAL_EVENT:{sensor}:') == 1
