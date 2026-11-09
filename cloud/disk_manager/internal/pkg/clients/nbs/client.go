@@ -600,6 +600,7 @@ type client struct {
 	sessionMetricsRegistry        metrics.Registry
 	metrics                       client_metrics.Metrics
 	enableThrottlingForMediaKinds []core_protos.EStorageMediaKind
+	proxyOverlayDiskMediaKind     core_protos.EStorageMediaKind
 	sessionRediscoverPeriodMin    time.Duration
 	sessionRediscoverPeriodMax    time.Duration
 	serverRequestTimeout          time.Duration
@@ -947,7 +948,7 @@ func (c *client) CreateProxyOverlayDisk(
 			// disk. Otherwise, the underlying GetChangedBlocks operation cannot
 			// work correctly.
 			BlockSize:        volume.BlockSize,
-			StorageMediaKind: core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
+			StorageMediaKind: c.proxyOverlayDiskMediaKind,
 			PartitionsCount:  1,
 			IsSystem:         true,
 			EncryptionSpec: &protos.TEncryptionSpec{
