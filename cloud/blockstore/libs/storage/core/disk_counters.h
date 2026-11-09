@@ -1031,15 +1031,14 @@ struct TVolumeSelfCounters
 
 struct TBlobIoCounters
 {
-    struct TOperations
+    struct TCounters
     {
         ui64 Count = 0;
         ui64 Bytes = 0;
     };
 
-    TOperations ReadBlob;
-    TOperations WriteBlob;
-
+    TCounters ReadBlob;
+    TCounters WriteBlob;
     void Assign(const THistogramRequestCounters& counters);
 };
 

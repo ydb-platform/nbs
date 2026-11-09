@@ -95,7 +95,6 @@ void TVolumeBalancerState::UpdateVolumeStats(
                         .Bytes = v.GetWriteBlobBytes(),
                     },
             };
-
             info.Cost = CalculateCostPerIO(counters, info.MediaKind);
         } else {
             info.Cost = std::nullopt;
@@ -369,7 +368,6 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
                                   perfSettings.Read.Bandwidth,
                                   load.WriteBlob.Bytes,
                                   load.WriteBlob.Count);
-
     return writeCost + readCost;
 }
 
