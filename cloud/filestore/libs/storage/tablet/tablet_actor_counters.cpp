@@ -827,6 +827,7 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSuffer(Metrics->Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+    stats->SetTotalNodesCount(GetNodesCount());
 
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 

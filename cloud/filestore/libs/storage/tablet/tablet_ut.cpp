@@ -56,6 +56,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         tablet.RebootTablet();
         tablet.WaitReady();
 
+        const auto storageStats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedNodesCount,
+            storageStats.GetTotalNodesCount());
+
         env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
 
         auto counters = env.GetRuntime().GetAppData().Counters;
