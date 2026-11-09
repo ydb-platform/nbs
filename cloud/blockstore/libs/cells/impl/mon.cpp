@@ -647,6 +647,10 @@ private:
         }
 
         TStringStream out;
+        if (const auto& error = params.Get("TransportError")) {
+            out << "<div class='alert alert-danger'>" << EncodeHtmlPcdata(error)
+                << "</div>";
+        }
         RenderCellsPage(
             out,
             *CellManager->Config,
@@ -701,37 +705,29 @@ private:
                 });
     }
 
-    void ReplyTransportChanged(
+    static void ReplyTransportChanged(
         const TActorContext& ctx,
         TActorId replyTo,
         ui64 cookie,
         const NProto::TError& error)
     {
-        if (!HasError(error)) {
-            // The browser must land on a GET, so reload does not repeat Apply.
-            // Viewer prepends /node/<id> to this root-relative location.
-            ctx.Send(
-                replyTo,
-                new NMon::TEvHttpInfoRes(
-                    "HTTP/1.1 303 See Other\r\n"
-                    "Location: /blockstore/cells\r\n"
-                    "Content-Length: 0\r\n\r\n",
-                    0,
-                    NMon::IEvHttpInfoRes::Custom),
-                0,
-                cookie);
-            return;
+        TStringBuilder location;
+        location << "/blockstore/cells";
+        if (HasError(error)) {
+            location << "?TransportError=" << CGIEscapeRet(FormatError(error));
         }
-
-        TStringStream out;
-        out << "<div class='alert alert-danger'>"
-            << EncodeHtmlPcdata(FormatError(error)) << "</div>";
-        RenderCellsPage(
-            out,
-            *CellManager->Config,
-            CellManager->GetSnapshot(),
-            *DiagnosticsConfig);
-        ctx.Send(replyTo, new NMon::TEvHttpInfoRes(out.Str()), 0, cookie);
+        // Land on a GET even after an error, so reload does not repeat Apply.
+        // Viewer prepends /node/<id> to this root-relative location.
+        ctx.Send(
+            replyTo,
+            new NMon::TEvHttpInfoRes(
+                TStringBuilder() << "HTTP/1.1 303 See Other\r\n"
+                                 << "Location: " << location << "\r\n"
+                                 << "Content-Length: 0\r\n\r\n",
+                0,
+                NMon::IEvHttpInfoRes::Custom),
+            0,
+            cookie);
     }
 
     void HandleTransportChanged(

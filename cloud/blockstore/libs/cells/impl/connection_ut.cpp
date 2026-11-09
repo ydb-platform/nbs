@@ -22,6 +22,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/yexception.h>
 
+#include <array>
 #include <functional>
 
 namespace NCloud::NBlockStore::NCells {
@@ -224,6 +225,8 @@ struct TTestGrpcClient: public NClient::IEndpointFactory
         std::make_shared<TTestBlockStore>();
 
     TString LastControlHost;
+    bool CreateSeparateDataEndpoints = false;
+    TVector<std::shared_ptr<TTestBlockStore>> DataEndpoints;
 
     void Start() override
     {}
@@ -248,7 +251,13 @@ struct TTestGrpcClient: public NClient::IEndpointFactory
         Y_UNUSED(host);
         Y_UNUSED(port);
         Y_UNUSED(isSecure);
-        return {};
+
+        if (!CreateSeparateDataEndpoints) {
+            return {};
+        }
+        auto endpoint = std::make_shared<TTestBlockStore>();
+        DataEndpoints.push_back(endpoint);
+        return endpoint;
     }
 };
 
@@ -425,6 +434,113 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TCellConnectionTest)
 {
+    Y_UNIT_TEST(ShouldReuseGrpcDataEndpointWhenSwitchingTransportOnTheSameHost)
+    {
+        for (const auto initialTransport:
+             std::array{
+                 NProto::CELL_DATA_TRANSPORT_GRPC,
+                 NProto::CELL_DATA_TRANSPORT_RDMA,
+             })
+        {
+            TTestEnv env(initialTransport, true);
+            env.GrpcClient->CreateSeparateDataEndpoints = true;
+            auto connection = env.Connect("host-a");
+            env.MountDisk(connection, "disk", "client");
+            UNIT_ASSERT_VALUES_EQUAL(env.GrpcClient->DataEndpoints.size(), 1);
+            const auto endpoint = env.GrpcClient->DataEndpoints.front();
+            ui32 grpcReads = 0;
+
+            for (const auto transport:
+                 std::array{
+                     NProto::CELL_DATA_TRANSPORT_RDMA,
+                     NProto::CELL_DATA_TRANSPORT_GRPC,
+                 })
+            {
+                const auto error = env.Switch("disk", "client", transport);
+                UNIT_ASSERT_C(!HasError(error), FormatError(error));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    env.GrpcClient->DataEndpoints.size(),
+                    1);
+                TTestEnv::Read(connection);
+                ++grpcReads;
+                UNIT_ASSERT_VALUES_EQUAL(endpoint->RequestCount, grpcReads);
+                if (transport == NProto::CELL_DATA_TRANSPORT_RDMA) {
+                    env.EndpointsSetup->RdmaHandler->HandleConnected();
+                    TTestEnv::Read(connection);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        env.RdmaServices.at("host-a")->RequestCount,
+                        1);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCreateGrpcDataEndpointWhenSwitchingFromRdmaOnly)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA);
+        env.GrpcClient->CreateSeparateDataEndpoints = true;
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        UNIT_ASSERT(env.GrpcClient->DataEndpoints.empty());
+
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_GRPC);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(env.GrpcClient->DataEndpoints.size(), 1);
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.GrpcClient->DataEndpoints.front()->RequestCount,
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldRetryRdmaSelectionWhenTheSwitcherCouldNotBePrepared)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, true);
+        env.EndpointsSetup->RefuseRdmaFor = "host-a";
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        UNIT_ASSERT(!env.EndpointsSetup->RdmaHandler);
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(mounts.front().DataTransport, "grpc fallback");
+        UNIT_ASSERT(
+            mounts.front().SelectedTransport ==
+            NProto::CELL_DATA_TRANSPORT_RDMA);
+
+        env.EndpointsSetup->RefuseRdmaFor.clear();
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            env.RdmaServices.at("host-a")->RequestCount,
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseOtherConnectionsBeforePreparingTransport)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true);
+        auto connection = env.Connect("host-a");
+        auto other = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+        env.MountDisk(other, "other-disk", "client");
+        std::weak_ptr<ICellConnection> weakOther = other;
+        env.EndpointsSetup->OnRdmaHandlerCreated = [&](const TString& fqdn)
+        {
+            Y_UNUSED(fqdn);
+
+            other.reset();
+            UNIT_ASSERT(weakOther.expired());
+        };
+
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_RDMA);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT(!other);
+    }
+
     Y_UNIT_TEST(ShouldRejectManualRdmaWithoutFallbackBeforePreparingEndpoint)
     {
         TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);

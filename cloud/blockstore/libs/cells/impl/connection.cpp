@@ -83,7 +83,8 @@ using THostBindingPtr = std::shared_ptr<THostBinding>;
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService);
+    const IBlockStorePtr& controlService,
+    IBlockStorePtr grpcDataEndpoint);
 
 IBlockStorePtr CreateGrpcDataEndpoint(
     const TBootstrap& bootstrap,
@@ -468,7 +469,10 @@ public:
                     E_ARGUMENT,
                     "Manual RDMA selection requires gRPC data fallback");
             }
-            if (Binding->HostConfig.GetTransport() == transport) {
+            if (Binding->HostConfig.GetTransport() == transport &&
+                (transport == NProto::CELL_DATA_TRANSPORT_GRPC ||
+                 Binding->Switcher))
+            {
                 TransportOverride = transport;
                 return {};
             }
@@ -792,7 +796,14 @@ private:
     {
         auto config = old.HostConfig;
         config.SetTransport(transport);
-        auto built = BuildHostBinding(Bootstrap, config, old.ControlService);
+        const bool hasGrpcDataEndpoint =
+            old.HostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_GRPC ||
+            old.HostConfig.GetGrpcDataFallbackEnabled();
+        auto built = BuildHostBinding(
+            Bootstrap,
+            config,
+            old.ControlService,
+            hasGrpcDataEndpoint ? old.DataEndpoint : nullptr);
         if (HasError(built)) {
             return built.GetError();
         }
@@ -950,7 +961,7 @@ private:
                     hostConfig.SetTransport(*TransportOverride);
                 }
             }
-            built = BuildHostBinding(Bootstrap, hostConfig, controlService);
+            built = BuildHostBinding(Bootstrap, hostConfig, controlService, {});
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
             return;
@@ -1362,7 +1373,8 @@ IBlockStorePtr CreateGrpcDataEndpoint(
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService)
+    const IBlockStorePtr& controlService,
+    IBlockStorePtr grpcDataEndpoint)
 {
     auto binding = std::make_shared<THostBinding>();
     binding->HostConfig = hostConfig;
@@ -1370,21 +1382,19 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
-            if (hostConfig.GetGrpcDataFallbackEnabled()) {
-                // the switcher starts on this and returns to it whenever rdma
-                // is not carrying data
-                binding->DataEndpoint = CreateGrpcDataEndpoint(
-                    bootstrap,
-                    hostConfig,
-                    controlService);
+            if (!hostConfig.GetGrpcDataFallbackEnabled()) {
+                return binding;
             }
-            return binding;
+            // The switcher uses the gRPC endpoint while RDMA is unavailable.
+            [[fallthrough]];
 
         case NProto::CELL_DATA_TRANSPORT_GRPC:
-            binding->DataEndpoint = CreateGrpcDataEndpoint(
-                bootstrap,
-                hostConfig,
-                controlService);
+            binding->DataEndpoint = grpcDataEndpoint
+                                        ? std::move(grpcDataEndpoint)
+                                        : CreateGrpcDataEndpoint(
+                                              bootstrap,
+                                              hostConfig,
+                                              controlService);
             return binding;
 
         default:
@@ -1438,10 +1448,15 @@ public:
             return MakeError(E_ARGUMENT, "Connection must be specified");
         }
 
+        TCellConnectionPtr selected;
         for (const auto& connection: GetLiveConnections()) {
             if (connection->GetConnectionId() == connectionId) {
-                return connection->SwitchDataTransport(transport);
+                selected = connection;
+                break;
             }
+        }
+        if (selected) {
+            return selected->SwitchDataTransport(transport);
         }
         return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
     }
@@ -1513,7 +1528,7 @@ TCellConnectionFuture CreateCellConnection(
             auto dataRouter = CreateEndpointRouter(controlService);
 
             auto built =
-                BuildHostBinding(bootstrap, hostConfig, controlService);
+                BuildHostBinding(bootstrap, hostConfig, controlService, {});
             if (HasError(built)) {
                 pool->ReleaseControlChannel(fqdn);
                 return MakeFuture(
