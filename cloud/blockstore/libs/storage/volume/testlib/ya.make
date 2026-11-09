@@ -14,6 +14,7 @@ PEERDIR(
 
     cloud/storage/core/libs/api
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/tablet_proxy
 
     library/cpp/lwtrace/mon
     library/cpp/testing/unittest
