@@ -108,7 +108,6 @@ TPartitionActor::TPartitionActor(
     }
 
     BlobCompressor = std::make_shared<TBlobCompressor>(
-        PartitionConfig.GetBlockSize(),
         HasError(codec.GetError())
             ? NProto::TCompressionMetadata::COMPRESSION_NONE
             : codec.GetResult(),
