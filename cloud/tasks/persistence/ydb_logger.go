@@ -44,7 +44,7 @@ func toFields(fields []ydb_log.Field) []logging.Field {
 
 func hasTransactionLocksInvalidated(fields []ydb_log.Field) bool {
 	for _, field := range fields {
-		if field.Type() != ydb_log.ErrorType{
+		if field.Type() != ydb_log.ErrorType {
 			continue
 		}
 
