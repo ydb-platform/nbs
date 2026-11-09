@@ -76,9 +76,10 @@ struct IRequestChannel
 
     // Send a serializable event and await its configured response type.
     // A mismatched response to a pending request closes the channel with
-    // E_BADMSG. If the timeout expires before send admission, the event is not
-    // sent. After admission, timeout does not prevent sending or remote
-    // execution. Overload returns E_REJECTED without sending the request.
+    // E_BADMSG. If the deadline expires before acceptance, the event is not
+    // sent. E_TIMEOUT does not cancel an accepted request: it may still be
+    // sent or executed remotely. Overload returns E_REJECTED without sending.
+    // Rejected calls return already completed futures.
     virtual TResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) = 0;
@@ -89,10 +90,9 @@ struct IRequestChannel
     // for WhenClosed(), or stop/destroy the executor from its own worker.
     virtual void Close() = 0;
 
-    // Ready after connection callbacks and all admitted result continuations
-    // finish. No new handler/result callbacks from previous work after this.
-    // Returns the first closure reason; local Close succeeds.
-    // Rejected calls made after Close return already completed futures.
+    // Ready after connection callbacks and admitted result continuations
+    // finish. An external thread may then stop and release the completion
+    // executor. Returns the first closure reason; local Close succeeds.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
     WhenClosed() const = 0;
 };
@@ -101,8 +101,9 @@ using IRequestChannelPtr = std::shared_ptr<IRequestChannel>;
 
 // Pass connected sockets after handshake; call Activate when the handler is
 // ready. The channel keeps the handler alive until destruction.
-// Use the same clock for timer and scheduler. Keep scheduler and completions
-// running until WhenClosed(); completions must enqueue asynchronously.
+// Use the same clock for timer and scheduler. Keep both scheduler and
+// completions running until WhenClosed(), retaining an owning reference to
+// completions. Completions must enqueue asynchronously.
 TResultOrError<IRequestChannelPtr> CreateRequestChannel(
     const ITransportPtr& transport,
     TSocketPtr socket,

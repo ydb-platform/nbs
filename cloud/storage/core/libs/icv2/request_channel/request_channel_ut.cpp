@@ -18,6 +18,8 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
 #include <util/generic/vector.h>
+#include <util/system/event.h>
+#include <util/system/mutex.h>
 
 #include <atomic>
 #include <functional>
@@ -147,12 +149,20 @@ void ReplyWithPayload(IIncomingRequest& request)
 
 class TTestConnection final: public IConnection
 {
-    std::mutex Mutex;
+    enum class EPhase
+    {
+        Created,
+        Active,
+        Closing,
+        Closed,
+    };
+
+    TMutex Mutex;
     std::shared_ptr<IConnectionHandler> Handler;
     TVector<TEvent> Sent;
     NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
-    bool Active = false;
-    bool Closing = false;
+    EPhase Phase = EPhase::Created;
+    size_t Operations = 0;
 
 public:
     std::function<void(NActors::IEventHandle&)> OnSend;
@@ -165,27 +175,39 @@ public:
 
     bool Activate() override
     {
-        std::lock_guard guard(Mutex);
-        if (Active || Closing) {
+        TGuard<TMutex> guard(Mutex);
+        if (Phase != EPhase::Created) {
             return false;
         }
-        Active = true;
+
+        Phase = EPhase::Active;
         return true;
     }
 
     ESendResult Send(TEvent event) override
     {
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Phase != EPhase::Active) {
+                return ESendResult::NotActive;
+            }
+
+            ++Operations;
+        }
+        Y_DEFER
+        {
+            FinishOperation();
+        };
+
         // Complete inline to exercise response-before-Send-returns admission.
         if (OnSend) {
             OnSend(*event);
         }
-        std::lock_guard guard(Mutex);
-        if (!Active || Closing) {
-            return ESendResult::NotActive;
-        }
+        TGuard<TMutex> guard(Mutex);
         if (SendResult != ESendResult::Accepted) {
             return SendResult;
         }
+
         Sent.push_back(std::move(event));
         return ESendResult::Accepted;
     }
@@ -195,15 +217,22 @@ public:
         if (BeforeClose) {
             BeforeClose();
         }
+        std::shared_ptr<IConnectionHandler> handler;
+        bool publish = false;
         {
-            std::lock_guard guard(Mutex);
-            if (Closing) {
+            TGuard<TMutex> guard(Mutex);
+            if (Phase == EPhase::Closing || Phase == EPhase::Closed) {
                 return;
             }
-            Closing = true;
-            Handler.reset();
+
+            Phase = EPhase::Closing;
+            handler = std::move(Handler);
+            publish = PrepareClosedLocked();
         }
-        Closed.SetValue();
+        handler.reset();
+        if (publish) {
+            Closed.SetValue();
+        }
     }
 
     NThreading::TFuture<void> WhenClosed() const override
@@ -214,30 +243,70 @@ public:
     TVector<TEvent> TakeSent()
     {
         TVector<TEvent> result;
-        std::lock_guard guard(Mutex);
+        TGuard<TMutex> guard(Mutex);
         result.swap(Sent);
         return result;
     }
 
     void Receive(TEvent event)
     {
-        if (auto handler = GetHandler()) {
+        if (auto handler = BeginCallback()) {
+            Y_DEFER
+            {
+                handler.reset();
+                FinishOperation();
+            };
             handler->HandleEvent(std::move(event));
         }
     }
 
     void Disconnect()
     {
-        if (auto handler = GetHandler()) {
+        if (auto handler = BeginCallback()) {
+            Y_DEFER
+            {
+                handler.reset();
+                FinishOperation();
+            };
             handler->HandleDisconnect("test peer disconnected");
         }
     }
 
 private:
-    std::shared_ptr<IConnectionHandler> GetHandler()
+    std::shared_ptr<IConnectionHandler> BeginCallback()
     {
-        std::lock_guard guard(Mutex);
+        TGuard<TMutex> guard(Mutex);
+        if (Phase != EPhase::Active) {
+            return {};
+        }
+
+        ++Operations;
         return Handler;
+    }
+
+    void FinishOperation()
+    {
+        bool publish = false;
+        {
+            TGuard<TMutex> guard(Mutex);
+            Y_ABORT_UNLESS(Operations);
+
+            --Operations;
+            publish = PrepareClosedLocked();
+        }
+        if (publish) {
+            Closed.SetValue();
+        }
+    }
+
+    bool PrepareClosedLocked()
+    {
+        if (Phase != EPhase::Closing || Operations) {
+            return false;
+        }
+
+        Phase = EPhase::Closed;
+        return true;
     }
 };
 
@@ -267,6 +336,31 @@ struct TTestTransport final: ITransport
     void Stop() override
     {
         RequestStop();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TAdvancingTimer final: public ITimer
+{
+    const TDuration Step;
+    TInstant Timestamp = TInstant::Zero();
+
+public:
+    explicit TAdvancingTimer(TDuration step)
+        : Step(step)
+    {}
+
+    TInstant Now() override
+    {
+        const auto now = Timestamp;
+        Timestamp += Step;
+        return now;
+    }
+
+    void Sleep(TDuration duration) override
+    {
+        Timestamp += duration;
     }
 };
 
@@ -339,6 +433,92 @@ public:
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TBlockingTaskQueue final: public ITaskQueue
+{
+public:
+    enum class EBlockAt
+    {
+        AfterExecute,
+        BeforeEnqueueReturn,
+    };
+
+    struct TEvents
+    {
+        TManualEvent TaskEnqueued;
+        TManualEvent TaskExecuted;
+        TManualEvent DestructionStarted;
+        TManualEvent Release;
+    };
+
+private:
+    const ITaskQueuePtr Queue;
+    const EBlockAt BlockAt;
+    const std::shared_ptr<TEvents> Events;
+
+public:
+    TBlockingTaskQueue(
+        ITaskQueuePtr queue,
+        EBlockAt blockAt,
+        std::shared_ptr<TEvents> events)
+        : Queue(std::move(queue))
+        , BlockAt(blockAt)
+        , Events(std::move(events))
+    {}
+
+    ~TBlockingTaskQueue() override
+    {
+        Events->DestructionStarted.Signal();
+    }
+
+    void Start() override
+    {
+        Queue->Start();
+    }
+
+    void Stop() override
+    {
+        Queue->Stop();
+    }
+
+    void Enqueue(ITaskPtr task) override
+    {
+        // Signals remain alive while the executor's destruction is in progress.
+        Queue->ExecuteSimple(
+            [task = std::move(task), events = Events, blockAt = BlockAt]
+            {
+                task->Execute();
+                events->TaskExecuted.Signal();
+                if (blockAt == EBlockAt::AfterExecute) {
+                    events->Release.WaitI();
+                }
+            });
+        Events->TaskEnqueued.Signal();
+        if (BlockAt == EBlockAt::BeforeEnqueueReturn) {
+            Events->Release.WaitI();
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void UnblockAndStopExecutor(
+    const std::weak_ptr<ITaskQueue>& executor,
+    TManualEvent& release,
+    const std::future<void>& destroying)
+{
+    // Retain ownership during failure cleanup before unblocking the worker.
+    const auto owner = executor.lock();
+    release.Signal();
+    if (destroying.valid()) {
+        destroying.wait();
+    }
+    if (owner) {
+        owner->Stop();
+    }
+}
 
 TSocketPtr CreateTestSocket()
 {
@@ -718,7 +898,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT_VALUES_EQUAL(GetPayload<TOtherResponse>(second), "other");
     }
 
-    Y_UNIT_TEST(SchedulerCanCloseChannelDuringRequestAdmission)
+    Y_UNIT_TEST(SchedulerCanCloseChannelBeforeSend)
     {
         TFixture fixture;
         fixture.Channel->Activate();
@@ -959,18 +1139,61 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
 
     Y_UNIT_TEST(DoesNotSendWhenTimeoutExpiresBeforeAdmission)
     {
+        const auto timeout = TDuration::MilliSeconds(10);
+        auto transport = std::make_shared<TTestTransport>();
+        auto scheduler = std::make_shared<TCountingScheduler>();
+        auto config = Config;
+        config.MaxPendingRequests = 1;
+        auto [channel, error] = CreateRequestChannel(
+            transport,
+            CreateTestSocket(),
+            {},
+            config,
+            std::make_shared<TAdvancingTimer>(timeout),
+            scheduler,
+            CreateTaskQueueStub(),
+            std::make_shared<TTestRequestHandler>(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); }));
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        Y_DEFER
+        {
+            channel->Close();
+            transport->Stop();
+        };
+        UNIT_ASSERT(channel->Activate());
+
+        auto expired = channel->Request(MakePing("expired"), timeout);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(expired).GetError().GetCode(),
+            E_TIMEOUT);
+        UNIT_ASSERT(transport->Connection->TakeSent().empty());
+
+        auto next = channel->Request(MakePing("next"), TDuration::Seconds(1));
+        auto sent = transport->Connection->TakeSent();
+        UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
+
+        transport->Connection->Receive(MakeResponse(sent[0]->Cookie, "reply"));
+        UNIT_ASSERT_VALUES_EQUAL(GetPayload(next), "reply");
+    }
+
+    Y_UNIT_TEST(TimeoutDuringTimerSchedulingDoesNotPreventSend)
+    {
         TFixture fixture;
         fixture.Channel->Activate();
         fixture.Scheduler->OnSchedule = [&]
         {
             fixture.Timer->AdvanceTime(TDuration::MilliSeconds(10));
+            fixture.Scheduler->RunAllScheduledTasks();
         };
 
         auto response = fixture.Request("ping", TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_TIMEOUT);
-        UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Transport->Connection->TakeSent().size(),
+            1);
     }
 
     Y_UNIT_TEST(TimeoutAfterAdmissionDoesNotPreventSend)
@@ -1056,6 +1279,118 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         fixture.Scheduler->RunAllScheduledTasks();
     }
 
+    Y_UNIT_TEST(CanDestroyCompletionExecutorAfterWhenClosed)
+    {
+        const auto events = std::make_shared<TBlockingTaskQueue::TEvents>();
+        auto queue = std::make_shared<TBlockingTaskQueue>(
+            CreateThreadPool("ICV2DestroyTest", 1),
+            TBlockingTaskQueue::EBlockAt::AfterExecute,
+            events);
+        queue->Start();
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            Config,
+            queue);
+        const std::weak_ptr<ITaskQueue> weak = queue;
+        std::future<void> destroying;
+        Y_DEFER
+        {
+            UnblockAndStopExecutor(weak, events->Release, destroying);
+        };
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        const auto response = fixture.Request();
+        const auto closed = fixture.Channel->WhenClosed();
+        fixture.Channel->Close();
+        UNIT_ASSERT(closed.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(events->TaskExecuted.WaitT(TDuration::Seconds(5)));
+
+        fixture.Channel.reset();
+        destroying = std::async(
+            std::launch::async,
+            [queue = std::move(queue)]() mutable { queue.reset(); });
+        const bool releasesExecutor =
+            events->DestructionStarted.WaitT(TDuration::Seconds(5));
+        const bool joinsWorker =
+            destroying.wait_for(0ms) == std::future_status::timeout;
+        UnblockAndStopExecutor(weak, events->Release, destroying);
+        destroying.get();
+        UNIT_ASSERT(releasesExecutor);
+        UNIT_ASSERT(joinsWorker);
+        UNIT_ASSERT(weak.expired());
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(response).GetError().GetCode(),
+            E_REJECTED);
+    }
+
+    Y_UNIT_TEST(WhenClosedWaitsForResultEnqueueToReturn)
+    {
+        const auto events = std::make_shared<TBlockingTaskQueue::TEvents>();
+        auto queue = std::make_shared<TBlockingTaskQueue>(
+            CreateThreadPool("ICV2EnqueueTest", 1),
+            TBlockingTaskQueue::EBlockAt::BeforeEnqueueReturn,
+            events);
+        queue->Start();
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            Config,
+            queue);
+        std::future<void> timer;
+        Y_DEFER
+        {
+            events->Release.Signal();
+            if (timer.valid()) {
+                timer.wait();
+            }
+            fixture.Channel->Close();
+            queue->Stop();
+        };
+        UNIT_ASSERT(fixture.Channel->Activate());
+
+        const auto response = fixture.Request();
+        response.Subscribe(
+            [&fixture](const auto& result)
+            {
+                Y_UNUSED(result);
+
+                fixture.Channel->Close();
+            });
+        const auto closed = fixture.Channel->WhenClosed();
+        fixture.Timer->AdvanceTime(TDuration::Seconds(5));
+        timer = std::async(
+            std::launch::async,
+            [&fixture] { fixture.Scheduler->RunAllScheduledTasks(); });
+        UNIT_ASSERT(events->TaskEnqueued.WaitT(TDuration::Seconds(5)));
+        UNIT_ASSERT(events->TaskExecuted.WaitT(TDuration::Seconds(5)));
+        UNIT_ASSERT(!closed.HasValue());
+
+        events->Release.Signal();
+        timer.get();
+        UNIT_ASSERT(closed.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            WaitResponse(response).GetError().GetCode(),
+            E_TIMEOUT);
+    }
+
+    Y_UNIT_TEST(ReleasesCompletionExecutorWithoutPendingRequests)
+    {
+        for (bool activate: {false, true}) {
+            auto queue = std::make_shared<TManualTaskQueue>();
+            const std::weak_ptr<ITaskQueue> weak = queue;
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                Config,
+                queue);
+            if (activate) {
+                UNIT_ASSERT(fixture.Channel->Activate());
+            }
+            fixture.Channel->Close();
+            UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
+            queue.reset();
+            UNIT_ASSERT(weak.expired());
+        }
+    }
+
     Y_UNIT_TEST(ContinuationCanReleaseLastChannelReference)
     {
         TFixture fixture;
@@ -1137,6 +1472,52 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         UNIT_ASSERT(weak.expired());
         UNIT_ASSERT(HasError(incoming->Reply(MakeReply("closed"))));
         incoming->CloseChannel();
+    }
+
+    Y_UNIT_TEST(CloseWaitsForConcurrentIncomingRequest)
+    {
+        auto entered = NThreading::NewPromise<void>();
+        auto release = NThreading::NewPromise<void>();
+        std::atomic<size_t> calls = 0;
+        TFixture fixture(
+            [&](IIncomingRequestPtr request)
+            {
+                Y_UNUSED(request);
+
+                ++calls;
+                entered.SetValue();
+                release.GetFuture().GetValueSync();
+            });
+        fixture.Channel->Activate();
+        std::future<void> receive;
+        Y_DEFER
+        {
+            release.TrySetValue();
+            if (receive.valid()) {
+                receive.wait();
+            }
+        };
+        receive = std::async(
+            std::launch::async,
+            [&]
+            {
+                fixture.Transport->Connection->Receive(
+                    MakeResponse<TEvDiagnostic::TEvPingRequest>(42, "request"));
+            });
+        UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
+
+        fixture.Channel->Close();
+        UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
+        UNIT_ASSERT(!fixture.Transport->Connection->WhenClosed().HasValue());
+
+        fixture.Transport->Connection->Receive(
+            MakeResponse<TEvDiagnostic::TEvPingRequest>(43, "after close"));
+        UNIT_ASSERT_VALUES_EQUAL(calls.load(), 1);
+
+        release.SetValue();
+        receive.get();
+        UNIT_ASSERT(fixture.Transport->Connection->WhenClosed().HasValue());
+        UNIT_ASSERT(fixture.Channel->WhenClosed().HasValue());
     }
 
     Y_UNIT_TEST(IncomingRequestAllowsOneMatchingReply)
@@ -1231,6 +1612,56 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             MakeResponse(sent[0]->Cookie, "second"));
         queue->RunAll();
         UNIT_ASSERT_VALUES_EQUAL(GetPayload(second), "second");
+    }
+
+    Y_UNIT_TEST(ConcurrentRequestsReuseAdmissionSlotsAfterCompletion)
+    {
+        constexpr ui32 WorkerCount = 4;
+        auto completions = CreateThreadPool("ICV2TestResult", WorkerCount);
+        completions->Start();
+        Y_DEFER
+        {
+            completions->Stop();
+        };
+        auto config = Config;
+        config.MaxPendingRequests = WorkerCount;
+        TFixture fixture(
+            [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+            config,
+            completions);
+        fixture.Channel->Activate();
+        fixture.Transport->Connection->OnSend =
+            [&](NActors::IEventHandle& event)
+        {
+            fixture.Transport->Connection->Receive(
+                MakeResponse(event.Cookie, "reply"));
+        };
+        std::array<std::future<void>, WorkerCount> callers;
+        Y_DEFER
+        {
+            for (auto& caller: callers) {
+                if (caller.valid()) {
+                    caller.wait();
+                }
+            }
+        };
+        for (auto& caller: callers) {
+            caller = std::async(
+                std::launch::async,
+                [&]
+                {
+                    for (size_t i = 0; i < 64; ++i) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            GetPayload(fixture.Request()),
+                            "reply");
+                    }
+                });
+        }
+        for (auto& caller: callers) {
+            caller.get();
+        }
+        fixture.Channel->Close();
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
     }
 
     Y_UNIT_TEST(WhenClosedWaitsForRunningTimeoutContinuation)
