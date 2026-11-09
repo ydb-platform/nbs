@@ -15,6 +15,7 @@
 #include <util/generic/scope.h>
 #include <util/stream/printf.h>
 
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <thread>
@@ -599,19 +600,15 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
         }
     };
 
-    TAdaptiveLock opcodesLock;
-    TVector<ibv_wr_opcode> postedOpcodes;
+    std::array<std::atomic<size_t>, IBV_WR_DRIVER1 + 1> postedOpcodes{};
     context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
-        with_lock (opcodesLock) {
-            postedOpcodes.push_back(wr->opcode);
-        }
+        ++postedOpcodes[wr->opcode];
         PostSend<TResponseMessage>(context, qp, wr);
     };
 
     auto countPosted = [&](ibv_wr_opcode opcode)
     {
-        auto guard = Guard(opcodesLock);
-        return static_cast<size_t>(Count(postedOpcodes, opcode));
+        return postedOpcodes[opcode].load();
     };
 
     auto waitPosted = [&](ibv_wr_opcode opcode, size_t count)
