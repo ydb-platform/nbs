@@ -570,6 +570,104 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.Lookup("f");
         UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
     }
+
+    Y_UNIT_TEST(ReproOwnSetXAttrLosesToOlderGet)
+    {
+        TMetadataCachingEnv env;
+        env.XAttrCacheTTL = 0;
+
+        std::atomic<bool> setApplied = false;
+        env.Bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                ++env.XAttrCount;
+                NProto::TGetNodeXAttrResponse response;
+                response.SetValue(setApplied ? "new" : "old");
+                response.SetVersion(setApplied ? 2 : 1);
+                return MakeFuture(response);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL("old", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.XAttrCount.load());
+
+        std::atomic<bool> setReceived = false;
+        auto setPromise = NewPromise<NProto::TSetNodeXAttrResponse>();
+        env.Bootstrap.Service->SetHandlerSetNodeXAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                setReceived = true;
+                return setPromise.GetFuture();
+            });
+
+        auto setXAttr = env.Bootstrap.Fuse->SendRequest<TSetXAttrValueRequest>(
+            "user.a",
+            "new",
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(WaitTimeout, [&] { return setReceived.load(); }));
+
+        // tablet pipe reconnect while the set is in flight
+        env.EventHandler->OnDisconnect(1);
+
+        // a later get reaches the backend before the set is applied
+        UNIT_ASSERT_VALUES_EQUAL("old", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
+
+        setApplied = true;
+        NProto::TSetNodeXAttrResponse response;
+        response.SetVersion(2);
+        setPromise.SetValue(response);
+        UNIT_ASSERT_NO_EXCEPTION(setXAttr.GetValue(WaitTimeout));
+
+        // setxattr("new") has returned, yet "old" is served from the cache
+        UNIT_ASSERT_VALUES_EQUAL("old", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
+
+        env.Timer->AdvanceTime(TDuration::Seconds(15));
+        UNIT_ASSERT_VALUES_EQUAL("new", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(3, env.XAttrCount.load());
+    }
+
+    Y_UNIT_TEST(ReproOwnSetXAttrLosesToOlderAbsent)
+    {
+        TMetadataCachingEnv env;
+        env.XAttrCacheTTL = 0;
+
+        auto getPromise = NewPromise<NProto::TGetNodeXAttrResponse>();
+        env.Bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                if (++env.XAttrCount == 1) {
+                    return getPromise.GetFuture();
+                }
+                NProto::TGetNodeXAttrResponse response;
+                response.SetValue("new");
+                response.SetVersion(1);
+                return MakeFuture(response);
+            });
+
+        // the get reads the backend before the set - "no such xattr"
+        auto getXAttr = env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.a",
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(WaitTimeout, [&] { return env.XAttrCount == 1; }));
+
+        env.SetXAttr("new");
+
+        NProto::TGetNodeXAttrResponse absent;
+        *absent.MutableError() = ErrorAttributeDoesNotExist("user.a");
+        getPromise.SetValue(absent);
+        UNIT_ASSERT_EXCEPTION(getXAttr.GetValue(WaitTimeout), TSystemError);
+
+        // setxattr("new") has returned, yet ENODATA is served from the cache
+        env.AssertXAttrAbsent();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.XAttrCount.load());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
