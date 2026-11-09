@@ -12,9 +12,11 @@ ListNodes
 PingSession
 ReadData
 ReadLink
+RemoveNodeXAttr
 RenameNode
 ResetSession
 SetNodeAttr
+SetNodeXAttr
 StatFileStore
 UnlinkNode
 WriteData
