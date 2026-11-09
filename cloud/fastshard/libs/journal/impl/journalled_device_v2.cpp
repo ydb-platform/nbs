@@ -26,7 +26,43 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration IdleFlushDelay = TDuration::MilliSeconds(100);
+constexpr TDuration IdleFlushDelay = TDuration::MilliSeconds(10);
+
+// How much a flush batch may hold.
+constexpr ui64 MaxFlushBatchPages = 1024;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Merges the pages of the records into page ranges with every page in one
+// range only, so that the data store is given no page twice. The records are
+// in lsn order, so the later record wins a page that two of them write.
+TVector<TPageRange> MergeRecordPages(const TJournalRecords& records)
+{
+    TMap<ui64 /*pageNo*/, const TString*> pages;
+
+    for (const auto& record: records) {
+        for (const auto& group: record.GetPageGroups()) {
+            ui64 pageNo = group.GetFirstPageNo();
+            for (const auto& content: group.GetContent()) {
+                pages[pageNo++] = &content;
+            }
+        }
+    }
+
+    TVector<TPageRange> ranges;
+
+    for (const auto& [pageNo, content]: pages) {
+        if (ranges.empty() ||
+            ranges.back().FirstPageNo + ranges.back().Pages.size() != pageNo)
+        {
+            ranges.push_back({.FirstPageNo = pageNo});
+        }
+
+        ranges.back().Pages.emplace_back(content->data(), content->size());
+    }
+
+    return ranges;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -382,41 +418,69 @@ private:
 
     void RunFlushCycle()
     {
-        ui64 maxAllowedLsn = IndexedLsnBarrier.GetBarrierLsn();
         ui64 lastFlushedLsn = 0;
 
         while (!ShouldStop.load()) {
-            auto future = Journal->GetRecordToFlush(maxAllowedLsn);
+            //
+            // Take the next batch of records the journal lets go of. The
+            // barrier is read anew every time: the records indexed while the
+            // previous batch was being flushed join this one
+            //
+
+            auto future = Journal->GetRecordsToFlush(
+                IndexedLsnBarrier.GetBarrierLsn(),
+                MaxFlushBatchPages);
+
             auto response = Executor->ExtractResponse(future);
             if (HasError(response)) {
                 STORAGE_ERROR(
-                    "unable to get the next record to flush: "
+                    "unable to get the next records to flush: "
                     << FormatError(response.GetError()));
                 break;
             }
 
-            auto record = response.ExtractResult();
-            ui64 lsn = record.GetLogSequenceNumber();
-            if (!lsn) {
-                // no record to flush
+            auto records = response.ExtractResult();
+            if (records.empty()) {
+                // nothing to flush
                 break;
             }
 
-            if (record.PageGroupsSize()) {
-                auto writeFuture =
-                    DataStore->WritePages(MakePageRanges(record));
+            const ui64 lsn = records.back().GetLogSequenceNumber();
+
+            //
+            // Write the pages of the whole batch in one request, the later
+            // records over the earlier ones, and only then mark the batch as
+            // flushed: a reader goes to the data store for the flushed
+            // records, so every page of the batch must be there first
+            //
+
+            auto ranges = MergeRecordPages(records);
+            if (!ranges.empty()) {
+                auto writeFuture = DataStore->WritePages(std::move(ranges));
 
                 auto writeError = Executor->WaitFor(writeFuture);
                 if (HasError(writeError)) {
                     STORAGE_ERROR(
-                        "unable to flush the record with lsn "
-                        << lsn << ": " << FormatError(writeError));
+                        "unable to flush "
+                        << records.size() << " records up to lsn " << lsn
+                        << ": " << FormatError(writeError));
                     break;
                 }
             }
 
             Journal->MarkRecordAsFlushed(lsn);
             lastFlushedLsn = lsn;
+
+            STORAGE_DEBUG(
+                "flushed " << records.size() << " records up to lsn " << lsn);
+
+            //
+            // Free the journal pages of the batch right away and not when the
+            // whole backlog is flushed: a journal that is catching up needs
+            // the pages for the records coming in
+            //
+
+            CleanupFlushedRecords(lastFlushedLsn);
         }
 
         if (ShouldStop.load()) {
@@ -424,6 +488,15 @@ private:
             return;
         }
 
+        CleanupFlushedRecords(lastFlushedLsn);
+
+        RunningCont()->SleepT(IdleFlushDelay);
+
+        ScheduleFlushCycle();
+    }
+
+    void CleanupFlushedRecords(ui64 lastFlushedLsn)
+    {
         auto future = Journal->CleanupFlushedRecords();
         const auto& response = Executor->WaitFor(future);
         if (HasError(response)) {
@@ -431,10 +504,6 @@ private:
                 "unable to cleanup flushed records up to lsn "
                 << lastFlushedLsn << ": " << FormatError(response));
         }
-
-        RunningCont()->SleepT(IdleFlushDelay);
-
-        ScheduleFlushCycle();
     }
 };
 

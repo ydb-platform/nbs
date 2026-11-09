@@ -513,18 +513,35 @@ struct TFixture: public NUnitTest::TBaseFixture
             .GetCode();
     }
 
-    TResultOrError<NCloud::NProto::TJournalRecord> GetRecordToFlush(
-        ui64 maxAllowedLsn = Max<ui64>())
+    // No limit on the lsn or the pages of the batch unless given one.
+    TResultOrError<TJournalRecords> GetRecordsToFlush(
+        ui64 maxAllowedLsn = Max<ui64>(),
+        ui64 maxPageCount = Max<ui64>())
     {
-        return Run([&] { return Journal->GetRecordToFlush(maxAllowedLsn); })
+        return Run(
+                   [&]
+                   {
+                       return Journal->GetRecordsToFlush(
+                           maxAllowedLsn,
+                           maxPageCount);
+                   })
             .GetValueSync();
     }
 
-    TString GetRecordToFlushDescription(ui64 maxAllowedLsn = Max<ui64>())
+    // "1<-0 10:[A010]; 2<-1 20:[B020]", empty when there is nothing to flush
+    TString GetRecordsToFlushDescription(
+        ui64 maxAllowedLsn = Max<ui64>(),
+        ui64 maxPageCount = Max<ui64>())
     {
-        auto result = GetRecordToFlush(maxAllowedLsn);
+        auto result = GetRecordsToFlush(maxAllowedLsn, maxPageCount);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
-        return DescribeRecord(result.GetResult());
+
+        TVector<TString> records;
+        for (const auto& record: result.GetResult()) {
+            records.push_back(DescribeRecord(record));
+        }
+
+        return JoinSeq("; ", records);
     }
 
     ui32 CleanupFlushedRecords()
@@ -724,13 +741,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the flusher starts where the restored log starts, not at lsn 0 -
         // the pages were never written, so only the record is looked at
         UNIT_ASSERT_STRING_CONTAINS(
-            GetRecordToFlushDescription(),
+            GetRecordsToFlushDescription(),
             "5<-4 10:[");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(6));
         Journal->MarkRecordAsFlushed(5);
         UNIT_ASSERT_STRING_CONTAINS(
-            GetRecordToFlushDescription(),
+            GetRecordsToFlushDescription(),
             "6<-5 20:[");
     }
 
@@ -764,7 +781,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
 
         // the restored record still holds every page of the store
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(2, 1, 'B', {{20, 1}}));
 
         // and its contents are where the mappings say they are
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1138,7 +1157,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(1, 0, 'A', {{10, 5}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(1, 0, 'A', {{10, 5}}));
 
         // the rejected record has taken nothing, the journal still fits four
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
@@ -1565,15 +1586,18 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         WriteThreeRecords();
 
         // nothing may leave the journal before the writer has acked it
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
 
         // and the caller may hold it back further
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription(0));
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordsToFlushDescription(1));
     }
 
     Y_UNIT_TEST_F(ShouldWalkRecordsToFlushInOrder, TFixture)
@@ -1582,21 +1606,53 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
+
+        // the batch starts right after the flushed lsn
 
         Journal->MarkRecordAsFlushed(1);
         UNIT_ASSERT_VALUES_EQUAL(
             "2<-1 20:[B020]",
-            GetRecordToFlushDescription());
+            GetRecordsToFlushDescription());
 
         Journal->MarkRecordAsFlushed(2);
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
         UNIT_ASSERT_VALUES_EQUAL(
             "3<-2 30:[C030]",
-            GetRecordToFlushDescription());
+            GetRecordsToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldLimitFlushBatch, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+
+        const ui64 anyLsn = Max<ui64>();
+        const ui64 anyPageCount = Max<ui64>();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020,B021]; 3<-2 30:[C030]",
+            GetRecordsToFlushDescription(anyLsn, anyPageCount));
+
+        // the batch stops before the record that takes it past the page
+        // budget
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020,B021]",
+            GetRecordsToFlushDescription(anyLsn, 3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordsToFlushDescription(anyLsn, 2));
+
+        // a record bigger than the whole budget is handed out on its own
+        Journal->MarkRecordAsFlushed(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020,B021]",
+            GetRecordsToFlushDescription(anyLsn, 1));
     }
 
     Y_UNIT_TEST_F(ShouldNotOfferUnwrittenRecordToFlusher, TFixture)
@@ -1604,7 +1660,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
 
         // lsn 1 has not been written at all, so the chain starts at a gap
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1613,18 +1669,20 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToFetchRecordToFlushWhenDeviceFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToFetchRecordsToFlushWhenDeviceFails, TFixture)
     {
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
 
         Device->FailReads.store(true);
 
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, GetRecordToFlush().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            GetRecordsToFlush().GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldCleanupFlushedRecords, TFixture)

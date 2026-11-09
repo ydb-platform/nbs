@@ -112,14 +112,25 @@ NCloud::NProto::TReadPagesResponse MakeReadResponse(
 NCloud::NProto::TJournalRecord MakeRecord(
     ui64 lsn,
     ui64 firstPageNo,
-    ui64 pageCount)
+    ui64 pageCount,
+    TStringBuf prefix = "J")
 {
     NCloud::NProto::TJournalRecord record;
     record.SetLogSequenceNumber(lsn);
     record.SetPrevLogSequenceNumber(lsn - 1);
-    *record.AddPageGroups() = MakeGroup(firstPageNo, pageCount, "J");
+    *record.AddPageGroups() = MakeGroup(firstPageNo, pageCount, prefix);
 
     return record;
+}
+
+ui64 CountPages(const NCloud::NProto::TJournalRecord& record)
+{
+    ui64 pageCount = 0;
+    for (const auto& group: record.GetPageGroups()) {
+        pageCount += group.ContentSize();
+    }
+
+    return pageCount;
 }
 
 // Serves every requested range ref with pages named after the device.
@@ -253,29 +264,44 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>();
     }
 
-    auto GetRecordToFlush(ui64 maxAllowedLsn) const
-        -> TFuture<TResultOrError<NCloud::NProto::TJournalRecord>> override
+    // Hands out the records the way the journal does: from the front, up to
+    // the lsn and the page count asked for - but at least one record.
+    TFuture<TResultOrError<TJournalRecords>> GetRecordsToFlush(
+        ui64 maxAllowedLsn,
+        ui64 maxPageCount) const override
     {
-        NCloud::NProto::TJournalRecord record;
+        UNIT_ASSERT(maxPageCount > 0);
+
+        TJournalRecords records;
+        ui64 pageCount = 0;
 
         with_lock (Mutex) {
-            if (!RecordsToFlush.empty() &&
-                RecordsToFlush.front().GetLogSequenceNumber() <= maxAllowedLsn)
-            {
-                // the record is kept until it gets acked
-                record = RecordsToFlush.front();
+            // the records are kept until they get acked
+            for (const auto& record: RecordsToFlush) {
+                if (record.GetLogSequenceNumber() > maxAllowedLsn){
+                    break;
+                }
+
+                const ui64 recordPageCount = CountPages(record);
+                if (!records.empty() &&
+                    pageCount + recordPageCount > maxPageCount)
+                {
+                    break;
+                }
+
+                records.push_back(record);
+                pageCount += recordPageCount;
             }
         }
 
-        return MakeFuture<TResultOrError<NCloud::NProto::TJournalRecord>>(
-            std::move(record));
+        return MakeFuture<TResultOrError<TJournalRecords>>(std::move(records));
     }
 
     void MarkRecordAsFlushed(ui64 lsn) override
     {
         with_lock (Mutex) {
-            if (!RecordsToFlush.empty() &&
-                RecordsToFlush.front().GetLogSequenceNumber() == lsn)
+            while (!RecordsToFlush.empty() &&
+                   RecordsToFlush.front().GetLogSequenceNumber() <= lsn)
             {
                 RecordsToFlush.pop_front();
             }
@@ -874,21 +900,44 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         WaitForAllRecordsToBeFlushed();
         StopDevice();
 
-        const auto writes = DataStore->GetWriteRequests();
-        UNIT_ASSERT_VALUES_EQUAL(3, writes.size());
-        UNIT_ASSERT_VALUES_EQUAL("10:[J10,J11]", DescribeRanges(writes[0]));
-        UNIT_ASSERT_VALUES_EQUAL("20:[J20]", DescribeRanges(writes[1]));
-        UNIT_ASSERT_VALUES_EQUAL("30:[J30,J31,J32]", DescribeRanges(writes[2]));
+        // the records that are flushable at once go to the data store in a
+        // single write
 
-        // every flushed record has been acked in the journal
+        const auto writes = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[J10,J11] 20:[J20] 30:[J30,J31,J32]",
+            DescribeRanges(writes[0]));
+
+        // and are acked in the journal as one batch, by the last lsn
 
         const auto flushedLsns = Journal->GetFlushedLsns();
-        UNIT_ASSERT_VALUES_EQUAL(3, flushedLsns.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
-        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns[1]);
-        UNIT_ASSERT_VALUES_EQUAL(3, flushedLsns[2]);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, flushedLsns[0]);
 
         UNIT_ASSERT_GE(Journal->GetCleanupCount(), 1);
+    }
+
+    Y_UNIT_TEST_F(ShouldWriteLaterRecordOverEarlierOneWithinBatch, TFixture)
+    {
+        Journal->RestoreResponse = 3;
+        Journal->AddRecordToFlush(MakeRecord(1, 10, 3, "J"));
+        Journal->AddRecordToFlush(MakeRecord(2, 11, 1, "K"));
+        Journal->AddRecordToFlush(MakeRecord(3, 13, 1, "L"));
+
+        StartDeviceAndCheck();
+        WaitForAllRecordsToBeFlushed();
+        StopDevice();
+
+        // a page two records of the batch write goes to the data store once,
+        // with the content of the later record - and the pages next to each
+        // other go in one range
+
+        const auto writes = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[J10,K11,J12,L13]",
+            DescribeRanges(writes[0]));
     }
 
     Y_UNIT_TEST_F(ShouldRetryFlushAfterDataStoreWriteError, TFixture)
@@ -948,14 +997,14 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         StopDevice();
 
         const auto writes = DataStore->GetWriteRequests();
-        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
-        UNIT_ASSERT_VALUES_EQUAL("10:[J10,J11]", DescribeRanges(writes[0]));
-        UNIT_ASSERT_VALUES_EQUAL("20:[J20]", DescribeRanges(writes[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[J10,J11] 20:[J20]",
+            DescribeRanges(writes[0]));
 
         const auto flushedLsns = Journal->GetFlushedLsns();
-        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns.size());
-        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
-        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns[1]);
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns[0]);
     }
 
     Y_UNIT_TEST_F(ShouldRejectRequestsWhenJournalRestoreFails, TFixture)
