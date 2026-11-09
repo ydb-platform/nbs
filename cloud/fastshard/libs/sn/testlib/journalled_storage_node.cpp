@@ -54,11 +54,13 @@ TJournalledStorageNode::TJournalledStorageNode(
             Logging,
             LogMetaDevice,
             Layout.LogMetaPageCount,
-            Layout.PageSize),
+            Layout.PageSize,
+            CalculateMinRecordBufferSize()),
         CreateDevicePageStore(
             LogDataDevice,
             Layout.LogDataPageCount,
-            Layout.PageSize),
+            Layout.PageSize,
+            EDevicePageStoreMode::Checked),
         Layout.DataPageCount);
 
     Device = CreateJournalledDeviceV2(

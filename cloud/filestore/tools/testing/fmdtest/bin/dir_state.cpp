@@ -35,6 +35,39 @@ bool NamesFromJson(const NJson::TJsonValue& json, TVector<TString>& names)
     return true;
 }
 
+NJson::TJsonValue AttrsToJson(const TFileAttrs& attrs)
+{
+    NJson::TJsonValue json(NJson::JSON_MAP);
+    json["ino"] = attrs.Ino;
+    json["mode"] = attrs.Mode;
+    json["size"] = attrs.Size;
+    json["links"] = attrs.Links;
+    json["mtimeNs"] = attrs.MTimeNs;
+    json["ctimeNs"] = attrs.CTimeNs;
+    return json;
+}
+
+bool AttrsFromJson(const NJson::TJsonValue& json, TFileAttrs& attrs)
+{
+    constexpr const char* Keys[] =
+        {"ino", "mode", "size", "links", "mtimeNs", "ctimeNs"};
+    for (const auto* key: Keys) {
+        if (!json[key].IsUInteger()) {
+            return false;
+        }
+    }
+
+    attrs = TFileAttrs{
+        .Ino = json["ino"].GetUInteger(),
+        .Mode = static_cast<ui32>(json["mode"].GetUInteger()),
+        .Size = json["size"].GetUInteger(),
+        .Links = json["links"].GetUInteger(),
+        .MTimeNs = json["mtimeNs"].GetUInteger(),
+        .CTimeNs = json["ctimeNs"].GetUInteger(),
+    };
+    return true;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,6 +84,10 @@ TString FormatAttrs(const TFileAttrs& attrs)
     buf.WriteULongLong(attrs.Size);
     buf.WriteKey("links");
     buf.WriteULongLong(attrs.Links);
+    buf.WriteKey("mtimeNs");
+    buf.WriteULongLong(attrs.MTimeNs);
+    buf.WriteKey("ctimeNs");
+    buf.WriteULongLong(attrs.CTimeNs);
     buf.EndObject();
     return buf.Str();
 }
@@ -60,15 +97,12 @@ NJson::TJsonValue TDirState::ToJson() const
     NJson::TJsonValue json(NJson::JSON_MAP);
     json["instance"] = InstanceId;
     json["round"] = Round;
+    json["dir"] = AttrsToJson(DirAttrs);
 
     auto& files = json["files"];
     files.SetType(NJson::JSON_MAP);
     for (const auto& [name, attrs]: Files) {
-        auto& file = files[name];
-        file["ino"] = attrs.Ino;
-        file["mode"] = attrs.Mode;
-        file["size"] = attrs.Size;
-        file["links"] = attrs.Links;
+        files[name] = AttrsToJson(attrs);
     }
 
     json["renamedFrom"] = NamesToJson(RenamedFrom);
@@ -89,21 +123,16 @@ TResultOrError<TDirState> TDirState::FromJson(const NJson::TJsonValue& json)
     state.InstanceId = json["instance"].GetUInteger();
     state.Round = json["round"].GetUInteger();
 
+    if (!AttrsFromJson(json["dir"], state.DirAttrs)) {
+        return MakeError(E_ARGUMENT, "malformed dir attrs");
+    }
+
     for (const auto& [name, file]: files.GetMapSafe()) {
-        if (!file["ino"].IsUInteger() || !file["mode"].IsUInteger() ||
-            !file["size"].IsUInteger() || !file["links"].IsUInteger())
-        {
+        if (!AttrsFromJson(file, state.Files[name])) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "malformed attrs of " << name.Quote());
         }
-
-        state.Files[name] = TFileAttrs{
-            .Ino = file["ino"].GetUInteger(),
-            .Mode = static_cast<ui32>(file["mode"].GetUInteger()),
-            .Size = file["size"].GetUInteger(),
-            .Links = file["links"].GetUInteger(),
-        };
     }
 
     if (!NamesFromJson(json["renamedFrom"], state.RenamedFrom) ||

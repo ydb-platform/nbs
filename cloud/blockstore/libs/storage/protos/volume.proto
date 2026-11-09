@@ -355,6 +355,9 @@ message TReallocateDiskRequest
 
     // Label of volume.
     string DiskId = 2;
+
+    // Tablet of the external volume that owns the disk. Zero uses SchemeShard.
+    uint64 ExternalVolumeTabletId = 3;
 }
 
 message TReallocateDiskResponse

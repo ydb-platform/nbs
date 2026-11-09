@@ -410,7 +410,12 @@ struct TFixture: public NUnitTest::TBaseFixture
     // allocation state is restored from the log records.
     void RecreateJournal()
     {
-        DataStore = CreateDevicePageStore(Device, PageCount, DefaultPageSize);
+        DataStore = CreateDevicePageStore(
+            Device,
+            PageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
+
         Journal = CreateJournal(
             Logging,
             Executor,

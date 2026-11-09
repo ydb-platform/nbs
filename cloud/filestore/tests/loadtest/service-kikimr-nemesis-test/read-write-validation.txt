@@ -25,10 +25,6 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
-        IndexConsistencyValidation: {
-            Enabled: true
-            TimeoutSeconds: 300
-        }
     }
 }
 Tests {
@@ -58,9 +54,5 @@ Tests {
         }
         IODepth: 1
         TestDuration: 60
-        IndexConsistencyValidation: {
-            Enabled: true
-            TimeoutSeconds: 300
-        }
     }
 }

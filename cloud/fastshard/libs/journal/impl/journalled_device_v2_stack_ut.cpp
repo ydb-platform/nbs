@@ -4,6 +4,7 @@
 #include "device_page_store.h"
 #include "journal.h"
 #include "key_buffer_store.h"
+#include "log_record.h"
 #include "memory_device.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
@@ -300,7 +301,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             Logging,
             LogMetaDevice,
             MetaPageCount,
-            MetaPageSize);
+            MetaPageSize,
+            CalculateMinRecordBufferSize());
 
         // the journal is the only caller and hands the store back the pages
         // it has allocated itself, and the ranges of a client request are

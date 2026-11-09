@@ -46,6 +46,8 @@ TFileAttrs ToFileAttrs(const TFileStat& st)
         .Mode = st.Mode,
         .Size = st.Size,
         .Links = st.NLinks,
+        .MTimeNs = static_cast<ui64>(st.MTime) * 1'000'000'000 + st.MTimeNSec,
+        .CTimeNs = static_cast<ui64>(st.CTime) * 1'000'000'000 + st.CTimeNSec,
     };
 }
 
@@ -188,10 +190,12 @@ private:
     NProto::TError Modify()
     {
         //
-        // Creates new files, then unlinks and renames random files (including
-        // the new ones). The names are never reused, so a renamed-from or
-        // unlinked name never exists again, and a rename never replaces an
-        // existing file.
+        // Creates new files, then unlinks, renames and overwrites random
+        // files (including the new ones). The names are never reused, so a
+        // renamed-from or unlinked name never exists again, and a rename never
+        // replaces an existing file. An overwrite doesn't change the file
+        // size - only its MTime and CTime change. The creations, unlinks and
+        // renames change the directory MTime and CTime.
         //
 
         for (ui32 i = 0; i < Options.FilesPerRound; ++i) {
@@ -226,6 +230,12 @@ private:
                 State.Files.erase(name);
                 State.Files[newName] = {};
                 State.RenamedFrom.push_back(name);
+            } else if (dice < Options.UnlinkPercentage +
+                    Options.RenamePercentage + Options.OverwritePercentage)
+            {
+                if (auto error = OverwriteFile(name); HasError(error)) {
+                    return error;
+                }
             }
         }
 
@@ -243,6 +253,45 @@ private:
             attrs = ToFileAttrs(st);
         }
 
+        const auto st = LStat(OwnDir);
+        if (st.IsNull()) {
+            return MakeSystemError("lstat", OwnDir);
+        }
+        State.DirAttrs = ToFileAttrs(st);
+
+        return {};
+    }
+
+    NProto::TError OverwriteFile(const TString& name)
+    {
+        const auto path = OwnDir / name;
+        TFileHandle file(path, OpenExisting | WrOnly);
+        if (!file.IsOpen()) {
+            return MakeSystemError("open", path);
+        }
+
+        //
+        // The files are never empty, see CreateFile.
+        //
+
+        const i64 size = file.GetLength();
+        if (size <= 0) {
+            return MakeSystemError("fstat", path);
+        }
+
+        const TString data(
+            1 + RandomNumber<ui64>(size),
+            'A' + RandomNumber<ui32>(26));
+        if (file.Pwrite(data.data(), data.size(), 0) !=
+                static_cast<i32>(data.size()))
+        {
+            return MakeSystemError("pwrite", path);
+        }
+
+        if (!file.Close()) {
+            return MakeSystemError("close", path);
+        }
+
         return {};
     }
 
@@ -254,8 +303,13 @@ private:
             return MakeSystemError("open", path);
         }
 
+        //
+        // The files are never empty so that they can be overwritten without
+        // changing their size.
+        //
+
         const TString data(
-            RandomNumber<ui32>(Options.FileSize + 1),
+            1 + RandomNumber<ui32>(Max(Options.FileSize, 1U)),
             'a' + NameCounter % 26);
         size_t written = 0;
         while (written < data.size()) {
@@ -291,10 +345,23 @@ private:
         const auto dir = TestDir / InstanceDirName(state.InstanceId);
 
         //
-        // The listing should contain exactly the expected names.
+        // The directory attrs (MTime and CTime in the first place) should be
+        // the ones observed by the owner.
         //
 
+        const auto dirStat = LStat(dir);
+        if (dirStat.IsNull()) {
+            ReportError(state, FormatError(MakeSystemError("lstat", dir)));
+        } else if (const auto actual = ToFileAttrs(dirStat);
+                   actual != state.DirAttrs)
+        {
+            ReportError(state, TStringBuilder() << "directory: expected "
+                << FormatAttrs(state.DirAttrs)
+                << ", actual " << FormatAttrs(actual));
+        }
+
         //
+        // The listing should contain exactly the expected names.
         // TFsPath::ListNames reports errors via exceptions.
         //
 

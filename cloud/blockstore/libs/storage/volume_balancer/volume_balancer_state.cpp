@@ -306,9 +306,7 @@ bool TVolumeBalancerState::IsPreemptionEnabled(
             diskId);
 
     const bool configuredOn =
-        isFeatureEnabledForFolder ||
-        StorageConfig->GetVolumeBalancerEnabled() ||
-        StorageConfig->GetVolumePreemptionType() != NProto::PREEMPTION_NONE;
+        isFeatureEnabledForFolder || StorageConfig->GetVolumeBalancerEnabled();
 
     return configuredOn && IsEnabled &&
            VolumeBalancerSwitch->IsBalancerEnabled();
