@@ -53,11 +53,10 @@ struct TMetadataCachingEnv
         CreateMultiFileSystemEventHandler();
     TBootstrap Bootstrap;
 
-    std::atomic<ui32> LookupCount = 0;
-    std::atomic<ui32> GetAttrCount = 0;
     std::atomic<ui32> NodeCacheTTL = CacheTTLMs;
     std::atomic<ui32> NodeRefCacheTTL = CacheTTLMs;
-    std::atomic<ui32> XAttrCount = 0;
+    // Each GetNodeXAttr response carries a new value.
+    std::atomic<ui32> LastXAttrValue = 0;
     std::atomic<ui32> SetXAttrCount = 0;
     std::atomic<ui32> XAttrCacheTTL = CacheTTLMs;
     std::atomic<bool> XAttrExists = true;
@@ -113,12 +112,10 @@ struct TMetadataCachingEnv
         NProto::TGetNodeAttrResponse response;
         auto* node = response.MutableNode();
         if (request.GetName()) {
-            ++LookupCount;
             node->SetId(FileNodeId);
             node->SetType(NProto::E_REGULAR_NODE);
             response.SetNodeRefCacheTTL(NodeRefCacheTTL);
         } else {
-            ++GetAttrCount;
             node->SetId(request.GetNodeId());
             node->SetType(
                 request.GetNodeId() == RootNodeId
@@ -132,7 +129,7 @@ struct TMetadataCachingEnv
 
     NProto::TGetNodeXAttrResponse HandleGetNodeXAttr()
     {
-        const ui32 count = ++XAttrCount;
+        const ui32 value = ++LastXAttrValue;
         NProto::TGetNodeXAttrResponse response;
         response.SetXAttrCacheTTL(XAttrCacheTTL);
         if (!XAttrExists) {
@@ -140,8 +137,8 @@ struct TMetadataCachingEnv
             return response;
         }
 
-        response.SetValue(ToString(count));
-        response.SetVersion(count);
+        response.SetValue(ToString(value));
+        response.SetVersion(value);
         return response;
     }
 
@@ -195,6 +192,16 @@ struct TMetadataCachingEnv
         UNIT_ASSERT_NO_EXCEPTION(getAttr.GetValue(WaitTimeout));
     }
 
+    i64 GetCounter(const TString& name)
+    {
+        Bootstrap.ModuleStatsRegistry->UpdateStats(true);
+        auto counters = Bootstrap.GetMetadataCacheCounters();
+        UNIT_ASSERT(counters);
+        auto counter = counters->FindCounter(name);
+        UNIT_ASSERT_C(counter, name);
+        return counter->Val();
+    }
+
     void SendEvent(NProto::TFileSystemEvent event)
     {
         event.SetFileSystemId(FileSystemId);
@@ -221,7 +228,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         TMetadataCachingEnv env;
 
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
 
         //
         // Both the NodeRef and the Node are cached - Lookup and GetAttr are
@@ -230,8 +237,10 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.Lookup("f");
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheHitCount"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("GetAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheHitCount"));
 
         //
         // The expired entries are not used.
@@ -239,18 +248,18 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.Timer->AdvanceTime(CacheTTL);
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
 
         env.Timer->AdvanceTime(CacheTTL);
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
 
         //
         // GetAttr responses are cached as well.
         //
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldNotCacheWithoutTTL)
@@ -266,11 +275,11 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.Lookup("f");
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
 
         env.GetAttr(FileNodeId);
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(2, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
 
         //
         // No NodeRefCacheTTL - the NodeRef is not cached, so the cached node
@@ -283,10 +292,10 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.NodeRefCacheTTL = 0;
         env.Lookup("f");
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(4, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(4, env.GetCounter("LookupCacheMissCount"));
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(2, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponEvents)
@@ -294,7 +303,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         TMetadataCachingEnv env;
 
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
 
         NProto::TFileSystemEvent event;
         auto* invalidate = event.MutableInvalidateNodeRef();
@@ -303,17 +312,26 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.SendEvent(event);
 
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("GetAttrCacheMissCount"));
 
         event.Clear();
         event.MutableInvalidateNode()->SetNodeId(FileNodeId);
         env.SendEvent(event);
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetCounter("InvalidateNodeRefEventCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("InvalidateNodeEventCount"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.GetCounter("InvalidateNodeXAttrEventCount"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("InvalidateAllCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponDisconnect)
@@ -324,11 +342,12 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.EventHandler->OnDisconnect(1 /* tabletId */);
 
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
 
         env.EventHandler->OnDisconnect(1 /* tabletId */);
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("InvalidateAllCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateXAttrCacheUponEvents)
@@ -337,11 +356,11 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
         UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
 
         env.SendXAttrEvent();
         UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
 
         //
         // The cached absence is invalidated as well.
@@ -351,7 +370,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.SendXAttrEvent();
         env.AssertXAttrAbsent();
         env.AssertXAttrAbsent();
-        UNIT_ASSERT_VALUES_EQUAL(3, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(3, env.GetCounter("GetXAttrCacheMissCount"));
 
         env.XAttrExists = true;
         env.SendXAttrEvent();
@@ -363,7 +382,12 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.EventHandler->OnDisconnect(1 /* tabletId */);
         UNIT_ASSERT_VALUES_EQUAL("5", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(5, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(5, env.GetCounter("GetXAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheHitCount"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            env.GetCounter("InvalidateNodeXAttrEventCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("InvalidateAllCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateXAttrsCachedUponSetXAttr)
@@ -372,11 +396,15 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.SetXAttr("x");
         UNIT_ASSERT_VALUES_EQUAL("x", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("GetXAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheHitCount"));
 
         env.SendXAttrEvent();
         UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetCounter("InvalidateNodeXAttrEventCount"));
     }
 
     Y_UNIT_TEST(ShouldCacheXAttrsForXAttrCacheTTLOrXAttrCacheTimeout)
@@ -411,14 +439,19 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
     {
         TMetadataCachingEnv env;
 
+        //
+        // The first request is delayed until the invalidation is applied.
+        //
+
         auto promise = NewPromise<NProto::TGetNodeXAttrResponse>();
+        std::atomic<bool> requested = false;
         env.Bootstrap.Service->SetHandlerGetNodeXAttr(
             [&] (auto callContext, auto request)
             {
                 Y_UNUSED(callContext);
                 Y_UNUSED(request);
                 auto response = env.HandleGetNodeXAttr();
-                if (env.XAttrCount == 1) {
+                if (!requested.exchange(true)) {
                     return promise.GetFuture().Apply(
                         [response] (const auto&) { return response; });
                 }
@@ -430,14 +463,14 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             FileNodeId);
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
-            [&] { return env.XAttrCount == 1; }));
+            [&] { return requested.load(); }));
 
         env.SendXAttrEvent();
         promise.SetValue({});
         UNIT_ASSERT_VALUES_EQUAL("1", getXAttr.GetValue(WaitTimeout));
 
         UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
-        UNIT_ASSERT_VALUES_EQUAL(2, env.XAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithInvalidations)
@@ -449,13 +482,18 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         // response may be stale.
         //
 
+        //
+        // The first request is delayed until the invalidations are applied.
+        //
+
         auto promise = NewPromise<NProto::TGetNodeAttrResponse>();
+        std::atomic<bool> requested = false;
         env.Bootstrap.Service->SetHandlerGetNodeAttr(
             [&] (auto callContext, auto request)
             {
                 Y_UNUSED(callContext);
                 auto response = env.HandleGetNodeAttr(*request);
-                if (env.LookupCount == 1) {
+                if (!requested.exchange(true)) {
                     return promise.GetFuture().Apply(
                         [response] (const auto&) { return response; });
                 }
@@ -466,7 +504,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             env.Bootstrap.Fuse->SendRequest<TLookupRequest>("f", RootNodeId);
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
-            [&] { return env.LookupCount == 1; }));
+            [&] { return requested.load(); }));
 
         NProto::TFileSystemEvent event;
         auto* invalidate = event.MutableInvalidateNodeRef();
@@ -482,9 +520,9 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(FileNodeId, lookup.GetValue(WaitTimeout));
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
@@ -497,7 +535,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
 
         env.GetAttr(RootNodeId);
         env.GetAttr(RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponLocalChanges)
@@ -542,7 +580,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_NO_EXCEPTION(setAttr.GetValue(WaitTimeout));
         env.GetAttr(FileNodeId);
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
 
         //
         // MkDir invalidates the parent (MTime/CTime/Links change).
@@ -552,23 +590,53 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             env.Bootstrap.Fuse->SendRequest<TMkDirRequest>("d", FileNodeId);
         UNIT_ASSERT_NO_EXCEPTION(mkDir.GetValue(WaitTimeout));
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(2, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
 
         //
         // Unlink invalidates the NodeRef and the target node (Links change).
         //
 
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(1, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
 
         auto unlink =
             env.Bootstrap.Fuse->SendRequest<TUnlinkRequest>("f", RootNodeId);
         UNIT_ASSERT_NO_EXCEPTION(unlink.GetValue(WaitTimeout));
 
         env.GetAttr(FileNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(3, env.GetAttrCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(3, env.GetCounter("GetAttrCacheMissCount"));
         env.Lookup("f");
-        UNIT_ASSERT_VALUES_EQUAL(2, env.LookupCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
+
+        //
+        // Local invalidations are not counted as events.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("InvalidateNodeEventCount"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.GetCounter("InvalidateNodeRefEventCount"));
+    }
+
+    Y_UNIT_TEST(ShouldReportCacheSizes)
+    {
+        TMetadataCachingEnv env;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeAttrsCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeRefCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("XAttrCacheSize"));
+
+        env.Lookup("f");
+        env.GetAttr(RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("NodeAttrsCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("NodeRefCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("XAttrCacheSize"));
+
+        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeAttrsCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeRefCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("XAttrCacheSize"));
     }
 }
 

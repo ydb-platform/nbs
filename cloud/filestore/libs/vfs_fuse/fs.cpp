@@ -453,12 +453,13 @@ IFileSystemPtr CreateFileSystem(
     IFileStorePtr session,
     IRequestStatsPtr stats,
     TDirectoryHandleModuleStatsPtr directoryHandleStats,
+    TMetadataCacheModuleStatsPtr metadataCacheStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
     TDirectoryHandleStoragePtr directoryHandleStorage,
     TWriteBackCache writeBackCache)
 {
-    return std::make_shared<TFileSystem>(
+    auto fileSystem = std::make_shared<TFileSystem>(
         std::move(logging),
         std::move(profileLog),
         std::move(scheduler),
@@ -467,10 +468,26 @@ IFileSystemPtr CreateFileSystem(
         std::move(session),
         std::move(stats),
         std::move(directoryHandleStats),
+        metadataCacheStats,
         std::move(queue),
         std::move(handleOpsQueue),
         std::move(directoryHandleStorage),
         std::move(writeBackCache));
+
+    //
+    // The stats don't keep the filesystem alive.
+    //
+
+    metadataCacheStats->SetSizeProvider(
+        [weak = std::weak_ptr<TFileSystem>(fileSystem)]
+        {
+            if (auto self = weak.lock()) {
+                return self->GetMetadataCacheSizes();
+            }
+            return TMetadataCacheSizes();
+        });
+
+    return fileSystem;
 }
 
 }   // namespace NCloud::NFileStore::NFuse
