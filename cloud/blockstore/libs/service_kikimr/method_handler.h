@@ -41,6 +41,8 @@ class TMethodHandler final
     using TResponse = typename T::TResponse;
     using TResponseProto = typename T::TResponseProto;
 
+    static constexpr bool HandlesWriteRequest = IsWriteRequest(T::Request);
+
     struct TRequestState
     {
         NThreading::TPromise<TResponseProto> Response;
@@ -158,7 +160,7 @@ public:
     {
         auto state = ExtractRequest(ev->Cookie);
         if (!state) {
-            if constexpr (IsWriteRequest(T::Request)) {
+            if (HandlesWriteRequest || ev->Cookie == 0) {
                 ReportServiceProxyReceivedUnknownCookie(
                     {{"request", GetBlockStoreRequestName(T::Request)},
                      {"cookie", ev->Cookie}});
@@ -188,7 +190,7 @@ public:
     void HandleTimeout(ui64 cookie, const NActors::TActorContext& ctx)
     {
         TRequestStatePtr state;
-        if constexpr (IsWriteRequest(T::Request)) {
+        if constexpr (HandlesWriteRequest) {
             state = FindRequest(cookie);
         } else {
             state = ExtractRequest(cookie);
@@ -207,7 +209,7 @@ public:
                 state->DiskId)
                 << " request wakeup timer hit");
 
-        if constexpr (IsWriteRequest(T::Request)) {
+        if constexpr (HandlesWriteRequest) {
             // Write requests are a special case: do not time them out because
             // TVolumeActor already protects against overlapping requests.
             ReportServiceProxyWakeupTimerHit(
