@@ -1,19 +1,11 @@
 #include "shard_creation_state_companion.h"
 
-#include <cloud/filestore/libs/storage/api/components.h>
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-
-#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
-
-#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/digest/city.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
-
-using namespace NActors;
 
 namespace {
 
@@ -76,13 +68,8 @@ TResultOrError<ui64> CalculateShardCreationTargetHash(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TShardCreationStateCompanion::TShardCreationStateCompanion(
-    TString fileSystemId,
-    TString logTag,
-    EMode mode)
+TShardCreationStateCompanion::TShardCreationStateCompanion(TString fileSystemId)
     : FileSystemId(std::move(fileSystemId))
-    , LogTag(std::move(logTag))
-    , Mode(mode)
 {}
 
 bool TShardCreationStateCompanion::IsPersistentStateLoaded() const
@@ -143,45 +130,6 @@ void TShardCreationStateCompanion::SetShardCreationState(
     ShardCreationState = state;
 }
 
-NProto::TError TShardCreationStateCompanion::ValidateTarget(
-    const NProtoPrivate::TFileSystemShardCreationState& state) const
-{
-    if (ShardCreationState.GetBaseShardCount() == state.GetBaseShardCount() &&
-        ShardCreationState.GetTargetShardCount() ==
-            state.GetTargetShardCount() &&
-        ShardCreationState.GetTargetShardConfigHash() ==
-            state.GetTargetShardConfigHash())
-    {
-        return {};
-    }
-
-    return MakeError(
-        E_INVALID_STATE,
-        TStringBuilder()
-            << "Shard creation target changed while request was in progress"
-            << " for filesystem " << FileSystemId.Quote()
-            << ": request base=" << ShardCreationState.GetBaseShardCount()
-            << ", target=" << ShardCreationState.GetTargetShardCount()
-            << ", hash=" << ShardCreationState.GetTargetShardConfigHash()
-            << "; stored base=" << state.GetBaseShardCount()
-            << ", target=" << state.GetTargetShardCount()
-            << ", hash=" << state.GetTargetShardConfigHash()
-            << ". Retry the request after the concurrent create/resize"
-            << " operation completes");
-}
-
-TResultOrError<bool> TShardCreationStateCompanion::MergeShardCreationState(
-    const NProtoPrivate::TFileSystemShardCreationState& state)
-{
-    if (CreatedShardBitmap) {
-        MergeCompressedBitmap(
-            *CreatedShardBitmap,
-            state.GetCreatedShardBitmap());
-    }
-    SetShardCreationState(state);
-    return HasUnpersistedCreatedShards();
-}
-
 NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
     const ui32 baseShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs)
@@ -223,115 +171,6 @@ NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
     CreatedShardBitmap = bitmap.ExtractResult();
 
     return {};
-}
-
-TResultOrError<bool>
-TShardCreationStateCompanion::HasUnpersistedCreatedShards() const
-{
-    if (!CreatedShardBitmap) {
-        return false;
-    }
-
-    const auto bitmap = LoadCompressedBitmap(
-        ShardCreationState.GetCreatedShardBitmap(),
-        ShardBitmapBitCount,
-        MaxShardCount);
-    if (HasError(bitmap)) {
-        return bitmap.GetError();
-    }
-    const auto& persisted = *bitmap.GetResult();
-
-    for (ui64 shardIndex = 0; shardIndex < ShardBitmapBitCount; ++shardIndex) {
-        if (CreatedShardBitmap->Test(shardIndex) && !persisted.Test(shardIndex))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void TShardCreationStateCompanion::UpdateShardCreationState(
-    const TActorContext& ctx) const
-{
-    if (!CreatedShardBitmap) {
-        LogStateUnavailable(ctx);
-        return;
-    }
-
-    // Implement this block after adding ShardCreationState
-    // into TEvUnsafeChangeTabletStateRequest
-    Y_ABORT("add ShardCreationState into TEvUnsafeChangeTabletStateRequest");
-
-    // auto request =
-    // std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-    // request->Record.SetFileSystemId(FileSystemId);
-    // auto* shardCreationState = request->Record.MutableShardCreationState();
-    // shardCreationState->SetVersion(ShardCreationState.GetVersion());
-    // shardCreationState->SetBaseShardCount(
-    //     ShardCreationState.GetBaseShardCount());
-    // shardCreationState->SetTargetShardCount(
-    //     ShardCreationState.GetTargetShardCount());
-    // shardCreationState->SetTargetShardConfigHash(
-    //     ShardCreationState.GetTargetShardConfigHash());
-    // SaveCompressedBitmap(
-    //     *CreatedShardBitmap,
-    //     ShardBitmapBitCount,
-    //     *shardCreationState->MutableCreatedShardBitmap());
-
-    // NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
-}
-
-void TShardCreationStateCompanion::OnShardCreated(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    if (!CreatedShardBitmap) {
-        LogStateUnavailable(ctx);
-        return;
-    }
-
-    const bool validShardIndex =
-        shardIndex < ShardCreationState.GetTargetShardCount();
-    if (!validShardIndex) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Invalid created shard index: %u, base: %u, target: %u",
-            LogTag.c_str(),
-            shardIndex,
-            ShardCreationState.GetBaseShardCount(),
-            ShardCreationState.GetTargetShardCount());
-        return;
-    }
-
-    CreatedShardBitmap->Set(shardIndex, shardIndex + 1);
-    UpdateShardCreationState(ctx);
-}
-
-void TShardCreationStateCompanion::LogStateUnavailable(
-    const TActorContext& ctx) const
-{
-    const char* message = "shard creation state unavailable";
-    switch (Mode) {
-        case EMode::Create:
-            message =
-                "Shard bitmap not initialized, "
-                "shard creation state unavailable";
-            break;
-        case EMode::Alter:
-            message =
-                "FS topology not yet read, "
-                "shard creation state unavailable";
-            break;
-    }
-
-    LOG_WARN(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] %s",
-        LogTag.c_str(),
-        message);
 }
 
 TResultOrError<bool> TShardCreationStateCompanion::HasUncommittedCreatedShards(

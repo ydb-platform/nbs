@@ -1,14 +1,6 @@
 #include "shard_creation_state_companion.h"
 
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-
 #include <cloud/storage/core/libs/common/error.h>
-
-#include <contrib/ydb/core/base/events.h>
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/hfunc.h>
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -17,8 +9,6 @@
 #include <limits>
 
 namespace NCloud::NFileStore::NStorage {
-
-using namespace NActors;
 
 namespace {
 
@@ -95,107 +85,6 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
     return MakeState(version, createdShards, 0, MakeShardConfigs());
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-enum ETestEvents
-{
-    EvOnShardCreated = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 42),
-    EvMergeShardCreationState,
-};
-
-struct TEvOnShardCreated final
-    : public TEventBase<TEvOnShardCreated, EvOnShardCreated>
-{
-    ui32 ShardIndex = 0;
-
-    explicit TEvOnShardCreated(ui32 shardIndex)
-        : ShardIndex(shardIndex)
-    {}
-
-    DEFINE_SIMPLE_LOCAL_EVENT(TEvOnShardCreated, "TEvOnShardCreated");
-};
-
-struct TEvMergeShardCreationState final
-    : public TEventBase<TEvMergeShardCreationState, EvMergeShardCreationState>
-{
-    NProtoPrivate::TFileSystemShardCreationState State;
-
-    explicit TEvMergeShardCreationState(
-        NProtoPrivate::TFileSystemShardCreationState state)
-        : State(std::move(state))
-    {}
-
-    DEFINE_SIMPLE_LOCAL_EVENT(
-        TEvMergeShardCreationState,
-        "TEvMergeShardCreationState");
-};
-
-class TActorWithCompanion final: public TActor<TActorWithCompanion>
-{
-private:
-    TShardCreationStateCompanion Companion{
-        TString{FileSystemId},
-        TString{FileSystemId},
-        TShardCreationStateCompanion::EMode::Create};
-
-public:
-    explicit TActorWithCompanion(
-        NProtoPrivate::TFileSystemShardCreationState state)
-        : TActor(&TThis::StateWork)
-    {
-        const auto shardConfigs = MakeShardConfigs();
-        Companion.SetShardCreationState(std::move(state));
-        const auto error = Companion.SetupCreatedShardBitmap(0, shardConfigs);
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-    }
-
-private:
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(TEvOnShardCreated, HandleOnShardCreated);
-            HFunc(TEvMergeShardCreationState, HandleMergeShardCreationState);
-
-            default:
-                Y_ABORT("Unexpected event");
-        }
-    }
-
-    void HandleOnShardCreated(
-        const TEvOnShardCreated::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        Companion.OnShardCreated(ctx, ev->Get()->ShardIndex);
-    }
-
-    void HandleMergeShardCreationState(
-        const TEvMergeShardCreationState::TPtr& ev,
-        const TActorContext& ctx)
-    {
-        const auto& state = ev->Get()->State;
-        const auto error = Companion.ValidateTarget(state);
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-
-        const auto mergeResult = Companion.MergeShardCreationState(state);
-        UNIT_ASSERT_C(
-            !HasError(mergeResult),
-            FormatError(mergeResult.GetError()));
-
-        if (mergeResult.GetResult()) {
-            Companion.UpdateShardCreationState(ctx);
-        }
-    }
-};
-
-struct TActorSystem: TTestActorRuntimeBase
-{
-    void Start()
-    {
-        InitNodes();
-        SetDispatchTimeout(TDuration::Seconds(5));
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,10 +93,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 {
     Y_UNIT_TEST(ShouldTrackPersistentShardCreationStateSupport)
     {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
+        TShardCreationStateCompanion companion(TString{FileSystemId});
 
         UNIT_ASSERT(!companion.IsPersistentStateLoaded());
         UNIT_ASSERT(!companion.IsPersistentStateSupported());
@@ -257,10 +143,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldLoadPersistedCreatedShardBitmap)
     {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
+        TShardCreationStateCompanion companion(TString{FileSystemId});
 
         const auto shardConfigs = MakeShardConfigs();
 
@@ -283,10 +166,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldRejectHugePersistedShardCreationBitmapOnSetup)
     {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
+        TShardCreationStateCompanion companion(TString{FileSystemId});
 
         const auto shardConfigs = MakeShardConfigs();
         auto state = MakeState(42, {});
@@ -302,63 +182,9 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
             error.GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldMergeShardCreationStateAndUpdateVersion)
-    {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
-
-        const auto shardConfigs = MakeShardConfigs();
-
-        companion.SetShardCreationState(MakeState(10, {1}));
-        auto error = companion.SetupCreatedShardBitmap(0, shardConfigs);
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-
-        const auto mergeResult =
-            companion.MergeShardCreationState(MakeState(11, {1, 3}));
-        UNIT_ASSERT_C(
-            !HasError(mergeResult),
-            FormatError(mergeResult.GetError()));
-        UNIT_ASSERT(!mergeResult.GetResult());
-
-        UNIT_ASSERT(companion.IsShardCreated(1));
-        UNIT_ASSERT(companion.IsShardCreated(3));
-        UNIT_ASSERT_VALUES_EQUAL(11, companion.GetShardCreationStateVersion());
-    }
-
-    Y_UNIT_TEST(ShouldRejectMergingDifferentTarget)
-    {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
-
-        const auto shardConfigs = MakeShardConfigs();
-        auto conflictingShardConfigs = shardConfigs;
-        conflictingShardConfigs[3].SetBlocksCount(
-            conflictingShardConfigs[3].GetBlocksCount() + 1);
-
-        companion.SetShardCreationState(MakeState(42, {}, 0, shardConfigs));
-        auto error = companion.SetupCreatedShardBitmap(0, shardConfigs);
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-
-        error = companion.ValidateTarget(
-            MakeState(43, {1}, 0, conflictingShardConfigs));
-
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
-        UNIT_ASSERT(error.GetMessage().Contains(
-            "Shard creation target changed while request was in progress"));
-        UNIT_ASSERT(error.GetMessage().Contains("request base=0"));
-        UNIT_ASSERT(error.GetMessage().Contains("stored base=0"));
-    }
-
     Y_UNIT_TEST(ShouldRejectConflictingUncommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
+        TShardCreationStateCompanion companion(TString{FileSystemId});
 
         const auto originalShardConfigs = MakeShardConfigs();
         auto conflictingShardConfigs = originalShardConfigs;
@@ -380,10 +206,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldResetStaleCommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(
-            TString{FileSystemId},
-            TString{FileSystemId},
-            TShardCreationStateCompanion::EMode::Create);
+        TShardCreationStateCompanion companion(TString{FileSystemId});
 
         const auto originalShardConfigs = MakeShardConfigs();
         const auto nextShardConfigs = MakeShardConfigs(8);

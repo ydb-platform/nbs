@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 
-#include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -22,30 +21,19 @@ TResultOrError<ui64> CalculateShardCreationTargetHash(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Tracks shard creation progress for one create/resize actor. The actor reads
-// state from the main Tablet and calls SetShardCreationState, then
+// Tracks shard creation progress for one create/resize operation. The caller
+// records the state read from the main Tablet, then calls
 // SetupCreatedShardBitmap once the committed topology and desired shard configs
-// are known. A response without state calls for MarkPersistentStateUnsupported
-// and the actor's non-persistent fallback instead.
+// are known.
 //
-// CreatedShardBitmap contains both persisted bits and local creation successes;
+// CreatedShardBitmap is the working copy of created-shard bits;
 // ShardCreationState holds the last received state, or the target prepared by
-// SetupCreatedShardBitmap. OnShardCreated records a successful shard creation
-// and requests persistence. The actor handles responses, checks their version
-// and target, and calls MergeShardCreationState. A true result means local bits
-// are still missing from the received state and must be persisted again.
+// SetupCreatedShardBitmap.
 //
 // The actor owns request scheduling, retries, and the fallback for Tablets that
 // do not support persistent state. This companion does not handle actor events.
 class TShardCreationStateCompanion
 {
-public:
-    enum class EMode
-    {
-        Create,
-        Alter,
-    };
-
 private:
     enum class EShardCreationStateStatus
     {
@@ -58,8 +46,6 @@ private:
     };
 
     const TString FileSystemId;
-    const TString LogTag;
-    const EMode Mode;
 
     EShardCreationStateStatus ShardCreationStateStatus =
         EShardCreationStateStatus::Unknown;
@@ -68,10 +54,7 @@ private:
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
 public:
-    TShardCreationStateCompanion(
-        TString fileSystemId,
-        TString logTag,
-        EMode mode);
+    explicit TShardCreationStateCompanion(TString fileSystemId);
 
     // The initial read is complete, including an Unsupported response. This
     // does not imply that persistent state exists or the local bitmap is ready.
@@ -96,15 +79,6 @@ public:
     // replace the local working bitmap.
     void SetShardCreationState(
         const NProtoPrivate::TFileSystemShardCreationState& state);
-    // Require the same creation range and config hash as the current target.
-    NProto::TError ValidateTarget(
-        const NProtoPrivate::TFileSystemShardCreationState& state) const;
-    // Merge received bits with local progress and record the received state.
-    // Returns whether another persistence request is needed. The caller checks
-    // the response version and target before merging.
-    TResultOrError<bool> MergeShardCreationState(
-        const NProtoPrivate::TFileSystemShardCreationState& state);
-
     // Prepare the working bitmap from state and the committed shard count.
     // Reject a different target while created shards remain uncommitted;
     // otherwise reset completed history for the new target.
@@ -112,15 +86,7 @@ public:
         ui32 baseShardCount,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
-    // Request persistence of the working bitmap using the last state version.
-    // The actor handles the response and any concurrent update reconciliation.
-    void UpdateShardCreationState(const NActors::TActorContext& ctx) const;
-    // Record a successfully created shard locally and request persistence.
-    void OnShardCreated(const NActors::TActorContext& ctx, ui32 shardIndex);
-    void LogStateUnavailable(const NActors::TActorContext& ctx) const;
-
 private:
-    TResultOrError<bool> HasUnpersistedCreatedShards() const;
     TResultOrError<bool> HasUncommittedCreatedShards(
         ui32 committedShardCount) const;
 
