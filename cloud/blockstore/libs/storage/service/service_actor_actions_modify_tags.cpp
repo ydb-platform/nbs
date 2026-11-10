@@ -1,10 +1,11 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -13,6 +14,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/charset/unidata.h>
+#include <util/generic/strbuf.h>
 #include <util/string/join.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -99,11 +101,10 @@ bool TModifyTagsActionActor::ValidateTag(
     const TString& tag)
 {
     for (const auto c: tag) {
-        if (!IsAlnum(c) && c != '-' && c != '_' && c != '=' && c != '.') {
-            auto error = MakeError(
-                E_ARGUMENT,
-                Sprintf("Invalid tag: %s", tag.c_str())
-            );
+        const bool ok = IsAlnum(c) || TStringBuf("-_=.@").Contains(c);
+        if (!ok) {
+            auto error =
+                MakeError(E_ARGUMENT, Sprintf("Invalid tag: %s", tag.c_str()));
             ReplyAndDie(ctx, std::move(error));
             return false;
         }

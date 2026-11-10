@@ -52,6 +52,8 @@ enum class ETagRemovalRecovery
     None,
     Retry,
     Reboot,
+    LostRequest,
+    LostResponse,
 };
 
 void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
@@ -97,6 +99,26 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
     ui32 removalAttempts = 0;
     TActorId cleanupSender;
     bool cleanupSucceeded = false;
+    ui32 completionResponses = 0;
+    ui32 sourceDestructionSchedules = 0;
+    bool responseWasLost = false;
+    std::unique_ptr<IEventHandle> lostResponse;
+    TTestActorRuntimeBase::TScheduledEventFilter previousScheduledFilter;
+    previousScheduledFilter = runtime.SetScheduledEventFilter(
+        [&](TTestActorRuntimeBase& callbackRuntime,
+            TAutoPtr<IEventHandle>& event,
+            TDuration delay,
+            TInstant& deadline)
+        {
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest) {
+                ++sourceDestructionSchedules;
+            }
+            return previousScheduledFilter(
+                callbackRuntime,
+                event,
+                delay,
+                deadline);
+        });
     runtime.SetEventFilter(
         [&](TTestActorRuntimeBase& callbackRuntime,
             TAutoPtr<IEventHandle>& event)
@@ -126,7 +148,9 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
                             nodeIdx);
                         return true;
                     }
-                    if (recovery == ETagRemovalRecovery::Reboot) {
+                    if (recovery == ETagRemovalRecovery::Reboot ||
+                        recovery == ETagRemovalRecovery::LostRequest)
+                    {
                         return true;
                     }
                 }
@@ -135,8 +159,16 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
                 event->Recipient == cleanupSender)
             {
                 cleanupSucceeded =
+                    cleanupSucceeded ||
                     !HasError(event->Get<TEvService::TEvRemoveTagsResponse>()
                                   ->GetError());
+                if (recovery == ETagRemovalRecovery::LostResponse &&
+                    !responseWasLost)
+                {
+                    responseWasLost = true;
+                    lostResponse.reset(event.Release());
+                    return true;
+                }
             }
             if (event->GetTypeRewrite() ==
                     TEvVolume::EvUpdateLinkOnFollowerResponse &&
@@ -145,6 +177,7 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
                     event->Get<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
                         ->GetError()))
             {
+                ++completionResponses;
                 UNIT_ASSERT_C(
                     cleanupSucceeded,
                     "Leadership transfer was acknowledged before tag removal");
@@ -205,6 +238,17 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
             makeLinkRequest(NProto::LINK_ACTION_COMPLETED));
     }
 
+    if (recovery == ETagRemovalRecovery::LostResponse) {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return lostResponse != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(lostResponse);
+        UNIT_ASSERT_VALUES_EQUAL(0, completionResponses);
+    }
+
     auto completed =
         service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
     UNIT_ASSERT_C(
@@ -215,8 +259,39 @@ void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
     UNIT_ASSERT(!tags.contains("source-disk-id"));
     UNIT_ASSERT_VALUES_EQUAL("custom", tags.at("keep"));
     UNIT_ASSERT_VALUES_EQUAL(
-        recovery == ETagRemovalRecovery::None ? 1 : 2,
+        recovery == ETagRemovalRecovery::None ||
+                recovery == ETagRemovalRecovery::LostResponse
+            ? 1
+            : 2,
         removalAttempts);
+
+    if (recovery == ETagRemovalRecovery::LostResponse) {
+        UNIT_ASSERT_VALUES_EQUAL(1, completionResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, sourceDestructionSchedules);
+        runtime.Send(lostResponse.release(), nodeIdx);
+        runtime.Send(
+            new IEventHandle(
+                cleanupSender,
+                MakeStorageServiceId(),
+                new TEvService::TEvRemoveTagsResponse(
+                    MakeError(E_REJECTED, "late error"))),
+            nodeIdx);
+        runtime.Send(
+            new IEventHandle(
+                cleanupSender,
+                cleanupSender,
+                new TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag()),
+            nodeIdx);
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            makeLinkRequest(NProto::LINK_ACTION_COMPLETED));
+        auto repeated =
+            service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, repeated->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, removalAttempts);
+        UNIT_ASSERT_VALUES_EQUAL(2, completionResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, sourceDestructionSchedules);
+    }
 }
 
 }   // namespace
@@ -233,6 +308,16 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
     Y_UNIT_TEST(ShouldRetrySourceDiskIdTagRemoval)
     {
         CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::Retry);
+    }
+
+    Y_UNIT_TEST(ShouldRetrySourceDiskIdTagRemovalAfterLostRequest)
+    {
+        CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::LostRequest);
+    }
+
+    Y_UNIT_TEST(ShouldFinishSourceDiskIdTagRemovalAfterLostResponse)
+    {
+        CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::LostResponse);
     }
 
     Y_UNIT_TEST(ShouldResumeSourceDiskIdTagRemovalAfterReboot)
@@ -300,6 +385,58 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             S_OK,
             response->GetError().GetCode(),
             FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldPreserveSourceLinkWhenTargetAlreadyOwnsDisk)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        service.CreateVolumeLink("vol-1", "vol-2");
+
+        const auto before = GetLinkStatus(service, "vol-1", "vol-2", {});
+        UNIT_ASSERT(before.GetLinkUUID());
+        auto completed =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        completed->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        completed->Record.SetDiskId("vol-2");
+        completed->Record.SetLeaderDiskId("vol-1");
+        completed->Record.SetLeaderCellId(before.GetLeaderCellId());
+        completed->Record.SetFollowerCellId(before.GetFollowerCellId());
+        completed->Record.SetLinkUUID(before.GetLinkUUID());
+        completed->Record.SetAction(NProto::LINK_ACTION_COMPLETED);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(completed));
+        auto transferred =
+            service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(transferred->GetError()),
+            transferred->GetErrorReason());
+
+        ui32 sourceUnlinkRequests = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& callbackRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(callbackRuntime);
+
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUnlinkLeaderVolumeFromFollowerRequest)
+                {
+                    ++sourceUnlinkRequests;
+                }
+                return false;
+            });
+
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+        const auto rejected = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, rejected->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, sourceUnlinkRequests);
+        const auto after = GetLinkStatus(service, "vol-1", "vol-2", {});
+        UNIT_ASSERT_VALUES_EQUAL(before.GetLinkUUID(), after.GetLinkUUID());
+        UNIT_ASSERT(after.GetStatus() != NProto::LINK_STATUS_NOT_FOUND);
     }
 
     Y_UNIT_TEST(ShouldUnlinkVolume)

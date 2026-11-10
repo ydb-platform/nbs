@@ -2163,6 +2163,98 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
     }
 
+    Y_UNIT_TEST(ShouldKeepPendingLinkOperationsAfterResetMeta)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        state.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Leader});
+        state.StartSourceDiskIdTagRemoval();
+        state.StartRemovingLeaderLink(link);
+        const auto request = MakeIntrusive<TRequestInfo>();
+        state.AddPendingLeadershipTransferRequest(request, link);
+
+        auto meta = state.GetMeta();
+        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=source");
+        state.ResetMeta(meta);
+        meta.MutableVolumeConfig()->ClearTagsStr();
+        state.ResetMeta(meta);
+
+        UNIT_ASSERT(state.FindLeader(link));
+        UNIT_ASSERT(state.IsSourceDiskIdTagRemovalInProgress());
+        UNIT_ASSERT(state.IsLeaderLinkBeingRemoved(link));
+        const auto pending = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(pending);
+        UNIT_ASSERT(pending->Link.Match(link));
+        UNIT_ASSERT_VALUES_EQUAL(1, pending->Requests.size());
+        UNIT_ASSERT(pending->Requests[0] == request);
+    }
+
+    Y_UNIT_TEST(ShouldTakePendingResponsesOnce)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "first-link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        const auto first = MakeIntrusive<TRequestInfo>();
+        const auto repeated = MakeIntrusive<TRequestInfo>();
+        state.AddPendingLeadershipTransferRequest(first, link);
+        state.AddPendingLeadershipTransferRequest(repeated, link);
+
+        const auto pending = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(pending);
+        UNIT_ASSERT(pending->Link.Match(link));
+        UNIT_ASSERT_VALUES_EQUAL(2, pending->Requests.size());
+        UNIT_ASSERT(pending->Requests[0] == first);
+        UNIT_ASSERT(pending->Requests[1] == repeated);
+        UNIT_ASSERT(!state.HasPendingLeadershipTransfer(link));
+        UNIT_ASSERT(!state.TakePendingLeadershipTransfer());
+
+        auto nextLink = link;
+        nextLink.LinkUUID = "next-link";
+        state.AddPendingLeadershipTransferRequest(first, nextLink);
+        UNIT_ASSERT(state.HasPendingLeadershipTransfer(nextLink));
+        UNIT_ASSERT(!state.HasPendingLeadershipTransfer(link));
+        UNIT_ASSERT_VALUES_EQUAL(2, pending->Requests.size());
+        const auto next = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(next);
+        UNIT_ASSERT(next->Link.Match(nextLink));
+        UNIT_ASSERT_VALUES_EQUAL(1, next->Requests.size());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreCompletionOfPreviousLinkRemoval)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink firstLink{
+            .LinkUUID = "first-link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        state.StartRemovingLeaderLink(firstLink);
+        state.FinishRemovingLeaderLink(firstLink);
+
+        auto nextLink = firstLink;
+        nextLink.LinkUUID = "next-link";
+        state.StartRemovingLeaderLink(nextLink);
+        state.StartRemovingLeaderLink(nextLink);
+        state.FinishRemovingLeaderLink(firstLink);
+        UNIT_ASSERT(state.IsLeaderLinkBeingRemoved(nextLink));
+
+        state.FinishRemovingLeaderLink(nextLink);
+        UNIT_ASSERT(!state.IsLeaderLinkBeingRemoved(nextLink));
+    }
+
     Y_UNIT_TEST(FollowerDisks)
     {
         auto volumeState = CreateVolumeState();

@@ -99,6 +99,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     const ui64 VolumeBlockCount =
         DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize / 2;
 
+    TVector<char> ExpectedBlockContent = TVector<char>(VolumeBlockCount, 0);
+
     std::unique_ptr<TTestActorRuntime> Runtime;
 
     TMap<TString, TVolumeInfo> Volumes;
@@ -147,63 +149,50 @@ struct TFixture: public NUnitTest::TBaseFixture
         }
     }
 
-    void CheckVolumesDataMatch() const
+    void SetExpectedBlockContent(TBlockRange64 range, char content)
     {
-        const auto* volume1 = Volumes.FindPtr("vol1");
-        if (!volume1) {
-            UNIT_ASSERT_C(false, "Volume vol1 not found");
-            return;
+        for (ui64 block = range.Start; block <= range.End; ++block) {
+            ExpectedBlockContent[block] = content;
         }
-        const auto* volume2 = Volumes.FindPtr("vol2");
-        if (!volume2) {
-            UNIT_ASSERT_C(false, "Volume vol2 not found");
-            return;
-        }
+    }
 
-        // Make read client for volume2
-        auto clientInfo2 = CreateVolumeClientInfo(
+    void CheckCopiedData() const
+    {
+        const auto* volume = Volumes.FindPtr("vol2");
+        Y_DEBUG_ABORT_UNLESS(volume);
+
+        auto clientInfo = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
-        volume2->VolumeClient->AddClient(clientInfo2);
+        volume->VolumeClient->AddClient(clientInfo);
 
-        // Read all data and match it.
         for (ui64 position = 0; position < VolumeBlockCount; position += 1024) {
-            auto range = TBlockRange64::MakeClosedIntervalWithLimit(
+            const auto range = TBlockRange64::MakeClosedIntervalWithLimit(
                 position,
                 position + 1024,
                 VolumeBlockCount - 1);
-
-            auto response1 = volume1->VolumeClient->ReadBlocks(
+            const auto response = volume->VolumeClient->ReadBlocks(
                 range,
-                volume1->VolumeClientInfo->GetClientId());
-            auto response2 = volume2->VolumeClient->ReadBlocks(
-                range,
-                clientInfo2.GetClientId());
-            const auto& bufs1 = response1->Record.GetBlocks().GetBuffers();
-            const auto& bufs2 = response2->Record.GetBlocks().GetBuffers();
-            UNIT_ASSERT_VALUES_EQUAL(bufs1.size(), bufs2.size());
-
-            for (int i = 0; i < bufs1.size(); ++i) {
-                auto block1 = bufs1[i];
-                auto block2 = bufs2[i];
-
-                if (block1.empty()) {
-                    block1 = TString(DefaultBlockSize, 0);
-                }
-                if (block2.empty()) {
-                    block2 = TString(DefaultBlockSize, 0);
-                }
-
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    block1.size(),
-                    block2.size(),
-                    TStringBuilder() << "Block #" << position + i);
-
-                for (size_t j = 0; j < block1.size(); ++j) {
+                clientInfo.GetClientId());
+            const auto& buffers = response->Record.GetBlocks().GetBuffers();
+            UNIT_ASSERT_VALUES_EQUAL(range.Size(), buffers.size());
+            for (int i = 0; i < buffers.size(); ++i) {
+                const auto& block = buffers[i];
+                const auto expected = ExpectedBlockContent[position + i];
+                if (block.empty()) {
                     UNIT_ASSERT_VALUES_EQUAL_C(
-                        ui32(block1[j]),
-                        ui32(block2[j]),
+                        0,
+                        ui32(expected),
+                        TStringBuilder() << "Block #" << position + i);
+                    continue;
+                }
+
+                UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
+                for (size_t j = 0; j < block.size(); ++j) {
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        ui32(expected),
+                        ui32(block[j]),
                         TStringBuilder()
                             << "Block #" << position + i << " byte #" << j);
                 }
@@ -277,7 +266,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     [[nodiscard]] bool WriteBlocks(
         TBlockRange64 range,
-        std::optional<TFollowerDiskInfo::EState>* followerState = nullptr) const
+        std::optional<TFollowerDiskInfo::EState>* followerState = nullptr)
     {
         using EState = TFollowerDiskInfo::EState;
 
@@ -300,6 +289,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             }
             auto response = volume->VolumeClient->RecvWriteBlocksResponse();
             if (response->GetStatus() == S_OK) {
+                SetExpectedBlockContent(range, 'b');
                 return true;
             }
             if (response->GetStatus() == E_BS_INVALID_SESSION) {
@@ -322,7 +312,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         return false;
     }
 
-    [[nodiscard]] bool ZeroBlocks(TBlockRange64 range) const
+    [[nodiscard]] bool ZeroBlocks(TBlockRange64 range)
     {
         const auto* volume = Volumes.FindPtr("vol1");
         if (!volume) {
@@ -336,6 +326,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                 volume->VolumeClientInfo->GetClientId());
             auto response = volume->VolumeClient->RecvZeroBlocksResponse();
             if (response->GetStatus() == S_OK) {
+                SetExpectedBlockContent(range, 0);
                 return true;
             }
             Runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -383,10 +374,250 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 };
 
+enum class ELeaderRemovalPoint
+{
+    PromotionCommit,
+    TagRemoval,
+    DestructionDelay,
+};
+
+void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
+{
+    auto runtime = PrepareTestActorRuntime();
+    TVolumeClient volume(*runtime);
+    auto configRequest = volume.CreateUpdateVolumeConfigRequest(
+        0,
+        0,
+        0,
+        0,
+        false,
+        1,
+        NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize,
+        "vol2",
+        "cloud",
+        "folder",
+        1,
+        0,
+        MakeTag("source-disk-id", "vol1"));
+    auto config = configRequest->Record;
+    volume.CreateVolume(std::move(configRequest));
+    volume.RecvUpdateVolumeConfigResponse();
+    volume.WaitReady();
+
+    auto makeLinkRequest = [](NProto::ELinkAction action)
+    {
+        auto request =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        request->Record.SetDiskId("vol2");
+        request->Record.SetLeaderDiskId("vol1");
+        request->Record.SetLinkUUID("test-link");
+        request->Record.SetAction(action);
+        return request;
+    };
+    auto getLinkStatus = [&]
+    {
+        auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+        request->Record.SetDiskId("vol2");
+        request->Record.SetLeaderDiskId("vol1");
+        request->Record.SetFollowerDiskId("vol2");
+        volume.SendToPipe(std::move(request));
+        return static_cast<ui32>(
+            volume.RecvResponse<TEvVolume::TEvGetLinkStatusResponse>()
+                ->Record.GetStatus());
+    };
+
+    volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_CREATE));
+    auto created =
+        volume.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+    UNIT_ASSERT_C(!HasError(created->GetError()), created->GetErrorReason());
+
+    bool holdCommits = removalPoint == ELeaderRemovalPoint::PromotionCommit;
+    TVector<std::unique_ptr<IEventHandle>> commits;
+    std::unique_ptr<IEventHandle> tagRemoval;
+    THashMap<ui64, ui32> responses;
+    ui32 sourceDestructionRequests = 0;
+    runtime->SetEventFilter(
+        [&](TTestActorRuntimeBase& callbackRuntime,
+            TAutoPtr<IEventHandle>& event)
+        {
+            if (holdCommits &&
+                event->GetTypeRewrite() == TEvBlobStorage::EvPutResult &&
+                event->Get<TEvBlobStorage::TEvPutResult>()->Id.TabletID() ==
+                    TestVolumeTablets[0])
+            {
+                commits.emplace_back(event.Release());
+                return true;
+            }
+            if (event->GetTypeRewrite() == TEvService::EvRemoveTagsRequest) {
+                tagRemoval.reset(event.Release());
+                return true;
+            }
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerResponse &&
+                event->Recipient == volume.GetSender())
+            {
+                responses[event->Cookie] =
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                        ->GetStatus();
+                return true;
+            }
+            if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest) {
+                ++sourceDestructionRequests;
+                callbackRuntime.Send(new IEventHandle(
+                    event->Sender,
+                    event->Recipient,
+                    new TEvService::TEvDestroyVolumeResponse(),
+                    0,
+                    event->Cookie));
+                return true;
+            }
+            return false;
+        });
+
+    volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 1);
+    TDispatchOptions options;
+    options.CustomFinalCondition = [&]
+    {
+        return holdCommits ? !commits.empty() : tagRemoval != nullptr;
+    };
+    runtime->DispatchEvents(options, TDuration::Seconds(1));
+    UNIT_ASSERT(responses.empty());
+
+    if (removalPoint != ELeaderRemovalPoint::PromotionCommit) {
+        volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 5);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED),
+            getLinkStatus());
+        UNIT_ASSERT(responses.empty());
+    }
+
+    auto completeTagRemoval = [&]
+    {
+        // The fake StorageService does not apply the tag change.
+        config.MutableVolumeConfig()->ClearTagsStr();
+        config.MutableVolumeConfig()->SetVersion(2);
+        auto update = std::make_unique<TEvBlockStore::TEvUpdateVolumeConfig>();
+        update->Record = config;
+        volume.SendToPipe(std::move(update));
+        const auto updated = volume.RecvUpdateVolumeConfigResponse();
+        UNIT_ASSERT(updated->Record.GetStatus() == NKikimrBlockStore::OK);
+        volume.ReconnectPipe();
+        volume.WaitReady();
+        runtime->Send(new IEventHandle(
+            tagRemoval->Sender,
+            tagRemoval->Recipient,
+            new TEvService::TEvRemoveTagsResponse(),
+            0,
+            tagRemoval->Cookie));
+        options.CustomFinalCondition = [&]
+        {
+            return responses.contains(1) && responses.contains(5);
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT_C(
+            responses.contains(1),
+            "No initial leadership transfer response after tag removal");
+        UNIT_ASSERT_C(
+            responses.contains(5),
+            "No repeated leadership transfer response after tag removal");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, responses.at(1));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, responses.at(5));
+    };
+
+    if (removalPoint == ELeaderRemovalPoint::DestructionDelay) {
+        completeTagRemoval();
+    }
+    volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_DESTROY), 2);
+    if (holdCommits) {
+        volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 4);
+        // Neither transaction is committed yet: readers must still see
+        // the original Following row, even after RemoveLeader executes.
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_PREPARING),
+            getLinkStatus());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responses.at(4));
+        holdCommits = false;
+        for (auto& commit: commits) {
+            runtime->Send(commit.release());
+        }
+    }
+    options.CustomFinalCondition = [&]
+    {
+        return responses.contains(2);
+    };
+    runtime->DispatchEvents(options, TDuration::Seconds(1));
+    const bool cancellationAllowed =
+        removalPoint == ELeaderRemovalPoint::PromotionCommit;
+    UNIT_ASSERT_VALUES_EQUAL(
+        cancellationAllowed ? S_OK : E_INVALID_STATE,
+        responses.at(2));
+    if (cancellationAllowed) {
+        UNIT_ASSERT(responses.contains(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responses.at(1));
+        UNIT_ASSERT(!tagRemoval);
+    } else if (removalPoint == ELeaderRemovalPoint::TagRemoval) {
+        UNIT_ASSERT(!responses.contains(1));
+        UNIT_ASSERT(!responses.contains(5));
+        completeTagRemoval();
+    }
+
+    volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 3);
+    options.CustomFinalCondition = [&]
+    {
+        return responses.contains(3);
+    };
+    runtime->DispatchEvents(options, TDuration::Seconds(1));
+    UNIT_ASSERT_VALUES_EQUAL(
+        cancellationAllowed ? E_CANCELLED : S_ALREADY,
+        responses.at(3));
+
+    runtime->DispatchEvents(TDispatchOptions(), TDuration::Minutes(1));
+    if (cancellationAllowed) {
+        UNIT_ASSERT_VALUES_EQUAL(0, sourceDestructionRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            getLinkStatus());
+    } else {
+        UNIT_ASSERT(sourceDestructionRequests > 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_COMPLETED),
+            getLinkStatus());
+    }
+
+    volume.RebootTablet();
+    volume.WaitReady();
+    volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_DESTROY), 6);
+    options.CustomFinalCondition = [&]
+    {
+        return responses.contains(6);
+    };
+    runtime->DispatchEvents(options, TDuration::Seconds(1));
+    UNIT_ASSERT_VALUES_EQUAL(
+        cancellationAllowed ? S_ALREADY : E_INVALID_STATE,
+        responses.at(6));
+}
+
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
+    Y_UNIT_TEST(ShouldRemoveLeaderWhilePromotionCommitIsPending)
+    {
+        CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint::PromotionCommit);
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnlinkWhileRemovingSourceDiskIdTag)
+    {
+        CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint::TagRemoval);
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnlinkAfterLeadershipTransfer)
+    {
+        CheckLeaderRemovalDuringPromotion(
+            ELeaderRemovalPoint::DestructionDelay);
+    }
+
     Y_UNIT_TEST(ShouldManageFollowerLink)
     {
         const auto volumeBlockCount =
@@ -485,6 +716,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 .Link = link,
                 .CreatedAt = TInstant::Now(),
                 .State = EState::Preparing,
+                .MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 .MigratedBytes = 1_MB};
 
             auto response = volume1.UpdateFollowerState(follower);
@@ -519,6 +751,19 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 response->Follower.State);
             UNIT_ASSERT_VALUES_EQUAL(2_MB, response->Follower.MigratedBytes);
 
+            for (ui32 attempt = 0; attempt < 2; ++attempt) {
+                volume1.SendUnlinkLeaderVolumeFromFollowerRequest(link);
+                auto unlinked =
+                    volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_INVALID_STATE,
+                    unlinked->GetStatus());
+                if (attempt == 0) {
+                    volume1.RebootTablet();
+                    volume1.WaitReady();
+                }
+            }
+
             follower.State = EState::Error;
             follower.MigratedBytes = 2_MB;
             response = volume1.UpdateFollowerState(follower);
@@ -530,6 +775,25 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         {
             // Destroy link
             volume1.UnlinkLeaderVolumeFromFollower(link);
+
+            // Delayed migration replies must not recreate the removed link.
+            for (const auto state:
+                 {TFollowerDiskInfo::EState::Preparing,
+                  TFollowerDiskInfo::EState::DataReady,
+                  TFollowerDiskInfo::EState::LeadershipTransferred,
+                  TFollowerDiskInfo::EState::Error})
+            {
+                volume1.SendUpdateFollowerStateRequest(
+                    TFollowerDiskInfo{
+                        .Link = link,
+                        .CreatedAt = TInstant::Now(),
+                        .State = state});
+                auto delayed = volume1.RecvUpdateFollowerStateResponse();
+                UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, delayed->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TFollowerDiskInfo::EState::Error,
+                    delayed->Follower.State);
+            }
 
             // Reboot tablet
             volume1.RebootTablet();
@@ -862,6 +1126,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 TBlockRange64::MakeOneBlock(pos),
                 clientInfo1.GetClientId(),
                 'a');
+            fixture.SetExpectedBlockContent(
+                TBlockRange64::MakeOneBlock(pos),
+                'a');
         }
 
         if (checkpoint != ECheckpointBeforeLink::None) {
@@ -933,9 +1200,12 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             volume1.WaitReady();
         }
 
-        // Check volumes content match.
-        volume1.UnlinkLeaderVolumeFromFollower(link);
-        fixture.CheckVolumesDataMatch();
+        // The source stays fenced while copied data is checked.
+        volume1.SendUnlinkLeaderVolumeFromFollowerRequest(link);
+        const auto unlinked =
+            volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, unlinked->GetStatus());
+        fixture.CheckCopiedData();
 
         if (verifySourcePartitionStopped) {
             const bool sourcePartitionStopped =
@@ -1175,6 +1445,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 TBlockRange64::MakeOneBlock(pos),
                 clientInfo1.GetClientId(),
                 'a');
+            fixture.SetExpectedBlockContent(
+                TBlockRange64::MakeOneBlock(pos),
+                'a');
         }
 
         // Link volumes
@@ -1253,10 +1526,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         volume1.ReconnectPipe();
         volume1.WaitReady();
 
-        // Check volumes content match.
-        volume1.UnlinkLeaderVolumeFromFollower(link);
+        // The source stays fenced while copied data is checked.
+        volume1.SendUnlinkLeaderVolumeFromFollowerRequest(link);
+        const auto unlinked =
+            volume1.RecvUnlinkLeaderVolumeFromFollowerResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, unlinked->GetStatus());
         volume1.ReconnectPipe();
-        fixture.CheckVolumesDataMatch();
+        fixture.CheckCopiedData();
     }
 
     Y_UNIT_TEST_F(ShouldPrepareFollowerVolume_SSD_NRD_WithReboot, TFixture)
@@ -2305,8 +2581,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     }
 
     void DoShouldOwnSourcePartitionAfterRecovery(
-        TFixture& fixture,
-        TFollowerDiskInfo::EState persistedState)
+        TFixture & fixture,
+        TFollowerDiskInfo::EState persistedState,
+        bool retryTransfer = false)
     {
         auto config = std::make_shared<TStorageConfig>(
             NProto::TStorageServiceConfig{},
@@ -2349,7 +2626,50 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         const auto followerDiskActorId =
             fixture.Runtime->Register(followerDiskActor.release());
 
+        ui32 propagationAttempts = 0;
+        std::optional<TFollowerDiskInfo::EState> requestedState;
+        if (retryTransfer) {
+            fixture.Runtime->SetEventFilter(
+                [&](TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvVolume::EvUpdateLinkOnFollowerRequest)
+                    {
+                        ++propagationAttempts;
+                        runtime.Send(new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            new TEvVolume::TEvUpdateLinkOnFollowerResponse(
+                                MakeError(
+                                    propagationAttempts == 1 ? E_CANCELLED
+                                                             : S_ALREADY)),
+                            0,
+                            event->Cookie));
+                        return true;
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvVolumePrivate::EvUpdateFollowerStateRequest)
+                    {
+                        requestedState =
+                            event
+                                ->Get<TEvVolumePrivate::
+                                          TEvUpdateFollowerStateRequest>()
+                                ->Follower.State;
+                    }
+                    return false;
+                });
+        }
+
         fixture.Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        if (retryTransfer) {
+            UNIT_ASSERT(requestedState);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TFollowerDiskInfo::EState::LeadershipTransferred,
+                *requestedState);
+            UNIT_ASSERT_VALUES_EQUAL(2, propagationAttempts);
+        }
 
         fixture.Runtime->Send(new IEventHandle(
             followerDiskActorId,
@@ -2374,6 +2694,16 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldOwnSourcePartitionAfterRecovery(
             *this,
             TFollowerDiskInfo::EState::DataReady);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRetryCancelledLeadershipTransferAndAcceptAlready,
+        TFixture)
+    {
+        DoShouldOwnSourcePartitionAfterRecovery(
+            *this,
+            TFollowerDiskInfo::EState::DataReady,
+            true);
     }
 
     Y_UNIT_TEST_F(

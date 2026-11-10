@@ -415,10 +415,6 @@ private:
 
     TVector<ui64> GCCompletedPartitions;
 
-    std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
-    bool SourceDiskIdTagRemovalInProgress = false;
-    TVector<TRequestInfoPtr> PendingLeadershipTransferRequests;
-
     struct TPartCountersData
     {
         NActors::TActorId Sender;
@@ -1368,6 +1364,8 @@ private:
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
     void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void ReplyToPendingLeadershipTransferRequests(
+        const NActors::TActorContext& ctx);
     void RemoveSourceDiskIdTagIfNeeded(const NActors::TActorContext& ctx);
     void FinishSourceDiskIdTagRemoval(const NActors::TActorContext& ctx);
     void HandleRemoveSourceDiskIdTagResponse(

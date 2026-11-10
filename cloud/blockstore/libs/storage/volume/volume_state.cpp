@@ -22,6 +22,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
+    TDuration::Seconds(30);
+constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
+    TDuration::Seconds(180);
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
@@ -1208,6 +1219,93 @@ TString TVolumeState::GetPrincipalDiskId() const
 ELeadershipStatus TVolumeState::GetLeadershipStatus() const
 {
     return LeadershipStatus;
+}
+
+const TOutdatedLeaderDestruction&
+TVolumeState::StartOutdatedLeaderDestructionAttempt()
+{
+    if (!OutdatedLeaderDestruction) {
+        OutdatedLeaderDestruction.emplace(
+            TOutdatedLeaderDestruction{
+                .TryCount = 0,
+                .DelayProvider = TBackoffDelayProvider(
+                    OutdatedLeaderDestructionBackoffDelay,
+                    OutdatedLeaderDestructionMaxBackoffDelay)});
+    }
+
+    ++OutdatedLeaderDestruction->TryCount;
+    return *OutdatedLeaderDestruction;
+}
+
+void TVolumeState::IncreaseOutdatedLeaderDestructionDelay()
+{
+    Y_DEBUG_ABORT_UNLESS(OutdatedLeaderDestruction);
+
+    OutdatedLeaderDestruction->DelayProvider.IncreaseDelay();
+}
+
+bool TVolumeState::IsSourceDiskIdTagRemovalInProgress() const
+{
+    return SourceDiskIdTagRemovalInProgress;
+}
+
+void TVolumeState::StartSourceDiskIdTagRemoval()
+{
+    Y_DEBUG_ABORT_UNLESS(!SourceDiskIdTagRemovalInProgress);
+
+    SourceDiskIdTagRemovalInProgress = true;
+}
+
+void TVolumeState::FinishSourceDiskIdTagRemoval()
+{
+    SourceDiskIdTagRemovalInProgress = false;
+}
+
+bool TVolumeState::IsLeaderLinkBeingRemoved(
+    const TLeaderFollowerLink& link) const
+{
+    return LeaderLinkBeingRemoved == link.LinkUUID;
+}
+
+void TVolumeState::StartRemovingLeaderLink(const TLeaderFollowerLink& link)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        !LeaderLinkBeingRemoved || IsLeaderLinkBeingRemoved(link));
+
+    LeaderLinkBeingRemoved = link.LinkUUID;
+}
+
+void TVolumeState::FinishRemovingLeaderLink(const TLeaderFollowerLink& link)
+{
+    if (IsLeaderLinkBeingRemoved(link)) {
+        LeaderLinkBeingRemoved.reset();
+    }
+}
+
+bool TVolumeState::HasPendingLeadershipTransfer(
+    const TLeaderFollowerLink& link) const
+{
+    return PendingLeadershipTransfer &&
+           PendingLeadershipTransfer->Link.Match(link);
+}
+
+void TVolumeState::AddPendingLeadershipTransferRequest(
+    TRequestInfoPtr requestInfo,
+    const TLeaderFollowerLink& link)
+{
+    if (!PendingLeadershipTransfer) {
+        PendingLeadershipTransfer.emplace(
+            TPendingLeadershipTransfer{.Link = link, .Requests = {}});
+    }
+    Y_DEBUG_ABORT_UNLESS(PendingLeadershipTransfer->Link.Match(link));
+
+    PendingLeadershipTransfer->Requests.push_back(std::move(requestInfo));
+}
+
+std::optional<TVolumeState::TPendingLeadershipTransfer>
+TVolumeState::TakePendingLeadershipTransfer()
+{
+    return std::exchange(PendingLeadershipTransfer, std::nullopt);
 }
 
 void TVolumeState::UpdateLeadershipStatus()

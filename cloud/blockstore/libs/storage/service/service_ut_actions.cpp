@@ -261,7 +261,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToAdd() = MakeTag("source-disk-id", "disk-id");
+            *request.AddTagsToAdd() = MakeTag("source-disk-id", "disk@id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -280,13 +280,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 &pathDescr
             ).ok());
             const auto& config = pathDescr.GetVolumeConfig();
-            UNIT_ASSERT_VALUES_EQUAL("source-disk-id=disk-id", config.GetTagsStr());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "source-disk-id=disk@id",
+                config.GetTagsStr());
         }
 
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToRemove() = MakeTag("source-disk-id", "disk-id");
+            *request.AddTagsToRemove() = MakeTag("source-disk-id", "disk@id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -312,10 +314,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             service.SendAddTagsRequest(
                 DefaultDiskId,
-                TVector{TString("keep"), TString("remove")});
+                TVector{TString("keep"), MakeTag("source-disk-id", "disk@id")});
             auto response = service.RecvAddTagsResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            service.RemoveTags(DefaultDiskId, TVector{TString("remove")});
+            service.RemoveTags(
+                DefaultDiskId,
+                TVector{MakeTag("source-disk-id", "disk@id")});
             service.AddTags(DefaultDiskId, TVector{TString("tag")});
         }
 

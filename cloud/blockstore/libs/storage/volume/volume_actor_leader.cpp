@@ -213,6 +213,19 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         .FollowerCellId = msg->Record.GetFollowerCellId()};
 
     auto follower = State->FindFollower(link);
+    if (follower &&
+        follower->State == TFollowerDiskInfo::EState::LeadershipTransferred)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(MakeError(
+                E_INVALID_STATE,
+                "Cannot unlink after leadership has been transferred")));
+        return;
+    }
+
     if (follower) {
         link = follower->Link;
     }
@@ -286,6 +299,14 @@ void TVolumeActor::HandleUpdateFollowerState(
                 std::move(*currentFollower));
             return;
         }
+    } else if (
+        msg->Follower.Link.LinkUUID && msg->Follower.State != EState::Created)
+    {
+        msg->Follower.State = EState::Error;
+        msg->Follower.ErrorMessage = "Follower link was removed";
+        const auto error = MakeError(E_CANCELLED, msg->Follower.ErrorMessage);
+        replyError(error, std::move(msg->Follower));
+        return;
     }
 
     if (!msg->Follower.Link.LinkUUID) {
