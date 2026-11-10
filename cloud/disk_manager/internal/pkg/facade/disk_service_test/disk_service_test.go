@@ -1599,3 +1599,73 @@ func TestDiskServiceDeleteNonExistentDisk(t *testing.T) {
 func TestDiskServiceDeleteNonExistentDiskSync(t *testing.T) {
 	testDiskServiceDeleteNonExistentDisk(t, true /* sync */)
 }
+
+func TestDiskServiceTransferVolumeViaLinkRejectsMissingSource(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	for _, test := range []struct{ source, message string }{
+		{"", "source disk ID is required"},
+		{testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "_missing", "does not exist"},
+	} {
+		operation, err := client.TransferVolumeViaLink(testcommon.GetRequestContext(t, ctx), &disk_manager.TransferVolumeViaLinkRequest{
+			SrcDiskId: test.source, ZoneId: defaultZoneID,
+		})
+		require.ErrorContains(t, err, test.message)
+		require.Nil(t, operation)
+	}
+}
+
+func TestDiskServiceTransferVolumeViaLinkSchedulesOperationIdempotently(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t)
+	created, err := client.CreateDisk(testcommon.GetRequestContext(t, ctx), &disk_manager.CreateDiskRequest{
+		Src:  &disk_manager.CreateDiskRequest_SrcEmpty{SrcEmpty: &empty.Empty{}},
+		Size: 4096, Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: diskID},
+	})
+	require.NoError(t, err)
+	require.NoError(t, internal_client.WaitOperation(ctx, client, created.Id))
+	defer testcommon.DeleteDisk(t, ctx, client, diskID)
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	request := &disk_manager.TransferVolumeViaLinkRequest{
+		SrcDiskId: diskID, ZoneId: defaultZoneID, DstCellId: "unknown-cell",
+	}
+	operation, err := client.TransferVolumeViaLink(reqCtx, request)
+	require.NoError(t, err)
+	require.NotEmpty(t, operation.Id)
+	require.Equal(t, "type.googleapis.com/cloud.disk_manager.TransferVolumeViaLinkMetadata", operation.GetMetadata().GetTypeUrl())
+	repeated, err := client.TransferVolumeViaLink(reqCtx, request)
+	require.NoError(t, err)
+	require.Equal(t, operation.Id, repeated.Id)
+	// The worker rejects the unknown destination before any NBS copy request.
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.ErrorContains(t, err, "not configured")
+}
+
+func TestDiskServiceTransferVolumeViaLinkRejectsSameCellLogicalCopySuffix(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	diskID := testcommon.ReplaceUnacceptableSymbolsFromResourceID(t) + "-copy"
+	created, err := client.CreateDisk(testcommon.GetRequestContext(t, ctx), &disk_manager.CreateDiskRequest{
+		Src:  &disk_manager.CreateDiskRequest_SrcEmpty{SrcEmpty: &empty.Empty{}},
+		Size: 4096, Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: diskID},
+	})
+	require.NoError(t, err)
+	require.NoError(t, internal_client.WaitOperation(ctx, client, created.Id))
+	defer testcommon.DeleteDisk(t, ctx, client, diskID)
+	operation, err := client.TransferVolumeViaLink(testcommon.GetRequestContext(t, ctx), &disk_manager.TransferVolumeViaLinkRequest{
+		SrcDiskId: diskID, ZoneId: defaultZoneID,
+	})
+	require.NoError(t, err)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.ErrorContains(t, err, "same-cell transfers of logical disk IDs ending in -copy")
+}

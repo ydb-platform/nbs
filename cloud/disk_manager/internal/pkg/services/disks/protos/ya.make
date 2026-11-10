@@ -14,6 +14,7 @@ SRCS(
     delete_disk_task.proto
     migrate_disk_task.proto
     resize_disk_task.proto
+    transfer_volume_via_link_task.proto
     unassign_disk_task.proto
 )
 

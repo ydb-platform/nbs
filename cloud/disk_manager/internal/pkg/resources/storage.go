@@ -12,9 +12,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	DiskOperationResize  = "resize"
-	DiskOperationAlter   = "alter"
-	DiskOperationMigrate = "migrate"
+	DiskOperationAlter    = "alter"
+	DiskOperationResize   = "resize"
+	DiskOperationMigrate  = "migrate"
+	DiskOperationTransfer = "transfer_via_link"
 )
 
 type DiskOperation struct {
@@ -372,4 +373,14 @@ type Storage interface {
 	ReserveDiskOperation(ctx context.Context, tx *persistence.Transaction, operation DiskOperation) (*DiskMeta, error)
 
 	ReleaseDiskOperation(ctx context.Context, tx *persistence.Transaction, diskID, taskID string) error
+
+	FinishDiskTransfer(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		diskID string,
+		sourceCellID string,
+		targetCellID string,
+		createTaskID string,
+		transferTaskID string,
+	) error
 }
