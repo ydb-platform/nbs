@@ -203,7 +203,6 @@ private:
             TDuration::MilliSeconds(50),
             TDuration::Seconds(1)};
 
-        // Metrics / logging
         // Refers to GenerateBlobIds/AddData/ConfirmAddData/CancelAddData
         // request, depending on which one is in flight
         TMaybe<TInFlightRequest> InFlightRequest;
