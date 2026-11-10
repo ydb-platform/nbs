@@ -18,6 +18,27 @@ namespace {
 
 constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
+TVolumePerfSettings GetAdaptedPerfSettings(
+    const TDiagnosticsConfig& config,
+    NProto::EStorageMediaKind kind)
+{
+    // Cast hdd perf settings to sdd, otherwise hdd tablet will be estimated as
+    // significantly more expensive than ssd
+    switch (kind) {
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
+            break;
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED;
+            break;
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_LOCAL:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_LOCAL;
+            break;
+        default:
+            break;
+    }
+    return GetPerfSettings(config, kind);
+}
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,11 +363,11 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
 }
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
-    const TBlobIoCounters& load,
+    const TBlobIoCounters& counters,
     NProto::EStorageMediaKind mediaKind) const
 {
-    const auto perfSettings = GetPerfSettings(*DiagnosticsConfig, mediaKind);
-
+    const auto perfSettings =
+        GetAdaptedPerfSettings(*DiagnosticsConfig, mediaKind);
     if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
         return std::nullopt;
@@ -359,15 +380,15 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
         expectedParallelism * CostPerIO(
                                   perfSettings.Write.Iops,
                                   perfSettings.Write.Bandwidth,
-                                  load.WriteBlob.Bytes,
-                                  load.WriteBlob.Count);
+                                  counters.WriteBlob.Bytes,
+                                  counters.WriteBlob.Count);
 
     const TDuration readCost =
         expectedParallelism * CostPerIO(
                                   perfSettings.Read.Iops,
                                   perfSettings.Read.Bandwidth,
-                                  load.ReadBlob.Bytes,
-                                  load.ReadBlob.Count);
+                                  counters.ReadBlob.Bytes,
+                                  counters.ReadBlob.Count);
     return writeCost + readCost;
 }
 

@@ -40,7 +40,6 @@ class TVolumeBalancerState
         TInstant LastSuccessfulPull;
 
         ui32 SufferCount = 0;
-
         std::optional<TDuration> Cost;
 
         TVolumeInfo(TDuration pullInterval);
