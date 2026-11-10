@@ -51,6 +51,7 @@ const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
 const requestQueuesCountVolumeContextKey = "requestQueuesCount"
 const instanceIdKey = "instanceId"
+const zoneIdVolumeContextKey = "zoneId"
 
 const defaultVhostQueuesCount = uint32(8)
 const maxQueuesCount = 65536
@@ -313,13 +314,13 @@ func (s *nodeService) NodeStageVolume(
 					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						clientIndex, err = s.getNfsClientIndex(ctx, nbsId)
+						clientIndex, err = s.getNfsClientIndex(ctx, nbsId, req.VolumeContext[zoneIdVolumeContextKey])
 						if err != nil {
 							return nil, s.statusErrorf(codes.InvalidArgument,
 								"Failed to get NFS client index: %v", err)
 						}
 					} else {
-						clientIndex, err = s.getNbsClientIndex(ctx, nbsId)
+						clientIndex, err = s.getNbsClientIndex(ctx, nbsId, req.VolumeContext[zoneIdVolumeContextKey])
 						if err != nil {
 							return nil, s.statusErrorf(codes.InvalidArgument,
 								"Failed to get NFS client index: %v", err)
@@ -436,41 +437,32 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string) (uint, error) {
+func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zoneId string) (uint, error) {
 	if s.nbsServerReplicaCount < 2 {
 		return 0, nil
 	}
 
 	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
-	endpointsCount := math.MaxInt32
-	nbsClientIndex := uint(0)
-	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
-		if useProjectIdMapping {
-			describeVolumeResp, err := s.nbsClients[index].DescribeVolume(ctx,
-				&nbsapi.TDescribeVolumeRequest{
-					DiskId: volumeId,
-				},
-			)
-
-			if err != nil {
-				continue
-			}
-
-			projectId := describeVolumeResp.GetVolume().GetCloudId()
-			backendIndex, found := s.projectIdToBackendIndex[projectId]
-			if !found {
-				return index, nil
-			}
-
-			if backendIndex != index {
+	if useProjectIdMapping {
+		backendIndex, found := s.projectIdToBackendIndex[zoneId]
+		if found {
+			if backendIndex >= s.nbsServerReplicaCount {
 				return 0, fmt.Errorf(
-					"backend index %d for project %s does not match backend index from the config %d",
-					index, projectId, backendIndex,
+					"Invalid backend index %d for zone %s",
+					backendIndex,
+					zoneId,
 				)
 			}
 
 			return backendIndex, nil
 		}
+
+		return 0, nil
+	}
+
+	endpointsCount := math.MaxInt32
+	nbsClientIndex := uint(0)
+	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
 
 		listEndpointsResp, err := s.nbsClients[index].ListEndpoints(ctx,
 			&nbsapi.TListEndpointsRequest{})
@@ -484,54 +476,35 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string) (u
 		}
 	}
 
-	if useProjectIdMapping {
-		return 0, fmt.Errorf(
-			"Disk doesn't exist: %s",
-			volumeId,
-		)
-	}
-
 	return nbsClientIndex, nil
 }
 
-func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string) (uint, error) {
+func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string, zoneId string) (uint, error) {
 	if s.nfsVhostReplicaCount < 2 {
+		return 0, nil
+	}
+
+	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
+	if useProjectIdMapping {
+		backendIndex, found := s.projectIdToBackendIndex[zoneId]
+		if found {
+			if backendIndex >= s.nfsVhostReplicaCount {
+				return 0, fmt.Errorf(
+					"Invalid backend index %d for zone %s",
+					backendIndex,
+					zoneId,
+				)
+			}
+
+			return backendIndex, nil
+		}
+
 		return 0, nil
 	}
 
 	endpointsCount := math.MaxInt32
 	nfsClientIndex := uint(0)
-
-	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
-
 	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
-		// if useProjectIdMapping {
-		// 	describeFilesystemResp, err := s.nfsClients[index].GetFileStoreInfo(ctx,
-		// 		&nfsapi.TGetFileStoreInfoRequest{
-		// 			FilesystemId: filesystemId,
-		// 		},
-		// 	)
-
-		// 	if err != nil {
-		// 		continue
-		// 	}
-
-		// 	projectId := describeFilesystemResp.GetFileStore().GetProjectId()
-		// 	backendIndex, found := s.projectIdToBackendIndex[projectId]
-		// 	if !found {
-		// 		return index, nil
-		// 	}
-
-		// 	if backendIndex != index {
-		// 		return 0, fmt.Errorf(
-		// 			"backend index %d for project %s does not match backend index from the config %d",
-		// 			index, projectId, backendIndex,
-		// 		)
-		// 	}
-
-		// 	return backendIndex, nil
-		// }
-
 		listEndpointsResp, err := s.nfsClients[index].ListEndpoints(ctx,
 			&nfsapi.TListEndpointsRequest{})
 		if err != nil {
@@ -542,13 +515,6 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 			endpointsCount = len(listEndpointsResp.Endpoints)
 			nfsClientIndex = uint(index)
 		}
-	}
-
-	if useProjectIdMapping {
-		return 0, fmt.Errorf(
-			"Filesystem doesn't exist: %s",
-			filesystemId,
-		)
 	}
 
 	return nfsClientIndex, nil
