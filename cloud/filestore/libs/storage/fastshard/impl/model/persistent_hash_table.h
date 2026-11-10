@@ -89,7 +89,9 @@ private:
         [[nodiscard]] NProto::TError Init()
         {
             const ui64 pageNo = FirstPageNo + SlotNo / SlotsPerPage;
-            return PageStore.ReadPage(Lsn, pageNo, &Page);
+            return Lsn > 0
+                ? PageStore.ReadPageForUpdate(Lsn, pageNo, &Page)
+                : PageStore.ReadPageForLookup(pageNo, &Page);
         }
 
         [[nodiscard]] ui64 CurrentPageNo() const
@@ -113,7 +115,9 @@ private:
             }
 
             Dirty = false;
-            return PageStore.ReadPage(Lsn, newPageNo, &Page);
+            return Lsn > 0
+                ? PageStore.ReadPageForUpdate(Lsn, newPageNo, &Page)
+                : PageStore.ReadPageForLookup(newPageNo, &Page);
         }
 
         [[nodiscard]] NProto::TError ToPrevSlot()
@@ -217,6 +221,10 @@ public:
     [[nodiscard]] NProto::TError
     Put(ui64 lsn, const TValue& v, TVector<TPageGroup>& pageGroups)
     {
+        if (lsn == 0) {
+            return MakeError(E_ARGUMENT, "zero lsn");
+        }
+
         auto k = MakeKey(v);
         if (k == TombstoneKey) {
             return MakeError(E_ARGUMENT, "attempt to put a tombstone");
@@ -238,19 +246,37 @@ public:
         const ui64 slotNo,
         TVector<TPageGroup>& pageGroups)
     {
+        if (lsn == 0) {
+            return MakeError(E_ARGUMENT, "zero lsn");
+        }
+
         // TODO(#5895): verify that there's no key change
         return DoPut(lsn, v, slotNo, pageGroups);
     }
 
     [[nodiscard]] NProto::TError
-    Get(ui64 lsn, const TKey& k, TValue* v, ui64* slotNo) const
+    GetForLookup(const TKey& k, TValue* v, ui64* slotNo) const
     {
+        return FindSlot(0 /* lsn */, k, v, slotNo);
+    }
+
+    [[nodiscard]] NProto::TError
+    GetForUpdate(ui64 lsn, const TKey& k, TValue* v, ui64* slotNo) const
+    {
+        if (lsn == 0) {
+            return MakeError(E_ARGUMENT, "zero lsn");
+        }
+
         return FindSlot(lsn, k, v, slotNo);
     }
 
     [[nodiscard]] NProto::TError
     Delete(ui64 lsn, const TKey& k, TValue* v, TVector<TPageGroup>& pageGroups)
     {
+        if (lsn == 0) {
+            return MakeError(E_ARGUMENT, "zero lsn");
+        }
+
         ui64 slotNo = 0;
         auto error = FindSlot(lsn, k, v, &slotNo);
         if (HasError(error)) {
@@ -316,13 +342,6 @@ private:
         return PageStore->WritePage(lsn, pageNo, std::move(page), pageGroups);
     }
 
-    [[nodiscard]] NProto::TError
-    ReadPage(ui64 lsn, ui64 slotNo, TBuffer* page) const
-    {
-        const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
-        return PageStore->ReadPage(lsn, pageNo, page);
-    }
-
     [[nodiscard]] bool LookupSlot(const char* slotData, TValue* v) const
     {
         if (IsEmpty(slotData)) {
@@ -331,20 +350,6 @@ private:
 
         memcpy(v, slotData, sizeof(TValue));
         return true;
-    }
-
-    [[nodiscard]] NProto::TError
-    LookupSlot(ui64 lsn, ui64 slotNo, TValue* v) const
-    {
-        TBuffer page;
-        auto error = ReadPage(lsn, slotNo, &page);
-        if (HasError(error)) {
-            return error;
-        }
-
-        const ui32 relSlotNo = slotNo % SlotsPerPage;
-        const char* ptr = page.Data() + relSlotNo * SlotSize;
-        return LookupSlot(ptr, v) ? MakeError(S_OK) : MakeError(S_FALSE);
     }
 
     [[nodiscard]] NProto::TError
@@ -415,8 +420,11 @@ private:
         return {};
     }
 
-    [[nodiscard]] NProto::TError
-    FindSlot(ui64 lsn, const TKey& k, TValue* v, ui64* slotNo) const
+    [[nodiscard]] NProto::TError FindSlot(
+        ui64 lsn,
+        const TKey& k,
+        TValue* v,
+        ui64* slotNo) const
     {
         const ui64 h = Hash(k);
         const ui64 firstSlotNo = h % SlotCount;
@@ -466,7 +474,9 @@ private:
         TVector<TPageGroup>& pageGroups)
     {
         TBuffer page;
-        auto error = ReadPage(lsn, slotNo, &page);
+
+        const ui64 pageNo = FirstPageNo + slotNo / SlotsPerPage;
+        auto error = PageStore->ReadPageForUpdate(lsn, pageNo, &page);
         if (HasError(error)) {
             return error;
         }

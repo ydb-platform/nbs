@@ -98,7 +98,7 @@ NProto::TError TNodeTable::ResizeNode(
 {
     TNodeTableSlot slot{};
     ui64 slotNo = 0;
-    auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
+    auto error = Slots->GetForUpdate(writeContext.Lsn, nodeId, &slot, &slotNo);
     if (HasError(error)) {
         return error;
     }
@@ -135,7 +135,7 @@ NProto::TError TNodeTable::UpdateNode(
 {
     TNodeTableSlot slot{};
     ui64 slotNo = 0;
-    auto error = Slots->Get(writeContext.Lsn, nodeId, &slot, &slotNo);
+    auto error = Slots->GetForUpdate(writeContext.Lsn, nodeId, &slot, &slotNo);
     if (HasError(error)) {
         return error;
     }
@@ -201,32 +201,50 @@ NProto::TError TNodeTable::DeleteNode(
         ->Delete(writeContext.Lsn, nodeId, slot, writeContext.PageGroups);
 }
 
-NProto::TError TNodeTable::GetNode(
+NProto::TError TNodeTable::GetNodeForLookup(
+    ui64 nodeId,
+    NProto::TNodeAttr* attr) const
+{
+    TNodeTableSlot slot{};
+    ui64 slotNo = 0;
+    auto error = Slots->GetForLookup(nodeId, &slot, &slotNo);
+    if (HasError(error)) {
+        return error;
+    }
+
+    *attr = Convert(slot);
+    return {};
+}
+
+NProto::TError TNodeTable::GetNodeForUpdate(
+    ui64 nodeId,
+    TWriteContext& writeContext,
+    NProto::TNodeAttr* attr) const
+{
+    TNodeTableSlot slot{};
+    ui64 slotNo = 0;
+    auto error = Slots->GetForUpdate(writeContext.Lsn, nodeId, &slot, &slotNo);
+    if (HasError(error)) {
+        return error;
+    }
+
+    *attr = Convert(slot);
+    return {};
+}
+
+NProto::TError TNodeTable::GetNodeForUpdate(
     ui64 nodeId,
     TWriteContext& writeContext,
     TNodeTableSlot* slot,
     ui64* slotNo,
     NProto::TNodeAttr* attr) const
 {
-    auto error = Slots->Get(writeContext.Lsn, nodeId, slot, slotNo);
+    auto error = Slots->GetForUpdate(writeContext.Lsn, nodeId, slot, slotNo);
     if (HasError(error)) {
         return error;
     }
 
     *attr = Convert(*slot);
-    return {};
-}
-
-NProto::TError TNodeTable::GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
-{
-    TNodeTableSlot slot{};
-    ui64 slotNo = 0;
-    auto error = Slots->Get(0 /* lsn */, nodeId, &slot, &slotNo);
-    if (HasError(error)) {
-        return error;
-    }
-
-    *attr = Convert(slot);
     return {};
 }
 

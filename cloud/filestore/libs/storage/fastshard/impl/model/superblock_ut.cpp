@@ -29,10 +29,11 @@ TVector<ui64> CollectPages(const TVector<TPageGroup>& groups)
     return res;
 }
 
-void Flush(TVector<TPageGroup>& groups, IPageStore& pageStore)
+void Flush(TWriteContext& writeContext, IPageStore& pageStore)
 {
-    pageStore.CommitPages(CollectPages(groups));
-    groups.clear();
+    pageStore.CommitPages(
+        writeContext.Lsn,
+        CollectPages(writeContext.PageGroups));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +67,7 @@ TEST(SuperBlockTest, AllocatesNodeIds)
         auto error = fx.SB.AllocateNodeId(writeContext, &nodeId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(2U, nodeId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     {
@@ -75,7 +76,7 @@ TEST(SuperBlockTest, AllocatesNodeIds)
         auto error = fx.SB.AllocateNodeId(writeContext, &nodeId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(3U, nodeId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     {
@@ -84,7 +85,7 @@ TEST(SuperBlockTest, AllocatesNodeIds)
         auto error = fx.SB.AllocateNodeId(writeContext, &nodeId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(4U, nodeId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     TSuperBlock sb2;
@@ -96,7 +97,7 @@ TEST(SuperBlockTest, AllocatesNodeIds)
         auto error = fx.SB.AllocateNodeId(writeContext, &nodeId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(5U, nodeId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 }
 
@@ -112,7 +113,7 @@ TEST(SuperBlockTest, AllocatesHandleIds)
         auto error = fx.SB.AllocateHandleId(writeContext, &handleId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(2U, handleId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     {
@@ -121,7 +122,7 @@ TEST(SuperBlockTest, AllocatesHandleIds)
         auto error = fx.SB.AllocateHandleId(writeContext, &handleId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(3U, handleId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     {
@@ -130,7 +131,7 @@ TEST(SuperBlockTest, AllocatesHandleIds)
         auto error = fx.SB.AllocateHandleId(writeContext, &handleId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(4U, handleId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     TSuperBlock sb2;
@@ -142,7 +143,7 @@ TEST(SuperBlockTest, AllocatesHandleIds)
         auto error = fx.SB.AllocateHandleId(writeContext, &handleId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(5U, handleId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 }
 
@@ -160,7 +161,7 @@ TEST(SuperBlockTest, CollectsStats)
         auto error = fx.SB.AllocateNodeId(writeContext, &nodeId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(i + 2, nodeId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     for (ui64 i = 0; i < handleCount; ++i) {
@@ -170,7 +171,7 @@ TEST(SuperBlockTest, CollectsStats)
         auto error = fx.SB.AllocateHandleId(writeContext, &handleId);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(i + 2, handleId);
-        Flush(writeContext.PageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     TFileSystemShardStats stats;

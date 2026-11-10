@@ -33,7 +33,7 @@ public:
         TBuffer page,
         TVector<TPageGroup>& logRecord) = 0;
     [[nodiscard]] virtual NProto::TError
-    ReadPageForLookup(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
+    ReadPageForLookup(ui64 pageNo, TBuffer* page) const = 0;
     [[nodiscard]] virtual NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
 
@@ -97,8 +97,6 @@ public:
             auto pages = CollectPages(Context);
             Store.RollbackPages(Context.Lsn, pages);
         }
-
-        // TODO(#5895) - notify storage that this Lsn was skipped
     }
 
     // Must be called after shard mutex is taken. Otherwise concurrent shard ops
@@ -108,8 +106,8 @@ public:
         Context.Lsn = Store.AllocateLsn();
     }
 
-    // Must be called before releasing Init mutex in case of successful operation
-    // to chains it for write
+    // Must be called before releasing Init mutex in case of successful
+    // operation to chains it for write
     void Link()
     {
         Context.PrevLsn = Store.LinkRecord(Context.Lsn);

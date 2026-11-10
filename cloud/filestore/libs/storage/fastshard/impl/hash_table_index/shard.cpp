@@ -895,7 +895,7 @@ public:
         std::lock_guard g(Mutex);
 
         if (name) {
-            auto error = Names.Get(name, &nodeId);
+            auto error = Names.GetForLookup(name, &nodeId);
             if (HasError(error)) {
                 return error;
             }
@@ -904,7 +904,7 @@ public:
         lc.NodeId = nodeId;
         SILK_DEBUG("[%s] GetNodeAttr", lc.Describe().c_str());
 
-        return Nodes.GetNode(nodeId, attr);
+        return Nodes.GetNodeForLookup(nodeId, attr);
     }
 
     NProto::TGetNodeAttrResponse GetNodeAttr(
@@ -1061,9 +1061,9 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
         } else {
-            PageStore->CommitPages(pages);
+            PageStore->CommitPages(writeContext.Lsn, pages);
         }
 
         SILK_DEBUG(
@@ -1191,13 +1191,13 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
             return response;
         }
 
         SILK_DEBUG("[%s] CreateNode complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
         *response.MutableNode() = std::move(attr);
         return response;
     }
@@ -1281,7 +1281,12 @@ public:
         TNodeTableSlot slot{};
         ui64 slotNo = 0;
         NProto::TNodeAttr attr;
-        auto error = Nodes.GetNode(nodeId, writeContext, &slot, &slotNo, &attr);
+        auto error = Nodes.GetNodeForUpdate(
+            nodeId,
+            writeContext,
+            &slot,
+            &slotNo,
+            &attr);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1293,11 +1298,15 @@ public:
 
         ui64 handleCount = 0;
         if (slot.Links == 1) {
-            error = Handles.GetNodeHandleCount(nodeId, &handleCount);
+            error = Handles.GetNodeHandleCountForUpdate(
+                nodeId,
+                writeContext,
+                &handleCount);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] UnrefNode::Handles.GetNodeHandleCount error=%s",
+                    "[%s] UnrefNode::Handles.GetNodeHandleCountForUpdate"
+                    " error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 return error;
@@ -1354,11 +1363,14 @@ public:
             std::lock_guard g(Mutex);
             wcg.Init();
 
-            auto error = Names.Get(request.GetName(), &nodeId);
+            auto error = Names.GetForUpdate(
+                request.GetName(),
+                writeContext,
+                &nodeId);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] UnlinkNode::Names.Get error=%s",
+                    "[%s] UnlinkNode::Names.GetForUpdate error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
@@ -1404,13 +1416,13 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
             return response;
         }
 
         SILK_DEBUG("[%s] UnlinkNode complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
         return response;
     }
 
@@ -1444,17 +1456,20 @@ public:
         ui64 nodeId = request.GetNodeId();
         NProto::TNodeAttr attr;
         if (request.GetName().empty()) {
-            auto error = Nodes.GetNode(nodeId, &attr);
+            auto error = Nodes.GetNodeForUpdate(nodeId, writeContext, &attr);
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] CreateHandle::Nodes.GetNode error=%s",
+                    "[%s] CreateHandle::Nodes.GetNodeForUpdate error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
             }
         } else {
-            auto error = Names.Get(request.GetName(), &nodeId);
+            auto error = Names.GetForUpdate(
+                request.GetName(),
+                writeContext,
+                &nodeId);
             if (error.GetCode() == E_FS_NOENT) {
                 if (HasFlag(flags, createFlag)) {
                     auto error = CreateNodeImpl(
@@ -1483,7 +1498,7 @@ public:
             } else if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] CreateHandle::Names.Get error=%s",
+                    "[%s] CreateHandle::Names.GetForUpdate error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
@@ -1492,11 +1507,12 @@ public:
                     ErrorAlreadyExists(request.GetName());
             } else {
                 lc.NodeId = nodeId;
-                auto error = Nodes.GetNode(nodeId, &attr);
+                auto error =
+                    Nodes.GetNodeForUpdate(nodeId, writeContext, &attr);
                 if (HasError(error)) {
                     SILK_LOG(
                         LogLevel(error),
-                        "[%s] CreateHandle::Nodes.GetNode error=%s",
+                        "[%s] CreateHandle::Nodes.GetNodeForUpdate error=%s",
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
@@ -1554,13 +1570,13 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
             return response;
         }
 
         SILK_DEBUG("[%s] CreateHandle complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
 
         response.SetHandle(handle);
         *response.MutableNodeAttr() = std::move(attr);
@@ -1601,7 +1617,7 @@ public:
                 TNodeTableSlot slot{};
                 ui64 slotNo = 0;
                 NProto::TNodeAttr attr;
-                auto error = Nodes.GetNode(
+                auto error = Nodes.GetNodeForUpdate(
                     nodeHandles.NodeId,
                     writeContext,
                     &slot,
@@ -1610,7 +1626,7 @@ public:
                 if (HasError(error)) {
                     SILK_LOG(
                         LogLevel(error),
-                        "[%s] DestroyHandle::Nodes.GetNode error=%s",
+                        "[%s] DestroyHandle::Nodes.GetNodeForUpdate error=%s",
                         lc.Describe().c_str(),
                         FormatError(error).c_str());
                     *response.MutableError() = std::move(error);
@@ -1653,13 +1669,13 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
             return response;
         }
 
         SILK_DEBUG("[%s] DestroyHandle complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
 
         return response;
     }
@@ -1677,11 +1693,19 @@ public:
         std::unique_lock l(Mutex);
 
         ui64 nodeId = 0;
-        auto error = Handles.GetNodeId(request.GetHandle(), &nodeId);
+
+        TWriteContext writeContext;
+        TWriteContextGuard wcg(writeContext, *PageStore);
+        wcg.Init();
+
+        auto error = Handles.GetNodeIdForUpdate(
+            request.GetHandle(),
+            writeContext,
+            &nodeId);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
-                "[%s] WriteData::Handles.Get error=%s",
+                "[%s] WriteData::Handles.GetNodeIdForUpdate error=%s",
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
@@ -1742,10 +1766,6 @@ public:
             *response.MutableError() = std::move(error);
             return response;
         }
-
-        TWriteContext writeContext;
-        TWriteContextGuard wcg(writeContext, *PageStore);
-        wcg.Init();
 
         //
         // The allocation of all page clusters should happen as a single call.
@@ -1964,14 +1984,14 @@ public:
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
 
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
 
             return response;
         }
 
         SILK_DEBUG("[%s] WriteData complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
 
         return response;
     }
@@ -1989,11 +2009,11 @@ public:
         std::lock_guard l(Mutex);
 
         ui64 nodeId = 0;
-        auto error = Handles.GetNodeId(request.GetHandle(), &nodeId);
+        auto error = Handles.GetNodeIdForLookup(request.GetHandle(), &nodeId);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
-                "[%s] ReadData::Handles.Get error=%s",
+                "[%s] ReadData::Handles.GetNodeIdForLookup error=%s",
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
@@ -2393,13 +2413,13 @@ public:
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
 
-            PageStore->RollbackPages(pages);
+            PageStore->RollbackPages(writeContext.Lsn, pages);
             return error;
         }
 
         SILK_INFO("[%s] CheckFormat complete", lc.Describe().c_str());
 
-        PageStore->CommitPages(pages);
+        PageStore->CommitPages(writeContext.Lsn, pages);
         return {};
     }
 
@@ -2477,11 +2497,11 @@ public:
                     "[F=%s] Format::WriteLogRecord error=%s",
                     FileSystemId.c_str(),
                     FormatError(error).c_str());
-                PageStore->RollbackPages(pages);
+                PageStore->RollbackPages(writeContext.Lsn, pages);
                 return error;
             }
 
-            PageStore->CommitPages(pages);
+            PageStore->CommitPages(writeContext.Lsn, pages);
 
             //
             // Dropping the batch from the page cache right away - otherwise

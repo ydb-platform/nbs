@@ -26,6 +26,18 @@ private:
     struct TPage
     {
         TBuffer Content;
+
+        //
+        // Lsn is used for additional correctness checks and for the Committed
+        // page it is not strictly equal to commit Lsn but is actually <= it.
+        //
+        // This happens because when we ReadForLookup we might actually read a
+        // version of the page which is newer than the last Lsn for which we
+        // already got commit confirmation.
+        //
+        // For Dirty pages we know the exact Lsn.
+        //
+
         ui64 Lsn = 0;
     };
 
@@ -75,6 +87,7 @@ private:
     mutable TPageCache PageCache;
     mutable silk::FiberMutex Mutex;
 
+    ui64 LastCommittedLsn = 0;
     ui64 Lsn = 0;
     ui64 LastLinkedLsn = 0;
 
@@ -100,8 +113,7 @@ public:
         ui64 pageNo,
         TBuffer page,
         TVector<TPageGroup>& logRecord) override;
-    NProto::TError
-    ReadPageForLookup(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
+    NProto::TError ReadPageForLookup(ui64 pageNo, TBuffer* page) const override;
     NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
     void Clear() override;
@@ -144,6 +156,7 @@ void TPageStore::InitLastLsn(ui64 lsn)
         "lsn counter is already initialized: %lu, new value: %lu",
         Lsn,
         lsn);
+    LastCommittedLsn = lsn;
     Lsn = lsn;
     LastLinkedLsn = lsn;
 }
@@ -185,8 +198,11 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
         //
 
         pageVersions->Committed = std::move(*it);
+        pageVersions->Committed.Lsn = lsn;
         pageVersions->Dirty.erase(pageVersions->Dirty.begin(), ++it);
     }
+
+    LastCommittedLsn = Max(LastCommittedLsn, lsn);
 }
 
 void TPageStore::RollbackPages(ui64 lsn, const TVector<ui64>& pages)
@@ -230,7 +246,8 @@ NProto::TError TPageStore::WritePage(
 
     //
     // If we're writing the page, it should either not exist yet or be already
-    // loaded.
+    // loaded. And when we implement eviction, we should implement pinning for
+    // the pages that are being processed as well.
     //
 
     Y_ABORT_UNLESS(!p.IsLoading);
@@ -307,6 +324,44 @@ void TPageStore::Clear()
     PageCache.clear();
 }
 
+NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const
+{
+    page->Clear();
+
+    TPageCache::iterator cachedPage;
+    {
+        std::lock_guard g(Mutex);
+
+        TPageCache::insert_ctx insertCtx{};
+        cachedPage = PageCache.find(pageNo, insertCtx);
+        if (cachedPage != PageCache.end()) {
+            if (cachedPage->second.IsLoading) {
+                return MakeError(E_REJECTED, TStringBuilder() << "page "
+                    << pageNo << " is loading");
+            }
+
+            *page = cachedPage->second.Committed.Content;
+            if (page->Empty()) {
+                page->Fill(0, PageSize);
+            }
+
+            return {};
+        }
+
+        cachedPage = PageCache.insert_direct(
+            std::make_pair(
+                pageNo,
+                TPageVersions{
+                    .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
+                    .Dirty = {},
+                    .IsLoading = true,
+                }),
+            insertCtx);
+    }
+
+    return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
+}
+
 NProto::TError TPageStore::ReadPageForUpdate(
     ui64 lsn,
     ui64 pageNo,
@@ -339,43 +394,6 @@ NProto::TError TPageStore::ReadPageForUpdate(
                 pageNo);
 
             *page = cachedPage->second.LastContent();
-            return {};
-        }
-
-        cachedPage = PageCache.insert_direct(
-            std::make_pair(
-                pageNo,
-                TPageVersions{
-                    .Committed = {.Content = {}, .Lsn = lsn},
-                    .Dirty = {},
-                    .IsLoading = true,
-                }),
-            insertCtx);
-    }
-
-    return DoReadPage(cachedPage, lsn, pageNo, page);
-}
-
-NProto::TError TPageStore::ReadPageForLookup(
-    ui64 lsn,
-    ui64 pageNo,
-    TBuffer* page) const
-{
-    page->Clear();
-
-    TPageCache::iterator cachedPage;
-    {
-        std::lock_guard g(Mutex);
-
-        TPageCache::insert_ctx insertCtx{};
-        cachedPage = PageCache.find(pageNo, insertCtx);
-        if (cachedPage != PageCache.end()) {
-            if (cachedPage->second.IsLoading) {
-                return MakeError(E_REJECTED, TStringBuilder() << "page "
-                    << pageNo << " is loading");
-            }
-
-            *page = cachedPage->second.Committed.Content;
             return {};
         }
 
@@ -476,10 +494,9 @@ public:
         return error;
     }
 
-    NProto::TError
-        ReadPageForLookup(ui64 lsn, ui64 pageNo, TBuffer* page) const override
+    NProto::TError ReadPageForLookup(ui64 pageNo, TBuffer* page) const override
     {
-        auto error = TPageStore::ReadPageForLookup(lsn, pageNo, page);
+        auto error = TPageStore::ReadPageForLookup(pageNo, page);
         if (error.GetCode() == E_NOT_FOUND) {
             page->Clear();
             page->Fill(0, PageSize);

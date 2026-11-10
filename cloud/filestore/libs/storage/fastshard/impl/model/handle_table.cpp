@@ -96,7 +96,7 @@ NProto::TError THandleTable::Put(
 
     TNodeHandlesSlot nodeHandles{};
     ui64 slotNo = 0;
-    error = NodeId2HandleCount->Get(
+    error = NodeId2HandleCount->GetForUpdate(
         writeContext.Lsn,
         handle.NodeId,
         &nodeHandles,
@@ -143,7 +143,7 @@ NProto::TError THandleTable::Delete(
     }
 
     ui64 slotNo = 0;
-    error = NodeId2HandleCount->Get(
+    error = NodeId2HandleCount->GetForUpdate(
         writeContext.Lsn,
         slot.NodeId,
         nodeHandles,
@@ -172,38 +172,11 @@ NProto::TError THandleTable::Delete(
     return error;
 }
 
-NProto::TError THandleTable::Get(
-    ui64 handle,
-    TNodeHandlesSlot* nodeHandles) const
+NProto::TError THandleTable::GetNodeIdForLookup(ui64 handle, ui64* nodeId) const
 {
     ui64 slotNo = 0;
     THandleSlot slot{};
-    auto error = Handles->Get(0 /* lsn */, handle, &slot, &slotNo);
-    if (error.GetCode() == E_FS_NOENT) {
-        return ErrorInvalidHandle(handle);
-    }
-
-    if (HasError(error)) {
-        return error;
-    }
-
-    error = NodeId2HandleCount->Get(
-        0 /* lsn */,
-        slot.NodeId,
-        nodeHandles,
-        &slotNo);
-    if (HasError(error)) {
-        return error;
-    }
-
-    return {};
-}
-
-NProto::TError THandleTable::GetNodeId(ui64 handle, ui64* nodeId) const
-{
-    ui64 slotNo = 0;
-    THandleSlot slot{};
-    auto error = Handles->Get(0 /* lsn */, handle, &slot, &slotNo);
+    auto error = Handles->GetForLookup(handle, &slot, &slotNo);
     if (error.GetCode() == E_FS_NOENT) {
         return ErrorInvalidHandle(handle);
     }
@@ -216,14 +189,39 @@ NProto::TError THandleTable::GetNodeId(ui64 handle, ui64* nodeId) const
     return {};
 }
 
-NProto::TError THandleTable::GetNodeHandleCount(
+NProto::TError THandleTable::GetNodeIdForUpdate(
+    ui64 handle,
+    TWriteContext& writeContext,
+    ui64* nodeId) const
+{
+    ui64 slotNo = 0;
+    THandleSlot slot{};
+    auto error =
+        Handles->GetForUpdate(writeContext.Lsn, handle, &slot, &slotNo);
+    if (error.GetCode() == E_FS_NOENT) {
+        return ErrorInvalidHandle(handle);
+    }
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    *nodeId = slot.NodeId;
+    return {};
+}
+
+NProto::TError THandleTable::GetNodeHandleCountForUpdate(
     ui64 nodeId,
+    TWriteContext& writeContext,
     ui64* handleCount) const
 {
     TNodeHandlesSlot nodeHandles{};
     ui64 slotNo = 0;
-    auto error =
-        NodeId2HandleCount->Get(0 /* lsn */, nodeId, &nodeHandles, &slotNo);
+    auto error = NodeId2HandleCount->GetForUpdate(
+        writeContext.Lsn,
+        nodeId,
+        &nodeHandles,
+        &slotNo);
 
     if (error.GetCode() == E_FS_NOENT) {
         *handleCount = 0;

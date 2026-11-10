@@ -89,14 +89,19 @@ public:
         TWriteContext& writeContext,
         TNodeTableSlot* slot);
 
-    NProto::TError GetNode(
+    NProto::TError GetNodeForLookup(ui64 nodeId, NProto::TNodeAttr* attr) const;
+
+    NProto::TError GetNodeForUpdate(
+        ui64 nodeId,
+        TWriteContext& writeContext,
+        NProto::TNodeAttr* attr) const;
+
+    NProto::TError GetNodeForUpdate(
         ui64 nodeId,
         TWriteContext& writeContext,
         TNodeTableSlot* slot,
         ui64* slotNo,
         NProto::TNodeAttr* attr) const;
-
-    NProto::TError GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const;
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
