@@ -1039,7 +1039,9 @@ struct TBlobIoCounters
 
     TCounters ReadBlob;
     TCounters WriteBlob;
-    void Assign(const THistogramRequestCounters& counters);
+
+    void Add(const THistogramRequestCounters& counters);
+    void Reset();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

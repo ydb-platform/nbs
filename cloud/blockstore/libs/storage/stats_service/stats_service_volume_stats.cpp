@@ -146,13 +146,15 @@ void TStatsServiceActor::HandleGetVolumeStats(
 {
     for (auto& v: ev->Get()->VolumeStats) {
         if (v.GetHost()) {
-            if (const auto* volume = State.GetVolume(v.GetDiskId())) {
-                const auto& counters = volume->BlobLoadCountersDiff;
+            if (auto* volume = State.GetVolume(v.GetDiskId())) {
+                auto& counters = volume->BlobLoadCountersDiff;
 
                 v.SetReadBlobCount(counters.ReadBlob.Count);
                 v.SetReadBlobBytes(counters.ReadBlob.Bytes);
                 v.SetWriteBlobCount(counters.WriteBlob.Count);
                 v.SetWriteBlobBytes(counters.WriteBlob.Bytes);
+
+                counters.Reset();
             } else {
                 v.SetIsLocal(false);
             }

@@ -366,8 +366,8 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
         expectedParallelism * CostPerIO(
                                   perfSettings.Read.Iops,
                                   perfSettings.Read.Bandwidth,
-                                  load.WriteBlob.Bytes,
-                                  load.WriteBlob.Count);
+                                  load.ReadBlob.Bytes,
+                                  load.ReadBlob.Count);
     return writeCost + readCost;
 }
 
