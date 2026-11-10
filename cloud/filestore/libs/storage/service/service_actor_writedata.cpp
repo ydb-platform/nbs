@@ -186,8 +186,6 @@ private:
 
     struct TRequestState
     {
-        // Original request
-        NProto::TWriteDataRequest WriteRequest;
         TWriteRequestParams Params;
 
         const TByteRange BlobRange;
@@ -215,8 +213,7 @@ private:
         TRope Rope;
 
         explicit TRequestState(TWriteRequestParams params)
-            : WriteRequest(std::move(params.WriteRequest))
-            , Params(std::move(params))
+            : Params(std::move(params))
             , BlobRange(Params.Range.AlignedSubRange())
         {}
     };
@@ -266,16 +263,17 @@ public:
             state.Params.RequestInfo->CallContext,
             "GenerateBlobIds");
 
-        state.Rope = CreateRope(state.WriteRequest.GetIovecs());
+        state.Rope = CreateRope(state.Params.WriteRequest.GetIovecs());
 
         auto request =
             std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(
-            state.WriteRequest.GetHeaders());
-        request->Record.SetFileSystemId(state.WriteRequest.GetFileSystemId());
-        request->Record.SetNodeId(state.WriteRequest.GetNodeId());
-        request->Record.SetHandle(state.WriteRequest.GetHandle());
+            state.Params.WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(
+            state.Params.WriteRequest.GetFileSystemId());
+        request->Record.SetNodeId(state.Params.WriteRequest.GetNodeId());
+        request->Record.SetHandle(state.Params.WriteRequest.GetHandle());
         request->Record.SetOffset(state.BlobRange.Offset);
         request->Record.SetLength(state.BlobRange.Length);
         request->Record.SetUnconfirmedFlowRequested(
@@ -299,8 +297,8 @@ public:
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
             state.Params.LogTag.c_str(),
-            NFileStore::CalculateByteCount(state.WriteRequest),
-            state.WriteRequest.GetOffset(),
+            NFileStore::CalculateByteCount(state.Params.WriteRequest),
+            state.Params.WriteRequest.GetOffset(),
             state.BlobRange.Length,
             state.BlobRange.Offset);
 
@@ -424,7 +422,7 @@ private:
         state.ApproximateFreeSpaceShares.resize(
             state.GenerateBlobIdsResponse.BlobsSize());
 
-        const auto& iovecs = state.WriteRequest.GetIovecs();
+        const auto& iovecs = state.Params.WriteRequest.GetIovecs();
         auto ropeIt = state.Rope.Begin();
         if (!state.Rope.empty()) {
             ropeIt += offset;
@@ -492,14 +490,15 @@ private:
                     // do not copy the buffer if there is only one blob
                     request = std::make_unique<TEvBlobStorage::TEvPut>(
                         blobId,
-                        state.WriteRequest.GetBuffer(),
+                        state.Params.WriteRequest.GetBuffer(),
                         TInstant::Max(),
                         NKikimrBlobStorage::UserData);
                 } else {
                     request = std::make_unique<TEvBlobStorage::TEvPut>(
                         blobId,
                         TString(
-                            state.WriteRequest.GetBuffer().data() + offset,
+                            state.Params.WriteRequest.GetBuffer().data() +
+                                offset,
                             blobId.BlobSize()),
                         TInstant::Max(),
                         NKikimrBlobStorage::UserData);
@@ -526,7 +525,7 @@ private:
                 state.Params.LogTag.c_str(),
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str(),
-                state.WriteRequest.GetIovecs().size());
+                state.Params.WriteRequest.GetIovecs().size());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
         }
     }
@@ -661,11 +660,11 @@ private:
         if (addWriteRangeInfo) {
             auto* rangeInfo =
                 state.InFlightRequest->AccessProfileLogRequest().AddRanges();
-            rangeInfo->SetNodeId(state.WriteRequest.GetNodeId());
-            rangeInfo->SetHandle(state.WriteRequest.GetHandle());
-            rangeInfo->SetOffset(state.WriteRequest.GetOffset());
+            rangeInfo->SetNodeId(state.Params.WriteRequest.GetNodeId());
+            rangeInfo->SetHandle(state.Params.WriteRequest.GetHandle());
+            rangeInfo->SetOffset(state.Params.WriteRequest.GetOffset());
             rangeInfo->SetBytes(
-                NFileStore::CalculateByteCount(state.WriteRequest));
+                NFileStore::CalculateByteCount(state.Params.WriteRequest));
         }
 
         auto* trace =
@@ -687,13 +686,14 @@ private:
         auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(
-            state.WriteRequest.GetHeaders());
-        request->Record.SetFileSystemId(state.WriteRequest.GetFileSystemId());
-        request->Record.SetNodeId(state.WriteRequest.GetNodeId());
-        request->Record.SetHandle(state.WriteRequest.GetHandle());
-        request->Record.SetOffset(state.WriteRequest.GetOffset());
+            state.Params.WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(
+            state.Params.WriteRequest.GetFileSystemId());
+        request->Record.SetNodeId(state.Params.WriteRequest.GetNodeId());
+        request->Record.SetHandle(state.Params.WriteRequest.GetHandle());
+        request->Record.SetOffset(state.Params.WriteRequest.GetOffset());
         request->Record.SetLength(
-            NFileStore::CalculateByteCount(state.WriteRequest));
+            NFileStore::CalculateByteCount(state.Params.WriteRequest));
         for (const auto& blob: state.GenerateBlobIdsResponse.GetBlobs()) {
             *request->Record.AddBlobIds() = blob.GetBlobId();
         }
@@ -760,8 +760,9 @@ private:
             std::make_unique<TEvIndexTablet::TEvConfirmAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(
-            state.WriteRequest.GetHeaders());
-        request->Record.SetFileSystemId(state.WriteRequest.GetFileSystemId());
+            state.Params.WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(
+            state.Params.WriteRequest.GetFileSystemId());
         request->Record.SetCommitId(
             state.GenerateBlobIdsResponse.GetCommitId());
 
@@ -798,8 +799,9 @@ private:
             std::make_unique<TEvIndexTablet::TEvCancelAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(
-            state.WriteRequest.GetHeaders());
-        request->Record.SetFileSystemId(state.WriteRequest.GetFileSystemId());
+            state.Params.WriteRequest.GetHeaders());
+        request->Record.SetFileSystemId(
+            state.Params.WriteRequest.GetFileSystemId());
         request->Record.SetCommitId(
             state.GenerateBlobIdsResponse.GetCommitId());
 
@@ -967,10 +969,10 @@ private:
             "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
             "Message: %s",
             state.Params.LogTag.c_str(),
-            state.WriteRequest.GetNodeId(),
-            state.WriteRequest.GetHandle(),
-            state.WriteRequest.GetOffset(),
-            NFileStore::CalculateByteCount(state.WriteRequest),
+            state.Params.WriteRequest.GetNodeId(),
+            state.Params.WriteRequest.GetHandle(),
+            state.Params.WriteRequest.GetOffset(),
+            NFileStore::CalculateByteCount(state.Params.WriteRequest),
             FormatError(error).Quote().c_str());
     }
 
@@ -990,7 +992,7 @@ private:
             "WriteData");
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
-        request->Record = std::move(state.WriteRequest);
+        request->Record = std::move(state.Params.WriteRequest);
         PrepareWriteDataRequestPayload(
             *request,
             state.Params.ExternalWriteDataPayloadEnabled);
@@ -1082,9 +1084,9 @@ private:
             unalignedHead.SetOffset(state.Params.Range.Offset);
             const ui64 length =
                 state.BlobRange.Offset - state.Params.Range.Offset;
-            if (state.WriteRequest.GetIovecs().empty()) {
+            if (state.Params.WriteRequest.GetIovecs().empty()) {
                 unalignedHead.SetContent(
-                    state.WriteRequest.GetBuffer().substr(0, length));
+                    state.Params.WriteRequest.GetBuffer().substr(0, length));
             } else {
                 TString buffer;
                 auto bytesCopied =
@@ -1101,9 +1103,11 @@ private:
                 state.BlobRange.End() - state.Params.Range.Offset;
             const auto length =
                 state.Params.Range.End() - state.BlobRange.End();
-            if (state.WriteRequest.GetIovecs().empty()) {
+            if (state.Params.WriteRequest.GetIovecs().empty()) {
                 unalignedTail.SetContent(
-                    state.WriteRequest.GetBuffer().substr(offset, length));
+                    state.Params.WriteRequest.GetBuffer().substr(
+                        offset,
+                        length));
             } else {
                 TString buffer;
                 auto bytesCopied =

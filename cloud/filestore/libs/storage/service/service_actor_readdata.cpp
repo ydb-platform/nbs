@@ -117,7 +117,6 @@ class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 private:
     struct TRequestState
     {
-        NProto::TReadDataRequest ReadRequest;
         TReadRequestParams Params;
 
         // Response data
@@ -200,11 +199,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TRequestState::TRequestState(TReadRequestParams params)
-    : ReadRequest(std::move(params.ReadRequest))
-    , Params(std::move(params))
+    : Params(std::move(params))
     , OriginByteRange(
-          ReadRequest.GetOffset(),
-          ReadRequest.GetLength(),
+          Params.ReadRequest.GetOffset(),
+          Params.ReadRequest.GetLength(),
           Params.BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
@@ -242,12 +240,14 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
             // creating a block buffer leads to memory allocation (and
             // initialization) which is heavy and we would like to execute that
             // on a separate thread (instead of this actor's parent thread)
-            state.BlockBuffer->ReserveAndResize(state.ReadRequest.GetLength());
+            state.BlockBuffer->ReserveAndResize(
+                state.Params.ReadRequest.GetLength());
             state.TargetBuffers = CreateRope(
                 state.BlockBuffer->begin(),
                 state.BlockBuffer->size());
         } else {
-            state.TargetBuffers = CreateRope(state.ReadRequest.GetIovecs());
+            state.TargetBuffers =
+                CreateRope(state.Params.ReadRequest.GetIovecs());
         }
     }
 
@@ -265,7 +265,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
 
     InitProfileLogRequestInfo(
         state.MainInFlightRequest->AccessProfileLogRequest(),
-        state.ReadRequest);
+        state.Params.ReadRequest);
     state.MainInFlightRequest->AccessProfileLogRequest().SetClientId(
         std::move(state.Params.ClientId));
 
@@ -292,19 +292,20 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         "%s executing DescribeData for node: %lu, "
         "handle: %lu, offset: %lu, length: %lu",
         state.Params.LogTag.c_str(),
-        state.ReadRequest.GetNodeId(),
-        state.ReadRequest.GetHandle(),
-        state.ReadRequest.GetOffset(),
-        state.ReadRequest.GetLength());
+        state.Params.ReadRequest.GetNodeId(),
+        state.Params.ReadRequest.GetHandle(),
+        state.Params.ReadRequest.GetOffset(),
+        state.Params.ReadRequest.GetLength());
 
     auto request = std::make_unique<TEvIndexTablet::TEvDescribeDataRequest>();
 
-    request->Record.MutableHeaders()->CopyFrom(state.ReadRequest.GetHeaders());
-    request->Record.SetFileSystemId(state.ReadRequest.GetFileSystemId());
-    request->Record.SetNodeId(state.ReadRequest.GetNodeId());
-    request->Record.SetHandle(state.ReadRequest.GetHandle());
-    request->Record.SetOffset(state.ReadRequest.GetOffset());
-    request->Record.SetLength(state.ReadRequest.GetLength());
+    request->Record.MutableHeaders()->CopyFrom(
+        state.Params.ReadRequest.GetHeaders());
+    request->Record.SetFileSystemId(state.Params.ReadRequest.GetFileSystemId());
+    request->Record.SetNodeId(state.Params.ReadRequest.GetNodeId());
+    request->Record.SetHandle(state.Params.ReadRequest.GetHandle());
+    request->Record.SetOffset(state.Params.ReadRequest.GetOffset());
+    request->Record.SetLength(state.Params.ReadRequest.GetLength());
 
     auto describeCallContext = MakeIntrusive<TCallContext>(
         state.MainInFlightRequest->CallContext->FileSystemId,
@@ -746,15 +747,15 @@ void TReadDataActor::ReadData(
             "%s falling back to ReadData: "
             "node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
             state.Params.LogTag.c_str(),
-            state.ReadRequest.GetNodeId(),
-            state.ReadRequest.GetHandle(),
-            state.ReadRequest.GetOffset(),
-            state.ReadRequest.GetLength(),
+            state.Params.ReadRequest.GetNodeId(),
+            state.Params.ReadRequest.GetHandle(),
+            state.Params.ReadRequest.GetOffset(),
+            state.Params.ReadRequest.GetLength(),
             fallbackReason.Quote().c_str());
     }
 
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
-    request->Record = std::move(state.ReadRequest);
+    request->Record = std::move(state.Params.ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
     request->CallContext = state.MainInFlightRequest->CallContext;
     TraceSerializer->BuildTraceRequest(
@@ -763,9 +764,10 @@ void TReadDataActor::ReadData(
 
     // Original iovecs should be preserved in this request and pruned during
     // this forwarding on the tablet side
-    state.ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
+    state.Params.ReadRequest.MutableIovecs()->Swap(
+        request->Record.MutableIovecs());
     // Length should be preserved to validate payload size
-    state.ReadRequest.SetLength(request->Record.GetLength());
+    state.Params.ReadRequest.SetLength(request->Record.GetLength());
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -796,17 +798,17 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
 
     auto it = payload.begin() + readDataResponse.GetBufferOffset();
     ui64 remainingBufferSize = bufferSize - readDataResponse.GetBufferOffset();
-    if (!state.ReadRequest.GetIovecs().empty()) {
-        if (remainingBufferSize > state.ReadRequest.GetLength()) {
+    if (!state.Params.ReadRequest.GetIovecs().empty()) {
+        if (remainingBufferSize > state.Params.ReadRequest.GetLength()) {
             return MakeError(
                 E_BADMSG,
                 TStringBuilder()
                     << "Payload size is more than iovecs size. Expected size: "
-                    << state.ReadRequest.GetLength()
+                    << state.Params.ReadRequest.GetLength()
                     << " Actual size: " << remainingBufferSize);
         }
 
-        for (auto& iovec: state.ReadRequest.GetIovecs()) {
+        for (auto& iovec: state.Params.ReadRequest.GetIovecs()) {
             ui64 dataToWrite = Min(iovec.GetLength(), remainingBufferSize);
             if (dataToWrite == 0) {
                 break;
@@ -850,7 +852,7 @@ void TReadDataActor::HandleReadDataResponse(
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     bool isResponseParsed = false;
     if (state.Params.UseCustomReadDataResponseParser &&
-        !state.ReadRequest.GetIovecs().empty())
+        !state.Params.ReadRequest.GetIovecs().empty())
     {
         auto buffer = ev->GetChainBuffer();
         // extended format is not used for ReadDataResponse, but we check it
@@ -859,7 +861,7 @@ void TReadDataActor::HandleReadDataResponse(
             auto ret = ParseReadDataResponse(
                 *buffer,
                 response->Record,
-                *state.ReadRequest.MutableIovecs());
+                *state.Params.ReadRequest.MutableIovecs());
             if (!HasError(ret)) {
                 isResponseParsed = true;
             } else {
@@ -926,7 +928,9 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
 {
     auto& state = GetState();
 
-    if (state.ReadRequest.GetIovecs().empty() || response.GetBuffer().empty()) {
+    if (state.Params.ReadRequest.GetIovecs().empty() ||
+        response.GetBuffer().empty())
+    {
         return;
     }
 
@@ -936,7 +940,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
         "%s copying data to target iovecs",
         state.Params.LogTag.c_str());
     auto currentOffset = response.GetBufferOffset();
-    for (const auto& iovec: state.ReadRequest.GetIovecs()) {
+    for (const auto& iovec: state.Params.ReadRequest.GetIovecs()) {
         if (currentOffset >= response.GetBuffer().size()) {
             break;
         }
@@ -989,8 +993,8 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
             state.TargetBuffers,
             state.OriginByteRange,
             state.Params.BlockSize,
-            state.ReadRequest.GetOffset(),
-            state.ReadRequest.GetLength(),
+            state.Params.ReadRequest.GetOffset(),
+            state.Params.ReadRequest.GetLength(),
             state.DescribeResponse,
             state.ZeroIntervals);
 
