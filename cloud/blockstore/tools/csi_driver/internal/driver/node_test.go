@@ -935,6 +935,203 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 	}
 }
 
+func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
+	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
+		{"zone_id": "", "backend_index": 0},
+		{"zone_id": "zone0", "backend_index": 0},
+		{"zone_id": "zone1", "backend_index": 1}
+	]`), 0600))
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name        string
+		zoneId      string
+		clientIndex uint
+	}{
+		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "zone0", zoneId: "zone0", clientIndex: 0},
+		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, true, false, true, 1, 2)
+			service := newNodeService(
+				defaultNodeId,
+				defaultCientId,
+				true, // vmMode
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				false, // offlineResize
+			)
+
+			ctx := context.Background()
+			client := testCtx.nbsClients[tc.clientIndex]
+			client.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+				Return(&nbs.TListEndpointsResponse{}, nil).Once()
+			hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+			client.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+				Headers:          getDefaultStartEndpointRequestHeaders(),
+				UnixSocketPath:   testCtx.nbsSocketPath,
+				DiskId:           defaultDiskId,
+				InstanceId:       defaultInstanceId,
+				ClientId:         testCtx.actualClientId,
+				DeviceName:       defaultDiskId,
+				IpcType:          nbs.EClientIpcType_IPC_VHOST,
+				VhostQueuesCount: defaultVhostQueuesCount,
+				VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+				VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+				Persistent:       true,
+				NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+					UseFreeNbdDeviceFile: false,
+				},
+				ClientProfile: &nbs.TClientProfile{HostType: &hostType},
+			}).Return(&nbs.TStartEndpointResponse{}, nil).Once()
+
+			_, err := service.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				},
+				VolumeContext: map[string]string{
+					backendVolumeContextKey: "nbs",
+					instanceIdKey:           defaultInstanceId,
+					zoneIdVolumeContextKey:  tc.zoneId,
+				},
+			})
+			require.NoError(t, err)
+
+			stageData, err := service.(*nodeService).readStageData(filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.clientIndex, stageData.ClientIndex)
+
+			client.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+				UnixSocketPath: testCtx.nbsSocketPath,
+			}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			_, err = service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.NoError(t, err)
+
+			for index, nbsClient := range testCtx.nbsClients {
+				nbsClient.AssertExpectations(t)
+				if uint(index) != tc.clientIndex {
+					assert.Empty(t, nbsClient.Calls, "unselected blockstore endpoint must not be called")
+				}
+			}
+		})
+	}
+}
+
+func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
+	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
+		{"zone_id": "", "backend_index": 0},
+		{"zone_id": "zone0", "backend_index": 0},
+		{"zone_id": "zone1", "backend_index": 1}
+	]`), 0600))
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name        string
+		zoneId      string
+		clientIndex uint
+	}{
+		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "zone0", zoneId: "zone0", clientIndex: 0},
+		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, true, false, true, 2, 1)
+			service := newNodeService(
+				defaultNodeId,
+				defaultCientId,
+				true, // vmMode
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				false, // offlineResize
+			)
+
+			ctx := context.Background()
+			client := testCtx.nfsClients[tc.clientIndex]
+			client.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+				Endpoint: &nfs.TEndpointConfig{
+					SocketPath:       testCtx.nfsSocketPath,
+					FileSystemId:     defaultDiskId,
+					ClientId:         testCtx.actualClientId,
+					VhostQueuesCount: defaultVhostQueuesCount,
+					Persistent:       true,
+				},
+			}).Return(&nfs.TStartEndpointResponse{}, nil).Once()
+
+			_, err := service.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+				},
+				VolumeContext: map[string]string{
+					backendVolumeContextKey: "nfs",
+					instanceIdKey:           defaultInstanceId,
+					zoneIdVolumeContextKey:  tc.zoneId,
+				},
+			})
+			require.NoError(t, err)
+
+			stageData, err := service.(*nodeService).readStageData(filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.clientIndex, stageData.ClientIndex)
+
+			client.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+				SocketPath: testCtx.nfsSocketPath,
+			}).Return(&nfs.TStopEndpointResponse{}, nil).Once()
+			_, err = service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.NoError(t, err)
+
+			for index, nfsClient := range testCtx.nfsClients {
+				nfsClient.AssertExpectations(t)
+				if uint(index) != tc.clientIndex {
+					assert.Empty(t, nfsClient.Calls, "unselected filestore-vhost endpoint must not be called")
+				}
+			}
+		})
+	}
+}
+
 func TestReadVhostSettings(t *testing.T) {
 	t.Run("Invalid queues count value", func(t *testing.T) {
 		volumeContext := map[string]string{
