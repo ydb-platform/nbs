@@ -18,6 +18,27 @@ namespace {
 
 constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
+TVolumePerfSettings GetAdaptedPerfSettings(
+    const TDiagnosticsConfig& config,
+    NProto::EStorageMediaKind kind)
+{
+    // Cast hdd perf settings to sdd, otherwise hdd tablet will be estimated as
+    // significantly more expensive than ssd
+    switch (kind) {
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
+            break;
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED;
+            break;
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_LOCAL:
+            kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD_LOCAL;
+            break;
+        default:
+            break;
+    }
+    return GetPerfSettings(config, kind);
+}
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
