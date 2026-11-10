@@ -36,14 +36,7 @@ constexpr TCompressionCodec CompressionCodecs[] = {
      "lz4",
      "lz4-fast14-safe"},
     {TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
-    {TCompressionMetadata::COMPRESSION_ZLIB_6, "zlib", "zlib-6"},
-    {TCompressionMetadata::COMPRESSION_LZMA_5, "lzma", "lzma-5"},
-    {TCompressionMetadata::COMPRESSION_BZIP2_6, "bzip2", "bzip2-6"},
-    {TCompressionMetadata::COMPRESSION_FASTLZ_0, "fastlz", "fastlz-0"},
-    {TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"},
-    {TCompressionMetadata::COMPRESSION_BROTLI_GENERIC_11,
-     "brotli",
-     "brotli_11"}};
+    {TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"}};
 
 static_assert(
     TCompressionMetadata::ECompressionType_ARRAYSIZE - 1 ==

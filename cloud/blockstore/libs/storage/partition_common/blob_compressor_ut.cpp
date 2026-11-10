@@ -145,14 +145,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
              "lz4-fast14-safe",
              TCompression::COMPRESSION_LZ4_FAST14_SAFE},
             {"snappy", "snappy", TCompression::COMPRESSION_SNAPPY},
-            {"zlib", "zlib-6", TCompression::COMPRESSION_ZLIB_6},
-            {"lzma", "lzma-5", TCompression::COMPRESSION_LZMA_5},
-            {"bzip2", "bzip2-6", TCompression::COMPRESSION_BZIP2_6},
-            {"fastlz", "fastlz-0", TCompression::COMPRESSION_FASTLZ_0},
-            {"zstd", "zstd_3", TCompression::COMPRESSION_ZSTD_3},
-            {"brotli",
-             "brotli_11",
-             TCompression::COMPRESSION_BROTLI_GENERIC_11}};
+            {"zstd", "zstd_3", TCompression::COMPRESSION_ZSTD_3}};
         const TString payload(BlockSize, 'a');
         for (const auto& test: cases) {
             for (const auto name: {test.Family, test.CodecName}) {
@@ -177,7 +170,21 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
     Y_UNIT_TEST(ShouldRejectUnsupportedStorageCodecNames)
     {
         for (const TStringBuf name:
-             {"", "unknown-codec", "null", "lz4-unknown", "zstd06_3"})
+             {"",
+              "unknown-codec",
+              "null",
+              "lz4-unknown",
+              "zstd06_3",
+              "zlib",
+              "zlib-6",
+              "lzma",
+              "lzma-5",
+              "bzip2",
+              "bzip2-6",
+              "fastlz",
+              "fastlz-0",
+              "brotli",
+              "brotli_11"})
         {
             AssertArgumentError(
                 [&] { return ParseBlobCompressionCodec(name).GetError(); });
@@ -292,14 +299,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         const TString payload =
             TString(ChunkSize, 'a') + TString(BlockSize, 'b');
         for (const TStringBuf codecName:
-             {"lz4-fast14-safe",
-              "snappy",
-              "zlib-6",
-              "lzma-5",
-              "bzip2-6",
-              "fastlz-0",
-              "zstd_3",
-              "brotli_11"})
+             {"lz4-fast14-safe", "snappy", "zstd_3"})
         {
             const auto codec =
                 GetResultOrFail(ParseBlobCompressionCodec(codecName));
@@ -1070,7 +1070,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     outputs,
                     nullptr);
             });
-        for (const int value: {-1, Max<int>()}) {
+        for (const int value: {-1, 4, Max<int>()}) {
             const auto codec =
                 static_cast<TCompression::ECompressionType>(value);
             metadata = blob.Compression;
@@ -1357,7 +1357,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 metadata.MutablePlainChunks()->AddCompressedChunkSize(size);
             }
             AssertArgumentError(
-                [&] {
+                [&]
+                {
                     return PlanReadBlob(BlockSize, MakeBlobId(), metadata, {0})
                         .GetError();
                 });
@@ -1383,7 +1384,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         metadata.SetChunkSize(ChunkSize);
         // Missing representation must not be mistaken for a single chunk.
         AssertArgumentError(
-            [&] {
+            [&]
+            {
                 return PlanReadBlob(BlockSize, MakeBlobId(), metadata, {0})
                     .GetError();
             });
@@ -1401,7 +1403,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             });
         metadata.MutablePlainChunks();
         AssertArgumentError(
-            [&] {
+            [&]
+            {
                 return PlanReadBlob(BlockSize, MakeBlobId(0), metadata, {0})
                     .GetError();
             });
@@ -1436,7 +1439,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         const auto compression = MakeCompression();
 
         AssertArgumentError(
-            [&] {
+            [&]
+            {
                 return PlanReadBlob(0, MakeBlobId(), compression, {0})
                     .GetError();
             });

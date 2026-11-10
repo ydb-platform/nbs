@@ -216,12 +216,7 @@ message TCompressionMetadata
         COMPRESSION_NONE = 0;
         COMPRESSION_LZ4_FAST14_SAFE = 1;
         COMPRESSION_SNAPPY = 2;
-        COMPRESSION_ZLIB_6 = 3;
-        COMPRESSION_LZMA_5 = 4;
-        COMPRESSION_BZIP2_6 = 5;
-        COMPRESSION_FASTLZ_0 = 6;
-        COMPRESSION_ZSTD_3 = 7;
-        COMPRESSION_BROTLI_GENERIC_11 = 8;
+        COMPRESSION_ZSTD_3 = 3;
     }
     ECompressionType Codec = 1;
 
