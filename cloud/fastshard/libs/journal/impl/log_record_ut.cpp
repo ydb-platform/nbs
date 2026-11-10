@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(TJournalMetadataTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectATruncatedBuffer)
+    Y_UNIT_TEST(ShouldRejectTruncatedBuffer)
     {
         const auto good = SerializeMetadata(
             {.Version = CurrentFormatVersion, .LsnLowWatermark = 7});
@@ -113,7 +113,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectATruncatedBuffer)
+    Y_UNIT_TEST(ShouldRejectTruncatedBuffer)
     {
         const auto good = SerializeRecord(MakeRecord(42, 41, 2));
 
@@ -137,7 +137,7 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
         UNIT_ASSERT(!DeserializeRecord(extra));
     }
 
-    Y_UNIT_TEST(ShouldRejectAMismatchedPageMappingCount)
+    Y_UNIT_TEST(ShouldRejectMismatchedPageMappingCount)
     {
         auto buffer = SerializeRecord(MakeRecord(42, 41, 2));
 

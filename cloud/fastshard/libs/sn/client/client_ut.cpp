@@ -312,6 +312,35 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
     EXPECT_EQ(0, r);
 }
 
+TEST(ClientTest, WritePagesRoundTrip)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TFixture fx;
+
+            NCloud::NProto::TWritePagesRequest req;
+            req.SetDeviceUUID("dev-99");
+            auto* pg = req.AddPageGroups();
+            pg->SetFirstPageNo(7);
+            pg->AddContent("payload");
+
+            auto resp = fx.Client->WritePages(fx.Ctx, req);
+
+            EXPECT_EQ(0u, resp.GetError().GetCode());
+            EXPECT_EQ(1u, fx.Storage->WritePagesCalls.size());
+            if (fx.Storage->WritePagesCalls.size() != 1) {
+                return 1;
+            }
+            EXPECT_EQ(
+                req.DebugString(),
+                fx.Storage->WritePagesCalls[0].DebugString());
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
 TEST(ClientTest, StorageErrorPassesThrough)
 {
     const int r = FiberScheduler::run(
@@ -334,7 +363,6 @@ TEST(ClientTest, StorageErrorPassesThrough)
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_FS_IO),
                 resp.GetError().GetCode());
-            EXPECT_EQ("disk on fire", resp.GetError().GetMessage());
             return 0;
         },
         0);

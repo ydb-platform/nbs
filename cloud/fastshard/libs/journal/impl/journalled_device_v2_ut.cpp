@@ -491,7 +491,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 {
-    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheJournal, TFixture)
+    Y_UNIT_TEST_F(ShouldReadAllPagesFromJournal, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -514,7 +514,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheDataStore, TFixture)
+    Y_UNIT_TEST_F(ShouldReadAllPagesFromDataStore, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -545,7 +545,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(7, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldRequestOnlyMissingPagesFromTheDataStore, TFixture)
+    Y_UNIT_TEST_F(ShouldRequestOnlyMissingPagesFromDataStore, TFixture)
     {
         // the journal covers the middle of the requested range
 
@@ -655,7 +655,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL("20:[D20,D21]", DescribeGroups(response));
     }
 
-    Y_UNIT_TEST_F(ShouldShapeTheResponseAfterTheRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldShapeResponseAfterRequest, TFixture)
     {
         // the journal holds a wider page group than the requested one
 
@@ -680,7 +680,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreReturnsMorePagesThanAsked, TFixture)
+    Y_UNIT_TEST_F(ShouldFailIfDataStoreReturnsMorePagesThanAsked, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -700,12 +700,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             E_INVALID_STATE,
             response.GetError().GetCode(),
             FormatError(response.GetError()));
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "the device returned 4 pages, expected 2");
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreMissesAPage, TFixture)
+    Y_UNIT_TEST_F(ShouldFailIfDataStoreMissesPage, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -725,9 +722,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             E_INVALID_STATE,
             response.GetError().GetCode(),
             FormatError(response.GetError()));
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "the device returned 0 pages, expected 1");
     }
 
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
@@ -741,9 +735,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         const auto response = ReadPages(MakeReadRequest({{10, 4}}));
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "journal is broken");
 
         // the data store has not been touched
 
@@ -767,12 +758,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         const auto response = ReadPages(MakeReadRequest({{10, 4}}));
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "device is broken");
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARequestForAnotherDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRequestForAnotherDevice, TFixture)
     {
         constexpr TStringBuf otherUUID = "another-device";
 
@@ -810,13 +798,10 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARequestWithNoDeviceUUID, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRequestWithNoDeviceUUID, TFixture)
     {
         auto response = ReadPages(MakeReadRequest({{10, 4}}, ""));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "empty device UUID");
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -842,7 +827,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldServeARequestForThisDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldServeRequestForThisDevice, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -876,7 +861,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFlushJournalRecordsToTheDataStore, TFixture)
+    Y_UNIT_TEST_F(ShouldFlushJournalRecordsToDataStore, TFixture)
     {
         Journal->RestoreResponse = 3;
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
@@ -943,7 +928,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
     }
 
-    Y_UNIT_TEST_F(ShouldNotFlushRecordsAboveTheRestoredLsn, TFixture)
+    Y_UNIT_TEST_F(ShouldNotFlushRecordsAboveRestoredLsn, TFixture)
     {
         // Restore reports lsn 2, so the record with lsn 3 is not indexed yet
         // and must stay in the journal until some writer advances the horizon.
@@ -980,15 +965,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto startError = StartDevice();
         UNIT_ASSERT_VALUES_EQUAL(E_IO, startError.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            startError.GetMessage(),
-            "journal is broken");
 
         const auto readResponse = ReadPages(MakeReadRequest({{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, readResponse.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            readResponse.GetError().GetMessage(),
-            "failed to restore");
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_IO,

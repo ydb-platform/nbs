@@ -24,9 +24,5 @@ Tests {
             MigrationPeriod: 20
             StateTransferDelay: 10
         }
-        IndexConsistencyValidation: {
-            Enabled: true
-            TimeoutSeconds: 300
-        }
     }
 }

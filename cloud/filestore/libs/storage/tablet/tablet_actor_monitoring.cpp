@@ -769,6 +769,7 @@ void DumpSessions(
                     TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
                     TABLEH() { out << "Deadline"; }
+                    TABLEH() { out << "GuestPosixAclEnabled"; }
                 }
             }
             for (const auto& session: sessions) {
@@ -792,6 +793,12 @@ void DumpSessions(
                         TABLED() { out << ss.OwnerGeneration; }
                         TABLED() { out << ToString(ss.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
+                        TABLED() {
+                            out << (session.ProtoInfo.GetPersistentOptions()
+                                            .GetGuestPosixAclEnabled()
+                                        ? "True"
+                                        : "False");
+                        }
                     }
                 };
                 if (session.SubSessions.empty()) {

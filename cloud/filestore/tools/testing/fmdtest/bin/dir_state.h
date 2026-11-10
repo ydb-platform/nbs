@@ -18,6 +18,8 @@ struct TFileAttrs
     ui32 Mode = 0;
     ui64 Size = 0;
     ui64 Links = 0;
+    ui64 MTimeNs = 0;
+    ui64 CTimeNs = 0;
 
     bool operator==(const TFileAttrs& rhs) const = default;
 };
@@ -41,6 +43,10 @@ struct TDirState
 {
     ui32 InstanceId = 0;
     ui32 Round = 0;
+
+    // The attrs of the directory itself - its MTime and CTime change upon
+    // each entry creation, unlink and rename.
+    TFileAttrs DirAttrs;
 
     // The files that exist in the directory.
     TMap<TString, TFileAttrs> Files;

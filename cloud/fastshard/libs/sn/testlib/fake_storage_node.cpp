@@ -103,4 +103,14 @@ TFakeStorageNode::AdvanceLsnLowWatermark(
     return AdvanceLsnLowWatermarkResp;
 }
 
+NCloud::NProto::TWritePagesResponse TFakeStorageNode::WritePages(
+    TFastShardContext&,
+    NCloud::NProto::TWritePagesRequest request)
+{
+    with_lock (Lock) {
+        WritePagesCalls.push_back(std::move(request));
+        return PopResponse(WritePagesRespQueue, WritePagesResp);
+    }
+}
+
 }   // namespace NCloud::NFastShard

@@ -55,6 +55,7 @@ struct TOptions
     ui32 Rounds{};
     ui32 FilesPerRound{};
     ui32 RenamePercentage{};
+    ui32 OverwritePercentage{};
     TDuration CheckDelay;
 
     //

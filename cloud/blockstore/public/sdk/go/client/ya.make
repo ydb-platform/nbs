@@ -29,6 +29,7 @@ GO_TEST_SRCS(
     error_test.go
     grpc_test.go
     session_test.go
+    volume_link_test.go
 )
 
 END()

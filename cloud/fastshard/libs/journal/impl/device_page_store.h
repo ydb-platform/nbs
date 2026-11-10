@@ -19,12 +19,11 @@ namespace NCloud::NJournalled {
 
 enum class EDevicePageStoreMode
 {
-    // Every method validates the page ranges it is given against the
-    // allocation state.
+    // Every method checks that the page ranges lie within the device and do
+    // not intersect. AllocateAt and Free also check the allocation state.
     Checked,
 
-    // Only AllocateAt does - the caller of Free, Write and Read is trusted to
-    // pass the pages it has allocated.
+    // Only AllocateAt validates the page ranges, the caller is trusted.
     Trusted,
 };
 
@@ -57,18 +56,15 @@ struct IDevicePageStore
 // The store owns the page allocation and guards it with a lock, so Allocate,
 // AllocateAt and Free can be called from any thread.
 //
-// The data methods - Read and Write - only validate the page ranges they
-// are given against the allocation state under that lock, the device request
-// itself is issued outside of it. The caller is expected to call them for the
-// pages it has allocated beforehand and not to call them concurrently with
-// each other or with Free for the same pages.
+// Read and Write work with any pages of the device, allocated or not, and do
+// not take the lock. The caller must not call them concurrently for the same
+// pages or free the pages in flight.
 //
-// The page ranges of a single request must not intersect with each other -
-// the store does not check this and does not account for such ranges properly.
+// The page ranges of a single request must not intersect.
 IDevicePageStorePtr CreateDevicePageStore(
     IDevicePtr device,
     ui64 pageCount,
     ui32 pageSize,
-    EDevicePageStoreMode mode = EDevicePageStoreMode::Checked);
+    EDevicePageStoreMode mode);
 
 }   // namespace NCloud::NJournalled

@@ -461,8 +461,7 @@ void TDiskRegistryProxyActor::HandleAllocateDevices(
     auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
     auto& record = request->Record;
     record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // record.SetExternalVolumeTabletId(msg->TabletId);
+    record.SetExternalVolumeTabletId(msg->TabletId);
     record.SetCloudId(msg->CloudId);
     record.SetFolderId(msg->FolderId);
     record.SetBlockSize(DefaultBlockSize);
@@ -493,8 +492,7 @@ void TDiskRegistryProxyActor::HandleMarkForCleanup(
     auto request =
         std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
     request->Record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // request->Record.SetExternalVolumeTabletId(msg->TabletId);
+    request->Record.SetExternalVolumeTabletId(msg->TabletId);
 
     ForwardRequest(ctx, IEventHandlePtr(ev.Release()), std::move(request));
 }
@@ -508,8 +506,7 @@ void TDiskRegistryProxyActor::HandleDeallocateDevices(
     auto request =
         std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // request->Record.SetExternalVolumeTabletId(msg->TabletId);
+    request->Record.SetExternalVolumeTabletId(msg->TabletId);
     request->Record.SetSync(false);
 
     ForwardRequest(ctx, IEventHandlePtr(ev.Release()), std::move(request));

@@ -17,6 +17,7 @@ using TSgList = TVector<TBlockDataRef>;
 size_t SgListGetSize(const TSgList& sglist);
 size_t SgListCopy(const TSgList& src, const TSgList& dst);
 size_t SgListCopy(TBlockDataRef src, const TSgList& dst);
+size_t SgListCopy(std::span<const TBlockDataRef> src, TBlockDataRef dst);
 size_t SgListCopy(const TSgList& src, TBlockDataRef dst);
 
 TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize);

@@ -23,6 +23,14 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 PeriodicBackupCookie = 0xDB'BAC;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const TDiskRegistryActor::TStateInfo TDiskRegistryActor::States[STATE_MAX] = {
@@ -91,22 +99,18 @@ void TDiskRegistryActor::ScheduleMakeBackup(
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "Schedule backup at " << backupPeriod.ToDeadLine(ctx.Now()));
 
-    TString hostPrefix = Config->GetDiskRegistryCountersHost();
-    if (!hostPrefix.empty()) {
-        hostPrefix  += "-";
-    }
     auto request =
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
     request->Record.SetSource(NProto::BDRSS_LOCAL_DB);
-    request->Record.SetBackupFilePath(TStringBuilder()
-        << backupDirPath << "/" + hostPrefix << FormatIsoLocal(ctx.Now()) << ".json");
 
     ctx.Schedule(
         backupPeriod,
         std::make_unique<IEventHandle>(
             ctx.SelfID,
             ctx.SelfID,
-            request.release()));
+            request.release(),
+            0,   // flags
+            PeriodicBackupCookie));
 }
 
 void TDiskRegistryActor::ScheduleCleanup(const TActorContext& ctx)
@@ -392,38 +396,56 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
     const TEvDiskRegistry::TEvBackupDiskRegistryStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    if (ev->Cookie != PeriodicBackupCookie) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Ignoring BackupDiskRegistryState response that is not for the "
+            "periodic backup, cookie: %lu",
+            ev->Cookie);
+        return;
+    }
 
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "Backup error %s",
             msg->GetError().GetMessage().c_str());
-    } else {
-        const TString filePath = msg->Record.GetBackupFilePath();
-        if (!filePath.empty()) {
-            try {
-                if (!msg->Record.GetLocalDBBackup().GetConfig().ByteSize()) {
-                    LOG_WARN(
-                        ctx, TBlockStoreComponents::DISK_REGISTRY,
-                        "The backup file is not created "
-                        "because the configuration is empty");
-                } else {
-                    TProtoStringType str;
-                    google::protobuf::util::MessageToJsonString(
-                        msg->Record,
-                        &str);
-                    TFileOutput(filePath).Write(str.c_str());
-                }
-            } catch(...) {
-                LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                    ReportDiskRegistryBackupFailed(
-                        TStringBuilder()
-                        << "Can't create backup file "
-                        << filePath.Quote()
-                        << " : " << CurrentExceptionMessage().Quote()));
+    } else if (const auto dirPath = Config->GetDiskRegistryBackupDirPath()) {
+        TString hostPrefix = Config->GetDiskRegistryCountersHost();
+        if (!hostPrefix.empty()) {
+            hostPrefix += "-";
+        }
+        const auto snapshotTs =
+            TInstant::MicroSeconds(msg->Record.GetSnapshotTs());
+        const TString filePath = TStringBuilder()
+                                 << dirPath << "/" << hostPrefix
+                                 << FormatIsoLocal(snapshotTs) << ".json";
+
+        try {
+            if (!msg->Record.GetLocalDBBackup().GetConfig().ByteSize()) {
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    "The backup file is not created "
+                    "because the configuration is empty");
+            } else {
+                msg->Record.SetBackupFilePath(filePath);
+                TProtoStringType str;
+                google::protobuf::util::MessageToJsonString(msg->Record, &str);
+                TFileOutput(filePath).Write(str.c_str());
             }
+        } catch (...) {
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                ReportDiskRegistryBackupFailed(
+                    TStringBuilder()
+                    << "Can't create backup file " << filePath.Quote() << " : "
+                    << CurrentExceptionMessage().Quote()));
         }
     }
 

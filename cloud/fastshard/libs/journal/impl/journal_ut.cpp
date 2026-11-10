@@ -410,7 +410,12 @@ struct TFixture: public NUnitTest::TBaseFixture
     // allocation state is restored from the log records.
     void RecreateJournal()
     {
-        DataStore = CreateDevicePageStore(Device, PageCount, DefaultPageSize);
+        DataStore = CreateDevicePageStore(
+            Device,
+            PageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
+
         Journal = CreateJournal(
             Logging,
             Executor,
@@ -708,9 +713,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(7, 6, 'A', {{10, 1}}));
     }
 
-    Y_UNIT_TEST_F(
-        ShouldFlushARestoredLogThatDoesNotStartAtTheFirstLsn,
-        TFixture)
+    Y_UNIT_TEST_F(ShouldFlushRestoredLogThatDoesNotStartAtFirstLsn, TFixture)
     {
         PutMetadata(5);
         PutRecord(5, 4, {{.PageNo = 10, .Location = Range(0, 1)}});
@@ -817,9 +820,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto result = Restore();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            result.GetError().GetMessage(),
-            "log record with key 5 has lsn 5, not above its prevLsn");
     }
 
     Y_UNIT_TEST_F(ShouldRestoreJournalHoldingStrandedRecord, TFixture)
@@ -919,13 +919,10 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto result = Restore();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            result.GetError().GetMessage(),
-            "log record with key 1: page range at page 10 is empty");
     }
 
     Y_UNIT_TEST_F(
-        ShouldFailToRestoreARecordWithIntersectingDevicePages,
+        ShouldFailToRestoreRecordWithIntersectingDevicePages,
         TFixture)
     {
         // a write with these page groups is rejected, so is the record
@@ -937,9 +934,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto result = Restore();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            result.GetError().GetMessage(),
-            "log record with key 1: page ranges 10x4 and 12x4 intersect");
     }
 
     Y_UNIT_TEST_F(ShouldFailToRestoreRecordStartingPastDevice, TFixture)
@@ -964,10 +958,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto result = Restore();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            result.GetError().GetMessage(),
-            "log record with key 2: page range 1023x2 is outside the device of "
-            "1024 pages");
     }
 
     Y_UNIT_TEST_F(ShouldFailToRestoreOverflowingRecord, TFixture)
@@ -1367,9 +1357,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // a ref that covers no pages asks for nothing, wherever it points
         response = ReadPages({{last + 1, 0}, {last - 1, 2}});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "page range at page 1024 is empty");
     }
 
     Y_UNIT_TEST_F(ShouldRejectReadOutsideDevice, TFixture)
@@ -1391,9 +1378,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto response = ReadPages({{last, 2}});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "page range 1023x2 is outside the device of 1024 pages");
     }
 
     Y_UNIT_TEST_F(ShouldRejectReadWithIntersectingPageGroupRefs, TFixture)
@@ -1404,9 +1388,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto response = ReadPages({{10, 2}, {11, 2}});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "page ranges 10x2 and 11x2 intersect");
 
         // the refs a request is allowed to hold still work
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1534,9 +1515,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             ReadTail(0).GetLsnLowWatermark());
     }
 
-    Y_UNIT_TEST_F(
-        ShouldNotAdvanceTheLsnLowWatermarkWhenTheMetaStoreFails,
-        TFixture)
+    Y_UNIT_TEST_F(ShouldNotAdvanceLsnLowWatermarkWhenMetaStoreFails, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 

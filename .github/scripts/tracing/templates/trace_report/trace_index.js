@@ -45,8 +45,11 @@ class TraceIndex {
   }
 
   buildPhaseOwners() {
+    const definitions = TEST_PHASE_DEFINITIONS.filter(
+      ({ ownerScopes }) => ownerScopes.length,
+    );
     return new Map(
-      TEST_PHASE_DEFINITIONS.map(({ scope: phaseScope, ownerScopes }) => {
+      definitions.map(({ scope: phaseScope, ownerScopes }) => {
         const result = this.spans.map(() => -1);
         const owners = new Set(ownerScopes);
         const seen = new Set();

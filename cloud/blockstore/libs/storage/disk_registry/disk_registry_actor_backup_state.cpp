@@ -30,6 +30,7 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
     if (msg->Record.GetSource() == NProto::BDRSS_MEMORY) {
         NProto::TBackupDiskRegistryStateResponse record;
         *record.MutableBackupFilePath() = msg->Record.GetBackupFilePath();
+        record.SetSnapshotTs(ctx.Now().MicroSeconds());
         record.MutableMemoryBackup()->CopyFrom(State->BackupState());
         record.MutableMemoryBackup()->MutableConfig()->SetWritableState(
             CurrentState != STATE_READ_ONLY);
@@ -60,7 +61,7 @@ bool TDiskRegistryActor::PrepareBackupDiskRegistryState(
     TTransactionContext& tx,
     TTxDiskRegistry::TBackupDiskRegistryState& args)
 {
-    Y_UNUSED(ctx);
+    args.SnapshotTs = ctx.Now();
 
     if (args.Source == NProto::BDRSS_MEMORY_AND_LOCAL_DB) {
         args.MemorySnapshot = State->BackupState();
@@ -93,6 +94,7 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
         std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateResponse>();
 
     *response->Record.MutableBackupFilePath() = args.BackupFilePath;
+    response->Record.SetSnapshotTs(args.SnapshotTs.MicroSeconds());
     *response->Record.MutableMemoryBackup() = std::move(args.MemorySnapshot);
 
     // if new fields are added to TDiskRegistryStateSnapshot

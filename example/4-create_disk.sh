@@ -5,7 +5,7 @@ original_args=("$@")
 
 show_help() {
     cat << EOF
-Usage: ./5-create_disk.sh [--cell2] [-hkd]
+Usage: ./4-create_disk.sh [--cell2] [-hkd]
 Creates disk with requested kind and attach it to device
 -h, --help                     Display help
 -k, --kind                     Kind of disk ssd|hdd|hybrid|nonreplicated|mirror2|mirror3|local (default: ssd)

@@ -96,7 +96,7 @@ void TPartitionFreshBlobState::AddFreshBlob(
     }
 }
 
-void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
     auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
 
@@ -111,25 +111,43 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
         UntrimmedFreshBlobByteCount -= blobSize;
         blobs.erase(blobs.begin());
     }
+    TrimmedToCommitId = Max(TrimmedToCommitId, commitId);
+
+    TTrimFreshBlobsResult result;
+    auto& unflushed = UnflushedFreshBlobsByCommitId;
+    while (unflushed && unflushed.begin()->first <= commitId) {
+        result.UnflushedBytesRemoved +=
+            EraseUnflushedFreshBlob(unflushed.begin());
+    }
+    return result;
 }
 
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+TFlushFreshBlobResult TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
-    auto& blobs = UnflushedFreshBlobsByCommitId;
+    TFlushFreshBlobResult result;
+    auto it = UnflushedFreshBlobsByCommitId.find(commitId);
+    if (it == UnflushedFreshBlobsByCommitId.end()) {
+        STORAGE_VERIFY_C(
+            commitId <= TrimmedToCommitId,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId
+                          << ", trimmed to commit id: " << TrimmedToCommitId);
+        return result;
+    }
+    result.UnflushedBytesRemoved = EraseUnflushedFreshBlob(it);
+    return result;
+}
 
-    auto it = blobs.find(commitId);
-    STORAGE_VERIFY_C(
-        it != blobs.end(),
-        TWellKnownEntityTypes::TABLET,
-        TabletID,
-        "Commit id: " << commitId);
-
+ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(
+    TUnflushedFreshBlobsByCommitId::iterator it)
+{
     const ui64 blobSize = it->second.ByteCount;
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
-    blobs.erase(it);
+    UnflushedFreshBlobsByCommitId.erase(it);
 
     return blobSize;
 }

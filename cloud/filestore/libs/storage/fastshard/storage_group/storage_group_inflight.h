@@ -11,7 +11,6 @@
 #include <util/system/types.h>
 
 #include <atomic>
-#include <mutex>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -38,28 +37,9 @@ private:
     bool Stopped = false;
 
 public:
-    NProto::TError Add(TInflightRequest& op)
-    {
-        std::lock_guard guard(Lock);
-        if (Stopped) {
-            return MakeError(E_REJECTED, "storage group is shutting down");
-        }
+    NProto::TError Add(TInflightRequest& op);
 
-        ++InflightCount;
-        Requests.PushBack(&op);
-
-        return {};
-    }
-
-    void Remove(TInflightRequest& op)
-    {
-        std::lock_guard guard(Lock);
-
-        op.Unlink();
-        if (--InflightCount == 0 && Stopped) {
-            Empty.set();
-        }
-    }
+    void Remove(TInflightRequest& op);
 
     ui32 GetInflightCount() const
     {
@@ -67,22 +47,7 @@ public:
     }
 
     // Cancels the requests in flight, refuses new ones, waits for the rest.
-    void Stop()
-    {
-        {
-            std::lock_guard guard(Lock);
-
-            Stopped = true;
-            for (auto& op: Requests) {
-                op.Ctx.Cancel.set();
-            }
-            if (InflightCount == 0) {
-                Empty.set();
-            }
-        }
-
-        Empty.wait();
-    }
+    void Stop();
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

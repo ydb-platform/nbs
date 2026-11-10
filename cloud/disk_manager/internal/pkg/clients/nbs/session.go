@@ -27,7 +27,7 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Session struct {
+type session struct {
 	nbs                 *nbs_client.DiscoveryClient
 	metricsRegistry     metrics.Registry
 	diskID              string
@@ -66,7 +66,7 @@ func newSession(
 	mountOpts nbs_client.MountVolumeOpts,
 	rediscoverPeriodMin time.Duration,
 	rediscoverPeriodMax time.Duration,
-) (session *Session, err error) {
+) (result Session, err error) {
 
 	ctx, span := tracing.StartSpan(
 		ctx,
@@ -124,7 +124,7 @@ func newSession(
 
 	span.SetAttributes(tracing.AttributeString("client_id", clientID))
 
-	session = &Session{
+	s := &session{
 		nbs:                 nbs,
 		metricsRegistry:     metricsRegistry,
 		diskID:              diskID,
@@ -134,12 +134,12 @@ func newSession(
 		clientID:            clientID,
 	}
 
-	err = session.init(ctx)
+	err = s.init(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return session, nil
+	return s, nil
 }
 
 func NewROSession(
@@ -151,7 +151,7 @@ func NewROSession(
 	encryptionSpec *protos.TEncryptionSpec,
 	rediscoverPeriodMin time.Duration,
 	rediscoverPeriodMax time.Duration,
-) (*Session, error) {
+) (Session, error) {
 
 	mountOpts := nbs_client.MountVolumeOpts{
 		MountFlags:     mountFlags,
@@ -179,7 +179,7 @@ func NewLocalROSession(
 	encryptionSpec *protos.TEncryptionSpec,
 	rediscoverPeriodMin time.Duration,
 	rediscoverPeriodMax time.Duration,
-) (*Session, error) {
+) (Session, error) {
 
 	mountOpts := nbs_client.MountVolumeOpts{
 		MountFlags:     mountFlags,
@@ -209,7 +209,7 @@ func NewRWSession(
 	encryptionSpec *protos.TEncryptionSpec,
 	rediscoverPeriodMin time.Duration,
 	rediscoverPeriodMax time.Duration,
-) (*Session, error) {
+) (Session, error) {
 
 	// We use local mount here for saving one network hop.
 	mountOpts := nbs_client.MountVolumeOpts{
@@ -233,7 +233,7 @@ func NewRWSession(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *Session) init(ctx context.Context) error {
+func (s *session) init(ctx context.Context) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -270,27 +270,27 @@ func (s *Session) init(ctx context.Context) error {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *Session) BlockSize() uint32 {
+func (s *session) BlockSize() uint32 {
 	return s.volume.BlockSize
 }
 
-func (s *Session) BlockCount() uint64 {
+func (s *session) BlockCount() uint64 {
 	return s.volume.BlocksCount
 }
 
-func (s *Session) IsOverlayDisk() bool {
+func (s *session) IsOverlayDisk() bool {
 	return len(s.volume.BaseDiskId) != 0
 }
 
-func (s *Session) EncryptionDesc() (*types.EncryptionDesc, error) {
+func (s *session) EncryptionDesc() (*types.EncryptionDesc, error) {
 	return getEncryptionDesc(s.volume.EncryptionDesc)
 }
 
-func (s *Session) IsDiskRegistryBasedDisk() bool {
+func (s *session) IsDiskRegistryBasedDisk() bool {
 	return isDiskRegistryBasedDisk(s.volume.StorageMediaKind)
 }
 
-func (s *Session) Read(
+func (s *session) Read(
 	ctx context.Context,
 	startIndex uint64,
 	blockCount uint32,
@@ -326,7 +326,7 @@ func (s *Session) Read(
 	return nbs_client.JoinBlocks(s.BlockSize(), blockCount, blocks, data)
 }
 
-func (s *Session) Write(
+func (s *session) Write(
 	ctx context.Context,
 	startIndex uint64,
 	data []byte,
@@ -358,7 +358,7 @@ func (s *Session) Write(
 	return wrapError(err)
 }
 
-func (s *Session) Zero(
+func (s *session) Zero(
 	ctx context.Context,
 	startIndex uint64,
 	blockCount uint32,
@@ -381,7 +381,7 @@ func (s *Session) Zero(
 	return wrapError(err)
 }
 
-func (s *Session) Close(ctx context.Context) {
+func (s *session) Close(ctx context.Context) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -391,7 +391,7 @@ func (s *Session) Close(ctx context.Context) {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Not thread-safe.
-func (s *Session) closeImpl(ctx context.Context) {
+func (s *session) closeImpl(ctx context.Context) {
 	s.closeSession(ctx)
 	// Should do cancelRediscover after closing the session, otherwise
 	// UnmountVolume (which is called by closeSession) may fail immediately.
@@ -400,7 +400,7 @@ func (s *Session) closeImpl(ctx context.Context) {
 }
 
 // Not thread-safe.
-func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error) {
+func (s *session) discoverAndMount(ctx context.Context) (*protos.TVolume, error) {
 	client, host, err := s.nbs.DiscoverInstance(ctx)
 	if err != nil {
 		return nil, wrapError(err)
@@ -428,7 +428,7 @@ func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error)
 	return s.session.Volume(), nil
 }
 
-func (s *Session) rediscover(ctx context.Context) {
+func (s *session) rediscover(ctx context.Context) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -450,7 +450,7 @@ func (s *Session) rediscover(ctx context.Context) {
 }
 
 // Not thread-safe.
-func (s *Session) closeSession(ctx context.Context) {
+func (s *session) closeSession(ctx context.Context) {
 	if s.session == nil {
 		return
 	}
@@ -463,6 +463,6 @@ func (s *Session) closeSession(ctx context.Context) {
 	s.client = nil
 }
 
-func (s *Session) withClientID(ctx context.Context) context.Context {
+func (s *session) withClientID(ctx context.Context) context.Context {
 	return nbs_client.WithClientID(ctx, s.clientID)
 }
