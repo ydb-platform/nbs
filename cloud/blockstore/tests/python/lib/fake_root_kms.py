@@ -1,8 +1,10 @@
+import contextlib
 import json
 import os
 import socket
 
 import yatest.common as common
+from yatest.common.network import PortManager
 
 
 def start_fake_root_kms(working_dir, port):
@@ -47,11 +49,13 @@ def start_fake_root_kms(working_dir, port):
     return root_kms, environment
 
 
-def wait_for_fake_root_kms(process, port):
+def _wait_for_fake_root_kms(process, port):
     def ready():
         if not process.running:
-            process.wait()
-            raise RuntimeError("fake-root-kms exited before becoming ready")
+            process.wait(check_exit_code=False)
+            raise RuntimeError(
+                f"fake-root-kms exited with code {process.exit_code} "
+                "before becoming ready")
         try:
             with socket.create_connection(("localhost", port), timeout=1):
                 return True
@@ -59,3 +63,16 @@ def wait_for_fake_root_kms(process, port):
             return False
 
     common.wait_for(ready, timeout=30)
+
+
+@contextlib.contextmanager
+def fake_root_kms(working_dir):
+    with PortManager() as pm:
+        port = pm.get_port()
+        process, environment = start_fake_root_kms(working_dir, port)
+        try:
+            _wait_for_fake_root_kms(process, port)
+            yield environment
+        finally:
+            process.terminate()
+            process.wait(check_exit_code=False, timeout=10)
