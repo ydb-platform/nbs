@@ -138,7 +138,7 @@ bool TryRoundGrafanaTimestamp(
     // UTC has no ambiguous civil times, so lookup().pre is the unique instant.
     // Grafana's endOf() uses millisecond precision: subtract one second from
     // the next period's start, then add 999000 microseconds below.
-    const auto seconds =
+    const cctz::seconds::rep seconds =
         utc.lookup(roundUp ? end : start).pre.time_since_epoch().count() -
         (roundUp ? 1 : 0);
     const ui64 fraction = roundUp ? 999000 : 0;
