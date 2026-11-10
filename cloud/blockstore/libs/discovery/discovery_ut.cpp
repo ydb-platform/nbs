@@ -498,6 +498,49 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         env.Discovery->Stop();
     }
 
+    Y_UNIT_TEST(ShouldInitializeFromPartialFetchResultAfterHealthCheck)
+    {
+        TEdsStartupTestEnv env;
+        with_lock (env.Fetcher->Instances->Lock) {
+            env.Fetcher->Instances->Instances = {
+                Instance("partial-host", 1),
+                Instance("eds-best", 2),
+            };
+        }
+
+        env.AdvanceTime(TDuration::Seconds(4));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+
+        env.Fetcher->Response.SetValue(
+            MakeError(E_FAIL, "another conductor group returned HTTP 503"));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->PendingChecks);
+
+        env.AdvanceTime(TDuration::Seconds(4));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.HealthChecker->Promise.SetValue();
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-best", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(0).GetPort());
+        UNIT_ASSERT_VALUES_EQUAL("partial-host", response.GetInstances(1).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(1).GetPort());
+
+        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
     Y_UNIT_TEST(ShouldRetryFailedInitialEdsFetchBeforeHealthCheck)
     {
         TEdsStartupTestEnv env;
@@ -527,6 +570,43 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
         UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetryExceptionalInitialFetchBeforeHealthCheck)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Response.SetException("initial fetch failure");
+
+        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->PendingChecks);
+
+        env.AdvanceTime(TDuration::Seconds(4));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.HealthChecker->Promise.SetValue();
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+
+        env.AdvanceTime(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
 
         env.Discovery->Stop();
     }
@@ -614,6 +694,44 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             checksBeforeRetry + 1,
             env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetryExceptionalPeriodicFetchWithoutLosingInstances)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Complete({Instance("eds-old", 1)});
+        env.HealthChecker->Promise.SetValue();
+
+        env.AdvanceTime(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        const auto checksBeforeFailure = env.HealthChecker->TrackedChecks;
+        env.Fetcher->Response.SetException("periodic fetch failure");
+        auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-old", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            checksBeforeFailure + 1,
+            env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1999));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+
+        env.Fetcher->Complete({Instance("eds-new", 2)});
+        env.AdvanceTime(TDuration::Seconds(1));
+        response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-new", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(0).GetPort());
         UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
 
         env.Discovery->Stop();

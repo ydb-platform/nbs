@@ -283,7 +283,13 @@ void TDiscoveryService::InitializeInstances(
             if (!p || AtomicGet(p->ShouldStop)) {
                 return;
             }
+            bool retry = false;
             if (HasError(future.GetValue())) {
+                with_lock (instances.Lock) {
+                    retry = instances.Instances.empty();
+                }
+            }
+            if (retry) {
                 p->Scheduler->Schedule(
                     p->Timer->Now() + interval,
                     [weak_ptr, interval, &fetcher, &instances] {
@@ -348,12 +354,25 @@ NThreading::TFuture<NProto::TError> TDiscoveryService::FetchInstances(
     return response.Apply(
         [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (const auto& future) {
             auto p = weak_ptr.lock();
-            if (p && !AtomicGet(p->ShouldStop)
-                    && AtomicGet(instances.HealthCheckDone))
-            {
+            if (!p || AtomicGet(p->ShouldStop)) {
+                return NProto::TError{};
+            }
+
+            NProto::TError error;
+            try {
+                error = future.GetValue();
+            } catch (...) {
+                const auto message = CurrentExceptionMessage();
+                auto& Log = p->Log;
+                STORAGE_ERROR("unexpected fetch error: " << message);
+                p->Counters.OnUnexpectedFetchError();
+                error = MakeError(E_FAIL, message);
+            }
+
+            if (AtomicGet(instances.HealthCheckDone)) {
                 p->ScheduleFetch(interval, fetcher, instances);
             }
-            return future.GetValue();
+            return error;
         }
     );
 }
