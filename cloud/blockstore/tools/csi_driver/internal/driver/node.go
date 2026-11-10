@@ -174,13 +174,14 @@ func readVhostSettings(volumeContext map[string]string) (vhostSettings, error) {
 type nodeService struct {
 	csi.NodeServer
 
-	nodeId              string
-	clientId            string
-	vmMode              bool
-	socketsDir          string
-	targetFsPathRegexp  *regexp.Regexp
-	targetBlkPathRegexp *regexp.Regexp
-	externalFsOverrides ExternalFsOverrideMap
+	nodeId                  string
+	clientId                string
+	vmMode                  bool
+	socketsDir              string
+	targetFsPathRegexp      *regexp.Regexp
+	targetBlkPathRegexp     *regexp.Regexp
+	externalFsOverrides     ExternalFsOverrideMap
+	projectIdToBackendIndex map[string]uint
 
 	nbsClients              []nbsclient.ClientIface
 	nfsClients              []nfsclient.EndpointClientIface
@@ -205,6 +206,7 @@ func newNodeService(
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	externalFsOverrides ExternalFsOverrideMap,
+	projectIdToBackendIndex map[string]uint,
 	nbsClients []nbsclient.ClientIface,
 	nfsClients []nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
@@ -230,6 +232,7 @@ func newNodeService(
 		targetFsPathRegexp:          regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:         regexp.MustCompile(targetBlkPathPattern),
 		externalFsOverrides:         externalFsOverrides,
+		projectIdToBackendIndex:     projectIdToBackendIndex,
 		volumeOps:                   new(sync.Map),
 		mountOptions:                mountOptions,
 		useDiscardForYDBBasedDisks:  useDiscardForYDBBasedDisks,
@@ -310,9 +313,17 @@ func (s *nodeService) NodeStageVolume(
 					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						clientIndex = s.getNfsClientIndex(ctx)
+						clientIndex, err = s.getNfsClientIndex(ctx, nbsId)
+						if err != nil {
+							return nil, s.statusErrorf(codes.InvalidArgument,
+								"Failed to get NFS client index: %v", err)
+						}
 					} else {
-						clientIndex = s.getNbsClientIndex(ctx)
+						clientIndex, err = s.getNbsClientIndex(ctx, nbsId)
+						if err != nil {
+							return nil, s.statusErrorf(codes.InvalidArgument,
+								"Failed to get NFS client index: %v", err)
+						}
 					}
 					stageData = &StageData{
 						Backend:       backend,
@@ -425,9 +436,9 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
+func (s *nodeService) getNbsClientIndex(ctx context.Context, nbsId string) (uint, error) {
 	if s.nbsServerReplicaCount < 2 {
-		return 0
+		return 0, nil
 	}
 	endpointsCount := math.MaxInt32
 	nbsClientIndex := uint(0)
@@ -444,16 +455,47 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
 		}
 	}
 
-	return nbsClientIndex
+	return nbsClientIndex, nil
 }
 
-func (s *nodeService) getNfsClientIndex(ctx context.Context) uint {
+func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string) (uint, error) {
 	if s.nfsVhostReplicaCount < 2 {
-		return 0
+		return 0, nil
 	}
+
 	endpointsCount := math.MaxInt32
 	nfsClientIndex := uint(0)
+
+	// useProjectIdMapping :=len(s.projectIdToBackendIndex) > 0
+
 	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
+		// if useProjectIdMapping {
+		// 	describeFilesystemResp, err := s.nfsClients[index].GetFileStoreInfo(ctx,
+		// 		&nfsapi.TGetFileStoreInfoRequest{
+		// 			FilesystemId: filesystemId,
+		// 		},
+		// 	)
+
+		// 	if err != nil {
+		// 		continue
+		// 	}
+
+		// 	projectId := describeFilesystemResp.GetFileStore().GetProjectId()
+		// 	backendIndex, found := s.projectIdToBackendIndex[projectId]
+		// 	if !found {
+		// 		return index, nil
+		// 	}
+
+		// 	if backendIndex != index {
+		// 		return 0, fmt.Errorf(
+		// 			"backend index %d for project %s does not match backend index from the config %d",
+		// 			index, projectId, backendIndex,
+		// 		)
+		// 	}
+
+		// 	return backendIndex, nil
+		// }
+
 		listEndpointsResp, err := s.nfsClients[index].ListEndpoints(ctx,
 			&nfsapi.TListEndpointsRequest{})
 		if err != nil {
@@ -466,7 +508,14 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context) uint {
 		}
 	}
 
-	return nfsClientIndex
+	// if useProjectIdMapping {
+	// 	return 0, fmt.Errorf(
+	// 		"Filesystem doesn't exist",
+	// 		filesystemId,
+	// 	)
+	// }
+
+	return nfsClientIndex, nil
 }
 
 func (s *nodeService) NodePublishVolume(

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -77,6 +78,7 @@ type Config struct {
 	NbsServerReplicaCountUsed        uint
 	NbsServerReplicaCountTotal       uint
 	FilesystemPrefix                 string
+	ProjectIdConfigPath              string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -193,10 +195,42 @@ func createClients(cfg Config) (*driverClients, error) {
 	}, nil
 }
 
+func loadProjectMapping(path string) (map[string]uint, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var pairs []struct {
+		ProjectID    string `json:"project_id"`
+		BackendIndex uint   `json:"backend_index"`
+	}
+	if err := json.Unmarshal(data, &pairs); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]uint, len(pairs))
+	for _, pair := range pairs {
+		if _, exists := result[pair.ProjectID]; exists {
+			return nil, fmt.Errorf("duplicate project_id %q", pair.ProjectID)
+		}
+		result[pair.ProjectID] = pair.BackendIndex
+	}
+	return result, nil
+}
+
 func NewDriver(cfg Config) (*Driver, error) {
 	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
+	}
+
+	projectIdToBackendIndex := make(map[string]uint)
+	if cfg.ProjectIdConfigPath != "" {
+		projectIdToBackendIndex, err = loadProjectMapping(cfg.ProjectIdConfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load project mapping: %v", err)
+		}
 	}
 
 	// Ensure StartEndpointRequestTimeout is set to a value less than
@@ -287,6 +321,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
 			externalFsOverrides,
+			projectIdToBackendIndex,
 			clients.nbsClients,
 			clients.nfsEndpointClients,
 			clients.nfsLocalEndpointClient,

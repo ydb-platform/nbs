@@ -77,6 +77,7 @@ type testContext struct {
 	localFsOverrides        ExternalFsOverrideMap
 	nfsVhostReplicaCount    uint
 	nbsServerReplicaCount   uint
+	projectIdToBackendIndex map[string]uint
 }
 
 func getSourcePath(socketsDir string, vmMode bool, legacyMode bool) string {
@@ -160,6 +161,7 @@ func CreateTestContext(
 		localFsOverrides:        make(ExternalFsOverrideMap),
 		nfsVhostReplicaCount:    nfsVhostReplicaCount,
 		nbsServerReplicaCount:   nbsServerReplicaCount,
+		projectIdToBackendIndex: make(map[string]uint),
 	}
 }
 
@@ -288,6 +290,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -546,6 +549,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1004,6 +1008,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1163,6 +1168,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1612,6 +1618,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1683,6 +1690,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1747,6 +1755,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1847,6 +1856,7 @@ func TestExternaFs(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1996,6 +2006,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2091,6 +2102,7 @@ func stageVolumeWithTimeoutForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2263,6 +2275,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.projectIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2414,12 +2427,25 @@ func TestOnlineNodeExpandVolume(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, tc.vmMode, false, tc.vmMode, 1, 2)
 			service := newNodeService(
-				defaultNodeId, defaultCientId, tc.vmMode, testCtx.socketsDir,
-				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
-				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
-				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
-				nil, false, defaultStartEndpointRequestTimeout,
-				testCtx.nfsVhostReplicaCount, testCtx.nbsServerReplicaCount, false,
+				defaultNodeId,
+				defaultCientId,
+				tc.vmMode,
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				testCtx.projectIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				false,
 			)
 			clientIndex := 0
 			if tc.vmMode {
@@ -2505,11 +2531,25 @@ func TestNodeStageVolumeExpansion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, false, false, false, 1, 1)
 			service := newNodeService(
-				defaultNodeId, defaultCientId, false, testCtx.socketsDir,
-				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
-				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
-				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
-				nil, false, defaultStartEndpointRequestTimeout, 1, 1, tc.offline,
+				defaultNodeId,
+				defaultCientId,
+				false,
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				testCtx.projectIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				1,
+				1,
+				tc.offline,
 			)
 			ctx := context.Background()
 			client := testCtx.nbsClients[0]
