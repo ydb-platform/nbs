@@ -124,23 +124,26 @@ void PrepareWriteDataRequestPayload(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteRequestParams
+{
+    NProto::TWriteDataRequest WriteRequest;
+    TByteRange Range;
+    TRequestInfoPtr RequestInfo;
+    TString LogTag;
+    bool WriteBlobDisabled;
+    bool UseUnconfirmedFlow;
+    IRequestStatsPtr RequestStats;
+    NCloud::NProto::EStorageMediaKind MediaKind;
+    bool UseThreeStageWrite;
+    bool ExternalWriteDataPayloadEnabled;
+    bool EnableRdmaForWrites;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 public:
-    struct TRequestParams
-    {
-        NProto::TWriteDataRequest WriteRequest;
-        TByteRange Range;
-        TRequestInfoPtr RequestInfo;
-        TString LogTag;
-        bool WriteBlobDisabled;
-        bool UseUnconfirmedFlow;
-        IRequestStatsPtr RequestStats;
-        NCloud::NProto::EStorageMediaKind MediaKind;
-        bool UseThreeStageWrite;
-        bool ExternalWriteDataPayloadEnabled;
-        bool EnableRdmaForWrites;
-    };
 
 private:
     enum class ETabletRetryRequest
@@ -194,7 +197,7 @@ private:
         const bool ExternalWriteDataPayloadEnabled = false;
         [[maybe_unused]] const bool EnableRdmaForWrites = false;
 
-        explicit TRequestState(TRequestParams params)
+        explicit TRequestState(TWriteRequestParams params)
             : WriteRequest(std::move(params.WriteRequest))
             , Range(params.Range)
             , BlobRange(Range.AlignedSubRange())
@@ -223,7 +226,7 @@ public:
         , TraceSerializer(std::move(traceSerializer))
     {}
 
-    void Initialize(TRequestParams params)
+    void Initialize(TWriteRequestParams params)
     {
         Y_ABORT_UNLESS(!RequestState);
         RequestState.emplace(std::move(params));
