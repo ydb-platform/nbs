@@ -378,7 +378,7 @@ void TVolumeSelfCounters::Publish(TInstant now)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TBlobIoCounters::Assign(const THistogramRequestCounters& counters)
+void TBlobIoCounters::Add(const THistogramRequestCounters& counters)
 {
     ReadBlob.Count += counters.ReadBlob.Count;
     ReadBlob.Bytes += counters.ReadBlob.RequestBytes;
