@@ -189,6 +189,7 @@ public:
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
+    static ui32 GetDefaultSizeToNodesRatio();
 
     bool GetDisableLocalService() const;
 

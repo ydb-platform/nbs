@@ -461,7 +461,9 @@ public:
         return Max<ui64>(
             FileSystem.GetNodesCount(),
             FileSystem.GetBlocksCount() * FileSystem.GetBlockSize() /
-                SizeToNodesRatio);
+                (SizeToNodesRatio
+                     ? SizeToNodesRatio
+                     : TStorageConfig::GetDefaultSizeToNodesRatio()));
     }
 
     bool GetCompressNodeRef() const
