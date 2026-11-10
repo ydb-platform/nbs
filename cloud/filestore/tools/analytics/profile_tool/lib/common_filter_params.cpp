@@ -50,7 +50,9 @@ TMaybe<TInstant> ParseTimestamp(
 
     const auto res = parseResult.Get<TString>(label.data());
     TInstant ts;
-    if (!NSystemdTime::TryParseTimestamp(
+    // Preserve all ISO 8601 forms accepted before adding systemd syntax.
+    if (!TInstant::TryParseIso8601(res, ts) &&
+        !NSystemdTime::TryParseTimestamp(
             res,
             ts,
             now,
