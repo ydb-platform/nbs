@@ -4,12 +4,31 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
+#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h>
 
 namespace NCloud::NBlockStore::NCells {
 
 using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<IBlockStorePtr>
+TCellCellHostEndpointBootstrap::SetupHostIcV2Endpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& config,
+    NIcV2::IHostConnectionHandlerPtr handler)
+{
+    if (!bootstrap.IcV2EndpointFactory) {
+        return MakeError(
+            E_ARGUMENT,
+            "IC V2 endpoint factory is not configured");
+    }
+
+    return bootstrap.IcV2EndpointFactory->CreateDataEndpoint(
+        config.GetCellId(),
+        config.GetFqdn(),
+        std::move(handler));
+}
 
 auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
     const TBootstrap& bootstrap,

@@ -99,6 +99,18 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
         return *service;
     }
 
+    TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config,
+        NIcV2::IHostConnectionHandlerPtr handler) override
+    {
+        Y_UNUSED(bootstrap);
+        Y_UNUSED(config);
+        Y_UNUSED(handler);
+
+        return MakeError(E_NOT_IMPLEMENTED, "IC V2 is not used in this test");
+    }
+
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) override
