@@ -283,7 +283,7 @@ void TPartitionActor::CompleteCleanup(
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);

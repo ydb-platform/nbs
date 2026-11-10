@@ -159,7 +159,7 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 
     State->FinishLoadState();
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
 
     ctx.Schedule(
         Config->GetResourceMetricsUpdateInterval(),
@@ -693,10 +693,10 @@ void TPartitionActor::HandleSetTidyUpPartitionMode(
 
     TidyUpPartitionMode = enabled;
     TidyUpCompleted = false;
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
 }
 
-void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
+void TPartitionActor::ProcessTidyUp(const TActorContext& ctx)
 {
     if (!TidyUpPartitionMode || TidyUpCompleted || CurrentState != STATE_WORK) {
         return;
@@ -780,7 +780,7 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
 
     if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
         EnqueueFlushIfNeeded(ctx);

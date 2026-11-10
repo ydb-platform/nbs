@@ -642,7 +642,7 @@ struct TTxVolume
     struct TTidyUpPartitions
     {
         const TRequestInfoPtr RequestInfo;
-        bool StartPartitions = false;
+        bool ShouldStartPartitions = false;
 
         explicit TTidyUpPartitions(TRequestInfoPtr requestInfo)
             : RequestInfo(std::move(requestInfo))
@@ -650,7 +650,7 @@ struct TTxVolume
 
         void Clear()
         {
-            StartPartitions = false;
+            ShouldStartPartitions = false;
         }
     };
 
@@ -661,12 +661,9 @@ struct TTxVolume
     struct TResetStartPartitionsNeeded
     {
         const TRequestInfoPtr RequestInfo;
-        const ui64 PartitionTabletId;
 
-        TResetStartPartitionsNeeded(
-                TRequestInfoPtr requestInfo, ui64 PartitionTabletId)
+        explicit TResetStartPartitionsNeeded(TRequestInfoPtr requestInfo)
             : RequestInfo(std::move(requestInfo))
-            , PartitionTabletId(std::move(PartitionTabletId))
         {}
 
         void Clear()

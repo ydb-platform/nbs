@@ -17,7 +17,6 @@ namespace NCloud::NBlockStore::NStorage {
 // clang-format off
 
 #define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
-    xxx(TidyUpPartitions,                                          __VA_ARGS__)\
     xxx(AddClient,                                                 __VA_ARGS__)\
     xxx(RemoveClient,                                              __VA_ARGS__)\
     xxx(WaitReady,                                                 __VA_ARGS__)\
@@ -45,6 +44,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateLinkOnFollower,                                      __VA_ARGS__)\
     xxx(GetLinkStatus,                                             __VA_ARGS__)\
     xxx(CheckRange,                                                __VA_ARGS__)\
+    xxx(TidyUpPartitions,                                          __VA_ARGS__)\
 
 // BLOCKSTORE_VOLUME_REQUESTS
 

@@ -529,7 +529,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     }
 }
 
-bool TVolumeActor::IsTidyUpPartitionModeEnabled() const
+bool TVolumeActor::IsTidyUpPartitionModeAllowed() const
 {
     return Config->GetMaxBlobsPerRangeInTidyUpMode() != 0;
 }
@@ -543,7 +543,7 @@ void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
 
 void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
-    TidyUpPartitionMode = IsTidyUpPartitionModeEnabled();
+    TidyUpPartitionMode = IsTidyUpPartitionModeAllowed();
     GCCompletedPartitions.clear();
     TidyUpCompletedPartitions.clear();
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
@@ -962,7 +962,7 @@ void TVolumeActor::HandleTabletStatus(
         case TEvBootstrapper::STARTED: {
             // A client may have arrived after the tablet factory captured the
             // initial mode, while the partition was still booting.
-            if (IsTidyUpPartitionModeEnabled()) {
+            if (IsTidyUpPartitionModeAllowed()) {
                 NCloud::Send(
                     ctx,
                     msg->TabletUser,

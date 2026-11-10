@@ -2333,7 +2333,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
     ProcessCommitQueue(ctx);
 }
 

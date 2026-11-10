@@ -417,7 +417,7 @@ private:
     TVector<ui64> TidyUpCompletedPartitions;
     bool TidyUpPartitionMode = false;
 
-    bool IsTidyUpPartitionModeEnabled() const;
+    bool IsTidyUpPartitionModeAllowed() const;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 
@@ -1102,6 +1102,12 @@ private:
     void HandleGarbageCollectorCompleted(
         const NPartition::TEvPartition::TEvGarbageCollectorCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandlePartitionMaintenanceCompleted(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        ui64 tabletId,
+        bool tidyUpCompleted);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

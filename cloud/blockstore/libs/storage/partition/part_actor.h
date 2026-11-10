@@ -244,13 +244,13 @@ private:
     [[nodiscard]] ui32 GetCollectGarbageThreshold() const;
     [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
 
-    bool ShouldFlush(const NActors::TActorContext& ctx);
     bool HasPendingCompaction(const NActors::TActorContext& ctx);
-    void DriveTidyUp(const NActors::TActorContext& ctx);
+    void ProcessTidyUp(const NActors::TActorContext& ctx);
     void HandleSetTidyUpPartitionMode(
         const TEvPartition::TEvSetTidyUpPartitionMode::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);

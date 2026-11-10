@@ -809,7 +809,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueCollectGarbageIfNeeded(ctx);
-    DriveTidyUp(ctx);
+    ProcessTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.CollectGarbage.AddRequest(time);

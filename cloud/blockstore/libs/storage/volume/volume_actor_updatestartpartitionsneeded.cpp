@@ -32,14 +32,14 @@ void TVolumeActor::ExecuteTidyUpPartitions(
 {
     Y_UNUSED(ctx);
 
-    if (IsTidyUpPartitionModeEnabled() &&
+    if (IsTidyUpPartitionModeAllowed() &&
         !State->IsDiskRegistryMediaKind() &&
         PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
     {
         TVolumeDatabase db(tx.DB);
         State->SetStartPartitionsNeeded(true);
         db.WriteStartPartitionsNeeded(true);
-        args.StartPartitions = true;
+        args.ShouldStartPartitions = true;
     }
 }
 
@@ -47,7 +47,7 @@ void TVolumeActor::CompleteTidyUpPartitions(
     const TActorContext& ctx,
     TTxVolume::TTidyUpPartitions& args)
 {
-    if (args.StartPartitions &&
+    if (args.ShouldStartPartitions &&
         PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
     {
         StartPartitionsForGc(ctx);
@@ -81,13 +81,11 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
 
     if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
         if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
-            if (!FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
-                GCCompletedPartitions.push_back(args.PartitionTabletId);
-            }
             if (GCCompletedPartitions.size() != State->GetPartitions().size() ||
                 (TidyUpPartitionMode &&
                  TidyUpCompletedPartitions.size() != State->GetPartitions().size()))
             {
+                // Wait for all GC reports and, in tidy-up mode, all tidy-up reports.
                 return;
             }
             LOG_INFO(
@@ -128,40 +126,55 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         LogTitle.GetWithTime().c_str(),
         partitionTabletId);
 
-    if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            MakeIntrusive<TCallContext>());
-
-        ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
-            requestInfo, partitionTabletId));
-    }
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+    HandlePartitionMaintenanceCompleted(
+        ctx, std::move(requestInfo), partitionTabletId, false);
 }
 
 void TVolumeActor::HandleTidyUpCompleted(
     const NPartition::TEvPartition::TEvTidyUpCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!TidyUpPartitionMode ||
-        !State->GetShouldStartPartitionsForGc(ctx.Now()))
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+    HandlePartitionMaintenanceCompleted(
+        ctx, std::move(requestInfo), ev->Get()->TabletId, true);
+}
+
+void TVolumeActor::HandlePartitionMaintenanceCompleted(
+    const TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    bool tidyUpCompleted)
+{
+    if (!State->GetShouldStartPartitionsForGc(ctx.Now()) ||
+        (tidyUpCompleted && !TidyUpPartitionMode) ||
+        !State->GetPartition(tabletId))
     {
         return;
     }
-    const auto tabletId = ev->Get()->TabletId;
-    if (!State->GetPartition(tabletId)) {
-        return;
+
+    if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        auto& completedPartitions = tidyUpCompleted
+            ? TidyUpCompletedPartitions
+            : GCCompletedPartitions;
+        if (!FindPtr(completedPartitions, tabletId)) {
+            completedPartitions.push_back(tabletId);
+        }
+        if (GCCompletedPartitions.size() != State->GetPartitions().size() ||
+            (TidyUpPartitionMode &&
+             TidyUpCompletedPartitions.size() != State->GetPartitions().size()))
+        {
+            return;
+        }
     }
-    if (!FindPtr(TidyUpCompletedPartitions, tabletId)) {
-        TidyUpCompletedPartitions.push_back(tabletId);
-    }
-    if (TidyUpCompletedPartitions.size() == State->GetPartitions().size() &&
-        GCCompletedPartitions.size() == State->GetPartitions().size())
-    {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender, ev->Cookie, MakeIntrusive<TCallContext>());
-        ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(requestInfo, tabletId));
-    }
+
+    ExecuteTx<TResetStartPartitionsNeeded>(ctx, std::move(requestInfo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
