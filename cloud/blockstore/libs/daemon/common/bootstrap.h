@@ -65,7 +65,7 @@ struct TBootstrapConfig
 class TBootstrapBase
 {
 private:
-    TConfigInitializerCommonPtr Configs;
+    TConfigInitializerCommonPtr ConfigInitializer;
 
 protected:
     // Startup inputs for common initialization in TBootstrapBase and for

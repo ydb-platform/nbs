@@ -376,8 +376,8 @@ TConfigInitializerCommonPtr TBootstrapYdb::InitConfigs(int argc, char** argv)
 {
     auto options = std::make_shared<TOptionsYdb>();
     options->Parse(argc, argv);
-    Configs = std::make_shared<TConfigInitializerYdb>(std::move(options));
-    return Configs;
+    ConfigInitializer = std::make_shared<TConfigInitializerYdb>(std::move(options));
+    return ConfigInitializer;
 }
 
 TProgramShouldContinue& TBootstrapYdb::GetShouldContinue()
@@ -411,25 +411,25 @@ ITraceServiceClientPtr TBootstrapYdb::GetTraceServiceClient()
 
 void TBootstrapYdb::InitConfigs()
 {
-    Configs->InitKikimrConfig();
-    Configs->InitServerConfig();
-    Configs->InitEndpointConfig();
-    Configs->InitHostPerformanceProfile();
-    Configs->InitFeaturesConfig();
-    Configs->InitStorageConfig();
-    Configs->InitDiskRegistryProxyConfig();
-    Configs->InitDiagnosticsConfig();
-    Configs->InitStatsUploadConfig();
-    Configs->InitDiscoveryConfig();
-    Configs->InitSpdkEnvConfig();
-    Configs->InitLogbrokerConfig();
-    Configs->InitNotifyConfig();
-    Configs->InitIamClientConfig();
-    Configs->InitKmsClientConfig();
-    Configs->InitRootKmsConfig();
-    Configs->InitComputeClientConfig();
-    Configs->InitCellsConfig();
-    Configs->InitLocalNVMeConfig();
+    ConfigInitializer->InitKikimrConfig();
+    ConfigInitializer->InitServerConfig();
+    ConfigInitializer->InitEndpointConfig();
+    ConfigInitializer->InitHostPerformanceProfile();
+    ConfigInitializer->InitFeaturesConfig();
+    ConfigInitializer->InitStorageConfig();
+    ConfigInitializer->InitDiskRegistryProxyConfig();
+    ConfigInitializer->InitDiagnosticsConfig();
+    ConfigInitializer->InitStatsUploadConfig();
+    ConfigInitializer->InitDiscoveryConfig();
+    ConfigInitializer->InitSpdkEnvConfig();
+    ConfigInitializer->InitLogbrokerConfig();
+    ConfigInitializer->InitNotifyConfig();
+    ConfigInitializer->InitIamClientConfig();
+    ConfigInitializer->InitKmsClientConfig();
+    ConfigInitializer->InitRootKmsConfig();
+    ConfigInitializer->InitComputeClientConfig();
+    ConfigInitializer->InitCellsConfig();
+    ConfigInitializer->InitLocalNVMeConfig();
 }
 
 void TBootstrapYdb::InitSpdk()
@@ -521,80 +521,80 @@ void TBootstrapYdb::InitKikimrService()
 
     // Defer YAML-dependent file loading until the startup snapshot is ready.
     NStorage::TManuallyPreemptedVolumesPtr preemptedVolumes;
-    if (!Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+    if (!ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
-            Configs->StorageConfig,
+            ConfigInitializer->StorageConfig,
             Log,
             PostponedCriticalEvents);
     }
 
-    const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
+    const auto& cert = ConfigInitializer->StorageConfig->GetNodeRegistrationCert();
 
     NCloud::NStorage::TNodeRegistrationSettings settings {
         .MaxAttempts =
-            Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
-        .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
+            ConfigInitializer->StorageConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout = ConfigInitializer->StorageConfig->GetNodeRegistrationErrorTimeout(),
         .NodeRegistrationTimeout =
-            Configs->StorageConfig->GetNodeRegistrationTimeout(),
-        .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
-        .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
-        .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
-        .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
+            ConfigInitializer->StorageConfig->GetNodeRegistrationTimeout(),
+        .LoadConfigsFromCmsRetryMinDelay = ConfigInitializer->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+        .LoadConfigsFromCmsRetryMaxDelay = ConfigInitializer->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+        .LoadConfigsFromCmsTotalTimeout = ConfigInitializer->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
+        .PathToGrpcCaFile = ConfigInitializer->StorageConfig->GetNodeRegistrationRootCertsFile(),
         .PathToGrpcCertFile = cert.CertFile,
         .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
-        .NodeRegistrationToken = Configs->StorageConfig->GetNodeRegistrationToken(),
-        .NodeType = Configs->StorageConfig->GetNodeType(),
+        .NodeRegistrationToken = ConfigInitializer->StorageConfig->GetNodeRegistrationToken(),
+        .NodeType = ConfigInitializer->StorageConfig->GetNodeType(),
     };
 
     auto nodeLabels = GetLabels(
-        Configs->StorageConfig->GetConfigDispatcherSettings(),
-        Configs->StorageConfig->GetSchemeShardDir(),
-        Configs->StorageConfig->GetNodeType());
+        ConfigInitializer->StorageConfig->GetConfigDispatcherSettings(),
+        ConfigInitializer->StorageConfig->GetSchemeShardDir(),
+        ConfigInitializer->StorageConfig->GetNodeType());
     NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts{
-        .Domain = Configs->Options->Domain,
-        .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
-        .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
-        .NodeBrokerPort = Configs->Options->NodeBrokerPort,
-        .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
-        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl ||
-                            Configs->StorageConfig->GetNodeRegistrationUseSsl(),
-        .InterconnectPort = Configs->Options->InterconnectPort,
-        .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
+        .Domain = ConfigInitializer->Options->Domain,
+        .SchemeShardDir = ConfigInitializer->StorageConfig->GetSchemeShardDir(),
+        .NodeBrokerAddress = ConfigInitializer->Options->NodeBrokerAddress,
+        .NodeBrokerPort = ConfigInitializer->Options->NodeBrokerPort,
+        .NodeBrokerSecurePort = ConfigInitializer->Options->NodeBrokerSecurePort,
+        .UseNodeBrokerSsl = ConfigInitializer->Options->UseNodeBrokerSsl ||
+                            ConfigInitializer->StorageConfig->GetNodeRegistrationUseSsl(),
+        .InterconnectPort = ConfigInitializer->Options->InterconnectPort,
+        .LoadCmsConfigs = ConfigInitializer->Options->LoadCmsConfigs,
         .Settings = std::move(settings),
         .Labels = std::move(nodeLabels),
     };
 
     const bool emergencyMode =
-        Configs->StorageConfig->GetHiveProxyFallbackMode() ||
-        Configs->StorageConfig->GetSSProxyFallbackMode();
+        ConfigInitializer->StorageConfig->GetHiveProxyFallbackMode() ||
+        ConfigInitializer->StorageConfig->GetSSProxyFallbackMode();
     if (emergencyMode &&
-        Configs->StorageConfig
+        ConfigInitializer->StorageConfig
             ->GetDontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode())
     {
         registerOpts.SchemeShardDir = "";
     }
 
-    if (Configs->Options->LocationFile) {
+    if (ConfigInitializer->Options->LocationFile) {
         NProto::TLocation location;
-        ParseProtoTextFromFile(Configs->Options->LocationFile, location);
+        ParseProtoTextFromFile(ConfigInitializer->Options->LocationFile, location);
 
         registerOpts.DataCenter = location.GetDataCenter();
-        Configs->Rack = location.GetRack();
+        ConfigInitializer->Rack = location.GetRack();
     }
 
-    Configs->InitDiskAgentConfig();
+    ConfigInitializer->InitDiskAgentConfig();
 
-    Configs->InitRdmaConfig();
+    ConfigInitializer->InitRdmaConfig();
     STORAGE_INFO(
         "Static RDMA config initialized from "
-        << (Configs->Options->RdmaConfig ? "file" : "legacy fields"));
+        << (ConfigInitializer->Options->RdmaConfig ? "file" : "legacy fields"));
 
-    auto staticBlockstoreConfig = Configs->GetCurrentBlockstoreConfig();
+    auto staticBlockstoreConfig = ConfigInitializer->GetCurrentBlockstoreConfig();
     registerOpts.UseYamlConfig =
-        Configs->GetDynamicYamlConfigurationStaticallyEnabled();
+        ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled();
 
-    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled() &&
-        !Configs->Options->TemporaryServer)
+    if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
+        !ConfigInitializer->Options->TemporaryServer)
     {
         registerOpts.PrivateDatabaseConfigParser =
             CreateBlockstoreOpaqueConfigParser();
@@ -603,10 +603,10 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("Configs initialized");
 
     auto registrant =
-        CreateNodeRegistrant(Configs->KikimrConfig, registerOpts, Log);
+        CreateNodeRegistrant(ConfigInitializer->KikimrConfig, registerOpts, Log);
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
-        Configs->KikimrConfig,
+        ConfigInitializer->KikimrConfig,
         registerOpts,
         std::move(registrant),
         Log);
@@ -614,15 +614,15 @@ void TBootstrapYdb::InitKikimrService()
     NProto::TBlockstoreConfig cmsBlockstoreConfig;
 
     if (cmsConfig) {
-        if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
             STORAGE_INFO(
                 "Received CMS configuration for YAML mode; "
                 "PrivateDatabaseConfig: "
                 << (cmsConfig->PrivateDatabaseConfig ? "yes" : "no"));
         }
 
-        if (Configs->GetDynamicYamlConfigurationStaticallyEnabled() &&
-            !Configs->Options->TemporaryServer &&
+        if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
+            !ConfigInitializer->Options->TemporaryServer &&
             cmsConfig->PrivateDatabaseConfig)
         {
             auto [config, error] =
@@ -637,15 +637,15 @@ void TBootstrapYdb::InitKikimrService()
             }
         }
 
-        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
+        ConfigInitializer->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     // If no --rdma-file provided, InitRdmaConfig should be called after
     // InitDiskAgentConfig, InitServerConfig and ApplyCMSConfigs
     // to backport legacy RDMA config
-    if (!Configs->Options->RdmaConfig) {
-        Configs->InitRdmaConfig();
-        if (Configs->RdmaConfig->GetConfigProto().SerializeAsString() !=
+    if (!ConfigInitializer->Options->RdmaConfig) {
+        ConfigInitializer->InitRdmaConfig();
+        if (ConfigInitializer->RdmaConfig->GetConfigProto().SerializeAsString() !=
             staticBlockstoreConfig.GetRdma().SerializeAsString())
         {
             STORAGE_INFO(
@@ -656,21 +656,21 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("CMS configs initialized");
 
-    auto startupBlockstoreConfigProto = Configs->GetCurrentBlockstoreConfig();
-    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+    auto startupBlockstoreConfigProto = ConfigInitializer->GetCurrentBlockstoreConfig();
+    if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         NormalizeDynamicBlockstoreConfig(
             staticBlockstoreConfig,
             cmsBlockstoreConfig);
 
         TBlockstoreConfigExtraParameters extraParameters;
-        extraParameters.DiskAgent.Rack = Configs->DiskAgentConfig->GetRack();
+        extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
-            Configs->DiskAgentConfig->GetNetworkMbitThroughput();
+            ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
             cmsBlockstoreConfig,
-            Configs->StorageConfigControls,
+            ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
 
         STORAGE_INFO(
@@ -682,8 +682,8 @@ void TBootstrapYdb::InitKikimrService()
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
             {},
-            *Configs->StorageConfig,
-            *Configs->DiskAgentConfig);
+            *ConfigInitializer->StorageConfig,
+            *ConfigInitializer->DiskAgentConfig);
     }
 
     // Bind common consumers to the same snapshot as YDB services and actors.
@@ -704,7 +704,7 @@ void TBootstrapYdb::InitKikimrService()
                 ->GetInactiveClientsTimeout(),
     });
 
-    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+    if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
             StartupBlockstoreConfig->GetStorageConfig(),
             Log,
@@ -774,7 +774,7 @@ void TBootstrapYdb::InitKikimrService()
         Timer);
 
     auto statsConfig = StartupBlockstoreConfig->GetYdbStatsConfig();
-    if (statsConfig->IsValid() && !Configs->Options->TemporaryServer) {
+    if (statsConfig->IsValid() && !ConfigInitializer->Options->TemporaryServer) {
         YdbStorage = NYdbStats::CreateYdbStorage(
             statsConfig,
             logging,
@@ -957,13 +957,13 @@ void TBootstrapYdb::InitKikimrService()
 
     const bool isHiveLocalServiceEnabled =
         !StartupBlockstoreConfig->GetStorageConfig()->GetDisableLocalService() &&
-        !Configs->HostPerformanceProfile.IsTightServiceMemoryPlatform;
+        !ConfigInitializer->HostPerformanceProfile.IsTightServiceMemoryPlatform;
 
     NStorage::TServerActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
-    args.AppConfig = Configs->KikimrConfig;
+    args.AppConfig = ConfigInitializer->KikimrConfig;
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
     args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
@@ -1005,7 +1005,7 @@ void TBootstrapYdb::InitKikimrService()
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
-    args.TemporaryServer = Configs->Options->TemporaryServer;
+    args.TemporaryServer = ConfigInitializer->Options->TemporaryServer;
     if (StartupBlockstoreConfig->GetCellsConfig()->GetCellsEnabled()) {
         args.CellId = StartupBlockstoreConfig->GetCellsConfig()->GetCellId();
     }

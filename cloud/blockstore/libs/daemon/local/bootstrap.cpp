@@ -22,8 +22,8 @@ TConfigInitializerCommonPtr TBootstrapLocal::InitConfigs(int argc, char** argv)
 {
     auto options = std::make_shared<TOptionsLocal>();
     options->Parse(argc, argv);
-    Configs = std::make_shared<TConfigInitializerLocal>(std::move(options));
-    return Configs;
+    ConfigInitializer = std::make_shared<TConfigInitializerLocal>(std::move(options));
+    return ConfigInitializer;
 }
 
 void TBootstrapLocal::InitSpdk()

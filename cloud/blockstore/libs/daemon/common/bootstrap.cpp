@@ -222,8 +222,8 @@ TBootstrapBase::~TBootstrapBase()
 
 void TBootstrapBase::ParseOptions(int argc, char** argv)
 {
-    Y_ABORT_UNLESS(!Configs);
-    Configs = InitConfigs(argc, argv);
+    Y_ABORT_UNLESS(!ConfigInitializer);
+    ConfigInitializer = InitConfigs(argc, argv);
 }
 
 // Install complete startup inputs without exposing a partially prepared bundle.
@@ -248,7 +248,7 @@ void TBootstrapBase::Init()
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     SetCriticalEventsLog(Log);
-    Configs->Log = Log;
+    ConfigInitializer->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -264,7 +264,7 @@ void TBootstrapBase::Init()
     VolumeBalancerSwitch = CreateVolumeBalancerSwitch();
     EndpointEventHandler = CreateEndpointEventProxy();
 
-    switch (Configs->Options->ServiceKind) {
+    switch (ConfigInitializer->Options->ServiceKind) {
         case TOptionsCommon::EServiceKind::Ydb:
             InitKikimrService();
             break;
@@ -305,7 +305,7 @@ void TBootstrapBase::Init()
     GrpcLog = Logging->CreateLog("GRPC");
     GrpcLoggerInit(
         GrpcLog,
-        Configs->Options->EnableGrpcTracing);
+        ConfigInitializer->Options->EnableGrpcTracing);
 
     auto diagnosticsConfig = BootstrapConfig->DiagnosticsConfig;
     if (TraceReaders.size()) {
@@ -458,8 +458,8 @@ void TBootstrapBase::Init()
         = BootstrapConfig->ServerConfig->GetStrictContractValidation();
     sessionManagerOptions.DefaultClientConfig
         = BootstrapConfig->EndpointConfig->GetClientConfig();
-    sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
-    sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
+    sessionManagerOptions.HostProfile = ConfigInitializer->HostPerformanceProfile;
+    sessionManagerOptions.TemporaryServer = ConfigInitializer->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
         BootstrapConfig->ServerConfig->GetDisableClientThrottlers();
     sessionManagerOptions.EnableDataIntegrityClient =
@@ -569,14 +569,14 @@ void TBootstrapBase::Init()
             BootstrapConfig->ServerConfig->GetVhostOptimalIoSize());
 
         if (BootstrapConfig->ServerConfig->GetVhostServerPath()
-                && !Configs->Options->TemporaryServer)
+                && !ConfigInitializer->Options->TemporaryServer)
         {
             vhostEndpointListener = CreateExternalVhostEndpointListener(
                 BootstrapConfig->ServerConfig,
                 Logging,
                 ServerStats,
                 Executor,
-                Configs->Options->SkipDeviceLocalityValidation
+                ConfigInitializer->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),
                 RdmaClient && RdmaClient->IsAlignedDataEnabled(),
@@ -843,10 +843,10 @@ void TBootstrapBase::Init()
 
 void TBootstrapBase::InitProfileLog()
 {
-    if (Configs->Options->ProfileFile) {
+    if (ConfigInitializer->Options->ProfileFile) {
         ProfileLog = CreateProfileLog(
             {
-                Configs->Options->ProfileFile,
+                ConfigInitializer->Options->ProfileFile,
                 BootstrapConfig->DiagnosticsConfig
                     ->GetProfileLogTimeThreshold(),
             },
@@ -860,45 +860,45 @@ void TBootstrapBase::InitProfileLog()
 
 void TBootstrapBase::InitDbgConfigs()
 {
-    Configs->InitServerConfig();
-    Configs->InitEndpointConfig();
-    Configs->InitHostPerformanceProfile();
-    Configs->InitDiskAgentConfig();
+    ConfigInitializer->InitServerConfig();
+    ConfigInitializer->InitEndpointConfig();
+    ConfigInitializer->InitHostPerformanceProfile();
+    ConfigInitializer->InitDiskAgentConfig();
     // InitRdmaConfig should be called after InitDiskAgentConfig and
     // InitServerConfig to backport legacy RDMA config
-    Configs->InitRdmaConfig();
-    Configs->InitDiskRegistryProxyConfig();
-    Configs->InitDiagnosticsConfig();
-    Configs->InitDiscoveryConfig();
-    Configs->InitSpdkEnvConfig();
-    Configs->InitCellsConfig();
+    ConfigInitializer->InitRdmaConfig();
+    ConfigInitializer->InitDiskRegistryProxyConfig();
+    ConfigInitializer->InitDiagnosticsConfig();
+    ConfigInitializer->InitDiscoveryConfig();
+    ConfigInitializer->InitSpdkEnvConfig();
+    ConfigInitializer->InitCellsConfig();
 
     // Select local inputs before tracing and transport initialization use them.
     SetBootstrapConfig({
-        .ServerConfig = Configs->ServerConfig,
-        .EndpointConfig = Configs->EndpointConfig,
-        .DiagnosticsConfig = Configs->DiagnosticsConfig,
-        .DiskAgentConfig = Configs->DiskAgentConfig,
-        .RdmaConfig = Configs->RdmaConfig,
-        .CellsConfig = Configs->CellsConfig,
-        .SpdkEnvConfig = Configs->SpdkEnvConfig,
-        .DiscoveryConfig = Configs->DiscoveryConfig,
-        .UseNonreplicatedRdmaActor = Configs->GetUseNonreplicatedRdmaActor(),
-        .InactiveClientsTimeout = Configs->GetInactiveClientsTimeout(),
+        .ServerConfig = ConfigInitializer->ServerConfig,
+        .EndpointConfig = ConfigInitializer->EndpointConfig,
+        .DiagnosticsConfig = ConfigInitializer->DiagnosticsConfig,
+        .DiskAgentConfig = ConfigInitializer->DiskAgentConfig,
+        .RdmaConfig = ConfigInitializer->RdmaConfig,
+        .CellsConfig = ConfigInitializer->CellsConfig,
+        .SpdkEnvConfig = ConfigInitializer->SpdkEnvConfig,
+        .DiscoveryConfig = ConfigInitializer->DiscoveryConfig,
+        .UseNonreplicatedRdmaActor = ConfigInitializer->GetUseNonreplicatedRdmaActor(),
+        .InactiveClientsTimeout = ConfigInitializer->GetInactiveClientsTimeout(),
     });
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
-        static_cast<ELogPriority>(Configs->GetLogDefaultLevel());
+        static_cast<ELogPriority>(ConfigInitializer->GetLogDefaultLevel());
 
     Logging = CreateLoggingService("console", logSettings);
 
     InitLWTrace({});
 
-    auto monPort = Configs->GetMonitoringPort();
+    auto monPort = ConfigInitializer->GetMonitoringPort();
     if (monPort) {
-        auto monAddress = Configs->GetMonitoringAddress();
-        auto threadsCount = Configs->GetMonitoringThreads();
+        auto monAddress = ConfigInitializer->GetMonitoringAddress();
+        auto threadsCount = ConfigInitializer->GetMonitoringThreads();
         Monitoring = CreateMonitoringService(monPort, monAddress, threadsCount);
     } else {
         Monitoring = CreateMonitoringServiceStub();
@@ -1128,12 +1128,12 @@ void TBootstrapBase::Start()
     // manager's gRPC client (started above) to have executors to run on
     SetupCellMonitoringActor();
 
-    if (!Configs->Options->TemporaryServer) {
+    if (!ConfigInitializer->Options->TemporaryServer) {
         WarmupBSGroupConnections();
     }
 
     auto restoreFuture = EndpointManager->RestoreEndpoints();
-    if (!Configs->Options->TemporaryServer) {
+    if (!ConfigInitializer->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;
         restoreFuture.Subscribe([=] (const auto& future) {
             Y_UNUSED(future);
@@ -1142,7 +1142,7 @@ void TBootstrapBase::Start()
     }
     STORAGE_INFO("Started endpoints restoring");
 
-    if (Configs->Options->MemLock) {
+    if (ConfigInitializer->Options->MemLock) {
         LockProcessMemory(Log);
         STORAGE_INFO("Process memory locked");
     }

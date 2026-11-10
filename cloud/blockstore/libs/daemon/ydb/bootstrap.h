@@ -101,7 +101,7 @@ private:
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;
     std::shared_ptr<TServerModuleFactories> ServerModuleFactories;
 
-    TConfigInitializerYdbPtr Configs;
+    TConfigInitializerYdbPtr ConfigInitializer;
 
     // Full startup snapshot for TBootstrapYdb logic specific to YDB service mode.
     // Created by InitKikimrService after CMS and private YAML processing;
