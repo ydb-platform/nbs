@@ -126,6 +126,22 @@ void PrepareWriteDataRequestPayload(
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
+public:
+    struct TRequestParams
+    {
+        NProto::TWriteDataRequest WriteRequest;
+        TByteRange Range;
+        TRequestInfoPtr RequestInfo;
+        TString LogTag;
+        bool WriteBlobDisabled;
+        bool UseUnconfirmedFlow;
+        IRequestStatsPtr RequestStats;
+        NCloud::NProto::EStorageMediaKind MediaKind;
+        bool UseThreeStageWrite;
+        bool ExternalWriteDataPayloadEnabled;
+        bool EnableRdmaForWrites;
+    };
+
 private:
     enum class ETabletRetryRequest
     {
@@ -178,30 +194,20 @@ private:
         const bool ExternalWriteDataPayloadEnabled = false;
         [[maybe_unused]] const bool EnableRdmaForWrites = false;
 
-        TRequestState(
-            NProto::TWriteDataRequest request,
-            TByteRange range,
-            TRequestInfoPtr requestInfo,
-            TString logTag,
-            bool writeBlobDisabled,
-            bool useUnconfirmedFlow,
-            IRequestStatsPtr requestStats,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            bool useThreeStageWrite,
-            bool externalWriteDataPayloadEnabled,
-            bool enableRdmaForWrites)
-            : WriteRequest(std::move(request))
-            , Range(range)
+        explicit TRequestState(TRequestParams params)
+            : WriteRequest(std::move(params.WriteRequest))
+            , Range(params.Range)
             , BlobRange(Range.AlignedSubRange())
-            , RequestInfo(std::move(requestInfo))
-            , LogTag(std::move(logTag))
-            , WriteBlobDisabled(writeBlobDisabled)
-            , UseUnconfirmedFlow(useUnconfirmedFlow)
-            , RequestStats(std::move(requestStats))
-            , MediaKind(mediaKind)
-            , UseThreeStageWrite(useThreeStageWrite)
-            , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
-            , EnableRdmaForWrites(enableRdmaForWrites)
+            , RequestInfo(std::move(params.RequestInfo))
+            , LogTag(std::move(params.LogTag))
+            , WriteBlobDisabled(params.WriteBlobDisabled)
+            , UseUnconfirmedFlow(params.UseUnconfirmedFlow)
+            , RequestStats(std::move(params.RequestStats))
+            , MediaKind(params.MediaKind)
+            , UseThreeStageWrite(params.UseThreeStageWrite)
+            , ExternalWriteDataPayloadEnabled(
+                  params.ExternalWriteDataPayloadEnabled)
+            , EnableRdmaForWrites(params.EnableRdmaForWrites)
         {}
     };
 
@@ -217,32 +223,10 @@ public:
         , TraceSerializer(std::move(traceSerializer))
     {}
 
-    void Initialize(
-        NProto::TWriteDataRequest request,
-        TByteRange range,
-        TRequestInfoPtr requestInfo,
-        TString logTag,
-        bool writeBlobDisabled,
-        bool useUnconfirmedFlow,
-        IRequestStatsPtr requestStats,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useThreeStageWrite,
-        bool externalWriteDataPayloadEnabled,
-        bool enableRdmaForWrites)
+    void Initialize(TRequestParams params)
     {
         Y_ABORT_UNLESS(!RequestState);
-        RequestState.emplace(
-            std::move(request),
-            range,
-            std::move(requestInfo),
-            std::move(logTag),
-            writeBlobDisabled,
-            useUnconfirmedFlow,
-            std::move(requestStats),
-            mediaKind,
-            useThreeStageWrite,
-            externalWriteDataPayloadEnabled,
-            enableRdmaForWrites);
+        RequestState.emplace(std::move(params));
     }
 
     void Bootstrap(const TActorContext& ctx)
@@ -1215,17 +1199,20 @@ void TStorageServiceActor::HandleWriteData(
 
     auto actor = std::make_unique<TWriteDataActor>(ProfileLog, TraceSerializer);
     actor->Initialize(
-        std::move(msg->Record),
-        range,
-        std::move(requestInfo),
-        std::move(logTag),
-        filestore.GetFeatures().GetWriteBlobDisabled(),
-        filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
-        session->RequestStats,
-        session->MediaKind,
-        threeStageWriteEnabled,
-        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites());
+        {.WriteRequest = std::move(msg->Record),
+         .Range = range,
+         .RequestInfo = std::move(requestInfo),
+         .LogTag = std::move(logTag),
+         .WriteBlobDisabled = filestore.GetFeatures().GetWriteBlobDisabled(),
+         .UseUnconfirmedFlow =
+             filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
+         .RequestStats = session->RequestStats,
+         .MediaKind = session->MediaKind,
+         .UseThreeStageWrite = threeStageWriteEnabled,
+         .ExternalWriteDataPayloadEnabled =
+             filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
+         .EnableRdmaForWrites =
+             filestore.GetFeatures().GetEnableRdmaForWrites()});
     NCloud::Register(ctx, std::move(actor));
 }
 

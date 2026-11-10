@@ -50,6 +50,28 @@ bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
 
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
+public:
+    struct TRequestParams
+    {
+        NProto::TReadDataRequest ReadRequest;
+        TString LogTag;
+        ui32 BlockSize;
+        bool ReadBlobDisabled;
+        IRequestStatsPtr RequestStats;
+        NActors::TActorId Sender;
+        ui64 Cookie;
+        TCallContextPtr CallContext;
+        TChecksumCalcInfo ChecksumCalcInfo;
+        TInstant StartTime;
+        ui64 RequestCookie;
+        TString ClientId;
+        TShardStatePtr ShardState;
+        NCloud::NProto::EStorageMediaKind MediaKind;
+        bool UseTwoStageRead;
+        bool UseCustomReadDataResponseParser;
+        bool ZeroCopyReadEnabled;
+    };
+
 private:
     struct TRequestState
     {
@@ -88,24 +110,7 @@ private:
         const bool UseCustomReadDataResponseParser;
         const bool ZeroCopyReadEnabled;
 
-        TRequestState(
-            NProto::TReadDataRequest readRequest,
-            TString logTag,
-            ui32 blockSize,
-            bool readBlobDisabled,
-            IRequestStatsPtr requestStats,
-            NActors::TActorId sender,
-            ui64 cookie,
-            TCallContextPtr callContext,
-            TChecksumCalcInfo checksumCalcInfo,
-            TInstant startTime,
-            ui64 requestCookie,
-            TString clientId,
-            TShardStatePtr shardState,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            bool useTwoStageRead,
-            bool useCustomReadDataResponseParser,
-            bool zeroCopyReadEnabled);
+        explicit TRequestState(TRequestParams params);
     };
 
     const IProfileLogPtr ProfileLog;
@@ -122,24 +127,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         TInFlightRequestStoragePtr inFlightRequests);
 
-    void Initialize(
-        NProto::TReadDataRequest readRequest,
-        TString logTag,
-        ui32 blockSize,
-        bool readBlobDisabled,
-        IRequestStatsPtr requestStats,
-        NActors::TActorId sender,
-        ui64 cookie,
-        TCallContextPtr callContext,
-        TChecksumCalcInfo checksumCalcInfo,
-        TInstant startTime,
-        ui64 requestCookie,
-        TString clientId,
-        TShardStatePtr shardState,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead,
-        bool useCustomReadDataResponseParser,
-        bool zeroCopyReadEnabled);
+    void Initialize(TRequestParams params);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -187,52 +175,34 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TReadDataActor::TRequestState::TRequestState(
-        NProto::TReadDataRequest readRequest,
-        TString logTag,
-        ui32 blockSize,
-        bool readBlobDisabled,
-        IRequestStatsPtr requestStats,
-        NActors::TActorId sender,
-        ui64 cookie,
-        TCallContextPtr callContext,
-        TChecksumCalcInfo checksumCalcInfo,
-        TInstant startTime,
-        ui64 requestCookie,
-        TString clientId,
-        TShardStatePtr shardState,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        bool useTwoStageRead,
-        bool useCustomReadDataResponseParser,
-        bool zeroCopyReadEnabled)
-    : ReadRequest(std::move(readRequest))
-    , LogTag(std::move(logTag))
-    , BlockSize(blockSize)
-    , ReadBlobDisabled(readBlobDisabled)
+TReadDataActor::TRequestState::TRequestState(TRequestParams params)
+    : ReadRequest(std::move(params.ReadRequest))
+    , LogTag(std::move(params.LogTag))
+    , BlockSize(params.BlockSize)
+    , ReadBlobDisabled(params.ReadBlobDisabled)
     , OriginByteRange(
-        ReadRequest.GetOffset(),
-        ReadRequest.GetLength(),
-        BlockSize)
+          ReadRequest.GetOffset(),
+          ReadRequest.GetLength(),
+          BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(std::make_unique<TString>())
     , ZeroIntervals(TDefaultAllocator::Instance(), 0, OriginByteRange.Length)
-    , RequestStats(std::move(requestStats))
-    , Sender(sender)
-    , Cookie(cookie)
-    , CallContext(std::move(callContext))
-    , ChecksumCalcInfo(std::move(checksumCalcInfo))
-    , StartTime(startTime)
-    , RequestCookie(requestCookie)
-    , ClientId(std::move(clientId))
-    , ShardState(std::move(shardState))
-    , MediaKind(mediaKind)
-    , UseTwoStageRead(useTwoStageRead)
-    , UseCustomReadDataResponseParser(useCustomReadDataResponseParser)
+    , RequestStats(std::move(params.RequestStats))
+    , Sender(params.Sender)
+    , Cookie(params.Cookie)
+    , CallContext(std::move(params.CallContext))
+    , ChecksumCalcInfo(std::move(params.ChecksumCalcInfo))
+    , StartTime(params.StartTime)
+    , RequestCookie(params.RequestCookie)
+    , ClientId(std::move(params.ClientId))
+    , ShardState(std::move(params.ShardState))
+    , MediaKind(params.MediaKind)
+    , UseTwoStageRead(params.UseTwoStageRead)
+    , UseCustomReadDataResponseParser(params.UseCustomReadDataResponseParser)
     // Zero-copy read optimization is only applicable when iovecs are provided.
     , ZeroCopyReadEnabled(
-          zeroCopyReadEnabled && !ReadRequest.GetIovecs().empty())
-{
-}
+          params.ZeroCopyReadEnabled && !ReadRequest.GetIovecs().empty())
+{}
 
 TReadDataActor::TReadDataActor(
     IProfileLogPtr profileLog,
@@ -243,44 +213,10 @@ TReadDataActor::TReadDataActor(
     , InFlightRequests(std::move(inFlightRequests))
 {}
 
-void TReadDataActor::Initialize(
-    NProto::TReadDataRequest readRequest,
-    TString logTag,
-    ui32 blockSize,
-    bool readBlobDisabled,
-    IRequestStatsPtr requestStats,
-    NActors::TActorId sender,
-    ui64 cookie,
-    TCallContextPtr callContext,
-    TChecksumCalcInfo checksumCalcInfo,
-    TInstant startTime,
-    ui64 requestCookie,
-    TString clientId,
-    TShardStatePtr shardState,
-    NCloud::NProto::EStorageMediaKind mediaKind,
-    bool useTwoStageRead,
-    bool useCustomReadDataResponseParser,
-    bool zeroCopyReadEnabled)
+void TReadDataActor::Initialize(TRequestParams params)
 {
     Y_ABORT_UNLESS(!RequestState);
-    RequestState.emplace(
-        std::move(readRequest),
-        std::move(logTag),
-        blockSize,
-        readBlobDisabled,
-        std::move(requestStats),
-        sender,
-        cookie,
-        std::move(callContext),
-        std::move(checksumCalcInfo),
-        startTime,
-        requestCookie,
-        std::move(clientId),
-        std::move(shardState),
-        mediaKind,
-        useTwoStageRead,
-        useCustomReadDataResponseParser,
-        zeroCopyReadEnabled);
+    RequestState.emplace(std::move(params));
 }
 
 TReadDataActor::TRequestState& TReadDataActor::GetState()
@@ -1260,26 +1196,28 @@ void TStorageServiceActor::HandleReadData(
         TraceSerializer,
         InFlightRequests);
     actor->Initialize(
-        std::move(msg->Record),
-        filestore.GetFileSystemId(),
-        filestore.GetBlockSize(),
-        filestore.GetFeatures().GetReadBlobDisabled(),
-        session->RequestStats,
-        ev->Sender,
-        ev->Cookie,
-        std::move(msg->CallContext),
-        std::move(checksumCalcInfo),
-        startTime,
-        GenerateRequestCookie(),
-        session->ClientId,
-        std::move(shardState),
-        session->MediaKind,
-        useTwoStageRead,
-        // UseCustomReadDataResponseParser is deprecated and not compatible with
-        // ExternalReadDataPayload
-        filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
-            !filestore.GetFeatures().GetExternalReadDataPayload(),
-        filestore.GetFeatures().GetZeroCopyReadEnabled());
+        {.ReadRequest = std::move(msg->Record),
+         .LogTag = filestore.GetFileSystemId(),
+         .BlockSize = filestore.GetBlockSize(),
+         .ReadBlobDisabled = filestore.GetFeatures().GetReadBlobDisabled(),
+         .RequestStats = session->RequestStats,
+         .Sender = ev->Sender,
+         .Cookie = ev->Cookie,
+         .CallContext = std::move(msg->CallContext),
+         .ChecksumCalcInfo = std::move(checksumCalcInfo),
+         .StartTime = startTime,
+         .RequestCookie = GenerateRequestCookie(),
+         .ClientId = session->ClientId,
+         .ShardState = std::move(shardState),
+         .MediaKind = session->MediaKind,
+         .UseTwoStageRead = useTwoStageRead,
+         // UseCustomReadDataResponseParser is deprecated and not compatible
+         // with ExternalReadDataPayload
+         .UseCustomReadDataResponseParser =
+             filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
+             !filestore.GetFeatures().GetExternalReadDataPayload(),
+         .ZeroCopyReadEnabled =
+             filestore.GetFeatures().GetZeroCopyReadEnabled()});
 
     NCloud::Register(ctx, std::move(actor));
 }
