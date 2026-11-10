@@ -472,7 +472,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         return rowsBuilder.Build();
     };
 
-    if (setupResult.TableNames.Stats) {
+    if (setupResult.TableNames.Stats && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -480,7 +480,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.History) {
+    if (setupResult.TableNames.History && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -488,7 +488,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.Archive) {
+    if (setupResult.TableNames.Archive && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -496,19 +496,19 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.Metrics) {
+    if (setupResult.TableNames.Metrics && !rows.Metrics.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Metrics,
             buildYdbRows(addMetricsRows));
     }
 
-    if (setupResult.TableNames.Groups) {
+    if (setupResult.TableNames.Groups && !rows.Groups.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Groups,
             buildYdbRows(addGroupsRows));
     }
 
-    if (setupResult.TableNames.Partitions) {
+    if (setupResult.TableNames.Partitions && !rows.Partitions.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Partitions,
             buildYdbRows(addPartitionsRows));

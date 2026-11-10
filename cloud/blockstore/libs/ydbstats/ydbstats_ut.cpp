@@ -652,6 +652,66 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->AlterTableCalls);
     }
 
+    Y_UNIT_TEST(ShouldCompleteUploadWithoutRows)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        auto response = uploader->UploadStats({});
+        UNIT_ASSERT(response.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->UpsertCalls);
+    }
+
+    Y_UNIT_TEST(ShouldUploadOnlyNonEmptyRowSets)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        THashSet<TString> tables;
+        ydbTestStorage->UploadTestFunc = [&](TString tableName, NYdb::TValue)
+        {
+            // Ignore the date suffix of the rotating history table.
+            if (tableName.StartsWith("/Root/test-")) {
+                tableName = "/Root/history";
+            }
+            tables.insert(std::move(tableName));
+            return MakeFuture(MakeError(S_OK));
+        };
+
+        const TVector<std::pair<TYdbRowData, THashSet<TString>>> testCases = {
+            {{{BuildTestStats()}, {}, {}, {}},
+             {"/Root/test", "/Root/history", "/Root/archive-test"}},
+            {{{}, {BuildTestMetrics()}, {}, {}}, {"/Root/metrics"}},
+            {{{}, {}, {BuildTestGroups()}, {}}, {"/Root/groups"}},
+            {{{}, {}, {}, {BuildTestPartitions()}}, {"/Root/partitions"}},
+        };
+
+        for (const auto& [rows, expectedTables]: testCases) {
+            tables.clear();
+            ydbTestStorage->UpsertCalls = 0;
+
+            auto response = uploader->UploadStats(rows);
+            UNIT_ASSERT(response.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTables.size(), ydbTestStorage->UpsertCalls);
+            UNIT_ASSERT(tables == expectedTables);
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateTablesIfNessesary)
     {
         auto config = CreateTestConfig();
