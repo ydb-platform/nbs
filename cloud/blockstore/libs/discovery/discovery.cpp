@@ -8,6 +8,7 @@
 
 #include <cloud/blockstore/public/api/protos/discovery.pb.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -144,7 +145,8 @@ private:
     void InitializeInstances(
         const TDuration interval,
         IInstanceFetcher& fetcher,
-        TInstanceList& instances);
+        TInstanceList& instances,
+        TBackoffDelayProvider backoff);
 
     void ScheduleFetch(
         const TDuration interval,
@@ -239,17 +241,30 @@ void TDiscoveryService::Start()
     HealthChecker->Start();
 
     BanList->Update();
-    InitializeInstances(
+    const auto initialize = [this] (
+        TDuration interval,
+        IInstanceFetcher& fetcher,
+        TInstanceList& instances)
+    {
+        InitializeInstances(
+            interval,
+            fetcher,
+            instances,
+            TBackoffDelayProvider(
+                std::min(interval, TDuration::Seconds(1)),
+                interval));
+    };
+    initialize(
         Config->GetConductorRequestInterval(),
         *ConductorInstanceFetcher,
         ConductorInstances
     );
-    InitializeInstances(
+    initialize(
         Config->GetEdsRequestInterval(),
         *EdsInstanceFetcher,
         EdsInstances
     );
-    InitializeInstances(
+    initialize(
         Config->GetLocalFilesReloadInterval(),
         *StaticInstanceFetcher,
         StaticInstances
@@ -286,7 +301,8 @@ void TDiscoveryService::AddInstance(
 void TDiscoveryService::InitializeInstances(
     const TDuration interval,
     IInstanceFetcher& fetcher,
-    TInstanceList& instances)
+    TInstanceList& instances,
+    TBackoffDelayProvider backoff)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -294,7 +310,11 @@ void TDiscoveryService::InitializeInstances(
 
     auto weak_ptr = weak_from_this();
     FetchInstances(interval, fetcher, instances).Subscribe(
-        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (const auto& future) {
+        [weak_ptr = std::move(weak_ptr),
+         interval,
+         &fetcher,
+         &instances,
+         backoff = std::move(backoff)] (const auto& future) mutable {
             auto p = weak_ptr.lock();
             if (!p || AtomicGet(p->ShouldStop)) {
                 return;
@@ -306,12 +326,16 @@ void TDiscoveryService::InitializeInstances(
                 }
             }
             if (retry) {
-                const auto retryDelay = std::min(interval, TDuration::Seconds(1));
+                const auto retryDelay = backoff.GetDelayAndIncrease();
                 p->Scheduler->Schedule(
                     p->Timer->Now() + retryDelay,
-                    [weak_ptr, interval, &fetcher, &instances] {
+                    [weak_ptr, interval, &fetcher, &instances, backoff] {
                         if (auto p = weak_ptr.lock()) {
-                            p->InitializeInstances(interval, fetcher, instances);
+                            p->InitializeInstances(
+                                interval,
+                                fetcher,
+                                instances,
+                                backoff);
                         }
                     }
                 );

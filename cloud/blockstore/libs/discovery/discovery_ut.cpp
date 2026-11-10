@@ -654,6 +654,51 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         env.Discovery->Stop();
     }
 
+    Y_UNIT_TEST(ShouldBackOffInitialFetchRetriesUpToPeriodicInterval)
+    {
+        TEdsStartupTestEnv env;
+        ui32 expectedFetchCount = 1;
+        const ui32 retryIntervalsMs[] = {1000, 2000, 3000, 3000};
+        for (const auto retryIntervalMs: retryIntervalsMs) {
+            env.Fetcher->Response.SetValue(
+                MakeError(E_FAIL, "initial EDS fetch failed"));
+
+            env.AdvanceTime(TDuration::MilliSeconds(retryIntervalMs - 1));
+            env.AssertNotReady();
+            UNIT_ASSERT_VALUES_EQUAL(expectedFetchCount, env.Fetcher->FetchCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+
+            env.AdvanceTime(TDuration::MilliSeconds(1));
+            ++expectedFetchCount;
+            UNIT_ASSERT_VALUES_EQUAL(expectedFetchCount, env.Fetcher->FetchCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+            env.AssertNotReady();
+        }
+
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.AdvanceTime(TDuration::Seconds(4));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(expectedFetchCount, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.HealthChecker->Promise.SetValue();
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+
+        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(expectedFetchCount, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(expectedFetchCount + 1, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
     Y_UNIT_TEST(ShouldRetryExceptionalInitialFetchBeforeHealthCheck)
     {
         TEdsStartupTestEnv env;
