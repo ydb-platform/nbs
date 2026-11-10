@@ -267,8 +267,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitTestActorRuntime(
-    TTestActorRuntime& runtime, const NProto::TStorageServiceConfig& config,
-    ui32 blockCount, ui32 channelCount,
+    TTestActorRuntime& runtime,
+    const NProto::TStorageServiceConfig& config,
+    ui32 blockCount,
+    ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
@@ -309,24 +311,25 @@ void InitTestActorRuntime(
 
     auto diagConfig = CreateTestDiagnosticsConfig(std::move(diagnosticsConfig));
 
-    auto createFunc = [=](const TActorId& owner, TTabletStorageInfo* info)
-    {
-        auto tablet = CreatePartitionTablet(
-            owner,
-            info,
-            storageConfig,
-            diagConfig,
-            CreateProfileLogStub(),
-            CreateBlockDigestGeneratorStub(),
-            partConfig,
-            storageAccessMode,
-            0,   // partitionIndex
-            1,   // siblingCount
-            VolumeActorId,
-            0,   // volumeTabletId
-            tidyUpPartitionMode && *tidyUpPartitionMode);
-        return tablet.release();
-    };
+    auto createFunc =
+        [=] (const TActorId& owner, TTabletStorageInfo* info) {
+            auto tablet = CreatePartitionTablet(
+                owner,
+                info,
+                storageConfig,
+                diagConfig,
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                partConfig,
+                storageAccessMode,
+                0,  // partitionIndex
+                1,  // siblingCount
+                VolumeActorId,
+                0,  // volumeTabletId
+                tidyUpPartitionMode && *tidyUpPartitionMode
+            );
+            return tablet.release();
+        };
 
     auto bootstrapper = CreateTestBootstrapper(runtime, tabletInfo.release(), createFunc);
     runtime.EnableScheduleForActor(bootstrapper);
@@ -437,10 +440,16 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     }
 
     InitTestActorRuntime(
-        *runtime, config, blockCount,
+        *runtime,
+        config,
+        blockCount,
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
-        std::move(tabletInfo), testPartitionInfo, storageAccessMode,
-        std::move(diagnosticsConfig), std::move(tidyUpPartitionMode));
+        std::move(tabletInfo),
+        testPartitionInfo,
+        storageAccessMode,
+        std::move(diagnosticsConfig),
+        std::move(tidyUpPartitionMode)
+    );
 
     return runtime;
 }

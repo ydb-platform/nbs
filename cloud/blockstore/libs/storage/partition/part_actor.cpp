@@ -54,12 +54,18 @@ const TString PartitionTransactions[] = {
 };
 
 TPartitionActor::TPartitionActor(
-    const TActorId& owner, TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config, TDiagnosticsConfigConstPtr diagnosticsConfig,
-    IProfileLogPtr profileLog, IBlockDigestGeneratorPtr blockDigestGenerator,
+    const TActorId& owner,
+    TTabletStorageInfoPtr storage,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode, ui32 partitionIndex,
-    ui32 siblingCount, const TActorId& volumeActorId, ui64 volumeTabletId,
+    EStorageAccessMode storageAccessMode,
+    ui32 partitionIndex,
+    ui32 siblingCount,
+    const TActorId& volumeActorId,
+    ui64 volumeTabletId,
     bool tidyUpPartitionMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
@@ -70,15 +76,16 @@ TPartitionActor::TPartitionActor(
               partitionConfig.GetDiskId()))
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
-    ,
-    FreshBlocksWriterEnabled(
-        Config->GetFreshBlocksWriterEnabled() ||
-        Config->IsFreshBlocksWriterFeatureEnabled(PartitionConfig.GetCloudId(),
-                                                  PartitionConfig.GetFolderId(),
-                                                  PartitionConfig.GetDiskId()))
-    , VolumeLabels(MakeVolumeLabels(PartitionConfig.GetDiskId(),
-                                    PartitionConfig.GetCloudId(),
-                                    PartitionConfig.GetFolderId()))
+    , FreshBlocksWriterEnabled(
+          Config->GetFreshBlocksWriterEnabled() ||
+          Config->IsFreshBlocksWriterFeatureEnabled(
+              PartitionConfig.GetCloudId(),
+              PartitionConfig.GetFolderId(),
+              PartitionConfig.GetDiskId()))
+    , VolumeLabels(MakeVolumeLabels(
+          PartitionConfig.GetDiskId(),
+          PartitionConfig.GetCloudId(),
+          PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -87,11 +94,13 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , VolumeTabletId(volumeTabletId)
-    , LogTitle(StartTime,
-               TLogTitle::TPartition{.TabletId = TabletID(),
-                                     .DiskId = PartitionConfig.GetDiskId(),
-                                     .PartitionIndex = partitionIndex,
-                                     .PartitionCount = siblingCount})
+    , LogTitle(
+          StartTime,
+          TLogTitle::TPartition{
+              .TabletId = TabletID(),
+              .DiskId = PartitionConfig.GetDiskId(),
+              .PartitionIndex = partitionIndex,
+              .PartitionCount = siblingCount})
     , TransactionTimeTracker(PartitionTransactions)
 {
     SharedState = std::make_shared<TPartitionThreadSafeState>(

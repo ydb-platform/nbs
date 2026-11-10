@@ -184,14 +184,19 @@ private:
 
 public:
     TPartitionActor(
-        const NActors::TActorId& owner, NKikimr::TTabletStorageInfoPtr storage,
+        const NActors::TActorId& owner,
+        NKikimr::TTabletStorageInfoPtr storage,
         TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig, IProfileLogPtr profileLog,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode, ui32 partitionIndex,
-        ui32 siblingCount, const NActors::TActorId& volumeActorId,
-        ui64 volumeTabletId, bool tidyUpPartitionMode = false);
+        EStorageAccessMode storageAccessMode,
+        ui32 partitionIndex,
+        ui32 siblingCount,
+        const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId,
+        bool tidyUpPartitionMode = false);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
