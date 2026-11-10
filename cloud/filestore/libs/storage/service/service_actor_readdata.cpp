@@ -301,7 +301,8 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
 
     request->Record.MutableHeaders()->CopyFrom(
         state.RequestContext.ReadRequest.GetHeaders());
-    request->Record.SetFileSystemId(state.RequestContext.ReadRequest.GetFileSystemId());
+    request->Record.SetFileSystemId(
+        state.RequestContext.ReadRequest.GetFileSystemId());
     request->Record.SetNodeId(state.RequestContext.ReadRequest.GetNodeId());
     request->Record.SetHandle(state.RequestContext.ReadRequest.GetHandle());
     request->Record.SetOffset(state.RequestContext.ReadRequest.GetOffset());
@@ -435,7 +436,8 @@ void TReadDataActor::HandleDescribeDataResponse(
     }
 
     const auto& backendInfo = msg->Record.GetHeaders().GetBackendInfo();
-    state.RequestContext.ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+    state.RequestContext.ShardState->SetIsOverloaded(
+        backendInfo.GetIsOverloaded());
 
     LOG_DEBUG(
         ctx,
@@ -457,7 +459,8 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
 {
     auto& state = GetState();
 
-    if (state.DescribeResponse.GetFakeResponse() || state.RequestContext.ReadBlobDisabled)
+    if (state.DescribeResponse.GetFakeResponse() ||
+        state.RequestContext.ReadBlobDisabled)
     {
         if (state.RequestContext.ReadBlobDisabled) {
             ReportFakeBlobWasRead();
@@ -906,7 +909,8 @@ void TReadDataActor::HandleReadDataResponse(
     }
 
     const auto& backendInfo = record.GetHeaders().GetBackendInfo();
-    state.RequestContext.ShardState->SetIsOverloaded(backendInfo.GetIsOverloaded());
+    state.RequestContext.ShardState->SetIsOverloaded(
+        backendInfo.GetIsOverloaded());
 
     LOG_DEBUG(
         ctx,

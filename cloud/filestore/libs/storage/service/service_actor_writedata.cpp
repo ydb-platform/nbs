@@ -1045,7 +1045,10 @@ private:
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(record);
-        NCloud::Reply(ctx, *state.RequestContext.RequestInfo, std::move(response));
+        NCloud::Reply(
+            ctx,
+            *state.RequestContext.RequestInfo,
+            std::move(response));
         Die(ctx);
     }
 
@@ -1060,7 +1063,10 @@ private:
 
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        NCloud::Reply(ctx, *state.RequestContext.RequestInfo, std::move(response));
+        NCloud::Reply(
+            ctx,
+            *state.RequestContext.RequestInfo,
+            std::move(response));
         Die(ctx);
     }
 
@@ -1086,7 +1092,9 @@ private:
                 state.BlobRange.Offset - state.RequestContext.Range.Offset;
             if (state.RequestContext.WriteRequest.GetIovecs().empty()) {
                 unalignedHead.SetContent(
-                    state.RequestContext.WriteRequest.GetBuffer().substr(0, length));
+                    state.RequestContext.WriteRequest.GetBuffer().substr(
+                        0,
+                        length));
             } else {
                 TString buffer;
                 auto bytesCopied =
