@@ -8,6 +8,28 @@ namespace NCloud {
 
 Y_UNIT_TEST_SUITE(TMediaKindTest)
 {
+    Y_UNIT_TEST(ShouldMapAllStorageMediaKindsToComputeTypes)
+    {
+        for (int value = NProto::EStorageMediaKind_MIN;
+             value <= NProto::EStorageMediaKind_MAX;
+             ++value)
+        {
+            if (!NProto::EStorageMediaKind_IsValid(value)) {
+                continue;
+            }
+
+            const auto mediaKind = static_cast<NProto::EStorageMediaKind>(value);
+            const auto type = MediaKindToComputeType(mediaKind);
+            UNIT_ASSERT_C(
+                type != "unknown",
+                NProto::EStorageMediaKind_Name(mediaKind));
+
+            if (IsDiskRegistryLocalMediaKind(mediaKind)) {
+                UNIT_ASSERT_VALUES_EQUAL(type, MediaKindToStatsString(mediaKind));
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldRecognizeSsdDirectMirror3Of5GroupMediaKind)
     {
         UNIT_ASSERT(IsSsdDirectMirror3Of5GroupMediaKind(
