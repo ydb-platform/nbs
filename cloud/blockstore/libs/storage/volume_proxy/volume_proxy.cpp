@@ -293,6 +293,10 @@ private:
         const TEvVolume::TEvClearBaseDiskIdToTabletIdMapping::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleForgetVolume(
+        const TEvVolumeProxy::TEvForgetVolume::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePingRequest(
         const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
         const TActorContext& ctx);
@@ -858,6 +862,29 @@ void TVolumeProxyActor::HandleClearBaseDiskIdToTabletIdMapping(
     }
 }
 
+void TVolumeProxyActor::HandleForgetVolume(
+    const TEvVolumeProxy::TEvForgetVolume::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    for (const bool exactDiskIdMatch: {false, true}) {
+        TVolumeInfo* volumeInfo = FindVolumeInfo(msg->DiskId, exactDiskIdMatch);
+        // A volume info that is being resolved has requests waiting for it.
+        if (!volumeInfo || volumeInfo->State != RESOLVED) {
+            continue;
+        }
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Remove volume info of the destroyed volume",
+            volumeInfo->LogTitle.GetWithTime().c_str());
+
+        EraseVolumeInfo(volumeInfo);
+    }
+}
+
 void TVolumeProxyActor::HandlePingRequest(
     const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -1042,6 +1069,7 @@ STFUNC(TVolumeProxyActor::StateWork)
 
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeResponse);
         HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandlePingRequest);
+        HFunc(TEvVolumeProxy::TEvForgetVolume, HandleForgetVolume);
         HFunc(TEvTabletProxy::TEvKeepAliveResponse, HandlePingResponse);
 
         default:

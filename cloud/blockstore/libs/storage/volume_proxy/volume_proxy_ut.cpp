@@ -673,12 +673,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
         runtime.DispatchEvents(options);
 
-        // The volume info outlives the volume until a request to it fails.
-        service.SendStatVolumeRequest();
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            service.RecvStatVolumeResponse()->GetStatus());
-
         {
             service.SendStatVolumeRequest();
             auto response = service.RecvStatVolumeResponse();
@@ -1180,6 +1174,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             runtime.GetLocalServiceId(MakeVolumeProxyServiceId(), nodeIdx);
         ui32 describeCount = 0;
         IEventHandlePtr heldReply;
+        bool replyHeld = false;
         runtime.SetEventFilter(
             [&](auto&, auto& event)
             {
@@ -1191,9 +1186,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         break;
                     }
                     case TEvService::EvStatVolumeResponse: {
-                        if (!heldReply &&
+                        if (!replyHeld &&
                             event->GetRecipientRewrite() == volumeProxyId)
                         {
+                            replyHeld = true;
                             heldReply.reset(event.Release());
                             return true;
                         }
@@ -1650,7 +1646,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(0, describeCount);
     }
 
-    Y_UNIT_TEST(ShouldRejectOnceAfterDiskRecreation)
+    Y_UNIT_TEST(ShouldForgetVolumeInfoOnDestroy)
     {
         TTestEnv env;
         const ui32 nodeIdx = SetupTestEnv(env);
@@ -1675,18 +1671,15 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         const ui64 oldTabletId = tabletId;
         UNIT_ASSERT(oldTabletId);
 
+        // Destroy makes the volume proxy forget the volume: the next
+        // requests resolve the disk id again instead of going to the
+        // destroyed tablet.
         service.DestroyVolume();
-        TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
-        runtime.DispatchEvents(options);
-
-        // The volume proxy still points the disk id at the destroyed tablet
-        // and learns about its death from the first request, which is
-        // rejected. The retry reaches the new volume.
-        service.SendCreateVolumeRequest();
+        service.SendDestroyVolumeRequest();
         UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            service.RecvCreateVolumeResponse()->GetStatus());
+            S_ALREADY,
+            service.RecvDestroyVolumeResponse()->GetStatus());
+
         service.CreateVolume();
 
         UNIT_ASSERT_VALUES_EQUAL(

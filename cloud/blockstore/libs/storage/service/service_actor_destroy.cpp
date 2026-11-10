@@ -267,6 +267,11 @@ void TDestroyVolumeActor::HandleModifyResponse(
         "Volume %s dropped successfully",
         DiskId.Quote().c_str());
 
+    NCloud::Send(
+        ctx,
+        MakeVolumeProxyServiceId(),
+        std::make_unique<TEvVolumeProxy::TEvForgetVolume>(DiskId));
+
     if (IsDiskRegistryBased) {
         DeallocateDisk(ctx);
 

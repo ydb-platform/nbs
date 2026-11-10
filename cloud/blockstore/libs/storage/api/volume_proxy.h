@@ -30,12 +30,26 @@ struct TEvVolumeProxy
     {
     };
 
+    //
+    // The volume was destroyed, VolumeProxy must resolve the DiskId again.
+    //
+
+    struct TForgetVolume
+    {
+        TString DiskId;
+
+        explicit TForgetVolume(TString diskId)
+            : DiskId(std::move(diskId))
+        {}
+    };
+
     enum EEvents
     {
         EvBegin = TBlockStoreEvents::VOLUME_PROXY_START,
 
         EvKeepAliveRequest = EvBegin + 1,
         EvKeepAliveResponse = EvBegin + 2,
+        EvForgetVolume = EvBegin + 3,
 
         EvEnd
     };
@@ -49,6 +63,8 @@ struct TEvVolumeProxy
 
     using TEvKeepAliveResponse =
         TResponseEvent<TKeepAliveResponse, EvKeepAliveResponse>;
+
+    using TEvForgetVolume = TRequestEvent<TForgetVolume, EvForgetVolume>;
 };
 
 NActors::TActorId MakeVolumeProxyServiceId();
