@@ -170,7 +170,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
         auto group = f.Monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", f.DiskId)
             ->GetSubgroup("instance", "instance")
@@ -218,7 +218,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         TFixture f(true);
         TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
         auto group = f.Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")->GetSubgroup("host", "cluster")
+            ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", f.DiskId)->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", "ssd_local");
@@ -291,7 +291,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
             auto group = f.Monitoring->GetCounters()
                 ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("component", "sli_volume")
                 ->GetSubgroup("host", "cluster")
                 ->GetSubgroup("volume", f.DiskId)
                 ->GetSubgroup("instance", "instance")

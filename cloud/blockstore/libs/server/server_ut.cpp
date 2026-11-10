@@ -178,7 +178,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         stats->UpdateStats(false);
         auto group = factory.Monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("component", "sli_volume")
             ->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "disk")
             ->GetSubgroup("instance", "instance")

@@ -7,6 +7,7 @@
 #include "volume_stats.h"
 
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -26,6 +27,8 @@ struct TDumpable final: IDumpable
 struct TFixture
 {
     IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
+    std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+    IVolumeStatsPtr Volumes;
     IServerStatsPtr Server;
     NMonitoring::TDynamicCountersPtr Read;
     NMonitoring::TDynamicCountersPtr Write;
@@ -43,19 +46,18 @@ struct TFixture
             row->SetThresholdUs(write ? 2000 : 1000);
         }
         auto config = std::make_shared<TDiagnosticsConfig>(proto);
-        auto timer = CreateWallClockTimer();
-        auto volumes = CreateVolumeStats(Monitoring, config, TDuration::Minutes(15),
-            EVolumeStatsType::EServerStats, timer);
+        Volumes = CreateVolumeStats(Monitoring, config, TDuration::Minutes(15),
+            EVolumeStatsType::EServerStats, Timer);
         Server = CreateServerStats(std::make_shared<TDumpable>(), config,
             Monitoring, nullptr, CreateServerRequestStats(Monitoring->GetCounters(),
-                timer, EHistogramCounterOption::ReportMultipleCounters, {}), volumes);
+                Timer, EHistogramCounterOption::ReportMultipleCounters, {}), Volumes);
         NProto::TVolume volume;
         volume.SetDiskId("disk");
         volume.SetBlockSize(4096);
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
         Server->MountVolume(volume, "client", "instance");
         auto group = Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")->GetSubgroup("host", "cluster")
+            ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "disk")->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", "ssd_nonrepl");
@@ -95,6 +97,66 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TLatencySliTest)
 {
+    Y_UNIT_TEST(ShouldPublishLatencyCountersOnlyInSliVolume)
+    {
+        TFixture f;
+        f.Complete(500);
+        f.Server->UpdateStats(true);
+        auto legacy = f.Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "disk")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "ssd_nonrepl");
+        for (const auto* name:
+             {"LatencyGoodOps", "LatencyBadOps", "LatencyTotalOps", "LatencyUnknownOps"})
+        {
+            UNIT_ASSERT(f.Read->FindCounter(name));
+            UNIT_ASSERT(!legacy->FindCounter(name));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->FindCounter("LatencyGoodOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, legacy->GetSubgroup("request", "ReadBlocks")
+                   ->GetCounter("Count", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldRelabelAndTrimLatencyCountersWithTheirVolume)
+    {
+        TFixture f;
+        auto root = f.Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster");
+
+        f.Volumes->AlterVolume("disk", "cloud", "folder");
+        auto volumeGroup = root->FindSubgroup("volume", "disk");
+        UNIT_ASSERT(volumeGroup);
+        auto instance = volumeGroup->FindSubgroup("instance", "instance");
+        UNIT_ASSERT(instance);
+        UNIT_ASSERT(!instance->FindSubgroup("cloud", ""));
+        auto group = instance->GetSubgroup("cloud", "cloud")
+            ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "ssd_nonrepl");
+        UNIT_ASSERT(group->FindCounter("LatencyTotalOps"));
+        f.Complete(500);
+        f.Server->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(1, group->FindCounter("LatencyTotalOps")->Val());
+
+        f.Timer->AdvanceTime(TDuration::Minutes(8));
+        auto volume = f.Volumes->GetVolumeInfo("disk", "client")->GetInfo();
+        f.Volumes->MountVolume(volume, "client2", "instance2");
+        f.Timer->AdvanceTime(TDuration::Minutes(8));
+        f.Volumes->TrimVolumes();
+        UNIT_ASSERT(!volumeGroup->FindSubgroup("instance", "instance"));
+        UNIT_ASSERT(volumeGroup->FindSubgroup("instance", "instance2"));
+
+        f.Timer->AdvanceTime(TDuration::Minutes(8));
+        f.Volumes->TrimVolumes();
+        UNIT_ASSERT(!root->FindSubgroup("volume", "disk"));
+    }
+
     Y_UNIT_TEST(ShouldMergeReadAndWriteOutcomesUsingTheirOwnThresholds)
     {
         TFixture f;
