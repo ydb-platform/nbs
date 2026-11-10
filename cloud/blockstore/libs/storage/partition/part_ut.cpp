@@ -3367,22 +3367,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
-                if (holdAddBlobs &&
-                    event->GetTypeRewrite() ==
-                        TEvPartitionPrivate::EvAddBlobsRequest &&
-                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>()
-                            ->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
-                {
-                    holdAddBlobs = false;
-                    addBlobs = event.Release();
-                    return TTestActorRuntime::EEventAction::DROP;
-                }
-                if (event->GetTypeRewrite() ==
-                    TEvPartitionPrivate::EvFlushCompleted)
-                {
-                    flushedFreshBlobCount =
-                        event->Get<TEvPartitionPrivate::TEvFlushCompleted>()
-                            ->FlushedFreshBlobCommitIds.size();
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        using TRequest =
+                            TEvPartitionPrivate::TEvAddBlobsRequest;
+                        const auto* msg = event->Get<TRequest>();
+                        if (holdAddBlobs &&
+                            msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                        {
+                            holdAddBlobs = false;
+                            addBlobs = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvFlushCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
+                        flushedFreshBlobCount =
+                            event->Get<TEvent>()
+                                ->FlushedFreshBlobCommitIds.size();
+                        break;
+                    }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });

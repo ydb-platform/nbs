@@ -27,7 +27,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(150, state.GetUntrimmedFreshBlobByteCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(60, state.TrimFreshBlobs(3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            60,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
 
         UNIT_ASSERT_VALUES_EQUAL(90, state.GetUntrimmedFreshBlobByteCount());
 
@@ -35,7 +37,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(160, state.GetUntrimmedFreshBlobByteCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(160, state.TrimFreshBlobs(10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            160,
+            state.TrimFreshBlobs(10).UnflushedBytesRemoved);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
     }
@@ -70,7 +74,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
@@ -112,7 +118,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
                                  state.GetFirstUnflushedFreshBlobTimestamp(5));
 
         // Blob 3 is flushed, so only blob 1 counts.
-        UNIT_ASSERT_VALUES_EQUAL(10, state.TrimFreshBlobs(3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
 
@@ -131,7 +139,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(10, state.TrimFreshBlobs(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
@@ -169,17 +179,23 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
         UNIT_ASSERT_VALUES_EQUAL(20, state.FlushFreshBlob(2));
-        UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
                                  state.GetFirstUnflushedFreshBlobTimestamp(2));
 
         UNIT_ASSERT_VALUES_EQUAL(30, state.FlushFreshBlob(3));
-        UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(3));
     }
@@ -196,7 +212,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(50, state.GetUnflushedFreshBlobByteCount());
 
         // Blob 1 is flushed, so only blob 2 counts.
-        UNIT_ASSERT_VALUES_EQUAL(20, state.TrimFreshBlobs(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetUnflushedFreshBlobCount());
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUnflushedFreshBlobByteCount());
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
@@ -211,7 +229,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobByteCount());
         UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(0, state.TrimFreshBlobs(3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
     }
 }

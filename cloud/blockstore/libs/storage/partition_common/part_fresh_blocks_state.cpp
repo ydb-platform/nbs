@@ -96,7 +96,7 @@ void TPartitionFreshBlobState::AddFreshBlob(
     }
 }
 
-ui64 TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
     auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
 
@@ -113,12 +113,13 @@ ui64 TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     }
     TrimmedToCommitId = Max(TrimmedToCommitId, commitId);
 
-    ui64 unflushedByteCount = 0;
+    TTrimFreshBlobsResult result;
     auto& unflushed = UnflushedFreshBlobsByCommitId;
     while (unflushed && unflushed.begin()->first <= commitId) {
-        unflushedByteCount += EraseUnflushedFreshBlob(unflushed.begin());
+        result.UnflushedBytesRemoved +=
+            EraseUnflushedFreshBlob(unflushed.begin());
     }
-    return unflushedByteCount;
+    return result;
 }
 
 ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
