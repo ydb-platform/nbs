@@ -107,11 +107,12 @@ QEMU_DEPS = [
 
 QEMU_CONFIG_VERSION = [
     ("--disable-auth-pam", (5, 0, 0), None),
-    ("--disable-gio", (7, 0, 0), None),
-    ("--enable-slirp", (7, 0, 0), None),
     ("--disable-fdt", None, (6, 0, 0)),
+    ("--disable-gio", (7, 0, 0), None),
+    ("--disable-passt", (10, 1, 0), None),
     ("--disable-tcmalloc", None, (6, 0, 0)),
     ("--disable-tpm", None, (6, 0, 0)),
+    ("--enable-slirp", (7, 0, 0), None),
     ("--enable-vnc-png", None, (6, 0, 0)),
 ]
 
@@ -312,7 +313,7 @@ def checkout(args):
     else:
         raise RuntimeError("src path already exists {}".format(args.src))
 
-    run(['git', 'clone', args.git, args.src])
+        run(['git', 'clone', args.git, args.src])
     if args.git_tag is not None:
         run(['git', 'checkout', args.git_tag], cwd=args.src)
     run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=args.src)
