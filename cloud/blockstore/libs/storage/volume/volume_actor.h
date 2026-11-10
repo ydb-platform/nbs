@@ -730,6 +730,8 @@ private:
 
     bool CanChangeThrottlingPolicy() const;
 
+    bool ShouldShowLaggingStatus() const;
+
     NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 
     bool CheckReadWriteBlockRange(const TBlockRange64& range) const;
