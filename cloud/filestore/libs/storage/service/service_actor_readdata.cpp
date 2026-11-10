@@ -135,7 +135,7 @@ public:
 private:
     STFUNC(StateWork);
 
-    TReadDataActor::TRequestState& GetState();
+    TRequestState& GetState();
 
     void DescribeData(const TActorContext& ctx);
 

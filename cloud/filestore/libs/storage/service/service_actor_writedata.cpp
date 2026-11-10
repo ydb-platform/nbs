@@ -305,7 +305,6 @@ private:
         return *RequestState;
     }
 
-
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
