@@ -174,8 +174,6 @@ struct TWriteRequestContext
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
-public:
-
 private:
     enum class ETabletRetryRequest
     {
