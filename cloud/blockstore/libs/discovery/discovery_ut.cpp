@@ -64,6 +64,9 @@ struct TTestBalancingPolicy
     void Reorder(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
+            if (FailSynchronously && !instances.Instances.empty()) {
+                ythrow yexception() << "balancing failure";
+            }
             for (auto& ii : instances.Instances) {
                 auto it = Find(BestHosts.begin(), BestHosts.end(), ii.Host);
                 ii.BalancingScore = it == BestHosts.end()
@@ -78,6 +81,7 @@ struct TTestBalancingPolicy
     }
 
     TVector<TString> BestHosts;
+    bool FailSynchronously = false;
 };
 
 TString SetupBanFile(std::initializer_list<TString> hosts)
@@ -118,11 +122,15 @@ struct TDelayedHealthChecker
     ui32 PendingChecks = 0;
     const TInstanceList* TrackedInstances = nullptr;
     ui32 TrackedChecks = 0;
+    bool FailSynchronously = false;
 
     NThreading::TFuture<void> UpdateStatus(TInstanceList& instances) override
     {
         if (&instances == TrackedInstances) {
             ++TrackedChecks;
+            if (FailSynchronously) {
+                ythrow yexception() << "synchronous healthcheck failure";
+            }
         }
 
         with_lock (instances.Lock) {
@@ -201,9 +209,16 @@ struct TEdsStartupTestEnv
         std::make_shared<TControlledInstanceFetcher>();
     std::shared_ptr<TDelayedHealthChecker> HealthChecker =
         std::make_shared<TDelayedHealthChecker>();
+    std::shared_ptr<TTestBalancingPolicy> BalancingPolicy =
+        std::make_shared<TTestBalancingPolicy>(TVector<TString>{"eds-best"});
     IDiscoveryServicePtr Discovery;
 
     TEdsStartupTestEnv()
+        : TEdsStartupTestEnv(TDeque<TInstanceInfo>{})
+    {
+    }
+
+    explicit TEdsStartupTestEnv(TDeque<TInstanceInfo> staticInstances)
     {
         NProto::TDiscoveryServiceConfig config;
         config.MutableEds()->SetRequestInterval(3000);
@@ -217,12 +232,11 @@ struct TEdsStartupTestEnv
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             CreateBanListStub(),
-            CreateInstanceFetcherStub(),
+            CreateInstanceFetcherStub(std::move(staticInstances)),
             CreateInstanceFetcherStub(),
             Fetcher,
             HealthChecker,
-            std::make_shared<TTestBalancingPolicy>(
-                TVector<TString>{"eds-best"})
+            BalancingPolicy
         );
         Discovery->Start();
         HealthChecker->TrackedInstances = Fetcher->Instances;
@@ -459,6 +473,74 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         discovery->Stop();
     }
 
+    Y_UNIT_TEST(ShouldServeReadySourcesWhileAnotherSourceIsInitializing)
+    {
+        TEdsStartupTestEnv env({Instance("static-host", 1)});
+        env.AssertNotReady();
+
+        env.HealthChecker->Promise.SetValue();
+        env.HealthChecker->Promise = NThreading::NewPromise();
+        auto checkStaticResponse = [&] {
+            const auto response = env.Discover();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+            UNIT_ASSERT_VALUES_EQUAL("static-host", response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+        };
+        checkStaticResponse();
+
+        NProto::TDiscoverInstancesRequest secureRequest;
+        secureRequest.SetLimit(10);
+        secureRequest.SetInstanceFilter(NProto::DISCOVERY_SECURE_PORT);
+        NProto::TDiscoverInstancesResponse secureResponse;
+        env.Discovery->ServeRequest(secureRequest, &secureResponse);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, secureResponse.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, secureResponse.InstancesSize());
+
+        env.Fetcher->Response.SetValue(MakeError(E_FAIL, "EDS unavailable"));
+        checkStaticResponse();
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        checkStaticResponse();
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+
+        with_lock (env.Fetcher->Instances->Lock) {
+            env.Fetcher->Instances->Instances = {Instance("eds-best", 2)};
+        }
+        checkStaticResponse();
+        UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
+
+        env.Fetcher->Response.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        checkStaticResponse();
+
+        env.HealthChecker->Promise.SetValue();
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-best", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetInstances(0).GetPort());
+        UNIT_ASSERT_VALUES_EQUAL("static-host", response.GetInstances(1).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(1).GetPort());
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldReturnEmptySuccessWhenAllSourcesAreInitialized)
+    {
+        TEdsStartupTestEnv env;
+        env.AssertNotReady();
+
+        env.Fetcher->Complete({});
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.Discovery->Stop();
+    }
+
     Y_UNIT_TEST(ShouldWaitForInitialEdsFetchBeforeHealthCheck)
     {
         TEdsStartupTestEnv env;
@@ -547,13 +629,11 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         env.Fetcher->Response.SetValue(
             MakeError(E_FAIL, "initial EDS fetch failed"));
 
-        env.AdvanceTime(TDuration::Seconds(2));
+        env.AdvanceTime(TDuration::MilliSeconds(999));
         env.AssertNotReady();
         UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
         UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
 
-        env.AdvanceTime(TDuration::MilliSeconds(999));
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
         env.AdvanceTime(TDuration::MilliSeconds(1));
         UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
         UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
@@ -579,7 +659,7 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
         TEdsStartupTestEnv env;
         env.Fetcher->Response.SetException("initial fetch failure");
 
-        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        env.AdvanceTime(TDuration::MilliSeconds(999));
         env.AssertNotReady();
         UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
         UNIT_ASSERT_VALUES_EQUAL(0, env.HealthChecker->TrackedChecks);
@@ -607,6 +687,97 @@ Y_UNIT_TEST_SUITE(DiscoveryTest)
 
         env.AdvanceTime(TDuration::Seconds(3));
         UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldRetryInitialHealthCheckFailuresWithoutRefetching)
+    {
+        TEdsStartupTestEnv env;
+        env.HealthChecker->FailSynchronously = true;
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+
+        env.HealthChecker->FailSynchronously = false;
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.HealthChecker->TrackedChecks);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        env.AssertNotReady();
+
+        env.HealthChecker->Promise.SetException("asynchronous healthcheck failure");
+        env.HealthChecker->Promise = NThreading::NewPromise();
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.HealthChecker->TrackedChecks);
+        env.AssertNotReady();
+
+        env.AdvanceTime(TDuration::Seconds(4));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, env.HealthChecker->TrackedChecks);
+
+        env.BalancingPolicy->FailSynchronously = true;
+        env.HealthChecker->Promise.SetValue();
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+
+        env.BalancingPolicy->FailSynchronously = false;
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        env.AssertNotReady();
+        UNIT_ASSERT_VALUES_EQUAL(3, env.HealthChecker->TrackedChecks);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(4, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        const auto response = env.Discover();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+        UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+
+        env.AdvanceTime(TDuration::MilliSeconds(2999));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+
+        env.Discovery->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldKeepServingAndRetryPeriodicHealthCheckFailure)
+    {
+        TEdsStartupTestEnv env;
+        env.Fetcher->Complete({Instance("eds-host", 1)});
+        env.HealthChecker->Promise.SetValue();
+        auto checkResponse = [&] {
+            const auto response = env.Discover();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.InstancesSize());
+            UNIT_ASSERT_VALUES_EQUAL("eds-host", response.GetInstances(0).GetHost());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.GetInstances(0).GetPort());
+        };
+
+        env.HealthChecker->Promise = NThreading::NewPromise();
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        env.HealthChecker->Promise.SetException("periodic healthcheck failure");
+        env.HealthChecker->Promise = NThreading::NewPromise();
+        checkResponse();
+
+        env.AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.HealthChecker->TrackedChecks);
+        checkResponse();
+        env.AdvanceTime(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->FetchCount);
+        checkResponse();
+
+        env.HealthChecker->Promise.SetValue();
+        env.AdvanceTime(TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(4, env.HealthChecker->TrackedChecks);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->FetchCount);
+        checkResponse();
 
         env.Discovery->Stop();
     }

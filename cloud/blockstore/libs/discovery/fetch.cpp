@@ -92,6 +92,7 @@ struct TRequestContext
     ui32 RequestCount;
     TVector<bool> Status;
     NProto::TError Error;
+    bool HasSuccessfulResponse = false;
     TAdaptiveLock Lock;
 
     TRequestContext(ui32 requestCount)
@@ -284,6 +285,7 @@ private:
                     << "conductor instance fetch error: " << result.Error.Quote()
                     << ", group: " << result.Group.Quote());
             } else {
+                requestContext.HasSuccessfulResponse = true;
                 TStringBuf s(result.Data);
                 THashSet<TStringBuf> hosts;
                 TStringBuf host;
@@ -344,6 +346,9 @@ private:
             }
 
             if (requestContext.RequestCount == 0) {
+                if (requestContext.HasSuccessfulResponse) {
+                    requestContext.Error.Clear();
+                }
                 with_lock (instances.Lock) {
                     Counters.SetInstanceCount(instances.Instances.size());
                 }
@@ -405,6 +410,10 @@ public:
             TIFStream data(Config->GetInstanceListFile());
             TString line;
             while (data.ReadLine(line)) {
+                if (line.empty()) {
+                    continue;
+                }
+
                 TStringBuf host, portStr;
                 TStringBuf(line).Split('\t', host, portStr);
 
@@ -422,7 +431,7 @@ public:
                             << line.Quote());
                     Counters.OnFetchError();
                     STORAGE_ERROR(FormatError(error));
-                    return MakeFuture(std::move(error));
+                    continue;
                 }
 
                 newInstances.emplace(std::make_pair(TString{host}, port), false);
