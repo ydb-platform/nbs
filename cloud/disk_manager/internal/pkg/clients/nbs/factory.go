@@ -119,15 +119,6 @@ func (f *factory) initClients(
 		return err
 	}
 
-	proxyOverlayDiskMediaKindStr := f.config.GetProxyOverlayDiskMediaKind()
-	proxyOverlayDiskMediaKind, ok := coreprotos.EStorageMediaKind_value[proxyOverlayDiskMediaKindStr]
-	if !ok {
-		return errors.NewNonRetriableErrorf(
-			"non existent media kind %q in ProxyOverlayDiskMediaKind config",
-			proxyOverlayDiskMediaKindStr,
-		)
-	}
-
 	for zoneID, zone := range f.config.GetZones() {
 		clientCreds := &nbs_client.ClientCredentials{
 			RootCertsFile: f.config.GetRootCertsFile(),
@@ -190,7 +181,7 @@ func (f *factory) initClients(
 			sessionMetricsRegistry:        f.sessionMetricsRegistry,
 			metrics:                       f.metrics,
 			enableThrottlingForMediaKinds: enableThrottlingForMediaKinds,
-			proxyOverlayDiskMediaKind:     coreprotos.EStorageMediaKind(proxyOverlayDiskMediaKind),
+			proxyOverlayDiskMediaKind:     f.config.GetProxyOverlayDiskMediaKind(),
 			sessionRediscoverPeriodMin:    sessionRediscoverPeriodMin,
 			sessionRediscoverPeriodMax:    sessionRediscoverPeriodMax,
 			serverRequestTimeout:          requestTimeout,

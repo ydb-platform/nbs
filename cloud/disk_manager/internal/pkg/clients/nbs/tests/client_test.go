@@ -19,6 +19,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
+	core_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -1549,7 +1550,7 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 }
 
 func TestReadFromProxyOverlayDiskWithCustomMediaKind(t *testing.T) {
-	proxyOverlayDiskMediaKind := "STORAGE_MEDIA_SSD"
+	proxyOverlayDiskMediaKind := core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD
 	testReadFromProxyOverlayDisk(
 		t,
 		&proxyOverlayDiskMediaKind,
@@ -1560,7 +1561,7 @@ func TestReadFromProxyOverlayDiskWithCustomMediaKind(t *testing.T) {
 
 func testReadFromProxyOverlayDisk(
 	t *testing.T,
-	proxyOverlayDiskMediaKind *string,
+	proxyOverlayDiskMediaKind *core_protos.EStorageMediaKind,
 	baseDiskKind types.DiskKind,
 	expectedProxyOverlayDiskKind types.DiskKind,
 ) {
