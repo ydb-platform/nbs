@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
@@ -150,6 +151,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.CreateVolume();
 
         {
+            service.SendExecuteActionRequest("ModifyTags", "{");
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
             // Incorrect ConfigVersion.
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
@@ -254,7 +261,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToAdd() = "source-disk-id=disk-id";
+            *request.AddTagsToAdd() = MakeTag("source-disk-id", "disk-id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -279,7 +286,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToRemove() = "source-disk-id=disk-id";
+            *request.AddTagsToRemove() = MakeTag("source-disk-id", "disk-id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -301,13 +308,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
         }
 
-        // Test AddTagsRequest
+        // Test AddTagsRequest and RemoveTagsRequest.
         {
             service.SendAddTagsRequest(
                 DefaultDiskId,
-                TVector{TString("tag")});
+                TVector{TString("keep"), TString("remove")});
             auto response = service.RecvAddTagsResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            service.RemoveTags(DefaultDiskId, TVector{TString("remove")});
+            service.AddTags(DefaultDiskId, TVector{TString("tag")});
         }
 
         {
@@ -322,7 +331,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 &pathDescr
             ).ok());
             const auto& config = pathDescr.GetVolumeConfig();
-            UNIT_ASSERT_VALUES_EQUAL("tag", config.GetTagsStr());
+            UNIT_ASSERT_VALUES_EQUAL("keep,tag", config.GetTagsStr());
         }
 
         service.DestroyVolume();
@@ -2421,7 +2430,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToAdd() = "source-disk-id=some-disk";
+            *request.AddTagsToAdd() = MakeTag("source-disk-id", "some-disk");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
