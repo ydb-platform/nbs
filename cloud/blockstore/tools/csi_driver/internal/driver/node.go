@@ -436,13 +436,42 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) getNbsClientIndex(ctx context.Context, nbsId string) (uint, error) {
+func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string) (uint, error) {
 	if s.nbsServerReplicaCount < 2 {
 		return 0, nil
 	}
+
+	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
 	endpointsCount := math.MaxInt32
 	nbsClientIndex := uint(0)
 	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
+		if useProjectIdMapping {
+			describeVolumeResp, err := s.nbsClients[index].DescribeVolume(ctx,
+				&nbsapi.TDescribeVolumeRequest{
+					DiskId: volumeId,
+				},
+			)
+
+			if err != nil {
+				continue
+			}
+
+			projectId := describeVolumeResp.GetVolume().GetCloudId()
+			backendIndex, found := s.projectIdToBackendIndex[projectId]
+			if !found {
+				return index, nil
+			}
+
+			if backendIndex != index {
+				return 0, fmt.Errorf(
+					"backend index %d for project %s does not match backend index from the config %d",
+					index, projectId, backendIndex,
+				)
+			}
+
+			return backendIndex, nil
+		}
+
 		listEndpointsResp, err := s.nbsClients[index].ListEndpoints(ctx,
 			&nbsapi.TListEndpointsRequest{})
 		if err != nil {
@@ -453,6 +482,13 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, nbsId string) (uint
 			endpointsCount = len(listEndpointsResp.Endpoints)
 			nbsClientIndex = uint(index)
 		}
+	}
+
+	if useProjectIdMapping {
+		return 0, fmt.Errorf(
+			"Disk doesn't exist: %s",
+			volumeId,
+		)
 	}
 
 	return nbsClientIndex, nil
@@ -466,7 +502,7 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 	endpointsCount := math.MaxInt32
 	nfsClientIndex := uint(0)
 
-	// useProjectIdMapping :=len(s.projectIdToBackendIndex) > 0
+	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
 
 	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
 		// if useProjectIdMapping {
@@ -508,12 +544,12 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 		}
 	}
 
-	// if useProjectIdMapping {
-	// 	return 0, fmt.Errorf(
-	// 		"Filesystem doesn't exist",
-	// 		filesystemId,
-	// 	)
-	// }
+	if useProjectIdMapping {
+		return 0, fmt.Errorf(
+			"Filesystem doesn't exist: %s",
+			filesystemId,
+		)
+	}
 
 	return nfsClientIndex, nil
 }
