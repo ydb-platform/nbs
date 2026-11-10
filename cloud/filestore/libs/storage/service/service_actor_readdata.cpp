@@ -48,30 +48,31 @@ bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReadRequestParams
+{
+    NProto::TReadDataRequest ReadRequest;
+    TString LogTag;
+    ui32 BlockSize = 0;
+    bool ReadBlobDisabled = false;
+    IRequestStatsPtr RequestStats;
+    NActors::TActorId Sender;
+    ui64 Cookie = 0;
+    TCallContextPtr CallContext;
+    TChecksumCalcInfo ChecksumCalcInfo;
+    TInstant StartTime;
+    ui64 RequestCookie = 0;
+    TString ClientId;
+    TShardStatePtr ShardState;
+    NCloud::NProto::EStorageMediaKind MediaKind;
+    bool UseTwoStageRead = false;
+    bool UseCustomReadDataResponseParser = false;
+    bool ZeroCopyReadEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
-public:
-    struct TRequestParams
-    {
-        NProto::TReadDataRequest ReadRequest;
-        TString LogTag;
-        ui32 BlockSize;
-        bool ReadBlobDisabled;
-        IRequestStatsPtr RequestStats;
-        NActors::TActorId Sender;
-        ui64 Cookie;
-        TCallContextPtr CallContext;
-        TChecksumCalcInfo ChecksumCalcInfo;
-        TInstant StartTime;
-        ui64 RequestCookie;
-        TString ClientId;
-        TShardStatePtr ShardState;
-        NCloud::NProto::EStorageMediaKind MediaKind;
-        bool UseTwoStageRead;
-        bool UseCustomReadDataResponseParser;
-        bool ZeroCopyReadEnabled;
-    };
-
 private:
     struct TRequestState
     {
@@ -110,7 +111,7 @@ private:
         const bool UseCustomReadDataResponseParser;
         const bool ZeroCopyReadEnabled;
 
-        explicit TRequestState(TRequestParams params);
+        explicit TRequestState(TReadRequestParams params);
     };
 
     const IProfileLogPtr ProfileLog;
@@ -127,7 +128,7 @@ public:
         ITraceSerializerPtr traceSerializer,
         TInFlightRequestStoragePtr inFlightRequests);
 
-    void Initialize(TRequestParams params);
+    void Initialize(TReadRequestParams params);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -175,7 +176,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TReadDataActor::TRequestState::TRequestState(TRequestParams params)
+TReadDataActor::TRequestState::TRequestState(TReadRequestParams params)
     : ReadRequest(std::move(params.ReadRequest))
     , LogTag(std::move(params.LogTag))
     , BlockSize(params.BlockSize)
@@ -213,7 +214,7 @@ TReadDataActor::TReadDataActor(
     , InFlightRequests(std::move(inFlightRequests))
 {}
 
-void TReadDataActor::Initialize(TRequestParams params)
+void TReadDataActor::Initialize(TReadRequestParams params)
 {
     Y_ABORT_UNLESS(!RequestState);
     RequestState.emplace(std::move(params));
