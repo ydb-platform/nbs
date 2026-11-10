@@ -63,7 +63,7 @@ func (c *ClientMock) DeleteWithFillGeneration(
 	fillGeneration uint64,
 ) error {
 
-	args := c.Called(ctx, diskID)
+	args := c.Called(ctx, diskID, fillGeneration)
 	return args.Error(0)
 }
 
