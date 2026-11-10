@@ -93,7 +93,6 @@ protected:
     ICertificateProviderPtr CertificateProvider;
 
     TProgramShouldContinue ShouldContinue;
-    TVector<TString> PostponedCriticalEvents;
 
 public:
     TBootstrapBase(IDeviceHandlerFactoryPtr deviceHandlerFactory);

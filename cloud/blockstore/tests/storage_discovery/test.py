@@ -14,7 +14,7 @@ from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
-    start_disk_agent, get_fqdn
+    start_disk_agent, get_fqdn, wait_for_counter
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
@@ -340,17 +340,19 @@ def test_config_comparison(
         agent_id,
         data_path)
 
-    crit = disk_agent.counters.find({'sensor': 'DiskAgentCriticalEvents/DiskAgentConfigMismatch'})
-    assert crit is not None
-    assert crit['value'] == (1 if cmp == 'mismatch' else 0)
-
+    # Wait for the startup event and the following empty interval.
+    sensor = 'DiskAgentCriticalEvents/DiskAgentConfigMismatch'
     if cmp == 'mismatch':
-        # Wait for duplicate event.
-        time.sleep(30)
-        crit = disk_agent.counters.find(
-            {'sensor': 'DiskAgentCriticalEvents/DiskAgentConfigMismatch'})
+        wait_for_counter(disk_agent, sensor, 1)
+    wait_for_counter(disk_agent, sensor, 0)
+
+    # Observe two 15-second intervals plus a margin to catch delayed duplicates.
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        crit = disk_agent.counters.find({'sensor': sensor})
         assert crit is not None
-        assert crit['value'] == 2
+        assert crit['value'] == 0
+        time.sleep(0.5)
 
     disk_agent.kill()
 

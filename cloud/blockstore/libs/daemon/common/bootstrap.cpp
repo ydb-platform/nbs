@@ -228,6 +228,7 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
+    InitProcessCriticalEventsReporting();
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     SetCriticalEventsLog(Log);
@@ -365,14 +366,6 @@ void TBootstrapBase::Init()
             Configs->ServerConfig->GetRootCertsFile(),
             std::move(certPathList));
     }
-
-    for (auto& event: PostponedCriticalEvents) {
-        ReportCriticalEvent(
-            event,
-            "",     // message
-            false); // verifyDebug
-    }
-    PostponedCriticalEvents.clear();
 
     RequestStats = CreateServerRequestStats(
         serverGroup,

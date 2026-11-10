@@ -64,6 +64,21 @@ def _get_counters(mon_port):
     return _Counters(r.json())
 
 
+# Wait for a live process sensor to publish the expected value before timeout.
+# Use a default timeout of 15 seconds (publish interval) + 5 seconds (gap).
+def wait_for_counter(daemon, sensor, expected_value, timeout=20):
+    deadline = time.monotonic() + timeout
+    counter = None
+    while time.monotonic() < deadline:
+        counter = daemon.counters.find({'sensor': sensor})
+        if counter is not None and counter['value'] == expected_value:
+            return counter
+        time.sleep(0.1)
+    raise AssertionError(
+        f"Counter {sensor} did not reach {expected_value}: {counter}"
+    )
+
+
 class Nbs(Daemon):
 
     def __init__(self, mon_port, server_port, commands, cwd):
