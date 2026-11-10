@@ -487,6 +487,50 @@ void TFileSystem::UpdateXAttrCache(
     XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
 }
 
+void TFileSystem::UpdateXAttrCacheUponSetXAttr(
+    ui64 ino,
+    const TString& name,
+    const TString& value,
+    ui64 version,
+    const NProto::TError& error,
+    ui64 cacheVersion,
+    TDuration cacheTTL)
+{
+    TMaybe<TString> ownValue;
+    if (!HasError(error)) {
+        ownValue = value;
+    } else if (STATUS_FROM_CODE(error.GetCode()) != NProto::E_FS_NOXATTR) {
+        return;
+    }
+
+    //
+    // Like the other local changes, the change invalidates the xattr: the
+    // responses to the requests started before this point may contain an
+    // older value or absence (they may have been processed by the backend
+    // before this SetNodeXAttr), the requests started after this point see
+    // the new state. Unlike the other local changes, the set value (or the
+    // absence found out upon F_REPLACE) itself is cached.
+    //
+
+    const ui64 invalidationVersion =
+        GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("own xattr set: " << ino
+        << " " << name.Quote()
+        << ", absent: " << !ownValue
+        << ", invalidation version: " << invalidationVersion);
+
+    TGuard g{XAttrCacheLock};
+    XAttrCache.AddOwn(
+        ino,
+        name,
+        ownValue,
+        version,
+        cacheVersion,
+        invalidationVersion,
+        cacheTTL);
+}
+
 void TFileSystem::ReplyCreateWithCache(
     TCallContext& callContext,
     const NCloud::NProto::TError& error,

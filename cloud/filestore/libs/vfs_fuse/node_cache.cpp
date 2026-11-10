@@ -99,6 +99,14 @@ bool TXAttrCache::IsCacheable(
            NodeInvalidations.IsCacheable(ino, cacheVersion);
 }
 
+void TXAttrCache::Erase(ui64 ino, const TString& name)
+{
+    auto it = Cache.Find({ino, name});
+    if (it != Cache.End()) {
+        Cache.Erase(it);
+    }
+}
+
 TInstant TXAttrCache::GetDeadline(TDuration cacheTTL) const
 {
     return Timer->Now() + (cacheTTL ? cacheTTL : Timeout);
@@ -153,6 +161,36 @@ void TXAttrCache::AddAbsent(
     );
 }
 
+void TXAttrCache::AddOwn(
+    ui64 ino,
+    const TString& name,
+    const TMaybe<TString>& value,
+    ui64 version,
+    ui64 cacheVersion,
+    ui64 invalidationVersion,
+    TDuration cacheTTL)
+{
+    if (!IsCacheable(ino, name, cacheVersion)) {
+        Invalidate(ino, name, invalidationVersion);
+        return;
+    }
+
+    if (value) {
+        Add(ino, name, *value, version, cacheVersion, cacheTTL);
+    } else {
+        AddAbsent(ino, name, cacheVersion, cacheTTL);
+    }
+
+    //
+    // The cached value is kept, the tombstone prevents only the caching of
+    // the responses to the requests started before this point.
+    //
+
+    Invalidations.Invalidate(
+        TXAttrCacheKey{.NodeId = ino, .Name = name},
+        invalidationVersion);
+}
+
 const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)
 {
     auto it = Cache.Find({ino, name});
@@ -187,10 +225,7 @@ void TXAttrCache::Invalidate(ui64 ino, const TString& name, ui64 version)
         TXAttrCacheKey{.NodeId = ino, .Name = name},
         version);
 
-    auto it = Cache.Find({ino, name});
-    if (it != Cache.End()) {
-        Cache.Erase(it);
-    }
+    Erase(ino, name);
 }
 
 size_t TXAttrCache::GetEntryCount() const

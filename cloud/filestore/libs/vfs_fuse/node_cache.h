@@ -262,6 +262,36 @@ public:
         TDuration cacheTTL);
 
     /**
+     * Caches the value set by the client itself or the absence found out by
+     * the client's own SetNodeXAttr with F_REPLACE (if it may be cached, see
+     * Add and AddAbsent) and prevents caching the responses to the requests
+     * started before invalidationVersion: they may have been processed by
+     * the backend before the SetNodeXAttr and contain an older value or
+     * absence. The absences carry no version, so they can be ordered against
+     * the values only this way.
+     *
+     * @param ino - Node id.
+     * @param name - Xattr name.
+     * @param value - Xattr value, Nothing() for the absence.
+     * @param version - Xattr version returned by the backend, zero for the
+     *  absence.
+     * @param cacheVersion - Cache version at which the SetNodeXAttr has
+     *  started.
+     * @param invalidationVersion - Cache version generated upon the response
+     *  arrival.
+     * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
+     *  that XAttrCacheTimeout is used.
+     */
+    void AddOwn(
+        ui64 ino,
+        const TString& name,
+        const TMaybe<TString>& value,
+        ui64 version,
+        ui64 cacheVersion,
+        ui64 invalidationVersion,
+        TDuration cacheTTL);
+
+    /**
      * Looks up a cached xattr value or absence.
      *
      * @param ino - Node id.
@@ -305,6 +335,7 @@ public:
 
 private:
     bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
+    void Erase(ui64 ino, const TString& name);
     TInstant GetDeadline(TDuration cacheTTL) const;
 };
 

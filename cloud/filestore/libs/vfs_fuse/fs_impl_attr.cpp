@@ -231,7 +231,7 @@ void TFileSystem::SetXAttr(
             const auto& error = response.GetError();
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
-            self->UpdateXAttrCache(
+            self->UpdateXAttrCacheUponSetXAttr(
                 ino,
                 name,
                 value,
