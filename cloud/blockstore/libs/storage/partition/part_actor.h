@@ -242,7 +242,6 @@ private:
 
     [[nodiscard]] ui32 GetCleanupThreshold() const;
     [[nodiscard]] ui32 GetCollectGarbageThreshold() const;
-    [[nodiscard]] ui32 GetMaxSkippedBlobsDuringCompaction() const;
 
     bool HasPendingCompaction(const NActors::TActorContext& ctx);
     void ProcessTidyUp(const NActors::TActorContext& ctx);

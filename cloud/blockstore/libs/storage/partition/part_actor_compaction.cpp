@@ -1889,19 +1889,6 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 TPartitionActor::GetMaxSkippedBlobsDuringCompaction() const
-{
-    // Rewriting one of two blobs while skipping the other still leaves two
-    // blobs. The range is then marked compacted and is no longer selected,
-    // even if the tidy-up limit is one. Include every blob to reduce the count.
-    if (TidyUpPartitionMode) {
-        return 0;
-    }
-    return PartitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
-        ? Config->GetMaxSkippedBlobsDuringCompaction()
-        : Config->GetMaxSkippedBlobsDuringCompactionHDD();
-}
-
 bool TPartitionActor::HasPendingCompaction(const TActorContext& ctx)
 {
     TCompactionTriggerer triggerer(
@@ -2369,7 +2356,9 @@ bool TPartitionActor::PrepareCompaction(
         args.CompactionOptions.test(ToBit(ECompactionOption::Full));
     const ui32 maxSkippedBlobs = !incrementalCompactionEnabled || fullCompaction
         ? 0
-        : GetMaxSkippedBlobsDuringCompaction();
+        : PartitionConfig.GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? Config->GetMaxSkippedBlobsDuringCompaction()
+            : Config->GetMaxSkippedBlobsDuringCompactionHDD();
 
     bool ready = true;
 

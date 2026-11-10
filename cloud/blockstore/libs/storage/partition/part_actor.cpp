@@ -708,9 +708,10 @@ void TPartitionActor::ProcessTidyUp(const TActorContext& ctx)
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    // With no writes, the enqueue calls account for fresh data, trim progress
-    // and startup GC. Startup blob recovery must also finish, while compaction
-    // and cleanup may still have work that cannot currently be enqueued.
+    // No new writes arrive in tidy-up mode.
+    // Wait for startup recovery and scheduled operations to finish.
+    // Also check for pending work. A scan or metadata rebuild can block
+    // cleanup. Read-only channels can block compaction.
     if (CompactionMapLoadState ||
         State->GetFlushState().GetOperationState().Status !=
             EOperationStatus::Idle ||

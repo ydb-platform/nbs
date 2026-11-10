@@ -418,6 +418,7 @@ private:
     bool TidyUpPartitionMode = false;
 
     bool IsTidyUpPartitionModeAllowed() const;
+    void DisableTidyUpPartitionMode(const NActors::TActorContext& ctx);
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 

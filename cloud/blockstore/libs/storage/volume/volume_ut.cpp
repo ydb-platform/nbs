@@ -8831,7 +8831,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, completions);
     }
 
-    Y_UNIT_TEST(ShouldLeaveTidyUpOnClientRequest)
+    Y_UNIT_TEST(ShouldLeaveTidyUpOnClientMount)
     {
         NProto::TStorageServiceConfig config;
         config.SetMaxBlobsPerRangeInTidyUpMode(1);
@@ -8870,6 +8870,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         stops = boots = modeChanges = 0;
         volume.AddClient(clientInfo);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, modeChanges);
         UNIT_ASSERT_VALUES_EQUAL(0, boots);
         UNIT_ASSERT_VALUES_EQUAL(0, stops);
         volume.ReadBlocks(
@@ -8926,10 +8927,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(started);
         stops = 0;
         volume.AddClient(clientInfo);
-        volume.SendReadBlocksRequest(
-            TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId());
-        const auto response = volume.RecvReadBlocksResponse();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, disables);
         UNIT_ASSERT_VALUES_EQUAL(0, stops);
         runtime->SetEventFilter([&](auto&, auto& event) {

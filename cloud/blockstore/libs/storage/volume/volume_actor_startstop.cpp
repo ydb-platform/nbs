@@ -191,20 +191,6 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
             }
             case EPartitionsStartedReason::STARTED_FOR_GC: {
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
-                if (TidyUpPartitionMode) {
-                    TidyUpPartitionMode = false;
-                    for (const auto& partition: State->GetPartitions()) {
-                        if (const auto actorId =
-                                partition.RelatedActors.GetTabletActorId())
-                        {
-                            NCloud::Send(
-                                ctx,
-                                actorId,
-                                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
-                                    false));
-                        }
-                    }
-                }
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_USE: {
@@ -532,6 +518,26 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 bool TVolumeActor::IsTidyUpPartitionModeAllowed() const
 {
     return Config->GetMaxBlobsPerRangeInTidyUpMode() != 0;
+}
+
+void TVolumeActor::DisableTidyUpPartitionMode(const TActorContext& ctx)
+{
+    if (!TidyUpPartitionMode) {
+        return;
+    }
+
+    TidyUpPartitionMode = false;
+    if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+    }
+    for (const auto& partition: State->GetPartitions()) {
+        if (const auto actorId = partition.RelatedActors.GetTabletActorId()) {
+            NCloud::Send(
+                ctx,
+                actorId,
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(false));
+        }
+    }
 }
 
 void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
@@ -960,8 +966,8 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            // A client may have arrived after the tablet factory captured the
-            // initial mode, while the partition was still booting.
+            // The client may have mounted while the partition was booting.
+            // Apply the current mode instead of the value captured by the factory.
             if (IsTidyUpPartitionModeAllowed()) {
                 NCloud::Send(
                     ctx,

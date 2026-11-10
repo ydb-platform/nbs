@@ -12720,7 +12720,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 auto config = DefaultConfig();
                 config.SetWriteBlobThreshold(1);
                 config.SetIncrementalCompactionEnabled(true);
-                config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+                config.SetMaxSkippedBlobsDuringCompactionHDD(0);
                 config.SetTargetCompactionBytesPerOp(DefaultBlockSize);
                 config.SetHDDMaxBlobsPerRange(1000);
                 config.SetCompactionGarbageThreshold(1000);
@@ -12773,6 +12773,51 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                          compactions != 0);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldAllowIncrementalBlobSkippingDuringTidyUp)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetIncrementalCompactionEnabled(true);
+        config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+        config.SetTargetCompactionBytesPerOp(DefaultBlockSize);
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetHDDMaxBlobsPerRange(1000);
+        config.SetCompactionGarbageThreshold(1000);
+        config.SetCompactionRangeGarbageThreshold(1000);
+        config.SetMaxBlobsPerRangeInTidyUpMode(1);
+        auto tidyUp = std::make_shared<bool>(false);
+        auto runtime = PrepareTestActorRuntime(
+            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+        partition.WriteBlocks(1, 2);
+        partition.Flush();
+
+        bool completed = false;
+        ui32 compactions = 0;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            compactions += event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvCompactionRequest;
+            completed |= event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted;
+            return false;
+        });
+        *tidyUp = true;
+        partition.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(compactions);
+        UNIT_ASSERT(completed);
+        const auto response = partition.StatPartition();
+        // One skipped blob plus one rewritten blob may exceed the tidy-up limit.
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            response->Record.GetStats().GetMixedBlobsCount() +
+                response->Record.GetStats().GetMergedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2), GetBlockContent(partition.ReadBlocks(1)));
     }
 
     Y_UNIT_TEST(ShouldPreserveGcReportsWithTidyUpDisabled)
