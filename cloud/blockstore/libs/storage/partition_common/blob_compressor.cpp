@@ -49,6 +49,22 @@ static_assert(
     TCompressionMetadata::ECompressionType_ARRAYSIZE - 1 ==
     sizeof(CompressionCodecs) / sizeof(CompressionCodecs[0]));
 
+constexpr bool IsValidCodecList(const TCompressionCodec* codecList, size_t size)
+{
+    for (size_t i = 0; i < size; ++i) {
+        if (codecList[i].Type !=
+            static_cast<TCompressionMetadata::ECompressionType>(i + 1))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(IsValidCodecList(
+    CompressionCodecs,
+    TCompressionMetadata::ECompressionType_ARRAYSIZE - 1));
+
 std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
     std::optional<TBlobCompressor::TMetricsConfig> config)
 {
@@ -73,7 +89,6 @@ TResultOrError<const NBlockCodecs::ICodec*> GetCodec(
         }
         const auto& entry = CompressionCodecs[static_cast<size_t>(codec) - 1];
 
-        Y_ABORT_UNLESS(entry.Type == codec);
         return NBlockCodecs::Codec(entry.Name);
     } catch (const NBlockCodecs::TNotFound&) {
         return MakeError(
