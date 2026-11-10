@@ -61,11 +61,11 @@ struct TReadRequestContext
     IRequestStatsPtr RequestStats;
     const NActors::TActorId Sender;
     const ui64 Cookie = 0;
-    TCallContextPtr CallContext;
-    TChecksumCalcInfo ChecksumCalcInfo;
+    TCallContextPtr CallContext; // invalid after Bootstrap()
+    TChecksumCalcInfo ChecksumCalcInfo; // invalid after Bootstrap()
     const TInstant StartTime;
     const ui64 RequestCookie = 0;
-    TString ClientId;
+    TString ClientId; // invalid after Bootstrap()
     TShardStatePtr ShardState;
     const NCloud::NProto::EStorageMediaKind MediaKind;
     const bool UseTwoStageRead = false;
