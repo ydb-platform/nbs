@@ -15,6 +15,23 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldGateTidyUpPartitionMode)
+    {
+        NProto::TStorageServiceConfig proto;
+        NCloud::NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("TidyUpPartitionMode");
+        feature->MutableWhitelist()->AddEntityIds("enabled-disk");
+        auto featureConfig = std::make_shared<NFeatures::TFeaturesConfig>(features);
+        TStorageConfig config(proto, featureConfig);
+        UNIT_ASSERT(!config.GetTidyUpPartitionModeEnabled());
+        UNIT_ASSERT(config.IsTidyUpPartitionModeEnabled("cloud", "folder", "enabled-disk"));
+        UNIT_ASSERT(!config.IsTidyUpPartitionModeEnabled("cloud", "folder", "other-disk"));
+        proto.SetTidyUpPartitionModeEnabled(true);
+        TStorageConfig enabled(proto, featureConfig);
+        UNIT_ASSERT(enabled.IsTidyUpPartitionModeEnabled("cloud", "folder", "other-disk"));
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(

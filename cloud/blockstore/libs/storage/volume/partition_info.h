@@ -114,8 +114,6 @@ public:
     [[nodiscard]] NActors::TActorId GetTop() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
 
-    [[nodiscard]] NActors::TActorId GetBlobStoragePartitionActor() const;
-
     void UpdateStartInfo(const TPartitionStartInfo& startInfo);
     [[nodiscard]] TPartitionStartInfo GetStartInfo() const;
 };

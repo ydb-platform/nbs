@@ -1291,7 +1291,6 @@ class TCompactionTriggerer
 private:
     const TStorageConfigConstPtr Config;
     TPartitionState& State;
-    const bool TidyUpPartitionMode;
 
     TRangeStat TopRangeStat;
     TRangeStat TopByBlobCount;
@@ -1345,12 +1344,12 @@ public:
     };
 
 public:
-    TCompactionTriggerer(const TStorageConfigConstPtr config,
-                         TPartitionState& state, TInstant now,
-                         bool tidyUpPartitionMode)
+    TCompactionTriggerer(
+        const TStorageConfigConstPtr config,
+        TPartitionState& state,
+        TInstant now)
         : Config(config)
         , State(state)
-        , TidyUpPartitionMode(tidyUpPartitionMode)
     {
         const auto& cm = State.GetCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
@@ -1457,16 +1456,10 @@ private:
     TriggerBlobCountCompactionIfNeeded() const
     {
         const ui64 blobCount = State.GetTotalBlobsCount();
-        const bool tidyUpCompaction =
-            TidyUpPartitionMode &&
-            static_cast<ui64>(TopByBlobCount.BlockCount) *
-                    State.GetBlockSize() >=
-                Config->GetTidyUpCompactionMinBytes();
-        if (TopByBlobCount.BlobCount < 2 ||
-            (!tidyUpCompaction &&
-             (!State.GetMaxBlobsPerDisk() ||
-              blobCount <= State.GetMaxBlobsPerDisk() +
-                               State.GetCleanupQueue().GetCount())))
+        if (!State.GetMaxBlobsPerDisk() ||
+            blobCount <= State.GetMaxBlobsPerDisk() +
+                             State.GetCleanupQueue().GetCount() ||
+            TopByBlobCount.BlobCount < 2)
         {
             return std::nullopt;
         }
@@ -1475,9 +1468,7 @@ private:
             TopByBlobCount.CompactionScore.Score <
             Config->GetCompactionScoreLimitForThrottling();
 
-        // Incremental compaction may keep a large blob and rewrite just one
-        // small blob without reducing the blob count. Tidy-up must converge.
-        const bool fullCompaction = tidyUpCompaction ||
+        const bool fullCompaction =
             GetGarbagePercentage() >= Config->GetCompactionGarbageThreshold();
 
         return TTriggerInfo(
@@ -1882,8 +1873,7 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
 
 bool TPartitionActor::HasPendingCompaction(const TActorContext& ctx)
 {
-    TCompactionTriggerer triggerer(Config, *State, ctx.Now(),
-                                   TidyUpPartitionMode);
+    TCompactionTriggerer triggerer(Config, *State, ctx.Now());
     return triggerer.TriggerCompactionIfNeeded().has_value();
 }
 
@@ -1911,7 +1901,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     auto now = ctx.Now();
-    TCompactionTriggerer triggerer(Config, *State, now, TidyUpPartitionMode);
+    TCompactionTriggerer triggerer(Config, *State, now);
 
     auto info = triggerer.TriggerCompactionIfNeeded();
     if (!info) {
@@ -2345,8 +2335,9 @@ bool TPartitionActor::PrepareCompaction(
             PartitionConfig.GetDiskId());
     const bool fullCompaction =
         args.CompactionOptions.test(ToBit(ECompactionOption::Full));
+    // Skipping a blob can leave the tidy-up score unchanged indefinitely.
     const ui32 maxSkippedBlobs =
-        (!incrementalCompactionEnabled || fullCompaction) ? 0
+        (!incrementalCompactionEnabled || fullCompaction || TidyUpPartitionMode) ? 0
         : PartitionConfig.GetStorageMediaKind() ==
                 NCloud::NProto::STORAGE_MEDIA_SSD
             ? Config->GetMaxSkippedBlobsDuringCompaction()

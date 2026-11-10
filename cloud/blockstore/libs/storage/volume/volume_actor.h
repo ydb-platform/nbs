@@ -414,6 +414,10 @@ private:
     ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
+    TVector<ui64> TidyUpCompletedPartitions;
+    bool TidyUpPartitionMode = false;
+
+    bool IsTidyUpPartitionModeEnabled() const;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 
@@ -1089,6 +1093,10 @@ private:
 
     void HandleBackpressureReport(
         const NPartition::TEvPartition::TEvBackpressureReport::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleTidyUpCompleted(
+        const NPartition::TEvPartition::TEvTidyUpCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleGarbageCollectorCompleted(

@@ -111,7 +111,7 @@ class TPartitionActor final
     friend TIOCompanionClient;
 
 private:
-    bool TidyUpPartitionMode = false;
+    const bool TidyUpPartitionMode;
     bool TidyUpCompleted = false;
 
     const ui64 StartTime = GetCycleCount();
@@ -238,8 +238,6 @@ private:
     bool ShouldFlush(const NActors::TActorContext& ctx);
     bool HasPendingCompaction(const NActors::TActorContext& ctx);
     void DriveTidyUp(const NActors::TActorContext& ctx);
-    void HandleStopTidyUp(const TEvPartition::TEvStopTidyUp::TPtr& ev,
-                          const NActors::TActorContext& ctx);
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);

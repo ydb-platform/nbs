@@ -793,9 +793,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
         State->SetStartupGcExecuted();
         if (!IsFirstGarbageCollectionCompleted()) {
             SetFirstGarbageCollectionCompleted();
-            if (!TidyUpPartitionMode) {
-                SendGarbageCollectorCompleted(ctx);
-            }
+            SendGarbageCollectorCompleted(ctx);
         }
     }
 

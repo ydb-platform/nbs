@@ -34,6 +34,38 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldUseMaxBlobsPerRangeInTidyUpMode)
+    {
+        TLoadOptimizationCompactionPolicyConfig config{
+            4_MB, 4_KB, 400, 15_MB, 1000, 15_MB, 70, 2, false};
+        const TRangeStat range{3, 3, 3, 0, 0, 0, false, 0};
+        auto regular = BuildLoadOptimizationCompactionPolicy(config, 0);
+        UNIT_ASSERT(regular->CalculateScore(range).Score <= 0);
+        config.TidyUpPartitionMode = true;
+        auto tidyUp = BuildLoadOptimizationCompactionPolicy(config, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, tidyUp->CalculateScore({}).Score);
+        UNIT_ASSERT(tidyUp->CalculateScore({2, 2, 2, 0, 0, 0, false, 0}).Score <= 0);
+        const auto score = tidyUp->CalculateScore(range);
+        UNIT_ASSERT_VALUES_EQUAL(3, score.Score);
+        UNIT_ASSERT_EQUAL(TCompactionScore::EType::BlobCount, score.Type);
+    }
+
+    Y_UNIT_TEST(ShouldBuildTidyUpLoadOptimizationPolicy)
+    {
+        NProto::TPartitionConfig partition;
+        partition.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HDD);
+        partition.SetBlockSize(4_KB);
+        NProto::TStorageServiceConfig proto;
+        proto.SetHDDCompactionType(NProto::CT_LOAD);
+        proto.SetHDDMaxBlobsPerRange(70);
+        proto.SetMaxBlobsPerRangeInTidyUpMode(2);
+        TStorageConfig config(proto, std::make_shared<NFeatures::TFeaturesConfig>());
+        const TRangeStat range{3, 3, 3, 0, 0, 0, false, 0};
+        UNIT_ASSERT(BuildCompactionPolicy(partition, config, 4)->CalculateScore(range).Score <= 0);
+        UNIT_ASSERT_VALUES_EQUAL(3,
+            BuildCompactionPolicy(partition, config, 4, true)->CalculateScore(range).Score);
+    }
+
     Y_UNIT_TEST(TestLoadOptimizationPolicy)
     {
         auto policy = BuildLoadOptimizationCompactionPolicy(

@@ -34,18 +34,17 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
 
     STORAGE_VERIFY(State, TWellKnownEntityTypes::TABLET, TabletID());
 
-    if ((PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC &&
-         !State->HasActiveClients(ctx.Now())) ||
-        State->GetShouldStartPartitionsForGc(ctx.Now()))
+    if (State->GetShouldStartPartitionsForGc(ctx.Now()) ||
+        (TidyUpPartitionMode && !State->HasActiveClients(ctx.Now())))
     {
         if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
-            if (FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
-                // This partition has already sent GC report
-                return;
-            }
-            if (GCCompletedPartitions.size() + 1 != State->GetPartitions().size()) {
-                // Not all partitions completed GC
+            if (!FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
+            }
+            if (GCCompletedPartitions.size() != State->GetPartitions().size() ||
+                (TidyUpPartitionMode &&
+                 TidyUpCompletedPartitions.size() != State->GetPartitions().size()))
+            {
                 return;
             }
             LOG_INFO(
@@ -57,6 +56,7 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
             StopPartitions(ctx, {});
             State->Reset();
             PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            TidyUpPartitionMode = false;
         }
         TVolumeDatabase db(tx.DB);
         State->SetStartPartitionsNeeded(false);
@@ -85,9 +85,8 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         LogTitle.GetWithTime().c_str(),
         partitionTabletId);
 
-    if ((PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC &&
-         !State->HasActiveClients(ctx.Now())) ||
-        State->GetShouldStartPartitionsForGc(ctx.Now()))
+    if (State->GetShouldStartPartitionsForGc(ctx.Now()) ||
+        (TidyUpPartitionMode && !State->HasActiveClients(ctx.Now())))
     {
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
@@ -96,6 +95,29 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
 
         ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
             requestInfo, partitionTabletId));
+    }
+}
+
+void TVolumeActor::HandleTidyUpCompleted(
+    const NPartition::TEvPartition::TEvTidyUpCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!TidyUpPartitionMode || State->HasActiveClients(ctx.Now())) {
+        return;
+    }
+    const auto tabletId = ev->Get()->TabletId;
+    if (!State->GetPartition(tabletId)) {
+        return;
+    }
+    if (!FindPtr(TidyUpCompletedPartitions, tabletId)) {
+        TidyUpCompletedPartitions.push_back(tabletId);
+    }
+    if (TidyUpCompletedPartitions.size() == State->GetPartitions().size() &&
+        GCCompletedPartitions.size() == State->GetPartitions().size())
+    {
+        auto requestInfo = CreateRequestInfo(
+            ev->Sender, ev->Cookie, MakeIntrusive<TCallContext>());
+        ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(requestInfo, tabletId));
     }
 }
 

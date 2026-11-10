@@ -63,7 +63,11 @@ TPartitionActor::TPartitionActor(
     bool tidyUpPartitionMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
-    , TidyUpPartitionMode(tidyUpPartitionMode)
+    , TidyUpPartitionMode(
+          tidyUpPartitionMode && config->IsTidyUpPartitionModeEnabled(
+              partitionConfig.GetCloudId(),
+              partitionConfig.GetFolderId(),
+              partitionConfig.GetDiskId()))
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     ,
@@ -671,13 +675,6 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
         ));
 }
 
-void TPartitionActor::HandleStopTidyUp(
-    const TEvPartition::TEvStopTidyUp::TPtr& ev, const TActorContext& ctx)
-{
-    Y_UNUSED(ev, ctx);
-    TidyUpPartitionMode = false;
-}
-
 void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
 {
     if (!TidyUpPartitionMode || TidyUpCompleted || CurrentState != STATE_WORK) {
@@ -715,7 +712,10 @@ void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
     }
 
     TidyUpCompleted = true;
-    SendGarbageCollectorCompleted(ctx);
+    NCloud::Send(
+        ctx,
+        LauncherID(),
+        std::make_unique<TEvPartition::TEvTidyUpCompleted>(TabletID()));
 }
 
 void TPartitionActor::SendGarbageCollectorCompleted(
@@ -1184,7 +1184,6 @@ STFUNC(TPartitionActor::StateBoot)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1215,7 +1214,6 @@ STFUNC(TPartitionActor::StateInit)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1264,7 +1262,6 @@ STFUNC(TPartitionActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
@@ -1369,7 +1366,6 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvTablet::TEvTabletStop);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartition::TEvStopTidyUp, HandleStopTidyUp);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);

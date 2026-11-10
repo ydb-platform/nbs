@@ -8735,7 +8735,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldTidyUpStoppedPartitionsOnManualRequest)
     {
-        auto runtime = PrepareTestActorRuntime();
+        NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("TidyUpPartitionMode");
+        feature->MutableWhitelist()->AddEntityIds("vol0");
+        auto runtime = PrepareTestActorRuntime({}, {}, features);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
             0, 0, 0, 0, false, 1,
@@ -8784,51 +8788,119 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     Y_UNIT_TEST(ShouldLeaveTidyUpWhenClientAppears)
     {
-        auto runtime = PrepareTestActorRuntime();
+        NProto::TStorageServiceConfig config;
+        config.SetTidyUpPartitionModeEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig();
-        const auto clientInfo =
-            CreateVolumeClientInfo(NProto::VOLUME_ACCESS_READ_WRITE,
-                                   NProto::VOLUME_MOUNT_LOCAL, false);
+        const auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_MOUNT_LOCAL, false);
         volume.AddClient(clientInfo);
         volume.RemoveClient(clientInfo.GetClientId());
-        bool stopTidyUp = false;
-        bool stopped = false;
         TAutoPtr<IEventHandle> completion;
-        runtime->SetEventFilter(
-            [&](auto&, auto& event)
-            {
-                if (event->GetTypeRewrite() ==
-                    TEvPartition::EvGarbageCollectorCompleted)
-                {
-                    completion = event.Release();
-                    return true;
-                }
-                if (event->GetTypeRewrite() == TEvPartition::EvStopTidyUp) {
-                    stopTidyUp = true;
-                }
-                if (event->GetTypeRewrite() == TEvBootstrapper::EvStop) {
-                    stopped = true;
-                }
-                return false;
-            });
+        ui32 stops = 0;
+        ui32 boots = 0;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted) {
+                completion = event.Release();
+                return true;
+            }
+            stops += event->GetTypeRewrite() == TEvBootstrapper::EvStop;
+            boots += event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse;
+            return false;
+        });
         volume.RebootTablet();
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(completion);
+        stops = boots = 0;
         volume.AddClient(clientInfo);
+        volume.ReconnectPipe();
         volume.WaitReady();
-        UNIT_ASSERT(stopTidyUp);
-        runtime->SetEventFilter(
-            [&](auto&, auto& event)
-            {
-                if (event->GetTypeRewrite() == TEvBootstrapper::EvStop) {
-                    stopped = true;
-                }
-                return false;
-            });
+        UNIT_ASSERT_VALUES_EQUAL(1, boots);
+        UNIT_ASSERT_VALUES_EQUAL(1, stops);
+        stops = 0;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            stops += event->GetTypeRewrite() == TEvBootstrapper::EvStop;
+            return false;
+        });
         runtime->Send(completion.Release());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT(!stopped);
+        UNIT_ASSERT_VALUES_EQUAL(0, stops);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForGcAndTidyUpReportsFromAllPartitions)
+    {
+        for (const ui32 heldType: {TEvPartition::EvGarbageCollectorCompleted,
+                                  TEvPartition::EvTidyUpCompleted})
+        {
+            NProto::TStorageServiceConfig config;
+            config.SetTidyUpPartitionModeEnabled(true);
+            auto runtime = PrepareTestActorRuntime(config);
+            TVolumeClient volume(*runtime);
+            volume.UpdateVolumeConfig(
+                0, 0, 0, 0, false, 1, NCloud::NProto::STORAGE_MEDIA_HYBRID,
+                1024, "vol0", "cloud", "folder", 2);
+            const auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_MOUNT_LOCAL, false);
+            volume.AddClient(clientInfo);
+            volume.RemoveClient(clientInfo.GetClientId());
+            TVector<TAutoPtr<IEventHandle>> held;
+            ui32 stops = 0;
+            runtime->SetEventFilter([&](auto&, auto& event) {
+                if (event->GetTypeRewrite() == heldType) {
+                    held.emplace_back(event.Release());
+                    return true;
+                }
+                stops += event->GetTypeRewrite() == TEvBootstrapper::EvStop;
+                return false;
+            });
+            volume.RebootTablet();
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(2, held.size());
+            stops = 0;
+            runtime->SetEventFilter([&](auto&, auto& event) {
+                stops += event->GetTypeRewrite() == TEvBootstrapper::EvStop;
+                return false;
+            });
+            // A duplicate report from one partition must not count for another.
+            IEventBase* duplicateReport = nullptr;
+            if (heldType == TEvPartition::EvGarbageCollectorCompleted) {
+                duplicateReport = new TEvPartition::TEvGarbageCollectorCompleted(
+                    held[0]->Get<TEvPartition::TEvGarbageCollectorCompleted>()->TabletId);
+            } else {
+                duplicateReport = new TEvPartition::TEvTidyUpCompleted(
+                    held[0]->Get<TEvPartition::TEvTidyUpCompleted>()->TabletId);
+            }
+            auto* duplicate = new IEventHandle(
+                held[0]->Recipient, held[0]->Sender, duplicateReport);
+            runtime->Send(held[0].Release());
+            runtime->Send(duplicate);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(0, stops);
+            runtime->Send(held[1].Release());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(2, stops);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreTidyUpActionWhenFeatureDisabled)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        ui32 boots = 0;
+        ui32 tidyUpReports = 0;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            boots += event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse;
+            tidyUpReports += event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted;
+            return false;
+        });
+        volume.TidyUpPartitions("vol0");
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, boots);
+        UNIT_ASSERT_VALUES_EQUAL(0, tidyUpReports);
     }
 
     Y_UNIT_TEST(ShouldStartPartitionsOnce)

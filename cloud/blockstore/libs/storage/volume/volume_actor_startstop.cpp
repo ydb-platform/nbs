@@ -190,21 +190,10 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_GC: {
-                for (const auto& partition: State->GetPartitions()) {
-                    if (!partition.StorageInfo ||
-                        partition.StorageInfo->TabletType !=
-                            TTabletTypes::BlockStorePartition)
-                    {
-                        continue;
-                    }
-                    if (auto actor = partition.RelatedActors
-                                         .GetBlobStoragePartitionActor())
-                    {
-                        NCloud::Send<NPartition::TEvPartition::TEvStopTidyUp>(
-                            ctx, actor);
-                    }
-                }
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+                if (TidyUpPartitionMode) {
+                    RestartPartition(ctx, {});
+                }
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_USE: {
@@ -529,15 +518,25 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     }
 }
 
+bool TVolumeActor::IsTidyUpPartitionModeEnabled() const
+{
+    const auto& config = State->GetConfig();
+    return Config->IsTidyUpPartitionModeEnabled(
+        config.GetCloudId(), config.GetFolderId(), config.GetDiskId());
+}
+
 void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
 {
+    TidyUpPartitionMode = false;
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
 }
 
 void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
+    TidyUpPartitionMode = IsTidyUpPartitionModeEnabled();
     GCCompletedPartitions.clear();
+    TidyUpCompletedPartitions.clear();
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
     StartPartitionsImpl(ctx);
 }
@@ -842,8 +841,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
     auto volumeTabletId = TabletID();
-    const bool tidyUpPartitionMode =
-        PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC;
+    const bool tidyUpPartitionMode = TidyUpPartitionMode;
 
     auto factory = [=](
                        const TActorId& owner,
@@ -855,11 +853,18 @@ void TVolumeActor::HandleBootExternalResponse(
 
         if (storage->TabletType == TTabletTypes::BlockStorePartition) {
             return NPartition::CreatePartitionTablet(
-                       owner, storage, std::move(config),
-                       std::move(diagnosticsConfig), std::move(profileLog),
+                       owner,
+                       storage,
+                       std::move(config),
+                       std::move(diagnosticsConfig),
+                       std::move(profileLog),
                        std::move(blockDigestGenerator),
-                       std::move(partitionConfig), storageAccessMode,
-                       partitionIndex, siblingCount, selfId, volumeTabletId,
+                       std::move(partitionConfig),
+                       storageAccessMode,
+                       partitionIndex,
+                       siblingCount,
+                       selfId,
+                       volumeTabletId,
                        tidyUpPartitionMode)
                 .release();
         } else {
@@ -965,14 +970,6 @@ void TVolumeActor::HandleTabletStatus(
                     WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
-            if (PartitionsStartedReason !=
-                    EPartitionsStartedReason::STARTED_FOR_GC &&
-                partition->StorageInfo->TabletType ==
-                    TTabletTypes::BlockStorePartition)
-            {
-                NCloud::Send<NPartition::TEvPartition::TEvStopTidyUp>(
-                    ctx, msg->TabletUser);
-            }
 
             if (freshBlocksWriterId) {
                 NCloud::Send<NFreshBlocksWriter::TEvFreshBlocksWriter::
@@ -1205,17 +1202,16 @@ void TVolumeActor::HandleSetVhostDiscardFlagResponse(
 
 void TVolumeActor::HandleTidyUpPartitions(
     const TEvVolume::TEvTidyUpPartitionsRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvVolume::TEvTidyUpPartitionsResponse>();
-    if (State->IsDiskRegistryMediaKind()) {
-        *response->Record.MutableError() = MakeError(
-            E_NOT_IMPLEMENTED, "Tidy-up requires blob storage partitions");
-    } else if (PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
+    if (IsTidyUpPartitionModeEnabled() &&
+        !State->IsDiskRegistryMediaKind() &&
+        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
     {
         StartPartitionsForGc(ctx);
     }
-    NCloud::Reply(ctx, *ev, std::move(response));
+    NCloud::Reply(ctx, *ev,
+        std::make_unique<TEvVolume::TEvTidyUpPartitionsResponse>());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

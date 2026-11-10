@@ -106,7 +106,10 @@ struct TLoadOptimizationPolicy
             return 0;
         }
 
-        if (stat.BlobCount > Config.MaxBlobsPerRange) {
+        const ui32 maxBlobsPerRange = Config.TidyUpPartitionMode
+            ? Config.MaxBlobsPerRangeInTidyUpMode
+            : Config.MaxBlobsPerRange;
+        if (stat.BlobCount > maxBlobsPerRange) {
             return stat.BlobCount;
         }
 
@@ -246,7 +249,8 @@ ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
 TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 maxBlobsPerRange)
+    const ui32 maxBlobsPerRange,
+    bool tidyUpPartitionMode)
 {
     const auto blockSize = partitionConfig.GetBlockSize();
     const auto maxBlocksInBlob = partitionConfig.GetMaxBlocksInBlob()
@@ -282,14 +286,17 @@ TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyCon
         maxReadBandwidth,
         maxWriteIops,
         maxWriteBandwidth,
-        maxBlobsPerRange
+        maxBlobsPerRange,
+        Max(1u, storageConfig.GetMaxBlobsPerRangeInTidyUpMode()),
+        tidyUpPartitionMode
     };
 }
 
 ICompactionPolicyPtr BuildCompactionPolicy(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 siblingCount)
+    const ui32 siblingCount,
+    bool tidyUpPartitionMode)
 {
     Y_ABORT_UNLESS(siblingCount > 0);
 
@@ -332,7 +339,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 BuildLoadOptimizationCompactionPolicyConfig(
                     partitionConfig,
                     storageConfig,
-                    maxBlobsPerRange),
+                    maxBlobsPerRange,
+                    tidyUpPartitionMode),
                 usedBlocksThresholdForMixedBlocksCompaction,
                 mixedBlocksCountCompactionEnabled);
         }
