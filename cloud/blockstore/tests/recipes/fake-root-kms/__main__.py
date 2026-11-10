@@ -24,7 +24,6 @@ def start(argv):
         test_name = ''
 
     working_dir = os.path.join(common.output_path(), test_name, "root_kms")
-    os.makedirs(working_dir, exist_ok=True)
 
     root_kms, environment = start_fake_root_kms(working_dir, port)
     register_process(SERVICE_NAME, root_kms.process.pid)

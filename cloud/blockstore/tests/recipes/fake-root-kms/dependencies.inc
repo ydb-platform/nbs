@@ -2,9 +2,6 @@ DEPENDS(
     cloud/blockstore/tools/testing/fake-root-kms
 )
 
-PEERDIR(
-)
-
 DATA(
     arcadia/cloud/blockstore/tests/recipes/fake-root-kms/certs/ca.crt
     arcadia/cloud/blockstore/tests/recipes/fake-root-kms/certs/server.crt
