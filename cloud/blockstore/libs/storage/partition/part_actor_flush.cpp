@@ -819,7 +819,7 @@ void TPartitionActor::HandleFlushCompleted(
 
         for (const ui64& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
             flushedFreshBlobByteCount +=
-                State->FlushFreshBlob(freshBlobCommitId);
+                State->FlushFreshBlob(freshBlobCommitId).UnflushedBytesRemoved;
         }
 
         if (IsFreshBlocksWriterEnabled()) {

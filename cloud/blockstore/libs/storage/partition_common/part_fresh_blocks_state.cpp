@@ -122,8 +122,9 @@ TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     return result;
 }
 
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+TFlushFreshBlobResult TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
+    TFlushFreshBlobResult result;
     auto it = UnflushedFreshBlobsByCommitId.find(commitId);
     if (it == UnflushedFreshBlobsByCommitId.end()) {
         STORAGE_VERIFY_C(
@@ -132,9 +133,10 @@ ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
             TabletID,
             "Commit id: " << commitId
                           << ", trimmed to commit id: " << TrimmedToCommitId);
-        return 0;
+        return result;
     }
-    return EraseUnflushedFreshBlob(it);
+    result.UnflushedBytesRemoved = EraseUnflushedFreshBlob(it);
+    return result;
 }
 
 ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(

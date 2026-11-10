@@ -130,6 +130,11 @@ struct TTrimFreshBlobsResult
     ui64 UnflushedBytesRemoved = 0;
 };
 
+struct TFlushFreshBlobResult
+{
+    ui64 UnflushedBytesRemoved = 0;
+};
+
 class TPartitionFreshBlobState
 {
 private:
@@ -183,8 +188,7 @@ public:
 
     [[nodiscard]] TTrimFreshBlobsResult TrimFreshBlobs(ui64 commitId);
 
-    // Returns the unflushed bytes removed.
-    [[nodiscard]] ui64 FlushFreshBlob(ui64 commitId);
+    [[nodiscard]] TFlushFreshBlobResult FlushFreshBlob(ui64 commitId);
 
 private:
     ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
