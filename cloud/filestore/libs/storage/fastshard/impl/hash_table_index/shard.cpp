@@ -175,13 +175,29 @@ public:
             ->Delete(writeContext.Lsn, k, slot, writeContext.PageGroups);
     }
 
-    NProto::TError Get(
+    NProto::TError GetForLookup(
         const TNodePageClusterKey& k,
         ui64* storagePageClusterId) const
     {
         ui64 slotNo = 0;
         TNodePageClusterSlot slot{};
-        auto error = Slots->Get(0 /* lsn */, k, &slot, &slotNo);
+        auto error = Slots->GetForLookup(k, &slot, &slotNo);
+        if (HasError(error)) {
+            return error;
+        }
+
+        *storagePageClusterId = slot.StoragePageClusterId;
+        return {};
+    }
+
+    NProto::TError GetForUpdate(
+        const TNodePageClusterKey& k,
+        TWriteContext& writeContext,
+        ui64* storagePageClusterId) const
+    {
+        ui64 slotNo = 0;
+        TNodePageClusterSlot slot{};
+        auto error = Slots->GetForUpdate(writeContext.Lsn, k, &slot, &slotNo);
         if (HasError(error)) {
             return error;
         }
@@ -1730,8 +1746,9 @@ public:
             lc.PageClusterIds.push_back(pageClusterId);
 
             ui64 storagePageClusterId = 0;
-            error = PageIndex.Get(
+            error = PageIndex.GetForUpdate(
                 {.NodeId = nodeId, .PageClusterId = pageClusterId},
+                writeContext,
                 &storagePageClusterId);
             if (error.GetCode() == E_FS_NOENT) {
                 ++pageClusterIdsToAllocate;
@@ -1741,7 +1758,7 @@ public:
             } else if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] WriteData::PageIndex.Get error=%s",
+                    "[%s] WriteData::PageIndex.GetForUpdate error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 break;
@@ -1870,7 +1887,7 @@ public:
 
                 TBuffer page;
                 if (isUnalignedHead || isUnalignedTail) {
-                    error = PageStore->ReadPage(
+                    error = PageStore->ReadPageForUpdate(
                         writeContext.Lsn,
                         storagePageNo,
                         &page);
@@ -2040,7 +2057,7 @@ public:
             lc.PageClusterIds.push_back(pageClusterId);
 
             ui64 storagePageClusterId = 0;
-            error = PageIndex.Get(
+            error = PageIndex.GetForLookup(
                 {.NodeId = nodeId, .PageClusterId = pageClusterId},
                 &storagePageClusterId);
             if (error.GetCode() == E_FS_NOENT) {
@@ -2064,7 +2081,7 @@ public:
             if (HasError(error)) {
                 SILK_LOG(
                     LogLevel(error),
-                    "[%s] ReadData::PageIndex.Get error=%s",
+                    "[%s] ReadData::PageIndex.GetForLookup error=%s",
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 break;
@@ -2093,7 +2110,7 @@ public:
                 }
 
                 TBuffer page;
-                error = PageStore->ReadPage(0 /* lsn */, storagePageNo, &page);
+                error = PageStore->ReadPageForLookup(storagePageNo, &page);
 
                 SILK_DEBUG(
                     "[%s] ReadData storagePage=%lu",

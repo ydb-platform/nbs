@@ -408,7 +408,7 @@ NProto::TError TPageStore::ReadPageForUpdate(
             insertCtx);
     }
 
-    return DoReadPage(cachedPage, lsn, pageNo, page);
+    return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
 }
 
 NProto::TError TPageStore::DoReadPage(
