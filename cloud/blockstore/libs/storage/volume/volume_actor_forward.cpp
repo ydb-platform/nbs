@@ -684,6 +684,10 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
+    if (IsReadOrWriteMethod<TMethod> && TidyUpPartitionMode) {
+        StartPartitionsIfNeeded(ctx);
+    }
+
     if (State->GetPartitionsState() != TPartitionInfo::READY) {
         StartPartitionsIfNeeded(ctx);
 

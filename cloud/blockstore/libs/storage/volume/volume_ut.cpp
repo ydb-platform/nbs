@@ -8786,7 +8786,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, stops);
     }
 
-    Y_UNIT_TEST(ShouldLeaveTidyUpWhenClientAppears)
+    Y_UNIT_TEST(ShouldLeaveTidyUpOnClientRequest)
     {
         NProto::TStorageServiceConfig config;
         config.SetTidyUpPartitionModeEnabled(true);
@@ -8814,8 +8814,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(completion);
         stops = boots = 0;
         volume.AddClient(clientInfo);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, boots);
+        UNIT_ASSERT_VALUES_EQUAL(0, stops);
+        volume.SendReadBlocksRequest(
+            TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
         volume.ReconnectPipe();
-        volume.WaitReady();
+        volume.ReadBlocks(
+            TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId());
         UNIT_ASSERT_VALUES_EQUAL(1, boots);
         UNIT_ASSERT_VALUES_EQUAL(1, stops);
         stops = 0;
