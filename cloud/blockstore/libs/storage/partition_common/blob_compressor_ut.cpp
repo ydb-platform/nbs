@@ -454,7 +454,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         UNIT_ASSERT(!emptyQueries);
         UNIT_ASSERT_VALUES_EQUAL(0, emptyCount);
         for (const auto& metadata: {compression, MakeCompression()}) {
-            const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+            const auto [queries, queriesCount, blockRangesForEachRequest] =
                 GetResultOrFail(
                     PlanReadBlob(BlockSize, MakeBlobId(), metadata, {}));
             UNIT_ASSERT(!queries);
@@ -499,7 +499,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
     {
         // Sorted, distinct blocks in chunks 0, 1 and 4. Chunks 2 and 3
         // must not be read, even though their bytes lie between the queries.
-        const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+        const auto [queries, queriesCount, blockRangesForEachRequest] =
             GetResultOrFail(PlanReadBlob(
                 BlockSize,
                 MakeBlobId(),
@@ -514,13 +514,13 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         UNIT_ASSERT_VALUES_EQUAL(300, queries[0].Size);
         UNIT_ASSERT_VALUES_EQUAL(1000, queries[1].Shift);
         UNIT_ASSERT_VALUES_EQUAL(500, queries[1].Size);
-        UNIT_ASSERT_VALUES_EQUAL(2, blockOffsetsForEachRequest.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, blockRangesForEachRequest.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui16>{0, 1, 7, 8, 9}),
-            blockOffsetsForEachRequest[0]);
+            TBlockRange32::MakeClosedInterval(0, 9),
+            blockRangesForEachRequest[0]);
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui16>{32, 39}),
-            blockOffsetsForEachRequest[1]);
+            TBlockRange32::MakeClosedInterval(32, 39),
+            blockRangesForEachRequest[1]);
     }
 
     Y_UNIT_TEST(ShouldPlanSingleAndFullBlobReads)
@@ -559,7 +559,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                         TCompression::COMPRESSION_LZ4_FAST14_SAFE,
                         MakeSgList(payload, blockSize)));
                 const TVector<ui16> blocks = {0, 17, 18, 31};
-                const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+                const auto [queries, queriesCount, blockRangesForEachRequest] =
                     GetResultOrFail(PlanReadBlob(
                         blockSize,
                         MakeBlobId(compressed.size()),
@@ -611,7 +611,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             TCompression::COMPRESSION_LZ4_FAST14_SAFE,
             MakeSgList(payload)));
         const TVector<ui16> blocks = {8, 9, 17, 18, 32};
-        const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+        const auto [queries, queriesCount, blockRangesForEachRequest] =
             GetResultOrFail(PlanReadBlob(
                 BlockSize,
                 MakeBlobId(blob.Data.size()),
@@ -674,7 +674,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 static_cast<ui16>(blocksPerChunk),
                 static_cast<ui16>(blocksPerChunk + 1),
                 lastBlock};
-            const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+            const auto [queries, queriesCount, blockRangesForEachRequest] =
                 GetResultOrFail(PlanReadBlob(
                     BlockSize,
                     MakeBlobId(blob.Data.size()),
@@ -1201,7 +1201,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 compressedChunkSize);
         }
 
-        const auto [queries, queriesCount, blockOffsetsForEachRequest] =
+        const auto [queries, queriesCount, blockRangesForEachRequest] =
             GetResultOrFail(PlanReadBlob(
                 blockSize,
                 MakeBlobId(

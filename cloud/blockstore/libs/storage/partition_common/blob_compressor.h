@@ -2,6 +2,7 @@
 
 #include "part_counters_wrapper.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -47,10 +48,9 @@ struct TReadPlan
     // Number of initialized queries, after deduplication and coalescing.
     size_t QueriesCount = 0;
 
-    // Block offsets for each request.
-    // ith element contains list of block offsets which depend on the ith
-    // query.
-    TVector<TVector<ui16>> BlockOffsetsForEachRequest;
+    // Closed ranges of requested block offsets depending on each query.
+    // Ranges are sorted and disjoint; unrequested offsets may lie within them.
+    TVector<TBlockRange32> BlockRangesForEachRequest;
 };
 
 /**

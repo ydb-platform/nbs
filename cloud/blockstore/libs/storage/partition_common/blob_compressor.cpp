@@ -510,14 +510,14 @@ TResultOrError<TReadPlan> PlanReadBlob(
     size_t nextChunk = 0;
     ui64 offset = 0;
 
-    TVector<TVector<ui16>> blockOffsetsForEachRequest;
+    TVector<TBlockRange32> blockRangesForEachRequest;
 
     for (const auto blockOffset: blockOffsets) {
         const ui64 blockStart = static_cast<ui64>(blockOffset) * blockSize;
         const size_t chunk = blockStart / chunkSize;
 
         if (chunk < nextChunk) {
-            blockOffsetsForEachRequest.back().emplace_back(blockOffset);
+            blockRangesForEachRequest.back().End = blockOffset;
             continue;
         }
 
@@ -541,9 +541,10 @@ TResultOrError<TReadPlan> PlanReadBlob(
                 blobId,
                 SafeIntegerCast<ui32>(offset),
                 SafeIntegerCast<ui32>(size));
-            blockOffsetsForEachRequest.emplace_back();
+            blockRangesForEachRequest.push_back(
+                TBlockRange32::MakeOneBlock(blockOffset));
         }
-        blockOffsetsForEachRequest.back().emplace_back(blockOffset);
+        blockRangesForEachRequest.back().End = blockOffset;
         offset += size;
         nextChunk = chunk + 1;
     }
@@ -558,7 +559,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
     return TReadPlan{
         .Queries = std::move(queries),
         .QueriesCount = requestsCount,
-        .BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest)};
+        .BlockRangesForEachRequest = std::move(blockRangesForEachRequest)};
 }
 
 TBlobCompressor::TBlobCompressor(

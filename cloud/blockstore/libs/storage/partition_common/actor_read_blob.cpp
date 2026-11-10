@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
-#include <util/generic/hash_set.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
 
@@ -113,33 +112,33 @@ TReadPlan TReadBlobActor::GetQueries() const
     TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
     size_t queriesCount = 0;
 
-    TVector<TVector<ui32>> blockOffsetsForEachRequest;
+    TVector<TBlockRange32> blockRangesForEachRequest;
 
     for (size_t i = 0; i < blocksCount; ++i) {
         if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i-1] + 1) {
             // extend range
             queries[queriesCount-1].Size += BlockSize;
+            blockRangesForEachRequest.back().End = Request->BlobOffsets[i];
         } else {
             queries[queriesCount++].Set(
                 Request->BlobId,
                 Request->BlobOffsets[i] * BlockSize,
                 BlockSize);
-            blockOffsetsForEachRequest.emplace_back();
+            blockRangesForEachRequest.push_back(
+                TBlockRange32::MakeOneBlock(Request->BlobOffsets[i]));
         }
-
-        blockOffsetsForEachRequest.back().push_back(Request->BlobOffsets[i]);
     }
 
     return TReadPlan{
         .Queries = std::move(queries),
         .QueriesCount = queriesCount,
-        .BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest)};
+        .BlockRangesForEachRequest = std::move(blockRangesForEachRequest)};
 }
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
-    auto [queries, queriesCount, blockOffsetsForEachRequest] = GetQueries();
-    BlockOffsetsForEachRequest = std::move(blockOffsetsForEachRequest);
+    auto [queries, queriesCount, blockRangesForEachRequest] = GetQueries();
+    BlockRangesForEachRequest = std::move(blockRangesForEachRequest);
 
     auto request = std::make_unique<TEvBlobStorage::TEvGet>(
         queries,
@@ -238,10 +237,16 @@ void TReadBlobActor::ReplyError(
 }
 
 auto TReadBlobActor::FillBrokenDataAndFilterItOut(
-    TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+    const NKikimr::TEvBlobStorage::TEvGetResult* msg,
     const TSgList& sglist,
     const NActors::TActorContext& ctx) -> TDataThatCanBeProcessed
 {
+    TVector<TEvBlobStorage::TEvGetResult::TResponse> responses;
+    responses.reserve(msg->ResponseSz);
+    for (size_t i = 0; i < msg->ResponseSz; ++i) {
+        responses.push_back(msg->Responses[i]);
+    }
+
     if (StorageAccessMode != EStorageAccessMode::Repair) {
         return {
             .Sglist = sglist,
@@ -250,16 +255,9 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
     }
 
     STORAGE_VERIFY(
-        BlockOffsetsForEachRequest.size() == responses.size(),
+        BlockRangesForEachRequest.size() == responses.size(),
         TWellKnownEntityTypes::TABLET,
         PartitionTabletId);
-
-    THashMap<ui16, size_t> responseIndexForEachBlockOffset;
-    for (size_t i = 0; i < BlockOffsetsForEachRequest.size(); ++i) {
-        for (const auto& blockOffset: BlockOffsetsForEachRequest[i]) {
-            responseIndexForEachBlockOffset[blockOffset] = i;
-        }
-    }
 
     const auto markerBlock = GetBrokenDataMarkerBlock(BlockSize);
     STORAGE_VERIFY(
@@ -269,34 +267,41 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
 
     TSgList sglistForBlocksWithNoBrokenData;
     TVector<ui16> blockOffsetsWithNoBrokenData;
-    for (size_t i = 0; i < sglist.size(); ++i) {
-        const size_t blockOffset = Request->BlobOffsets[i];
-
-        size_t responseIndex = responseIndexForEachBlockOffset[blockOffset];
-
-        auto& response = responses[responseIndex];
-        if (response.Status != NKikimrProto::OK &&
-            NCloud::IsUnrecoverable(response.Status))
-        {
+    size_t blockIndex = 0;
+    for (size_t requestIndex = 0; requestIndex < responses.size();
+         ++requestIndex)
+    {
+        const auto& response = responses[requestIndex];
+        const bool isBroken = response.Status != NKikimrProto::OK &&
+                              NCloud::IsUnrecoverable(response.Status);
+        if (isBroken) {
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION_COMMON,
                 "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
                 PartitionTabletId,
                 NKikimrProto::EReplyStatus_Name(response.Status).data(),
-                "TODO: add response print");
-
-            auto& block = sglist[i];
-            Y_ABORT_UNLESS(block.Data());
-            memcpy(
-                const_cast<char*>(block.Data()),
-                markerBlock.data(),
-                markerBlock.size());
-            continue;
+                msg->Print(false).data());
         }
 
-        sglistForBlocksWithNoBrokenData.push_back(sglist[i]);
-        blockOffsetsWithNoBrokenData.push_back(Request->BlobOffsets[i]);
+        const auto& range = BlockRangesForEachRequest[requestIndex];
+        for (; blockIndex < sglist.size() &&
+               Request->BlobOffsets[blockIndex] <= range.End;
+             ++blockIndex)
+        {
+            const auto& block = sglist[blockIndex];
+            if (isBroken) {
+                Y_ABORT_UNLESS(block.Data());
+                memcpy(
+                    const_cast<char*>(block.Data()),
+                    markerBlock.data(),
+                    markerBlock.size());
+            } else {
+                sglistForBlocksWithNoBrokenData.push_back(block);
+                blockOffsetsWithNoBrokenData.push_back(
+                    Request->BlobOffsets[blockIndex]);
+            }
+        }
     }
 
     auto toRemove = std::ranges::remove_if(
@@ -437,14 +442,8 @@ void TReadBlobActor::HandleGetResult(
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
 
-        TVector<TEvBlobStorage::TEvGetResult::TResponse> responses;
-        responses.reserve(msg->ResponseSz);
-        for (size_t i = 0; i < msg->ResponseSz; ++i) {
-            responses.push_back(msg->Responses[i]);
-        }
-
         auto [newSglist, newBlockOffsets, newResponses] =
-            FillBrokenDataAndFilterItOut(std::move(responses), sglist, ctx);
+            FillBrokenDataAndFilterItOut(msg, sglist, ctx);
 
         for (auto& response: newResponses) {
             if (response.Status != NKikimrProto::OK) {

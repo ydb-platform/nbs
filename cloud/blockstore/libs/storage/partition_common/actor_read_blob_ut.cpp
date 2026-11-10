@@ -1,5 +1,6 @@
 #include "actor_read_blob.h"
 
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 
@@ -133,6 +134,112 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 sgList[i].Data(),
                 TString(blockSize, i + 1).data(),
                 blockSize), 0);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRepairBrokenRanges, TSetupEnvironment)
+    {
+        const ui32 blockSize = 512;
+        const ui32 queryCount = 4;
+        const NKikimr::TLogoBlobID blobId(142, 1, 2, 3, 12 * blockSize, 4);
+        const TVector<ui16> blobOffsets{1, 2, 4, 7, 8, 10, 11};
+        const TVector<size_t> queryIndices{0, 0, 1, 2, 2, 3, 3};
+        const auto marker = GetBrokenDataMarkerBlock(blockSize);
+
+        for (const bool checksums: {false, true}) {
+            for (ui32 brokenMask = 0; brokenMask < (1u << queryCount);
+                 ++brokenMask)
+            {
+                TVector<TString> blocks;
+                auto sglist = ResizeBlocks(
+                    blocks,
+                    blobOffsets.size(),
+                    TString(blockSize, 'x'));
+                TGuardedSgList guardedSglist(std::move(sglist));
+                auto request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    blobId,
+                    EdgeActor,
+                    blobOffsets,
+                    guardedSglist,
+                    12,
+                    false,
+                    TInstant::Max(),
+                    checksums);
+                const auto readActor = ActorSystem.Register(new TReadBlobActor(
+                    MakeIntrusive<TRequestInfo>(
+                        EdgeActor,
+                        0ull,
+                        MakeIntrusive<TCallContext>()),
+                    EdgeActor,
+                    NActors::TActorId(),
+                    0,
+                    blockSize,
+                    checksums,
+                    EStorageAccessMode::Repair,
+                    std::move(request),
+                    TDuration(),
+                    0ull,
+                    false));
+
+                auto readBlob =
+                    ActorSystem
+                        .GrabEdgeEvent<NKikimr::TEvBlobStorage::TEvGet>();
+                UNIT_ASSERT_VALUES_EQUAL(queryCount, readBlob->QuerySize);
+
+                auto getResult =
+                    std::make_unique<NKikimr::TEvBlobStorage::TEvGetResult>(
+                        NKikimrProto::OK,
+                        queryCount,
+                        12);
+                for (size_t i = 0; i < queryCount; ++i) {
+                    auto& response = getResult->Responses[i];
+                    if (brokenMask & (1u << i)) {
+                        response.Status =
+                            i % 2 ? NKikimrProto::ERROR : NKikimrProto::NODATA;
+                        continue;
+                    }
+                    const auto& query = readBlob->Queries[i];
+                    response.Status = NKikimrProto::OK;
+                    response.Id = blobId;
+                    response.Shift = query.Shift;
+                    response.RequestedSize = query.Size;
+                    TString data;
+                    for (ui32 offset = query.Shift / blockSize;
+                         offset < (query.Shift + query.Size) / blockSize;
+                         ++offset)
+                    {
+                        data.append(TString(blockSize, 'a' + offset));
+                    }
+                    response.Buffer = TRope(std::move(data));
+                }
+                ActorSystem.Send(new NActors::IEventHandle(
+                    readActor,
+                    EdgeActor,
+                    getResult.release()));
+
+                auto response = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+                UNIT_ASSERT_C(
+                    !HasError(response->GetError()),
+                    response->GetError());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    checksums ? blobOffsets.size() : 0,
+                    response->BlockChecksums.size());
+                for (size_t i = 0; i < blocks.size(); ++i) {
+                    const auto expected =
+                        brokenMask & (1u << queryIndices[i])
+                            ? marker
+                            : TString(blockSize, 'a' + blobOffsets[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(expected, blocks[i]);
+                    if (checksums) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            ComputeDefaultDigest(
+                                {expected.data(), expected.size()}),
+                            response->BlockChecksums[i]);
+                    }
+                }
+            }
         }
     }
 

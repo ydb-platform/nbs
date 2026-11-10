@@ -47,7 +47,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    TVector<TVector<ui32>> BlockOffsetsForEachRequest;
+    TVector<TBlockRange32> BlockRangesForEachRequest;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -100,7 +100,7 @@ private:
     };
 
     TDataThatCanBeProcessed FillBrokenDataAndFilterItOut(
-        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+        const NKikimr::TEvBlobStorage::TEvGetResult* msg,
         const TSgList& sglist,
         const NActors::TActorContext& ctx);
 
