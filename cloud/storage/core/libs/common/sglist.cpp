@@ -130,7 +130,7 @@ size_t SgListCopy(TBlockDataRef srcBuf, const TSgList& dstList)
     return bytesCount;
 }
 
-size_t SgListCopy(const TSgList& srcList, TBlockDataRef dstBuf)
+size_t SgListCopy(std::span<const TBlockDataRef> srcList, TBlockDataRef dstBuf)
 {
     size_t bytesCount = 0;
 
@@ -168,6 +168,11 @@ size_t SgListCopy(const TSgList& srcList, TBlockDataRef dstBuf)
     }
 
     return bytesCount;
+}
+
+size_t SgListCopy(const TSgList& srcList, TBlockDataRef dstBuf)
+{
+    return SgListCopy(std::span<const TBlockDataRef>(srcList), dstBuf);
 }
 
 TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize)

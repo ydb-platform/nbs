@@ -1,14 +1,16 @@
 #pragma once
 
+#include "blob_compressor.h"
+
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_channels_state.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
@@ -18,8 +20,6 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
-class TBlobsCompressor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,7 +43,7 @@ private:
     const NProto::TPartitionConfig& PartitionConfig;
     const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
     const ui64 TabletID;
-    const std::shared_ptr<TBlobsCompressor> BlobsCompressor;
+    const TBlobCompressorPtr BlobCompressor;
     const NActors::TActorId VolumeActorId;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const EStorageAccessMode StorageAccessMode;
@@ -74,7 +74,7 @@ public:
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor,
+        TBlobCompressorPtr blobCompressor,
         const NActors::TActorId& volumeActorId,
         TDiagnosticsConfigConstPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
