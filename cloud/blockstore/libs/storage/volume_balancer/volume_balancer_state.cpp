@@ -343,7 +343,7 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
     const TBlobIoCounters& load,
-    const NProto::EStorageMediaKind& mediaKind) const
+    NProto::EStorageMediaKind mediaKind) const
 {
     const auto perfSettings = GetPerfSettings(*DiagnosticsConfig, mediaKind);
 

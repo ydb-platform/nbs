@@ -50,8 +50,6 @@ private:
     TAtomic CriticalSufferCount = 0;
 
 private:
-    TVolumePerfSettings GetConfigSettings(
-        TDiagnosticsConfigConstPtr diagnosticsConfig) const;
     bool
     DidSuffer(ui64 expectedScore, ui64 actualScore, TDuration window) const;
 

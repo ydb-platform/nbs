@@ -135,7 +135,7 @@ private:
 
     std::optional<TDuration> CalculateCostPerIO(
         const TBlobIoCounters& counters,
-        const NProto::EStorageMediaKind& mediaKind) const;
+        NProto::EStorageMediaKind mediaKind) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
