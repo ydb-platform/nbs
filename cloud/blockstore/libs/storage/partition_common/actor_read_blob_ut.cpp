@@ -1,10 +1,14 @@
 #include "actor_read_blob.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -129,6 +133,88 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 sgList[i].Data(),
                 TString(blockSize, i + 1).data(),
                 blockSize), 0);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectDuplicateBlobOffsets, TSetupEnvironment)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto invalidOffsets = counters->GetCounter(
+            GetCriticalEventForInvalidReadBlobOffsets(),
+            true);
+        ui32 readRequests = 0;
+        ActorSystem.SetEventFilter(
+            [&](NActors::TTestActorRuntimeBase&,
+                TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvBlobStorage::EvGet) {
+                    ++readRequests;
+                }
+                return false;
+            });
+
+        for (const auto storageAccessMode:
+             {EStorageAccessMode::Default, EStorageAccessMode::Repair})
+        {
+            const auto previousInvalidOffsets = invalidOffsets->Val();
+            const ui32 blockSize = 512;
+            const NKikimr::TLogoBlobID blobId(142, 143, 0x8000);
+            const TVector<ui16> blobOffsets{0, 2, 2, 3};
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                blobOffsets.size(),
+                TString(blockSize, 'x'));
+            auto request =
+                std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    blobId,
+                    EdgeActor,
+                    blobOffsets,
+                    TGuardedSgList(std::move(sglist)),
+                    12,
+                    false,
+                    TInstant::Max(),
+                    false);
+
+            ActorSystem.Register(new TReadBlobActor(
+                MakeIntrusive<TRequestInfo>(
+                    EdgeActor,
+                    0ull,
+                    MakeIntrusive<TCallContext>()),
+                EdgeActor,
+                NActors::TActorId(),
+                0,
+                blockSize,
+                false,
+                storageAccessMode,
+                std::move(request),
+                TDuration(),
+                0ull,
+                false));
+
+            auto response = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                response->GetError().GetCode());
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetError().GetMessage(),
+                "Offsets should be sorted in strict ascending order: 0, 2, 2, "
+                "3");
+
+            auto completed = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                completed->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
+            UNIT_ASSERT_VALUES_EQUAL(
+                previousInvalidOffsets + 1,
+                invalidOffsets->Val());
+            for (const auto& block: blocks) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'x'), block);
+            }
         }
     }
 

@@ -1,12 +1,15 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 
 #include <util/generic/hash_set.h>
+#include <util/string/builder.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -63,16 +66,7 @@ TReadBlobActor::TReadBlobActor(
     , Request(std::move(request))
     , BSGroupOperationId(bsGroupOperationId)
     , PassTraceIdToBlobstorage(passTraceIdToBlobstorage)
-{
-    THashSet<ui16> offsets;
-    for (const auto offset: Request->BlobOffsets) {
-        STORAGE_VERIFY_C(
-            offsets.insert(offset).second,
-            TWellKnownEntityTypes::TABLET,
-            PartitionTabletId,
-            "Duplicate blob offset: " << offset);
-    }
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -88,6 +82,25 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
         Request->GroupId);
 
     TLongRunningOperationCompanion::RequestStarted(ctx);
+
+    std::optional<ui16> lastOffset;
+    for (const auto offset: Request->BlobOffsets) {
+        if (lastOffset && *lastOffset >= offset) {
+            auto error = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Offsets should be sorted in strict "
+                                    "ascending order: "
+                                 << JoinSeq(", ", Request->BlobOffsets)
+                                 << " for blob " << Request->BlobId);
+            ReportInvalidReadBlobOffsets(
+                error.GetMessage(),
+                {{"tabletId", PartitionTabletId}});
+            ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+            return;
+        }
+        lastOffset = offset;
+    }
+
     SendGetRequest(ctx);
 }
 

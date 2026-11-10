@@ -8969,8 +8969,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldReadBlocksFromBaseDisk)
     {
         TPartitionContent baseContent = {
-        /*|      0      |     1     |     2 ... 5    |     6     |      7      |     8     |      9      |*/
-            TBlob(1, 1) , TFresh(2) , TBlob(2, 3, 4) ,  TEmpty() , TBlob(1, 4) , TFresh(5) , TBlob(2, 6)
+            TBlob(1, 1),      // block 0
+            TFresh(2),        // block 1
+            TBlob(2, 3, 4),   // blocks 2..5
+            TEmpty(),         // block 6
+            TBlob(1, 4),      // block 7
+            TFresh(5),        // block 8
+            TBlob(2, 8),      // block 9
         };
         auto bitmap = CreateBitmap(10);
 
