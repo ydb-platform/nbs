@@ -313,7 +313,7 @@ def checkout(args):
     else:
         raise RuntimeError("src path already exists {}".format(args.src))
 
-        run(['git', 'clone', args.git, args.src])
+    run(['git', 'clone', args.git, args.src])
     if args.git_tag is not None:
         run(['git', 'checkout', args.git_tag], cwd=args.src)
     run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=args.src)
