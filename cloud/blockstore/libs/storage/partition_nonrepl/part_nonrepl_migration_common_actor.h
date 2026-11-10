@@ -288,6 +288,11 @@ public:
     }
 
 protected:
+    // Forward an accepted configuration update to owned migration actors.
+    virtual void ForwardDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate& update,
+        const NActors::TActorContext& ctx);
+
     [[nodiscard]] TString GetNonZeroBlocks(TBlockRange64 range) const;
     const TStorageConfigConstPtr& GetConfig() const;
     const TDiagnosticsConfigConstPtr& GetDiagnosticsConfig() const;

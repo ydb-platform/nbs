@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/configs_manager/public.h>
 #include <cloud/blockstore/libs/configs_manager/testlib/dynconfig.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 
 #include <contrib/ydb/core/base/tablet.h>
@@ -338,6 +339,149 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
         }
     }
 
+    // Verify that a partition created for a completed shadow checkpoint after a
+    // Volume restart receives later configuration updates. Toggle
+    // OptimizeVoidBuffersTransferForReadsEnabled and check that device read
+    // requests use the new setting, while the partition ID and checkpoint data
+    // remain unchanged.
+    Y_UNIT_TEST(ShouldUpdateRestoredShadowCheckpointPartition)
+    {
+        // Create a shadow checkpoint with read optimization initially disabled.
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(false);
+        auto runtime = PrepareTestActorRuntime(config);
+        TActorId volumeActor;
+        TActorId readPartition;
+        TActorId checkpointPartition;
+        ui32 deviceReads = 0;
+        ui32 checkpointUpdates = 0;
+        bool skipVoidBlocks = false;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                // Capture the current Volume actor after its restart.
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvGetStorageConfigRequest)
+                {
+                    volumeActor = event->GetRecipientRewrite();
+                }
+
+                // Keep the final recipient after Volume and shadow actor
+                // forward the read to the checkpoint partition.
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvReadBlocksRequest) {
+                    readPartition = event->GetRecipientRewrite();
+                }
+
+                // Observe the setting applied by the checkpoint partition
+                // to its outgoing device request.
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReadDeviceBlocksRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvDiskAgent::TEvReadDeviceBlocksRequest>();
+                    skipVoidBlocks =
+                        msg->Record.GetHeaders().GetOptimizeNetworkTransfer() ==
+                        NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS;
+                    ++deviceReads;
+                }
+
+                // Count deliveries to the existing checkpoint partition
+                // to detect missing or duplicate configuration updates.
+                if (checkpointPartition &&
+                    event->GetTypeRewrite() ==
+                        TEvVolume::EvDynamicConfigUpdate &&
+                    event->GetRecipientRewrite() == checkpointPartition)
+                {
+                    ++checkpointUpdates;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            8192);
+        volume.WaitReady();
+        const auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(client);
+        const auto range = TBlockRange64::MakeOneBlock(0);
+        volume.WriteBlocks(range, client.GetClientId(), 'x');
+        volume.CreateCheckpoint("c1");
+        volume.ReconnectPipe();
+
+        // Persist the completed checkpoint before restarting Volume. This
+        // restores its partition without initializing another migration.
+        while (volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus() !=
+               NProto::ECheckpointStatus::READY)
+        {
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+        volume.RebootTablet();
+        volume.WaitReady();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        volume.GetStorageConfig();
+        UNIT_ASSERT(volumeActor);
+
+        // Identify the existing checkpoint partition and check its initial
+        // request setting and persisted data.
+        auto response = volume.ReadBlocks(range, client.GetClientId(), "c1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('x'),
+            response->Record.GetBlocks().GetBuffers(0));
+        UNIT_ASSERT(deviceReads);
+        UNIT_ASSERT(!skipVoidBlocks);
+        checkpointPartition = readPartition;
+        UNIT_ASSERT(checkpointPartition);
+
+        // Toggle the global setting in both directions and verify that the
+        // same checkpoint partition receives each update exactly once.
+        NProto::TBlockstoreConfig publication;
+        *publication.MutableStorageService() = config;
+        const auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>(
+                publication);
+        ui32 expectedUpdates = 0;
+
+        for (const bool enabled: {true, false}) {
+            // Apply the new global setting before issuing the checkpoint read.
+            provider->Config.MutableStorageService()
+                ->SetOptimizeVoidBuffersTransferForReadsEnabled(enabled);
+            provider->Publish();
+            NTestDynconfig::SendDynconfigTo(*runtime, volumeActor, provider);
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled,
+                volume.GetStorageConfig()
+                    ->Record.GetStorageConfig()
+                    .GetOptimizeVoidBuffersTransferForReadsEnabled());
+
+            // Check the device request produced by the existing partition and
+            // retain the checkpoint data across both configuration changes.
+            const auto readsBeforeUpdate = deviceReads;
+            response = volume.ReadBlocks(range, client.GetClientId(), "c1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent('x'),
+                response->Record.GetBlocks().GetBuffers(0));
+            UNIT_ASSERT_VALUES_EQUAL(readsBeforeUpdate + 1, deviceReads);
+            UNIT_ASSERT_VALUES_EQUAL(enabled, skipVoidBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(checkpointPartition, readPartition);
+            ++expectedUpdates;
+            UNIT_ASSERT_VALUES_EQUAL(expectedUpdates, checkpointUpdates);
+        }
+    }
+
     void DoShouldKeepRunningLaggingDeviceMode(bool startupAllowed)
     {
         // Create a mirror with one device in each of its three replicas.
@@ -372,6 +516,9 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
         TVolumeClient volume(*runtime);
+        const ui64 blockCount =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize /
+            DefaultBlockSize;
         volume.UpdateVolumeConfig(
             0,
             0,
@@ -380,8 +527,7 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
             false,
             1,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
-            DefaultDeviceBlockCount * DefaultDeviceBlockSize /
-                DefaultBlockSize);
+            blockCount);
         volume.WaitReady();
         volume.GetStorageConfig();
 
@@ -402,10 +548,36 @@ Y_UNIT_TEST_SUITE(TVolumeDynamicConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             startupAllowed ? S_OK : E_PRECONDITION_FAILED,
             response->GetError().GetCode());
+
+        // Report progress for an existing lagging agent after disabling
+        // the feature for future partition starts.
+        if (startupAllowed) {
+            volume.SendToPipe(
+                std::make_unique<
+                    TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState>(
+                    "agent-2",
+                    blockCount / 2,
+                    blockCount / 2));
+        }
+
+        // Keep monitoring tied to the running partition's mode and retain
+        // its reported progress when the desired mode changes.
+        const auto page =
+            volume.RemoteHttpInfo(BuildRemoteHttpQuery(TestTabletId, {}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            startupAllowed,
+            page->Html.Contains("LaggingStatus:"));
+        if (startupAllowed) {
+            UNIT_ASSERT(page->Html.Contains("has lagging devices"));
+            UNIT_ASSERT(page->Html.Contains(
+                "Lagging agents agent-2 migration progress:"));
+            UNIT_ASSERT(page->Html.Contains(", 50%)"));
+        }
     }
 
-    // Verify that Volume follows the lagging-device mode of the running
-    // partition after the desired configuration changes in either direction.
+    // Verify that timeout handling and monitoring follow the lagging-device
+    // mode of the running partition after configuration changes in either
+    // direction, preserving visible progress for existing lagging devices.
     Y_UNIT_TEST(ShouldKeepRunningLaggingDeviceMode)
     {
         for (const bool startupAllowed: {false, true}) {

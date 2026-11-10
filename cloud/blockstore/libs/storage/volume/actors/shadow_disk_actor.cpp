@@ -689,6 +689,28 @@ bool TShadowDiskActor::OnMessage(
     return true;
 }
 
+void TShadowDiskActor::ForwardDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate& update,
+    const NActors::TActorContext& ctx)
+{
+    // Preserve delivery to actors registered by InitWork.
+    TNonreplicatedPartitionMigrationCommonActor::ForwardDynamicConfigUpdate(
+        update,
+        ctx);
+
+    // Forward configuration update to the checkpoint partition even when no
+    // migration was initialized. During migration, the base implementation
+    // already sends to this destination.
+    if (DstActorId && DstActorId != GetDstActorId()) {
+        ctx.Send(
+            DstActorId,
+            new TEvVolume::TEvDynamicConfigUpdate(
+                update.StorageConfig,
+                update.Owner,
+                update.Revision));
+    }
+}
+
 void TShadowDiskActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
     ui64 migrationIndex)

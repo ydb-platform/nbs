@@ -269,6 +269,15 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleDynamicConfigUpdate(
     MigrationOwner->OnDynamicConfigUpdate(Config);
 
     // Forward the configuration update to child actors.
+    ForwardDynamicConfigUpdate(*msg, ctx);
+}
+
+// Forward an accepted configuration update to owned source and destination
+// actors, preserving the owner and revision checked by the handler.
+void TNonreplicatedPartitionMigrationCommonActor::ForwardDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate& update,
+    const NActors::TActorContext& ctx)
+{
     for (const auto actorId: {OwnsSrcActor ? SrcActorId : TActorId(),
                               OwnsDstActor ? DstActorId : TActorId()})
     {
@@ -276,7 +285,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleDynamicConfigUpdate(
             ctx.Send(
                 actorId,
                 new TEvVolume::TEvDynamicConfigUpdate(
-                    msg->StorageConfig, msg->Owner, msg->Revision));
+                    update.StorageConfig,
+                    update.Owner,
+                    update.Revision));
         }
     }
 }
