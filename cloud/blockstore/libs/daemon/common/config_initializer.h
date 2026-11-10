@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/latency_sli.pb.h>
+
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/client/throttling.h>
@@ -67,10 +69,14 @@ struct TConfigInitializerCommon
 protected:
     std::optional<NJson::TJsonValue> ReadJsonFile(const TString& filename);
 
+    void SetupDiagnosticsConfig(NProto::TDiagnosticsConfig& diagnosticsConfig);
     void SetupDiscoveryPorts(NProto::TDiscoveryServiceConfig& discoveryConfig) const;
     void SetupServerPorts(NProto::TServerConfig& config) const;
 
 private:
+    // Keep the same file snapshot when CMS replaces diagnostics settings.
+    std::optional<NProto::TLatencySliThresholdsConfig> LatencySliThresholds;
+
     // YAML mode from the local ServerConfig, captured by InitServerConfig.
     // Holds the default before initialization; CMS does not change this value.
     bool DynamicYamlConfigurationStaticallyEnabled;

@@ -12,6 +12,7 @@ SRCS(
     disk.proto
     grpc_client.proto
     http_proxy.proto
+    latency_sli.proto
     local_nvme.proto
     logbroker.proto
     notify.proto

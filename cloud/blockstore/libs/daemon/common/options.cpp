@@ -57,6 +57,12 @@ TOptionsCommon::TOptionsCommon()
         .DefaultValue("")
         .StoreResult(&CellsConfig);
 
+    Opts.AddLongOption(
+            "latency-sli-thresholds-file",
+            "text protobuf thresholds; overrides embedded thresholds until restart")
+        .RequiredArgument("FILE")
+        .StoreResult(&LatencySliThresholdsFile);
+
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);

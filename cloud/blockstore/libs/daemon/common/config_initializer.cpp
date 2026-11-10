@@ -63,11 +63,26 @@ void TConfigInitializerCommon::InitDiagnosticsConfig()
             diagnosticsConfig);
     }
 
+    SetupDiagnosticsConfig(diagnosticsConfig);
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
+}
+
+void TConfigInitializerCommon::SetupDiagnosticsConfig(
+    NProto::TDiagnosticsConfig& diagnosticsConfig)
+{
     if (Options->MonitoringPort) {
         diagnosticsConfig.SetNbsMonPort(Options->MonitoringPort);
     }
 
-    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
+    if (Options->LatencySliThresholdsFile) {
+        if (!LatencySliThresholds) {
+            NProto::TLatencySliThresholdsConfig thresholds;
+            ParseProtoTextFromFile(Options->LatencySliThresholdsFile, thresholds);
+            LatencySliThresholds = std::move(thresholds);
+        }
+        diagnosticsConfig.MutableLatencySliThresholds()->CopyFrom(
+            LatencySliThresholds->GetThresholds());
+    }
 }
 
 void TConfigInitializerCommon::InitDiskAgentConfig()
