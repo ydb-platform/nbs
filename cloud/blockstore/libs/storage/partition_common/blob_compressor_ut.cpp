@@ -516,10 +516,10 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         UNIT_ASSERT_VALUES_EQUAL(500, queries[1].Size);
         UNIT_ASSERT_VALUES_EQUAL(2, blockOffsetsForEachRequest.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui32>{0, 1, 7, 8, 9}),
+            (TVector<ui16>{0, 1, 7, 8, 9}),
             blockOffsetsForEachRequest[0]);
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui32>{32, 39}),
+            (TVector<ui16>{32, 39}),
             blockOffsetsForEachRequest[1]);
     }
 
@@ -541,43 +541,6 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fullCount);
         UNIT_ASSERT_VALUES_EQUAL(0, full[0].Shift);
         UNIT_ASSERT_VALUES_EQUAL(1500, full[0].Size);
-    }
-
-    Y_UNIT_TEST(ShouldRejectUnsortedBlockOffsets)
-    {
-        const auto blob = GetResultOrFail(CompressBlob(
-            BlockSize,
-            ChunkSize,
-            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
-            MakeSgList(TString(ChunkSize, 'a'))));
-        const TVector<ui16> blocks = {1, 0};
-        TString result(2 * BlockSize, '?');
-        const TSgList outputs = {
-            {result.begin(), BlockSize},
-            {result.begin() + BlockSize, BlockSize}};
-
-        AssertArgumentError(
-            [&]
-            {
-                return PlanReadBlob(
-                           BlockSize,
-                           MakeBlobId(blob.Data.size()),
-                           blob.Compression,
-                           blocks)
-                    .GetError();
-            });
-        AssertArgumentError(
-            [&]
-            {
-                return DecompressBlob(
-                    BlockSize,
-                    {TRope(blob.Data)},
-                    blob.Compression,
-                    blob.Data.size(),
-                    blocks,
-                    outputs,
-                    nullptr);
-            });
     }
 
     Y_UNIT_TEST(ShouldReadRequestedBlocksFromCompressedPayload)

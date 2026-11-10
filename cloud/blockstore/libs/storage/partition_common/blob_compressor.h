@@ -50,7 +50,7 @@ struct TReadPlan
     // Block offsets for each request.
     // ith element contains list of block offsets which depend on the ith
     // query.
-    TVector<TVector<ui32>> BlockOffsetsForEachRequest;
+    TVector<TVector<ui16>> BlockOffsetsForEachRequest;
 };
 
 /**
