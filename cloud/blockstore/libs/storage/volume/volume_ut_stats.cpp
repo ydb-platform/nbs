@@ -1033,6 +1033,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto runtime =
             PrepareTestActorRuntime(config, {}, {}, {}, {diskAgentState});
 
+        bool sourceRegistered = false;
+        bool shadowRegistered = false;
+        auto registrationObserver =
+            runtime->AddObserver<TEvStatsService::TEvRegisterVolume>(
+                [&](TEvStatsService::TEvRegisterVolume::TPtr& ev)
+                {
+                    const auto* msg = ev->Get();
+                    if (msg->DiskId == "vol0") {
+                        UNIT_ASSERT(!msg->ChannelInfos.empty());
+                        sourceRegistered = true;
+                    } else if (msg->DiskId == "vol0-c1") {
+                        UNIT_ASSERT(msg->ChannelInfos.empty());
+                        shadowRegistered = true;
+                    }
+                });
+
         struct TReadAndWriteByteCount
         {
             ui64 ReadByteCount = 0;
@@ -1145,6 +1161,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             directCopyBytes,
             statsForDisks["vol0"].DirectCopyByteCount);
+
+        UNIT_ASSERT(sourceRegistered);
+        UNIT_ASSERT(shadowRegistered);
     }
 
     Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)

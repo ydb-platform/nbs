@@ -556,19 +556,35 @@ struct TTestIamTokenClient: public IIamTokenClient
 
 Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 {
-    Y_UNIT_TEST(ShouldValidateConnectionSettingsWithoutStatsTables)
+    Y_UNIT_TEST(ShouldRequireConnectionSettingsAndAnyTable)
     {
         NProto::TYdbStatsConfig config;
         UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
 
         config.SetDatabaseName("/Root");
-        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
-
         config.SetServerAddress("localhost:2135");
-        UNIT_ASSERT(TYdbStatsConfig(config).IsValid());
-
-        config.ClearDatabaseName();
         UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+
+        TVector<NProto::TYdbStatsConfig> configs(6);
+        configs[0].SetStatsTableName("stats");
+        configs[1].SetHistoryTablePrefix("history");
+        configs[2].SetArchiveStatsTableName("archive");
+        configs[3].SetBlobLoadMetricsTableName("metrics");
+        configs[4].SetGroupsTableName("groups");
+        configs[5].SetPartitionsTableName("partitions");
+
+        for (auto& tableConfig: configs) {
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.SetDatabaseName("/Root");
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.SetServerAddress("localhost:2135");
+            UNIT_ASSERT(TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.ClearDatabaseName();
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+        }
     }
 
     Y_UNIT_TEST(ShouldUploadGroupsAndPartitionsWithoutStatsAndHistory)

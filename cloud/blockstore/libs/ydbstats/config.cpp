@@ -74,7 +74,13 @@ bool TYdbStatsConfig::IsValid() const
 {
     return
         YdbStatsConfig.GetDatabaseName() &&
-        YdbStatsConfig.GetServerAddress();
+        YdbStatsConfig.GetServerAddress() &&
+        (YdbStatsConfig.GetStatsTableName() ||
+         YdbStatsConfig.GetHistoryTablePrefix() ||
+         YdbStatsConfig.GetArchiveStatsTableName() ||
+         YdbStatsConfig.GetBlobLoadMetricsTableName() ||
+         YdbStatsConfig.GetGroupsTableName() ||
+         YdbStatsConfig.GetPartitionsTableName());
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
