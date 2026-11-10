@@ -192,7 +192,18 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
             case EPartitionsStartedReason::STARTED_FOR_GC: {
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
                 if (TidyUpPartitionMode) {
-                    RestartPartition(ctx, {});
+                    TidyUpPartitionMode = false;
+                    for (const auto& partition: State->GetPartitions()) {
+                        if (const auto actorId =
+                                partition.RelatedActors.GetTabletActorId())
+                        {
+                            NCloud::Send(
+                                ctx,
+                                actorId,
+                                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
+                                    false));
+                        }
+                    }
                 }
                 return;
             }
@@ -520,9 +531,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 
 bool TVolumeActor::IsTidyUpPartitionModeEnabled() const
 {
-    const auto& config = State->GetConfig();
-    return Config->IsTidyUpPartitionModeEnabled(
-        config.GetCloudId(), config.GetFolderId(), config.GetDiskId());
+    return Config->GetMaxBlobsPerRangeInTidyUpMode() != 0;
 }
 
 void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
@@ -951,6 +960,15 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
+            // A client may have arrived after the tablet factory captured the
+            // initial mode, while the partition was still booting.
+            if (IsTidyUpPartitionModeEnabled()) {
+                NCloud::Send(
+                    ctx,
+                    msg->TabletUser,
+                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
+                        TidyUpPartitionMode));
+            }
             auto actorStack = TActorsStack(
                 msg->TabletUser,
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
@@ -1204,14 +1222,11 @@ void TVolumeActor::HandleTidyUpPartitions(
     const TEvVolume::TEvTidyUpPartitionsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (IsTidyUpPartitionModeEnabled() &&
-        !State->IsDiskRegistryMediaKind() &&
-        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
-    {
-        StartPartitionsForGc(ctx);
-    }
-    NCloud::Reply(ctx, *ev,
-        std::make_unique<TEvVolume::TEvTidyUpPartitionsResponse>());
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        ev->Get()->CallContext);
+    ExecuteTx<TTidyUpPartitions>(ctx, std::move(requestInfo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

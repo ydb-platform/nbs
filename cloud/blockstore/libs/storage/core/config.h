@@ -178,15 +178,6 @@ public:
     bool GetV1GarbageCompactionEnabled() const;
     bool GetIgnoringZeroedCompactionEnabled() const;
     ui32 GetMaxBlobsPerRangeInTidyUpMode() const;
-    bool GetTidyUpPartitionModeEnabled() const;
-    bool IsTidyUpPartitionModeFeatureEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
-    bool IsTidyUpPartitionModeEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
     ui32 GetCompactionGarbageBlockLimit() const;

@@ -70,10 +70,7 @@ TPartitionActor::TPartitionActor(
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , TidyUpPartitionMode(
-          tidyUpPartitionMode && config->IsTidyUpPartitionModeEnabled(
-              partitionConfig.GetCloudId(),
-              partitionConfig.GetFolderId(),
-              partitionConfig.GetDiskId()))
+          tidyUpPartitionMode && config->GetMaxBlobsPerRangeInTidyUpMode())
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , FreshBlocksWriterEnabled(
@@ -684,6 +681,21 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
         ));
 }
 
+void TPartitionActor::HandleSetTidyUpPartitionMode(
+    const TEvPartition::TEvSetTidyUpPartitionMode::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const bool enabled = ev->Get()->Enabled &&
+        Config->GetMaxBlobsPerRangeInTidyUpMode();
+    if (TidyUpPartitionMode == enabled) {
+        return;
+    }
+
+    TidyUpPartitionMode = enabled;
+    TidyUpCompleted = false;
+    DriveTidyUp(ctx);
+}
+
 void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
 {
     if (!TidyUpPartitionMode || TidyUpCompleted || CurrentState != STATE_WORK) {
@@ -696,9 +708,10 @@ void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    // Enqueue methods also account for thresholds, barriers and retries. A
-    // scheduled operation is still outstanding, even before its actor starts.
-    if (CompactionMapLoadState || !State->GetStartupGcExecuted() ||
+    // With no writes, the enqueue calls account for fresh data, trim progress
+    // and startup GC. Startup blob recovery must also finish, while compaction
+    // and cleanup may still have work that cannot currently be enqueued.
+    if (CompactionMapLoadState ||
         State->GetFlushState().GetOperationState().Status !=
             EOperationStatus::Idle ||
         State->GetTrimFreshLogState().Status != EOperationStatus::Idle ||
@@ -708,14 +721,8 @@ void TPartitionActor::DriveTidyUp(const TActorContext& ctx)
         State->GetCollectGarbageState().Status != EOperationStatus::Idle ||
         HasPendingCompaction(ctx) ||
         State->HasBlobCountToCleanupReachedThreshold(
-            State->GetCleanupCommitId(), 1) ||
-        State->GetAddConfirmedBlobsState().Status != EOperationStatus::Idle ||
-        State->GetUnconfirmedBlobCount() || State->GetConfirmedBlobCount() ||
-        State->GetFreshBlocksInFlight() ||
-        State->GetUnflushedFreshBlocksCount() ||
-        State->GetUnflushedFreshBlobCount() ||
-        State->GetTrimFreshLogToCommitId() !=
-            State->GetLastTrimFreshLogToCommitId())
+            State->GetCleanupCommitId(), GetCleanupThreshold()) ||
+        State->GetAddConfirmedBlobsState().Status != EOperationStatus::Idle)
     {
         return;
     }
@@ -1193,6 +1200,7 @@ STFUNC(TPartitionActor::StateBoot)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1223,6 +1231,7 @@ STFUNC(TPartitionActor::StateInit)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1271,6 +1280,7 @@ STFUNC(TPartitionActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
@@ -1371,6 +1381,8 @@ STFUNC(TPartitionActor::StateZombie)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvPartition::TEvSetTidyUpPartitionMode);
+
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         IgnoreFunc(TEvTablet::TEvTabletStop);
 

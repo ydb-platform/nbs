@@ -113,6 +113,7 @@ public:
     [[nodiscard]] bool IsKnown(NActors::TActorId actorId) const;
     [[nodiscard]] NActors::TActorId GetTop() const;
     [[nodiscard]] NActors::TActorId GetTopWrapper() const;
+    [[nodiscard]] NActors::TActorId GetTabletActorId() const;
 
     void UpdateStartInfo(const TPartitionStartInfo& startInfo);
     [[nodiscard]] TPartitionStartInfo GetStartInfo() const;

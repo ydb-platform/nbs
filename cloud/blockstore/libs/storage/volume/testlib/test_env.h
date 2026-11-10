@@ -482,7 +482,7 @@ public:
         const TString& params);
 
     std::unique_ptr<TEvVolume::TEvTidyUpPartitionsRequest>
-    CreateTidyUpPartitionsRequest(const TString& diskId = {});
+    CreateTidyUpPartitionsRequest(const TString& diskId);
 
     std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest> CreateGetVolumeInfoRequest();
 

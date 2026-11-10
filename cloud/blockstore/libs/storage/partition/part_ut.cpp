@@ -12452,13 +12452,176 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         checkScanDisk(1);
     }
 
+    Y_UNIT_TEST(ShouldToggleTidyUpModeWithoutRestart)
+    {
+        for (const bool featureEnabled: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetHDDCompactionType(NProto::CT_LOAD);
+            config.SetHDDMaxBlobsPerRange(1000);
+            config.SetMaxBlobsPerRangeInTidyUpMode(featureEnabled ? 1 : 0);
+            config.SetCompactionGarbageThreshold(1000);
+            config.SetCompactionRangeGarbageThreshold(1000);
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+            partition.WriteBlocks(0, 1);
+            partition.Flush();
+            partition.WriteBlocks(1, 2);
+            partition.Flush();
+            bool completed = false;
+            runtime->SetEventFilter([&](auto&, auto& event) {
+                if (event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted) {
+                    completed = true;
+                }
+                return false;
+            });
+            const auto setMode = [&](bool enabled) {
+                partition.SendToPipe(
+                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
+                        enabled));
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+            };
+            const auto blobCount = [&] {
+                const auto response = partition.StatPartition();
+                return response->Record.GetStats().GetMixedBlobsCount() +
+                    response->Record.GetStats().GetMergedBlobsCount();
+            };
+            UNIT_ASSERT_VALUES_EQUAL(2, blobCount());
+            setMode(true);
+            UNIT_ASSERT_VALUES_EQUAL(featureEnabled, completed);
+            UNIT_ASSERT_VALUES_EQUAL(featureEnabled ? 1 : 2, blobCount());
+            if (!featureEnabled) {
+                continue;
+            }
+
+            // Repeated enable events must not start a new tidy-up run.
+            completed = false;
+            setMode(true);
+            UNIT_ASSERT(!completed);
+            setMode(false);
+            partition.WriteBlocks(2, 3);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+            partition.Flush();
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(2, blobCount());
+            UNIT_ASSERT(!completed);
+
+            // A new enable must reevaluate existing ranges and report completion.
+            setMode(true);
+            UNIT_ASSERT(completed);
+            UNIT_ASSERT_VALUES_EQUAL(1, blobCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(3), GetBlockContent(partition.ReadBlocks(2)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTriggerTidyUpWithoutChangingCompactionScores)
+    {
+        auto config = DefaultConfig();
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetHDDMaxBlobsPerRange(1000);
+        config.SetMaxBlobsPerRangeInTidyUpMode(1);
+        config.SetCompactionGarbageThreshold(1000);
+        config.SetCompactionRangeGarbageThreshold(1000);
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(0, 1);
+        partition.Flush();
+        partition.WriteBlocks(1, 2);
+        partition.Flush();
+        const auto before = partition.GetCompactionCounters(0)->Counters;
+        UNIT_ASSERT_VALUES_EQUAL(2, before.BlobCount);
+        UNIT_ASSERT(before.CompactionScore.Score <= 0);
+
+        TAutoPtr<IEventHandle> compaction;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() == TEvPartitionPrivate::EvCompactionRequest) {
+                UNIT_ASSERT(
+                    event->template Get<TEvPartitionPrivate::TEvCompactionRequest>()->Mode ==
+                        TEvPartitionPrivate::BlobCountCompaction);
+                compaction = event.Release();
+                return true;
+            }
+            return false;
+        });
+        for (const bool enabled: {true, false}) {
+            partition.SendToPipe(
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(enabled));
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT(compaction);
+            const auto after = partition.GetCompactionCounters(0)->Counters;
+            UNIT_ASSERT_VALUES_EQUAL(before.BlobCount, after.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                before.CompactionScore.Score, after.CompactionScore.Score);
+            UNIT_ASSERT_EQUAL(
+                before.CompactionScore.Type, after.CompactionScore.Type);
+        }
+        runtime->SetEventFilter([](auto&, auto&) { return false; });
+        runtime->Send(compaction.Release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2), GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldDisableTidyUpWithTrimInFlight)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxBlobsPerRangeInTidyUpMode(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        auto tidyUp = std::make_shared<bool>(false);
+        auto runtime = PrepareTestActorRuntime(
+            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(0, 1);
+        TAutoPtr<IEventHandle> trim;
+        bool completed = false;
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() ==
+                TEvPartitionCommonPrivate::EvTrimFreshLogCompleted)
+            {
+                trim = event.Release();
+                return true;
+            }
+            if (event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted) {
+                completed = true;
+            }
+            return false;
+        });
+        *tidyUp = true;
+        partition.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(trim);
+        UNIT_ASSERT(!completed);
+        partition.SendToPipe(
+            std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(false));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted) {
+                completed = true;
+            }
+            return false;
+        });
+        runtime->Send(trim.Release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!completed);
+        partition.WriteBlocks(1, 2);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(1), GetBlockContent(partition.ReadBlocks(0)));
+    }
+
     Y_UNIT_TEST(ShouldTidyUpBelowMaintenanceThresholds)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetCleanupThreshold(1000);
         config.SetCollectGarbageThreshold(1000);
-        config.SetTidyUpPartitionModeEnabled(true);
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetMaxBlobsPerRangeInTidyUpMode(1);
         config.SetHDDMaxBlobsPerRange(1000);
@@ -12551,68 +12714,72 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldRespectMaxBlobsPerRangeInTidyUpMode)
     {
-        for (const ui32 maxBlobs: {1u, 2u})
-        {
-            auto config = DefaultConfig();
-            config.SetWriteBlobThreshold(1);
-            config.SetIncrementalCompactionEnabled(true);
-            config.SetMaxSkippedBlobsDuringCompactionHDD(1);
-            config.SetTargetCompactionBytesPerOp(DefaultBlockSize);
-            config.SetHDDMaxBlobsPerRange(1000);
-            config.SetCompactionGarbageThreshold(1000);
-            config.SetCompactionRangeGarbageThreshold(1000);
-            config.SetTidyUpPartitionModeEnabled(true);
-            config.SetHDDCompactionType(NProto::CT_LOAD);
-            config.SetMaxBlobsPerRangeInTidyUpMode(maxBlobs);
-            auto tidyUp = std::make_shared<bool>(false);
-            auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
-                                                   EStorageAccessMode::Default,
-                                                   {}, tidyUp);
-            TPartitionClient partition(*runtime);
-            partition.WaitReady();
-            partition.WriteBlocks(0, 1);
-            partition.Flush();
-            partition.WriteBlocks(1, 2);
-            partition.Flush();
-            const auto before = partition.StatPartition();
-            UNIT_ASSERT_VALUES_EQUAL(2,
-                before->Record.GetStats().GetMixedBlobsCount() +
-                before->Record.GetStats().GetMergedBlobsCount());
-            bool completed = false;
-            ui32 compactions = 0;
-            runtime->SetEventFilter(
-                [&](auto&, auto& event)
-                {
-                    if (event->GetTypeRewrite() ==
-                        TEvPartitionPrivate::EvCompactionRequest)
+        for (const auto compactionType: {NProto::CT_DEFAULT, NProto::CT_LOAD}) {
+            for (const ui32 maxBlobs: {0u, 1u, 2u})
+            {
+                auto config = DefaultConfig();
+                config.SetWriteBlobThreshold(1);
+                config.SetIncrementalCompactionEnabled(true);
+                config.SetMaxSkippedBlobsDuringCompactionHDD(1);
+                config.SetTargetCompactionBytesPerOp(DefaultBlockSize);
+                config.SetHDDMaxBlobsPerRange(1000);
+                config.SetCompactionGarbageThreshold(1000);
+                config.SetCompactionRangeGarbageThreshold(1000);
+                config.SetHDDCompactionType(compactionType);
+                config.SetMaxBlobsPerRangeInTidyUpMode(maxBlobs);
+                auto tidyUp = std::make_shared<bool>(false);
+                auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
+                                                       EStorageAccessMode::Default,
+                                                       {}, tidyUp);
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+                partition.WriteBlocks(0, 1);
+                partition.Flush();
+                partition.WriteBlocks(1, 2);
+                partition.Flush();
+                const auto before = partition.StatPartition();
+                UNIT_ASSERT_VALUES_EQUAL(2,
+                    before->Record.GetStats().GetMixedBlobsCount() +
+                    before->Record.GetStats().GetMergedBlobsCount());
+                bool completed = false;
+                ui32 compactions = 0;
+                runtime->SetEventFilter(
+                    [&](auto&, auto& event)
                     {
-                        ++compactions;
-                    }
-                    if (event->GetTypeRewrite() ==
-                        TEvPartition::EvTidyUpCompleted)
-                    {
-                        completed = true;
-                    }
-                    return false;
-                });
-            *tidyUp = true;
-            partition.RebootTablet();
-            runtime->DispatchEvents({}, TDuration::Seconds(1));
-            UNIT_ASSERT(completed);
-            const auto after = partition.StatPartition();
-            UNIT_ASSERT_VALUES_EQUAL(maxBlobs == 1 ? 1 : 2,
-                after->Record.GetStats().GetMixedBlobsCount() +
-                after->Record.GetStats().GetMergedBlobsCount());
-            UNIT_ASSERT_VALUES_EQUAL(maxBlobs == 1,
-                                     compactions != 0);
+                        if (event->GetTypeRewrite() ==
+                            TEvPartitionPrivate::EvCompactionRequest)
+                        {
+                            UNIT_ASSERT(
+                                event->template Get<TEvPartitionPrivate::TEvCompactionRequest>()->Mode ==
+                                    TEvPartitionPrivate::BlobCountCompaction);
+                            ++compactions;
+                        }
+                        if (event->GetTypeRewrite() ==
+                            TEvPartition::EvTidyUpCompleted)
+                        {
+                            completed = true;
+                        }
+                        return false;
+                    });
+                *tidyUp = true;
+                partition.RebootTablet();
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+                UNIT_ASSERT_VALUES_EQUAL(maxBlobs != 0, completed);
+                const auto after = partition.StatPartition();
+                UNIT_ASSERT_VALUES_EQUAL(maxBlobs == 1 ? 1 : 2,
+                    after->Record.GetStats().GetMixedBlobsCount() +
+                    after->Record.GetStats().GetMergedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(maxBlobs == 1,
+                                         compactions != 0);
+            }
         }
     }
 
-    Y_UNIT_TEST(ShouldPreserveGcReportsWithTidyUpFeatureFlag)
+    Y_UNIT_TEST(ShouldPreserveGcReportsWithTidyUpDisabled)
     {
         for (const bool enabled: {false, true}) {
             auto config = DefaultConfig();
-            config.SetTidyUpPartitionModeEnabled(enabled);
+            config.SetMaxBlobsPerRangeInTidyUpMode(enabled ? 1 : 0);
             auto tidyUp = std::make_shared<bool>(true);
             auto runtime = PrepareTestActorRuntime(
                 config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);

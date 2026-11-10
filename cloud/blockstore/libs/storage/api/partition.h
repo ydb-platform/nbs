@@ -178,6 +178,7 @@ struct TEvPartition
         EvReleaseRange = EvBegin + 15,
 
         EvTidyUpCompleted = EvBegin + 16,
+        EvSetTidyUpPartitionMode = EvBegin + 17,
 
         EvEnd
     };
@@ -187,17 +188,20 @@ struct TEvPartition
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 
-    struct TTidyUpCompleted
+    struct TSetTidyUpPartitionMode
     {
-        const ui64 TabletId;
+        const bool Enabled;
 
-        explicit TTidyUpCompleted(ui64 tabletId)
-            : TabletId(tabletId)
+        explicit TSetTidyUpPartitionMode(bool enabled)
+            : Enabled(enabled)
         {}
     };
 
+    using TEvSetTidyUpPartitionMode =
+        TRequestEvent<TSetTidyUpPartitionMode, EvSetTidyUpPartitionMode>;
+
     using TEvTidyUpCompleted =
-        TRequestEvent<TTidyUpCompleted, EvTidyUpCompleted>;
+        TRequestEvent<TGarbageCollectorCompleted, EvTidyUpCompleted>;
 
     using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 

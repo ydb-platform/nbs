@@ -578,6 +578,11 @@ STFUNC(TCollectGarbageHardActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 TPartitionActor::GetCollectGarbageThreshold() const
+{
+    return TidyUpPartitionMode ? 1 : Config->GetCollectGarbageThreshold();
+}
+
 void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 {
     if (State->GetCollectGarbageState().Status != EOperationStatus::Idle) {
@@ -591,9 +596,7 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         size_t pendingBlobs = State->GetGarbageQueue().GetNewBlobsCount(commitId)
                             + State->GetGarbageQueue().GetGarbageBlobsCount(commitId);
 
-        if (pendingBlobs < (TidyUpPartitionMode
-                                ? 1
-                                : Config->GetCollectGarbageThreshold()) &&
+        if (pendingBlobs < GetCollectGarbageThreshold() &&
             State->GetStartupGcExecuted())
         {
             // not ready

@@ -1783,9 +1783,6 @@ message TStorageServiceConfig
     // Enable before compression: missing counters are initialized from block counts.
     optional bool ExtendedBlobCountersEnabled = 554;
 
-    // Maximum blobs per range in the load-optimization policy during tidy-up.
+    // Maximum blobs per range during tidy-up. Zero disables tidy-up mode.
     optional uint32 MaxBlobsPerRangeInTidyUpMode = 555;
-
-    // Enable tidy-up for partitions started for GC. Disabled by default.
-    optional bool TidyUpPartitionModeEnabled = 556;
 }

@@ -16,7 +16,6 @@ SRCS(
     service_actor_actions_compact_range.cpp
     service_actor_actions_configure_volume_balancer.cpp
     service_actor_actions_create_disk_from_devices.cpp
-    service_actor_actions_tidy_up_partitions.cpp
     service_actor_actions_delete_checkpoint_data.cpp
     service_actor_actions_describe_blob.cpp
     service_actor_actions_describe_blocks.cpp
@@ -56,6 +55,7 @@ SRCS(
     service_actor_actions_suspend_disk_agent.cpp
     service_actor_actions_suspend_secure_erase.cpp
     service_actor_actions_set_vhost_discard_enabled_flag.cpp
+    service_actor_actions_tidy_up_partitions.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
     service_actor_actions_update_disk_registry_params.cpp

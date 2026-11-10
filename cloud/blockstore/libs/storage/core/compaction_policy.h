@@ -157,8 +157,6 @@ struct TLoadOptimizationCompactionPolicyConfig
     ui32 MaxWriteIops;
     ui64 MaxWriteBandwidth;
     ui32 MaxBlobsPerRange;
-    ui32 MaxBlobsPerRangeInTidyUpMode = 1;
-    bool TidyUpPartitionMode = false;
 };
 
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
@@ -170,13 +168,11 @@ TLoadOptimizationCompactionPolicyConfig
 BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 maxBlobsPerRange,
-    bool tidyUpPartitionMode = false);
+    const ui32 maxBlobsPerRange);
 
 ICompactionPolicyPtr BuildCompactionPolicy(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 siblingCount,
-    bool tidyUpPartitionMode = false);
+    const ui32 siblingCount);
 
 }   // namespace NCloud::NBlockStore::NStorage

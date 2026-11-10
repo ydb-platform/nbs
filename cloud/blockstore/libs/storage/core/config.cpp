@@ -221,8 +221,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(HDDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
             NProto::CT_DEFAULT                                                )\
-    xxx(MaxBlobsPerRangeInTidyUpMode,      ui32,      1                      )\
-    xxx(TidyUpPartitionModeEnabled,        bool,      false                  )\
+    xxx(MaxBlobsPerRangeInTidyUpMode,      ui32,      0                      )\
     xxx(CompactionGarbageThreshold,         ui32,      20                     )\
     xxx(CompactionGarbageBlobLimit,         ui32,      100                    )\
     xxx(CompactionGarbageBlockLimit,        ui32,      10240                  )\
@@ -813,7 +812,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(CompactionStatsTracker)                                                \
     xxx(MixedBlocksCountCompactionSSD)                                         \
     xxx(MixedBlocksCountCompactionHDD)                                         \
-    xxx(TidyUpPartitionMode)                                                   \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -1399,15 +1397,6 @@ bool TStorageConfig::Is##name##FeatureEnabled(                                 \
     BLOCKSTORE_BINARY_FEATURES(BLOCKSTORE_BINARY_FEATURE_GETTER)
 
 #undef BLOCKSTORE_BINARY_FEATURE_GETTER
-
-bool TStorageConfig::IsTidyUpPartitionModeEnabled(
-    const TString& cloudId,
-    const TString& folderId,
-    const TString& diskId) const
-{
-    return GetTidyUpPartitionModeEnabled() ||
-        IsTidyUpPartitionModeFeatureEnabled(cloudId, folderId, diskId);
-}
 
 #define BLOCKSTORE_DURATION_FEATURE_GETTER(name)                               \
 TDuration TStorageConfig::Get##name##FeatureValue(                             \

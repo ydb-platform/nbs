@@ -273,8 +273,7 @@ void TPartitionActor::CompleteLoadState(
 
     State = std::make_unique<TPartitionState>(
         *args.Meta,
-        BuildCompactionPolicy(
-            partitionConfig, *Config, SiblingCount, TidyUpPartitionMode),
+        BuildCompactionPolicy(partitionConfig, *Config, SiblingCount),
         Config->GetCompactionScoreHistorySize(),
         Config->GetCleanupScoreHistorySize(),
         bpConfig,
