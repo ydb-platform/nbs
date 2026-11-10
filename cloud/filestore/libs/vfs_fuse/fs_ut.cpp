@@ -8647,9 +8647,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             }
         };
 
-        // WriteBackCacheMaxQueuedFlushBatchesPerNode is non-zero by
-        // default - eventually backpressure will occur
-        constexpr ui32 maxRequestCount = 1500;
+        // WriteBackCacheMaxQueuedFlushBatchesPerNode = 8 by default
+        // Backpressure will trigger after accepting the 9th request
+        // So the 10th request will remain pending
+        constexpr ui32 maxRequestCount = 10;
 
         auto counterGroup =
             bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
