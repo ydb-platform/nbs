@@ -1,11 +1,18 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -40,12 +47,199 @@ NProto::TGetLinkStatusResponse GetLinkStatus(
     return proto;
 }
 
+enum class ETagRemovalRecovery
+{
+    None,
+    Retry,
+    Reboot,
+};
+
+void CheckSourceDiskIdTagRemoval(ETagRemovalRecovery recovery)
+{
+    TTestEnv env(1, 1, 4);
+    const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+    auto& runtime = env.GetRuntime();
+    TServiceClient service(runtime, nodeIdx);
+    service.CreateVolume("vol-1", DefaultBlocksCount);
+
+    auto create = service.CreateCreateVolumeRequest("vol-1-copy");
+    create->Record.SetTagsStr(JoinSeq(
+        ",",
+        TVector{
+            MakeTag("source-disk-id", "vol-1"),
+            MakeTag("keep", "custom")}));
+    service.SendRequest(MakeStorageServiceId(), std::move(create));
+    auto created = service.RecvCreateVolumeResponse();
+    UNIT_ASSERT_C(!HasError(created->GetError()), created->GetErrorReason());
+
+    auto makeLinkRequest = [](NProto::ELinkAction action)
+    {
+        auto request =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        request->Record.SetDiskId("vol-1-copy");
+        request->Record.SetLeaderDiskId("vol-1");
+        request->Record.SetLeaderCellId("cell-a");
+        request->Record.SetFollowerCellId("cell-a");
+        request->Record.SetLinkUUID("test-link");
+        request->Record.SetAction(action);
+        return request;
+    };
+
+    service.SendRequest(
+        MakeVolumeProxyServiceId(),
+        makeLinkRequest(NProto::LINK_ACTION_CREATE));
+    auto linked =
+        service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+    UNIT_ASSERT_C(!HasError(linked->GetError()), linked->GetErrorReason());
+
+    ui64 followerTabletId = 0;
+    ui32 removalAttempts = 0;
+    TActorId cleanupSender;
+    bool cleanupSucceeded = false;
+    runtime.SetEventFilter(
+        [&](TTestActorRuntimeBase& callbackRuntime,
+            TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvSSProxy::EvDescribeVolumeResponse) {
+                const auto* msg =
+                    event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                const auto& description =
+                    msg->PathDescription.GetBlockStoreVolumeDescription();
+                if (description.GetVolumeConfig().GetDiskId() == "vol-1-copy") {
+                    followerTabletId = description.GetVolumeTabletId();
+                }
+            }
+            if (event->GetTypeRewrite() == TEvService::EvRemoveTagsRequest) {
+                cleanupSender = event->Sender;
+                if (++removalAttempts == 1) {
+                    if (recovery == ETagRemovalRecovery::Retry) {
+                        callbackRuntime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                new TEvService::TEvRemoveTagsResponse(
+                                    MakeError(E_REJECTED, "try again")),
+                                0,
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                    if (recovery == ETagRemovalRecovery::Reboot) {
+                        return true;
+                    }
+                }
+            }
+            if (event->GetTypeRewrite() == TEvService::EvRemoveTagsResponse &&
+                event->Recipient == cleanupSender)
+            {
+                cleanupSucceeded =
+                    !HasError(event->Get<TEvService::TEvRemoveTagsResponse>()
+                                  ->GetError());
+            }
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerResponse &&
+                event->Recipient == service.GetSender() &&
+                !HasError(
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                        ->GetError()))
+            {
+                UNIT_ASSERT_C(
+                    cleanupSucceeded,
+                    "Leadership transfer was acknowledged before tag removal");
+            }
+            return false;
+        });
+
+    const auto before = service.DescribeVolume("vol-1-copy");
+    UNIT_ASSERT_VALUES_EQUAL(
+        "vol-1",
+        before->Record.GetVolume().GetTags().at("source-disk-id"));
+    UNIT_ASSERT_VALUES_EQUAL(0, removalAttempts);
+    UNIT_ASSERT(followerTabletId);
+
+    service.SendRequest(
+        MakeVolumeProxyServiceId(),
+        makeLinkRequest(NProto::LINK_ACTION_COMPLETED));
+    if (recovery == ETagRemovalRecovery::Reboot) {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return removalAttempts == 1;
+        };
+        runtime.DispatchEvents(options);
+        UNIT_ASSERT_VALUES_EQUAL(1, removalAttempts);
+        NKikimr::RebootTablet(
+            runtime,
+            followerTabletId,
+            service.GetSender(),
+            nodeIdx);
+        auto interrupted =
+            service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+        UNIT_ASSERT(HasError(interrupted->GetError()));
+
+        // Replicated volumes start partitions lazily after reboot.
+        auto waitReady = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+        waitReady->Record.SetDiskId("vol-1-copy");
+        waitReady->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(waitReady));
+        auto ready = service.RecvResponse<TEvVolume::TEvWaitReadyResponse>();
+        UNIT_ASSERT_C(!HasError(ready->GetError()), ready->GetErrorReason());
+
+        options.CustomFinalCondition = [&]
+        {
+            return cleanupSucceeded;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT_C(
+            cleanupSucceeded,
+            "Tag removal was not resumed after reboot without a link request");
+        UNIT_ASSERT_VALUES_EQUAL(2, removalAttempts);
+        const auto recovered = service.DescribeVolume("vol-1-copy");
+        UNIT_ASSERT(!recovered->Record.GetVolume().GetTags().contains(
+            "source-disk-id"));
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            makeLinkRequest(NProto::LINK_ACTION_COMPLETED));
+    }
+
+    auto completed =
+        service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+    UNIT_ASSERT_C(
+        !HasError(completed->GetError()),
+        completed->GetErrorReason());
+    const auto after = service.DescribeVolume("vol-1-copy");
+    const auto& tags = after->Record.GetVolume().GetTags();
+    UNIT_ASSERT(!tags.contains("source-disk-id"));
+    UNIT_ASSERT_VALUES_EQUAL("custom", tags.at("keep"));
+    UNIT_ASSERT_VALUES_EQUAL(
+        recovery == ETagRemovalRecovery::None ? 1 : 2,
+        removalAttempts);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
 {
+    Y_UNIT_TEST(ShouldRemoveSourceDiskIdTagBeforeLeadershipTransfer)
+    {
+        CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::None);
+    }
+
+    Y_UNIT_TEST(ShouldRetrySourceDiskIdTagRemoval)
+    {
+        CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::Retry);
+    }
+
+    Y_UNIT_TEST(ShouldResumeSourceDiskIdTagRemovalAfterReboot)
+    {
+        CheckSourceDiskIdTagRemoval(ETagRemovalRecovery::Reboot);
+    }
+
     Y_UNIT_TEST(ShouldFailOnInvalidArgumentVolume)
     {
         TTestEnv env(1, 1, 4);

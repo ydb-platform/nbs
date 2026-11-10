@@ -1,5 +1,8 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -44,7 +47,6 @@ void TVolumeActor::ExecuteUpdateLeader(
         args.Leader.Describe().c_str());
 
     TVolumeDatabase db(tx.DB);
-    State->AddOrUpdateLeader(args.Leader);
     db.WriteLeader(args.Leader);
 }
 
@@ -52,8 +54,16 @@ void TVolumeActor::CompleteUpdateLeader(
     const TActorContext& ctx,
     TTxVolume::TUpdateLeader& args)
 {
+    State->AddOrUpdateLeader(args.Leader);
+
     if (args.Leader.State == TLeaderDiskInfo::EState::Following) {
         State->FinishCreateLeaderRequest();
+    }
+
+    RemoveSourceDiskIdTagIfNeeded(ctx);
+    if (SourceDiskIdTagRemovalInProgress) {
+        PendingLeadershipTransferRequests.push_back(args.RequestInfo);
+        return;
     }
 
     auto response =
@@ -198,6 +208,12 @@ void TVolumeActor::UpdateLeaderLink(
     }
 
     if (currentLeader->State == state) {
+        RemoveSourceDiskIdTagIfNeeded(ctx);
+        if (SourceDiskIdTagRemovalInProgress) {
+            PendingLeadershipTransferRequests.push_back(std::move(requestInfo));
+            return;
+        }
+
         NCloud::Reply(
             ctx,
             *requestInfo,
@@ -220,6 +236,11 @@ void TVolumeActor::UpdateLeaderLink(
 void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
     const NActors::TActorContext& ctx)
 {
+    RemoveSourceDiskIdTagIfNeeded(ctx);
+    if (SourceDiskIdTagRemovalInProgress) {
+        return;
+    }
+
     for (const auto& leader: State->GetAllLeaders()) {
         if (leader.State != TLeaderDiskInfo::EState::Leader) {
             continue;
@@ -262,6 +283,83 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
         ctx.Schedule(
             OutdatedLeaderDestruction->DelayProvider.GetDelay(),
             std::move(event));
+    }
+}
+
+void TVolumeActor::RemoveSourceDiskIdTagIfNeeded(const TActorContext& ctx)
+{
+    if (SourceDiskIdTagRemovalInProgress) {
+        return;
+    }
+
+    if (State->GetLeadershipStatus() != ELeadershipStatus::Principal) {
+        return;
+    }
+
+    const auto tags =
+        ParseTags(State->GetMeta().GetVolumeConfig().GetTagsStr());
+    const auto* sourceDiskId = tags.FindPtr(SourceDiskIdTagName);
+    if (!sourceDiskId) {
+        return;
+    }
+
+    SourceDiskIdTagRemovalInProgress = true;
+
+    // Publish the committed principal before the source tells clients to
+    // switch. Waiting until the source is deleted would leave discovery
+    // rejecting the target while the source stays attached to those clients.
+    auto request = std::make_unique<TEvService::TEvRemoveTagsRequest>(
+        State->GetDiskId(),
+        TVector<TString>{
+            MakeTag(SourceDiskIdTagName, *sourceDiskId),
+        });
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+}
+
+void TVolumeActor::FinishSourceDiskIdTagRemoval(const TActorContext& ctx)
+{
+    SourceDiskIdTagRemovalInProgress = false;
+    for (const auto& requestInfo: PendingLeadershipTransferRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>());
+    }
+    PendingLeadershipTransferRequests.clear();
+    DestroyOutdatedLeaderIfNeeded(ctx);
+}
+
+void TVolumeActor::HandleRemoveSourceDiskIdTagResponse(
+    const TEvService::TEvRemoveTagsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& error = ev->Get()->GetError();
+    if (HasError(error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Failed to remove source-disk-id tag: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
+        ctx.Schedule(
+            TDuration::Seconds(1),
+            new TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag());
+        return;
+    }
+
+    FinishSourceDiskIdTagRemoval(ctx);
+}
+
+void TVolumeActor::HandleRetryRemoveSourceDiskIdTag(
+    const TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    SourceDiskIdTagRemovalInProgress = false;
+    RemoveSourceDiskIdTagIfNeeded(ctx);
+    if (!SourceDiskIdTagRemovalInProgress) {
+        FinishSourceDiskIdTagRemoval(ctx);
     }
 }
 

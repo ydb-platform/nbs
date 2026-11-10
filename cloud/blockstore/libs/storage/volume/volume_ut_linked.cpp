@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -1761,6 +1762,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         std::optional<ui64> migratedBytes;
         bool stealDataTransferredPropagation = true;
         std::unique_ptr<IEventHandle> stolenDataTransferredRequest;
+        std::unique_ptr<IEventHandle> tagRemovalRequest;
 
         auto followerStateFilter =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
@@ -1787,6 +1789,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     stolenDataTransferredRequest.reset(event.Release());
                     return true;
                 }
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvRemoveTagsRequest) {
+                tagRemovalRequest.reset(event.Release());
+                return true;
             }
 
             return prevFilter(runtime, event);
@@ -1819,7 +1826,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
         // Follower
         TVolumeClient volume2(*Runtime, 0, TestVolumeTablets[1]);
-        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+        auto followerConfigRequest = volume2.CreateUpdateVolumeConfigRequest(
             0,
             0,
             0,
@@ -1831,10 +1838,12 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             "vol2",
             "cloud",
             "folder",
-            1, // partitionCount
-            0, // blocksPerStripe
-            "source-disk-id=vol1" // Created as follower for vol1
-        ));
+            1,                                  // partitionCount
+            0,                                  // blocksPerStripe
+            MakeTag("source-disk-id", "vol1")   // Created as follower for vol1
+        );
+        auto followerConfig = followerConfigRequest->Record;
+        volume2.CreateVolume(std::move(followerConfigRequest));
         volume2.WaitReady();
         Volumes["vol2"] = {
             .VolumeClient = &volume2,
@@ -1997,7 +2006,32 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             stealDataTransferredPropagation = false;
             Runtime->Send(stolenDataTransferredRequest.release());
 
+            // Emulate RemoveTags: the fake StorageService does not process
+            // requests, so persist the new config before replying ourselves.
             TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return tagRemovalRequest != nullptr;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT(tagRemovalRequest);
+
+            followerConfig.MutableVolumeConfig()->ClearTagsStr();
+            followerConfig.MutableVolumeConfig()->SetVersion(
+                followerConfig.GetVolumeConfig().GetVersion() + 1);
+            auto updateConfig =
+                std::make_unique<TEvBlockStore::TEvUpdateVolumeConfig>();
+            updateConfig->Record = followerConfig;
+            volume2.SendToPipe(std::move(updateConfig));
+            auto updated = volume2.RecvUpdateVolumeConfigResponse();
+            UNIT_ASSERT(updated->Record.GetStatus() == NKikimrBlockStore::OK);
+            Runtime->Send(new IEventHandle(
+                tagRemovalRequest->Sender,
+                tagRemovalRequest->Recipient,
+                new TEvService::TEvRemoveTagsResponse(),
+                0,
+                tagRemovalRequest->Cookie));
+
             options.CustomFinalCondition = [&]
             {
                 return followerState ==
