@@ -126,17 +126,48 @@ void PrepareWriteDataRequestPayload(
 
 struct TWriteRequestParams
 {
+    // Original request
     NProto::TWriteDataRequest WriteRequest;
-    TByteRange Range;
-    TRequestInfoPtr RequestInfo;
-    TString LogTag;
-    bool WriteBlobDisabled;
-    bool UseUnconfirmedFlow;
+    const TByteRange Range;
+    const TRequestInfoPtr RequestInfo;
+
+    // Filesystem-specific params
+    const TString LogTag;
+
+    // Turns off writes to blob storage for performance testing purposes
+    const bool WriteBlobDisabled;
+
+    bool UseUnconfirmedFlow = false;
     IRequestStatsPtr RequestStats;
-    NCloud::NProto::EStorageMediaKind MediaKind;
-    bool UseThreeStageWrite;
-    bool ExternalWriteDataPayloadEnabled;
-    bool EnableRdmaForWrites;
+    const NCloud::NProto::EStorageMediaKind MediaKind;
+    const bool UseThreeStageWrite = false;
+    const bool ExternalWriteDataPayloadEnabled = false;
+    [[maybe_unused]] const bool EnableRdmaForWrites = false;
+
+    TWriteRequestParams(
+        NProto::TWriteDataRequest writeRequest,
+        TByteRange range,
+        TRequestInfoPtr requestInfo,
+        TString logTag,
+        bool writeBlobDisabled,
+        bool useUnconfirmedFlow,
+        IRequestStatsPtr requestStats,
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useThreeStageWrite,
+        bool externalWriteDataPayloadEnabled,
+        bool enableRdmaForWrites)
+        : WriteRequest(std::move(writeRequest))
+        , Range(range)
+        , RequestInfo(std::move(requestInfo))
+        , LogTag(std::move(logTag))
+        , WriteBlobDisabled(writeBlobDisabled)
+        , UseUnconfirmedFlow(useUnconfirmedFlow)
+        , RequestStats(std::move(requestStats))
+        , MediaKind(mediaKind)
+        , UseThreeStageWrite(useThreeStageWrite)
+        , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
+        , EnableRdmaForWrites(enableRdmaForWrites)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -157,22 +188,15 @@ private:
     {
         // Original request
         NProto::TWriteDataRequest WriteRequest;
-        const TByteRange Range;
+        TWriteRequestParams Params;
+
         const TByteRange BlobRange;
-        const TRequestInfoPtr RequestInfo;
-
-        // Filesystem-specific params
-        const TString LogTag;
-
-        // Turns off writes to blob storage for performance testing purposes
-        const bool WriteBlobDisabled;
 
         // generated blob id and associated data
         NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
         // WriteData state
         ui32 RemainingBlobsToWrite = 0;
-        bool UseUnconfirmedFlow = false;
         NProto::TError WriteBlobError;
 
         ui32 TabletProxyRetries = 0;
@@ -182,35 +206,18 @@ private:
             TDuration::Seconds(1)};
 
         // Metrics / logging
-        IRequestStatsPtr RequestStats;
-
         // Refers to GenerateBlobIds/AddData/ConfirmAddData/CancelAddData
         // request, depending on which one is in flight
         TMaybe<TInFlightRequest> InFlightRequest;
         TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
         TVector<ui32> StorageStatusFlags;
         TVector<double> ApproximateFreeSpaceShares;
-        const NCloud::NProto::EStorageMediaKind MediaKind;
         TRope Rope;
-
-        const bool UseThreeStageWrite = false;
-        const bool ExternalWriteDataPayloadEnabled = false;
-        [[maybe_unused]] const bool EnableRdmaForWrites = false;
 
         explicit TRequestState(TWriteRequestParams params)
             : WriteRequest(std::move(params.WriteRequest))
-            , Range(params.Range)
-            , BlobRange(Range.AlignedSubRange())
-            , RequestInfo(std::move(params.RequestInfo))
-            , LogTag(std::move(params.LogTag))
-            , WriteBlobDisabled(params.WriteBlobDisabled)
-            , UseUnconfirmedFlow(params.UseUnconfirmedFlow)
-            , RequestStats(std::move(params.RequestStats))
-            , MediaKind(params.MediaKind)
-            , UseThreeStageWrite(params.UseThreeStageWrite)
-            , ExternalWriteDataPayloadEnabled(
-                  params.ExternalWriteDataPayloadEnabled)
-            , EnableRdmaForWrites(params.EnableRdmaForWrites)
+            , Params(std::move(params))
+            , BlobRange(Params.Range.AlignedSubRange())
         {}
     };
 
@@ -236,7 +243,7 @@ public:
     {
         auto& state = GetState();
 
-        if (!state.UseThreeStageWrite) {
+        if (!state.Params.UseThreeStageWrite) {
             LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::SERVICE,
@@ -251,12 +258,12 @@ public:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s Using three-stage write for request, size: %lu",
-            state.LogTag.c_str(),
-            state.Range.Length);
+            state.Params.LogTag.c_str(),
+            state.Params.Range.Length);
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "GenerateBlobIds");
 
         state.Rope = CreateRope(state.WriteRequest.GetIovecs());
@@ -271,9 +278,10 @@ public:
         request->Record.SetHandle(state.WriteRequest.GetHandle());
         request->Record.SetOffset(state.BlobRange.Offset);
         request->Record.SetLength(state.BlobRange.Length);
-        request->Record.SetUnconfirmedFlowRequested(state.UseUnconfirmedFlow);
+        request->Record.SetUnconfirmedFlowRequested(
+            state.Params.UseUnconfirmedFlow);
 
-        if (state.UseUnconfirmedFlow) {
+        if (state.Params.UseUnconfirmedFlow) {
             FillUnalignedDataRanges(
                 *request->Record.MutableUnalignedDataRanges());
         }
@@ -290,7 +298,7 @@ public:
             TFileStoreComponents::SERVICE,
             "%s WriteDataActor started, data size: %lu, offset: %lu, aligned "
             "size: %lu, aligned offset: %lu",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             NFileStore::CalculateByteCount(state.WriteRequest),
             state.WriteRequest.GetOffset(),
             state.BlobRange.Length,
@@ -345,14 +353,14 @@ private:
         const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         auto* msg = ev->Get();
         const auto& error = msg->GetError();
 
         SERVICE_VERIFY(state.InFlightRequest);
 
-        state.RequestInfo->CallContext->LWOrbit.Join(
+        state.Params.RequestInfo->CallContext->LWOrbit.Join(
             state.InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             state.InFlightRequest->AccessProfileLogRequest(),
@@ -370,23 +378,23 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s GenerateBlobIds response received: %s",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             state.GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
         SERVICE_VERIFY(
-            state.UseUnconfirmedFlow ||
+            state.Params.UseUnconfirmedFlow ||
             !state.GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled());
 
-        state.UseUnconfirmedFlow &=
+        state.Params.UseUnconfirmedFlow &=
             state.GenerateBlobIdsResponse.GetUnconfirmedFlowEnabled();
 
-        if (state.WriteBlobDisabled) {
+        if (state.Params.WriteBlobDisabled) {
             // Pretend that the blobs were written and trigger a critical event
             // to alert the on-call engineer, as fake blobs should never be
             // written in production
             ReportFakeBlobWasWritten();
             // Proceed to the final part: adding fake blobs to the index
-            if (state.UseUnconfirmedFlow) {
+            if (state.Params.UseUnconfirmedFlow) {
                 ConfirmAddData(ctx);
             } else {
                 AddData(ctx);
@@ -400,15 +408,15 @@ private:
     void WriteBlobs(const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "WriteBlobs");
 
         state.RemainingBlobsToWrite = state.GenerateBlobIdsResponse.BlobsSize();
-        ui64 offset = state.BlobRange.Offset - state.Range.Offset;
+        ui64 offset = state.BlobRange.Offset - state.Params.Range.Offset;
 
         state.InFlightBSRequests.reserve(state.RemainingBlobsToWrite);
         state.StorageStatusFlags.resize(
@@ -426,19 +434,19 @@ private:
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
 
             auto writeBlobCallContext = MakeIntrusive<TCallContext>(
-                state.RequestInfo->CallContext->FileSystemId,
-                state.RequestInfo->CallContext->RequestId);
+                state.Params.RequestInfo->CallContext->FileSystemId,
+                state.Params.RequestInfo->CallContext->RequestId);
             writeBlobCallContext->SetRequestStartedCycles(GetCycleCount());
             writeBlobCallContext->RequestType = EFileStoreRequest::WriteBlob;
             state.InFlightBSRequests.emplace_back(
                 std::make_unique<TInFlightRequest>(
                     TRequestInfo(
-                        state.RequestInfo->Sender,
-                        state.RequestInfo->Cookie,
+                        state.Params.RequestInfo->Sender,
+                        state.Params.RequestInfo->Cookie,
                         std::move(writeBlobCallContext)),
                     ProfileLog,
-                    state.MediaKind,
-                    state.RequestStats));
+                    state.Params.MediaKind,
+                    state.Params.RequestStats));
             state.InFlightBSRequests.back()->Start(ctx.Now());
 
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
@@ -453,7 +461,7 @@ private:
                 // GetRcBufAllocator to 25-* stable
                 // branches or dropping support of 25-* stable branches
 #ifdef OPENSOURCE
-                if (state.EnableRdmaForWrites) {
+                if (state.Params.EnableRdmaForWrites) {
                     IRcBufAllocator* allocator =
                         ctx.ActorSystem()->GetRcBufAllocator();
                     if (allocator) {
@@ -479,7 +487,7 @@ private:
                 ropeIt += blobId.BlobSize();
             } else {
                 if (state.GenerateBlobIdsResponse.BlobsSize() == 1 &&
-                    state.Range == state.BlobRange)
+                    state.Params.Range == state.BlobRange)
                 {
                     // do not copy the buffer if there is only one blob
                     request = std::make_unique<TEvBlobStorage::TEvPut>(
@@ -499,10 +507,12 @@ private:
                 offset += blobId.BlobSize();
             }
 
-            if (!state.RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
+            if (!state.Params.RequestInfo->CallContext->LWOrbit.Fork(
+                    request->Orbit))
+            {
                 FILESTORE_TRACK(
                     ForkFailed,
-                    state.RequestInfo->CallContext,
+                    state.Params.RequestInfo->CallContext,
                     "TEvBlobStorage::TEvPut");
             }
 
@@ -513,7 +523,7 @@ private:
                 TFileStoreComponents::SERVICE,
                 "%s Sending TEvPut request to blob storage, blobId: %s, proxy: "
                 "%s iovecs size: %ul",
-                state.LogTag.c_str(),
+                state.Params.LogTag.c_str(),
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str(),
                 state.WriteRequest.GetIovecs().size());
@@ -526,20 +536,20 @@ private:
         const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         if (HasError(state.WriteBlobError)) {
             return;
         }
 
         const auto* msg = ev->Get();
-        state.RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
+        state.Params.RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
             "%s TEvPutResult response received: %s",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             msg->ToString().c_str());
 
         ui64 blobIdx = msg->Id.Cookie();
@@ -552,7 +562,7 @@ private:
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "%s WriteData error: %s, group: %lu",
-                state.LogTag.c_str(),
+                state.Params.LogTag.c_str(),
                 msg->ErrorReason.Quote().c_str(),
                 blobIdx < state.GenerateBlobIdsResponse.BlobsSize()
                     ? state.GenerateBlobIdsResponse.GetBlobs(blobIdx)
@@ -566,7 +576,7 @@ private:
                 }
             }
 
-            if (state.UseUnconfirmedFlow) {
+            if (state.Params.UseUnconfirmedFlow) {
                 return CancelAddData(ctx);
             }
 
@@ -588,7 +598,7 @@ private:
 
         --state.RemainingBlobsToWrite;
         if (state.RemainingBlobsToWrite == 0) {
-            if (state.UseUnconfirmedFlow) {
+            if (state.Params.UseUnconfirmedFlow) {
                 ConfirmAddData(ctx);
             } else {
                 AddData(ctx);
@@ -623,25 +633,26 @@ private:
         auto& state = GetState();
 
         auto callContext = MakeIntrusive<TCallContext>(
-            state.RequestInfo->CallContext->FileSystemId,
-            state.RequestInfo->CallContext->RequestId);
+            state.Params.RequestInfo->CallContext->FileSystemId,
+            state.Params.RequestInfo->CallContext->RequestId);
         callContext->SetRequestStartedCycles(GetCycleCount());
         callContext->RequestType = requestType;
-        if (!state.RequestInfo->CallContext->LWOrbit.Fork(callContext->LWOrbit))
+        if (!state.Params.RequestInfo->CallContext->LWOrbit.Fork(
+                callContext->LWOrbit))
         {
             FILESTORE_TRACK(
                 ForkFailed,
-                state.RequestInfo->CallContext,
+                state.Params.RequestInfo->CallContext,
                 GetFileStoreRequestName(requestType));
         }
         state.InFlightRequest.ConstructInPlace(
             TRequestInfo(
-                state.RequestInfo->Sender,
-                state.RequestInfo->Cookie,
+                state.Params.RequestInfo->Sender,
+                state.Params.RequestInfo->Cookie,
                 std::move(callContext)),
             ProfileLog,
-            state.MediaKind,
-            state.RequestStats);
+            state.Params.MediaKind,
+            state.Params.RequestStats);
         state.InFlightRequest->Start(ctx.Now());
         InitProfileLogRequestInfo(
             state.InFlightRequest->AccessProfileLogRequest(),
@@ -661,7 +672,7 @@ private:
             record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
             *trace,
-            state.RequestInfo->CallContext->LWOrbit);
+            state.Params.RequestInfo->CallContext->LWOrbit);
     }
 
     void AddData(const TActorContext& ctx)
@@ -670,7 +681,7 @@ private:
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "AddData");
 
         auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
@@ -704,7 +715,7 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s Sending AddData request to tablet: %s",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             request->Record.DebugString().Quote().c_str());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -715,12 +726,12 @@ private:
         const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(state.InFlightRequest);
-        state.RequestInfo->CallContext->LWOrbit.Join(
+        state.Params.RequestInfo->CallContext->LWOrbit.Join(
             state.InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             state.InFlightRequest->AccessProfileLogRequest(),
@@ -742,7 +753,7 @@ private:
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "ConfirmAddData");
 
         auto request =
@@ -768,7 +779,7 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s Sending ConfirmAddData request, commitId=%lu",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -780,7 +791,7 @@ private:
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "CancelAddData");
 
         auto request =
@@ -803,7 +814,7 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s Sending CancelAddData request, commitId=%lu",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -814,12 +825,12 @@ private:
         const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(state.InFlightRequest);
-        state.RequestInfo->CallContext->LWOrbit.Join(
+        state.Params.RequestInfo->CallContext->LWOrbit.Join(
             state.InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             state.InFlightRequest->AccessProfileLogRequest(),
@@ -849,12 +860,12 @@ private:
         const TActorContext& ctx)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(state.InFlightRequest);
-        state.RequestInfo->CallContext->LWOrbit.Join(
+        state.Params.RequestInfo->CallContext->LWOrbit.Join(
             state.InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             state.InFlightRequest->AccessProfileLogRequest(),
@@ -910,7 +921,7 @@ private:
         const NProto::TError& error)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
         const auto delay =
             state.TabletProxyRetryDelayProvider.GetDelayAndIncrease();
@@ -955,7 +966,7 @@ private:
             TFileStoreComponents::SERVICE,
             "%s Falling back to WriteData for %lu, %lu, %lu (%lu bytes). "
             "Message: %s",
-            state.LogTag.c_str(),
+            state.Params.LogTag.c_str(),
             state.WriteRequest.GetNodeId(),
             state.WriteRequest.GetHandle(),
             state.WriteRequest.GetOffset(),
@@ -975,23 +986,23 @@ private:
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "WriteData");
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(state.WriteRequest);
         PrepareWriteDataRequestPayload(
             *request,
-            state.ExternalWriteDataPayloadEnabled);
+            state.Params.ExternalWriteDataPayloadEnabled);
         if (isFallback) {
             request->Record.MutableHeaders()->SetThrottlingDisabled(true);
         }
-        request->CallContext = state.RequestInfo->CallContext;
+        request->CallContext = state.Params.RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
             *trace,
-            state.RequestInfo->CallContext->LWOrbit);
+            state.Params.RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -1014,7 +1025,7 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "%s WriteData succeeded",
-            state.LogTag.c_str());
+            state.Params.LogTag.c_str());
 
         ReplyAndDie(ctx, std::move(msg->Record));
     }
@@ -1027,12 +1038,12 @@ private:
 
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "WriteData");
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(record);
-        NCloud::Reply(ctx, *state.RequestInfo, std::move(response));
+        NCloud::Reply(ctx, *state.Params.RequestInfo, std::move(response));
         Die(ctx);
     }
 
@@ -1042,12 +1053,12 @@ private:
 
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
-            state.RequestInfo->CallContext,
+            state.Params.RequestInfo->CallContext,
             "WriteData");
 
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        NCloud::Reply(ctx, *state.RequestInfo, std::move(response));
+        NCloud::Reply(ctx, *state.Params.RequestInfo, std::move(response));
         Die(ctx);
     }
 
@@ -1064,12 +1075,13 @@ private:
             ranges)
     {
         auto& state = GetState();
-        const auto& LogTag = state.LogTag;
+        const auto& LogTag = state.Params.LogTag;
 
-        if (state.Range.Offset < state.BlobRange.Offset) {
+        if (state.Params.Range.Offset < state.BlobRange.Offset) {
             auto& unalignedHead = *ranges.Add();
-            unalignedHead.SetOffset(state.Range.Offset);
-            const ui64 length = state.BlobRange.Offset - state.Range.Offset;
+            unalignedHead.SetOffset(state.Params.Range.Offset);
+            const ui64 length =
+                state.BlobRange.Offset - state.Params.Range.Offset;
             if (state.WriteRequest.GetIovecs().empty()) {
                 unalignedHead.SetContent(
                     state.WriteRequest.GetBuffer().substr(0, length));
@@ -1082,11 +1094,13 @@ private:
             }
         }
 
-        if (state.Range.End() > state.BlobRange.End()) {
+        if (state.Params.Range.End() > state.BlobRange.End()) {
             auto& unalignedTail = *ranges.Add();
             unalignedTail.SetOffset(state.BlobRange.End());
-            const auto offset = state.BlobRange.End() - state.Range.Offset;
-            const auto length = state.Range.End() - state.BlobRange.End();
+            const auto offset =
+                state.BlobRange.End() - state.Params.Range.Offset;
+            const auto length =
+                state.Params.Range.End() - state.BlobRange.End();
             if (state.WriteRequest.GetIovecs().empty()) {
                 unalignedTail.SetContent(
                     state.WriteRequest.GetBuffer().substr(offset, length));
@@ -1200,21 +1214,18 @@ void TStorageServiceActor::HandleWriteData(
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TWriteDataActor>(ProfileLog, TraceSerializer);
-    actor->Initialize(
-        {.WriteRequest = std::move(msg->Record),
-         .Range = range,
-         .RequestInfo = std::move(requestInfo),
-         .LogTag = std::move(logTag),
-         .WriteBlobDisabled = filestore.GetFeatures().GetWriteBlobDisabled(),
-         .UseUnconfirmedFlow =
-             filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
-         .RequestStats = session->RequestStats,
-         .MediaKind = session->MediaKind,
-         .UseThreeStageWrite = threeStageWriteEnabled,
-         .ExternalWriteDataPayloadEnabled =
-             filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-         .EnableRdmaForWrites =
-             filestore.GetFeatures().GetEnableRdmaForWrites()});
+    actor->Initialize(TWriteRequestParams(
+        std::move(msg->Record),
+        range,
+        std::move(requestInfo),
+        std::move(logTag),
+        filestore.GetFeatures().GetWriteBlobDisabled(),
+        filestore.GetFeatures().GetUnconfirmedFlowEnabled(),
+        session->RequestStats,
+        session->MediaKind,
+        threeStageWriteEnabled,
+        filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
+        filestore.GetFeatures().GetEnableRdmaForWrites()));
     NCloud::Register(ctx, std::move(actor));
 }
 
