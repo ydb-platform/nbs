@@ -55,7 +55,7 @@ func main() {
 	flag.UintVar(&cfg.NbsServerReplicaCountUsed, "nbs-server-replica-count", 1, "number of replicas of the blockstore-server to use for mounting")
 	flag.UintVar(&cfg.NbsServerReplicaCountTotal, "nbs-server-replica-count-total", 1, "total number of replicas of the blockstore-server on the node")
 	flag.StringVar(&cfg.FilesystemPrefix, "filesystem-prefix", "", "prefix used for filesystem names")
-
+	flag.StringVar(&cfg.ZoneIdConfigPath, "zone-id-config-path", "", "Path to file with zone ID mapping")
 	flag.Parse()
 
 	defer klog.Flush()

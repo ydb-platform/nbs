@@ -78,7 +78,7 @@ type Config struct {
 	NbsServerReplicaCountUsed        uint
 	NbsServerReplicaCountTotal       uint
 	FilesystemPrefix                 string
-	ProjectIdConfigPath              string
+	ZoneIdConfigPath                 string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,14 +195,14 @@ func createClients(cfg Config) (*driverClients, error) {
 	}, nil
 }
 
-func loadProjectMapping(path string) (map[string]uint, error) {
+func loadZoneMapping(path string) (map[string]uint, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	var pairs []struct {
-		ProjectID    string `json:"project_id"`
+		ZoneID       string `json:"zone_id"`
 		BackendIndex uint   `json:"backend_index"`
 	}
 	if err := json.Unmarshal(data, &pairs); err != nil {
@@ -211,10 +211,10 @@ func loadProjectMapping(path string) (map[string]uint, error) {
 
 	result := make(map[string]uint, len(pairs))
 	for _, pair := range pairs {
-		if _, exists := result[pair.ProjectID]; exists {
-			return nil, fmt.Errorf("duplicate project_id %q", pair.ProjectID)
+		if _, exists := result[pair.ZoneID]; exists {
+			return nil, fmt.Errorf("duplicate zone_id %q", pair.ZoneID)
 		}
-		result[pair.ProjectID] = pair.BackendIndex
+		result[pair.ZoneID] = pair.BackendIndex
 	}
 	return result, nil
 }
@@ -225,11 +225,11 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	projectIdToBackendIndex := make(map[string]uint)
-	if cfg.ProjectIdConfigPath != "" {
-		projectIdToBackendIndex, err = loadProjectMapping(cfg.ProjectIdConfigPath)
+	zoneIdToBackendIndex := make(map[string]uint)
+	if cfg.ZoneIdConfigPath != "" {
+		zoneIdToBackendIndex, err = loadZoneMapping(cfg.ZoneIdConfigPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load project mapping: %v", err)
+			return nil, fmt.Errorf("failed to load zone mapping: %v", err)
 		}
 	}
 
@@ -321,7 +321,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
 			externalFsOverrides,
-			projectIdToBackendIndex,
+			zoneIdToBackendIndex,
 			clients.nbsClients,
 			clients.nfsEndpointClients,
 			clients.nfsLocalEndpointClient,

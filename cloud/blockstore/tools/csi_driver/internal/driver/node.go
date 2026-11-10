@@ -175,14 +175,14 @@ func readVhostSettings(volumeContext map[string]string) (vhostSettings, error) {
 type nodeService struct {
 	csi.NodeServer
 
-	nodeId                  string
-	clientId                string
-	vmMode                  bool
-	socketsDir              string
-	targetFsPathRegexp      *regexp.Regexp
-	targetBlkPathRegexp     *regexp.Regexp
-	externalFsOverrides     ExternalFsOverrideMap
-	projectIdToBackendIndex map[string]uint
+	nodeId               string
+	clientId             string
+	vmMode               bool
+	socketsDir           string
+	targetFsPathRegexp   *regexp.Regexp
+	targetBlkPathRegexp  *regexp.Regexp
+	externalFsOverrides  ExternalFsOverrideMap
+	zoneIdToBackendIndex map[string]uint
 
 	nbsClients              []nbsclient.ClientIface
 	nfsClients              []nfsclient.EndpointClientIface
@@ -207,7 +207,7 @@ func newNodeService(
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	externalFsOverrides ExternalFsOverrideMap,
-	projectIdToBackendIndex map[string]uint,
+	zoneIdToBackendIndex map[string]uint,
 	nbsClients []nbsclient.ClientIface,
 	nfsClients []nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
@@ -233,7 +233,7 @@ func newNodeService(
 		targetFsPathRegexp:          regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:         regexp.MustCompile(targetBlkPathPattern),
 		externalFsOverrides:         externalFsOverrides,
-		projectIdToBackendIndex:     projectIdToBackendIndex,
+		zoneIdToBackendIndex:        zoneIdToBackendIndex,
 		volumeOps:                   new(sync.Map),
 		mountOptions:                mountOptions,
 		useDiscardForYDBBasedDisks:  useDiscardForYDBBasedDisks,
@@ -442,9 +442,9 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zo
 		return 0, nil
 	}
 
-	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
+	useProjectIdMapping := len(s.zoneIdToBackendIndex) > 0
 	if useProjectIdMapping {
-		backendIndex, found := s.projectIdToBackendIndex[zoneId]
+		backendIndex, found := s.zoneIdToBackendIndex[zoneId]
 		if found {
 			if backendIndex >= s.nbsServerReplicaCount {
 				return 0, fmt.Errorf(
@@ -484,9 +484,9 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 		return 0, nil
 	}
 
-	useProjectIdMapping := len(s.projectIdToBackendIndex) > 0
+	useProjectIdMapping := len(s.zoneIdToBackendIndex) > 0
 	if useProjectIdMapping {
-		backendIndex, found := s.projectIdToBackendIndex[zoneId]
+		backendIndex, found := s.zoneIdToBackendIndex[zoneId]
 		if found {
 			if backendIndex >= s.nfsVhostReplicaCount {
 				return 0, fmt.Errorf(
