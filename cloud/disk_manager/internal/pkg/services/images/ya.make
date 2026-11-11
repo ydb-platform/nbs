@@ -22,6 +22,7 @@ SRCS(
 GO_TEST_SRCS(
     export_image_task_test.go
     collect_backup_queue_metrics_task_test.go
+    delete_image_disabled_zones_test.go
     delete_image_task_test.go
     schedule_backup_image_tasks_test.go
 )

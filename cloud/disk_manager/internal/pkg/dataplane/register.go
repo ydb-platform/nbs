@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
@@ -21,6 +22,7 @@ func RegisterForExecution(
 	ctx context.Context,
 	config *config.DataplaneConfig,
 	performanceConfig *performance_config.PerformanceConfig,
+	disabledZones *common.DisabledZones,
 	proxyOverlayDiskIDPrefix string,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
@@ -38,6 +40,7 @@ func RegisterForExecution(
 		return &createSnapshotFromDiskTask{
 			config:                   config,
 			performanceConfig:        performanceConfig,
+			disabledZones:            disabledZones,
 			nbsFactory:               nbsFactory,
 			storage:                  storage,
 			proxyOverlayDiskIDPrefix: proxyOverlayDiskIDPrefix,
@@ -155,8 +158,9 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("dataplane.DeleteSnapshot", func() tasks.Task {
 		return &deleteSnapshotTask{
-			storage:    storage,
-			nbsFactory: nbsFactory,
+			storage:       storage,
+			nbsFactory:    nbsFactory,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {
@@ -282,6 +286,7 @@ func RegisterForExecution(
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
 				performanceConfig: performanceConfig,
+				disabledZones:     disabledZones,
 				nbsFactory:        nbsFactory,
 			}
 		},
