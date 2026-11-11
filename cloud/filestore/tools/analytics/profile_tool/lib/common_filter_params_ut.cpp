@@ -1,5 +1,8 @@
 #include "common_filter_params.h"
 
+#include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/tools/analytics/libs/event-log/request_filter.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/testing/common/scope.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -147,15 +150,15 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             const char* Since;
             const char* Until;
         } cases[] = {
-            {"now/s", "2026-10-06T23:46:30Z", "2026-10-06T23:46:30.999Z"},
-            {"now/m", "2026-10-06T23:46:00Z", "2026-10-06T23:46:59.999Z"},
-            {"now/h", "2026-10-06T23:00:00Z", "2026-10-06T23:59:59.999Z"},
-            {"now/d", "2026-10-06T00:00:00Z", "2026-10-06T23:59:59.999Z"},
-            {"now/w", "2026-10-04T00:00:00Z", "2026-10-10T23:59:59.999Z"},
-            {"now/M", "2026-10-01T00:00:00Z", "2026-10-31T23:59:59.999Z"},
-            {"now/Q", "2026-10-01T00:00:00Z", "2026-12-31T23:59:59.999Z"},
-            {"now/y", "2026-01-01T00:00:00Z", "2026-12-31T23:59:59.999Z"},
-            {"now/1d", "2026-10-06T00:00:00Z", "2026-10-06T23:59:59.999Z"},
+            {"now/s", "2026-10-06T23:46:30Z", "2026-10-06T23:46:31Z"},
+            {"now/m", "2026-10-06T23:46:00Z", "2026-10-06T23:47:00Z"},
+            {"now/h", "2026-10-06T23:00:00Z", "2026-10-07T00:00:00Z"},
+            {"now/d", "2026-10-06T00:00:00Z", "2026-10-07T00:00:00Z"},
+            {"now/w", "2026-10-04T00:00:00Z", "2026-10-11T00:00:00Z"},
+            {"now/M", "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"},
+            {"now/Q", "2026-10-01T00:00:00Z", "2027-01-01T00:00:00Z"},
+            {"now/y", "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z"},
+            {"now/1d", "2026-10-06T00:00:00Z", "2026-10-07T00:00:00Z"},
         };
 
         for (const auto& example: cases) {
@@ -181,49 +184,49 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         } cases[] = {
             {R"({"from":"now-1d/d","to":"now-1d/d"})",
              "2026-10-05T00:00:00Z",
-             "2026-10-05T23:59:59.999Z"},
+             "2026-10-06T00:00:00Z"},
             {R"({"from":"now-2d/d","to":"now-2d/d"})",
              "2026-10-04T00:00:00Z",
-             "2026-10-04T23:59:59.999Z"},
+             "2026-10-05T00:00:00Z"},
             {R"({"from":"now-7d/d","to":"now-7d/d"})",
              "2026-09-29T00:00:00Z",
-             "2026-09-29T23:59:59.999Z"},
+             "2026-09-30T00:00:00Z"},
             {R"({"from":"now-1w/w","to":"now-1w/w"})",
              "2026-09-27T00:00:00Z",
-             "2026-10-03T23:59:59.999Z"},
+             "2026-10-04T00:00:00Z"},
             {R"({"from":"now-1M/M","to":"now-1M/M"})",
              "2026-09-01T00:00:00Z",
-             "2026-09-30T23:59:59.999Z"},
+             "2026-10-01T00:00:00Z"},
             {R"({"from":"now-1Q/fQ","to":"now-1Q/fQ"})",
              "2026-07-01T00:00:00Z",
-             "2026-09-30T23:59:59.999Z"},
+             "2026-10-01T00:00:00Z"},
             {R"({"from":"now-1y/y","to":"now-1y/y"})",
              "2025-01-01T00:00:00Z",
-             "2025-12-31T23:59:59.999Z"},
+             "2026-01-01T00:00:00Z"},
             {R"({"from":"now/d","to":"now/d"})",
              "2026-10-06T00:00:00Z",
-             "2026-10-06T23:59:59.999Z"},
+             "2026-10-07T00:00:00Z"},
             {R"({"from":"now/d","to":"now"})", "2026-10-06T00:00:00Z", now},
             {R"({"from":"now/w","to":"now/w"})",
              "2026-10-04T00:00:00Z",
-             "2026-10-10T23:59:59.999Z"},
+             "2026-10-11T00:00:00Z"},
             {R"({"from":"now/w","to":"now"})", "2026-10-04T00:00:00Z", now},
             {R"({"from":"now/M","to":"now/M"})",
              "2026-10-01T00:00:00Z",
-             "2026-10-31T23:59:59.999Z"},
+             "2026-11-01T00:00:00Z"},
             {R"({"from":"now/M","to":"now"})", "2026-10-01T00:00:00Z", now},
             {R"({"from":"now/y","to":"now/y"})",
              "2026-01-01T00:00:00Z",
-             "2026-12-31T23:59:59.999Z"},
+             "2027-01-01T00:00:00Z"},
             {R"({"from":"now/y","to":"now"})", "2026-01-01T00:00:00Z", now},
             {R"({"from":"now/fQ","to":"now"})", "2026-10-01T00:00:00Z", now},
             {R"({"from":"now/fQ","to":"now/fQ"})",
              "2026-10-01T00:00:00Z",
-             "2026-12-31T23:59:59.999Z"},
+             "2027-01-01T00:00:00Z"},
             {R"({"from":"now/fy","to":"now"})", "2026-01-01T00:00:00Z", now},
             {R"({"from":"now/fy","to":"now/fy"})",
              "2026-01-01T00:00:00Z",
-             "2026-12-31T23:59:59.999Z"},
+             "2027-01-01T00:00:00Z"},
         };
 
         for (const auto& example: cases) {
@@ -237,27 +240,27 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             R"({"from":"now-1d/d","to":"now-1d/d"})",
             "2026-01-01T14:46:30.146Z",
             "2025-12-31T00:00:00Z",
-            "2025-12-31T23:59:59.999Z");
+            "2026-01-01T00:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now-1M/M","to":"now-1M/M"})",
             "2024-03-31T14:46:30.146Z",
             "2024-02-01T00:00:00Z",
-            "2024-02-29T23:59:59.999Z");
+            "2024-03-01T00:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now-1M/M","to":"now-1M/M"})",
             "2026-03-31T14:46:30.146Z",
             "2026-02-01T00:00:00Z",
-            "2026-02-28T23:59:59.999Z");
+            "2026-03-01T00:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now/w","to":"now/w"})",
             "2026-10-04T00:00:00Z",
             "2026-10-04T00:00:00Z",
-            "2026-10-10T23:59:59.999Z");
+            "2026-10-11T00:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now-1w/w","to":"now-1w/w"})",
             "2026-01-03T23:59:59.999Z",
             "2025-12-21T00:00:00Z",
-            "2025-12-27T23:59:59.999Z");
+            "2025-12-28T00:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now/d","to":"now"})",
             "2026-10-06T14:46:30.146Z",
@@ -267,7 +270,46 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             R"({"from":"now/s","to":"now/s"})",
             "1970-01-01T00:00:00Z",
             "1970-01-01T00:00:00Z",
-            "1970-01-01T00:00:00.999Z");
+            "1970-01-01T00:00:01Z");
+    }
+
+    Y_UNIT_TEST(ShouldIncludeFinalMicrosecondsOfRoundedPeriod)
+    {
+        NLastGetopt::TOpts opts;
+        const TCommonFilterParams params(
+            opts,
+            TInstant::ParseIso8601("2026-10-06T14:46:30.146Z"));
+        const char* argv[] = {
+            "profile-tool",
+            "--grafana-range",
+            R"({"from":"now/d","to":"now/d"})",
+        };
+        const NLastGetopt::TOptsParseResultException parsed(
+            &opts,
+            std::size(argv),
+            argv);
+        const auto range = params.GetTimeRange(parsed);
+        const auto filter = CreateRequestFilterUntil(
+            CreateRequestFilterAccept(),
+            range.Until.GetRef().MicroSeconds());
+        NProto::TProfileLogRecord record;
+        for (const auto timestamp: {
+                 "2026-10-06T23:59:59.999000Z",
+                 "2026-10-06T23:59:59.999999Z",
+                 "2026-10-07T00:00:00Z",
+             })
+        {
+            record.AddRequests()->SetTimestampMcs(
+                TInstant::ParseIso8601(timestamp).MicroSeconds());
+        }
+        const auto filtered = filter->GetFilteredRecord(record);
+        UNIT_ASSERT_VALUES_EQUAL(filtered.RequestsSize(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            filtered.GetRequests(0).GetTimestampMcs(),
+            record.GetRequests(0).GetTimestampMcs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            filtered.GetRequests(1).GetTimestampMcs(),
+            record.GetRequests(1).GetTimestampMcs());
     }
 
     Y_UNIT_TEST(ShouldApplyGrafanaRoundingInOrder)
@@ -276,12 +318,12 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             R"({"from":"now/d+8h","to":"now/d-8h"})",
             "2026-10-06T14:46:30.146Z",
             "2026-10-06T08:00:00Z",
-            "2026-10-06T15:59:59.999Z");
+            "2026-10-06T16:00:00Z");
         AssertGrafanaRange(
             R"({"from":"now/M+1d/d","to":"now/M+1d/d"})",
             "2026-10-06T14:46:30.146Z",
             "2026-10-02T00:00:00Z",
-            "2026-11-01T23:59:59.999Z");
+            "2026-11-03T00:00:00Z");
     }
 
     Y_UNIT_TEST(ShouldClampGrafanaCalendarOffsets)
@@ -425,7 +467,7 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                  R"({"from":"now/fQextra","to":"now"})",
                  R"({"from":"now","to":"now/f"})",
                  R"({"from":"now","to":"now/x"})",
-                 R"({"from":"now/d","to":"now-1d/d"})",
+                 R"({"from":"now/d","to":"now-2d/d"})",
                  R"({"from":"now-99999y","to":"now"})",
                  R"({"from":"now-18446744073709551616s","to":"now"})",
                  R"({"from":"now-18446744073709551615d","to":"now"})",

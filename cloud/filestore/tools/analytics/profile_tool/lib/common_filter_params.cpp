@@ -68,8 +68,8 @@ TMaybe<TInstant> ParseTimestamp(
 ////////////////////////////////////////////////////////////////////////////////
 
 // roundUp selects the range boundary: false rounds to the start of the period
-// for Grafana's "from"; true rounds to its final millisecond for "to"
-// (e.g. /d gives 00:00:00.000 or 23:59:59.999 UTC, respectively).
+// for Grafana's "from"; true selects the next period's start for the exclusive
+// "to" filter (e.g. /d gives today's or tomorrow's midnight UTC, respectively).
 bool TryRoundGrafanaTimestamp(
     TInstant current,
     char unit,
@@ -138,21 +138,19 @@ bool TryRoundGrafanaTimestamp(
     }
 
     // UTC has no ambiguous civil times, so lookup().pre is the unique instant.
-    // Grafana's endOf() uses millisecond precision: subtract one second from
-    // the next period's start, then add 999000 microseconds below.
+    // The until filter is exclusive, so use the next period's start to include
+    // every microsecond of the selected period.
     const cctz::seconds::rep seconds =
-        utc.lookup(roundUp ? end : start).pre.time_since_epoch().count() -
-        (roundUp ? 1 : 0);
-    const ui64 fraction = roundUp ? 999000 : 0;
+        utc.lookup(roundUp ? end : start).pre.time_since_epoch().count();
     // Reject pre-epoch instants and check the final value fits before
-    // multiplying seconds into microseconds and adding the fraction.
+    // multiplying seconds into microseconds.
     if (seconds < 0 ||
         static_cast<ui64>(seconds) >
-            (TInstant::Max().MicroSeconds() - fraction) / 1000000)
+            TInstant::Max().MicroSeconds() / 1000000)
     {
         return false;
     }
-    result = TInstant::MicroSeconds(seconds * 1000000ULL + fraction);
+    result = TInstant::MicroSeconds(seconds * 1000000ULL);
     return true;
 }
 
@@ -341,7 +339,7 @@ TCommonFilterParams::TCommonFilterParams(
             "y "
             "(e.g. '{\"from\":\"now-15m\",\"to\":\"now\"}'). "
             "Supports /unit rounding in s, m, h, d, w, M, Q, y: start of "
-            "period for from, final millisecond for to. "
+            "period for from, start of the next period for exclusive to. "
             "Fiscal /fQ and /fy rounding assumes a January fiscal-year start. "
             "Calendar arithmetic and rounding use UTC; weeks start Sunday. "
             "Cannot be combined with --since or --until.")
