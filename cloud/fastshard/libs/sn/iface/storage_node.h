@@ -18,6 +18,7 @@ namespace NCloud::NFastShard {
     xxx(WriteLogRecord, __VA_ARGS__)                                           \
     xxx(ReadJournalTail, __VA_ARGS__)                                          \
     xxx(AdvanceLsnLowWatermark, __VA_ARGS__)                                   \
+    xxx(WritePages, __VA_ARGS__)                                               \
 // SN_METHODS
 
 /**

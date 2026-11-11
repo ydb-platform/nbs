@@ -6,4 +6,8 @@ SRCS(
     config.proto
 )
 
+PEERDIR(
+    cloud/storage/core/protos
+)
+
 END()

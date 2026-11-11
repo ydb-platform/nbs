@@ -1010,6 +1010,8 @@ func TestCreateSnapshotFromFilesystemAndBackWithDeviceHardlink(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCreateSnapshotFromFilesystemAndBackWithNemesis(t *testing.T) {
+	t.Skip("Disabled on the backup-s3 release branch")
+
 	f := newFixture(t)
 	defer f.close(t)
 

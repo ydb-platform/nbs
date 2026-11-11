@@ -459,6 +459,10 @@ void TServer::HandleRequest(
                 std::move(request));
             break;
         }
+        case ERequestCase::kWritePages: {
+            ProcessRequest<TWritePagesMethod>(conn, std::move(request));
+            break;
+        }
         default: {
             NProto::TDeviceProtocolResponse response;
             response.SetRequestId(requestId);

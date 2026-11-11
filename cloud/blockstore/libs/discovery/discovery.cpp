@@ -16,6 +16,11 @@
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
+#include <util/generic/hash_set.h>
+
+#include <array>
+#include <utility>
+
 using namespace NMonitoring;
 
 namespace NCloud::NBlockStore::NDiscovery {
@@ -78,6 +83,7 @@ private:
     IBanListPtr BanList;
     IInstanceFetcherPtr StaticInstanceFetcher;
     IInstanceFetcherPtr ConductorInstanceFetcher;
+    IInstanceFetcherPtr EdsInstanceFetcher;
     IHealthCheckerPtr HealthChecker;
     IBalancingPolicyPtr BalancingPolicy;
 
@@ -86,6 +92,7 @@ private:
 
     TInstanceList ConductorInstances;
     TInstanceList StaticInstances;
+    TInstanceList EdsInstances;
 
     TAtomic ShouldStop = false;
 
@@ -99,6 +106,7 @@ public:
             IBanListPtr banList,
             IInstanceFetcherPtr staticInstanceFetcher,
             IInstanceFetcherPtr conductorInstanceFetcher,
+            IInstanceFetcherPtr edsInstanceFetcher,
             IHealthCheckerPtr healthChecker,
             IBalancingPolicyPtr balancingPolicy)
         : Config(std::move(config))
@@ -109,6 +117,7 @@ public:
         , BanList(std::move(banList))
         , StaticInstanceFetcher(std::move(staticInstanceFetcher))
         , ConductorInstanceFetcher(std::move(conductorInstanceFetcher))
+        , EdsInstanceFetcher(std::move(edsInstanceFetcher))
         , HealthChecker(std::move(healthChecker))
         , BalancingPolicy(std::move(balancingPolicy))
     {
@@ -148,7 +157,8 @@ void TDiscoveryService::ServeRequest(
     NProto::TDiscoverInstancesResponse* response)
 {
     if (!AtomicGet(StaticInstances.HealthCheckDone)
-            || !AtomicGet(ConductorInstances.HealthCheckDone))
+            || !AtomicGet(ConductorInstances.HealthCheckDone)
+            || !AtomicGet(EdsInstances.HealthCheckDone))
     {
         *response->MutableError() =
             MakeError(E_REJECTED, "not initialized yet");
@@ -160,38 +170,39 @@ void TDiscoveryService::ServeRequest(
     auto instances = response->MutableInstances();
     auto cg = Guard(ConductorInstances.Lock);
     auto sg = Guard(StaticInstances.Lock);
+    auto eg = Guard(EdsInstances.Lock);
 
-    auto sit = StaticInstances.Instances.begin();
-    auto cit = ConductorInstances.Instances.begin();
+    // Preserve source order when balancing scores are equal.
+    const std::array<const TDeque<TInstanceInfo>*, 3> lists = {
+        &ConductorInstances.Instances,
+        &StaticInstances.Instances,
+        &EdsInstances.Instances,
+    };
+    std::array<TDeque<TInstanceInfo>::const_iterator, 3> iterators = {
+        lists[0]->begin(),
+        lists[1]->begin(),
+        lists[2]->begin(),
+    };
+    THashSet<std::pair<TString, ui16>> seen;
     while (ui32(instances->size()) < request.GetLimit()) {
-        if (sit == StaticInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && cit < ConductorInstances.Instances.end())
+        const TInstanceInfo* next = nullptr;
+        size_t source = 0;
+        for (size_t i = 0; i < lists.size(); ++i) {
+            if (iterators[i] != lists[i]->end()
+                    && (!next || iterators[i]->BalancingScore > next->BalancingScore))
             {
-                AddInstance(*cit, filter, response);
-                ++cit;
+                next = &*iterators[i];
+                source = i;
             }
-
+        }
+        if (!next) {
             break;
         }
-
-        if (cit == ConductorInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && sit < StaticInstances.Instances.end())
-            {
-                AddInstance(*sit, filter, response);
-                ++sit;
-            }
-
-            break;
-        }
-
-        if (sit->BalancingScore > cit->BalancingScore) {
-            AddInstance(*sit, filter, response);
-            ++sit;
-        } else {
-            AddInstance(*cit, filter, response);
-            ++cit;
+        ++iterators[source];
+        if (!FilterOutByPort(*next, filter)
+                && seen.emplace(next->Host, next->Port).second)
+        {
+            AddInstance(*next, filter, response);
         }
     }
 }
@@ -209,6 +220,7 @@ void TDiscoveryService::Start()
     BanList->Start();
     StaticInstanceFetcher->Start();
     ConductorInstanceFetcher->Start();
+    EdsInstanceFetcher->Start();
     HealthChecker->Start();
 
     BanList->Update();
@@ -218,12 +230,18 @@ void TDiscoveryService::Start()
         ConductorInstances
     );
     FetchInstances(
+        Config->GetEdsRequestInterval(),
+        *EdsInstanceFetcher,
+        EdsInstances
+    );
+    FetchInstances(
         Config->GetLocalFilesReloadInterval(),
         *StaticInstanceFetcher,
         StaticInstances
     );
     ScheduleHealthCheck(ConductorInstances);
     ScheduleHealthCheck(StaticInstances);
+    ScheduleHealthCheck(EdsInstances);
 }
 
 void TDiscoveryService::Stop()
@@ -232,6 +250,7 @@ void TDiscoveryService::Stop()
 
     HealthChecker->Stop();
     ConductorInstanceFetcher->Stop();
+    EdsInstanceFetcher->Stop();
     StaticInstanceFetcher->Stop();
     BanList->Stop();
 }
@@ -277,6 +296,10 @@ void TDiscoveryService::FetchInstances(
     IInstanceFetcher& fetcher,
     TInstanceList& instances)
 {
+    if (AtomicGet(ShouldStop)) {
+        return;
+    }
+
     try {
         auto weak_ptr = weak_from_this();
         fetcher.FetchInstances(instances).Subscribe(
@@ -313,6 +336,10 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
 
 void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
 {
+    if (AtomicGet(ShouldStop)) {
+        return;
+    }
+
     try {
         auto weak_ptr = weak_from_this();
         HealthChecker->UpdateStatus(instances).Subscribe(
@@ -418,6 +445,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
     IBanListPtr banList,
     IInstanceFetcherPtr staticInstanceFetcher,
     IInstanceFetcherPtr conductorInstanceFetcher,
+    IInstanceFetcherPtr edsInstanceFetcher,
     IHealthCheckerPtr healthChecker,
     IBalancingPolicyPtr balancingPolicy)
 {
@@ -430,6 +458,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
         std::move(banList),
         std::move(staticInstanceFetcher),
         std::move(conductorInstanceFetcher),
+        std::move(edsInstanceFetcher),
         std::move(healthChecker),
         std::move(balancingPolicy)
     );

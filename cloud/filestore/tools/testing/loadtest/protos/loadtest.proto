@@ -176,6 +176,15 @@ message TMigrationSpec
     uint32 StateTransferDelay = 2;
 }
 
+message TIndexConsistencyValidation
+{
+    // Enables the forced cleanup and checks (false by default)
+    bool Enabled = 1;
+
+    // Maximum duration of final garbage collection (60s by default)
+    uint32 TimeoutSeconds = 2;
+}
+
 message TLoadTest
 {
     string Name = 1;
@@ -213,6 +222,10 @@ message TLoadTest
     // Maximum number of nodes created by this synthetic load test.
     // Zero means unlimited. Ignored by replay specs.
     uint64 MaxNodes = 22;
+
+    // Enables final cleanup and validation of filesystem metrics, assuring
+    // no garbage is left
+    TIndexConsistencyValidation IndexConsistencyValidation = 23;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

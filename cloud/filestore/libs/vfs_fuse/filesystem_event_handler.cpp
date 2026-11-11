@@ -3,7 +3,6 @@
 #include "fs.h"
 
 #include <cloud/filestore/libs/service/filesystem_event.h>
-#include <cloud/filestore/libs/service/mask.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -79,7 +78,7 @@ public:
 private:
     void InvalidateNode(ui64 nodeId)
     {
-        STORAGE_INFO(
+        STORAGE_DEBUG(
             "[f:%s] InvalidateNode: %lu",
             FileSystemId.Quote().c_str(),
             nodeId);
@@ -91,23 +90,11 @@ private:
 
     void InvalidateNodeRef(ui64 nodeId, const TString& name)
     {
-        //
-        // Logging the name in debug mode only - in order not to suddenly start
-        // writing file names to some distributed log storage with too broad
-        // read privileges.
-        //
-
         STORAGE_DEBUG(
             "[f:%s] InvalidateNodeRef: %lu, %s",
             FileSystemId.Quote().c_str(),
             nodeId,
             name.Quote().c_str());
-
-        STORAGE_INFO(
-            "[f:%s] InvalidateNodeRef: %lu, %s",
-            FileSystemId.Quote().c_str(),
-            nodeId,
-            MaskFileName(name).Quote().c_str());
 
         if (auto fileSystem = FileSystem.lock()) {
             fileSystem->InvalidateCachedNodeRef(nodeId, name);
@@ -116,20 +103,15 @@ private:
 
     void InvalidateNodeXAttr(ui64 nodeId, const TString& name)
     {
-        //
-        // Same as for the NodeRefs - the name is logged in debug mode only.
-        //
-
         STORAGE_DEBUG(
             "[f:%s] InvalidateNodeXAttr: %lu, %s",
             FileSystemId.Quote().c_str(),
             nodeId,
             name.Quote().c_str());
 
-        STORAGE_INFO(
-            "[f:%s] InvalidateNodeXAttr: %lu",
-            FileSystemId.Quote().c_str(),
-            nodeId);
+        if (auto fileSystem = FileSystem.lock()) {
+            fileSystem->InvalidateCachedNodeXAttr(nodeId, name);
+        }
     }
 };
 

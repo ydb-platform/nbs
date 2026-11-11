@@ -271,7 +271,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s ForcedRangeOperation request mode=%u for %lu ranges",

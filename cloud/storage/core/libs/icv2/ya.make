@@ -1,4 +1,5 @@
 RECURSE(
+    handshake
     tcp
     transport
 )

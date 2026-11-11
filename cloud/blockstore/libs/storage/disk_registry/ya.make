@@ -115,6 +115,7 @@ RECURSE_FOR_TESTS(
     ut_config
     ut_checkpoint
     ut_create
+    ut_external_volume
     ut_migration
     ut_mirrored_disk_migration
     ut_monitoring_cms

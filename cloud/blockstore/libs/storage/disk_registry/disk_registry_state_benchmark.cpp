@@ -415,9 +415,9 @@ void DoCreateDeleteDisk(
             [&](TDiskRegistryDatabase db)
             {
                 UNIT_ASSERT_SUCCESS(
-                    state.MarkDiskForCleanup(db, diskParams.DiskId));
+                    state.MarkDiskForCleanup(db, diskParams.DiskId, 0));
                 UNIT_ASSERT_SUCCESS(
-                    state.DeallocateDisk(db, diskParams.DiskId));
+                    state.DeallocateDisk(db, diskParams.DiskId, 0));
                 for (const auto& device: state.GetDirtyDevices()) {
                     state.MarkDeviceAsClean(Now(), db, device.GetDeviceUUID());
                 }

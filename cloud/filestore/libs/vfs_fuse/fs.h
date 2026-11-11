@@ -4,6 +4,7 @@
 
 #include "directory_handle_stats.h"
 #include "fuse.h"
+#include "metadata_cache_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -477,6 +478,11 @@ struct IFileSystem
         ui64 parentNodeId,
         const TString& name) = 0;
 
+    // Invalidate a cached extended attribute (its value or its absence)
+    virtual void InvalidateCachedNodeXAttr(
+        ui64 nodeId,
+        const TString& name) = 0;
+
     // Invalidate all the cached metadata - used when invalidations may have
     // been lost
     virtual void InvalidateAllCachedMetadata() = 0;
@@ -493,6 +499,7 @@ IFileSystemPtr CreateFileSystem(
     IFileStorePtr session,
     IRequestStatsPtr stats,
     TDirectoryHandleModuleStatsPtr directoryHandleStats,
+    TMetadataCacheModuleStatsPtr metadataCacheStats,
     ICompletionQueuePtr queue,
     THandleOpsQueuePtr handleOpsQueue,
     TDirectoryHandleStoragePtr directoryHandleStorage,

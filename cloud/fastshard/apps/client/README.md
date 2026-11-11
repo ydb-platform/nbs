@@ -125,6 +125,15 @@ previous LSN, page groups). Page contents are only available via `--proto`.
 
 Prints `OK`.
 
+### WritePages
+
+ * `--device-uuid` - device to write to; **mandatory**
+ * `--first-page-no` - number of the first page; defaults to 0
+ * `--page-size` - the input is split into pages of this size; defaults
+   to 4096. The input size must be a positive multiple of it
+
+Reads the page data from input and writes it past the journal; prints `OK`.
+
 ## Examples
 
 In the FASTSHARD.md setup the devices are those of the `fastshard0` volume;

@@ -351,7 +351,7 @@ public:
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
-protected:
+private:
     //
     // FileSystemEvents - appended to the transaction's sink, only if
     // FileSystemEventsEnabled is set.
@@ -361,7 +361,6 @@ protected:
         TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId);
 
-private:
     void AddInvalidateNodeRefEvent(
         TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
@@ -914,7 +913,8 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
-        const NProto::TSessionOptions& sessionOptions);
+        const NProto::TSessionOptions& sessionOptions,
+        const NProto::TPersistentSessionOptions& persistentSessionOptions);
 
     void RemoveSession(
         IIndexTabletDatabase& db,

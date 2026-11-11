@@ -37,12 +37,28 @@ struct TEvTabletProxy
         {}
     };
 
+    // Keeps an open tablet pipe active. Fails if there is no pipe: only a
+    // forwarded request opens one.
+    struct TKeepAliveRequest
+    {
+        const ui64 TabletId;
+
+        explicit TKeepAliveRequest(ui64 tabletId)
+            : TabletId(tabletId)
+        {}
+    };
+
+    struct TKeepAliveResponse
+    {};
+
     enum EEvents
     {
         EvBegin = TStorageEvents::TABLET_PROXY_START,
 
         EvForward,
         EvDisconnected,
+        EvKeepAliveRequest,
+        EvKeepAliveResponse,
 
         EvEnd
     };
@@ -51,6 +67,10 @@ struct TEvTabletProxy
 
     using TEvForward = TRequestEvent<TForward, EvForward>;
     using TEvDisconnected = TResponseEvent<TDisconnected, EvDisconnected>;
+    using TEvKeepAliveRequest =
+        TRequestEvent<TKeepAliveRequest, EvKeepAliveRequest>;
+    using TEvKeepAliveResponse =
+        TResponseEvent<TKeepAliveResponse, EvKeepAliveResponse>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
