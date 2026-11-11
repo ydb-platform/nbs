@@ -1553,20 +1553,11 @@ private:
     void StopAsyncOnWriteBackCacheShutdownCompleted(
         TPromise<void> stopCompleted)
     {
-        if (WriteBackCache.IsDrained()) {
-            STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache "
-                "shutdown completed",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str());
-        } else {
-            ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
-                "after Shutdown(), cached data may be lost when session "
-                "state is deleted",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str()));
-        }
+        STORAGE_INFO(
+            "[f:%s][c:%s] (DestroySession) WriteBackCache "
+            "shutdown completed",
+            Config->GetFileSystemId().Quote().c_str(),
+            Config->GetClientId().Quote().c_str());
 
         StopAsyncFuseLoopUnmount(std::move(stopCompleted));
     }

@@ -147,9 +147,11 @@ public:
      * may be dropped even with live handles once the node has no pending writes.
      * Pending requests are not cancelled.
      *
-     * The future always succeeds after all requested flushes retire, even for
-     * a failed cache. It is independent of FlushAllData(); success does not
-     * guarantee persistence. Use IsDrained() to check the terminal cache state.
+     * The future completes successfully once no pending or unflushed writes
+     * remain and all requested flushes have retired. It is independent of
+     * FlushAllData() and stays pending if the cache is in failed state.
+     * Writes dropped after flush errors also count as drained, so completion
+     * does not guarantee persistence.
      * Keep the cache alive until the future completes.
      */
     [[nodiscard]] NThreading::TFuture<void> Shutdown();

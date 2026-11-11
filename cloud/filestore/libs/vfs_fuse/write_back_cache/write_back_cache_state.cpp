@@ -404,7 +404,6 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     CompleteNodeFlush(nodeState);
 
     if (IsFailed) {
-        CheckShutdownCompletion();
         return;
     }
 
@@ -454,7 +453,6 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     if (IsFailed) {
         CompleteNodeFlush(nodeState);
-        CheckShutdownCompletion();
         return EFlushRetryStatus::ShouldNotRetry;
     }
 
@@ -851,9 +849,9 @@ void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
 
 void TWriteBackCacheState::CheckShutdownCompletion()
 {
-    if (ShutdownMode && !ShutdownCompletionQueued &&
+    if (!IsFailed && ShutdownMode && !ShutdownCompletionQueued &&
         NodesFlushRequestedCount == 0 &&
-        (IsFailed || !RequestManager.HasPendingOrUnflushedRequests()))
+        !RequestManager.HasPendingOrUnflushedRequests())
     {
         QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
         ShutdownCompletionQueued = true;
@@ -1251,7 +1249,6 @@ void TWriteBackCacheState::SetFailedFlag()
     // PersistentStorage. Each failure in PersistentStorage is already reported
     // as a critical event - no need to fire an event again.
     IsFailed = true;
-    CheckShutdownCompletion();
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

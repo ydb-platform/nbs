@@ -89,9 +89,8 @@ private:
     // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
 
-    // Persistent-storage or internal failure suspends normal operations until
-    // manual resolution. Shutdown can still complete after flushes retire;
-    // it does not recover the cache.
+    // Persistent-storage or internal failure suspends normal operations and
+    // shutdown until manual resolution.
     bool IsFailed = false;
 
     // Set by Drain() and Shutdown(): reject new cached writes and flush
@@ -101,7 +100,7 @@ private:
 
     // Set only by Shutdown(), together with DrainingMode. Permits dropping
     // cached data on any flush error once the node has no pending writes,
-    // even with live handles. Also permits shutdown completion in failed state.
+    // even with live handles.
     bool ShutdownMode = false;
     ui64 ShutdownDroppedRequestCount = 0;
 
@@ -131,8 +130,8 @@ public:
     void Drain();
 
     // Flush or discard cached writes independently of frontend FlushAll
-    // requests. Wait for active backend flushes even if the storage has failed,
-    // then complete shutdown successfully.
+    // requests. Complete successfully after requested flushes finish, or remain
+    // pending if the cache is in failed state.
     NThreading::TFuture<void> Shutdown();
 
     // Returns true if the cache is in draining mode and there are no more

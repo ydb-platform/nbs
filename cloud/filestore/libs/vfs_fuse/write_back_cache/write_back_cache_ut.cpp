@@ -2381,15 +2381,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // corruption regardless of node iteration order, and the second queued
         // flush must retire without issuing IO.
         auto shutdown = b.Cache.Shutdown();
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
+        UNIT_ASSERT(!shutdown.IsReady());
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts);
         UNIT_ASSERT(!b.Cache.IsDrained());
         b.ModuleStats->UpdateStats(b.Timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
     }
 
-    Y_UNIT_TEST(ShouldWaitForActiveFlushAfterCacheCorruption)
+    Y_UNIT_TEST(ShouldKeepShutdownPendingAfterCacheCorruptionDuringFlush)
     {
         TBootstrap b({.MaxWriteRequestSize = 2, .ZeroCopyWriteEnabled = true});
         THashMap<ui64, TVector<TPromise<NProto::TWriteDataResponse>>> writes;
@@ -2439,8 +2438,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         writes.at(2).back().SetValue({});
 
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
+        UNIT_ASSERT(!shutdown.IsReady());
     }
 
     Y_UNIT_TEST(ShouldReportOperationalStateMetrics)
@@ -3183,13 +3181,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(!b.Cache.IsDrained());
 
         auto shutdown = b.Cache.Shutdown();
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
+        UNIT_ASSERT(!shutdown.IsReady());
         UNIT_ASSERT(!b.Cache.IsDrained());
 
         auto repeatedShutdown = b.Cache.Shutdown();
-        UNIT_ASSERT(repeatedShutdown.HasValue());
-        repeatedShutdown.GetValue();
+        UNIT_ASSERT(!repeatedShutdown.IsReady());
     }
 
     Y_UNIT_TEST(ShouldHangWhenFileRingBufferBecomesCorruptedAtFlush)
