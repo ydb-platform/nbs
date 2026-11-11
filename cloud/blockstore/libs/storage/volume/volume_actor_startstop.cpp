@@ -856,7 +856,6 @@ void TVolumeActor::HandleBootExternalResponse(
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
     auto volumeTabletId = TabletID();
-    const bool tidyUpPartitionMode = TidyUpPartitionMode;
 
     auto factory = [=](
                        const TActorId& owner,
@@ -879,8 +878,7 @@ void TVolumeActor::HandleBootExternalResponse(
                        partitionIndex,
                        siblingCount,
                        selfId,
-                       volumeTabletId,
-                       tidyUpPartitionMode)
+                       volumeTabletId)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(
@@ -966,15 +964,6 @@ void TVolumeActor::HandleTabletStatus(
 
     switch (msg->Status) {
         case TEvBootstrapper::STARTED: {
-            // The client may have mounted while the partition was booting.
-            // Apply the current mode instead of the value captured by the factory.
-            if (IsTidyUpPartitionModeAllowed()) {
-                NCloud::Send(
-                    ctx,
-                    msg->TabletUser,
-                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
-                        TidyUpPartitionMode));
-            }
             auto actorStack = TActorsStack(
                 msg->TabletUser,
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
@@ -1006,6 +995,16 @@ void TVolumeActor::HandleTabletStatus(
                     ctx,
                     msg->TabletUser,
                     msg->TabletId);
+            }
+
+            // Partitions start with tidy-up mode off. Apply the current mode
+            // now that the partition actor is available.
+            if (IsTidyUpPartitionModeAllowed()) {
+                NCloud::Send(
+                    ctx,
+                    msg->TabletUser,
+                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
+                        TidyUpPartitionMode));
             }
             break;
         }

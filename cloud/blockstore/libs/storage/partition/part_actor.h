@@ -111,7 +111,7 @@ class TPartitionActor final
     friend TIOCompanionClient;
 
 private:
-    bool TidyUpPartitionMode;
+    bool TidyUpPartitionMode = false;
     bool TidyUpCompleted = false;
 
     const ui64 StartTime = GetCycleCount();
@@ -195,8 +195,7 @@ public:
         ui32 partitionIndex,
         ui32 siblingCount,
         const NActors::TActorId& volumeActorId,
-        ui64 volumeTabletId,
-        bool tidyUpPartitionMode = false);
+        ui64 volumeTabletId);
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;

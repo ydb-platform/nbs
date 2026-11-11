@@ -22,8 +22,7 @@ IActorPtr CreatePartitionTablet(
     ui32 partitionIndex,
     ui32 siblingCount,
     const NActors::TActorId& volumeActorId,
-    ui64 volumeTabletId,
-    bool tidyUpPartitionMode)
+    ui64 volumeTabletId)
 {
     return std::make_unique<TPartitionActor>(
         owner,
@@ -37,8 +36,7 @@ IActorPtr CreatePartitionTablet(
         partitionIndex,
         siblingCount,
         volumeActorId,
-        volumeTabletId,
-        tidyUpPartitionMode);
+        volumeTabletId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

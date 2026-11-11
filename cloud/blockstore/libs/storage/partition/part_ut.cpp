@@ -274,8 +274,7 @@ void InitTestActorRuntime(
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {},
-    std::shared_ptr<bool> tidyUpPartitionMode = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {})
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
@@ -325,8 +324,7 @@ void InitTestActorRuntime(
                 0,  // partitionIndex
                 1,  // siblingCount
                 VolumeActorId,
-                0,  // volumeTabletId
-                tidyUpPartitionMode && *tidyUpPartitionMode
+                0  // volumeTabletId
             );
             return tablet.release();
         };
@@ -397,8 +395,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
     EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
-    NProto::TDiagnosticsConfig diagnosticsConfig = {},
-    std::shared_ptr<bool> tidyUpPartitionMode = {})
+    NProto::TDiagnosticsConfig diagnosticsConfig = {})
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -447,8 +444,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         std::move(tabletInfo),
         testPartitionInfo,
         storageAccessMode,
-        std::move(diagnosticsConfig),
-        std::move(tidyUpPartitionMode)
+        std::move(diagnosticsConfig)
     );
 
     return runtime;
@@ -1275,7 +1271,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -2490,7 +2485,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -2568,7 +2562,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetFreshBlobCountFlushThresholdHDD(4);
         config.SetFreshBlobByteCountFlushThresholdHDD(999999999);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -2617,7 +2610,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetFreshBlobCountFlushThresholdHDD(999999);
         config.SetFreshBlobByteCountFlushThresholdHDD(15_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -2933,7 +2925,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3074,7 +3065,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3133,7 +3123,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3206,7 +3195,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3280,7 +3268,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -3398,7 +3385,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig(4_MB);
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config, 2048);
 
         TPartitionClient partition(*runtime);
@@ -5358,7 +5344,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10147,7 +10132,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10212,7 +10196,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10278,7 +10261,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10358,7 +10340,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10487,7 +10468,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10732,7 +10712,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -10817,7 +10796,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -12571,9 +12549,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetMaxBlobsPerRangeInTidyUpMode(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
-        auto tidyUp = std::make_shared<bool>(false);
         auto runtime = PrepareTestActorRuntime(
-            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);
+            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {});
         TPartitionClient partition(*runtime);
         partition.WaitReady();
         partition.WriteBlocks(0, 1);
@@ -12591,8 +12568,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
             return false;
         });
-        *tidyUp = true;
         partition.RebootTablet();
+        partition.SendToPipe(
+            std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(trim);
         UNIT_ASSERT(!completed);
@@ -12627,10 +12605,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetHDDMaxBlobsPerRange(1000);
         config.SetCompactionGarbageThreshold(1000);
         config.SetCompactionRangeGarbageThreshold(1000);
-        auto tidyUp = std::make_shared<bool>(false);
         auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
                                                EStorageAccessMode::Default,
-                                               {}, tidyUp);
+                                               {});
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
@@ -12671,8 +12648,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 }
                 return false;
             });
-        *tidyUp = true;
         partition.RebootTablet();
+        partition.SendToPipe(
+            std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(trim);
         UNIT_ASSERT(garbageCollected);
@@ -12727,10 +12705,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 config.SetCompactionRangeGarbageThreshold(1000);
                 config.SetHDDCompactionType(compactionType);
                 config.SetMaxBlobsPerRangeInTidyUpMode(maxBlobs);
-                auto tidyUp = std::make_shared<bool>(false);
                 auto runtime = PrepareTestActorRuntime(config, 1024, {}, {}, {},
                                                        EStorageAccessMode::Default,
-                                                       {}, tidyUp);
+                                                       {});
                 TPartitionClient partition(*runtime);
                 partition.WaitReady();
                 partition.WriteBlocks(0, 1);
@@ -12761,8 +12738,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         }
                         return false;
                     });
-                *tidyUp = true;
                 partition.RebootTablet();
+                partition.SendToPipe(
+                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
                 runtime->DispatchEvents({}, TDuration::Seconds(1));
                 UNIT_ASSERT_VALUES_EQUAL(maxBlobs != 0, completed);
                 const auto after = partition.StatPartition();
@@ -12787,9 +12765,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCompactionGarbageThreshold(1000);
         config.SetCompactionRangeGarbageThreshold(1000);
         config.SetMaxBlobsPerRangeInTidyUpMode(1);
-        auto tidyUp = std::make_shared<bool>(false);
         auto runtime = PrepareTestActorRuntime(
-            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);
+            config, 1024, {}, {}, {}, EStorageAccessMode::Default, {});
         TPartitionClient partition(*runtime);
         partition.WaitReady();
         partition.WriteBlocks(0, 1);
@@ -12805,8 +12782,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             completed |= event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted;
             return false;
         });
-        *tidyUp = true;
         partition.RebootTablet();
+        partition.SendToPipe(
+            std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(compactions);
         UNIT_ASSERT(completed);
@@ -12825,9 +12803,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         for (const bool enabled: {false, true}) {
             auto config = DefaultConfig();
             config.SetMaxBlobsPerRangeInTidyUpMode(enabled ? 1 : 0);
-            auto tidyUp = std::make_shared<bool>(true);
             auto runtime = PrepareTestActorRuntime(
-                config, 1024, {}, {}, {}, EStorageAccessMode::Default, {}, tidyUp);
+                config, 1024, {}, {}, {}, EStorageAccessMode::Default, {});
             ui32 gcReports = 0;
             ui32 tidyUpReports = 0;
             runtime->SetEventFilter([&](auto&, auto& event) {
@@ -12837,6 +12814,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             });
             TPartitionClient partition(*runtime);
             partition.WaitReady();
+            partition.SendToPipe(
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
             runtime->DispatchEvents({}, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(1, gcReports);
             UNIT_ASSERT_VALUES_EQUAL(enabled ? 1 : 0, tidyUpReports);
@@ -16887,7 +16866,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -16984,7 +16962,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -17083,7 +17060,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -17235,7 +17211,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -17290,7 +17265,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -17838,7 +17812,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
@@ -18020,7 +17993,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config, 2048);
 
         TPartitionClient partition(*runtime);
@@ -18544,7 +18516,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -18613,7 +18584,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -18665,7 +18635,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -19004,7 +18973,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetFreshByteCountHardLimitHDD(8_KB);
         config.SetFreshChannelWriteRequestsEnabled(true);
-
         auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);

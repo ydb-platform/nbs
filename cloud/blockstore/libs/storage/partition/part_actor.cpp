@@ -65,12 +65,9 @@ TPartitionActor::TPartitionActor(
     ui32 partitionIndex,
     ui32 siblingCount,
     const TActorId& volumeActorId,
-    ui64 volumeTabletId,
-    bool tidyUpPartitionMode)
+    ui64 volumeTabletId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
-    , TidyUpPartitionMode(
-          tidyUpPartitionMode && config->GetMaxBlobsPerRangeInTidyUpMode())
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
     , FreshBlocksWriterEnabled(
