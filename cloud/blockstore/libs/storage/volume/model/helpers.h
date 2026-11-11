@@ -48,6 +48,8 @@ void UpdateLaggingDevicesAfterMetaUpdate(
 
 [[nodiscard]] TMap<TString, TString> ParseTags(const TString& tags);
 
+[[nodiscard]] TVector<TString> GetTagValues(TStringBuf tags, TStringBuf key);
+
 [[nodiscard]] TString MakeTag(TStringBuf key, TStringBuf value);
 
 }   // namespace NCloud::NBlockStore::NStorage

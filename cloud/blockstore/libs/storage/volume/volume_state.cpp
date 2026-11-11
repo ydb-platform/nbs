@@ -1098,16 +1098,25 @@ void TVolumeState::DeleteCreateFollowerRequestInfo(
         { return requestInfo.Link.Match(link); });
 }
 
-void TVolumeState::StartCreateLeaderRequest()
+void TVolumeState::StartCreateLeaderRequest(const TLeaderFollowerLink& link)
 {
-    Y_DEBUG_ABORT_UNLESS(!CreateLeaderRequestInProgress);
-    CreateLeaderRequestInProgress = true;
+    Y_DEBUG_ABORT_UNLESS(!LeaderLinkBeingCreated);
+    LeaderLinkBeingCreated = link;
 }
 
 void TVolumeState::FinishCreateLeaderRequest()
 {
-    Y_DEBUG_ABORT_UNLESS(CreateLeaderRequestInProgress);
-    CreateLeaderRequestInProgress = false;
+    Y_DEBUG_ABORT_UNLESS(LeaderLinkBeingCreated);
+    LeaderLinkBeingCreated.reset();
+}
+
+std::optional<TLeaderFollowerLink> TVolumeState::FindCreatingLeaderLink(
+    const TLeaderFollowerLink& link) const
+{
+    if (LeaderLinkBeingCreated && LeaderLinkBeingCreated->Match(link)) {
+        return LeaderLinkBeingCreated;
+    }
+    return std::nullopt;
 }
 
 std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
@@ -1289,17 +1298,18 @@ bool TVolumeState::HasPendingLeadershipTransfer(
            PendingLeadershipTransfer->Link.Match(link);
 }
 
-void TVolumeState::AddPendingLeadershipTransferRequest(
+bool TVolumeState::TryAddPendingLeadershipTransferRequest(
     TRequestInfoPtr requestInfo,
     const TLeaderFollowerLink& link)
 {
-    if (!PendingLeadershipTransfer) {
-        PendingLeadershipTransfer.emplace(
-            TPendingLeadershipTransfer{.Link = link, .Requests = {}});
+    if (PendingLeadershipTransfer) {
+        return false;
     }
-    Y_DEBUG_ABORT_UNLESS(PendingLeadershipTransfer->Link.Match(link));
 
-    PendingLeadershipTransfer->Requests.push_back(std::move(requestInfo));
+    PendingLeadershipTransfer.emplace(TPendingLeadershipTransfer{
+        .Link = link,
+        .Request = std::move(requestInfo)});
+    return true;
 }
 
 std::optional<TVolumeState::TPendingLeadershipTransfer>
@@ -1395,7 +1405,9 @@ bool TVolumeState::IsCreateCheckpointOperationRestricted() const
 {
     const bool createFollowerRequestInProgress =
         !CreateFollowerRequests.empty();
-    if (CreateLeaderRequestInProgress || createFollowerRequestInProgress) {
+    if (LeaderLinkBeingCreated || LeaderLinkBeingRemoved ||
+        createFollowerRequestInProgress)
+    {
         return true;
     }
 

@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -79,6 +81,10 @@ private:
     EState State = EState::DataTransferring;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
+    TBackoffDelayProvider LeadershipTransferRetryDelayProvider{
+        TDuration::Seconds(1),
+        TDuration::Seconds(15)};
+    bool LeadershipTransferRetryScheduled = false;
 
 public:
     TFollowerDiskActor(
@@ -142,6 +148,10 @@ private:
 
     void HandlePropagateLeadershipToFollowerResponse(
         const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryLeadershipTransfer(
+        const TEvVolumePrivate::TEvRetryLeadershipTransfer::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

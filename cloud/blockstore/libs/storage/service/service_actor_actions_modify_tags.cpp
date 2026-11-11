@@ -188,6 +188,7 @@ void TModifyTagsActionActor::WaitReady(const TActorContext& ctx)
     Become(&TThis::StateWaitReady);
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetDiskId(Request.GetDiskId());
 
     NCloud::Send(

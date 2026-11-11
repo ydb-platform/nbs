@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_actor.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
@@ -405,6 +406,14 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
     volume.RecvUpdateVolumeConfigResponse();
     volume.WaitReady();
 
+    const auto clientInfo = CreateVolumeClientInfo(
+        NProto::VOLUME_ACCESS_READ_WRITE,
+        NProto::VOLUME_MOUNT_LOCAL,
+        0);
+    if (removalPoint == ELeaderRemovalPoint::PromotionCommit) {
+        volume.AddClient(clientInfo);
+    }
+
     auto makeLinkRequest = [](NProto::ELinkAction action)
     {
         auto request =
@@ -484,12 +493,28 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
     runtime->DispatchEvents(options, TDuration::Seconds(1));
     UNIT_ASSERT(responses.empty());
 
+    TVector<std::unique_ptr<IEventHandle>> promotionCommits;
+    if (holdCommits) {
+        promotionCommits.swap(commits);
+    }
+
     if (removalPoint != ELeaderRemovalPoint::PromotionCommit) {
         volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 5);
+        for (ui64 cookie = 10; cookie < 110; ++cookie) {
+            volume.SendToPipe(
+                makeLinkRequest(NProto::LINK_ACTION_COMPLETED),
+                cookie);
+        }
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED),
             getLinkStatus());
-        UNIT_ASSERT(responses.empty());
+        UNIT_ASSERT(!responses.contains(1));
+        UNIT_ASSERT(responses.contains(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, responses.at(5));
+        for (ui64 cookie = 10; cookie < 110; ++cookie) {
+            UNIT_ASSERT_C(responses.contains(cookie), cookie);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, responses.at(cookie));
+        }
     }
 
     auto completeTagRemoval = [&]
@@ -512,17 +537,23 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
             tagRemoval->Cookie));
         options.CustomFinalCondition = [&]
         {
-            return responses.contains(1) && responses.contains(5);
+            return responses.contains(1);
         };
         runtime->DispatchEvents(options, TDuration::Seconds(1));
         UNIT_ASSERT_C(
             responses.contains(1),
             "No initial leadership transfer response after tag removal");
-        UNIT_ASSERT_C(
-            responses.contains(5),
-            "No repeated leadership transfer response after tag removal");
         UNIT_ASSERT_VALUES_EQUAL(S_OK, responses.at(1));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, responses.at(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, responses.at(5));
+
+        volume.SendToPipe(makeLinkRequest(NProto::LINK_ACTION_COMPLETED), 7);
+        options.CustomFinalCondition = [&]
+        {
+            return responses.contains(7);
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT(responses.contains(7));
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, responses.at(7));
     };
 
     if (removalPoint == ELeaderRemovalPoint::DestructionDelay) {
@@ -537,6 +568,31 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
             static_cast<ui32>(NProto::LINK_STATUS_PREPARING),
             getLinkStatus());
         UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responses.at(4));
+
+        // Commit promotion while keeping removal unconfirmed. A cancelled
+        // promotion must not allow client writes in this window.
+        for (auto& commit: promotionCommits) {
+            runtime->Send(commit.release());
+        }
+        options.CustomFinalCondition = [&]
+        {
+            return responses.contains(1);
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT(responses.contains(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responses.at(1));
+        UNIT_ASSERT(!responses.contains(2));
+        volume.SendWriteBlocksRequest(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            'a');
+        const auto writeResponse = volume.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_BS_INVALID_SESSION,
+            writeResponse->GetStatus(),
+            FormatError(writeResponse->GetError()));
+        UNIT_ASSERT(!responses.contains(2));
+
         holdCommits = false;
         for (auto& commit: commits) {
             runtime->Send(commit.release());
@@ -556,9 +612,11 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
         UNIT_ASSERT(responses.contains(1));
         UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, responses.at(1));
         UNIT_ASSERT(!tagRemoval);
+        volume.ReconnectPipe();
+        volume.WaitReady();
     } else if (removalPoint == ELeaderRemovalPoint::TagRemoval) {
         UNIT_ASSERT(!responses.contains(1));
-        UNIT_ASSERT(!responses.contains(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, responses.at(5));
         completeTagRemoval();
     }
 
@@ -602,6 +660,192 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
 
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
+    Y_UNIT_TEST(ShouldKeepOneRetryTimerForRetriableLinkErrors)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        const auto sender = runtime->AllocateEdgeActor();
+        ui32 attempts = 0;
+        ui32 retryTimers = 0;
+        TActorId propagationActor;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& callbackRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() !=
+                        TEvVolume::EvUpdateLinkOnFollowerRequest ||
+                    event->Recipient != MakeVolumeProxyServiceId())
+                {
+                    return false;
+                }
+                ++attempts;
+                callbackRuntime.SendAsync(new IEventHandle(
+                    event->Sender,
+                    event->Recipient,
+                    new TEvVolume::TEvUpdateLinkOnFollowerResponse(
+                        attempts <= 3 ? MakeError(E_REJECTED, "try again")
+                                      : MakeError(S_OK)), 0, event->Cookie));
+                return true;
+            });
+        TTestActorRuntimeBase::TScheduledEventFilter previousScheduledFilter;
+        previousScheduledFilter = runtime->SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& callbackRuntime,
+                TAutoPtr<IEventHandle>& event,
+                TDuration delay, TInstant& deadline)
+            {
+                if (event->Recipient == propagationActor &&
+                    event->GetTypeRewrite() == TEvents::TEvWakeup::EventType)
+                {
+                    ++retryTimers;
+                }
+                return previousScheduledFilter(
+                    callbackRuntime, event, delay, deadline);
+            });
+        propagationActor = runtime->Register(new TPropagateLinkToFollowerActor(
+            "test",
+            CreateRequestInfo(sender, 0, MakeIntrusive<TCallContext>()),
+            TLeaderFollowerLink{
+                .LinkUUID = "link",
+                .LeaderDiskId = "source",
+                .FollowerDiskId = "target"},
+            TPropagateLinkToFollowerActor::EReason::DataTransferred));
+        runtime->EnableScheduleForActor(propagationActor);
+
+        TAutoPtr<IEventHandle> response;
+        runtime
+            ->GrabEdgeEvent<TEvVolumePrivate::TEvLinkOnFollowerDataTransferred>(
+                response, TDuration::Seconds(10));
+        UNIT_ASSERT(response);
+        UNIT_ASSERT(!HasError(
+            response->Get<TEvVolumePrivate::TEvLinkOnFollowerDataTransferred>()
+                ->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(4, attempts);
+        UNIT_ASSERT_VALUES_EQUAL(attempts, retryTimers);
+    }
+
+    Y_UNIT_TEST(ShouldRemoveLeaderWhileCreationCommitIsPending)
+    {
+        for (const bool exactLink: {false, true}) {
+            auto runtime = PrepareTestActorRuntime();
+            TVolumeClient volume(*runtime);
+            volume.CreateVolume(volume.CreateUpdateVolumeConfigRequest());
+            volume.RecvUpdateVolumeConfigResponse();
+            volume.WaitReady();
+
+            auto makeLinkRequest =
+                [](NProto::ELinkAction action, const TString& uuid)
+            {
+                auto request = std::make_unique<
+                    TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                request->Record.SetDiskId("vol0");
+                request->Record.SetLeaderDiskId("source");
+                request->Record.SetLinkUUID(uuid);
+                request->Record.SetAction(action);
+                return request;
+            };
+
+            bool holdCommits = true;
+            TVector<std::unique_ptr<IEventHandle>> commits;
+            THashMap<ui64, ui32> responses;
+            runtime->SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    if (holdCommits &&
+                        event->GetTypeRewrite() ==
+                            TEvBlobStorage::EvPutResult &&
+                        event->Get<TEvBlobStorage::TEvPutResult>()
+                                ->Id.TabletID() == TestVolumeTablets[0])
+                    {
+                        commits.emplace_back(event.Release());
+                        return true;
+                    }
+                    if (event->GetTypeRewrite() ==
+                            TEvVolume::EvUpdateLinkOnFollowerResponse &&
+                        event->Recipient == volume.GetSender())
+                    {
+                        responses[event->Cookie] =
+                            event
+                                ->Get<TEvVolume::
+                                          TEvUpdateLinkOnFollowerResponse>()
+                                ->GetStatus();
+                        return true;
+                    }
+                    return false;
+                });
+
+            auto waitResponse = [&](ui64 cookie)
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return responses.contains(cookie);
+                };
+                runtime->DispatchEvents(options, TDuration::Seconds(1));
+                UNIT_ASSERT_C(responses.contains(cookie), cookie);
+                return responses.at(cookie);
+            };
+
+            volume.SendToPipe(
+                makeLinkRequest(NProto::LINK_ACTION_CREATE, "test-link"), 1);
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !commits.empty();
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(!commits.empty());
+            UNIT_ASSERT(responses.empty());
+            TVector<std::unique_ptr<IEventHandle>> creationCommits;
+            creationCommits.swap(commits);
+
+            volume.SendToPipe(
+                makeLinkRequest(
+                    NProto::LINK_ACTION_DESTROY, exactLink ? "test-link" : ""),
+                2);
+            volume.SendToPipe(
+                makeLinkRequest(NProto::LINK_ACTION_COMPLETED, "test-link"), 3);
+            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, waitResponse(3));
+            UNIT_ASSERT(!responses.contains(2));
+
+            for (auto& commit: creationCommits) {
+                runtime->Send(commit.release());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, waitResponse(1));
+            UNIT_ASSERT(!responses.contains(2));
+
+            // Creation has completed, but cancellation must keep exclusive
+            // operations blocked until the removal is committed.
+            volume.SendToPipe(
+                makeLinkRequest(NProto::LINK_ACTION_CREATE, "next-link"), 4);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, waitResponse(4));
+
+            holdCommits = false;
+            for (auto& commit: commits) {
+                runtime->Send(commit.release());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, waitResponse(2));
+
+            volume.ReconnectPipe();
+            volume.WaitReady();
+            volume.RebootTablet();
+            volume.WaitReady();
+            auto status =
+                std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+            status->Record.SetDiskId("vol0");
+            status->Record.SetLeaderDiskId("source");
+            status->Record.SetFollowerDiskId("vol0");
+            volume.SendToPipe(std::move(status));
+            const ui32 linkStatus =
+                volume.RecvResponse<TEvVolume::TEvGetLinkStatusResponse>()
+                    ->Record.GetStatus();
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND), linkStatus);
+
+            volume.SendToPipe(
+                makeLinkRequest(NProto::LINK_ACTION_CREATE, "next-link"), 5);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, waitResponse(5));
+        }
+    }
+
     Y_UNIT_TEST(ShouldRemoveLeaderWhilePromotionCommitIsPending)
     {
         CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint::PromotionCommit);
@@ -2583,7 +2827,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     void DoShouldOwnSourcePartitionAfterRecovery(
         TFixture & fixture,
         TFollowerDiskInfo::EState persistedState,
-        bool retryTransfer = false)
+        bool retryTransfer = false, bool completeTransfer = true)
     {
         auto config = std::make_shared<TStorageConfig>(
             NProto::TStorageServiceConfig{},
@@ -2627,8 +2871,16 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             fixture.Runtime->Register(followerDiskActor.release());
 
         ui32 propagationAttempts = 0;
+        const TVector<TDuration> retryDelays{
+            TDuration::Seconds(1),
+            TDuration::Seconds(2),
+            TDuration::Seconds(4),
+            TDuration::Seconds(8),
+            TDuration::Seconds(15),
+            TDuration::Seconds(15)};
         std::optional<TFollowerDiskInfo::EState> requestedState;
         if (retryTransfer) {
+            fixture.Runtime->EnableScheduleForActor(followerDiskActorId);
             fixture.Runtime->SetEventFilter(
                 [&](TTestActorRuntimeBase& runtime,
                     TAutoPtr<IEventHandle>& event)
@@ -2637,15 +2889,21 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                         TEvVolume::EvUpdateLinkOnFollowerRequest)
                     {
                         ++propagationAttempts;
-                        runtime.Send(new IEventHandle(
+                        // Keep the regression bounded if errors are retried
+                        // immediately instead of waiting for a timer.
+                        if (propagationAttempts > retryDelays.size() + 1) {
+                            return true;
+                        }
+                        runtime.SendAsync(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             new TEvVolume::TEvUpdateLinkOnFollowerResponse(
                                 MakeError(
-                                    propagationAttempts == 1 ? E_CANCELLED
-                                                             : S_ALREADY)),
-                            0,
-                            event->Cookie));
+                                    completeTransfer &&
+                                            propagationAttempts ==
+                                                retryDelays.size() + 1
+                                        ? S_ALREADY
+                                        : E_CANCELLED)), 0, event->Cookie));
                         return true;
                     }
                     if (event->GetTypeRewrite() ==
@@ -2664,22 +2922,32 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         fixture.Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         if (retryTransfer) {
-            UNIT_ASSERT(requestedState);
-            UNIT_ASSERT_VALUES_EQUAL(
-                TFollowerDiskInfo::EState::LeadershipTransferred,
-                *requestedState);
-            UNIT_ASSERT_VALUES_EQUAL(2, propagationAttempts);
+            UNIT_ASSERT_VALUES_EQUAL(1, propagationAttempts);
+            UNIT_ASSERT(!requestedState);
+            for (size_t i = 0; i < retryDelays.size(); ++i) {
+                fixture.Runtime->AdvanceCurrentTime(retryDelays[i]);
+                fixture.Runtime->DispatchEvents(
+                    {}, TDuration::MilliSeconds(10));
+                UNIT_ASSERT_VALUES_EQUAL(i + 2, propagationAttempts);
+                if (i + 1 < retryDelays.size() || !completeTransfer) {
+                    UNIT_ASSERT(!requestedState);
+                }
+            }
+            if (completeTransfer) {
+                UNIT_ASSERT(requestedState);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TFollowerDiskInfo::EState::LeadershipTransferred,
+                    *requestedState);
+            }
         }
 
+        const ui32 attemptsBeforeShutdown = propagationAttempts;
         fixture.Runtime->Send(new IEventHandle(
-            followerDiskActorId,
-            poisoner,
-            new TEvents::TEvPoisonPill()));
+            followerDiskActorId, poisoner, new TEvents::TEvPoisonPill()));
 
         TAutoPtr<IEventHandle> handle;
         fixture.Runtime->GrabEdgeEvent<TEvents::TEvPoisonTaken>(
-            handle,
-            TDuration::Seconds(1));
+            handle, TDuration::Seconds(1));
 
         UNIT_ASSERT_C(handle, "Follower disk actor did not complete shutdown");
         UNIT_ASSERT_C(
@@ -2687,6 +2955,12 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TStringBuilder() << "Source partition " << sourcePartitionActor
                              << " is still alive after recovery from "
                              << ToString(persistedState));
+        if (retryTransfer) {
+            fixture.Runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+            fixture.Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            UNIT_ASSERT_VALUES_EQUAL(
+                attemptsBeforeShutdown, propagationAttempts);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldOwnSourcePartitionAfterDataReadyRecovery, TFixture)
@@ -2704,6 +2978,17 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             *this,
             TFollowerDiskInfo::EState::DataReady,
             true);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldBackOffPersistentCancelledLeadershipTransfer,
+        TFixture)
+    {
+        DoShouldOwnSourcePartitionAfterRecovery(
+            *this,
+            TFollowerDiskInfo::EState::DataReady,
+            true,
+            false);
     }
 
     Y_UNIT_TEST_F(

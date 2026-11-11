@@ -383,6 +383,23 @@ TMap<TString, TString> ParseTags(const TString& tags)
     return result;
 }
 
+TVector<TString> GetTagValues(TStringBuf tags, TStringBuf key)
+{
+    TVector<TString> values;
+    TStringBuf tag;
+    while (tags.NextTok(',', tag)) {
+        TStringBuf tagKey;
+        TStringBuf value;
+        if (!tag.TrySplit('=', tagKey, value)) {
+            tagKey = tag;
+        }
+        if (tagKey == key) {
+            values.emplace_back(value);
+        }
+    }
+    return values;
+}
+
 TString MakeTag(TStringBuf key, TStringBuf value)
 {
     return TStringBuilder() << key << '=' << value;

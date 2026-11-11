@@ -91,6 +91,7 @@ struct TCreateFollowerRequestInfo
     TLeaderFollowerLink Link;
     NActors::TActorId CreateVolumeLinkActor;
     TVector<TRequestInfoPtr> Requests;
+    bool Cancelled = false;
 };
 
 using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
@@ -213,7 +214,7 @@ public:
     struct TPendingLeadershipTransfer
     {
         TLeaderFollowerLink Link;
-        TVector<TRequestInfoPtr> Requests;
+        TRequestInfoPtr Request;
     };
 
 private:
@@ -282,7 +283,7 @@ private:
     TLeaderDisks LeaderDisks;
     TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
     ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
-    bool CreateLeaderRequestInProgress = false;
+    std::optional<TLeaderFollowerLink> LeaderLinkBeingCreated;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
     bool SourceDiskIdTagRemovalInProgress = false;
@@ -873,8 +874,10 @@ public:
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
 
-    void StartCreateLeaderRequest();
+    void StartCreateLeaderRequest(const TLeaderFollowerLink& link);
     void FinishCreateLeaderRequest();
+    std::optional<TLeaderFollowerLink> FindCreatingLeaderLink(
+        const TLeaderFollowerLink& link) const;
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
@@ -897,7 +900,7 @@ public:
     void FinishRemovingLeaderLink(const TLeaderFollowerLink& link);
 
     bool HasPendingLeadershipTransfer(const TLeaderFollowerLink& link) const;
-    void AddPendingLeadershipTransferRequest(
+    [[nodiscard]] bool TryAddPendingLeadershipTransferRequest(
         TRequestInfoPtr requestInfo,
         const TLeaderFollowerLink& link);
     std::optional<TPendingLeadershipTransfer> TakePendingLeadershipTransfer();

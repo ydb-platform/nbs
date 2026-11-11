@@ -141,6 +141,9 @@ bool TFollowerDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvLinkOnFollowerDataTransferred,
             HandlePropagateLeadershipToFollowerResponse);
+        HFunc(
+            TEvVolumePrivate::TEvRetryLeadershipTransfer,
+            HandleRetryLeadershipTransfer);
 
         // Intercepting the message to block the sending of statistics by the
         // base class.
@@ -414,12 +417,29 @@ void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
             // since the client could have already switched to a new leader, and
             // passing into an error state can lead the client to switch to an
             // old leader who is already outdated.
-            PropagateLeadershipToFollower(ctx);
+            if (!LeadershipTransferRetryScheduled) {
+                LeadershipTransferRetryScheduled = true;
+                ctx.Schedule(
+                    LeadershipTransferRetryDelayProvider.GetDelayAndIncrease(),
+                    new TEvVolumePrivate::TEvRetryLeadershipTransfer());
+            }
         }
         return;
     }
 
     AdvanceState(ctx, EState::LeadershipTransferred);
+}
+
+void TFollowerDiskActor::HandleRetryLeadershipTransfer(
+    const TEvVolumePrivate::TEvRetryLeadershipTransfer::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    LeadershipTransferRetryScheduled = false;
+    if (State == EState::DataTransferred) {
+        PropagateLeadershipToFollower(ctx);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

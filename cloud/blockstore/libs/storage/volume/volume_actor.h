@@ -1364,7 +1364,11 @@ private:
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
     void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
-    void ReplyToPendingLeadershipTransferRequests(
+    void AddPendingLeadershipTransferRequest(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        const TLeaderFollowerLink& link);
+    void ReplyToPendingLeadershipTransferRequest(
         const NActors::TActorContext& ctx);
     void RemoveSourceDiskIdTagIfNeeded(const NActors::TActorContext& ctx);
     void FinishSourceDiskIdTagRemoval(const NActors::TActorContext& ctx);

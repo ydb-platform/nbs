@@ -226,6 +226,10 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         return;
     }
 
+    if (auto* creation = State->FindCreateFollowerRequestInfo(link)) {
+        creation->Cancelled = true;
+    }
+
     if (follower) {
         link = follower->Link;
     }
@@ -283,7 +287,25 @@ void TVolumeActor::HandleUpdateFollowerState(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (auto currentFollower = State->FindFollower(msg->Follower.Link)) {
+    auto currentFollower = State->FindFollower(msg->Follower.Link);
+    const auto* creation =
+        State->FindCreateFollowerRequestInfo(msg->Follower.Link);
+    const bool creationCancelled = creation && creation->Cancelled;
+    const bool creationError = msg->Follower.State == EState::Error &&
+                               creation &&
+                               creation->CreateVolumeLinkActor == ev->Sender;
+    const bool updateForRemovedFollower =
+        !currentFollower && msg->Follower.Link.LinkUUID &&
+        msg->Follower.State != EState::Created && !creationError;
+    if (creationCancelled || updateForRemovedFollower) {
+        msg->Follower.State = EState::Error;
+        msg->Follower.ErrorMessage = "Follower link was removed";
+        const auto error = MakeError(E_CANCELLED, msg->Follower.ErrorMessage);
+        replyError(error, std::move(msg->Follower));
+        return;
+    }
+
+    if (currentFollower) {
         msg->Follower.Link = currentFollower->Link;
 
         if (currentFollower->State == EState::Error) {
@@ -299,14 +321,6 @@ void TVolumeActor::HandleUpdateFollowerState(
                 std::move(*currentFollower));
             return;
         }
-    } else if (
-        msg->Follower.Link.LinkUUID && msg->Follower.State != EState::Created)
-    {
-        msg->Follower.State = EState::Error;
-        msg->Follower.ErrorMessage = "Follower link was removed";
-        const auto error = MakeError(E_CANCELLED, msg->Follower.ErrorMessage);
-        replyError(error, std::move(msg->Follower));
-        return;
     }
 
     if (!msg->Follower.Link.LinkUUID) {
