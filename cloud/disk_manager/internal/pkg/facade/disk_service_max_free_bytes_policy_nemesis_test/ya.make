@@ -8,6 +8,7 @@ SET_APPEND(RECIPE_ARGS --creation-and-deletion-allowed-only-for-disks-with-id-pr
 SET_APPEND(RECIPE_ARGS --disable-disk-registry-based-disks)
 SET_APPEND(RECIPE_ARGS --cell-selection-policy "MAX_FREE_BYTES")
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
+SPLIT_FACTOR(2)
 
 GO_XTEST_SRCS(
     ../disk_service_max_free_bytes_policy_test/disk_service_max_free_bytes_policy_test.go
