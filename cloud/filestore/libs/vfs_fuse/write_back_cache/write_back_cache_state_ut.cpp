@@ -595,7 +595,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(b.State->IsDrained());
     }
 
-    Y_UNIT_TEST(ShouldWaitForScheduledFlushAfterCacheCorruption)
+    Y_UNIT_TEST(ShouldKeepShutdownPendingAfterCacheCorruption)
     {
         class TFailTagStorage final: public TTestStorage
         {
@@ -633,8 +633,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(
             b.State->FlushFailed(2, MakeError(E_INVALID_STATE)) ==
             EFlushRetryStatus::ShouldNotRetry);
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
+        UNIT_ASSERT(!shutdown.IsReady());
     }
 
     Y_UNIT_TEST(ShouldWaitForBarrierBlockedWritesOnShutdown)
