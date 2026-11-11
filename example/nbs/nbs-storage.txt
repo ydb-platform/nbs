@@ -21,6 +21,23 @@ AttachDetachPathsEnabled: true
 OverlappingRequestsPolicy: ORP_ENABLE_WITH_CRIT_EVENT
 RequestSplitterPolicy: RSP_ENABLE_WITH_CRIT_EVENT
 
+# YDB-based
+FreshChannelWriteRequestsEnabled: true
+FreshChannelZeroRequestsEnabled: true
+FreshSelectiveTrimEnabledSSD: true
+FreshSelectiveTrimEnabledHDD: true
+FreshDeadBlobByteCountTrimThresholdSSD: 1048576
+FreshDeadBlobByteCountTrimThresholdHDD: 1048576
+WriteBlobThresholdSSD: 262144
+WriteBlobThresholdHDD: 2097152
+BatchCompactionEnabled: true
+IncrementalCompactionEnabled: true
+V1GarbageCompactionEnabled: true
+WriteRequestBatchingEnabled: true
+FreshBlocksWriterEnabled: true
+HDDCompactionType: CT_LOAD
+SSDCompactionType: CT_LOAD
+
 # DiskRegistry-based
 AcquireNonReplicatedDevices: true
 AssignIdToWriteAndZeroRequestsEnabled: true
