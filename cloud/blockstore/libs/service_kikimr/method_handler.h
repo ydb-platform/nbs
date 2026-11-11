@@ -160,6 +160,10 @@ public:
     {
         auto state = ExtractRequest(ev->Cookie);
         if (!state) {
+            // Writes remain in the "Requests" map until a response arrives;
+            // other requests are removed on timeout.
+            // A zero cookie is always invalid and may indicate that the
+            // response lost its cookie.
             if (HandlesWriteRequest || ev->Cookie == 0) {
                 ReportServiceProxyReceivedUnknownCookie(
                     {{"request", GetBlockStoreRequestName(T::Request)},
