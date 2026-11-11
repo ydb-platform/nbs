@@ -1001,7 +1001,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             totalNetworkBytes);
     }
 
-    void DoShouldSendPartitionStatsForShadowDisk(bool useDirectCopy)
+    void DoShouldSendPartitionStatsForShadowDisk(
+        bool useDirectCopy,
+        bool usePullScheme)
     {
         constexpr ui64 DiskBlockCount = 32768;
         constexpr ui64 DiskBlockSize = 4096;
@@ -1013,6 +1015,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
         config.SetUseDirectCopyRange(useDirectCopy);
+        config.SetUsePullSchemeForVolumeStatistics(usePullScheme);
 
         TDiskAgentStatePtr diskAgentState = std::make_shared<TDiskAgentState>();
         diskAgentState->CreateDirectCopyActorFunc =
@@ -1056,26 +1059,60 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ui64 DirectCopyByteCount = 0;
         };
         TMap<TString, TReadAndWriteByteCount> statsForDisks;
+        auto addStats = [&](const TEvStatsService::TVolumePartCounters& msg)
+        {
+            const auto& requestCounters = msg.DiskCounters->RequestCounters;
+            auto& stats = statsForDisks[msg.DiskId];
+            stats.ReadByteCount += requestCounters.ReadBlocks.RequestBytes;
+            stats.WriteByteCount += requestCounters.WriteBlocks.RequestBytes;
+            stats.DirectCopyByteCount +=
+                requestCounters.CopyBlocks.RequestBytes;
+        };
+
+        using TPartCountersResponse = TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse;
+
+        ui32 failedPartCountersResponseCount = 0;
         auto statEventInterceptor = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->Recipient == MakeStorageStatsServiceId() &&
                 event->GetTypeRewrite() ==
                     TEvStatsService::EvVolumePartCounters)
             {
-                auto* msg =
-                    event->Get<TEvStatsService::TEvVolumePartCounters>();
-                statsForDisks[msg->DiskId].ReadByteCount +=
-                    msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
-                statsForDisks[msg->DiskId].WriteByteCount +=
-                    msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
-                statsForDisks[msg->DiskId].DirectCopyByteCount +=
-                    msg->DiskCounters->RequestCounters.CopyBlocks.RequestBytes;
+                addStats(*event->Get<TEvStatsService::TEvVolumePartCounters>());
+            }
+            if (event->GetTypeRewrite() == TPartCountersResponse::EventType &&
+                HasError(event->Get<TPartCountersResponse>()->Error))
+            {
+                ++failedPartCountersResponseCount;
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
         runtime->SetObserverFunc(statEventInterceptor);
 
         TVolumeClient volume(*runtime);
+
+        auto collectStats = [&]()
+        {
+            if (!usePullScheme) {
+                runtime->AdvanceCurrentTime(UpdateCountersInterval);
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+                return;
+            }
+
+            volume.SendToPipe(
+                std::make_unique<
+                    TEvStatsService::TEvGetServiceStatisticsRequest>());
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime->GrabEdgeEventRethrow<
+                TEvStatsService::TEvGetServiceStatisticsResponse>(
+                handle,
+                TDuration::Seconds(5));
+            UNIT_ASSERT(handle);
+            for (const auto& partCounters: response->PartsCounters) {
+                addStats(partCounters);
+            }
+        };
         volume.UpdateVolumeConfig(
             0,
             0,
@@ -1134,15 +1171,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "c1");
 
         // Wait for stats send to StorageStatsService.
-        runtime->AdvanceCurrentTime(UpdateCountersInterval);
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        runtime->AdvanceCurrentTime(UpdateCountersInterval);
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        collectStats();
+        collectStats();
 
         // Validate bytes count for source and shadow disks.
         auto shadowActorBytes = useDirectCopy ? 0 :DiskByteCount;
         auto directCopyBytes = useDirectCopy ? DiskByteCount : 0;
 
+        UNIT_ASSERT_VALUES_EQUAL(0, failedPartCountersResponseCount);
         UNIT_ASSERT_VALUES_EQUAL(2, statsForDisks.size());
         UNIT_ASSERT_VALUES_EQUAL(
             shadowActorBytes + ReadFromSourceBlockCount * DiskBlockSize,
@@ -1168,12 +1204,160 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
     Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)
     {
-        DoShouldSendPartitionStatsForShadowDisk(false);
+        DoShouldSendPartitionStatsForShadowDisk(false, false);
     }
 
     Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDiskDirectCopy)
     {
-        DoShouldSendPartitionStatsForShadowDisk(true);
+        DoShouldSendPartitionStatsForShadowDisk(true, false);
+    }
+
+    Y_UNIT_TEST(ShouldPullPartitionStatsForShadowDisk)
+    {
+        DoShouldSendPartitionStatsForShadowDisk(false, true);
+    }
+
+    Y_UNIT_TEST(ShouldPullPartitionStatsForShadowDiskDirectCopy)
+    {
+        DoShouldSendPartitionStatsForShadowDisk(true, true);
+    }
+
+    Y_UNIT_TEST(ShouldPullPartitionStatsForReadyShadowDiskAfterReboot)
+    {
+        constexpr ui64 DiskBlockCount = 32768;
+        constexpr ui64 DiskBlockSize = 4096;
+        constexpr ui32 WriteBlockCount = 2;
+        constexpr ui32 ReadFromSourceBlockCount = 5;
+        constexpr ui32 ReadFromCheckpointBlockCount = 10;
+
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        using TPartCountersResponse = TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersResponse;
+
+        ui32 failedPartCountersResponseCount = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TPartCountersResponse::EventType &&
+                    HasError(event->Get<TPartCountersResponse>()->Error))
+                {
+                    ++failedPartCountersResponseCount;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        struct TReadAndWriteByteCount
+        {
+            ui64 ReadByteCount = 0;
+            ui64 WriteByteCount = 0;
+        };
+
+        TMap<TString, TReadAndWriteByteCount> statsForDisks;
+
+        TVolumeClient volume(*runtime);
+
+        auto pullStats = [&]()
+        {
+            volume.SendToPipe(
+                std::make_unique<
+                    TEvStatsService::TEvGetServiceStatisticsRequest>());
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime->GrabEdgeEventRethrow<
+                TEvStatsService::TEvGetServiceStatisticsResponse>(
+                handle,
+                TDuration::Seconds(5));
+            UNIT_ASSERT(handle);
+            for (const auto& partCounters: response->PartsCounters) {
+                const auto& requestCounters =
+                    partCounters.DiskCounters->RequestCounters;
+                auto& stats = statsForDisks[partCounters.DiskId];
+                stats.ReadByteCount += requestCounters.ReadBlocks.RequestBytes;
+                stats.WriteByteCount +=
+                    requestCounters.WriteBlocks.RequestBytes;
+            }
+        };
+
+        auto waitForCheckpointReady = [&]()
+        {
+            for (;;) {
+                auto status = volume.GetCheckpointStatus("c1");
+                if (status->Record.GetCheckpointStatus() ==
+                    NProto::ECheckpointStatus::READY)
+                {
+                    break;
+                }
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            }
+        };
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DiskBlockCount,
+            "vol0");
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.CreateCheckpoint("c1");
+        volume.ReconnectPipe();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        waitForCheckpointReady();
+
+        // After the reboot the shadow disk actor starts with the shadow disk
+        // already filled, so the fill never starts.
+        volume.RebootTablet();
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        waitForCheckpointReady();
+
+        // Drop the counters collected before the reboot.
+        pullStats();
+        statsForDisks.clear();
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, WriteBlockCount),
+            clientInfo.GetClientId(),
+            GetBlockContent(3));
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, ReadFromSourceBlockCount),
+            clientInfo.GetClientId());
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, ReadFromCheckpointBlockCount),
+            clientInfo.GetClientId(),
+            "c1");
+
+        pullStats();
+        pullStats();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, failedPartCountersResponseCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, statsForDisks.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadFromSourceBlockCount * DiskBlockSize,
+            statsForDisks["vol0"].ReadByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBlockCount * DiskBlockSize,
+            statsForDisks["vol0"].WriteByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadFromCheckpointBlockCount * DiskBlockSize,
+            statsForDisks["vol0-c1"].ReadByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, statsForDisks["vol0-c1"].WriteByteCount);
     }
 
     Y_UNIT_TEST(ShouldTryToCutVolumeHistoryAtStartup)
@@ -2039,8 +2223,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 {
                     recipient = ev->Recipient;
                     sender = ev->Sender;
-                    diskId = ev->Get<TEvNonreplPartitionPrivate::
-                            TEvGetDiskRegistryBasedPartCountersResponse>()->DiskId;
+                    const auto* msg = ev->Get<
+                        TEvNonreplPartitionPrivate::
+                            TEvGetDiskRegistryBasedPartCountersResponse>();
+                    diskId = msg->DisksCounters.front().DiskId;
                     isGrabResponse = true;
                     return true;
                 }
