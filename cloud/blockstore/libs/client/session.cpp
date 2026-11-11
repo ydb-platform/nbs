@@ -705,10 +705,19 @@ void TSession::ProcessUnmountResponse(
 void TSession::ForceVolumeRemount(const TString& sessionId)
 {
     with_lock (SessionInfo.MountLock) {
+        if (SessionInfo.SessionId != sessionId) {
+            return;
+        }
         if (SessionInfo.MountState == EMountState::MountCompleted) {
-            if (SessionInfo.SessionId == sessionId) {
-                SessionInfo.MountState = EMountState::MountRequested;
-            }
+            SessionInfo.MountState = EMountState::MountRequested;
+        } else if (
+            SessionInfo.MountState == EMountState::MountInProgress &&
+            InPlannedRemount)
+        {
+            // The session reused during the planned remount was rejected:
+            // stop reusing it and make requests wait for the pending remount.
+            InPlannedRemount = false;
+            LastSuccessfulMountResponse = {};
         }
     }
 }
