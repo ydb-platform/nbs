@@ -158,7 +158,7 @@ public:
     auto StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        NCloud::IClientEndpointHandlerPtr handler)
         -> TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {
         return Impl->StartEndpoint(std::move(host), port, std::move(handler));

@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/string.h>
@@ -14,31 +15,25 @@ namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Creates per-host data endpoints. Start the transport before creating
-// endpoints; its owner is responsible for shutdown.
+// Start the transport first. Its owner drains retired endpoints at shutdown.
+// Endpoints support ReadBlocksLocal, WriteBlocksLocal and ZeroBlocks only.
 struct IDataEndpointFactory
 {
     virtual ~IDataEndpointFactory();
 
-    // Call from a setup thread: host resolution may block. Each successful
-    // call creates a separate binding; connection may wait for the first I/O.
-    // Supports ReadBlocksLocal, WriteBlocksLocal and ZeroBlocks, not control
-    // requests. The endpoint retains handler; use a weak reference back to its
-    // owner. A binding can reconnect and report more than one disconnection.
-    // Set a positive Headers.RequestTimeout in milliseconds on every request.
-    // Write buffers may be reused after the call; keep read buffers accessible
-    // until the future is ready, or close their Sglist before reuse.
-    // The endpoint needs no Start. Call its Stop outside callbacks to reject
-    // new data requests and drain admitted requests and continuations. Keep the
-    // transport alive until those requests and continuations finish. Neither
-    // timeout nor shutdown cancels operations already sent to remote storage.
+    // Starts connection and retries without waiting for DNS or the peer.
+    // Handler may run before return. Use a positive Headers.RequestTimeout
+    // (ms). Writes copy buffers; keep read buffers valid until completion or
+    // close Sglist. The endpoint may be released in callbacks; the transport
+    // finishes cleanup asynchronously. Optional endpoint Stop waits for
+    // callbacks and must be called outside them. Timeout and shutdown do not
+    // cancel remote I/O.
     virtual TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IHostConnectionHandlerPtr handler) = 0;
+        IClientEndpointHandlerPtr handler) = 0;
 
-    // Pass an endpoint created by this factory. Reading its status does not
-    // start a connection.
+    // Pass an endpoint created by this factory.
     virtual THostChannelStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) = 0;
 };

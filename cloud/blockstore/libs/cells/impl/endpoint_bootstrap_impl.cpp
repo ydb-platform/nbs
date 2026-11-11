@@ -16,7 +16,7 @@ TResultOrError<IBlockStorePtr>
 TCellCellHostEndpointBootstrap::SetupHostIcV2Endpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& config,
-    NIcV2::IHostConnectionHandlerPtr handler)
+    NCloud::IClientEndpointHandlerPtr handler)
 {
     if (!bootstrap.IcV2EndpointFactory) {
         return MakeError(
@@ -45,8 +45,7 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
 auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& config,
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
-    -> TRdmaEndpointBootstrapResult
+    NCloud::IClientEndpointHandlerPtr handler) -> TRdmaEndpointBootstrapResult
 {
     if (!bootstrap.RdmaClient || !config.GetRdmaPort()) {
         return MakeError(

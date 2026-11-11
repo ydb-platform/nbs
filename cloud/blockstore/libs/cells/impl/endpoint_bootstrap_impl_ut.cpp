@@ -8,6 +8,8 @@
 
 namespace NCloud::NBlockStore::NCells {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,10 +26,22 @@ TCellHostConfig MakeHostConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConnectionHandler final: public NIcV2::IHostConnectionHandler
+class TConnectionHandler final: public NCloud::IClientEndpointHandler
 {
 public:
+    ui32 Connections = 0;
     ui32 Disconnections = 0;
+    ui32 Unavailable = 0;
+
+    void HandleConnected() noexcept override
+    {
+        ++Connections;
+    }
+
+    void HandleUnavailable() noexcept override
+    {
+        ++Unavailable;
+    }
 
     void HandleDisconnected() noexcept override
     {
@@ -90,9 +104,11 @@ Y_UNIT_TEST_SUITE(TCellHostEndpointBootstrapTest)
                             std::make_shared<NProto::TReadBlocksLocalRequest>())
                         .Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(reads, 1);
-        factory->SetStatus(
-            endpoint,
-            {.State = NIcV2::EHostChannelState::Connected});
+        factory->NotifyUnavailable(endpoint);
+        factory->NotifyUnavailable(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Unavailable, 2);
+        factory->NotifyConnected(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Connections, 1);
         factory->NotifyDisconnected(endpoint);
         UNIT_ASSERT_VALUES_EQUAL(handler->Disconnections, 1);
     }

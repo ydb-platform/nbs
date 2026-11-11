@@ -15,13 +15,15 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IBlockStorePtr CreateEndpoint(
     IDataEndpointFactory& factory,
-    IHostConnectionHandlerPtr handler)
+    IClientEndpointHandlerPtr handler)
 {
     auto [endpoint, error] =
         factory.CreateDataEndpoint("cell", "host", std::move(handler));
@@ -33,13 +35,26 @@ IBlockStorePtr CreateEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRecordingHandler final: public IHostConnectionHandler
+class TRecordingHandler final: public IClientEndpointHandler
 {
     const std::weak_ptr<TTestDataEndpointFactory> Factory;
 
 public:
     std::weak_ptr<IBlockStore> Endpoint;
     ui32 Notifications = 0;
+    ui32 Connections = 0;
+    ui32 Unavailable = 0;
+
+    void HandleConnected() noexcept override
+    {
+        ++Connections;
+    }
+
+    void HandleUnavailable() noexcept override
+    {
+        ++Unavailable;
+    }
+
     THostChannelStatus ObservedStatus;
 
     explicit TRecordingHandler(std::weak_ptr<TTestDataEndpointFactory> factory)
@@ -318,7 +333,7 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         UNIT_ASSERT(first != second);
         UNIT_ASSERT(
             factory.GetDataEndpointStatus(first).State ==
-            EHostChannelState::Idle);
+            EHostChannelState::Connecting);
         factory.SetStatus(
             first,
             {.State = EHostChannelState::Connected,
@@ -360,11 +375,71 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 2);
 
         const std::weak_ptr<IBlockStore> weakEndpoint = endpoint;
-        const std::weak_ptr<IHostConnectionHandler> weakHandler = handler;
+        const std::weak_ptr<IClientEndpointHandler> weakHandler = handler;
         handler.reset();
         endpoint.reset();
         UNIT_ASSERT(weakEndpoint.expired());
         UNIT_ASSERT(weakHandler.expired());
+    }
+
+    Y_UNIT_TEST(ReleasesEndpointInResultCallbackWithoutStop)
+    {
+        auto service = std::make_shared<TTestService>();
+        auto completed =
+            NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+        service->ReadBlocksLocalHandler = [completed](auto request)
+        {
+            Y_UNUSED(request);
+
+            return completed.GetFuture();
+        };
+        TTestDataEndpointFactory factory;
+        factory.EnqueueEndpoint(service);
+        auto endpoint = CreateEndpoint(factory, {});
+        const std::weak_ptr<IBlockStore> weak = endpoint;
+        auto response = endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TReadBlocksLocalRequest>());
+        response.Subscribe(
+            [endpoint = std::move(endpoint)](const auto& future) mutable
+            {
+                Y_UNUSED(future);
+
+                endpoint.reset();
+            });
+        completed.SetValue(NProto::TReadBlocksLocalResponse{});
+        UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(weak.expired());
+    }
+
+    Y_UNIT_TEST(ReportsFailedAttemptsBeforeFirstConnectionAndStopsNotifications)
+    {
+        auto factory = std::make_shared<TTestDataEndpointFactory>();
+        auto handler = std::make_shared<TRecordingHandler>(factory);
+        factory->EnqueueEndpoint(std::make_shared<TTestService>());
+        auto endpoint = CreateEndpoint(*factory, handler);
+        handler->Endpoint = endpoint;
+        factory->NotifyUnavailable(endpoint);
+        factory->NotifyUnavailable(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Unavailable, 2);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            factory->GetDataEndpointStatus(endpoint).ConnectionFailures,
+            2);
+        factory->NotifyConnected(endpoint);
+        factory->NotifyConnected(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Connections, 1);
+        factory->NotifyDisconnected(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 1);
+        factory->NotifyConnected(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Connections, 2);
+        endpoint->Stop();
+        factory->NotifyUnavailable(endpoint);
+        factory->NotifyConnected(endpoint);
+        factory->NotifyDisconnected(endpoint);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Unavailable, 2);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Connections, 2);
+        UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 1);
     }
 
     Y_UNIT_TEST(CreatesBindingsConcurrently)

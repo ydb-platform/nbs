@@ -36,7 +36,7 @@ struct TRdmaClientTest: NCloud::NStorage::NRdma::IClient
     TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) override;
+        NCloud::IClientEndpointHandlerPtr handler) override;
 
     void Start() override
     {

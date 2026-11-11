@@ -4,6 +4,8 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14,7 +16,7 @@ public:
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IHostConnectionHandlerPtr handler) override
+        IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(cellId);
         Y_UNUSED(host);

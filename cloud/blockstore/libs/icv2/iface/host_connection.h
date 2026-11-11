@@ -23,16 +23,4 @@ struct THostChannelStatus
     ui64 ConnectionFailures = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-// Reports closure of an established connection. Ignore notifications belonging
-// to a replaced binding; callbacks may arrive from another thread.
-// Do not stop the endpoint or transport from a callback.
-struct IHostConnectionHandler
-{
-    virtual ~IHostConnectionHandler();
-
-    virtual void HandleDisconnected() noexcept = 0;
-};
-
 }   // namespace NCloud::NBlockStore::NIcV2

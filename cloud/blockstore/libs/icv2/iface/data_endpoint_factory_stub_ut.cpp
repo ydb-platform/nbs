@@ -6,6 +6,8 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TDataEndpointFactoryStubTest)
 {
     Y_UNIT_TEST(RejectsCreationWithoutReturningAnEndpoint)

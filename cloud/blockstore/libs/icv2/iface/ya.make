@@ -3,7 +3,6 @@ LIBRARY()
 SRCS(
     data_endpoint_factory.cpp
     data_endpoint_factory_stub.cpp
-    host_connection.cpp
 )
 
 PEERDIR(

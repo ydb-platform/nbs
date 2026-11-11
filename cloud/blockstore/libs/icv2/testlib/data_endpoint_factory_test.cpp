@@ -7,6 +7,8 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+////////////////////////////////////////////////////////////////////////////////
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,16 +38,19 @@ class TTestDataEndpoint final
     ////////////////////////////////////////////////////////////////////////////////
 
     const IBlockStorePtr Service;
-    const IHostConnectionHandlerPtr Handler;
+    const IClientEndpointHandlerPtr Handler;
 
     mutable TMutex Mutex;
-    THostChannelStatus Status;
+    THostChannelStatus Status{
+        .State = EHostChannelState::Connecting,
+        .ConnectionAttempts = 1,
+    };
     bool Stopped = false;
     ui64 Requests = 0;
     NThreading::TPromise<void> Drained = NThreading::NewPromise();
 
 public:
-    TTestDataEndpoint(IBlockStorePtr service, IHostConnectionHandlerPtr handler)
+    TTestDataEndpoint(IBlockStorePtr service, IClientEndpointHandlerPtr handler)
         : Service(std::move(service))
         , Handler(std::move(handler))
     {}
@@ -110,8 +115,7 @@ public:
                 .Apply(
                     [requestGuard = std::move(requestGuard)](const auto& future)
                     {
-                        // Retain admission until the result's continuations
-                        // finish.
+                        // Keeps Stop waiting through result callbacks.
                         Y_UNUSED(requestGuard);
 
                         return future.GetValue();
@@ -133,9 +137,38 @@ public:
         }
     }
 
+    void NotifyConnected()
+    {
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Stopped || Status.State == EHostChannelState::Connected) {
+                return;
+            }
+            Status.State = EHostChannelState::Connected;
+        }
+        if (Handler) {
+            Handler->HandleConnected();
+        }
+    }
+
+    void NotifyUnavailable()
+    {
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Stopped) {
+                return;
+            }
+            Status.State = EHostChannelState::Disconnected;
+            ++Status.ConnectionFailures;
+        }
+        if (Handler) {
+            Handler->HandleUnavailable();
+        }
+    }
+
     void NotifyDisconnected()
     {
-        IHostConnectionHandlerPtr handler;
+        IClientEndpointHandlerPtr handler;
         {
             TGuard<TMutex> guard(Mutex);
             if (Status.State != EHostChannelState::Connected) {
@@ -221,7 +254,7 @@ TVector<TDataEndpointRequest> TTestDataEndpointFactory::GetRequests() const
 TResultOrError<IBlockStorePtr> TTestDataEndpointFactory::CreateDataEndpoint(
     const TString& cellId,
     const TString& host,
-    IHostConnectionHandlerPtr handler)
+    IClientEndpointHandlerPtr handler)
 {
     IBlockStorePtr service;
     {
@@ -256,6 +289,16 @@ void TTestDataEndpointFactory::SetStatus(
     const THostChannelStatus& status)
 {
     GetTestEndpoint(endpoint)->SetStatus(status);
+}
+
+void TTestDataEndpointFactory::NotifyConnected(const IBlockStorePtr& endpoint)
+{
+    GetTestEndpoint(endpoint)->NotifyConnected();
+}
+
+void TTestDataEndpointFactory::NotifyUnavailable(const IBlockStorePtr& endpoint)
+{
+    GetTestEndpoint(endpoint)->NotifyUnavailable();
 }
 
 void TTestDataEndpointFactory::NotifyDisconnected(

@@ -35,15 +35,17 @@ public:
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IHostConnectionHandlerPtr handler) override;
+        IClientEndpointHandlerPtr handler) override;
     THostChannelStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) override;
 
     void SetStatus(
         const IBlockStorePtr& endpoint,
         const THostChannelStatus& status);
-    // Sets Disconnected and calls the handler synchronously when leaving
-    // Connected. Repeated calls without reconnection do not notify again.
+    // Updates status and notifies synchronously.
+    void NotifyConnected(const IBlockStorePtr& endpoint);
+    void NotifyUnavailable(const IBlockStorePtr& endpoint);
+    // Only notifies after Connected.
     void NotifyDisconnected(const IBlockStorePtr& endpoint);
 };
 
