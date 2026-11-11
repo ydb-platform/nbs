@@ -6406,6 +6406,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
+        // Keep batches large enough to fill the cache before backpressure.
+        features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
 
         // Disable automatic flush
         TBootstrap bootstrap(
@@ -8671,8 +8673,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         TFuture<ui32> writeFuture;
 
-        for (ui32 i = 1; i <= maxRequestCount; i++) {
-            bool isBackpressured = backpressureCount->Val() == 1;
+        for (ui32 i = 1; i < maxRequestCount; i++) {
+            UNIT_ASSERT_VALUES_EQUAL(0, backpressureCount->Val());
 
             // Requests should not overlap nor touch in order to be put into
             // separate flush batches
@@ -8682,16 +8684,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 i * 100,
                 "abc");
 
-            if (isBackpressured) {
-                break;
-            }
-
             // Backpressure status is updated before the request is responded
             UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
             bootstrap.ModuleStatsRegistry->UpdateStats(true);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
+
+        writeFuture = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            1,
+            101,
+            maxRequestCount * 100,
+            "abc");
 
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
