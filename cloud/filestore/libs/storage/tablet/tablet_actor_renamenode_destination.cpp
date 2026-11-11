@@ -849,8 +849,6 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
 
             return;
         }
-
-        // TODO(#1350): support session events for external nodes
     }
 
     RemoveInFlightRequest(*args.RequestInfo);

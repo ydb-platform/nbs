@@ -12,6 +12,7 @@ SRCS(
     read_pages.cpp
     release_devices.cpp
     write_log_record.cpp
+    write_pages.cpp
 )
 
 PEERDIR(

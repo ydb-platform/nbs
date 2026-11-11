@@ -156,6 +156,13 @@ message TSessionOptions
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TPersistentSessionOptions
+{
+    bool GuestPosixAclEnabled = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TSession
 {
     bytes SessionId = 1;
@@ -167,6 +174,8 @@ message TSession
     uint64 MaxRwSeqNo = 7;
     bytes OriginFqdn = 8;
     uint64 RecoveryTimestampUs = 9;
+
+    TPersistentSessionOptions PersistentOptions = 10;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

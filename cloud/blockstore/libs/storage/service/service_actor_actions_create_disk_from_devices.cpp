@@ -12,6 +12,8 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -47,8 +49,17 @@ std::unique_ptr<TEvDiskRegistry::TEvCreateDiskFromDevicesRequest> CreateRequest(
         outRequest->Record.MutableDevices()->Add()->SetDeviceUUID(deviceUUID);
     }
 
+    for (const auto& replica: inRequest.GetReplicas()) {
+        auto* outReplica = outRequest->Record.AddReplicas();
+        outReplica->MutableDeviceUUIDs()->Assign(
+            replica.GetDeviceUUIDs().begin(),
+            replica.GetDeviceUUIDs().end());
+    }
+
     *outRequest->Record.MutableVolumeConfig() =
         ConvertToVolumeConfig(inRequest);
+    outRequest->Record.SetForce(inRequest.GetForce());
+    outRequest->Record.SetKeepBlockCount(inRequest.GetKeepBlockCount());
 
     return outRequest;
 }
@@ -120,20 +131,36 @@ void TCreateDiskFromDevicesActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (Request.GetDeviceUUIDs().size() == 0) {
-        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DeviceUUIDs cannot be empty"));
-        return;
-    }
-
     if (Request.GetStorageMediaKind() == NProto::STORAGE_MEDIA_DEFAULT) {
         Request.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
     }
 
-    if (auto error =
-            ValidateMediaKindForDiskFromDevices(Request.GetStorageMediaKind());
-        HasError(error))
-    {
-        ReplyAndDie(ctx, error);
+    const auto mediaKind = Request.GetStorageMediaKind();
+    if (!IsDiskRegistryMediaKind(mediaKind)) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << MediaKindToString(mediaKind)
+                                 << " media kind is not allowed, expected disk "
+                                    "registry media kind"));
+        return;
+    }
+
+    const bool isMirrored = IsReliableDiskRegistryMediaKind(mediaKind);
+    if (!isMirrored && Request.GetDeviceUUIDs().empty()) {
+        ReplyAndDie(
+            ctx,
+            MakeError(E_ARGUMENT, "Devices cannot be empty for simple disk"));
+        return;
+    }
+
+    if (isMirrored && Request.GetReplicas().empty()) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_ARGUMENT,
+                "Replicas cannot be empty for mirrored disk"));
         return;
     }
 

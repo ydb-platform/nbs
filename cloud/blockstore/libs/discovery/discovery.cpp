@@ -8,6 +8,7 @@
 
 #include <cloud/blockstore/public/api/protos/discovery.pb.h>
 
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -15,6 +16,15 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/threading/future/future.h>
+
+#include <util/generic/hash_set.h>
+
+#include <algorithm>
+#include <array>
+#include <exception>
+#include <mutex>
+#include <utility>
 
 using namespace NMonitoring;
 
@@ -78,6 +88,7 @@ private:
     IBanListPtr BanList;
     IInstanceFetcherPtr StaticInstanceFetcher;
     IInstanceFetcherPtr ConductorInstanceFetcher;
+    IInstanceFetcherPtr EdsInstanceFetcher;
     IHealthCheckerPtr HealthChecker;
     IBalancingPolicyPtr BalancingPolicy;
 
@@ -86,6 +97,7 @@ private:
 
     TInstanceList ConductorInstances;
     TInstanceList StaticInstances;
+    TInstanceList EdsInstances;
 
     TAtomic ShouldStop = false;
 
@@ -99,6 +111,7 @@ public:
             IBanListPtr banList,
             IInstanceFetcherPtr staticInstanceFetcher,
             IInstanceFetcherPtr conductorInstanceFetcher,
+            IInstanceFetcherPtr edsInstanceFetcher,
             IHealthCheckerPtr healthChecker,
             IBalancingPolicyPtr balancingPolicy)
         : Config(std::move(config))
@@ -109,6 +122,7 @@ public:
         , BanList(std::move(banList))
         , StaticInstanceFetcher(std::move(staticInstanceFetcher))
         , ConductorInstanceFetcher(std::move(conductorInstanceFetcher))
+        , EdsInstanceFetcher(std::move(edsInstanceFetcher))
         , HealthChecker(std::move(healthChecker))
         , BalancingPolicy(std::move(balancingPolicy))
     {
@@ -128,17 +142,27 @@ private:
         NProto::EDiscoveryPortFilter filter,
         NProto::TDiscoverInstancesResponse* r);
 
+    void InitializeInstances(
+        const TDuration interval,
+        IInstanceFetcher& fetcher,
+        TInstanceList& instances,
+        TBackoffDelayProvider backoff);
+
     void ScheduleFetch(
         const TDuration interval,
         IInstanceFetcher& fetcher,
         TInstanceList& instances);
-    void FetchInstances(
+    NThreading::TFuture<NProto::TError> FetchInstances(
         const TDuration interval,
         IInstanceFetcher& fetcher,
         TInstanceList& instances);
 
-    void ScheduleHealthCheck(TInstanceList& instances);
-    void HealthCheckInstances(TInstanceList& instances);
+    void ScheduleHealthCheck(
+        TInstanceList& instances,
+        NThreading::TPromise<void> firstCheck);
+    void HealthCheckInstances(
+        TInstanceList& instances,
+        NThreading::TPromise<void> firstCheck);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,52 +171,56 @@ void TDiscoveryService::ServeRequest(
     const NProto::TDiscoverInstancesRequest& request,
     NProto::TDiscoverInstancesResponse* response)
 {
-    if (!AtomicGet(StaticInstances.HealthCheckDone)
-            || !AtomicGet(ConductorInstances.HealthCheckDone))
-    {
-        *response->MutableError() =
-            MakeError(E_REJECTED, "not initialized yet");
-        return;
+    const auto filter = request.GetInstanceFilter();
+    auto instances = response->MutableInstances();
+
+    // Preserve source order when balancing scores are equal.
+    const std::array<TInstanceList*, 3> sources = {
+        &ConductorInstances,
+        &StaticInstances,
+        &EdsInstances,
+    };
+    std::array<std::unique_lock<TAdaptiveLock>, 3> locks;
+    std::array<const TDeque<TInstanceInfo>*, 3> lists = {};
+    std::array<TDeque<TInstanceInfo>::const_iterator, 3> iterators;
+    bool allReady = true;
+    for (size_t i = 0; i < sources.size(); ++i) {
+        auto& source = *sources[i];
+        if (!AtomicGet(source.HealthCheckDone)) {
+            allReady = false;
+            continue;
+        }
+        locks[i] = std::unique_lock(source.Lock);
+        lists[i] = &source.Instances;
+        iterators[i] = lists[i]->begin();
     }
 
-    const auto filter = request.GetInstanceFilter();
-
-    auto instances = response->MutableInstances();
-    auto cg = Guard(ConductorInstances.Lock);
-    auto sg = Guard(StaticInstances.Lock);
-
-    auto sit = StaticInstances.Instances.begin();
-    auto cit = ConductorInstances.Instances.begin();
+    THashSet<std::pair<TString, ui16>> seen;
     while (ui32(instances->size()) < request.GetLimit()) {
-        if (sit == StaticInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && cit < ConductorInstances.Instances.end())
+        const TInstanceInfo* next = nullptr;
+        size_t source = 0;
+        for (size_t i = 0; i < lists.size(); ++i) {
+            if (lists[i] && iterators[i] != lists[i]->end()
+                    && (!next || iterators[i]->BalancingScore > next->BalancingScore))
             {
-                AddInstance(*cit, filter, response);
-                ++cit;
+                next = &*iterators[i];
+                source = i;
             }
-
+        }
+        if (!next) {
             break;
         }
-
-        if (cit == ConductorInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && sit < StaticInstances.Instances.end())
-            {
-                AddInstance(*sit, filter, response);
-                ++sit;
-            }
-
-            break;
+        ++iterators[source];
+        if (!FilterOutByPort(*next, filter)
+                && seen.emplace(next->Host, next->Port).second)
+        {
+            AddInstance(*next, filter, response);
         }
+    }
 
-        if (sit->BalancingScore > cit->BalancingScore) {
-            AddInstance(*sit, filter, response);
-            ++sit;
-        } else {
-            AddInstance(*cit, filter, response);
-            ++cit;
-        }
+    if (!allReady && instances->empty()) {
+        *response->MutableError() =
+            MakeError(E_REJECTED, "not initialized yet");
     }
 }
 
@@ -209,21 +237,38 @@ void TDiscoveryService::Start()
     BanList->Start();
     StaticInstanceFetcher->Start();
     ConductorInstanceFetcher->Start();
+    EdsInstanceFetcher->Start();
     HealthChecker->Start();
 
     BanList->Update();
-    FetchInstances(
+    const auto initialize = [this] (
+        TDuration interval,
+        IInstanceFetcher& fetcher,
+        TInstanceList& instances)
+    {
+        InitializeInstances(
+            interval,
+            fetcher,
+            instances,
+            TBackoffDelayProvider(
+                std::min(interval, TDuration::Seconds(1)),
+                interval));
+    };
+    initialize(
         Config->GetConductorRequestInterval(),
         *ConductorInstanceFetcher,
         ConductorInstances
     );
-    FetchInstances(
+    initialize(
+        Config->GetEdsRequestInterval(),
+        *EdsInstanceFetcher,
+        EdsInstances
+    );
+    initialize(
         Config->GetLocalFilesReloadInterval(),
         *StaticInstanceFetcher,
         StaticInstances
     );
-    ScheduleHealthCheck(ConductorInstances);
-    ScheduleHealthCheck(StaticInstances);
 }
 
 void TDiscoveryService::Stop()
@@ -232,6 +277,7 @@ void TDiscoveryService::Stop()
 
     HealthChecker->Stop();
     ConductorInstanceFetcher->Stop();
+    EdsInstanceFetcher->Stop();
     StaticInstanceFetcher->Stop();
     BanList->Stop();
 }
@@ -250,6 +296,62 @@ void TDiscoveryService::AddInstance(
         i->SetHost(ii.Host);
         i->SetPort(ii.Port);
     }
+}
+
+void TDiscoveryService::InitializeInstances(
+    const TDuration interval,
+    IInstanceFetcher& fetcher,
+    TInstanceList& instances,
+    TBackoffDelayProvider backoff)
+{
+    if (AtomicGet(ShouldStop)) {
+        return;
+    }
+
+    auto weak_ptr = weak_from_this();
+    FetchInstances(interval, fetcher, instances).Subscribe(
+        [weak_ptr = std::move(weak_ptr),
+         interval,
+         &fetcher,
+         &instances,
+         backoff = std::move(backoff)] (const auto& future) mutable {
+            auto p = weak_ptr.lock();
+            if (!p || AtomicGet(p->ShouldStop)) {
+                return;
+            }
+            bool retry = false;
+            if (HasError(future.GetValue())) {
+                with_lock (instances.Lock) {
+                    retry = instances.Instances.empty();
+                }
+            }
+            if (retry) {
+                const auto retryDelay = backoff.GetDelayAndIncrease();
+                p->Scheduler->Schedule(
+                    p->Timer->Now() + retryDelay,
+                    [weak_ptr, interval, &fetcher, &instances, backoff] {
+                        if (auto p = weak_ptr.lock()) {
+                            p->InitializeInstances(
+                                interval,
+                                fetcher,
+                                instances,
+                                backoff);
+                        }
+                    }
+                );
+                return;
+            }
+            auto firstCheck = NThreading::NewPromise();
+            firstCheck.GetFuture().Subscribe(
+                [weak_ptr, interval, &fetcher, &instances] (const auto&) {
+                    if (auto p = weak_ptr.lock()) {
+                        p->ScheduleFetch(interval, fetcher, instances);
+                    }
+                }
+            );
+            p->HealthCheckInstances(instances, std::move(firstCheck));
+        }
+    );
 }
 
 void TDiscoveryService::ScheduleFetch(
@@ -272,29 +374,55 @@ void TDiscoveryService::ScheduleFetch(
     );
 }
 
-void TDiscoveryService::FetchInstances(
+NThreading::TFuture<NProto::TError> TDiscoveryService::FetchInstances(
     const TDuration interval,
     IInstanceFetcher& fetcher,
     TInstanceList& instances)
 {
-    try {
-        auto weak_ptr = weak_from_this();
-        fetcher.FetchInstances(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (auto) {
-                if (auto p = weak_ptr.lock()) {
-                    p->ScheduleFetch(interval, fetcher, instances);
-                }
-            }
-        );
-    } catch (...) {
-        STORAGE_ERROR("unexpected fetch error: "
-            << CurrentExceptionMessage());
-        Counters.OnUnexpectedFetchError();
-        ScheduleFetch(interval, fetcher, instances);
+    if (AtomicGet(ShouldStop)) {
+        return NThreading::MakeFuture(NProto::TError{});
     }
+
+    NThreading::TFuture<NProto::TError> response;
+    try {
+        response = fetcher.FetchInstances(instances);
+    } catch (...) {
+        const auto message = CurrentExceptionMessage();
+        STORAGE_ERROR("unexpected fetch error: " << message);
+        Counters.OnUnexpectedFetchError();
+        response = NThreading::MakeFuture(MakeError(E_FAIL, message));
+    }
+
+    auto weak_ptr = weak_from_this();
+    return response.Apply(
+        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (const auto& future) {
+            auto p = weak_ptr.lock();
+            if (!p || AtomicGet(p->ShouldStop)) {
+                return NProto::TError{};
+            }
+
+            NProto::TError error;
+            try {
+                error = future.GetValue();
+            } catch (...) {
+                const auto message = CurrentExceptionMessage();
+                auto& Log = p->Log;
+                STORAGE_ERROR("unexpected fetch error: " << message);
+                p->Counters.OnUnexpectedFetchError();
+                error = MakeError(E_FAIL, message);
+            }
+
+            if (AtomicGet(instances.HealthCheckDone)) {
+                p->ScheduleFetch(interval, fetcher, instances);
+            }
+            return error;
+        }
+    );
 }
 
-void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
+void TDiscoveryService::ScheduleHealthCheck(
+    TInstanceList& instances,
+    NThreading::TPromise<void> firstCheck)
 {
     if (AtomicGet(ShouldStop)) {
         return;
@@ -303,33 +431,60 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + Config->GetHealthCheckInterval(),
-        [weak_ptr = std::move(weak_ptr), &instances] {
+        [weak_ptr = std::move(weak_ptr),
+         &instances,
+         firstCheck = std::move(firstCheck)] () mutable {
             if (auto p = weak_ptr.lock()) {
-                p->HealthCheckInstances(instances);
+                p->HealthCheckInstances(instances, std::move(firstCheck));
             }
         }
     );
 }
 
-void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
+void TDiscoveryService::HealthCheckInstances(
+    TInstanceList& instances,
+    NThreading::TPromise<void> firstCheck)
 {
-    try {
-        auto weak_ptr = weak_from_this();
-        HealthChecker->UpdateStatus(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), &instances] (auto) {
-                if (auto p = weak_ptr.lock()) {
-                    p->BalancingPolicy->Reorder(instances);
-                    AtomicSet(instances.HealthCheckDone, true);
-                    p->ScheduleHealthCheck(instances);
-                }
-            }
-        );
-    } catch (...) {
-        STORAGE_ERROR("unexpected healthcheck error: "
-            << CurrentExceptionMessage());
-        Counters.OnUnexpectedHealthCheckError();
-        ScheduleHealthCheck(instances);
+    if (AtomicGet(ShouldStop)) {
+        return;
     }
+
+    NThreading::TFuture<void> response;
+    try {
+        response = HealthChecker->UpdateStatus(instances);
+    } catch (...) {
+        response = NThreading::MakeErrorFuture<void>(std::current_exception());
+    }
+
+    auto weak_ptr = weak_from_this();
+    response.Subscribe(
+        [weak_ptr = std::move(weak_ptr),
+         &instances,
+         firstCheck = std::move(firstCheck)] (const auto& future) mutable {
+            auto p = weak_ptr.lock();
+            if (!p || AtomicGet(p->ShouldStop)) {
+                return;
+            }
+
+            try {
+                future.GetValue();
+                p->BalancingPolicy->Reorder(instances);
+            } catch (...) {
+                auto& Log = p->Log;
+                STORAGE_ERROR("unexpected healthcheck error: "
+                    << CurrentExceptionMessage());
+                p->Counters.OnUnexpectedHealthCheckError();
+                p->ScheduleHealthCheck(instances, std::move(firstCheck));
+                return;
+            }
+
+            AtomicSet(instances.HealthCheckDone, true);
+            p->ScheduleHealthCheck(instances, {});
+            if (firstCheck.Initialized()) {
+                firstCheck.SetValue();
+            }
+        }
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -418,6 +573,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
     IBanListPtr banList,
     IInstanceFetcherPtr staticInstanceFetcher,
     IInstanceFetcherPtr conductorInstanceFetcher,
+    IInstanceFetcherPtr edsInstanceFetcher,
     IHealthCheckerPtr healthChecker,
     IBalancingPolicyPtr balancingPolicy)
 {
@@ -430,6 +586,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
         std::move(banList),
         std::move(staticInstanceFetcher),
         std::move(conductorInstanceFetcher),
+        std::move(edsInstanceFetcher),
         std::move(healthChecker),
         std::move(balancingPolicy)
     );

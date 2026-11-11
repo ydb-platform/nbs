@@ -189,6 +189,12 @@ protected:
 
     void PrepareHeaders(NCloud::NProto::TDeviceRequestHeaders& headers) const;
 
+    // The input split into pages of pageSize, from firstPageNo on.
+    void ReadPageGroup(
+        ui64 firstPageNo,
+        ui32 pageSize,
+        NCloud::NProto::TDevicePageGroup* group);
+
     template <typename TResponse>
     bool HandleResponse(const TResponse& response)
     {

@@ -53,20 +53,31 @@ function updateFilterClearControls() {
 }
 
 function populateTestPhaseOptions() {
-  const previousValue = testPhaseElement.value;
-  testPhaseElement.replaceChildren();
-  const anyPhase = document.createElement("option");
-  anyPhase.value = "";
-  anyPhase.textContent = "Any matching span";
-  testPhaseElement.append(anyPhase);
-  testPhaseOptions(spans, model.c).forEach(({ value, label }) => {
+  const options = [
+    { value: "", label: "Any matching span" },
+    ...testPhaseOptions(spans, model.c),
+  ];
+  populateSelectOptions(testPhaseElement, options);
+  populateSelectOptions(rowOrderElement, [
+    { value: ROW_ORDERS.TREE, label: "Trace tree" },
+    ...options.map(({ value, label }) => ({
+      value: value || ROW_ORDERS.DURATION,
+      label: `${label}, longest first`,
+    })),
+  ]);
+}
+
+function populateSelectOptions(element, options) {
+  const previousValue = element.value;
+  element.replaceChildren();
+  options.forEach(({ value, label }) => {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
-    testPhaseElement.append(option);
+    element.append(option);
   });
-  if ([...testPhaseElement.options].some(({ value }) => value === previousValue)) {
-    testPhaseElement.value = previousValue;
+  if (options.some(({ value }) => value === previousValue)) {
+    element.value = previousValue;
   }
 }
 
@@ -98,41 +109,104 @@ function applyFilter() {
     searchCache,
     traceIndex,
   );
+  matchingSpans = result.matching;
   if (result.visible === null) {
     visible = null;
-    filterStatus.textContent = "";
     resetDefaults();
+    updateOrderedRows();
     renderRows();
     return;
   }
   rowBudget = INITIAL_ROW_BUDGET;
   limits = new Map();
   visible = result.visible;
-  filterStatus.textContent = `${result.matches.toLocaleString()} matching span${
-    result.matches === 1 ? "" : "s"
-  }`;
+  updateOrderedRows();
+  renderRows();
+}
+
+function currentRowOrder() {
+  return rowOrderFromValue(rowOrderElement?.value);
+}
+
+function treeFilterIsActive() {
+  return Boolean(visible) && currentRowOrder() === ROW_ORDERS.TREE;
+}
+
+function updateOrderedRows() {
+  const order = currentRowOrder();
+  orderedRows =
+    order === ROW_ORDERS.TREE
+      ? []
+      : durationOrderedIndexes(traceIndex, order, currentFilters());
+  const matches = order === ROW_ORDERS.TREE ? matchingSpans?.size : orderedRows.length;
+  filterStatus.textContent = matches === undefined
+    ? ""
+    : `${matches.toLocaleString()} matching span${matches === 1 ? "" : "s"}`;
+  viewVisible = visible ? new Set(visible) : null;
+  if (order !== ROW_ORDERS.TREE && !rowOrderIsFlat(order) && visible) {
+    orderedRows.forEach((index) => viewVisible.add(index));
+    // A directly matching interval can expose its contents. Context ancestors
+    // must not expose unrelated branches that failed the duration selection.
+    const matchingGroups = [...matchingSpans].filter((index) =>
+      testPhaseDefinition(traceIndex.scope(index))?.expandable,
+    );
+    traceIndex.addDescendants(viewVisible, matchingGroups);
+  }
+  if (!rowOrderIsFlat(order) && visible) {
+    // Start with matching paths open; subsequent expansion and collapse are
+    // controlled by the user, including when a duration filter is active.
+    if (order === ROW_ORDERS.TREE) expanded = new Set();
+    visible.forEach((index) => {
+      if (children[index].some((child) => visible.has(child))) expanded.add(index);
+    });
+  }
+  expandElement.disabled = rowOrderIsFlat(order);
+  collapseElement.disabled = rowOrderIsFlat(order);
+}
+
+function applyRowOrder() {
+  rowBudget = INITIAL_ROW_BUDGET;
+  limits = new Map();
+  updateOrderedRows();
   renderRows();
 }
 
 function flattenRows() {
+  const order = currentRowOrder();
+  if (rowOrderIsFlat(order)) return flatOrderedRows(orderedRows, rowBudget);
+  const ordered = order !== ROW_ORDERS.TREE;
   return flattenTraceRows({
     sourceSpans: spans,
     sourceChildren: children,
-    sourceRoots: roots,
+    sourceRoots: ordered ? orderedRows : roots,
     sourceExpanded: expanded,
     sourceLimits: limits,
-    sourceVisible: visible,
+    sourceVisible: viewVisible,
+    autoExpandVisible: false,
     maximumRows: rowBudget,
   });
 }
 
 function toggleSpanGroup(index) {
-  if (visible || !children[index].length) return;
+  if (!children[index].length) return;
   if (expanded.has(index)) {
     expanded.delete(index);
   } else {
+    const flattened = flattenRows();
+    if (treeFilterIsActive() && matchingSpans.has(index)) {
+      // Reveal context only after an explicit expansion of a matched group.
+      // Expanding an ancestor must not pull in unrelated sibling branches.
+      traceIndex.addDescendants(viewVisible, [index]);
+    }
+    if (currentRowOrder() !== ROW_ORDERS.TREE || visible) {
+      // Leave room for children even when the current list fills the page.
+      rowBudget = expandedGroupBudget(
+        rowBudget,
+        flattened.spanRows,
+        limits.get(index) ?? Math.min(PAGE_SIZE, children[index].length),
+      );
+    }
     if (!limits.has(index)) {
-      const flattened = flattenRows();
       limits.set(
         index,
         initialGroupLimit(
@@ -144,5 +218,20 @@ function toggleSpanGroup(index) {
     }
     expanded.add(index);
   }
+  renderRows();
+}
+
+function expandAllGroups() {
+  if (treeFilterIsActive()) {
+    traceIndex.addDescendants(viewVisible, matchingSpans);
+  }
+  spans.forEach((_span, index) => {
+    if (children[index].length) expanded.add(index);
+  });
+  renderRows();
+}
+
+function collapseAllGroups() {
+  expanded.clear();
   renderRows();
 }

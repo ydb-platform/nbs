@@ -305,6 +305,31 @@ message TAdvanceLsnLowWatermarkResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Write pages request/response.
+
+message TWritePagesRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+
+    // UUID of device to write to.
+    string DeviceUUID = 2;
+
+    // Pages to write to the data area, past the journal. A journal record
+    // for a page keeps precedence until it is flushed.
+    repeated TDevicePageGroup PageGroups = 3;
+}
+
+message TWritePagesResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Device protocol request/response wrappers.
 
 message TDeviceProtocolRequest
@@ -321,6 +346,7 @@ message TDeviceProtocolRequest
         TAdvanceLsnLowWatermarkRequest AdvanceLsnLowWatermark = 7;
         TFormatDeviceRequest FormatDevice = 8;
         TListDevicesRequest ListDevices = 9;
+        TWritePagesRequest WritePages = 10;
     }
 }
 
@@ -340,5 +366,6 @@ message TDeviceProtocolResponse
         TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark = 8;
         TFormatDeviceResponse FormatDevice = 9;
         TListDevicesResponse ListDevices = 10;
+        TWritePagesResponse WritePages = 11;
     }
 }

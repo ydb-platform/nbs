@@ -301,6 +301,48 @@ function testSearchKeepsChildrenOfMatchingTestOperations() {
   assert.deepStrictEqual(spanIndexes(filtered), [0, 2, 3, 4]);
 }
 
+function testMetadataMatchDoesNotIncludeUnrelatedBuildDescendants() {
+  const target = "close_to_open_consistency";
+  const spans = [
+    makeSpan({ id: "root", name: "ya make tests" }),
+    makeSpan({
+      id: "build", parent: 0, name: "build operations",
+      attributes: { "ya.build.critical_path.summary": [`test: ${target}`] },
+    }),
+    makeSpan({ id: "unrelated-build", parent: 1, name: "compile unrelated" }),
+    makeSpan({ id: "unrelated-command", parent: 2, name: "compiler command" }),
+    makeSpan({ id: "target-build", parent: 1, name: `compile ${target}` }),
+    makeSpan({ id: "target-command", parent: 4, name: "compiler command" }),
+    makeSpan({ id: "worker", parent: 0, name: `test worker: ${target}` }),
+    makeSpan({ id: "setup", parent: 6, name: "worker phase: setup" }),
+    makeSpan({ id: "test", parent: 6, name: "Suite::test_case" }),
+    makeSpan({
+      id: "metadata-only", parent: 0, name: "result",
+      attributes: { "test.path": target },
+    }),
+  ];
+  const index = new TraceIndex(spans);
+  const result = matchingVisibility(spans, target.toUpperCase());
+  const rows = flattenTraceRows({
+    sourceSpans: spans,
+    sourceChildren: index.children,
+    sourceRoots: index.roots,
+    sourceExpanded: new Set(),
+    sourceVisible: result.visible,
+  });
+
+  assert.strictEqual(result.matches, 4);
+  assert.deepStrictEqual(spanIndexes(rows), [0, 1, 4, 5, 6, 7, 8, 9]);
+  assert.deepStrictEqual(
+    durationOrderedIndexes(index, ROW_ORDERS.DURATION, { query: target }),
+    [1, 4, 6, 9],
+  );
+
+  // Summary metadata remains searchable without expanding the build tree.
+  const summary = matchingVisibility(spans, "ya.build.critical_path.summary");
+  assert.deepStrictEqual([...summary.visible], [1, 0]);
+}
+
 for (const test of [
   testLoadSizesAreProgressiveIncrements,
   testChildCountsAndCriticalPathMarker,
@@ -308,6 +350,7 @@ for (const test of [
   testCollapsedGroupsAndExpansion,
   testSearchIncludesAttributesAndAncestors,
   testSearchKeepsChildrenOfMatchingTestOperations,
+  testMetadataMatchDoesNotIncludeUnrelatedBuildDescendants,
 ]) {
   test();
 }

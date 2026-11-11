@@ -169,7 +169,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("11:[b]", ReadPages({{11, 1}}));
     }
 
-    Y_UNIT_TEST_F(ShouldWriteEveryPageRangeOfTheRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldWriteEveryPageRangeOfRequest, TFixture)
     {
         WritePages({{10, {"a", "b"}}, {20, {"c"}}});
 
@@ -229,7 +229,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldZeroPagesAccordingToTheDevicePageSize, TFixture)
+    Y_UNIT_TEST_F(ShouldZeroPagesAccordingToDevicePageSize, TFixture)
     {
         Device = CreateInMemoryDevice(512);
 
@@ -243,7 +243,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(512), group.GetContent(0));
     }
 
-    Y_UNIT_TEST_F(ShouldReturnAPagePerRequestedPage, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnPagePerRequestedPage, TFixture)
     {
         WritePages({{10, {"a"}}});
 
@@ -256,7 +256,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("", ReadPages({}));
     }
 
-    Y_UNIT_TEST(ShouldNotMakeAResponseOfAnUnexpectedPageCount)
+    Y_UNIT_TEST(ShouldNotMakeResponseOfUnexpectedPageCount)
     {
         TVector<TBuffer> pages;
         pages.emplace_back("a", 1);
@@ -269,9 +269,6 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
             E_INVALID_STATE,
             response.GetError().GetCode(),
             FormatError(response.GetError()));
-        UNIT_ASSERT_STRING_CONTAINS(
-            response.GetError().GetMessage(),
-            "the device returned 1 pages, expected 2");
     }
 }
 

@@ -13,7 +13,7 @@ import (
 
 type diskTarget struct {
 	client           nbs.Client
-	session          *nbs.Session
+	session          nbs.Session
 	blocksInChunk    uint64
 	ignoreZeroChunks bool
 }

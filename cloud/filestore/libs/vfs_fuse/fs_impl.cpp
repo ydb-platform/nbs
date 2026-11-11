@@ -44,6 +44,7 @@ TFileSystem::TFileSystem(
         IFileStorePtr session,
         IRequestStatsPtr stats,
         TDirectoryHandleModuleStatsPtr directoryHandleStats,
+        TMetadataCacheModuleStatsPtr metadataCacheStats,
         ICompletionQueuePtr queue,
         THandleOpsQueuePtr handleOpsQueue,
         TDirectoryHandleStoragePtr directoryHandleStorage,
@@ -58,6 +59,7 @@ TFileSystem::TFileSystem(
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
     , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
+    , MetadataCacheStats(std::move(metadataCacheStats))
     , NodeAttrsCache(Config->GetNodeAttrsCacheLimit(), CACHE_SHARD_COUNT)
     , NodeRefCache(Config->GetNodeRefCacheLimit(), CACHE_SHARD_COUNT)
     , DirectoryEntryVersionCache(
@@ -327,6 +329,12 @@ bool TFileSystem::TryReplyAttrFromCache(
 
 void TFileSystem::InvalidateCachedNode(ui64 nodeId)
 {
+    MetadataCacheStats->IncrementInvalidateNodeEventCount();
+    InvalidateCachedNodeAttrs(nodeId);
+}
+
+void TFileSystem::InvalidateCachedNodeAttrs(ui64 nodeId)
+{
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating cached node: " << nodeId
@@ -339,6 +347,8 @@ void TFileSystem::InvalidateCachedNodeRef(
     ui64 parentNodeId,
     const TString& name)
 {
+    MetadataCacheStats->IncrementInvalidateNodeRefEventCount();
+
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_TRACE("invalidating cached node ref: " << parentNodeId
@@ -348,14 +358,53 @@ void TFileSystem::InvalidateCachedNodeRef(
     NodeRefCache.Invalidate(parentNodeId, name, version);
 }
 
+void TFileSystem::InvalidateCachedNodeXAttr(
+    ui64 nodeId,
+    const TString& name)
+{
+    MetadataCacheStats->IncrementInvalidateNodeXAttrEventCount();
+    InvalidateCachedXAttr(nodeId, name);
+}
+
+void TFileSystem::InvalidateCachedXAttr(ui64 nodeId, const TString& name)
+{
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating cached xattr: " << nodeId
+        << " " << name.Quote()
+        << ", version: " << version);
+
+    TGuard g{XAttrCacheLock};
+    XAttrCache.Invalidate(nodeId, name, version);
+}
+
+TMetadataCacheSizes TFileSystem::GetMetadataCacheSizes()
+{
+    TMetadataCacheSizes sizes{
+        .NodeAttrsCacheSize = NodeAttrsCache.GetEntryCount(),
+        .NodeRefCacheSize = NodeRefCache.GetEntryCount(),
+    };
+
+    with_lock (XAttrCacheLock) {
+        sizes.XAttrCacheSize = XAttrCache.GetEntryCount();
+    }
+
+    return sizes;
+}
+
 void TFileSystem::InvalidateAllCachedMetadata()
 {
+    MetadataCacheStats->IncrementInvalidateAllCount();
+
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
     STORAGE_INFO("invalidating all cached metadata, version: " << version);
 
     NodeAttrsCache.InvalidateAll(version);
     NodeRefCache.InvalidateAll(version);
+
+    TGuard g{XAttrCacheLock};
+    XAttrCache.InvalidateAll(version);
 }
 
 void TFileSystem::InvalidateCachedEntry(
@@ -409,8 +458,13 @@ void TFileSystem::InvalidateDirectoryEntryInCache(
 
 void TFileSystem::InvalidateXAttrCache(ui64 ino)
 {
+    const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating cached xattrs: " << ino
+        << ", version: " << version);
+
     TGuard g{XAttrCacheLock};
-    XAttrCache.Invalidate(ino);
+    XAttrCache.Invalidate(ino, version);
 }
 
 void TFileSystem::UpdateXAttrCache(
@@ -418,17 +472,63 @@ void TFileSystem::UpdateXAttrCache(
     const TString& name,
     const TString& value,
     ui64 version,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    ui64 cacheVersion,
+    TDuration cacheTTL)
 {
     TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
-            XAttrCache.AddAbsent(ino, name);
+            XAttrCache.AddAbsent(ino, name, cacheVersion, cacheTTL);
         }
         return;
     }
 
-    XAttrCache.Add(ino, name, value, version);
+    XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
+}
+
+void TFileSystem::UpdateXAttrCacheUponSetXAttr(
+    ui64 ino,
+    const TString& name,
+    const TString& value,
+    ui64 version,
+    const NProto::TError& error,
+    ui64 cacheVersion,
+    TDuration cacheTTL)
+{
+    TMaybe<TString> ownValue;
+    if (!HasError(error)) {
+        ownValue = value;
+    } else if (STATUS_FROM_CODE(error.GetCode()) != NProto::E_FS_NOXATTR) {
+        return;
+    }
+
+    //
+    // Like the other local changes, the change invalidates the xattr: the
+    // responses to the requests started before this point may contain an
+    // older value or absence (they may have been processed by the backend
+    // before this SetNodeXAttr), the requests started after this point see
+    // the new state. Unlike the other local changes, the set value (or the
+    // absence found out upon F_REPLACE) itself is cached.
+    //
+
+    const ui64 invalidationVersion =
+        GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("own xattr set: " << ino
+        << " " << name.Quote()
+        << ", absent: " << !ownValue
+        << ", invalidation version: " << invalidationVersion);
+
+    TGuard g{XAttrCacheLock};
+    XAttrCache.AddOwn(
+        ino,
+        name,
+        ownValue,
+        version,
+        cacheVersion,
+        invalidationVersion,
+        cacheTTL);
 }
 
 void TFileSystem::ReplyCreateWithCache(

@@ -30,6 +30,18 @@ void OutDeviceUUID(IOutputStream& out, const TRequest& request)
     out << ", device: " << request.GetDeviceUUID().Quote();
 }
 
+template <typename TRequest>
+void OutPageGroups(IOutputStream& out, const TRequest& request)
+{
+    out << ", pages: [";
+    for (size_t i = 0; i < request.PageGroupsSize(); ++i) {
+        const auto& group = request.GetPageGroups(i);
+        out << (i ? ", " : "") << group.GetFirstPageNo() << "x"
+            << group.ContentSize();
+    }
+    out << "]";
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,13 +100,8 @@ TString DescribeRequest(const NProto::TWriteLogRecordRequest& request)
     OutHeaders(out.Out, request);
     OutDeviceUUID(out.Out, request);
     out << ", lsn: " << request.GetLogSequenceNumber()
-        << ", prev lsn: " << request.GetPrevLogSequenceNumber() << ", pages: [";
-    for (size_t i = 0; i < request.PageGroupsSize(); ++i) {
-        const auto& group = request.GetPageGroups(i);
-        out << (i ? ", " : "") << group.GetFirstPageNo() << "x"
-            << group.ContentSize();
-    }
-    out << "]";
+        << ", prev lsn: " << request.GetPrevLogSequenceNumber();
+    OutPageGroups(out.Out, request);
     return out;
 }
 
@@ -114,6 +121,15 @@ TString DescribeRequest(const NProto::TAdvanceLsnLowWatermarkRequest& request)
     OutHeaders(out.Out, request);
     OutDeviceUUID(out.Out, request);
     out << ", lsn low watermark: " << request.GetLsnLowWatermark();
+    return out;
+}
+
+TString DescribeRequest(const NProto::TWritePagesRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    OutPageGroups(out.Out, request);
     return out;
 }
 

@@ -489,6 +489,43 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
             tablet.LastDisconnected >= tablet.LastReceived + IdleTimeout);
     }
 
+    Y_UNIT_TEST(ShouldKeepPipeOnKeepAlive)
+    {
+        TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const auto& tablet = *env.Tablets[TabletA];
+
+        auto keepAlive = [&]
+        {
+            env.Send(new TEvTabletProxy::TEvKeepAliveRequest(TabletA));
+            auto ev =
+                env.Runtime.GrabEdgeEvent<TEvTabletProxy::TEvKeepAliveResponse>(
+                    env.Edge,
+                    GrabTimeout);
+            UNIT_ASSERT(ev);
+            return ev->Get()->GetStatus();
+        };
+
+        // A keep-alive does not open a pipe, a request does.
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, keepAlive());
+        env.Forward(TabletA, "a", 1);
+        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(1));
+
+        // Each keep-alive restarts the idle timeout.
+        for (ui32 i = 0; i != 3; ++i) {
+            env.Pass(IdleTimeout / 2);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, keepAlive());
+        }
+        const TInstant lastKeepAlive = env.Runtime.GetCurrentTime();
+        UNIT_ASSERT_VALUES_EQUAL(0, tablet.Disconnects);
+
+        env.WaitFor([&] { return tablet.Disconnects == 1; });
+        UNIT_ASSERT(tablet.LastDisconnected >= lastKeepAlive + IdleTimeout);
+
+        // The pipe closed idle: nothing to keep.
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, keepAlive());
+        UNIT_ASSERT_VALUES_EQUAL(1, tablet.Connects);
+    }
+
     Y_UNIT_TEST(ShouldNotifySendersOnShutdown)
     {
         TEnv env;

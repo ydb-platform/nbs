@@ -248,6 +248,18 @@ struct TBootstrap
             ->FindSubgroup("module", "DirectoryHandles");
     }
 
+    NMonitoring::TDynamicCountersPtr GetMetadataCacheCounters() const
+    {
+        return Counters
+            ->FindSubgroup("component", TString{MetricsComponent} + "_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("module", "MetadataCache");
+    }
+
     NMonitoring::TDynamicCountersPtr GetHandleOpsQueueCounters() const
     {
         return Counters

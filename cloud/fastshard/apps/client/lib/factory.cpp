@@ -8,6 +8,7 @@
 #include "read_pages.h"
 #include "release_devices.h"
 #include "write_log_record.h"
+#include "write_pages.h"
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>

@@ -169,7 +169,9 @@ private:
 public:
     explicit TTestServerBuilder(TTestContext testContext)
         : TestContext(std::move(testContext))
-    {}
+    {
+        ServerAppConfig.MutableServerConfig()->SetDataPort(0);
+    }
 
     TTestServerBuilder& SetPort(ui16 port)
     {
