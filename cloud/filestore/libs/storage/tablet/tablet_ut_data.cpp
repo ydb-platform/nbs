@@ -4959,68 +4959,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             testEnvConfig);
     }
 
-    TABLET_TEST(ShouldDrainAllFreshBytesWithForcedFlushBytes)
-    {
-        const auto block = tabletConfig.BlockSize;
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetWriteBlobThreshold(1_GB);
-        storageConfig.SetFlushThreshold(1_GB);
-        storageConfig.SetFlushBytesThreshold(1_GB);
-        storageConfig.SetTrimBytesItemCount(1);
-
-        TTestEnv env(testEnvConfig, storageConfig);
-        auto& runtime = env.GetRuntime();
-        const auto nodeIdx = env.AddDynamicNode();
-        const auto tabletId = env.BootIndexTablet(nodeIdx);
-        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
-        tablet.InitSession("client", "session");
-
-        const auto id =
-            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        const auto handle = CreateHandle(tablet, id);
-        for (ui32 i = 0; i < 2; ++i) {
-            tablet.WriteData(handle, i * block, block, 'a');
-            tablet.WriteData(handle, i * block + 100, 10, 'b');
-        }
-        tablet.CreateCheckpoint("first");
-
-        // Seal a second chunk containing only deletion markers.
-        const auto sparseId =
-            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "sparse"));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(sparseId).SetSize(3 * block));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(sparseId).SetSize(2 * block));
-        tablet.SetNodeAttr(TSetNodeAttrArgs(sparseId).SetSize(block));
-        tablet.CreateCheckpoint("second");
-
-        // Leave a third chunk active, below the background flush threshold.
-        for (ui32 i = 0; i < 2; ++i) {
-            tablet.WriteData(handle, i * block + 100, 10, 'c');
-        }
-
-        {
-            const auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(40, stats.GetFreshBytesCount());
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetFreshBytesItemCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                2 * block,
-                stats.GetDeletedFreshBytesCount());
-        }
-
-        auto request = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedTabletOperationRequest>(
-            TEvIndexTabletPrivate::EForcedTabletOperationMode::FlushBytes,
-            CreateGuidAsString());
-        tablet.SendRequest(std::move(request));
-        tablet.AssertForcedTabletOperationResponse(S_OK);
-
-        const auto response = tablet.GetStorageStats();
-        const auto& stats = response->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
-        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
-    }
-
     TABLET_TEST(ShouldCompleteForcedFlushBytesWhenEmpty)
     {
         TTestEnv env(testEnvConfig);

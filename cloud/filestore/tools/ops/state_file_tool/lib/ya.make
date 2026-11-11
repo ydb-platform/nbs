@@ -10,6 +10,7 @@ PEERDIR(
     cloud/filestore/tools/ops/state_file_tool/protos
     cloud/storage/core/libs/common
     cloud/storage/core/libs/file_backed_containers
+    cloud/storage/core/protos
     library/cpp/digest/crc32c
 )
 

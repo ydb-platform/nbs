@@ -50,6 +50,8 @@ using TCritEventParams =
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(DiskRegistryPurgeDeviceError)                                          \
     xxx(CompressionChunkNotFound)                                              \
+    xxx(VolumeProxyInvalidState)                                               \
+    xxx(InvalidBlobCompressionCodec)                                           \
     // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \

@@ -88,12 +88,42 @@ ui64 TNodeCacheShard::GetNodeVersion(ui64 ino) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TXAttrCache::IsCacheable(
+    ui64 ino,
+    const TString& name,
+    ui64 cacheVersion) const
+{
+    return Invalidations.IsCacheable(
+               TXAttrCacheKey{.NodeId = ino, .Name = name},
+               cacheVersion) &&
+           NodeInvalidations.IsCacheable(ino, cacheVersion);
+}
+
+void TXAttrCache::Erase(ui64 ino, const TString& name)
+{
+    auto it = Cache.Find({ino, name});
+    if (it != Cache.End()) {
+        Cache.Erase(it);
+    }
+}
+
+TInstant TXAttrCache::GetDeadline(TDuration cacheTTL) const
+{
+    return Timer->Now() + (cacheTTL ? cacheTTL : Timeout);
+}
+
 void TXAttrCache::Add(
     ui64 ino,
     const TString& name,
     const TString& value,
-    ui64 version)
+    ui64 version,
+    ui64 cacheVersion,
+    TDuration cacheTTL)
 {
+    if (!IsCacheable(ino, name, cacheVersion)) {
+        return;
+    }
+
     const auto* current = Get(ino, name);
     if (!current || current->Version < version) {
         Cache.Update(
@@ -102,64 +132,111 @@ void TXAttrCache::Add(
                 .Name = name,
                 .Value = value,
                 .Version = version,
-                .UpdateTime = Timer->Now()
+                .CacheVersion = cacheVersion,
+                .Deadline = GetDeadline(cacheTTL)
             }
         );
     }
 }
 
-void TXAttrCache::AddAbsent(ui64 ino, const TString& name)
+void TXAttrCache::AddAbsent(
+    ui64 ino,
+    const TString& name,
+    ui64 cacheVersion,
+    TDuration cacheTTL)
 {
+    if (!IsCacheable(ino, name, cacheVersion)) {
+        return;
+    }
+
     Cache.Update(
         TKey{ino, name},
         TXAttr{
             .Name = name,
             .Value = Nothing(),
             .Version = 0,
-            .UpdateTime = Timer->Now()
+            .CacheVersion = cacheVersion,
+            .Deadline = GetDeadline(cacheTTL)
         }
     );
+}
+
+void TXAttrCache::AddOwn(
+    ui64 ino,
+    const TString& name,
+    const TMaybe<TString>& value,
+    ui64 version,
+    ui64 cacheVersion,
+    ui64 invalidationVersion,
+    TDuration cacheTTL)
+{
+    if (!IsCacheable(ino, name, cacheVersion)) {
+        Invalidate(ino, name, invalidationVersion);
+        return;
+    }
+
+    if (value) {
+        Add(ino, name, *value, version, cacheVersion, cacheTTL);
+    } else {
+        AddAbsent(ino, name, cacheVersion, cacheTTL);
+    }
+
+    //
+    // The cached value is kept, the tombstone prevents only the caching of
+    // the responses to the requests started before this point.
+    //
+
+    Invalidations.Invalidate(
+        TXAttrCacheKey{.NodeId = ino, .Name = name},
+        invalidationVersion);
 }
 
 const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)
 {
-    const auto now = Timer->Now();
-
     auto it = Cache.Find({ino, name});
-    if (it == Cache.End() || (now - it.Value().UpdateTime) >= Timeout) {
+    if (it == Cache.End()) {
         return nullptr;
     }
 
-    auto invalidation = Cache.Find(TKey{ino, TString{}});
-    if (invalidation != Cache.End() &&
-        (now - invalidation.Value().UpdateTime) < Timeout &&
-        it.Value().UpdateTime <= invalidation.Value().UpdateTime)
+    //
+    // The node-wide invalidations don't erase the entries of the node - the
+    // entries cached before such an invalidation are dropped here.
+    //
+
+    const auto& xattr = it.Value();
+    if (Timer->Now() >= xattr.Deadline ||
+        !NodeInvalidations.IsCacheable(ino, xattr.CacheVersion))
     {
+        Cache.Erase(it);
         return nullptr;
     }
 
-    return &it.Value();
+    return &xattr;
 }
 
-void TXAttrCache::Invalidate(ui64 ino)
+void TXAttrCache::Invalidate(ui64 ino, ui64 version)
 {
-    Cache.Update(
-        TKey{ino, TString{}},
-        TXAttr{
-            .Name = TString{},
-            .Value = Nothing(),
-            .Version = 0,
-            .UpdateTime = Timer->Now()
-        }
-    );
+    NodeInvalidations.Invalidate(ino, version);
 }
 
-void TXAttrCache::Forget(ui64 ino, const TString& name)
+void TXAttrCache::Invalidate(ui64 ino, const TString& name, ui64 version)
 {
-    auto it = Cache.Find({ino, name});
-    if (it != Cache.End()) {
-        Cache.Erase(it);
-    }
+    Invalidations.Invalidate(
+        TXAttrCacheKey{.NodeId = ino, .Name = name},
+        version);
+
+    Erase(ino, name);
+}
+
+size_t TXAttrCache::GetEntryCount() const
+{
+    return Cache.Size();
+}
+
+void TXAttrCache::InvalidateAll(ui64 version)
+{
+    Invalidations.InvalidateAll(version);
+    Cache.Clear();
 }
 
 }   // namespace NCloud::NFileStore::NFuse

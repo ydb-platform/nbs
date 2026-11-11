@@ -92,11 +92,11 @@ message TPartitionStats
     TIOCounters SysWriteCounters = 4;
     TIOCounters SysChecksumCounters = 14;
 
-    // Numbers of stored blobs (classified by channel).
+    // Numbers of stored blobs (classified by index).
     uint64 MixedBlobsCount = 5;
     uint64 MergedBlobsCount = 6;
 
-    // Numbers of stored blocks (classified by channel).
+    // Numbers of stored blocks (classified by index).
     uint64 FreshBlocksCount = 7;
     uint64 MixedBlocksCount = 8;
     uint64 MergedBlocksCount = 9;
@@ -139,6 +139,24 @@ message TPartitionStats
     // Numbers of blocks classified by the index they are stored in.
     uint64 MixedIndexBlocksCount = 28;
     uint64 MergedIndexBlocksCount = 29;
+
+    // Stored blob sizes, including compression. Presence marks initialization
+    // from block counts before compression is enabled.
+    message TBlobByteCounters
+    {
+        uint64 MixedBytesCount = 1;
+        uint64 MergedBytesCount = 2;
+        uint64 MixedIndexBytesCount = 3;
+        uint64 MergedIndexBytesCount = 4;
+    }
+    TBlobByteCounters BlobByteCounters = 30;
+
+    // Logical blocks and blobs classified by channel. Initialized together with
+    // BlobByteCounters and cleared when ExtendedBlobCountersEnabled is false.
+    uint64 MixedChannelBlocksCount = 31;
+    uint64 MergedChannelBlocksCount = 32;
+    uint64 MixedChannelBlobsCount = 33;
+    uint64 MergedChannelBlobsCount = 34;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,6 +203,38 @@ message TPartitionMeta
 
     // Progress marker for checkpoint-aware cleanup.
     TCleanupMilestone CleanupMilestone = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TCompressionMetadata
+{
+    // Each value identifies a specific library/cpp/blockcodecs configuration.
+    // Keep in sync with CompressionCodecs in partition_common/blob_compressor.cpp.
+    enum ECompressionType
+    {
+        COMPRESSION_NONE = 0;
+        COMPRESSION_LZ4_FAST14_SAFE = 1;
+        COMPRESSION_SNAPPY = 2;
+        COMPRESSION_ZSTD_3 = 3;
+    }
+    ECompressionType Codec = 1;
+
+    // Uncompressed chunk size in bytes used when writing this blob.
+    uint32 ChunkSize = 2;
+
+    message TPlainChunks
+    {
+        // Compressed sizes in bytes of all chunks except the last.
+        // N chunks have N-1 sizes; the last size is the blob size minus
+        // their sum.
+        repeated uint32 CompressedChunkSize = 1;
+    }
+
+    oneof Chunks
+    {
+        TPlainChunks PlainChunks = 3;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

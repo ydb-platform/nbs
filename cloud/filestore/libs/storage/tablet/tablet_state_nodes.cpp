@@ -79,17 +79,13 @@ void TIndexTabletState::UpdateNode(
     const NProto::TNode& prevAttrs)
 {
     //
-    // Time-only changes don't produce InvalidateNode. Otherwise every write
-    // (which always updates MTime) would produce an event. A write produces
-    // InvalidateNode only if it changes the file size. The same applies to
-    // the parent directory MTime/CTime updates upon CreateNode/UnlinkNode -
-    // those changes are covered by InvalidateNodeRef. Explicit time changes
-    // via SetNodeAttr produce InvalidateNode in SetNodeAttr itself.
+    // Any attr change produces InvalidateNode, including the time-only ones:
+    // the file MTime/CTime upon writes and the parent directory MTime/CTime
+    // upon CreateNode/UnlinkNode/RenameNode - the clients cache the
+    // timestamps as well.
     //
 
-    if (HasNonTimeAttrChanges(attrs, prevAttrs)) {
-        AddInvalidateNodeEvent(fileSystemEvents, nodeId);
-    }
+    AddInvalidateNodeEvent(fileSystemEvents, nodeId);
 
     UpdateUsedBlocksCount(db, attrs.GetSize(), prevAttrs.GetSize());
 

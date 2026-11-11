@@ -319,6 +319,10 @@ message TDiskConfig
 
     // Last applied SeqNo from TVolumeActor health notification.
     uint64 VolumeHealthSeqNo = 20;
+
+    // Tablet id of the external volume that owns this disk. Zero means that
+    // the disk belongs to a native NBS volume registered in SchemeShard.
+    uint64 ExternalVolumeTabletId = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -718,6 +722,10 @@ message TAllocateDiskRequest
 
     // Placement partition index.
     uint32 PlacementPartitionIndex = 12;
+
+    // Tablet id of the external volume that owns this disk. Zero means that
+    // the disk belongs to a native NBS volume registered in SchemeShard.
+    uint64 ExternalVolumeTabletId = 13;
 }
 
 message TReplica
@@ -773,6 +781,10 @@ message TDeallocateDiskRequest
 
     // Wait for secure cleanup of disk's devices before response.
     bool Sync = 4;
+
+    // Tablet id of the external volume that owns this disk. Must match the
+    // owner persisted on the disk. Zero for native NBS volumes.
+    uint64 ExternalVolumeTabletId = 5;
 }
 
 message TDeallocateDiskResponse
@@ -1447,6 +1459,9 @@ message TBackupDiskRegistryStateResponse
 
     // Disk Regsitry state backup from local db.
     TDiskRegistryStateBackup LocalDBBackup = 4;
+
+    // Time when the state was read (in microseconds).
+    uint64 SnapshotTs = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1515,6 +1530,10 @@ message TMarkDiskForCleanupRequest
 
     // Volume label.
     string DiskId = 2;
+
+    // Tablet id of the external volume that owns this disk. Must match the
+    // owner persisted on the disk. Zero for native NBS volumes.
+    uint64 ExternalVolumeTabletId = 3;
 }
 
 message TMarkDiskForCleanupResponse
@@ -1644,6 +1663,14 @@ message TUpdatePlacementGroupSettingsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// List of devices UUIDs.
+
+message TDeviceList
+{
+    repeated string DeviceUUIDs = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Volume create from devices request/response.
 
 message TCreateVolumeFromDevicesRequest
@@ -1670,6 +1697,16 @@ message TCreateVolumeFromDevicesRequest
     // DiskRegistry-based media kinds are allowed. STORAGE_MEDIA_SSD_LOCAL is
     // used if not specified.
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
+
+    // Replicas of the disk (for mirrored disks).
+    repeated TDeviceList Replicas = 8;
+
+    // Force dangerous actions.
+    bool Force = 9;
+
+    // If false, the block count will be cast to unadjusted.
+    // Currently for mirrored disks it is always true.
+    bool KeepBlockCount = 10;
 }
 
 message TCreateVolumeFromDevicesResponse

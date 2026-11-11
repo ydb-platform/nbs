@@ -13,46 +13,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDefaultCompletionPolicy
-{
-    static bool IsCompleted(const NProto::TError& error)
-    {
-        Y_UNUSED(error);
-        return true;
-    }
-};
-
-struct TFlushBytesCompletionPolicy
-{
-    static bool IsCompleted(const NProto::TError& error)
-    {
-        // A successful flush processes only one chunk and may reply before
-        // trimming it. Only an empty flush confirms that all chunks are
-        // drained.
-        return error.GetCode() == S_FALSE;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 /**
  * @brief An actor that performs forced flush, flush_bytes, collect_garbage ops.
  * It is implemented as a template class to avoid code duplication.
- *
- * @tparam TCompletionPolicy Determines whether a successful response completes
- * the forced operation. Errors use the same retry policy for all operations.
  */
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy = TDefaultCompletionPolicy>
+template <typename TResponseType, typename TRequestType>
 class TForcedOperationActor final
     : public TActorBootstrapped<
-          TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>>
+          TForcedOperationActor<TResponseType, TRequestType>>
 {
 private:
     using TBase = NActors::TActorBootstrapped<
-        TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>>;
+        TForcedOperationActor<TResponseType, TRequestType>>;
 
     const TActorId Tablet;
     const TString LogTag;
@@ -91,28 +63,21 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    TForcedOperationActor(
-        TActorId tablet,
-        TString logTag,
-        TDuration retry,
-        TRequestInfoPtr requestInfo)
+template <typename TResponseType, typename TRequestType>
+TForcedOperationActor<TResponseType, TRequestType>::TForcedOperationActor(
+    TActorId tablet,
+    TString logTag,
+    TDuration retry,
+    TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
     , RetryTimeout(retry)
     , RequestInfo(std::move(requestInfo))
 {}
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    Bootstrap(const TActorContext& ctx)
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::Bootstrap(
+    const TActorContext& ctx)
 {
     TBase::Become(&TBase::TThis::StateWork);
 
@@ -124,23 +89,16 @@ void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
     SendOperationRequest(ctx);
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    SendOperationRequest(const TActorContext& ctx)
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::SendOperationRequest(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<TRequestType>();
     ctx.Send(Tablet, request.release());
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-STFUNC((TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-            StateWork))
+template <typename TResponseType, typename TRequestType>
+STFUNC((TForcedOperationActor<TResponseType, TRequestType>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
@@ -157,11 +115,8 @@ STFUNC((TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
     }
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::
     HandleOperationResponse(
         const TResponseType::TPtr& ev,
         const TActorContext& ctx)
@@ -177,43 +132,31 @@ void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
         return ReplyAndDie(ctx, msg->Error);
     }
 
-    if (TCompletionPolicy::IsCompleted(msg->Error)) {
-        return ReplyAndDie(ctx, {});
-    }
-
-    SendOperationRequest(ctx);
+    return ReplyAndDie(ctx, {});
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::HandleWakeUp(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     SendOperationRequest(ctx);
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    HandlePoisonPill(
-        const TEvents::TEvPoison::TPtr& ev,
-        const TActorContext& ctx)
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::HandlePoisonPill(
+    const TEvents::TEvPoison::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     ReplyAndDie(ctx, MakeError(E_FAIL, "actor killed"));
 }
 
-template <
-    typename TResponseType,
-    typename TRequestType,
-    typename TCompletionPolicy>
-void TForcedOperationActor<TResponseType, TRequestType, TCompletionPolicy>::
-    ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
+template <typename TResponseType, typename TRequestType>
+void TForcedOperationActor<TResponseType, TRequestType>::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
 {
     {
         // notify tablet
@@ -243,12 +186,9 @@ using TForcedFlushActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvFlushResponse,
     TEvIndexTabletPrivate::TEvFlushRequest>;
 
-// Note: only use with no concurrent writes to the fs. Otherwise the
-//       actor may continue issuing unbounded number of flush bytes requests.
 using TForcedFlushBytesActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvFlushBytesResponse,
-    TEvIndexTabletPrivate::TEvFlushBytesRequest,
-    TFlushBytesCompletionPolicy>;
+    TEvIndexTabletPrivate::TEvFlushBytesRequest>;
 
 using TForcedCollectGarbageActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCollectGarbageResponse,
@@ -264,7 +204,7 @@ void TIndexTabletActor::HandleForcedTabletOperation(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(
+    LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s ForcedTabletOperation mode=%u request",

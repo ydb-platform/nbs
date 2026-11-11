@@ -28,6 +28,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
     IBanListPtr banList,
     IInstanceFetcherPtr staticInstanceFetcher,
     IInstanceFetcherPtr conductorInstanceFetcher,
+    IInstanceFetcherPtr edsInstanceFetcher,
     IHealthCheckerPtr healthChecker,
     IBalancingPolicyPtr balancingPolicy);
 

@@ -104,7 +104,7 @@ void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    if (auto error = ValidateMediaKindForDiskFromDevices(GetStorageMediaKind());
+    if (auto error = ValidateMediaKindForDiskFromDevice(GetStorageMediaKind());
         HasError(error))
     {
         ReplyAndDie(ctx, error);

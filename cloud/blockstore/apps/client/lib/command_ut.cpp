@@ -4,13 +4,18 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <contrib/ydb/core/base/logoblob.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <util/generic/guid.h>
 #include <util/stream/file.h>
@@ -885,6 +890,96 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         argv.emplace_back(TStringBuilder() << "--backup-disk-id=" << DefaultDiskId);
 
         UNIT_ASSERT(!ExecuteRequest("backupvolume", argv, client));
+    }
+
+    Y_UNIT_TEST(ShouldPrintFullBlobIdsInDescribeBlocks)
+    {
+        const NKikimr::TLogoBlobID freshBlobId(1, 2, 3, 4, 5, 6);
+        const NKikimr::TLogoBlobID blobId(7, 8, 9, 10, 11, 12);
+
+        auto setBlobId = [](const NKikimr::TLogoBlobID& src, auto* dst)
+        {
+            dst->SetRawX1(src.GetRaw()[0]);
+            dst->SetRawX2(src.GetRaw()[1]);
+            dst->SetRawX3(src.GetRaw()[2]);
+        };
+
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler = [&](auto...)
+        {
+            NPrivateProto::TDescribeBlocksResponse describe;
+            setBlobId(
+                freshBlobId,
+                describe.AddFreshBlockRanges()->MutableBlobId());
+            setBlobId(blobId, describe.AddBlobPieces()->MutableBlobId());
+
+            NProto::TExecuteActionResponse response;
+            google::protobuf::util::MessageToJsonString(
+                describe,
+                response.MutableOutput());
+            return MakeFuture(response);
+        };
+
+        const TString outputFileName = "describe-blocks-response";
+
+        TVector<TString> argv;
+        argv.emplace_back(GetProgramName());
+        argv.emplace_back("--disk-id=" + DefaultDiskId);
+        argv.emplace_back("--blocks-count=1");
+        argv.emplace_back("--full-blob-ids");
+        argv.emplace_back("--output=" + outputFileName);
+
+        UNIT_ASSERT(ExecuteRequest("describeblocks", argv, client));
+
+        NJson::TJsonValue json;
+        UNIT_ASSERT(NJson::ReadJsonTree(
+            TFileInput(outputFileName).ReadAll(),
+            &json));
+        NFs::Remove(outputFileName);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            freshBlobId.ToString(),
+            json["FreshBlockRanges"][0]["BlobId"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobId.ToString(),
+            json["BlobPieces"][0]["BlobId"].GetString());
+    }
+
+    Y_UNIT_TEST(ShouldAcceptFullAndRawBlobIdsInDescribeBlob)
+    {
+        const NKikimr::TLogoBlobID blobId(1, 2, 3, 4, 5, 6);
+        const auto* raw = blobId.GetRaw();
+
+        NPrivateProto::TDescribeBlobRequest request;
+        auto client = std::make_shared<TTestService>();
+        client->ExecuteActionHandler =
+            [&](std::shared_ptr<NProto::TExecuteActionRequest> action)
+        {
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                action->GetInput(),
+                &request).ok());
+            return MakeFuture<NProto::TExecuteActionResponse>();
+        };
+
+        const TVector<TString> blobIds = {
+            blobId.ToString(),
+            TStringBuilder()
+                << "[" << raw[0] << ":" << raw[1] << ":" << raw[2] << "]",
+        };
+
+        for (const auto& id: blobIds) {
+            request.Clear();
+
+            TVector<TString> argv;
+            argv.emplace_back(GetProgramName());
+            argv.emplace_back("--disk-id=" + DefaultDiskId);
+            argv.emplace_back("--blob-id=" + id);
+
+            UNIT_ASSERT_C(ExecuteRequest("describeblob", argv, client), id);
+            UNIT_ASSERT_VALUES_EQUAL(raw[0], request.GetBlobId().GetRawX1());
+            UNIT_ASSERT_VALUES_EQUAL(raw[1], request.GetBlobId().GetRawX2());
+            UNIT_ASSERT_VALUES_EQUAL(raw[2], request.GetBlobId().GetRawX3());
+        }
     }
 }
 

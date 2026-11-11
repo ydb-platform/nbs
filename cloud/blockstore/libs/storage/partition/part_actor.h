@@ -167,7 +167,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
-    std::shared_ptr<TBlobsCompressor> BlobsCompressor;
+    TBlobCompressorPtr BlobCompressor;
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
@@ -470,6 +470,7 @@ private:
         ui64 mergedBlocksCount,
         ui64 mixedChannelBlocksCount,
         ui64 mergedChannelBlocksCount,
+        const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);

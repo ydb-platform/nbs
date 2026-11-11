@@ -18,7 +18,8 @@ function parseTestPhaseSelection(value) {
       typeof decoded[0] !== "string" ||
       (decoded[1] !== null &&
         (typeof decoded[1] !== "string" || !decoded[1])) ||
-      !testPhaseDefinition(decoded[0])
+      !testPhaseDefinition(decoded[0]) ||
+      (decoded[1] !== null && !testPhaseDefinition(decoded[0]).attribute)
     ) {
       return null;
     }
@@ -43,6 +44,7 @@ function testPhaseOptions(sourceSpans, scopes) {
     const definition = testPhaseDefinition(scope);
     if (!definition) return;
     availableScopes.add(scope);
+    if (!definition.attribute) return;
     const name = span[ATTRS][definition.attribute];
     if (typeof name !== "string" || !name) return;
     const value = encodeTestPhaseSelection(scope, name);
@@ -55,11 +57,11 @@ function testPhaseOptions(sourceSpans, scopes) {
   });
   const scopeOptions = TEST_PHASE_DEFINITIONS.filter(({ scope }) =>
     availableScopes.has(scope),
-  ).map(({ scope, label }) => ({
+  ).map(({ scope, label, attribute }) => ({
     value: encodeTestPhaseSelection(scope),
     scope,
     name: null,
-    label: `Any ${label.toLowerCase()}`,
+    label: attribute ? `Any ${label.toLowerCase()}` : label,
   }));
   const exactOptions = [...phases.values()].sort(
     (left, right) =>

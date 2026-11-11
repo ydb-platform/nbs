@@ -183,6 +183,15 @@ struct TNullStorageNode final: IStorageNode
         return {};
     }
 
+    NProto::TWritePagesResponse WritePages(
+        TFastShardContext&,
+        NProto::TWritePagesRequest) override
+    {
+        Sleep();
+
+        return {};
+    }
+
     void Sleep()
     {
         if (const auto delay = Delay->NextDelay()) {

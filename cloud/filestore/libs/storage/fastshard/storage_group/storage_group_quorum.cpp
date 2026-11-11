@@ -1,405 +1,44 @@
 #include "storage_group_quorum.h"
 
 #include "storage_group_helpers.h"
+#include "storage_group_impl.h"
 #include "storage_group_inflight.h"
+#include "storage_group_proxy.h"
 
 #include <cloud/fastshard/libs/common/context.h>
-#include <cloud/fastshard/libs/fiber/event.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
-#include <silk/fibers/mutex.h>
 #include <silk/fibers/sequencer.h>
 #include <silk/util/logger.h>
 
-#include <util/digest/city.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 
 #include <algorithm>
 #include <atomic>
-#include <cstring>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <utility>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 using NCloud::NFastShard::TFastShardContext;
-using NCloud::NFastShard::WaitFor;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 ReservedPages = TStorageGroupHeader::StorageGroupReservedPages;
 constexpr ui32 QuorumMirrorGroupType = NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR;
 
-// TODO(#6957): unify with blockstore
-bool IsAllZeroes(const char* src, size_t size)
-{
-    if (size < sizeof(ui64)) {
-        return std::all_of(src, src + size, [](char c) { return c == 0; });
-    }
-
-    const bool aligned = reinterpret_cast<uintptr_t>(src) % sizeof(ui64) == 0;
-    const size_t step = aligned ? sizeof(ui64) : 1;
-    return std::all_of(src, src + step, [](char c) { return c == 0; })
-        && memcmp(src, src + step, size - step) == 0;
-}
-
-ui64 HashDeviceUUID(TStringBuf deviceUUID)
-{
-    return CityHash64(deviceUUID.data(), deviceUUID.size());
-}
-
-TString MakeHeaderPage(const TStorageGroupHeader& header, ui32 pageSize)
-{
-    TString page(pageSize, '\0');
-    std::memcpy(page.begin(), &header, sizeof(header));
-    return page;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError CheckPageRange(ui64 firstPageNo, ui64 pageCount)
+struct TQuorumState: TGroupState
 {
-    // firstPageNo + ReservedPages + pageCount must not wrap around.
-    if (firstPageNo > Max<ui64>() - ReservedPages ||
-        pageCount > Max<ui64>() - ReservedPages - firstPageNo)
-    {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "page range [" << firstPageNo << ", +" << pageCount
-                << ") overflows internal page reserve");
-    }
-
-    return {};
-}
-
-NProto::TError ShiftToDevice(NProto::TWriteLogRecordRequest& request)
-{
-    for (auto& pg: *request.MutablePageGroups()) {
-        auto error = CheckPageRange(pg.GetFirstPageNo(), pg.ContentSize());
-        if (HasError(error)) {
-            return error;
-        }
-
-        pg.SetFirstPageNo(pg.GetFirstPageNo() + ReservedPages);
-    }
-
-    return {};
-}
-
-NProto::TError ShiftToDevice(NProto::TReadPagesRequest& request)
-{
-    for (auto& ref: *request.MutablePageGroupRefs()) {
-        auto error = CheckPageRange(ref.GetFirstPageNo(), ref.GetPageCount());
-        if (HasError(error)) {
-            return error;
-        }
-
-        ref.SetFirstPageNo(ref.GetFirstPageNo() + ReservedPages);
-    }
-
-    return {};
-}
-
-NProto::TError ShiftToClient(TVector<TPageGroup>* pageGroups)
-{
-    for (auto& pg: *pageGroups) {
-        if (pg.FirstPageNo < ReservedPages) {
-            const ui64 pageNo = pg.FirstPageNo;
-            pageGroups->clear();
-            return MakeError(
-                E_FAIL,
-                TStringBuilder()
-                    << "device answered with reserved page " << pageNo);
-        }
-
-        pg.FirstPageNo -= ReservedPages;
-    }
-
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TGroupHealth
-{
-public:
-    void Fail(const NProto::TError& error)
-    {
-        {
-            std::lock_guard g(Mutex);
-            Error = MakeError(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "storage group broken: " << FormatError(error));
-
-            SILK_ERROR("%s", FormatError(Error).c_str());
-        }
-
-        BrokenFlag.store(true, std::memory_order_release);
-    }
-
-    bool IsBroken() const
-    {
-        return BrokenFlag.load(std::memory_order_acquire);
-    }
-
-    NProto::TError GetError() const
-    {
-        std::lock_guard g(Mutex);
-        return Error;
-    }
-
-private:
-    mutable silk::FiberMutex Mutex;
-    NProto::TError Error;
-    std::atomic<bool> BrokenFlag{false};
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Keeping track of largest write lsn acked so far.
- */
-class TDeviceProxy
-{
-public:
-    const TString DeviceUUID;
-
-private:
-    const IStorageNodePtr StorageNode;
-    const TStorageGroupConfig Config;
-    const ITimerPtr Timer;
-    silk::FiberSequencer Acked;
-
-public:
-    TDeviceProxy(
-            TStorageDevice device,
-            TStorageGroupConfig config,
-            ITimerPtr timer)
-        : DeviceUUID(std::move(device.DeviceUUID))
-        , StorageNode(std::move(device.Node))
-        , Config(std::move(config))
-        , Timer(std::move(timer))
-    {}
-
-    bool CanServe(ui64 lsn) const
-    {
-        return Acked.get() >= lsn;
-    }
-
-    NProto::TError Write(
-        TFastShardContext& ctx,
-        const NProto::TWriteLogRecordRequest& request)
-    {
-        auto response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                NProto::TWriteLogRecordRequest deviceRequest = request;
-                deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->WriteLogRecord(
-                    ctx,
-                    std::move(deviceRequest));
-            });
-
-        if (HasError(response)) {
-            return MakeProxyError(response.GetError(), "write");
-        }
-
-        // Acked only moves up, so we do not care about ordering here
-        Acked.advance(request.GetLogSequenceNumber());
-        return {};
-    }
-
-    NProto::TError Read(
-        TFastShardContext& ctx,
-        const NProto::TReadPagesRequest& request,
-        NProto::TReadPagesResponse* response)
-    {
-        *response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                NProto::TReadPagesRequest deviceRequest = request;
-                deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->ReadPages(ctx, std::move(deviceRequest));
-            });
-
-        if (HasError(*response)) {
-            return MakeProxyError(response->GetError(), "read");
-        }
-
-        return {};
-    }
-
-    NProto::TError ReadJournalTail(
-        TFastShardContext& ctx,
-        ui64 afterLsn,
-        ui32 maxRecords,
-        NProto::TReadJournalTailResponse* response)
-    {
-        NProto::TReadJournalTailRequest request;
-        FillHeaders(Config, request.MutableHeaders());
-        request.SetAfterLogSequenceNumber(afterLsn);
-        request.SetMaxRecordCount(maxRecords);
-
-        *response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                NProto::TReadJournalTailRequest deviceRequest = request;
-                deviceRequest.SetDeviceUUID(DeviceUUID);
-                return StorageNode->ReadJournalTail(
-                    ctx,
-                    std::move(deviceRequest));
-            });
-
-        if (HasError(*response)) {
-            return MakeProxyError(
-                response->GetError(),
-                TStringBuilder() << "read tail after " << afterLsn);
-        }
-
-        return {};
-    }
-
-    ui64 GetLastAckedLsn() const
-    {
-        return Acked.get();
-    }
-
-    void SeedLsn(ui64 lsn)
-    {
-        Acked.advance(lsn);
-    }
-
-    NProto::TError AdvanceLsnLowWatermark(TFastShardContext& ctx, ui64 lsn)
-    {
-        NProto::TAdvanceLsnLowWatermarkRequest request;
-        FillHeaders(Config, request.MutableHeaders());
-        request.SetDeviceUUID(DeviceUUID);
-        request.SetLsnLowWatermark(lsn);
-
-        auto response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                return StorageNode->AdvanceLsnLowWatermark(ctx, request);
-            });
-
-        if (HasError(response)) {
-            return MakeProxyError(
-                response.GetError(),
-                TStringBuilder() << "advance lwm to " << lsn);
-        }
-
-        return {};
-    }
-
-    NProto::TError Acquire(TFastShardContext& ctx)
-    {
-        NProto::TAcquireDevicesRequest request;
-        FillHeaders(Config, request.MutableHeaders());
-        request.SetGeneration(Config.AcquireGeneration);
-        request.AddDeviceUUIDs(DeviceUUID);
-
-        auto response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                return StorageNode->AcquireDevices(ctx, request);
-            });
-
-        if (HasError(response)) {
-            return MakeProxyError(response.GetError(), "acquire");
-        }
-
-        return {};
-    }
-
-    NProto::TError Release(TFastShardContext& ctx)
-    {
-        NProto::TReleaseDevicesRequest request;
-        FillHeaders(Config, request.MutableHeaders());
-        request.AddDeviceUUIDs(DeviceUUID);
-
-        auto response = CallWithRetries(
-            ctx,
-            Config.RetryPolicy,
-            *Timer,
-            [&]
-            {
-                return StorageNode->ReleaseDevices(ctx, request);
-            });
-
-        if (HasError(response)) {
-            return MakeProxyError(response.GetError(), "release");
-        }
-
-        return {};
-    }
-
-private:
-    NProto::TError MakeProxyError(const NProto::TError& error, TStringBuf what) const
-    {
-        return MakeError(
-            error.GetCode(),
-            TStringBuilder()
-                << "[" << DeviceUUID << "] " << what
-                << " failed: " << error.GetMessage(),
-            error.GetFlags());
-    }
-};
-
-using TDeviceProxyPtr = std::shared_ptr<TDeviceProxy>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TGroupState;
-using TGroupStatePtr = std::shared_ptr<TGroupState>;
-using TGroupStateRef = std::weak_ptr<TGroupState>;
-
-// A periodic job of the group, with sync stop in TearDown.
-struct TLoop
-{
-    TGroupStateRef State;
-    TDuration Period;
-    std::function<void(TFastShardContext&, TGroupState&)> Body;
-    silk::FiberEvent Stop;
-    silk::FiberFuture Done;
-};
-
-using TLoopPtr = std::shared_ptr<TLoop>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TGroupState
-{
-    TStorageGroupConfig Config;
-    ITimerPtr Timer;
-    TGroupHealth Health;
     TVector<TDeviceProxyPtr> Proxies;
     ui32 WriteQuorum = 0;
 
@@ -413,17 +52,10 @@ struct TGroupState
     silk::FiberSequencer LowWatermarkLsn;
     ui64 LowWatermarkPushed = 0;
 
-    TVector<TLoopPtr> Loops;
-    TInflightTracker InflightTracker;
-
-    std::atomic<bool> Initialized = false;
-    std::atomic<ui64> RequestId = 1;
-
-    TGroupState(TStorageGroupConfig config, ITimerPtr timer)
-        : Config(std::move(config))
-        , Timer(std::move(timer))
-    {}
+    using TGroupState::TGroupState;
 };
+
+using TQuorumStatePtr = std::shared_ptr<TQuorumState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -448,7 +80,7 @@ int ProxyCallFiberMain(TProxyCallParams* params) noexcept
 
 NProto::TError ForEachProxy(
     TFastShardContext& ctx,
-    const TGroupState& state,
+    const TQuorumState& state,
     const TProxyCall& call)
 {
     const ui32 count = state.Proxies.size();
@@ -499,7 +131,7 @@ struct TWriteState: public TInflightRequest
         : TInflightRequest(requestId)
     {}
 
-    void Finish(TGroupState& state)
+    void Finish(TQuorumState& state)
     {
         if (++Done == state.Proxies.size()) {
             if (Acked.get() == state.Proxies.size()) {
@@ -514,7 +146,7 @@ using TWriteStatePtr = std::shared_ptr<TWriteState>;
 
 struct TWriteDispatchParams
 {
-    TGroupStatePtr State;
+    TQuorumStatePtr State;
     TWriteStatePtr Op;
     TDeviceProxyPtr Proxy;
 };
@@ -543,100 +175,20 @@ int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError InitializeDevice(
-    TFastShardContext& ctx,
-    const TGroupState& state,
-    TDeviceProxy& proxy)
-{
-    TStorageGroupHeader header;
-    header.GroupType = QuorumMirrorGroupType;
-    header.PageSize = state.Config.PageSize;
-    header.DeviceUUIDHash = HashDeviceUUID(proxy.DeviceUUID);
-
-    NProto::TWriteLogRecordRequest request;
-    FillHeaders(state.Config, request.MutableHeaders());
-    request.SetLogSequenceNumber(1);
-
-    auto* pg = request.AddPageGroups();
-    pg->SetFirstPageNo(0);
-    *pg->AddContent() = MakeHeaderPage(header, state.Config.PageSize);
-
-    SILK_INFO("sg init: writing header to %s", proxy.DeviceUUID.c_str());
-
-    return proxy.Write(ctx, request);
-}
-
-NProto::TError ValidateDevice(
-    TFastShardContext& ctx,
-    const TGroupState& state,
-    TDeviceProxy& proxy)
-{
-    NProto::TReadPagesRequest request;
-    FillHeaders(state.Config, request.MutableHeaders());
-
-    auto* ref = request.AddPageGroupRefs();
-    ref->SetPageSize(state.Config.PageSize);
-    ref->SetFirstPageNo(0);
-    ref->SetPageCount(1);
-
-    NProto::TReadPagesResponse response;
-    auto error = proxy.Read(ctx, request, &response);
-    if (HasError(error)) {
-        return error;
-    }
-
-    const auto& groups = response.GetPageGroups();
-    if (groups.size() != 1 || groups.Get(0).ContentSize() != 1) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << proxy.DeviceUUID << " header read returned "
-                << groups.size() << " page groups instead of one page");
-    }
-
-    const auto& content = groups.Get(0).GetContent(0);
-    if (content.size() != state.Config.PageSize) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << proxy.DeviceUUID << " header page is " << content.size()
-                << " bytes instead of " << state.Config.PageSize);
-    }
-
-    if (IsAllZeroes(content.data(), content.size())) {
-        return InitializeDevice(ctx, state, proxy);
-    }
-
-    TStorageGroupHeader header;
-    std::memcpy(&header, content.data(), sizeof(header));
-
-    if (header.MagicNumber != TStorageGroupHeader::Magic ||
-        header.Version != TStorageGroupHeader::CurrentVersion ||
-        header.GroupType != QuorumMirrorGroupType ||
-        header.PageSize != state.Config.PageSize ||
-        header.DeviceUUIDHash != HashDeviceUUID(proxy.DeviceUUID))
-    {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << proxy.DeviceUUID << " header mismatch: " << header
-                << ", expected page size " << state.Config.PageSize);
-    }
-
-    proxy.SeedLsn(response.GetLastAckedLogSequenceNumber());
-    return {};
-}
-
 NProto::TError ValidateGroupConfigAndInitIfNeeded(
     TFastShardContext& ctx,
-    const TGroupState& state)
+    const TQuorumState& state)
 {
     return ForEachProxy(
         ctx,
         state,
         [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
         {
-            auto error = ValidateDevice(ctx, state, proxy);
+            auto error = ValidateDevice(
+                ctx,
+                state.Config,
+                QuorumMirrorGroupType,
+                proxy);
             if (HasError(error)) {
                 SILK_ERROR(
                     "sg device validation failed: %s",
@@ -663,7 +215,7 @@ ui64 GetLastLsn(const NProto::TReadJournalTailResponse& journal)
 
 NProto::TError ReplayOnDevicesBehind(
     TFastShardContext& ctx,
-    const TGroupState& state,
+    const TQuorumState& state,
     const TVector<ui64>& maxLsnPerDevice,
     ui64 maxKnownLsn,
     const TJournalRecords& records)
@@ -753,7 +305,7 @@ NProto::TError ReadRecordsAbove(
 // Reads what the slowest device lacks from the most advanced one and replays
 // it onto everyone behind. Where each device is was learnt at validation:
 // from its header read, or from the header page written to it.
-NProto::TError RebuildJournal(TFastShardContext& ctx, TGroupState& state)
+NProto::TError RebuildJournal(TFastShardContext& ctx, TQuorumState& state)
 {
     TVector<ui64> maxLsnPerDevice(state.Proxies.size());
     for (ui32 i = 0; i < state.Proxies.size(); ++i) {
@@ -801,7 +353,7 @@ NProto::TError RebuildJournal(TFastShardContext& ctx, TGroupState& state)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void PushLowWatermarkLoop(TFastShardContext& ctx, TGroupState& state)
+void PushLowWatermarkLoop(TFastShardContext& ctx, TQuorumState& state)
 {
     const ui64 watermark = state.LowWatermarkLsn.get();
     if (watermark <= state.LowWatermarkPushed) {
@@ -814,19 +366,7 @@ void PushLowWatermarkLoop(TFastShardContext& ctx, TGroupState& state)
         [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
             -> NProto::TError
         {
-            auto error = proxy.AdvanceLsnLowWatermark(ctx, watermark);
-            if (!HasError(error)) {
-                return {};
-            }
-
-            if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-                state.Health.Fail(error);
-                return {};
-            }
-
-            SILK_WARN(
-                "sg low watermark not delivered: %s",
-                FormatError(error).c_str());
+            PushLowWatermark(ctx, state.Health, proxy, watermark);
             return {};
         });
     state.LowWatermarkPushed = watermark;
@@ -834,7 +374,7 @@ void PushLowWatermarkLoop(TFastShardContext& ctx, TGroupState& state)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RenewSessionsLoop(TFastShardContext& ctx, TGroupState& state)
+void RenewSessionsLoop(TFastShardContext& ctx, TQuorumState& state)
 {
     ForEachProxy(
         ctx,
@@ -842,69 +382,9 @@ void RenewSessionsLoop(TFastShardContext& ctx, TGroupState& state)
         [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
             -> NProto::TError
         {
-            auto error = proxy.Acquire(ctx);
-            if (!HasError(error)) {
-                return {};
-            }
-
-            const auto kind = GetErrorKind(error);
-            if (kind == EErrorKind::ErrorSession || kind == EErrorKind::ErrorFatal)
-            {
-                state.Health.Fail(error);
-                return {};
-            }
-
-            SILK_WARN(
-                "sg session not renewed: %s",
-                FormatError(error).c_str());
+            RenewSession(ctx, state.Health, proxy);
             return {};
         });
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-int LoopFiberMain(TLoopPtr* params) noexcept
-{
-    auto& loop = **params;
-    for (;;) {
-        if (WaitFor(loop.Stop, loop.Period)) {
-            break;
-        }
-
-        auto state = loop.State.lock();
-        if (!state || state->Health.IsBroken()) {
-            break;
-        }
-
-        TInflightRequest op(state->RequestId++);
-        if (auto error = state->InflightTracker.Add(op); HasError(error)) {
-            break;
-        }
-
-        loop.Body(op.Ctx, *state);
-        state->InflightTracker.Remove(op);
-    }
-
-    return 0;
-}
-
-TResultOrError<TLoopPtr> RunLoop(
-    const TGroupStatePtr& state,
-    TDuration period,
-    std::function<void(TFastShardContext&, TGroupState&)> body)
-{
-    auto loop = std::make_shared<TLoop>();
-    loop->State = state;
-    loop->Period = period;
-    loop->Body = std::move(body);
-
-    const int r =
-        silk::FiberScheduler::run(LoopFiberMain, TLoopPtr(loop), &loop->Done);
-    if (r) {
-        return MakeSpawnError(r);
-    }
-
-    return loop;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -912,14 +392,14 @@ TResultOrError<TLoopPtr> RunLoop(
 class TQuorumMirroredStorageGroup final: public IStorageGroup
 {
 private:
-    TGroupStatePtr State;
+    TQuorumStatePtr State;
 
 public:
     TQuorumMirroredStorageGroup(
             TStorageGroupConfig config,
             TVector<TStorageDevice> devices,
             ITimerPtr timer)
-        : State(std::make_shared<TGroupState>(
+        : State(std::make_shared<TQuorumState>(
               std::move(config),
               std::move(timer)))
     {
@@ -951,16 +431,7 @@ public:
 
     void TearDown() override
     {
-        State->InflightTracker.Stop();
-
-        // Nothing starts a loop once Init is drained.
-        for (const auto& loop: State->Loops) {
-            loop->Stop.set();
-        }
-
-        for (const auto& loop: State->Loops) {
-            Y_UNUSED(loop->Done.wait());
-        }
+        State->Stop();
 
         TFastShardContext ctx(State->RequestId++);
         auto error = ForEachProxy(
@@ -981,7 +452,7 @@ public:
         TVector<TPageGroup> pageGroups,
         TLsnLink link) override
     {
-        if (auto error = CheckReady(); HasError(error)) {
+        if (auto error = State->CheckReady(); HasError(error)) {
             return error;
         }
 
@@ -1025,7 +496,7 @@ public:
         const TVector<TPageGroupRef>& pageGroupRefs,
         TVector<TPageGroup>* pageGroups) override
     {
-        if (auto error = CheckReady(); HasError(error)) {
+        if (auto error = State->CheckReady(); HasError(error)) {
             return error;
         }
 
@@ -1177,19 +648,6 @@ private:
         }
 
         return lastError;
-    }
-
-    NProto::TError CheckReady() const
-    {
-        if (!State->Initialized) {
-            return MakeError(E_REJECTED, "storage group is not initialized");
-        }
-
-        if (State->Health.IsBroken()) {
-            return State->Health.GetError();
-        }
-
-        return {};
     }
 };
 

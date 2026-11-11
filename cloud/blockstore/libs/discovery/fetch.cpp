@@ -82,6 +82,7 @@ struct TResult
     TString Group;
     TString Data;
     TString Error;
+    ui32 ErrorCode = E_FAIL;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +91,8 @@ struct TRequestContext
 {
     ui32 RequestCount;
     TVector<bool> Status;
+    NProto::TError Error;
+    bool HasSuccessfulResponse = false;
     TAdaptiveLock Lock;
 
     TRequestContext(ui32 requestCount)
@@ -195,17 +198,17 @@ public:
         State->Running = false;
     }
 
-    TFuture<void> FetchInstances(TInstanceList& instances) override
+    TFuture<NProto::TError> FetchInstances(TInstanceList& instances) override
     {
         using namespace NNehUtil;
 
         Counters.OnFetch();
 
-        if (!Config->GetConductorApiUrl()) {
-            return MakeFuture();
+        if (!Config->GetConductorApiUrl() || Config->GetConductorGroups().empty()) {
+            return MakeFuture(NProto::TError{});
         }
 
-        auto promise = NewPromise();
+        auto promise = NewPromise<NProto::TError>();
         auto requestContext = std::make_shared<TRequestContext>(
             Config->GetConductorGroups().size()
         );
@@ -225,7 +228,7 @@ public:
                     const auto& result = f.GetValue();
 
                     if (OnConductorResult(i, result, *requestContext, instances)) {
-                        promise.SetValue();
+                        promise.SetValue(requestContext->Error);
                     }
                 }
             );
@@ -238,13 +241,13 @@ public:
                 [=, this, &instances] () mutable {
                     const auto done = OnConductorResult(
                         i,
-                        {group, {}, "timeout"},
+                        {group, {}, "timeout", E_TIMEOUT},
                         *requestContext,
                         instances
                     );
 
                     if (done) {
-                        promise.SetValue();
+                        promise.SetValue(requestContext->Error);
                     }
                 }
             );
@@ -271,11 +274,18 @@ private:
             --requestContext.RequestCount;
 
             if (result.Error) {
+                if (!HasError(requestContext.Error)) {
+                    requestContext.Error = MakeError(
+                        result.ErrorCode,
+                        TStringBuilder() << "conductor group "
+                            << result.Group.Quote() << ": " << result.Error);
+                }
                 Counters.OnFetchError();
                 STORAGE_ERROR(TStringBuilder()
                     << "conductor instance fetch error: " << result.Error.Quote()
                     << ", group: " << result.Group.Quote());
             } else {
+                requestContext.HasSuccessfulResponse = true;
                 TStringBuf s(result.Data);
                 THashSet<TStringBuf> hosts;
                 TStringBuf host;
@@ -336,6 +346,9 @@ private:
             }
 
             if (requestContext.RequestCount == 0) {
+                if (requestContext.HasSuccessfulResponse) {
+                    requestContext.Error.Clear();
+                }
                 with_lock (instances.Lock) {
                     Counters.SetInstanceCount(instances.Instances.size());
                 }
@@ -388,38 +401,53 @@ public:
     {
     }
 
-    TFuture<void> FetchInstances(TInstanceList& instances) override
+    TFuture<NProto::TError> FetchInstances(TInstanceList& instances) override
     {
         Counters.OnFetch();
 
-        TIFStream data(Config->GetInstanceListFile());
-        TString line;
         THashMap<std::pair<TString, ui16>, bool> newInstances;
-        while (data.ReadLine(line)) {
-            TStringBuf s(line);
-            TStringBuf host, portStr;
-            TStringBuf(line).Split('\t', host, portStr);
+        try {
+            TIFStream data(Config->GetInstanceListFile());
+            TString line;
+            while (data.ReadLine(line)) {
+                if (line.empty()) {
+                    continue;
+                }
 
-            TStringBuf secPortStr = portStr.SplitOff('\t');
+                TStringBuf host, portStr;
+                TStringBuf(line).Split('\t', host, portStr);
 
-            ui16 port;
-            ui16 secPort = 0;
-            if (!TryFromString(portStr, port) ||
-                (secPortStr && !TryFromString(secPortStr, secPort)))
-            {
-                Counters.OnFetchError();
-                STORAGE_ERROR(TStringBuilder()
-                    << "static instance config parsing error, broken entry: "
-                    << line.Quote());
+                TStringBuf secPortStr = portStr.SplitOff('\t');
 
-                continue;
+                ui16 port;
+                ui16 secPort = 0;
+                if (!host || !TryFromString(portStr, port) ||
+                    (secPortStr && !TryFromString(secPortStr, secPort)))
+                {
+                    auto error = MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "static instance config parsing error, broken entry: "
+                            << line.Quote());
+                    Counters.OnFetchError();
+                    STORAGE_ERROR(FormatError(error));
+                    continue;
+                }
+
+                newInstances.emplace(std::make_pair(TString{host}, port), false);
+
+                if (secPort) {
+                    newInstances.emplace(std::make_pair(TString{host}, secPort), true);
+                }
             }
-
-            newInstances.emplace(std::make_pair(TString{host}, port), false);
-
-            if (secPort) {
-                newInstances.emplace(std::make_pair(TString{host}, secPort), true);
-            }
+        } catch (...) {
+            auto error = MakeError(
+                E_IO,
+                TStringBuilder() << "static instance config read error: "
+                    << CurrentExceptionMessage());
+            Counters.OnFetchError();
+            STORAGE_ERROR(FormatError(error));
+            return MakeFuture(std::move(error));
         }
 
         with_lock (instances.Lock) {
@@ -439,17 +467,17 @@ public:
             auto e = instances.Instances.size() - deletedIndices.size();
             instances.Instances.resize(e + newInstances.size());
             for (auto& [newInstance, secure] : newInstances) {
-                auto& ii = instances.Instances[e];
+                TInstanceInfo ii;
                 ii.Host = newInstance.first;
                 ii.Port = newInstance.second;
                 ii.IsSecurePort = secure;
-                ++e;
+                instances.Instances[e++] = std::move(ii);
             }
 
             Counters.SetInstanceCount(instances.Instances.size());
         }
 
-        return MakeFuture();
+        return MakeFuture(NProto::TError{});
     }
 };
 
@@ -476,15 +504,15 @@ public:
     {
     }
 
-    TFuture<void> FetchInstances(TInstanceList& instances) override
+    TFuture<NProto::TError> FetchInstances(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
-            if (instances.Instances.empty()) {
+            if (Instances.empty() || instances.Instances.empty()) {
                 instances.Instances = Instances;
             }
         }
 
-        return MakeFuture();
+        return MakeFuture(NProto::TError{});
     }
 };
 

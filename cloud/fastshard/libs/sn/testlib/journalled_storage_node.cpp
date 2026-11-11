@@ -54,11 +54,13 @@ TJournalledStorageNode::TJournalledStorageNode(
             Logging,
             LogMetaDevice,
             Layout.LogMetaPageCount,
-            Layout.PageSize),
+            Layout.PageSize,
+            CalculateMinRecordBufferSize()),
         CreateDevicePageStore(
             LogDataDevice,
             Layout.LogDataPageCount,
-            Layout.PageSize),
+            Layout.PageSize,
+            EDevicePageStoreMode::Checked),
         Layout.DataPageCount);
 
     Device = CreateJournalledDeviceV2(
@@ -146,5 +148,14 @@ SN_FORWARD(ReadJournalTail)
 SN_FORWARD(AdvanceLsnLowWatermark)
 
 #undef SN_FORWARD
+
+// TODO(#6957): SN_FORWARD(WritePages)
+NProto::TWritePagesResponse TJournalledStorageNode::WritePages(
+    TFastShardContext&,
+    NProto::TWritePagesRequest)
+{
+    ++Counters.WritePages;
+    return TErrorResponse(E_NOT_IMPLEMENTED, "WritePages is not implemented");
+}
 
 }   // namespace NCloud::NFastShard

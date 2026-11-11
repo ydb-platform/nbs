@@ -120,45 +120,38 @@ void CheckFileSystemEventsAreSentToSubscribersOnly(bool dryRun)
 
     //
     // UnlinkNode produces InvalidateNodeRef for the entry and InvalidateNode
-    // for the removed node: both go to client 2 only. The root's MTime/CTime
-    // changes produce nothing, so client 3 gets nothing.
+    // for the removed node - both go to client 2. The root's MTime/CTime
+    // change produces InvalidateNode for the root - it goes to client 3.
     //
 
     tablet1->UnlinkNode(RootNodeId, "f", false /* unlinkDirectory */);
 
     UNIT_ASSERT_VALUES_EQUAL(
-        1,
+        2,
         env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
     UNIT_ASSERT_VALUES_EQUAL(
         1,
         env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 2, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
 
     //
-    // GenerateFileSystemEvent goes through the same path: InvalidateNode for
-    // the root goes to client 3 only.
+    // Subscriptions are one-shot - the root subscription of client 3 has been
+    // consumed by the root's MTime/CTime change, client 3 has to read the root
+    // again to get the next event. GenerateFileSystemEvent goes through the
+    // same path.
     //
 
     NProto::TFileSystemEvent event;
     event.MutableInvalidateNode()->SetNodeId(RootNodeId);
     auto response = tablet1->GenerateFileSystemEvent(event);
-    UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
-    UNIT_ASSERT_VALUES_EQUAL(
-        2,
-        env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
-
-    //
-    // Subscriptions are one-shot - client 3 has to read the root again to get
-    // the next event.
-    //
-
-    response = tablet1->GenerateFileSystemEvent(event);
     UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetClientCount());
 
     tablet3->GetNodeAttr(RootNodeId);
     response = tablet1->GenerateFileSystemEvent(event);
     UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetClientCount());
+    UNIT_ASSERT_VALUES_EQUAL(
+        3,
+        env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
     UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
 }
 
@@ -231,15 +224,24 @@ void CheckXAttrCacheTTL(
         tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
             ->Record.GetNode()
             .GetId();
-    tablet->SetNodeXAttr(nodeId, "user.a", "1");
 
     //
-    // Both the value and the absence of an attribute may be cached.
+    // The set value, the read value and the absence of an attribute (found
+    // out by GetNodeXAttr or by SetNodeXAttr with F_REPLACE) may be cached.
     //
 
     const TVector<ui32> cacheTTLs = {
+        tablet->SetNodeXAttr(nodeId, "user.a", "1")
+            ->Record.GetXAttrCacheTTL(),
         tablet->GetNodeXAttr(nodeId, "user.a")->Record.GetXAttrCacheTTL(),
         tablet->AssertGetNodeXAttrFailed(nodeId, "user.b")
+            ->Record.GetXAttrCacheTTL(),
+        tablet
+            ->AssertSetNodeXAttrFailed(
+                nodeId,
+                "user.b",
+                "1",
+                NProto::TSetNodeXAttrRequest::F_REPLACE)
             ->Record.GetXAttrCacheTTL(),
     };
 
@@ -272,7 +274,8 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
     tablet3->AssertGetNodeXAttrFailed(nodeId, "user.b");
 
     //
-    // Creating "user.a" notifies client 2 only.
+    // Creating "user.a" notifies client 2 only. The events are sent before
+    // the setter gets subscribed, so client 1 doesn't get its own change.
     //
 
     tablet1->SetNodeXAttr(nodeId, "user.a", "1");
@@ -282,13 +285,14 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
     UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 1, env.SentEventCount);
 
     //
-    // Subscriptions are one-shot - client 2 has to read the attribute again
-    // to get the next event. Updating "user.a" notifies client 2 again.
+    // SetNodeXAttr subscribes the setter. Subscriptions are one-shot - client
+    // 2 has to read the attribute again to get the next event. Updating
+    // "user.a" notifies client 1 only.
     //
 
     tablet1->SetNodeXAttr(nodeId, "user.a", "2");
     UNIT_ASSERT_VALUES_EQUAL(
-        1,
+        2,
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
 
     UNIT_ASSERT_VALUES_EQUAL(
@@ -296,12 +300,12 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
         tablet2->GetNodeXAttr(nodeId, "user.a")->Record.GetValue());
     tablet1->SetNodeXAttr(nodeId, "user.a", "3");
     UNIT_ASSERT_VALUES_EQUAL(
-        2,
+        4,
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 2, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
 
     //
-    // A failed SetNodeXAttr doesn't generate anything.
+    // A failed SetNodeXAttr neither generates anything nor subscribes.
     //
 
     tablet2->GetNodeXAttr(nodeId, "user.a");
@@ -311,25 +315,37 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
         "4",
         NProto::TSetNodeXAttrRequest::F_CREATE);
     UNIT_ASSERT_VALUES_EQUAL(
-        2,
+        4,
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
 
     //
-    // Removing "user.a" notifies client 2 - it's still subscribed. The
-    // removal of a missing attribute fails and doesn't generate anything.
+    // Removing "user.a" notifies clients 1 and 2 - both are still
+    // subscribed. The removal of a missing attribute fails and doesn't
+    // generate anything.
     //
 
     tablet1->RemoveNodeXAttr(nodeId, "user.a");
     UNIT_ASSERT_VALUES_EQUAL(
-        3,
+        6,
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 3, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 6, env.SentEventCount);
 
     tablet2->AssertGetNodeXAttrFailed(nodeId, "user.a");
     tablet1->AssertRemoveNodeXAttrFailed(nodeId, "user.a");
     UNIT_ASSERT_VALUES_EQUAL(
-        3,
+        6,
         env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
+
+    //
+    // Client 3 sets "user.c", client 2 changes it - client 3 is notified.
+    //
+
+    tablet3->SetNodeXAttr(nodeId, "user.c", "1");
+    tablet2->SetNodeXAttr(nodeId, "user.c", "2");
+    UNIT_ASSERT_VALUES_EQUAL(
+        7,
+        env.GetCounter(*tablet1, "InvalidateNodeXAttrEventSendCount"));
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 7, env.SentEventCount);
 
     //
     // GenerateFileSystemEvent goes through the same path: client 3 is still
@@ -357,7 +373,7 @@ void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)
     UNIT_ASSERT_VALUES_EQUAL(
         0,
         env.GetCounter(*tablet1, "InvalidateNodeRefEventSendCount"));
-    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 4, env.SentEventCount);
+    UNIT_ASSERT_VALUES_EQUAL(dryRun ? 0 : 8, env.SentEventCount);
 }
 
 }   // namespace
@@ -374,6 +390,58 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
     Y_UNIT_TEST(ShouldCountButNotSendFileSystemEventsInDryRunMode)
     {
         CheckFileSystemEventsAreSentToSubscribersOnly(true /* dryRun */);
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateNodeUponTimeOnlyChanges)
+    {
+        NProto::TStorageConfig config;
+        config.SetFileSystemEventsEnabled(true);
+        TFileSystemEventsEnv env(std::move(config));
+
+        auto tablet1 = env.CreateClient("client1", "session1");
+        auto tablet2 = env.CreateClient("client2", "session2");
+
+        //
+        // Creating an entry changes only the parent's MTime/CTime.
+        //
+
+        tablet2->GetNodeAttr(RootNodeId);
+        const auto nodeId =
+            tablet1->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        //
+        // A write that extends the file changes its size and MTime, an
+        // overwrite within the file size changes only its MTime.
+        //
+
+        const ui64 handle = CreateHandle(*tablet1, nodeId);
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->WriteData(handle, 0, 10, 'a');
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->WriteData(handle, 0, 5, 'b');
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+
+        //
+        // An explicit time change.
+        //
+
+        tablet2->GetNodeAttr(nodeId);
+        tablet1->SetNodeAttr(TSetNodeAttrArgs(nodeId).SetMTime(42));
+        UNIT_ASSERT_VALUES_EQUAL(
+            4,
+            env.GetCounter(*tablet1, "InvalidateNodeEventSendCount"));
+        UNIT_ASSERT_VALUES_EQUAL(4, env.SentEventCount);
     }
 
     Y_UNIT_TEST(ShouldSubscribeUponListNodes)

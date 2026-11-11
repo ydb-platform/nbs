@@ -141,13 +141,9 @@ public:
         }
 
         if (Mode == EDevicePageStoreMode::Checked) {
-            {
-                std::lock_guard lock(Lock);
-
-                auto error = ValidatePages(pageRanges, EPageState::Allocated);
-                if (HasError(error)) {
-                    return MakeFuture(error);
-                }
+            auto error = ValidateRanges(pageRanges);
+            if (HasError(error)) {
+                return MakeFuture(error);
             }
         }
 
@@ -173,13 +169,9 @@ public:
         ui64 pageCount = 0;
 
         if (Mode == EDevicePageStoreMode::Checked) {
-            {
-                std::lock_guard lock(Lock);
-
-                auto error = ValidatePages(pageRanges, EPageState::Allocated);
-                if (HasError(error)) {
-                    return MakeFuture<TResult>(error);
-                }
+            auto error = ValidateRanges(pageRanges);
+            if (HasError(error)) {
+                return MakeFuture<TResult>(error);
             }
         }
 
@@ -357,17 +349,15 @@ private:
         return false;
     }
 
-    NCloud::NProto::TError ValidatePages(
-        const TVector<TPageRangeRef>& ranges,
-        EPageState expected) const
+    // Does not look at the allocation state, so needs no lock.
+    NCloud::NProto::TError ValidateRanges(
+        const TVector<TPageRangeRef>& ranges) const
     {
         if (HasIntersections(ranges)) {
             return MakeError(
                 E_ARGUMENT,
                 "the page ranges of a single request intersect");
         }
-
-        const bool free = expected == EPageState::Free;
 
         for (const auto& pageRange: ranges) {
             if (!pageRange.PageCount) {
@@ -383,6 +373,27 @@ private:
                         << "page range " << pageRange.FirstPageNo << "x"
                         << pageRange.PageCount
                         << " is beyond the device: " << PageCount << " pages");
+            }
+        }
+
+        return MakeError(S_OK);
+    }
+
+    // Must be called under the lock.
+    NCloud::NProto::TError ValidatePages(
+        const TVector<TPageRangeRef>& ranges,
+        EPageState expected) const
+    {
+        auto error = ValidateRanges(ranges);
+        if (HasError(error)) {
+            return error;
+        }
+
+        const bool free = expected == EPageState::Free;
+
+        for (const auto& pageRange: ranges) {
+            if (!pageRange.PageCount) {
+                continue;
             }
 
             const auto pageNo =

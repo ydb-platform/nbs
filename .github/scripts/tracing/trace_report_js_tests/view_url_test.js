@@ -1,0 +1,577 @@
+"use strict";
+
+const { loadTraceReportSource } = require("../trace_report_js_testing.js");
+const vm = require("vm");
+
+function testViewUrlRoundTripsEveryControl() {
+  const view = {
+    query: 'Suite::Тест + "setup & teardown" #1',
+    failedOnly: true,
+    topTestsOnly: true,
+    minimumDurationNs: 125_000_000,
+    testSizes: new Set(["small", "large"]),
+    testPhase: encodeTestPhaseSelection("ya.test.worker"),
+    order: encodeTestPhaseSelection("ya.test.stage", "prepare_recipes"),
+    timelineMode: TIMELINE_MODES.LOCAL,
+    rowLoadSize: 1000,
+  };
+  const url = new URL(traceViewUrl(
+    "https://reports.example/trace.html?source=ci&tag=a&tag=b#page-bottom", view,
+  ));
+  assert.deepStrictEqual(readTraceView(url.search), view);
+  assert.strictEqual(url.searchParams.get("phase"), "ya.test.worker");
+  assert.strictEqual(url.searchParams.get("order"), "ya.test.stage/prepare_recipes");
+  assert.strictEqual(url.searchParams.get("source"), "ci");
+  assert.deepStrictEqual(url.searchParams.getAll("tag"), ["a", "b"]);
+  assert.strictEqual(url.hash, "#page-bottom");
+  assert.strictEqual(traceViewUrl(url.href, view), url.href);
+}
+
+function testClearingViewRemovesOwnedParametersAndKeepsTheReportUrl() {
+  const original = "https://reports.example/run/trace.html?source=ci#page-top";
+  const filtered = traceViewUrl(original, {
+    query: "test", failedOnly: true, topTestsOnly: true,
+    minimumDurationNs: 0, testSizes: ["medium"],
+    testPhase: encodeTestPhaseSelection("ya.test"),
+    order: ROW_ORDERS.DURATION, timelineMode: TIMELINE_MODES.LOCAL,
+    rowLoadSize: 200,
+  });
+  assert.notStrictEqual(filtered, original);
+  assert.strictEqual(traceViewUrl(filtered, readTraceView("")), original);
+}
+
+function testMalformedViewParametersFallBackToDefaults() {
+  const defaults = readTraceView("");
+  assert.deepStrictEqual(readTraceView(
+    "?failed=0&top-tests=false&minimum-duration=-5&test-size=unknown" +
+    "&phase=unknown/setup&order=ya.test/setup&timeline=unknown&rows=-1",
+  ), defaults);
+  for (const minimum of ["NaN", "Infinity", "1e309", "1e308", ""]) {
+    assert.strictEqual(readTraceView(`?minimum-duration=${minimum}`).minimumDurationNs, null);
+  }
+  const flags = readTraceView("?failed&top-tests=true&minimum-duration=0");
+  assert.strictEqual(flags.failedOnly, true);
+  assert.strictEqual(flags.topTestsOnly, true);
+  assert.strictEqual(flags.minimumDurationNs, 0);
+  assert.deepStrictEqual(
+    [...readTraceView("?test-size=small&test-size=small&test-size=bad").testSizes],
+    ["small"],
+  );
+}
+
+function testLocalLinksAndExactPhaseNamesRoundTrip() {
+  for (const scope of ["ya.test.stage", "ya.test.worker.phase"]) {
+    const testPhase = encodeTestPhaseSelection(scope, 'setup/with + & "quotes"');
+    const href = traceViewUrl("file:///tmp/trace.html#page-bottom", {
+      testPhase, order: testPhase, query: "a+b & c",
+    });
+    const view = readTraceView(new URL(href).search);
+    assert.strictEqual(view.testPhase, testPhase);
+    assert.strictEqual(view.order, testPhase);
+    assert.strictEqual(view.query, "a+b & c");
+    assert.strictEqual(new URL(href).hash, "#page-bottom");
+  }
+}
+
+function makeViewRuntime(search, { blockHistory = false, traceModel = null } = {}) {
+  const control = (name, value = "", type = "text") => ({
+    name, value, type, checked: false, disabled: true, hidden: false,
+    textContent: "", options: [],
+    replaceChildren() { this.options = []; },
+    append(option) { this.options.push(option); },
+    focus() { this.focused = true; },
+    select() { this.selected = true; },
+  });
+  const controls = {
+    query: control("query"), minimum: control("minimum-duration"),
+    phase: control("phase"), failed: control("failed", "on", "checkbox"),
+    top: control("top-tests", "on", "checkbox"),
+    size: control("test-size", "medium", "checkbox"),
+    order: control("order", ROW_ORDERS.TREE),
+    timeline: control("timeline", TIMELINE_MODES.GLOBAL),
+    rows: control("rows", "5000"),
+    share: control("share"), shareLink: control("share-link"),
+  };
+  controls.timeline.options = ["global", "local"].map((value) => ({ value }));
+  controls.rows.options = ["200", "1000", "5000"].map((value) => ({ value }));
+  const elements = [controls.query, controls.minimum, controls.phase,
+    controls.failed, controls.top, controls.size];
+  elements.namedItem = (name) => elements.find((element) => element.name === name);
+  const testModel = traceModel || {
+    c: ["ya.test.worker", "ya.chunk", "ya.test"],
+    s: [
+      makeSpan({ id: "worker", name: "target", duration: 10e9,
+        attributes: { "test.size": "medium" } }),
+      makeSpan({ id: "chunk", name: "chunk", parent: 0, scope: 1, duration: 8e9 }),
+      makeSpan({ id: "test", name: "case", parent: 1, scope: 2, duration: 5e9 }),
+    ],
+  };
+  const window = {
+    location: new URL(`https://reports.example/trace.html${search}`),
+    history: {
+      state: { preserved: true },
+      replaceState(state, _title, href) {
+        if (blockHistory) throw new Error("history unavailable");
+        this.state = state;
+        window.location = new URL(href);
+      },
+    },
+  };
+  const context = vm.createContext({
+    URL, URLSearchParams, window, controls, elements, control, testModel,
+    module: { exports: {} }, navigator: {}, clearTimeout,
+    document: { createElement: () => control("") },
+    FormData: class extends URLSearchParams {
+      constructor(form) {
+        super(form.elements.filter((element) =>
+          !element.disabled && (element.type !== "checkbox" || element.checked),
+        ).map(({ name, value }) => [name, value]));
+      }
+    },
+  });
+  vm.runInContext(loadTraceReportSource(), context);
+  vm.runInContext(`
+    filterForm = { elements };
+    filterElement = controls.query;
+    minimumDurationElement = controls.minimum;
+    testPhaseElement = controls.phase;
+    rowOrderElement = controls.order;
+    timelineModeElement = controls.timeline;
+    rowLoadSizeElement = controls.rows;
+    clearFilterElement = control("");
+    clearMinimumDurationElement = control("");
+    clearFiltersElement = control("");
+    filterStatus = control("");
+    expandElement = control("");
+    collapseElement = control("");
+    copyViewLinkElement = control("");
+    shareLinkControl = controls.share;
+    shareLinkElement = controls.shareLink;
+    shareStatus = control("");
+    renderRows = () => { syncTraceViewUrl(); globalThis.rendered = flattenRows(); };
+    initialize(testModel);
+  `, context);
+  return context;
+}
+
+function mockRowElements(context) {
+  context.document.createElement = () => ({
+    disabled: false, children: [], dataset: {}, style: {}, attributes: {},
+    classList: { add() {} },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    append(...children) { this.children.push(...children); },
+  });
+}
+
+function testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering() {
+  const context = makeViewRuntime(
+    "?query=target&phase=ya.test.worker&minimum-duration=9&test-size=medium" +
+    "&order=ya.test.worker&timeline=local&rows=1000",
+  );
+  assert.strictEqual(context.controls.phase.value, encodeTestPhaseSelection("ya.test.worker"));
+  assert.strictEqual(context.controls.order.value, context.controls.phase.value);
+  assert.strictEqual(context.controls.timeline.value, "local");
+  assert.strictEqual(context.controls.rows.value, "1000");
+  assert.strictEqual(context.controls.size.checked, true);
+  assert.strictEqual(context.rendered.items.length, 1);
+  assert.strictEqual(context.rendered.items[0].index, 0);
+  assert.strictEqual(context.window.history.state.preserved, true);
+
+  context.window.location = new URL("https://reports.example/trace.html?query=missing");
+  vm.runInContext("restoreTraceViewOnNavigation();", context);
+  assert.strictEqual(context.rendered.items.length, 0);
+  assert.strictEqual(context.controls.order.value, ROW_ORDERS.TREE);
+  assert.strictEqual(context.controls.size.checked, false);
+}
+
+function testUnavailablePhasesFallBackWithoutBreakingTheReport() {
+  const context = makeViewRuntime(
+    "?phase=ya.test.stage/unknown&order=ya.test.worker.phase/unknown",
+  );
+  assert.strictEqual(context.controls.phase.value, "");
+  assert.strictEqual(context.controls.order.value, ROW_ORDERS.TREE);
+  assert(context.rendered.items.length > 0);
+}
+
+function testHashNavigationPreservesLoadedGroupsAndPendingInput() {
+  const context = makeViewRuntime("");
+  vm.runInContext(`
+    rowBudget = 1200;
+    limits.set(1, 1000);
+    expanded.add(0);
+    expanded.add(1);
+    renderRows();
+  `, context);
+  const rendered = context.rendered;
+  assert.strictEqual(rendered.spanRows, 3);
+  context.controls.query.value = "pending input";
+  for (const hash of ["#page-bottom", "#page-top", ""]) {
+    context.window.location.hash = hash;
+    vm.runInContext("restoreTraceViewOnNavigation();", context);
+    assert.strictEqual(context.rendered, rendered);
+    assert.strictEqual(vm.runInContext("rowBudget", context), 1200);
+    assert.strictEqual(vm.runInContext("limits.get(1)", context), 1000);
+    assert.strictEqual(vm.runInContext("expanded.has(0) && expanded.has(1)", context), true);
+    assert.strictEqual(context.controls.query.value, "pending input");
+  }
+  // Actual filter navigation still restores controls and resets pagination.
+  context.window.location.search = "?query=missing";
+  vm.runInContext("restoreTraceViewOnNavigation();", context);
+  assert.strictEqual(context.controls.query.value, "missing");
+  assert.strictEqual(vm.runInContext("rowBudget", context), INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("limits.size", context), 0);
+  assert.strictEqual(context.rendered.spanRows, 0);
+}
+
+function testHashNavigationPreservesFiltersAfterUrlSync() {
+  for (const blockHistory of [false, true]) {
+    const context = makeViewRuntime("", { blockHistory });
+    context.controls.query.value = "case";
+    vm.runInContext(`
+      applyFilterImmediately();
+      rowBudget = 1200;
+      renderRows();
+    `, context);
+    const rendered = context.rendered;
+    assert.strictEqual(context.window.location.search, blockHistory ? "" : "?query=case");
+    context.window.location.hash = "#page-bottom";
+    vm.runInContext("restoreTraceViewOnNavigation();", context);
+    assert.strictEqual(context.rendered, rendered);
+    assert.strictEqual(context.controls.query.value, "case");
+    assert.strictEqual(vm.runInContext("rowBudget", context), 1200);
+  }
+}
+
+function testSharedGroupedOrderKeepsTestNameMatches() {
+  for (const [order, expected] of [
+    ["ya.chunk", [1, 2]],
+    ["ya.test.worker", [0, 1, 2]],
+  ]) {
+    const context = makeViewRuntime(`?query=case&order=${order}`);
+    assert.deepStrictEqual(
+      Array.from(context.rendered.items, ({ index }) => index),
+      expected,
+    );
+  }
+}
+
+function testSharedFlatOrderExcludesContextRows() {
+  const context = makeViewRuntime(
+    "?phase=ya.test&minimum-duration=4&order=duration",
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+}
+
+function testMatchStatusTracksTheSelectedOrder() {
+  const context = makeViewRuntime("?minimum-duration=4");
+  const status = () => vm.runInContext("filterStatus.textContent", context);
+  assert.strictEqual(status(), "3 matching spans");
+  for (const [order, expected] of [
+    [encodeTestPhaseSelection("ya.test"), "1 matching span"],
+    [ROW_ORDERS.DURATION, "3 matching spans"],
+    [encodeTestPhaseSelection("ya.test.worker"), "1 matching span"],
+  ]) {
+    context.controls.order.value = order;
+    vm.runInContext("applyRowOrder();", context);
+    assert.strictEqual(status(), expected);
+  }
+  vm.runInContext("expandAllGroups();", context);
+  assert.strictEqual(context.rendered.spanRows, 3);
+  assert.strictEqual(status(), "1 matching span");
+  context.controls.order.value = encodeTestPhaseSelection("ya.test");
+  context.controls.minimum.value = "6";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(context.rendered.spanRows, 0);
+  assert.strictEqual(status(), "0 matching spans");
+  context.controls.minimum.value = "";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(status(), "1 matching span");
+  context.controls.order.value = ROW_ORDERS.TREE;
+  vm.runInContext("applyRowOrder();", context);
+  assert.strictEqual(status(), "");
+}
+
+function testSharedWorkerDurationKeepsContainedTestNameSearch() {
+  const context = makeViewRuntime(
+    "?query=case&phase=ya.test.worker&minimum-duration=9&order=ya.test",
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+}
+
+function testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.chunk", "ya.test"],
+    s: [
+      makeSpan({ id: "slow-worker", name: "slow worker", duration: 90e9 }),
+      makeSpan({ id: "slow-chunk", name: "chunk", parent: 0, scope: 1, duration: 80e9 }),
+      makeSpan({ id: "short-test", name: "short test", parent: 1, scope: 2, duration: 5e9 }),
+      makeSpan({ id: "fast-worker", name: "fast worker", duration: 10e9 }),
+      makeSpan({ id: "fast-test", name: "another test", parent: 3, scope: 2, duration: 7e9 }),
+    ],
+  };
+  const context = makeViewRuntime(
+    "?minimum-duration=60&phase=ya.test.worker&order=ya.test&timeline=local",
+    { traceModel },
+  );
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [2],
+  );
+  assert.strictEqual(context.controls.minimum.value, "60");
+  assert.strictEqual(context.controls.timeline.value, TIMELINE_MODES.LOCAL);
+  const geometry = timelineBarGeometry(
+    2, traceModel.s, traceModel.c, 90e9, context.controls.timeline.value,
+  );
+  assert.strictEqual(geometry.relativeTo, 1);
+  assert.strictEqual(geometry.width, 6.25);
+}
+
+function testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable() {
+  const context = makeViewRuntime("", { blockHistory: true });
+  context.controls.query.value = "new filter + &";
+  vm.runInContext("copyTraceViewLink();", context);
+  assert.strictEqual(context.controls.share.hidden, false);
+  assert.strictEqual(context.controls.shareLink.selected, true);
+  assert.strictEqual(
+    new URL(context.controls.shareLink.value).searchParams.get("query"),
+    "new filter + &",
+  );
+  assert.strictEqual(context.window.location.search, "");
+}
+
+function testSharedWorkerDurationKeepsTestPredicates() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.test"],
+    s: [
+      makeSpan({ id: "worker", name: "worker", duration: 90e9, status: 2 }),
+      makeSpan({ id: "failed", name: "failed case", parent: 0, scope: 1,
+        duration: 5e9, status: 2, attributes: { "ya.test.duration.rank": 1 } }),
+      makeSpan({ id: "passed", name: "passing sibling", parent: 0, scope: 1,
+        duration: 7e9 }),
+    ],
+  };
+  for (const predicate of ["failed=1", "top-tests=1", "query=failed%20case"]) {
+    const context = makeViewRuntime(
+      `?phase=ya.test.worker&minimum-duration=60&order=ya.test&${predicate}`,
+      { traceModel },
+    );
+    assert.deepStrictEqual(
+      Array.from(context.rendered.items, ({ index }) => index),
+      [1],
+    );
+  }
+  for (const order of ["tree", "duration", "ya.test.worker", "ya.test"]) {
+    for (const predicate of ["failed=1", "top-tests=1"]) {
+      const context = makeViewRuntime(
+        `?query=passing&phase=ya.test.worker&minimum-duration=60&order=${order}&${predicate}`,
+        { traceModel },
+      );
+      assert.strictEqual(context.rendered.spanRows, 0);
+    }
+  }
+}
+
+function testDurationFilteredGroupsCanExpandAndCollapse() {
+  const traceModel = {
+    c: ["ya.test.worker", "ya.chunk", "ya.test", "ya.test.worker.phase", "ya.test.stage"],
+    s: [
+      makeSpan({ id: "worker", name: "slow worker", duration: 90e9 }),
+      makeSpan({ id: "setup", name: "setup", parent: 0, scope: 3, duration: 5e9 }),
+      makeSpan({ id: "chunk", name: "slow chunk", parent: 0, scope: 1, duration: 80e9 }),
+      makeSpan({ id: "prepare", name: "prepare", parent: 2, scope: 4, duration: 10e9 }),
+      makeSpan({ id: "test-a", name: "case A", parent: 2, scope: 2, duration: 5e9 }),
+      makeSpan({ id: "test-b", name: "case B", parent: 2, scope: 2, duration: 7e9 }),
+      makeSpan({ id: "other-worker", name: "fast worker", duration: 10e9 }),
+      makeSpan({ id: "other-chunk", name: "fast chunk", parent: 6, scope: 1, duration: 8e9 }),
+      makeSpan({ id: "other-test", name: "case C", parent: 7, scope: 2, duration: 7e9 }),
+    ],
+  };
+  for (const [order, root, expandedRows] of [
+    ["ya.test.worker", 0, [0, 1, 2, 3, 4, 5]],
+    ["ya.chunk", 2, [2, 3, 4, 5]],
+  ]) {
+    const context = makeViewRuntime(
+      `?minimum-duration=60&phase=ya.test.worker&order=${order}`,
+      { traceModel },
+    );
+    const shown = () => Array.from(context.rendered.items, ({ index }) => index);
+    assert.deepStrictEqual(shown(), [root]);
+
+    // Exercise the rendered controls as well as the expansion handlers.
+    mockRowElements(context);
+    const row = vm.runInContext("spanRow(rendered.items[0])", context);
+    const [toggle, name] = row.children[0].children;
+    assert.strictEqual(toggle.disabled, false);
+    assert.strictEqual(name.disabled, false);
+    assert.strictEqual(toggle.attributes["aria-expanded"], "false");
+
+    vm.runInContext(`toggleSpanGroup(${root});`, context);
+    assert.deepStrictEqual(shown(), root === 0 ? [0, 1, 2] : expandedRows);
+    if (root === 0) vm.runInContext("toggleSpanGroup(2);", context);
+    assert.deepStrictEqual(shown(), expandedRows);
+    vm.runInContext(`toggleSpanGroup(${root});`, context);
+    assert.deepStrictEqual(shown(), [root]);
+    vm.runInContext("expandAllGroups();", context);
+    assert.deepStrictEqual(shown(), expandedRows);
+    vm.runInContext("collapseAllGroups();", context);
+    assert.deepStrictEqual(shown(), [root]);
+  }
+
+  // A containing worker used only for context must not reveal siblings that
+  // fail the selected test duration, even after Expand all.
+  const context = makeViewRuntime(
+    "?minimum-duration=6&phase=ya.test&order=ya.test.worker", { traceModel },
+  );
+  vm.runInContext("expandAllGroups();", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index), [0, 2, 5, 6, 7, 8],
+  );
+  vm.runInContext("collapseAllGroups();", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index), [0, 6],
+  );
+}
+
+function testFilteredGroupExpansionOnAFullPagePreservesOtherGroups() {
+  const traceModel = { c: ["ya.test.worker", "ya.chunk", "ya.test"], s: [] };
+  for (let i = 0; i < 205; i += 1) {
+    const worker = traceModel.s.length;
+    traceModel.s.push(
+      makeSpan({ id: `worker-${i}`, name: `worker ${i}`, duration: 90e9 }),
+      makeSpan({ id: `chunk-${i}`, name: `chunk ${i}`, parent: worker,
+        scope: 1, duration: 80e9 }),
+      makeSpan({ id: `test-${i}`, name: `case ${i}`, parent: worker + 1,
+        scope: 2, duration: 5e9 }),
+    );
+  }
+  const context = makeViewRuntime(
+    "?minimum-duration=60&phase=ya.test.worker&order=ya.chunk", { traceModel },
+  );
+  const firstPage = Array.from(context.rendered.items, ({ index }) => index);
+  assert.strictEqual(firstPage.length, INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.deepStrictEqual(
+    Array.from(context.rendered.items, ({ index }) => index),
+    [firstPage[0], 2, ...firstPage.slice(1)],
+  );
+  assert.strictEqual(context.rendered.truncated, true);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
+  // Flat lists also count the full result, independently of the page budget.
+  context.controls.phase.value = "";
+  context.controls.minimum.value = "";
+  context.controls.order.value = encodeTestPhaseSelection("ya.test");
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.strictEqual(context.rendered.spanRows, INITIAL_ROW_BUDGET);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "205 matching spans");
+}
+
+function testAttributeMatchedTreeGroupsExpandOnlyOnRequest() {
+  const traceModel = {
+    c: ["workflow", "ya.build", "ya.chunk", "ya.test.stage", "ya.test"],
+    s: [
+      makeSpan({ id: "root", name: "run" }),
+      makeSpan({ id: "build", name: "build operations", parent: 0, scope: 1,
+        attributes: { "ya.build.critical_path.summary": "target" } }),
+      makeSpan({ id: "compile", name: "unrelated compile", parent: 1 }),
+      makeSpan({ id: "chunk", name: "target chunk", parent: 0, scope: 2,
+        attributes: { "ya.chunk.metric.suite_start_timestamp": 1793707149 } }),
+      makeSpan({ id: "prepare", name: "prepare recipes", parent: 3, scope: 3 }),
+      makeSpan({ id: "test", name: "case", parent: 3, scope: 4 }),
+      makeSpan({ id: "other-chunk", name: "other chunk", parent: 0, scope: 2 }),
+      makeSpan({ id: "other-test", name: "other case", parent: 6, scope: 4 }),
+    ],
+  };
+  const context = makeViewRuntime("?query=1793707149", { traceModel });
+  const shown = () => Array.from(context.rendered.items, ({ index }) => index);
+  assert.deepStrictEqual(shown(), [0, 3]);
+  mockRowElements(context);
+  const row = vm.runInContext("spanRow(rendered.items[1])", context);
+  const [toggle, name] = row.children[0].children;
+  assert.strictEqual(toggle.disabled, false);
+  assert.strictEqual(name.disabled, false);
+  assert.strictEqual(toggle.attributes["aria-expanded"], "false");
+  vm.runInContext("toggleSpanGroup(3);", context);
+  assert.deepStrictEqual(shown(), [0, 3, 4, 5]);
+  assert.strictEqual(vm.runInContext("filterStatus.textContent", context), "1 matching span");
+  vm.runInContext("toggleSpanGroup(3);", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+  vm.runInContext("expandAllGroups();", context);
+  assert.deepStrictEqual(shown(), [0, 3, 4, 5]);
+  vm.runInContext("collapseAllGroups(); toggleSpanGroup(0);", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+
+  // A new query resets explicit context. Metadata summaries stay closed while
+  // name-matched groups still reveal their matching paths automatically.
+  context.controls.query.value = "target";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.deepStrictEqual(shown(), [0, 1, 3, 4, 5]);
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.deepStrictEqual(shown(), [0, 1, 2, 3, 4, 5]);
+  context.controls.query.value = "1793707149";
+  vm.runInContext("applyFilterImmediately();", context);
+  assert.deepStrictEqual(shown(), [0, 3]);
+}
+
+function testAttributeMatchedTreeGroupChildrenLoadProgressively() {
+  const traceModel = {
+    c: ["workflow", "ya.chunk", "ya.test"],
+    s: [
+      makeSpan({ id: "root", name: "run" }),
+      makeSpan({ id: "chunk", name: "chunk", parent: 0, scope: 1,
+        attributes: { "test.suite": "metadata target" } }),
+      ...Array.from({ length: 250 }, (_, i) => makeSpan({
+        id: `test-${i}`, name: `case ${i}`, parent: 1, scope: 2,
+      })),
+    ],
+  };
+  const context = makeViewRuntime("?query=metadata", { traceModel });
+  vm.runInContext("toggleSpanGroup(1);", context);
+  assert.strictEqual(context.rendered.spanRows, 202);
+  const more = context.rendered.items.at(-1);
+  assert.strictEqual(more.kind, "more");
+  assert.strictEqual(more.shown, 200);
+  assert.strictEqual(more.total, 250);
+  context.action = {
+    dataset: { rowAction: "load-group", index: "1", nextLimit: "250", loadCount: "50" },
+    closest: () => null,
+  };
+  vm.runInContext(`
+    rowsElement = { contains: () => true };
+    handleRowsClick({ target: { closest: () => action } });
+  `, context);
+  assert.strictEqual(context.rendered.spanRows, 252);
+  assert(!context.rendered.items.some((row) => row.kind === "more"));
+  vm.runInContext("toggleSpanGroup(1); toggleSpanGroup(1);", context);
+  assert.strictEqual(context.rendered.spanRows, 252);
+}
+
+for (const test of [
+  testViewUrlRoundTripsEveryControl,
+  testClearingViewRemovesOwnedParametersAndKeepsTheReportUrl,
+  testMalformedViewParametersFallBackToDefaults,
+  testLocalLinksAndExactPhaseNamesRoundTrip,
+  testInitialViewRestoresDynamicChoicesBeforeFilteringAndOrdering,
+  testUnavailablePhasesFallBackWithoutBreakingTheReport,
+  testHashNavigationPreservesLoadedGroupsAndPendingInput,
+  testHashNavigationPreservesFiltersAfterUrlSync,
+  testSharedGroupedOrderKeepsTestNameMatches,
+  testSharedFlatOrderExcludesContextRows,
+  testMatchStatusTracksTheSelectedOrder,
+  testSharedWorkerDurationKeepsContainedTestNameSearch,
+  testSharedWorkerDurationFilterCanOrderTestsWithLocalTimelines,
+  testCopyFallbackWorksWhenHistoryAndClipboardAreUnavailable,
+  testSharedWorkerDurationKeepsTestPredicates,
+  testDurationFilteredGroupsCanExpandAndCollapse,
+  testFilteredGroupExpansionOnAFullPagePreservesOtherGroups,
+  testAttributeMatchedTreeGroupsExpandOnlyOnRequest,
+  testAttributeMatchedTreeGroupChildrenLoadProgressively,
+]) {
+  test();
+}
