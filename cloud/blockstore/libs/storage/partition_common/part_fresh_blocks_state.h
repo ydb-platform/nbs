@@ -166,6 +166,25 @@ struct TSelectiveTrimPlan
     TVector<ui64> CollectingCommitIds;
 };
 
+struct TFreshBlobStats
+{
+    ui64 BlobCount = 0;
+    ui64 ByteCount = 0;
+};
+
+// Untrimmed fresh blobs by the kind of trim that can reach them.
+struct TUntrimmedFreshBlobsBreakdown
+{
+    // At or below OrdinaryTrimToCommitId, so all dead.
+    TFreshBlobStats OrdinaryTrimmable;
+    // Dead blobs above OrdinaryTrimToCommitId. Before a flush, only a
+    // selective trim reaches them.
+    TFreshBlobStats DeadBehindLive;
+    TFreshBlobStats Live;
+    // Live blobs at or below the last soft barrier: they carry Keep flags.
+    ui64 KeptBlobCount = 0;
+};
+
 class TPartitionFreshBlobState
 {
 private:
@@ -263,6 +282,11 @@ public:
         const TVector<ui64>& liveCommitIds,
         ui64 addedToCommitId) const;
 
+    // Scans every untrimmed blob, for the monitoring page.
+    [[nodiscard]] TUntrimmedFreshBlobsBreakdown GetUntrimmedFreshBlobsBreakdown(
+        ui64 ordinaryTrimToCommitId,
+        ui64 lastSentSelectiveTrimToCommitId) const;
+
     [[nodiscard]] TTrimFreshBlobsResult TrimFreshBlobs(ui64 commitId);
 
     // Trims the blobs that a selective trim collected or released.
@@ -288,6 +312,16 @@ private:
     void EraseUntrimmedFreshBlob(TUntrimmedFreshBlobsByCommitId::iterator it);
 
     ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
+};
+
+struct TTrimFreshLogStats
+{
+    // Started while a trim of this kind runs, Idle after it completes.
+    TOperationState State;
+    ui64 SucceededCount = 0;
+    ui64 FailedCount = 0;
+    // Untrimmed fresh blob bytes that the successful trims removed.
+    ui64 TrimmedByteCount = 0;
 };
 
 class TPartitionTrimFreshLogState
@@ -316,6 +350,10 @@ private:
     // After a scan, the next one waits until the total killed byte count
     // reaches this value, unless the soft command of the scan failed.
     ui64 NextSelectiveScanTotalKilledByteCount = 0;
+
+    // In this tablet lifetime, for the monitoring page.
+    TTrimFreshLogStats OrdinaryTrimStats;
+    TTrimFreshLogStats SelectiveTrimStats;
 
 public:
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
@@ -378,6 +416,11 @@ public:
         return totalKilledByteCount >= NextSelectiveScanTotalKilledByteCount;
     }
 
+    [[nodiscard]] ui64 GetNextSelectiveScanTotalKilledByteCount() const
+    {
+        return NextSelectiveScanTotalKilledByteCount;
+    }
+
     // Called on every scan, so that soft commands that collect little cannot
     // follow each other while dead blobs out of reach keep the trim due.
     void DeferSelectiveScan(ui64 totalKilledByteCount, ui64 threshold)
@@ -409,6 +452,38 @@ public:
         // blobs in (KeptToCommitId, LastSentSelectiveTrimToCommitId] and
         // DoNotKeep for dead ones.
         NextSelectiveScanTotalKilledByteCount = 0;
+    }
+
+    void RegisterTrimFreshLogStarted(bool selective, TInstant now)
+    {
+        auto& stats = selective ? SelectiveTrimStats : OrdinaryTrimStats;
+        stats.State.SetStatus(EOperationStatus::Started, now);
+    }
+
+    void RegisterTrimFreshLogCompleted(
+        bool selective,
+        bool failed,
+        ui64 trimmedByteCount,
+        TInstant now)
+    {
+        auto& stats = selective ? SelectiveTrimStats : OrdinaryTrimStats;
+        stats.State.SetStatus(EOperationStatus::Idle, now);
+        if (failed) {
+            ++stats.FailedCount;
+            return;
+        }
+        ++stats.SucceededCount;
+        stats.TrimmedByteCount += trimmedByteCount;
+    }
+
+    [[nodiscard]] const TTrimFreshLogStats& GetOrdinaryTrimStats() const
+    {
+        return OrdinaryTrimStats;
+    }
+
+    [[nodiscard]] const TTrimFreshLogStats& GetSelectiveTrimStats() const
+    {
+        return SelectiveTrimStats;
     }
 };
 

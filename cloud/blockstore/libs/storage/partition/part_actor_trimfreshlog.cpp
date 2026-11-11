@@ -285,6 +285,7 @@ void TPartitionActor::HandleTrimFreshLog(
     State->AccessTrimFreshLogState().SetStatus(
         EOperationStatus::Started,
         ctx.Now());
+    State->RegisterTrimFreshLogStarted(selective, ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -337,6 +338,8 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         State->RegisterTrimFreshLogSuccess();
     }
 
+    const ui64 untrimmedByteCount = State->GetUntrimmedFreshBlobByteCount();
+
     ui64 unflushedByteCount = 0;
     if (msg->SelectiveTrim) {
         if (!failed) {
@@ -354,6 +357,12 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     } else {
         State->SetOrdinaryTrimRequested(true);
     }
+
+    State->RegisterTrimFreshLogCompleted(
+        msg->SelectiveTrim,
+        failed,
+        untrimmedByteCount - State->GetUntrimmedFreshBlobByteCount(),
+        ctx.Now());
 
     if (IsFreshBlocksWriterEnabled()) {
         SharedState->UnflushedFreshBlobByteCount.fetch_sub(unflushedByteCount);
