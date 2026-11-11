@@ -35,8 +35,8 @@ such as `now-15m`. Offsets support `s`, `m`, `h`, `d`, `w`, `M`, `Q`, and `y`.
 Appending `/unit` rounds `from` to the start of that period and `to` to the start
 of the next period (for example, the following midnight for `/d`). The `to`
 bound is exclusive, so this includes every microsecond of the selected period.
-The same units are supported
-for rounding. For example, `--grafana-range='{"from":"now-1M/M","to":"now-1M/M"}'`
+The same units are supported for rounding. For example,
+`--grafana-range='{"from":"now-1M/M","to":"now-1M/M"}'`
 selects the previous calendar month, and `--grafana-range='{"from":"now/d","to":"now/d"}'`
 selects today. Calendar arithmetic and rounding use UTC, with weeks starting
 on Sunday. Fiscal quarter `/fQ` and fiscal year `/fy` rounding are also supported,
