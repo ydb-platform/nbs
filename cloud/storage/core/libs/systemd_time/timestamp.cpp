@@ -449,7 +449,8 @@ bool TryParseTimestamp(
         !forward && (input.SkipPrefix("-") || input.ChopSuffix(" ago"));
     if (forward || backward) {
         ui64 span;
-        return ParseSpan(input, span) && ApplyOffset(now, span, backward, result);
+        return ParseSpan(input, span) &&
+               ApplyOffset(now, span, backward, result);
     }
 
     // Prefer the complete timestamp so numeric timezone offsets keep their
@@ -460,20 +461,17 @@ bool TryParseTimestamp(
 
     // Other span modifiers need whitespace before their sign. Date separators
     // and directly attached RFC3339 timezone offsets are therefore not split.
-    for (size_t i = 1; i < input.size(); ++i) {
-        if ((input[i] != '+' && input[i] != '-') || !IsAsciiSpace(input[i - 1]))
-        {
-            continue;
-        }
-        ui64 span;
-        TInstant base;
-        if (ParseSpan(input.SubStr(i + 1), span) &&
-            ParseBase(input.SubStr(0, i), base, now, timeZone))
-        {
-            return ApplyOffset(base, span, input[i] == '-', result);
-        }
+    // A span cannot contain a sign, so only the last sign can be a modifier.
+    const size_t sign = input.find_last_of("+-");
+    if (sign == TStringBuf::npos || sign == 0 || !IsAsciiSpace(input[sign - 1]))
+    {
+        return false;
     }
-    return false;
+    ui64 span;
+    TInstant base;
+    return ParseSpan(input.SubStr(sign + 1), span) &&
+           ParseBase(input.Head(sign), base, now, timeZone) &&
+           ApplyOffset(base, span, input[sign] == '-', result);
 }
 
 }   // namespace NSystemdTime
