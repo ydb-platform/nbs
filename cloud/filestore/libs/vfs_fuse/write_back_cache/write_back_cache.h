@@ -85,7 +85,9 @@ struct TWriteBackCacheArgs
     bool FlushWritesInParallelEnabled = false;
 
     // Max WriteData request size (in bytes) the cache must be able to store
-    // (the negotiated FUSE max_write).
+    // (the negotiated FUSE max_write). If the state file is too small for it,
+    // the cache is drained on init: saved data is flushed and new requests
+    // bypass the cache.
     ui64 MaxCachedWriteRequestSize = 1_MB;
 };
 

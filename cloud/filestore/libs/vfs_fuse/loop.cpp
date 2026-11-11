@@ -60,6 +60,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Upper bound for MaxWritePages (4 MiB with 4 KiB pages). The guest never
+// uses more: it caps pages per request below the virtqueue size, which is at
+// most 1024.
+constexpr ui32 MaxWritePagesLimit = 1024;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCompletionQueue final
@@ -1405,9 +1410,10 @@ private:
 
         const auto& features = filestore.GetFeatures();
 
-        const ui32 pages = features.GetMaxWritePages()
-                               ? features.GetMaxWritePages()
-                               : Config->GetMaxWritePages();
+        const ui32 pages = Min<ui32>(
+            features.GetMaxWritePages() ? features.GetMaxWritePages()
+                                        : Config->GetMaxWritePages(),
+            MaxWritePagesLimit);
         if (pages) {
             config.SetMaxWritePages(pages);
 

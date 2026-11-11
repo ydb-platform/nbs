@@ -81,6 +81,7 @@ private:
     const TString FileSystemId;
     const TString FilePath;
     const IPersistentStoragePtr PersistentStorage;
+    const ui64 MaxCachedWriteRequestSize;
 
     TWriteBackCacheState State;
 
@@ -114,10 +115,10 @@ public:
               {.FilePath = args.FilePath, .StateFileSize = args.StateFileSize},
               Log,
               LogTag))
+        , MaxCachedWriteRequestSize(args.MaxCachedWriteRequestSize)
         , State(
               *this,
               PersistentStorage,
-              args.MaxCachedWriteRequestSize,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
               args.Stats->GetWriteDataRequestManagerStats(),
@@ -137,9 +138,29 @@ public:
                 TStringBuilder()
                 << LogTag << " WriteBackCache initialization failure: "
                 << FormatError(error) << ", FilePath: " << FilePath.Quote());
-        } else {
-            ScheduleAutomaticFlushIfNeeded();
+            return;
         }
+
+        // The ring buffer must fit any WriteData request: one that doesn't fit
+        // stays pending forever and blocks the following ones. Plus some room
+        // for the headers (assume 1 KiB is enough).
+        const ui64 required = MaxCachedWriteRequestSize + 1016;
+        const ui64 supported =
+            PersistentStorage->GetMaxSupportedAllocationByteCount();
+
+        if (supported < required) {
+            // Flush the restored data and serve new requests directly
+            ReportWriteBackCacheInitializationError(
+                TStringBuilder()
+                << LogTag << " WriteBackCache is drained: max supported "
+                << "allocation " << supported << " is less than " << required
+                << ", increase the state file size or decrease "
+                << "MaxWritePages, FilePath: " << FilePath.Quote());
+            Y_UNUSED(Drain());
+            return;
+        }
+
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
