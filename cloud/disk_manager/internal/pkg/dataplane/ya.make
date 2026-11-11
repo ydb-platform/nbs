@@ -10,6 +10,8 @@ SRCS(
     create_snapshot_from_disk_task.go
     create_snapshot_from_snapshot_task.go
     create_snapshot_from_url_task.go
+    delete_backup_chunks_task.go
+    delete_backup_snapshot_data_task.go
     delete_disk_from_incremental.go
     delete_snapshot_data_task.go
     delete_snapshot_task.go
@@ -17,6 +19,7 @@ SRCS(
     migrate_snapshot_database_task.go
     register.go
     replicate_disk_task.go
+    schedule_backup_chunks_tasks.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
 )
@@ -24,6 +27,7 @@ SRCS(
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
     replicate_disk_task_test.go
+    schedule_backup_chunks_tasks_test.go
 )
 
 END()

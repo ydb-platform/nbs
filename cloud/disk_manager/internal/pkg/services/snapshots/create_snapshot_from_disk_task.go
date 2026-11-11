@@ -66,6 +66,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	snapshotMeta, err := t.storage.CreateSnapshot(ctx, resources.SnapshotMeta{
+		BlockSize:     diskParams.BlockSize,
 		ID:            t.request.DstSnapshotId,
 		FolderID:      t.request.FolderId,
 		Disk:          disk,
@@ -105,6 +106,7 @@ func (t *createSnapshotFromDiskTask) run(
 		"",
 		disk.ZoneId,
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
+			BlockSize:           diskParams.BlockSize,
 			SrcDisk:             disk,
 			SrcDiskCheckpointId: checkpointID,
 			DstSnapshotId:       t.request.DstSnapshotId,

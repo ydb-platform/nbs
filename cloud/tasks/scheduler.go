@@ -94,6 +94,10 @@ type Scheduler interface {
 	// Returns error if any of the given tasks finishes with error.
 	WaitAnyTasks(ctx context.Context, taskIDs []string) ([]string, error)
 
+	// Returns the given tasks that have ended: finished, failed or cancelled,
+	// or no longer in the task storage. Does not wait.
+	GetEndedTasks(ctx context.Context, taskIDs []string) ([]string, error)
+
 	// Synchronously waits until task is finished successfully or cancelled.
 	WaitTaskEnded(ctx context.Context, taskID string) error
 

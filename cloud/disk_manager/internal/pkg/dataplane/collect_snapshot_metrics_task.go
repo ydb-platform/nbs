@@ -77,6 +77,14 @@ func (c collectSnapshotMetricsTask) Run(
 				return err
 			}
 			c.registry.Gauge("backup/chunkQueueLength").Set(float64(queueLength))
+
+			deleteQueueLength, err := c.storage.GetBackupChunkDeleteQueueLength(ctx)
+			if err != nil {
+				return err
+			}
+			c.registry.Gauge("backup/chunkDeleteQueueLength").Set(
+				float64(deleteQueueLength),
+			)
 		}
 	}
 	return nil
@@ -113,5 +121,6 @@ func (c collectSnapshotMetricsTask) clearMetrics() {
 	c.registry.Gauge("snapshots/deletingCount").Set(0)
 	if c.backupEnabled {
 		c.registry.Gauge("backup/chunkQueueLength").Set(0)
+		c.registry.Gauge("backup/chunkDeleteQueueLength").Set(0)
 	}
 }

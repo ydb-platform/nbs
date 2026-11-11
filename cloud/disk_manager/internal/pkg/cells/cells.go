@@ -6,6 +6,9 @@ import (
 	"slices"
 	"sync"
 
+	"golang.org/x/exp/maps"
+	"golang.org/x/sync/errgroup"
+
 	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -16,8 +19,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"golang.org/x/exp/maps"
-	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
