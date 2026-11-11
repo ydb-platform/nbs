@@ -401,7 +401,7 @@ NProto::TError TPageStore::ReadPageForUpdate(
             std::make_pair(
                 pageNo,
                 TPageVersions{
-                    .Committed = {.Content = {}, .Lsn = lsn},
+                    .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
                     .Dirty = {},
                     .IsLoading = true,
                 }),
