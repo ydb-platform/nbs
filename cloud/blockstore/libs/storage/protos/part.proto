@@ -225,9 +225,9 @@ message TCompressionMetadata
 
     message TPlainChunks
     {
-        // Compressed sizes in bytes of all chunks except the last.
-        // N chunks have N-1 sizes; the last size is the blob size minus
-        // their sum.
+        // One size per chunk, including the final chunk. Zero marks a raw
+        // chunk, whose size is ChunkSize except for a partial final chunk.
+        // A raw final chunk's size is inferred from the remaining blob bytes.
         repeated uint32 CompressedChunkSize = 1;
     }
 
