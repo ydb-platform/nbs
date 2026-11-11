@@ -197,6 +197,7 @@ type nodeService struct {
 	nfsVhostReplicaCount        uint
 	nbsServerReplicaCount       uint
 	offlineResize               bool
+	enableEndpointBalancing     bool
 }
 
 func newNodeService(
@@ -218,6 +219,7 @@ func newNodeService(
 	startEndpointRequestTimeout time.Duration,
 	nfsVhostReplicaCount uint,
 	nbsServerReplicaCount uint,
+	enableEndpointBalancing bool,
 	offlineResize bool) csi.NodeServer {
 
 	return &nodeService{
@@ -241,6 +243,7 @@ func newNodeService(
 		nfsVhostReplicaCount:        nfsVhostReplicaCount,
 		nbsServerReplicaCount:       nbsServerReplicaCount,
 		offlineResize:               offlineResize,
+		enableEndpointBalancing:     enableEndpointBalancing,
 	}
 }
 
@@ -460,6 +463,10 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zo
 		return 0, nil
 	}
 
+	if !s.enableEndpointBalancing {
+		return 0, nil
+	}
+
 	endpointsCount := math.MaxInt32
 	nbsClientIndex := uint(0)
 	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
@@ -499,6 +506,10 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 			return backendIndex, nil
 		}
 
+		return 0, nil
+	}
+
+	if !s.enableEndpointBalancing {
 		return 0, nil
 	}
 

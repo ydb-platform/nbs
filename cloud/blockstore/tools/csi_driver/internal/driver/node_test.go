@@ -301,6 +301,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -560,6 +561,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -975,6 +977,7 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				testCtx.nfsVhostReplicaCount,
 				testCtx.nbsServerReplicaCount,
+				true,  // enableEndpointBalancing
 				false, // offlineResize
 			)
 
@@ -1079,6 +1082,7 @@ func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				testCtx.nfsVhostReplicaCount,
 				testCtx.nbsServerReplicaCount,
+				true,  // enableEndpointBalancing
 				false, // offlineResize
 			)
 
@@ -1216,6 +1220,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1376,6 +1381,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1826,6 +1832,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1898,6 +1905,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1963,6 +1971,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2064,6 +2073,7 @@ func TestExternaFs(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2214,6 +2224,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2310,6 +2321,7 @@ func stageVolumeWithTimeoutForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2483,6 +2495,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2642,6 +2655,7 @@ func TestOnlineNodeExpandVolume(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				testCtx.nfsVhostReplicaCount,
 				testCtx.nbsServerReplicaCount,
+				true, // enableEndpointBalancing
 				false,
 			)
 			clientIndex := 0
@@ -2746,6 +2760,7 @@ func TestNodeStageVolumeExpansion(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				1,
 				1,
+				true, // enableEndpointBalancing
 				tc.offline,
 			)
 			ctx := context.Background()
@@ -2834,5 +2849,57 @@ func TestNodeExpandVolumeNotFoundWithoutCapacityRange(t *testing.T) {
 			require.Equal(t, codes.NotFound, status.Code(err), "%v", err)
 			client.AssertExpectations(t)
 		})
+	}
+}
+
+func TestEndpointBalancing(t *testing.T) {
+	for _, backend := range []string{"nbs", "nfs"} {
+		for _, tc := range []struct {
+			name      string
+			enabled   bool
+			mapping   map[string]uint
+			wantIndex uint
+		}{
+			{name: "disabled"},
+			{name: "enabled", enabled: true, wantIndex: 1},
+			{name: "zone mapping with balancing disabled", mapping: map[string]uint{"zone": 1}, wantIndex: 1},
+		} {
+			t.Run(backend+"/"+tc.name, func(t *testing.T) {
+				service := &nodeService{
+					nbsServerReplicaCount:   2,
+					nfsVhostReplicaCount:    2,
+					enableEndpointBalancing: tc.enabled,
+					zoneIdToBackendIndex:    tc.mapping,
+				}
+				ctx := context.Background()
+				if backend == "nbs" {
+					for i := 0; i < 2; i++ {
+						client := mocks.NewNbsClientMock()
+						if tc.enabled {
+							client.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+								Return(&nbs.TListEndpointsResponse{Endpoints: make([]*nbs.TStartEndpointRequest, 1-i)}, nil).Once()
+						}
+						service.nbsClients = append(service.nbsClients, client)
+						defer client.AssertExpectations(t)
+					}
+					index, err := service.getNbsClientIndex(ctx, "volume", "zone")
+					require.NoError(t, err)
+					require.Equal(t, tc.wantIndex, index)
+				} else {
+					for i := 0; i < 2; i++ {
+						client := mocks.NewNfsEndpointClientMock()
+						if tc.enabled {
+							client.On("ListEndpoints", ctx, &nfs.TListEndpointsRequest{}).
+								Return(&nfs.TListEndpointsResponse{Endpoints: make([]*nfs.TEndpointConfig, 1-i)}, nil).Once()
+						}
+						service.nfsClients = append(service.nfsClients, client)
+						defer client.AssertExpectations(t)
+					}
+					index, err := service.getNfsClientIndex(ctx, "volume", "zone")
+					require.NoError(t, err)
+					require.Equal(t, tc.wantIndex, index)
+				}
+			})
+		}
 	}
 }

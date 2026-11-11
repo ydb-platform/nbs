@@ -1,3 +1,10 @@
+# Endpoint balancing
+
+Pass `--enable-endpoint-balancing` to select the backend with the fewest
+endpoints for NBS and NFS volumes. It is disabled by default: without a zone
+mapping, the driver selects backend 0. Zone mappings take precedence over
+endpoint balancing.
+
 # Volume expansion
 
 In pod mode, online expansion is enabled by default. The driver advertises

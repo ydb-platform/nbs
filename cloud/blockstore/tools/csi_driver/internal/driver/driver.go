@@ -51,6 +51,7 @@ type Config struct {
 	VendorVersion                    string
 	VMMode                           bool
 	OfflineResize                    bool
+	EnableEndpointBalancing          bool
 	MonPort                          uint
 	NbsHost                          string
 	NbsPort                          uint
@@ -332,6 +333,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.StartEndpointRequestTimeout,
 			cfg.NfsVhostReplicaCountUsed,
 			cfg.NbsServerReplicaCountUsed,
+			cfg.EnableEndpointBalancing,
 			cfg.OfflineResize,
 		))
 
