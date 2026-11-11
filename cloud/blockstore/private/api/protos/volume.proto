@@ -344,3 +344,13 @@ message TSetVhostDiscardFlagActionRequest
 message TSetVhostDiscardFlagActionResponse
 {
 }
+
+// ExecuteAction: tidyuppartitions.
+message TTidyUpPartitionsRequest
+{
+    string DiskId = 1;
+}
+
+message TTidyUpPartitionsResponse
+{
+}

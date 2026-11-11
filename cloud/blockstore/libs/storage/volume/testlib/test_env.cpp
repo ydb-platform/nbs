@@ -633,6 +633,14 @@ std::unique_ptr<NMon::TEvRemoteHttpInfo> TVolumeClient::CreateRemoteHttpInfo(
     return std::make_unique<NMon::TEvRemoteHttpInfo>(params);
 }
 
+std::unique_ptr<TEvVolume::TEvTidyUpPartitionsRequest>
+TVolumeClient::CreateTidyUpPartitionsRequest(const TString& diskId)
+{
+    auto request = std::make_unique<TEvVolume::TEvTidyUpPartitionsRequest>();
+    request->Record.SetDiskId(diskId);
+    return request;
+}
+
 std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest>
 TVolumeClient::CreateGetVolumeInfoRequest()
 {

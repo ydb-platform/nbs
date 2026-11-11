@@ -15,6 +15,20 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldConfigureTidyUpModeWithBlobThreshold)
+    {
+        NProto::TStorageServiceConfig proto;
+        auto features = std::make_shared<NFeatures::TFeaturesConfig>();
+        TStorageConfig config(proto, features);
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxBlobsPerRangeInTidyUpMode());
+        proto.SetMaxBlobsPerRangeInTidyUpMode(2);
+        TStorageConfig enabled(proto, features);
+        UNIT_ASSERT_VALUES_EQUAL(2, enabled.GetMaxBlobsPerRangeInTidyUpMode());
+        proto.SetMaxBlobsPerRangeInTidyUpMode(0);
+        TStorageConfig disabled(proto, features);
+        UNIT_ASSERT_VALUES_EQUAL(0, disabled.GetMaxBlobsPerRangeInTidyUpMode());
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(

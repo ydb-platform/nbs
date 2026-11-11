@@ -668,6 +668,8 @@ void TVolumeActor::CompleteAddClient(
         return;
     }
 
+    DisableTidyUpPartitionMode(ctx);
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,

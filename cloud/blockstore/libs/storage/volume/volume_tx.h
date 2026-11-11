@@ -36,6 +36,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateResyncState,              __VA_ARGS__)                           \
     xxx(ToggleResync,                   __VA_ARGS__)                           \
     xxx(UpdateClientInfo,               __VA_ARGS__)                           \
+    xxx(TidyUpPartitions,               __VA_ARGS__)                           \
     xxx(ResetStartPartitionsNeeded,     __VA_ARGS__)                           \
     xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
     xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
@@ -635,18 +636,34 @@ struct TTxVolume
     };
 
     //
+    // TidyUpPartitions
+    //
+
+    struct TTidyUpPartitions
+    {
+        const TRequestInfoPtr RequestInfo;
+        bool ShouldStartPartitions = false;
+
+        explicit TTidyUpPartitions(TRequestInfoPtr requestInfo)
+            : RequestInfo(std::move(requestInfo))
+        {}
+
+        void Clear()
+        {
+            ShouldStartPartitions = false;
+        }
+    };
+
+    //
     // ResetStartPartitionsNeeded
     //
 
     struct TResetStartPartitionsNeeded
     {
         const TRequestInfoPtr RequestInfo;
-        const ui64 PartitionTabletId;
 
-        TResetStartPartitionsNeeded(
-                TRequestInfoPtr requestInfo, ui64 PartitionTabletId)
+        explicit TResetStartPartitionsNeeded(TRequestInfoPtr requestInfo)
             : RequestInfo(std::move(requestInfo))
-            , PartitionTabletId(std::move(PartitionTabletId))
         {}
 
         void Clear()

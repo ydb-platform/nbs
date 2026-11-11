@@ -74,6 +74,7 @@ void TServiceActor::HandleExecuteAction(
         {"setuserid",                         &TServiceActor::CreateSetUserIdActionActor                   },
         {"markreplacementdevice",             &TServiceActor::CreateMarkReplacementDeviceActor             },
         {"suspenddevice",                     &TServiceActor::CreateSuspendDeviceActionActor               },
+        {"tidyuppartitions",                  &TServiceActor::CreateTidyUpPartitionsActionActor            },
         {"updatediskblocksize",               &TServiceActor::CreateUpdateDiskBlockSizeActionActor         },
         {"updatediskreplicacount",            &TServiceActor::CreateUpdateDiskReplicaCountActionActor      },
         {"updateplacementgroupsettings",      &TServiceActor::CreateUpdatePlacementGroupSettingsActor      },

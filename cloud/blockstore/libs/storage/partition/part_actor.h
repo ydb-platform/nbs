@@ -111,6 +111,9 @@ class TPartitionActor final
     friend TIOCompanionClient;
 
 private:
+    bool TidyUpPartitionMode = false;
+    bool TidyUpCompleted = false;
+
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
@@ -235,6 +238,15 @@ private:
 
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
+
+    [[nodiscard]] ui32 GetCleanupThreshold() const;
+    [[nodiscard]] ui32 GetCollectGarbageThreshold() const;
+
+    bool HasPendingCompaction(const NActors::TActorContext& ctx);
+    void ProcessTidyUp(const NActors::TActorContext& ctx);
+    void HandleSetTidyUpPartitionMode(
+        const TEvPartition::TEvSetTidyUpPartitionMode::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);

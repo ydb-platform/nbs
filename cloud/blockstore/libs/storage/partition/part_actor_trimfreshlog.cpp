@@ -197,6 +197,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
 
     EnqueueTrimFreshLogIfNeeded(ctx);
+    ProcessTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.TrimFreshLog.AddRequest(time);

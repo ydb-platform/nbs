@@ -15,6 +15,54 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TVolumeActor::PrepareTidyUpPartitions(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TTidyUpPartitions& args)
+{
+    Y_UNUSED(ctx, tx, args);
+
+    return true;
+}
+
+void TVolumeActor::ExecuteTidyUpPartitions(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxVolume::TTidyUpPartitions& args)
+{
+    Y_UNUSED(ctx);
+
+    if (IsTidyUpPartitionModeAllowed() &&
+        !State->IsDiskRegistryMediaKind() &&
+        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
+    {
+        TVolumeDatabase db(tx.DB);
+        State->SetStartPartitionsNeeded(true);
+        db.WriteStartPartitionsNeeded(true);
+        args.ShouldStartPartitions = true;
+    }
+}
+
+void TVolumeActor::CompleteTidyUpPartitions(
+    const TActorContext& ctx,
+    TTxVolume::TTidyUpPartitions& args)
+{
+    NCloud::Reply(
+        ctx,
+        *args.RequestInfo,
+        std::make_unique<TEvVolume::TEvTidyUpPartitionsResponse>());
+
+    if (args.ShouldStartPartitions &&
+        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
+    {
+        // StartPartitionsNeeded is persisted. The new volume actor will start
+        // the partitions for GC when it loads the state.
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, SelfId());
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TVolumeActor::PrepareResetStartPartitionsNeeded(
     const TActorContext& ctx,
     TTransactionContext& tx,
@@ -36,13 +84,11 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
 
     if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
         if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
-            if (FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
-                // This partition has already sent GC report
-                return;
-            }
-            if (GCCompletedPartitions.size() + 1 != State->GetPartitions().size()) {
-                // Not all partitions completed GC
-                GCCompletedPartitions.push_back(args.PartitionTabletId);
+            if (GCCompletedPartitions.size() != State->GetPartitions().size() ||
+                (TidyUpPartitionMode &&
+                 TidyUpCompletedPartitions.size() != State->GetPartitions().size()))
+            {
+                // Wait for all GC reports and, in tidy-up mode, all tidy-up reports.
                 return;
             }
             LOG_INFO(
@@ -54,6 +100,7 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
             StopPartitions(ctx, {});
             State->Reset();
             PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            TidyUpPartitionMode = false;
         }
         TVolumeDatabase db(tx.DB);
         State->SetStartPartitionsNeeded(false);
@@ -82,15 +129,55 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         LogTitle.GetWithTime().c_str(),
         partitionTabletId);
 
-    if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            MakeIntrusive<TCallContext>());
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+    HandlePartitionMaintenanceCompleted(
+        ctx, std::move(requestInfo), partitionTabletId, false);
+}
 
-        ExecuteTx(ctx, CreateTx<TResetStartPartitionsNeeded>(
-            requestInfo, partitionTabletId));
+void TVolumeActor::HandleTidyUpCompleted(
+    const NPartition::TEvPartition::TEvTidyUpCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+    HandlePartitionMaintenanceCompleted(
+        ctx, std::move(requestInfo), ev->Get()->TabletId, true);
+}
+
+void TVolumeActor::HandlePartitionMaintenanceCompleted(
+    const TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    bool tidyUpCompleted)
+{
+    if (!State->GetShouldStartPartitionsForGc(ctx.Now()) ||
+        (tidyUpCompleted && !TidyUpPartitionMode) ||
+        !State->GetPartition(tabletId))
+    {
+        return;
     }
+
+    if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        auto& completedPartitions = tidyUpCompleted
+            ? TidyUpCompletedPartitions
+            : GCCompletedPartitions;
+        if (!FindPtr(completedPartitions, tabletId)) {
+            completedPartitions.push_back(tabletId);
+        }
+        if (GCCompletedPartitions.size() != State->GetPartitions().size() ||
+            (TidyUpPartitionMode &&
+             TidyUpCompletedPartitions.size() != State->GetPartitions().size()))
+        {
+            return;
+        }
+    }
+
+    ExecuteTx<TResetStartPartitionsNeeded>(ctx, std::move(requestInfo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

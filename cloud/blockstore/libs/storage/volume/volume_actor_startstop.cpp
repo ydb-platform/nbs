@@ -515,14 +515,43 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
     }
 }
 
+bool TVolumeActor::IsTidyUpPartitionModeAllowed() const
+{
+    return Config->GetMaxBlobsPerRangeInTidyUpMode() != 0;
+}
+
+void TVolumeActor::DisableTidyUpPartitionMode(const TActorContext& ctx)
+{
+    if (!TidyUpPartitionMode) {
+        return;
+    }
+
+    TidyUpPartitionMode = false;
+    if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+    }
+    for (const auto& partition: State->GetPartitions()) {
+        if (const auto actorId = partition.GetTopActorId()) {
+            NCloud::Send(
+                ctx,
+                actorId,
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(false));
+        }
+    }
+}
+
 void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
 {
+    TidyUpPartitionMode = false;
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
 }
 
 void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
+    TidyUpPartitionMode = IsTidyUpPartitionModeAllowed();
+    GCCompletedPartitions.clear();
+    TidyUpCompletedPartitions.clear();
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
@@ -967,6 +996,16 @@ void TVolumeActor::HandleTabletStatus(
                     msg->TabletUser,
                     msg->TabletId);
             }
+
+            // Partitions start with tidy-up mode off. Apply the current mode
+            // now that the partition actor is available.
+            if (IsTidyUpPartitionModeAllowed()) {
+                NCloud::Send(
+                    ctx,
+                    msg->TabletUser,
+                    std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(
+                        TidyUpPartitionMode));
+            }
             break;
         }
         case TEvBootstrapper::STOPPED: {
@@ -1182,6 +1221,17 @@ void TVolumeActor::HandleSetVhostDiscardFlagResponse(
             "%s SetVhostDiscardFlag request completed successfully",
             LogTitle.GetWithTime().c_str());
     }
+}
+
+void TVolumeActor::HandleTidyUpPartitions(
+    const TEvVolume::TEvTidyUpPartitionsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        ev->Get()->CallContext);
+    ExecuteTx<TTidyUpPartitions>(ctx, std::move(requestInfo));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
