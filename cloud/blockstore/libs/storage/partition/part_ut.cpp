@@ -11517,6 +11517,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui32 readBlobCount = 0;
         bool readBlobShouldFail = true;
+        bool readBlobShouldViolateContract = true;
 
         const auto eventHandler = [&] (const TEvBlobStorage::TEvGet::TPtr& ev) {
             auto& msg = *ev->Get();
@@ -11527,6 +11528,28 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                 if (expected.IsSameBlob(actual)) {
                     readBlobCount++;
+
+                    if (readBlobShouldViolateContract) {
+                        auto response =
+                            std::make_unique<TEvBlobStorage::TEvGetResult>(
+                                NKikimrProto::OK,
+                                msg.QuerySize,
+                                0);
+                        for (ui32 j = 0; j < msg.QuerySize; ++j) {
+                            response->Responses[j].Status = NKikimrProto::OK;
+                            // Leave the blob id invalid to violate the
+                            // contract.
+                        }
+                        runtime.Schedule(
+                            new IEventHandle(
+                                ev->Sender,
+                                ev->Recipient,
+                                response.release(),
+                                0,
+                                ev->Cookie),
+                            TDuration());
+                        return true;
+                    }
 
                     if (readBlobShouldFail) {
                         auto response = std::make_unique<TEvBlobStorage::TEvGetResult>(
@@ -11578,6 +11601,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         );
 
+        for (ui32 i = 0; i <= config.GetMaxReadBlobErrorsBeforeSuicide(); ++i) {
+            partition.SendReadBlocksRequest(0);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, readBlobCount);
+            UNIT_ASSERT(!suicideHappened);
+        }
+
+        readBlobShouldViolateContract = false;
+        readBlobCount = 0;
+
         for (ui32 i = 1; i < config.GetMaxReadBlobErrorsBeforeSuicide(); i++) {
             partition.SendReadBlocksRequest(0);
             auto response = partition.RecvReadBlocksResponse();
@@ -11615,6 +11649,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetMaxWriteBlobErrorsBeforeSuicide(5);
+        config.SetMaxIORequestsInFlight(1);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
 
@@ -11622,14 +11657,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1001), 1);
 
-        const auto eventHandler = [&] (const TEvBlobStorage::TEvPut::TPtr& ev) {
+        bool cancelWriteBlob = true;
+        bool writeBlobShouldViolateContract = true;
+        ui32 putRequests = 0;
+        const auto eventHandler = [&](const TEvBlobStorage::TEvPut::TPtr& ev)
+        {
+            ++putRequests;
             TLogoBlobID logoBlobId;
             auto response = std::make_unique<TEvBlobStorage::TEvPutResult>(
-                NKikimrProto::ERROR,
+                writeBlobShouldViolateContract ? NKikimrProto::OK
+                                               : NKikimrProto::ERROR,
                 logoBlobId,
-                0, // statusFlags
-                0, // groupId
-                0 // approximateFreeSpaceShare
+                0,   // statusFlags
+                0,   // groupId
+                0    // approximateFreeSpaceShare
             );
 
             runtime->Schedule(
@@ -11663,6 +11704,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                        if (cancelWriteBlob) {
+                            TGuardedSgList sglist;
+                            sglist.Close();
+                            ev->Get<TEvPartitionCommonPrivate::
+                                        TEvWriteBlobRequest>()
+                                ->Data = std::move(sglist);
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            !cancelWriteBlob && !writeBlobShouldViolateContract,
+                            msg->BlobStorageError);
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvWriteBlobCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobCompleted>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            !cancelWriteBlob && !writeBlobShouldViolateContract,
+                            msg->BlobStorageError);
+                        break;
+                    }
                     case TEvTablet::EEv::EvTabletDead: {
                         suicideHappened = true;
                         break;
@@ -11671,6 +11738,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(ev);
             }
         );
+
+        for (ui32 i = 0; i <= config.GetMaxWriteBlobErrorsBeforeSuicide(); ++i)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1001),
+                1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetStatus());
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(0, putRequests);
+        }
+
+        cancelWriteBlob = false;
+
+        for (ui32 i = 0; i <= config.GetMaxWriteBlobErrorsBeforeSuicide(); ++i)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1001),
+                1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, putRequests);
+        }
+
+        writeBlobShouldViolateContract = false;
 
         for (ui32 i = 1; i < config.GetMaxWriteBlobErrorsBeforeSuicide(); i++) {
             partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1001), 1);
@@ -11868,6 +11961,108 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(evPatchObserved);
+    }
+
+    Y_UNIT_TEST(ShouldOnlyKillTabletOnBlobStoragePatchErrors)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBlobPatchingEnabled(true);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        config.SetMaxIORequestsInFlight(1);
+        auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 256), 3);
+
+        bool blobStorageError = false;
+        bool suicideHappened = false;
+        ui32 patchRequests = 0;
+        ui32 patchResponses = 0;
+        ui32 patchCompletions = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() != TEvBlobStorage::EvPatch) {
+                    return false;
+                }
+
+                ++patchRequests;
+                // An OK status with an invalid blob id violates the contract.
+                auto response =
+                    std::make_unique<TEvBlobStorage::TEvPatchResult>(
+                        blobStorageError ? NKikimrProto::ERROR
+                                         : NKikimrProto::OK,
+                        TLogoBlobID(),
+                        0,
+                        TGroupId::FromValue(0),
+                        0);
+                runtime->Schedule(
+                    new IEventHandle(
+                        ev->Sender,
+                        ev->Recipient,
+                        response.release(),
+                        0,
+                        ev->Cookie),
+                    TDuration());
+                return true;
+            });
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvPatchBlobResponse: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvPatchBlobResponse>();
+                        UNIT_ASSERT(HasError(msg->GetError()));
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            blobStorageError,
+                            msg->BlobStorageError);
+                        ++patchResponses;
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvPatchBlobCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvPatchBlobCompleted>();
+                        UNIT_ASSERT(HasError(msg->GetError()));
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            blobStorageError,
+                            msg->BlobStorageError);
+                        ++patchCompletions;
+                        break;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        suicideHappened = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        for (ui32 i = 0; i < 3; ++i) {
+            partition.SendCompactionRequest();
+            auto response = partition.RecvCompactionResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchRequests);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchResponses);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchCompletions);
+        }
+
+        blobStorageError = true;
+        partition.SendCompactionRequest();
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(4, patchRequests);
+        UNIT_ASSERT_VALUES_EQUAL(4, patchCompletions);
+        UNIT_ASSERT(suicideHappened);
     }
 
     Y_UNIT_TEST(WritingBlobsInsteadOfPatchingIfDiffIsGreaterThanThreshold)

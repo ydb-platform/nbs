@@ -123,6 +123,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
+        bool BlobStorageError = false;
     };
 
     // TReadBlobCompleted
@@ -134,6 +135,7 @@ struct TEvPartitionCommonPrivate
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
+        bool BlobStorageError = false;
         ui64 BSGroupOperationId = 0;
 
         TReadBlobCompleted() = default;
@@ -287,6 +289,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
+        bool BlobStorageError = false;
     };
 
     //
@@ -300,6 +303,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
+        bool BlobStorageError = false;
 
         TWriteBlobCompleted() = default;
 
@@ -354,6 +358,7 @@ struct TEvPartitionCommonPrivate
     struct TPatchBlobResponse
     {
         ui64 ExecCycles = 0;
+        bool BlobStorageError = false;
     };
 
     struct TPatchBlobCompleted
@@ -364,6 +369,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
+        bool BlobStorageError = false;
 
         TPatchBlobCompleted() = default;
 

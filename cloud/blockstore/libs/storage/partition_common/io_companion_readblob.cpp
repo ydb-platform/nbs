@@ -173,7 +173,8 @@ void TIOCompanion::HandleReadBlobCompleted(
                 { counters->Simple.ReadBlobDeadlineCount.Increment(1); });
         }
 
-        if (++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
+        if (msg->BlobStorageError &&
+            ++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 PartitionConfig.GetDiskId(),

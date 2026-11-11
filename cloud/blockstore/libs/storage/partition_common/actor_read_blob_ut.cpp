@@ -125,6 +125,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
+        UNIT_ASSERT(!fullResponse->BlobStorageError);
+
+        auto completed = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+        UNIT_ASSERT(!completed->BlobStorageError);
 
         auto guard = guardedSglist.Acquire();
         auto& sgList = guard.Get();
@@ -223,6 +228,10 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 UNIT_ASSERT_C(
                     !HasError(response->GetError()),
                     response->GetError());
+                UNIT_ASSERT(!response->BlobStorageError);
+                auto completed = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+                UNIT_ASSERT(!completed->BlobStorageError);
                 UNIT_ASSERT_VALUES_EQUAL(
                     checksums ? blobOffsets.size() : 0,
                     response->BlockChecksums.size());
@@ -305,6 +314,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 response->GetError().GetCode());
+            UNIT_ASSERT(!response->BlobStorageError);
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetError().GetMessage(),
                 "Offsets should be sorted in strict ascending order: 0, 2, 2, "
@@ -315,6 +325,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 completed->GetError().GetCode());
+            UNIT_ASSERT(!completed->BlobStorageError);
             UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
             UNIT_ASSERT_VALUES_EQUAL(
                 previousInvalidOffsets + 1,
@@ -400,6 +411,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
+        UNIT_ASSERT(fullResponse->BlobStorageError);
+
+        auto completed = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+        UNIT_ASSERT(completed->BlobStorageError);
     }
 
     Y_UNIT_TEST_F(ShouldReadBlobFail, TSetupEnvironment)
@@ -469,8 +485,92 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
+        UNIT_ASSERT(fullResponse->BlobStorageError);
+
+        auto completed = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+        UNIT_ASSERT(completed->BlobStorageError);
     }
 
+    Y_UNIT_TEST_F(
+        ShouldNotCountInvalidResponsesAsBlobStorageErrors,
+        TSetupEnvironment)
+    {
+        const ui32 blockSize = 512;
+        const NKikimr::TLogoBlobID blobId(142, 1, 2, 3, 2 * blockSize, 4);
+
+        for (const bool invalidBlobId: {false, true}) {
+            for (const ui32 responseSize:
+                 {0u, 1u, blockSize, 2 * blockSize, 3 * blockSize})
+            {
+                TVector<TString> blocks;
+                auto sglist = ResizeBlocks(blocks, 2, TString(blockSize, 'x'));
+                auto request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    blobId,
+                    EdgeActor,
+                    TVector<ui16>{0, 1},
+                    TGuardedSgList(std::move(sglist)),
+                    12,
+                    false,
+                    TInstant::Max(),
+                    false);
+
+                auto readActor = ActorSystem.Register(new TReadBlobActor(
+                    MakeIntrusive<TRequestInfo>(
+                        EdgeActor,
+                        0ull,
+                        MakeIntrusive<TCallContext>()),
+                    EdgeActor,
+                    NActors::TActorId(),
+                    0,
+                    blockSize,
+                    false,
+                    EStorageAccessMode::Default,
+                    std::move(request),
+                    TDuration(),
+                    0ull,
+                    false));
+
+                auto readBlob =
+                    ActorSystem
+                        .GrabEdgeEvent<NKikimr::TEvBlobStorage::TEvGet>();
+                UNIT_ASSERT_VALUES_EQUAL(1, readBlob->QuerySize);
+
+                auto getResult =
+                    std::make_unique<NKikimr::TEvBlobStorage::TEvGetResult>(
+                        NKikimrProto::OK,
+                        1,
+                        12);
+                auto& result = getResult->Responses[0];
+                result.Status = NKikimrProto::OK;
+                result.Id = invalidBlobId ? NKikimr::TLogoBlobID() : blobId;
+                result.RequestedSize = 2 * blockSize;
+                result.Buffer = TRope(TString(responseSize, 'a'));
+
+                ActorSystem.Send(new NActors::IEventHandle(
+                    readActor,
+                    EdgeActor,
+                    getResult.release()));
+
+                const bool expectedError =
+                    invalidBlobId || responseSize != 2 * blockSize;
+                auto response = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedError,
+                    HasError(response->GetError()));
+                UNIT_ASSERT(!response->BlobStorageError);
+
+                auto completed = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedError,
+                    HasError(completed->GetError()));
+                UNIT_ASSERT(!completed->BlobStorageError);
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

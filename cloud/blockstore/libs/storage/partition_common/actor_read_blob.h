@@ -76,7 +76,7 @@ private:
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
         const NActors::TActorContext& ctx,
-        const NProto::TError& error);
+        const TResponse& response);
 
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
@@ -85,12 +85,14 @@ private:
     void ReplyError(
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        bool blobStorageError);
 
     void ReplyError(
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
-        const TString& description);
+        const TString& description,
+        bool blobStorageError);
 
     struct TDataThatCanBeProcessed
     {
@@ -99,20 +101,19 @@ private:
         TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> Responses;
     };
 
-    TDataThatCanBeProcessed FillBrokenDataAndFilterItOut(
+    TResultOrError<TDataThatCanBeProcessed> FillBrokenDataAndFilterItOut(
         const NKikimr::TEvBlobStorage::TEvGetResult* msg,
         const TSgList& sglist,
         const NActors::TActorContext& ctx);
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(
-        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse>& responses,
-        const TSgList& sglist,
-        const TVector<ui16>& blockOffsets,
-        const NActors::TActorContext& ctx);
+        std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+        std::span<const TBlockDataRef> sglist,
+        std::span<const ui16> blockOffsets);
 
     TVector<ui32> FillBlockChecksumsForRecoveredBlocksIfNeeded(
-        const TVector<ui16>& originalBlockOffsets,
-        const TVector<ui16>& newBlockOffsets,
+        std::span<const ui16> originalBlockOffsets,
+        std::span<const ui16> newBlockOffsets,
         TVector<ui32> newBlockChecksums);
 
 private:
