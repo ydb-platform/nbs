@@ -413,17 +413,30 @@ void TCellHostPool::TopUpWarmChannelsLocked()
 {
     const auto warm = Config->GetMinCellConnections();
     auto live = CountLiveChannelsLocked({});
+    if (live >= warm) {
+        return;
+    }
 
+    // the static list first, then what discovery added to it
+    TVector<TString> configured;
     for (const auto& [fqdn, hostConfig]: Config->GetHosts()) {
+        Y_UNUSED(hostConfig);
+        configured.push_back(fqdn);
+    }
+    for (const auto& [fqdn, channel]: Channels) {
+        if (channel.Configured && !Config->GetHosts().contains(fqdn)) {
+            configured.push_back(fqdn);
+        }
+    }
+
+    for (const auto& fqdn: configured) {
         if (live >= warm) {
             return;
         }
 
-        Y_UNUSED(hostConfig);
-
-        const auto* channel = Channels.FindPtr(fqdn);
-        if (channel && (channel->Liveness == EHostLiveness::Dead ||
-                        channel->Endpoint.Initialized()))
+        const auto& channel = Channels[fqdn];
+        if (channel.Liveness == EHostLiveness::Dead ||
+            channel.Endpoint.Initialized())
         {
             // known dead, or already one of the live channels counted above
             continue;
@@ -518,6 +531,46 @@ void TCellHostPool::Stop()
     // every connection looking for a new home
     with_lock (Lock) {
         Stopped = true;
+    }
+}
+
+void TCellHostPool::UpdateConfiguredHosts(const TVector<TString>& fqdns)
+{
+    with_lock (Lock) {
+        if (Stopped) {
+            return;
+        }
+
+        THashSet<TString> listed(fqdns.begin(), fqdns.end());
+        for (const auto& fqdn: listed) {
+            Channels[fqdn].Configured = true;
+        }
+
+        TVector<TString> unbuilt;
+        for (auto& [fqdn, channel]: Channels) {
+            if (!channel.Configured || listed.contains(fqdn) ||
+                Config->GetHosts().contains(fqdn))
+            {
+                continue;
+            }
+
+            channel.Configured = false;
+            if (!channel.Endpoint.Initialized() && !channel.RefCount) {
+                unbuilt.push_back(fqdn);
+            }
+        }
+        for (const auto& fqdn: unbuilt) {
+            Channels.erase(fqdn);
+        }
+
+        // the rest of the unlisted hosts follow the discovered hosts' rules
+        PruneRetainedDiscoveredLocked();
+        TopUpWarmChannelsLocked();
+
+        *Counters.HostsConfigured = CountIf(
+            Channels,
+            [](const auto& c) { return c.second.Configured; });
+        UpdateHostsUnavailableLocked();
     }
 }
 

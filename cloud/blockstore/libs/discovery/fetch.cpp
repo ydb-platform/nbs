@@ -554,4 +554,46 @@ IInstanceFetcherPtr CreateInstanceFetcherStub(
     return std::make_shared<TInstanceFetcherStub>(std::move(instances));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+class TEdsInstanceFetcherStub final
+    : public IEdsInstanceFetcher
+{
+private:
+    const TVector<TString> Hosts;
+
+public:
+    explicit TEdsInstanceFetcherStub(TVector<TString> hosts)
+        : Hosts(std::move(hosts))
+    {}
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    TFuture<NProto::TError> FetchInstances(TInstanceList& instances) override
+    {
+        Y_UNUSED(instances);
+        return MakeFuture(NProto::TError{});
+    }
+
+    TFuture<TResultOrError<TVector<TString>>> FetchHosts(
+        TVector<TString> hostPatterns) override
+    {
+        Y_UNUSED(hostPatterns);
+        return MakeFuture(TResultOrError<TVector<TString>>(Hosts));
+    }
+};
+
+}   // namespace
+
+IEdsInstanceFetcherPtr CreateEdsInstanceFetcherStub(TVector<TString> hosts)
+{
+    return std::make_shared<TEdsInstanceFetcherStub>(std::move(hosts));
+}
+
 }   // namespace NCloud::NBlockStore::NDiscovery

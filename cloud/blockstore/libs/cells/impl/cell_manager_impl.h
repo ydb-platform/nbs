@@ -2,6 +2,7 @@
 
 #include "bootstrap.h"
 #include "connection.h"
+#include "host_discovery.h"
 #include "host_pool.h"
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
@@ -32,6 +33,7 @@ struct TCellManager: public ICellManager
     bool TransportUpdatesEnabled = false;
 
     THashMap<TString, TCellHostPoolPtr> Pools;
+    TVector<TCellHostDiscoveryPtr> HostDiscoveries;
     std::shared_ptr<TCellInboundActivity> InboundActivity;
 
     TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap);

@@ -29,6 +29,9 @@ using IDiscoveryServicePtr = std::shared_ptr<IDiscoveryService>;
 struct IInstanceFetcher;
 using IInstanceFetcherPtr = std::shared_ptr<IInstanceFetcher>;
 
+struct IEdsInstanceFetcher;
+using IEdsInstanceFetcherPtr = std::shared_ptr<IEdsInstanceFetcher>;
+
 struct IBanList;
 using IBanListPtr = std::shared_ptr<IBanList>;
 

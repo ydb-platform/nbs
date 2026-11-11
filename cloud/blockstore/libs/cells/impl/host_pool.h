@@ -75,9 +75,10 @@ struct TCellCounters
 // Keeps the control channels to the hosts of a single cell and tracks which
 // of them are usable.
 //
-// Two populations live here. Configured hosts come from TCellConfig and are
-// the guaranteed way back into the cell. The rest are discovered at runtime
-// from the tablet host reported in mount responses.
+// Two populations live here. Configured hosts come from TCellConfig, and from
+// EDS when the cell lists patterns for it; they are the guaranteed way back
+// into the cell. The rest are discovered at runtime from the tablet host
+// reported in mount responses.
 //
 // The pool keeps MinCellConnections live channels at all times, not only at
 // start: when a warm host dies another configured one is warmed in its place,
@@ -143,6 +144,13 @@ public:
         const THashSet<TString>& except) const;
 
     [[nodiscard]] TCellHostConfig MakeHostConfig(const TString& fqdn) const;
+
+    // The hosts discovery lists for the cell right now. They are configured
+    // hosts like the ones from TCellConfig, which stay whatever discovery
+    // says. A host no longer listed is treated like a discovered one from
+    // here on: dropped at once if nothing was ever built for it, otherwise
+    // once nobody holds it.
+    void UpdateConfiguredHosts(const TVector<TString>& fqdns);
 
     // Both return true if this changed the liveness of the host. The error
     // is only there for the log line the transition produces.

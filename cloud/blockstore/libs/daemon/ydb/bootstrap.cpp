@@ -308,7 +308,7 @@ TServerModuleFactories::TServerModuleFactories()
 
     EdsInstanceFetcherFactory = [](auto...)
     {
-        return NDiscovery::CreateInstanceFetcherStub();
+        return NDiscovery::CreateEdsInstanceFetcherStub();
     };
 
     ComputeClientFactory = [](auto...)
@@ -1155,6 +1155,16 @@ void TBootstrapYdb::SetupCellManager()
                 std::move(certList));
         }
 
+        // its own fetcher: the cells list their own patterns, and the
+        // discovery service may well not be running at all
+        NDiscovery::IEdsInstanceFetcherPtr edsFetcher;
+        if (BootstrapConfig->CellsConfig->GetEds().GetEndpoint()) {
+            edsFetcher = ServerModuleFactories->EdsInstanceFetcherFactory(
+                BootstrapConfig->CellsConfig->GetEds(),
+                Logging,
+                Monitoring);
+        }
+
         CellManager = CreateCellManager(
             BootstrapConfig->CellsConfig,
             Timer,
@@ -1166,7 +1176,8 @@ void TBootstrapYdb::SetupCellManager()
             std::move(cellCertProvider),
             RdmaClient,
             NIcV2::CreateDataEndpointFactoryStub(),
-            Service);
+            Service,
+            std::move(edsFetcher));
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);
     }

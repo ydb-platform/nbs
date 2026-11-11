@@ -27,6 +27,19 @@ struct IInstanceFetcher
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// An EDS fetcher also answers for host patterns other than its configured
+// ones: the cells ask it for the hosts of each cell. FetchHosts may be called
+// concurrently, from several cells at once, and after Stop, when it answers
+// with an error; the future may be completed on any thread.
+struct IEdsInstanceFetcher
+    : IInstanceFetcher
+{
+    virtual NThreading::TFuture<TResultOrError<TVector<TString>>> FetchHosts(
+        TVector<TString> hostPatterns) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IInstanceFetcherPtr CreateConductorInstanceFetcher(
     TDiscoveryConfigConstPtr config,
     ILoggingServicePtr logging,
@@ -41,5 +54,9 @@ IInstanceFetcherPtr CreateStaticInstanceFetcher(
 
 IInstanceFetcherPtr CreateInstanceFetcherStub(
     TDeque<TInstanceInfo> instances = {});
+
+// Lists nothing as instances and answers every pattern with the same hosts.
+IEdsInstanceFetcherPtr CreateEdsInstanceFetcherStub(
+    TVector<TString> hosts = {});
 
 }   // namespace NCloud::NBlockStore::NDiscovery

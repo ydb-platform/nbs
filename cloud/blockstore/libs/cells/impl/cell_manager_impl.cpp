@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -40,6 +42,28 @@ TCellManager::TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap)
             std::make_shared<TCellHostPool>(cell.second, Bootstrap));
     }
 
+    const auto interval =
+        NDiscovery::TEdsConfig(Config->GetEds()).GetRequestInterval();
+    for (const auto& [cellId, cell]: Config->GetCells()) {
+        auto patterns = cell->GetEdsHostPatterns();
+        if (patterns.empty()) {
+            continue;
+        }
+
+        Y_ENSURE(
+            Bootstrap.EdsFetcher,
+            "Cell " << cellId << " has EdsHostPatterns but no EDS to ask");
+
+        HostDiscoveries.push_back(std::make_shared<TCellHostDiscovery>(
+            Pools[cellId],
+            Bootstrap.EdsFetcher,
+            std::move(patterns),
+            interval,
+            Bootstrap.Timer,
+            Bootstrap.Scheduler,
+            Bootstrap.Logging));
+    }
+
     InboundActivity = std::make_shared<TCellInboundActivity>();
 }
 
@@ -59,6 +83,14 @@ void TCellManager::Start()
 
     for (auto& pool: Pools) {
         pool.second->Start();
+    }
+
+    // nothing would ask it when no cell has patterns
+    if (!HostDiscoveries.empty()) {
+        Bootstrap.EdsFetcher->Start();
+    }
+    for (auto& discovery: HostDiscoveries) {
+        discovery->Start();
     }
 }
 
@@ -80,6 +112,14 @@ void TCellManager::Stop()
         drained.GetFuture().GetValueSync();
     }
     TransportUpdates->Stop();
+
+    for (auto& discovery: HostDiscoveries) {
+        discovery->Stop();
+    }
+    if (!HostDiscoveries.empty()) {
+        Bootstrap.EdsFetcher->Stop();
+    }
+
     // before the client goes down: a sweep that outlived it would find
     // every host unreachable and migrate every connection on the way out
     for (auto& pool: Pools) {
@@ -287,7 +327,8 @@ ICellManagerPtr CreateCellManager(
     ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
-    IBlockStorePtr localService)
+    IBlockStorePtr localService,
+    NDiscovery::IEdsInstanceFetcherPtr edsFetcher)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
@@ -323,6 +364,7 @@ ICellManagerPtr CreateCellManager(
         .RdmaClient = std::move(rdmaClient),
         .IcV2EndpointFactory = std::move(icV2EndpointFactory),
         .LocalService = std::move(localService),
+        .EdsFetcher = std::move(edsFetcher),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap(),
         .Connections = CreateCellConnectionRegistry()};

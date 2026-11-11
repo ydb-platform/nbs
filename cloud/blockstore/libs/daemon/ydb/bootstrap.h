@@ -53,7 +53,7 @@ struct TServerModuleFactories
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
 
-    std::function<NDiscovery::IInstanceFetcherPtr(
+    std::function<NDiscovery::IEdsInstanceFetcherPtr(
         const NProto::TEdsConfig& config,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring)> EdsInstanceFetcherFactory;
