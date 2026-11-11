@@ -88,7 +88,7 @@ private:
         const TActorContext& ctx,
         const TEvBlobStorage::TEvPutResult& response,
         const TString& description,
-        bool blobStorageError);
+        EErrorSource errorSource);
 
 private:
     STFUNC(StateWork);
@@ -238,7 +238,7 @@ void TWriteBlobActor::NotifyCompleted(
             ApproximateFreeSpaceShare,
             ResponseReceived - RequestSent,
             BSGroupOperationId);
-    request->BlobStorageError = response.BlobStorageError;
+    request->ErrorSource = response.ErrorSource;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -247,6 +247,10 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
     NotifyCompleted(ctx, *response);
 
     if (ResponseReceived) {
@@ -267,7 +271,7 @@ void TWriteBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvPutResult& response,
     const TString& description,
-    bool blobStorageError)
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -279,7 +283,7 @@ void TWriteBlobActor::ReplyError(
 
     auto reply = std::make_unique<TResponse>(
         MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description));
-    reply->BlobStorageError = blobStorageError;
+    reply->ErrorSource = errorSource;
     ReplyAndDie(ctx, std::move(reply));
 }
 
@@ -299,17 +303,13 @@ void TWriteBlobActor::HandlePutResult(
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason, /*blobStorageError=*/true);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
     auto blobId = MakeBlobId(TabletId, Request->BlobId);
     if (msg->Id != blobId) {
-        ReplyError(
-            ctx,
-            *msg,
-            "invalid response received",
-            /*blobStorageError=*/false);
+        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
         return;
     }
 
@@ -458,7 +458,7 @@ void TIOCompanion::HandleWriteBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (msg->BlobStorageError &&
+        if (msg->ErrorSource == EErrorSource::BlobStorage &&
             ++WriteBlobErrorCount >=
                 Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {

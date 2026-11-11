@@ -11717,17 +11717,21 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
                         const auto* msg = ev->Get<
                             TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            !cancelWriteBlob && !writeBlobShouldViolateContract,
-                            msg->BlobStorageError);
+                        UNIT_ASSERT(
+                            msg->ErrorSource ==
+                            (!cancelWriteBlob && !writeBlobShouldViolateContract
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::Local));
                         break;
                     }
                     case TEvPartitionCommonPrivate::EvWriteBlobCompleted: {
                         const auto* msg = ev->Get<
                             TEvPartitionCommonPrivate::TEvWriteBlobCompleted>();
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            !cancelWriteBlob && !writeBlobShouldViolateContract,
-                            msg->BlobStorageError);
+                        UNIT_ASSERT(
+                            msg->ErrorSource ==
+                            (!cancelWriteBlob && !writeBlobShouldViolateContract
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::Local));
                         break;
                     }
                     case TEvTablet::EEv::EvTabletDead: {
@@ -12022,9 +12026,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         const auto* msg = ev->Get<
                             TEvPartitionCommonPrivate::TEvPatchBlobResponse>();
                         UNIT_ASSERT(HasError(msg->GetError()));
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            blobStorageError,
-                            msg->BlobStorageError);
+                        UNIT_ASSERT(
+                            msg->ErrorSource == (blobStorageError
+                                                     ? EErrorSource::BlobStorage
+                                                     : EErrorSource::Local));
                         ++patchResponses;
                         break;
                     }
@@ -12032,9 +12037,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         const auto* msg = ev->Get<
                             TEvPartitionCommonPrivate::TEvPatchBlobCompleted>();
                         UNIT_ASSERT(HasError(msg->GetError()));
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            blobStorageError,
-                            msg->BlobStorageError);
+                        UNIT_ASSERT(
+                            msg->ErrorSource == (blobStorageError
+                                                     ? EErrorSource::BlobStorage
+                                                     : EErrorSource::Local));
                         ++patchCompletions;
                         break;
                     }

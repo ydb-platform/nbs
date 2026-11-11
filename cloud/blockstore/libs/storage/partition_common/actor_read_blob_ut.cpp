@@ -125,11 +125,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
-        UNIT_ASSERT(!fullResponse->BlobStorageError);
+        UNIT_ASSERT(fullResponse->ErrorSource == std::nullopt);
 
         auto completed = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-        UNIT_ASSERT(!completed->BlobStorageError);
+        UNIT_ASSERT(completed->ErrorSource == std::nullopt);
 
         auto guard = guardedSglist.Acquire();
         auto& sgList = guard.Get();
@@ -228,10 +228,10 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 UNIT_ASSERT_C(
                     !HasError(response->GetError()),
                     response->GetError());
-                UNIT_ASSERT(!response->BlobStorageError);
+                UNIT_ASSERT(response->ErrorSource == std::nullopt);
                 auto completed = ActorSystem.GrabEdgeEvent<
                     TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-                UNIT_ASSERT(!completed->BlobStorageError);
+                UNIT_ASSERT(completed->ErrorSource == std::nullopt);
                 UNIT_ASSERT_VALUES_EQUAL(
                     checksums ? blobOffsets.size() : 0,
                     response->BlockChecksums.size());
@@ -314,7 +314,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 response->GetError().GetCode());
-            UNIT_ASSERT(!response->BlobStorageError);
+            UNIT_ASSERT(response->ErrorSource == EErrorSource::Local);
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetError().GetMessage(),
                 "Offsets should be sorted in strict ascending order: 0, 2, 2, "
@@ -325,7 +325,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 completed->GetError().GetCode());
-            UNIT_ASSERT(!completed->BlobStorageError);
+            UNIT_ASSERT(completed->ErrorSource == EErrorSource::Local);
             UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
             UNIT_ASSERT_VALUES_EQUAL(
                 previousInvalidOffsets + 1,
@@ -411,11 +411,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
-        UNIT_ASSERT(fullResponse->BlobStorageError);
+        UNIT_ASSERT(fullResponse->ErrorSource == EErrorSource::BlobStorage);
 
         auto completed = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-        UNIT_ASSERT(completed->BlobStorageError);
+        UNIT_ASSERT(completed->ErrorSource == EErrorSource::BlobStorage);
     }
 
     Y_UNIT_TEST_F(ShouldReadBlobFail, TSetupEnvironment)
@@ -485,11 +485,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
-        UNIT_ASSERT(fullResponse->BlobStorageError);
+        UNIT_ASSERT(fullResponse->ErrorSource == EErrorSource::BlobStorage);
 
         auto completed = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-        UNIT_ASSERT(completed->BlobStorageError);
+        UNIT_ASSERT(completed->ErrorSource == EErrorSource::BlobStorage);
     }
 
     Y_UNIT_TEST_F(
@@ -555,19 +555,22 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 const bool expectedError =
                     invalidBlobId || responseSize != 2 * blockSize;
+                const auto expectedErrorSource =
+                    expectedError ? std::make_optional(EErrorSource::Local)
+                                  : std::nullopt;
                 auto response = ActorSystem.GrabEdgeEvent<
                     TEvPartitionCommonPrivate::TEvReadBlobResponse>();
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedError,
                     HasError(response->GetError()));
-                UNIT_ASSERT(!response->BlobStorageError);
+                UNIT_ASSERT(response->ErrorSource == expectedErrorSource);
 
                 auto completed = ActorSystem.GrabEdgeEvent<
                     TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedError,
                     HasError(completed->GetError()));
-                UNIT_ASSERT(!completed->BlobStorageError);
+                UNIT_ASSERT(completed->ErrorSource == expectedErrorSource);
             }
         }
     }

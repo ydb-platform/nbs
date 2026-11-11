@@ -80,7 +80,7 @@ private:
         const TActorContext& ctx,
         const TEvBlobStorage::TEvPatchResult& response,
         const TString& description,
-        bool blobStorageError);
+        EErrorSource errorSource);
 
 private:
     STFUNC(StateWork);
@@ -175,7 +175,7 @@ void TPatchBlobActor::NotifyCompleted(
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
     request->BSGroupOperationId = BSGroupOperationId;
-    request->BlobStorageError = response.BlobStorageError;
+    request->ErrorSource = response.ErrorSource;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -184,6 +184,10 @@ void TPatchBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
     NotifyCompleted(ctx, *response);
 
     LWTRACK(
@@ -200,7 +204,7 @@ void TPatchBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvPatchResult& response,
     const TString& description,
-    bool blobStorageError)
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -213,7 +217,7 @@ void TPatchBlobActor::ReplyError(
     auto reply = std::make_unique<TResponse>(MakeError(
         E_REJECTED,
         "TEvBlobStorage::TEvPatch failed: " + description));
-    reply->BlobStorageError = blobStorageError;
+    reply->ErrorSource = errorSource;
     ReplyAndDie(ctx, std::move(reply));
 }
 
@@ -228,17 +232,13 @@ void TPatchBlobActor::HandlePatchResult(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason, /*blobStorageError=*/true);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
     auto blobId = MakeBlobId(TabletId, Request->PatchedBlobId);
     if (msg->Id != blobId) {
-        ReplyError(
-            ctx,
-            *msg,
-            "invalid response received",
-            /*blobStorageError=*/false);
+        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
         return;
     }
 
@@ -358,7 +358,9 @@ void TIOCompanion::HandlePatchBlobCompleted(
         msg->PatchedBlobId.Generation(),
         msg->ApproximateFreeSpaceShare);
 
-    if (FAILED(msg->GetStatus()) && msg->BlobStorageError) {
+    if (FAILED(msg->GetStatus()) &&
+        msg->ErrorSource == EErrorSource::BlobStorage)
+    {
         ReportTabletBSFailure(
             PartitionConfig.GetDiskId(),
             PartitionConfig.GetCloudId(),

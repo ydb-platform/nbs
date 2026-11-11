@@ -23,6 +23,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +37,14 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EErrorSource
+{
+    Local,
+    BlobStorage,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -123,7 +133,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     // TReadBlobCompleted
@@ -135,7 +145,7 @@ struct TEvPartitionCommonPrivate
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
         ui64 BSGroupOperationId = 0;
 
         TReadBlobCompleted() = default;
@@ -289,7 +299,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     //
@@ -303,7 +313,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
 
         TWriteBlobCompleted() = default;
 
@@ -358,7 +368,7 @@ struct TEvPartitionCommonPrivate
     struct TPatchBlobResponse
     {
         ui64 ExecCycles = 0;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     struct TPatchBlobCompleted
@@ -369,7 +379,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
-        bool BlobStorageError = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
 
         TPatchBlobCompleted() = default;
 

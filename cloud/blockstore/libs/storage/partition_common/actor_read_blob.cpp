@@ -178,7 +178,7 @@ void TReadBlobActor::NotifyCompleted(
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
     request->BSGroupOperationId = BSGroupOperationId;
-    request->BlobStorageError = response.BlobStorageError;
+    request->ErrorSource = response.ErrorSource;
 
     if (DeadlineSeen) {
         request->DeadlineSeen = true;
@@ -191,6 +191,10 @@ void TReadBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
     NotifyCompleted(ctx, *response);
 
     if (ResponseReceived) {
@@ -211,7 +215,7 @@ void TReadBlobActor::ReplyError(
     const NActors::TActorContext& ctx,
     const NKikimr::TEvBlobStorage::TEvGetResult& response,
     const NProto::TError& error,
-    bool blobStorageError)
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -226,7 +230,7 @@ void TReadBlobActor::ReplyError(
     }
 
     auto reply = std::make_unique<TResponse>(error);
-    reply->BlobStorageError = blobStorageError;
+    reply->ErrorSource = errorSource;
     ReplyAndDie(ctx, std::move(reply));
 }
 
@@ -234,13 +238,13 @@ void TReadBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvGetResult& response,
     const TString& description,
-    bool blobStorageError)
+    EErrorSource errorSource)
 {
     ReplyError(
         ctx,
         response,
         MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description),
-        /*blobStorageError=*/blobStorageError);
+        errorSource);
 }
 
 auto TReadBlobActor::FillBrokenDataAndFilterItOut(
@@ -434,7 +438,7 @@ void TReadBlobActor::HandleGetResult(
     RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason, /*blobStorageError=*/true);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
@@ -445,7 +449,7 @@ void TReadBlobActor::HandleGetResult(
             ctx,
             *msg,
             "Number of responses does not match number of requests",
-            /*blobStorageError=*/false);
+            EErrorSource::Local);
         return;
     }
 
@@ -460,11 +464,7 @@ void TReadBlobActor::HandleGetResult(
         std::span<const ui16> blockOffsetsToProcess;
 
         if (HasError(error)) {
-            ReplyError(
-                ctx,
-                *msg,
-                error.GetMessage(),
-                /*blobStorageError=*/false);
+            ReplyError(ctx, *msg, error.GetMessage(), EErrorSource::Local);
             return;
         }
 
@@ -480,7 +480,7 @@ void TReadBlobActor::HandleGetResult(
 
         for (auto& response: responsesToProcess) {
             if (response.Status != NKikimrProto::OK) {
-                ReplyError(ctx, *msg, "read error", /*blobStorageError=*/true);
+                ReplyError(ctx, *msg, "read error", EErrorSource::BlobStorage);
                 return;
             }
             if (response.Id != Request->BlobId) {
@@ -488,7 +488,7 @@ void TReadBlobActor::HandleGetResult(
                     ctx,
                     *msg,
                     "invalid response received",
-                    /*blobStorageError=*/false);
+                    EErrorSource::Local);
                 return;
             }
         }
@@ -503,7 +503,7 @@ void TReadBlobActor::HandleGetResult(
                 ctx,
                 *msg,
                 checksumsOrError.GetError().GetMessage(),
-                /*blobStorageError=*/false);
+                EErrorSource::Local);
             return;
         }
 

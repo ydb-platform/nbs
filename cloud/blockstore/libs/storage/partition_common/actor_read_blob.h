@@ -86,13 +86,13 @@ private:
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
         const NProto::TError& error,
-        bool blobStorageError);
+        EErrorSource errorSource);
 
     void ReplyError(
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
         const TString& description,
-        bool blobStorageError);
+        EErrorSource errorSource);
 
     struct TDataThatCanBeProcessed
     {
