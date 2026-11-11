@@ -418,6 +418,75 @@ func newDeleteSnapshotCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const exportSnapshotLong = `Export a ready snapshot or image from dataplane
+snapshot storage, or a snapshot from backup S3, to stdout as a raw disk image
+stream or to a user-specified S3 destination.
+
+` + exportStorageLong + `--source=backup discovers the original disk ID from
+chunk map metadata. --src-disk-id can override it for older snapshot backups.
+It reads SnapshotStorageBackupConfig.S3Config (Endpoint, CredentialsFilePath
+or UseIamToken, Region), S3Bucket, S3KeyPrefix, and optional KekFile and KekId
+from --server-config. Set KekFile and KekId together for encrypted backup
+objects. AuthConfig is used only when the source S3 config enables UseIamToken.
+Other required server-config fields must still parse; unused service endpoints
+are not contacted.
+This mode needs access to backup S3; no snapshot persistence config,
+NBS or task scheduler is required. Missing meta.json,
+missing or invalid chunk maps, and missing or corrupt chunks fail the export.
+The backup object envelope is removed using the configured backup key; this
+does not decrypt AES-XTS disk data.
+
+` + exportOutputLong
+
+const exportSnapshotExample = `  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> > image.raw
+
+  qemu-img info image.raw
+  qemu-img convert -f raw -O qcow2 image.raw image.qcow2
+
+  for p in 1 2 3 4; do
+      disk-manager-admin \
+          --server-config /etc/disk-manager/server-config.txt \
+          snapshots export --id <snapshot-or-image-id> \
+          --partition $p --partition-count 4 >> image.raw
+  done
+
+  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-or-image-id> \
+      --s3-endpoint https://s3.example.com --s3-bucket snapshot-backups \
+      --s3-credentials-file /path/to/credentials.json --s3-part-size 256MiB
+
+  disk-manager-admin \
+      --server-config /etc/disk-manager/server-config.txt \
+      snapshots export --id <snapshot-id> \
+      --source backup \
+      --s3-endpoint https://destination.example.com \
+      --s3-bucket exported-images \
+      --s3-credentials-file /path/to/destination-credentials.json
+
+  disk-manager-admin --config /path/to/client.txt \
+      snapshots export --async --id <snapshot-id> \
+      --folder-id <folder-id> --compute-task-id <compute-task-id> \
+      --s3-endpoint https://destination.example.com --s3-bucket exported-images`
+
+func newExportSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	return newExportCmd(
+		clientConfig,
+		serverConfig,
+		exportSnapshotKind,
+		exportSnapshotLong,
+		exportSnapshotExample,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type scheduleMigrateSnapshotTaskCmd struct {
 	commandWithScheduler
 	snapshotID string
@@ -547,6 +616,7 @@ func newSnapshotsCmd(
 		newBackupSnapshotCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
+		newExportSnapshotCmd(clientConfig, serverConfig),
 		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,

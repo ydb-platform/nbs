@@ -9,6 +9,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Service interface {
+	ExportSnapshot(
+		context.Context,
+		*disk_manager.ExportSnapshotRequest) (string,
+		error,
+	)
+
 	CreateSnapshot(
 		ctx context.Context,
 		req *disk_manager.CreateSnapshotRequest,

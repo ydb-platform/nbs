@@ -81,19 +81,20 @@ type diskState struct {
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
-	// TODO: Disk.CreateRequest should be []byte, because we can't unmarshal
-	// it here, without knowing particular protobuf message type.
+	// Keep the serialized request because its protobuf type depends on the
+	// disk's source.
 	return &DiskMeta{
-		ID:               s.id,
-		ZoneID:           s.zoneID,
-		SrcImageID:       s.srcImageID,
-		SrcSnapshotID:    s.srcSnapshotID,
-		BlocksCount:      s.blocksCount,
-		BlockSize:        s.blockSize,
-		Kind:             s.kind,
-		CloudID:          s.cloudID,
-		FolderID:         s.folderID,
-		PlacementGroupID: s.placementGroupID,
+		ID:                s.id,
+		ZoneID:            s.zoneID,
+		SrcImageID:        s.srcImageID,
+		SrcSnapshotID:     s.srcSnapshotID,
+		BlocksCount:       s.blocksCount,
+		BlockSize:         s.blockSize,
+		Kind:              s.kind,
+		CloudID:           s.cloudID,
+		FolderID:          s.folderID,
+		PlacementGroupID:  s.placementGroupID,
+		CreateRequestData: s.createRequest,
 
 		CreateTaskID: s.createTaskID,
 		CreatingAt:   s.creatingAt,

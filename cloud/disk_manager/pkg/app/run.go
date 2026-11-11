@@ -260,10 +260,19 @@ func run(
 	var s3Bucket string
 
 	var backupS3 *backup.S3
+	exportRegistry := newSnapshotExportRegistry(config, mon)
 	backupConfig := config.GetSnapshotStorageBackupConfig()
 	if backupConfig != nil {
-		s3Registry := mon.NewRegistry("backup_s3_client")
-		backupRegistry := mon.NewRegistry("backup")
+		var s3Registry, backupRegistry metrics.Registry
+		if exportRegistry != nil {
+			s3Registry = exportRegistry.WithPrefix("s3").WithTags(map[string]string{
+				"s3_role": "source", "resource_kind": "all",
+			})
+			backupRegistry = exportRegistry
+		} else {
+			s3Registry = mon.NewRegistry("backup_s3_client")
+			backupRegistry = mon.NewRegistry("backup")
+		}
 		var s3Client *persistence.S3Client
 		s3Client, err = persistence.NewS3ClientFromConfig(
 			backupConfig.GetS3Config(),
@@ -479,6 +488,14 @@ func run(
 			}
 		}
 	}
+
+	closeExport, err := initSnapshotExport(
+		ctx, config, exportRegistry, creds, taskRegistry, backupS3, db,
+	)
+	if err != nil {
+		return err
+	}
+	defer closeExport()
 
 	var serve func() error
 

@@ -216,6 +216,7 @@ func registerControlplaneTasks(
 		cellSelector,
 		backupS3,
 		backupQueueMetricsRegistry,
+		config.GetExportConfig(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -233,6 +234,7 @@ func registerControlplaneTasks(
 		cellSelector,
 		backupS3,
 		backupQueueMetricsRegistry,
+		config.GetExportConfig(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -464,7 +466,9 @@ func initControlplane(
 	facade.RegisterImageService(
 		server,
 		taskScheduler,
-		images.NewService(taskScheduler, config.GetImagesConfig()),
+		images.NewService(
+			taskScheduler, config.GetImagesConfig(), config.GetExportConfig(),
+		),
 	)
 	facade.RegisterOperationService(server, taskScheduler)
 	facade.RegisterPlacementGroupService(
@@ -483,6 +487,7 @@ func initControlplane(
 		snapshots.NewService(
 			taskScheduler,
 			config.GetSnapshotsConfig(),
+			config.GetExportConfig(),
 		),
 	)
 	facade.RegisterPrivateService(

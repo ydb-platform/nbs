@@ -3,6 +3,7 @@ syntax = "proto3";
 package cloud.disk_manager;
 
 import "cloud/disk_manager/api/disk.proto";
+import "cloud/disk_manager/api/export.proto";
 import "cloud/disk_manager/api/operation.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -22,6 +23,23 @@ service SnapshotService {
     // metadata: DeleteSnapshotMetadata
     // response: DeleteSnapshotResponse
     rpc Delete(DeleteSnapshotRequest) returns (Operation);
+
+    // Exports a primary or backup copy of the snapshot to an S3 bucket of the caller
+    // as raw parts and a manifest.
+    // Returns operation with:
+    // metadata: ExportMetadata
+    // response: ExportResponse
+    rpc Export(ExportSnapshotRequest) returns (Operation);
+}
+
+message ExportSnapshotRequest {
+    string snapshot_id = 1;
+    string cloud_id = 2;
+    string folder_id = 3;
+    ExportDestination dst = 4;
+    // Decryption metadata copied into the manifest without decrypting data.
+    // If absent, the snapshot is not encrypted.
+    DecryptionInfo decryption_info = 5;
 }
 
 message CreateSnapshotRequest {
