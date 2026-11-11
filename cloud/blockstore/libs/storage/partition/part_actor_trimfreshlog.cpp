@@ -282,9 +282,7 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Started,
-        ctx.Now());
+    State->StartTrimFreshLog(selective, ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -315,6 +313,8 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    const ui64 untrimmedByteCount = State->GetUntrimmedFreshBlobByteCount();
 
     ui64 unflushedBytesRemoved = 0;
     if (HasError(msg->GetError())) {
@@ -362,8 +362,10 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         "Dead fresh blob byte count: %lu",
         State->GetDeadUntrimmedFreshBlobByteCount());
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Idle,
+    State->CompleteTrimFreshLog(
+        msg->SelectiveTrim,
+        HasError(msg->GetError()),
+        untrimmedByteCount - State->GetUntrimmedFreshBlobByteCount(),
         ctx.Now());
 
     Actors.Erase(ev->Sender);

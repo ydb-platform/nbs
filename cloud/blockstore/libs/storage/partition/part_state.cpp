@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -1069,7 +1070,26 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                             out,
                             GetFlushState().GetOperationState());
                     }
-                }                TABLER() {
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "TrimFreshLog";
+                    }
+                    TABLED () {
+                        const auto& op = GetTrimFreshLogState();
+                        DumpOperationState(out, op);
+                        if (op.Status == EOperationStatus::Started) {
+                            const bool selective =
+                                GetSelectiveTrimStats().State.Status ==
+                                EOperationStatus::Started;
+                            out << (selective ? ", Selective" : ", Ordinary");
+                        }
+                        if (const auto delay = GetTrimFreshLogBackoffDelay()) {
+                            out << ", Backoff: " << FormatDuration(delay);
+                        }
+                    }
+                }
+                TABLER () {
                     TABLED() { out << "Compaction"; }
                     TABLED() { DumpOperationState(out, CompactionState); }
                 }
