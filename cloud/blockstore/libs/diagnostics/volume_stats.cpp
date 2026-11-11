@@ -1303,42 +1303,37 @@ private:
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
         info->CountersGroup = countersGroup;
 
-        auto sliInstanceGroup =
-            SliCounters
-                ->GetSubgroup("volume", volumeConfig.GetDiskId())
-                ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
-                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                ->GetSubgroup("folder", volumeConfig.GetFolderId());
-
-        auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
-            volumeConfig.GetStorageMediaKind());
-        if (latencySliConfig.Enabled && Type == EVolumeStatsType::EServerStats) {
-            auto latencyCountersGroup = sliInstanceGroup->GetSubgroup(
-                "type",
-                MediaKindToStatsString(
-                    volumeConfig.GetIsSystem(),
-                    volumeConfig.GetStorageMediaKind()));
-            info->LatencySli = std::make_unique<TLatencySliCounters>(
-                std::move(latencySliConfig), *latencyCountersGroup);
-        }
-
-        // Register the cumulative counters in the narrow component=sli_volume
-        // tree (see SliCounters comment).
+        // Register latency and availability counters in the narrow
+        // component=sli_volume tree (see SliCounters comment).
         // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
         // convention used by the DownDisks aggregate below) to produce the
         // same disk-type spelling ("network-ssd", ...) this helper already
         // produces elsewhere in the codebase.
         // All per-instance trees are rebuilt when a remount changes any label
         // used in their subgroup chains.
-        auto availabilityCountersGroup = sliInstanceGroup->GetSubgroup(
-            "type",
-            MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+        auto sliCountersGroup =
+            SliCounters
+                ->GetSubgroup("volume", volumeConfig.GetDiskId())
+                ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
+                ->GetSubgroup("folder", volumeConfig.GetFolderId())
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+
+        auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
+            volumeConfig.GetStorageMediaKind());
+        if (latencySliConfig.Enabled && Type == EVolumeStatsType::EServerStats) {
+            info->LatencySli = std::make_unique<TLatencySliCounters>(
+                std::move(latencySliConfig), *sliCountersGroup);
+        }
+
         info->ObservedSecondsCounter =
-            availabilityCountersGroup->GetCounter("ObservedSeconds", true);
+            sliCountersGroup->GetCounter("ObservedSeconds", true);
         info->AvailableSecondsCounter =
-            availabilityCountersGroup->GetCounter("AvailableSeconds", true);
+            sliCountersGroup->GetCounter("AvailableSeconds", true);
         info->HealthySecondsCounter =
-            availabilityCountersGroup->GetCounter("HealthySeconds", true);
+            sliCountersGroup->GetCounter("HealthySeconds", true);
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig

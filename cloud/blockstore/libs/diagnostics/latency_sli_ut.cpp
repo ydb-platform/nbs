@@ -6,6 +6,7 @@
 #include "server_stats.h"
 #include "volume_stats.h"
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -33,13 +34,17 @@ struct TFixture
     NMonitoring::TDynamicCountersPtr Read;
     NMonitoring::TDynamicCountersPtr Write;
 
-    explicit TFixture(bool enabled = true)
+    explicit TFixture(
+        bool enabled = true,
+        NProto::EStorageMediaKind mediaKind =
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        bool isSystem = false)
     {
         NProto::TDiagnosticsConfig proto;
         proto.SetEnableLatencySli(enabled);
         for (bool write: {false, true}) {
             auto* row = proto.AddLatencySliThresholds();
-            row->SetMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            row->SetMediaKind(mediaKind);
             row->SetWrite(write);
             row->SetStartBytes(1);
             row->SetEndBytes(8193);
@@ -54,13 +59,14 @@ struct TFixture
         NProto::TVolume volume;
         volume.SetDiskId("disk");
         volume.SetBlockSize(4096);
-        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        volume.SetStorageMediaKind(mediaKind);
+        volume.SetIsSystem(isSystem);
         Server->MountVolume(volume, "client", "instance");
         auto group = Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", "disk")->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
-            ->GetSubgroup("type", "ssd_nonrepl");
+            ->GetSubgroup("type", MediaKindToComputeType(mediaKind));
         // Intentionally aggregate both operations while keeping separate thresholds.
         Read = group;
         Write = group;
@@ -138,7 +144,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT(!instance->FindSubgroup("cloud", ""));
         auto group = instance->GetSubgroup("cloud", "cloud")
             ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("type", "ssd_nonrepl");
+            ->GetSubgroup("type", "network-ssd-nonreplicated");
         UNIT_ASSERT(group->FindCounter("LatencyTotalOps"));
         f.Complete(500);
         f.Server->UpdateStats(false);
@@ -155,6 +161,53 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Timer->AdvanceTime(TDuration::Minutes(8));
         f.Volumes->TrimVolumes();
         UNIT_ASSERT(!root->FindSubgroup("volume", "disk"));
+    }
+
+    Y_UNIT_TEST(ShouldShareDiskTypeLabelsWithAvailability)
+    {
+        for (int value = NCloud::NProto::EStorageMediaKind_MIN;
+             value <= NCloud::NProto::EStorageMediaKind_MAX;
+             ++value)
+        {
+            if (!NCloud::NProto::EStorageMediaKind_IsValid(value)) {
+                continue;
+            }
+            const auto mediaKind = static_cast<NProto::EStorageMediaKind>(value);
+            for (bool isSystem: {false, true}) {
+                TFixture f(true, mediaKind, isSystem);
+                f.Complete(500);
+                f.Timer->AdvanceTime(TDuration::Seconds(15));
+                f.Server->UpdateStats(true);
+                for (const auto* name:
+                     {"ObservedSeconds",
+                      "AvailableSeconds",
+                      "HealthySeconds",
+                      "LatencyGoodOps",
+                      "LatencyBadOps",
+                      "LatencyTotalOps",
+                      "LatencyUnknownOps"})
+                {
+                    UNIT_ASSERT_C(f.Read->FindCounter(name), name);
+                }
+                UNIT_ASSERT_VALUES_EQUAL(
+                    15, f.Read->FindCounter("ObservedSeconds")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1, f.Read->FindCounter("LatencyGoodOps")->Val());
+
+                auto folder = f.Monitoring->GetCounters()
+                    ->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "sli_volume")
+                    ->GetSubgroup("host", "cluster")
+                    ->GetSubgroup("volume", "disk")
+                    ->GetSubgroup("instance", "instance")
+                    ->GetSubgroup("cloud", "")->GetSubgroup("folder", "");
+                const auto legacyType =
+                    MediaKindToStatsString(isSystem, mediaKind);
+                if (legacyType != MediaKindToComputeType(mediaKind)) {
+                    UNIT_ASSERT(!folder->FindSubgroup("type", legacyType));
+                }
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldMergeReadAndWriteOutcomesUsingTheirOwnThresholds)

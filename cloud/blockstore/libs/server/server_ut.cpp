@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")
             ->GetSubgroup("folder", "")
-            ->GetSubgroup("type", "ssd_nonrepl");
+            ->GetSubgroup("type", "network-ssd-nonreplicated");
         UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -176,7 +177,9 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             ->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")
             ->GetSubgroup("folder", "")
-            ->GetSubgroup("type", "ssd_local");
+            ->GetSubgroup(
+                "type",
+                MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
         auto snapshot = [](ui64 sequence, ui64 good, ui64 bad, bool completed) {
             return NJson::TJsonMap{
                 {"elapsed_ms", ui64(1000)},
@@ -221,7 +224,9 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", f.DiskId)->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
-            ->GetSubgroup("type", "ssd_local");
+            ->GetSubgroup(
+                "type",
+                MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
         auto snapshot = [&](ui64 sequence, ui64 good, bool fresh = true) {
             return NJson::TJsonMap{
                 {"elapsed_ms", ui64(1000)},
@@ -297,7 +302,9 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 ->GetSubgroup("instance", "instance")
                 ->GetSubgroup("cloud", "")
                 ->GetSubgroup("folder", "")
-                ->GetSubgroup("type", "ssd_local");
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
             auto snapshot = [](ui64 sequence, ui64 good, ui64 bad, TInstant now) {
                 return NJson::TJsonMap{
                     {"elapsed_ms", ui64(1000)},
