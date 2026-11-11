@@ -19,6 +19,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
+	core_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -1540,17 +1541,49 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 }
 
 func TestReadFromProxyOverlayDisk(t *testing.T) {
+	testReadFromProxyOverlayDisk(
+		t,
+		nil, // proxyOverlayDiskMediaKind
+		types.DiskKind_DISK_KIND_SSD,
+		types.DiskKind_DISK_KIND_HDD,
+	)
+}
+
+func TestReadFromProxyOverlayDiskWithCustomMediaKind(t *testing.T) {
+	proxyOverlayDiskMediaKind := core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD
+	testReadFromProxyOverlayDisk(
+		t,
+		&proxyOverlayDiskMediaKind,
+		types.DiskKind_DISK_KIND_HDD,
+		types.DiskKind_DISK_KIND_SSD,
+	)
+}
+
+func testReadFromProxyOverlayDisk(
+	t *testing.T,
+	proxyOverlayDiskMediaKind *core_protos.EStorageMediaKind,
+	baseDiskKind types.DiskKind,
+	expectedProxyOverlayDiskKind types.DiskKind,
+) {
+
+	t.Helper()
 	ctx := newContext()
-	client := newTestingClient(t, ctx)
+	clientConfig := newClientConfig(
+		defaultSessionRediscoverPeriodMin,
+		defaultSessionRediscoverPeriodMax,
+	)
+	clientConfig.ProxyOverlayDiskMediaKind = proxyOverlayDiskMediaKind
+	client, err := nbs.NewTestingClient(ctx, zoneID, clientConfig)
+	require.NoError(t, err)
 
 	diskID := t.Name()
 	diskSize := int64(1024 * 4096)
 
-	err := client.Create(ctx, nbs.CreateDiskParams{
+	err = client.Create(ctx, nbs.CreateDiskParams{
 		ID:              diskID,
 		BlocksCount:     1024,
 		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD,
+		Kind:            baseDiskKind,
 		PartitionsCount: 1,
 	})
 	require.NoError(t, err)
@@ -1578,6 +1611,10 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 	)
 	require.True(t, created)
 	require.NoError(t, err)
+
+	proxyOverlayDiskParams, err := client.Describe(ctx, proxyOverlayDiskID)
+	require.NoError(t, err)
+	require.Equal(t, expectedProxyOverlayDiskKind, proxyOverlayDiskParams.Kind)
 
 	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
