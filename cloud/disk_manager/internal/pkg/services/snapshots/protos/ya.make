@@ -9,6 +9,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/disk_manager/api
     cloud/disk_manager/internal/pkg/types
 )
 

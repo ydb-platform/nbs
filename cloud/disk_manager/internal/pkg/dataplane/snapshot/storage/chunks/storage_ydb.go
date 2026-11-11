@@ -27,12 +27,19 @@ func NewStorageYDB(
 	tablesPath string,
 	tableName string,
 	shadowTableName string,
+	followerChunksTableName string,
 	metrics metrics.Metrics,
 	probeCompressionPercentage map[string]uint32,
 ) *StorageYDB {
 
 	return &StorageYDB{
-		storageCommon:              newStorageCommon(db, tablesPath, tableName, shadowTableName),
+		storageCommon: newStorageCommon(
+			db,
+			tablesPath,
+			tableName,
+			shadowTableName,
+			followerChunksTableName,
+		),
 		metrics:                    metrics,
 		probeCompressionPercentage: probeCompressionPercentage,
 	}

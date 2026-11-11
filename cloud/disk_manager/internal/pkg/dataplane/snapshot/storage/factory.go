@@ -31,6 +31,7 @@ func NewStorage(
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
+			config.GetFollowerChunksTableName(),
 			metrics.New(metricsRegistry, "s3"),
 			probeCompressionPercentage,
 		)
@@ -45,11 +46,13 @@ func NewStorage(
 		shallowCopyWorkerCount:   int(config.GetShallowCopyWorkerCount()),
 		shallowCopyInflightLimit: int(config.GetShallowCopyInflightLimit()),
 		chunkCompression:         config.GetChunkCompression(),
+		followerChunksTableName:  config.GetFollowerChunksTableName(),
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
+			config.GetFollowerChunksTableName(),
 			ydbMetrics,
 			probeCompressionPercentage,
 		),
