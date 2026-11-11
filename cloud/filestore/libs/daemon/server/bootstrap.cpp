@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/service_actions.h>
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
@@ -20,6 +21,7 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/private/api/protos/actions.pb.h>
 
 #include <cloud/fastshard/libs/bootstrap/core.h>
 
@@ -40,6 +42,8 @@
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NFileStore::NDaemon {
 
 using namespace NActors;
@@ -53,6 +57,37 @@ namespace {
 
 const TString ServerMetricsComponent = "server";
 const TString LocalServiceMetricsComponent = "local_service";
+
+////////////////////////////////////////////////////////////////////////////////
+
+TActionHandler CreateUpdateCertificatesAction(ICertificateWatcherPtr watcher)
+{
+    return [watcher = std::move(watcher)](const TString& input)
+    {
+        NProtoPrivate::TUpdateCertificatesRequest request;
+        if (input &&
+            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
+        {
+            NProto::TExecuteActionResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "Failed to parse input");
+            return NThreading::MakeFuture(std::move(response));
+        }
+
+        return watcher->UpdateCertificates().Apply(
+            [](const auto& future)
+            {
+                NProto::TExecuteActionResponse response;
+                *response.MutableError() = future.GetValue();
+                if (!HasError(response)) {
+                    google::protobuf::util::MessageToJsonString(
+                        NProtoPrivate::TUpdateCertificatesResponse(),
+                        response.MutableOutput());
+                }
+                return response;
+            });
+    };
+}
 
 }   // namespace
 
@@ -146,6 +181,15 @@ void TBootstrapServer::InitComponents()
     InitConfigs();
     SetGrpcThreadsLimit(Configs->ServerConfig->GetGrpcThreadsLimit());
 
+    CertificateWatcher = CreateCertificateWatcher(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        FilestoreCounters->GetSubgroup("component", "certificates"),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Kikimr:
             InitKikimrService();
@@ -158,6 +202,21 @@ void TBootstrapServer::InitComponents()
             break;
     }
 
+    Service = CreateActionsService(
+        std::move(Service),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(CertificateWatcher)}});
+
+    // Wraps the actions service, so the actions need admin rights.
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr) {
+        Service = CreateAuthService(
+            std::move(Service),
+            CreateKikimrAuthProvider(ActorSystem),
+            Configs->ServerConfig->GetActionsNoAuth());
+
+        STORAGE_INFO("AuthService initialized");
+    }
+
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
@@ -168,15 +227,6 @@ void TBootstrapServer::InitComponents()
             cert.CertFile
         });
     }
-
-    CertificateWatcher = CreateCertificateWatcher(
-        Logging,
-        GetComponentName(
-            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
-        Scheduler,
-        LongRunningTaskExecutor,
-        FilestoreCounters->GetSubgroup("component", "certificates"),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
@@ -239,13 +289,6 @@ void TBootstrapServer::InitKikimrService()
         ActorSystem,
         nullptr /* sideChannel */,
         0 /* permanentActorCount */);
-
-    Service = CreateAuthService(
-        std::move(Service),
-        CreateKikimrAuthProvider(ActorSystem),
-        Configs->ServerConfig->GetActionsNoAuth());
-
-    STORAGE_INFO("AuthService initialized");
 }
 
 void TBootstrapServer::InitLocalService()

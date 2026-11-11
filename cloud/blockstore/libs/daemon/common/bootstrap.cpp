@@ -57,6 +57,7 @@
 #include <cloud/blockstore/libs/service/overlapping_requests_guard_service.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_actions.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/service_filtered.h>
 #include <cloud/blockstore/libs/service/service_null.h>
@@ -83,6 +84,7 @@
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/blockstore/libs/vhost/vhost.h>
+#include <cloud/blockstore/private/api/protos/configs.pb.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -117,6 +119,8 @@
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <google/protobuf/util/json_util.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
@@ -207,6 +211,35 @@ TThrottlingServiceConfig CreateThrottlingServicePolicyConfig(
         config.GetMaxWriteIops(),
         config.GetMaxBurstTime()
     );
+}
+
+TActionHandler CreateUpdateCertificatesAction(ICertificateWatcherPtr watcher)
+{
+    return [watcher = std::move(watcher)](const TString& input)
+    {
+        NPrivateProto::TUpdateCertificatesRequest request;
+        if (input &&
+            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
+        {
+            NProto::TExecuteActionResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "Failed to parse input");
+            return NThreading::MakeFuture(std::move(response));
+        }
+
+        return watcher->UpdateCertificates().Apply(
+            [](const auto& future)
+            {
+                NProto::TExecuteActionResponse response;
+                *response.MutableError() = future.GetValue();
+                if (!HasError(response)) {
+                    google::protobuf::util::MessageToJsonString(
+                        NPrivateProto::TUpdateCertificatesResponse(),
+                        response.MutableOutput());
+                }
+                return response;
+            });
+    };
 }
 
 }   // namespace
@@ -751,6 +784,13 @@ void TBootstrapBase::Init()
         STORAGE_INFO("ThrottlingService initialized");
     }
 
+    // Wrapped by the auth service below, so over gRPC the actions need admin
+    // rights. The unix socket rejects them unless AllowAllRequestsViaUDS is set.
+    Service = CreateActionsService(
+        std::move(Service),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(CertificateWatcher)}});
+
     auto udsService = Service;
     if (!BootstrapConfig->ServerConfig->GetAllowAllRequestsViaUDS()) {
         udsService = CreateFilteredService(Service, {
@@ -1169,6 +1209,10 @@ void TBootstrapBase::Stop()
     }                                                                          \
 // STOP_KIKIMR_COMPONENT
 
+    // Before the scheduler: an on-demand certificate update needs it and would
+    // otherwise keep its request in flight until the server stops.
+    STOP_COMMON_COMPONENT(CertificateWatcher);
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
@@ -1185,7 +1229,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
-    STOP_COMMON_COMPONENT(CertificateWatcher);
     STOP_COMMON_COMPONENT(Executor);
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);

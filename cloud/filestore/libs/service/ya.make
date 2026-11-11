@@ -12,6 +12,7 @@ SRCS(
     filesystem_event.cpp
     mask.cpp
     request.cpp
+    service_actions.cpp
     service_auth.cpp
 )
 

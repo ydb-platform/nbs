@@ -35,6 +35,7 @@ PEERDIR(
     cloud/blockstore/libs/throttling
     cloud/blockstore/libs/validation
     cloud/blockstore/libs/vhost
+    cloud/blockstore/private/api/protos
 
     cloud/storage/core/libs/aio
     cloud/storage/core/libs/common

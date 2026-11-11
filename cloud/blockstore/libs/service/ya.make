@@ -13,6 +13,7 @@ SRCS(
     overlapping_requests_guard.cpp
     request_helpers.cpp
     request.cpp
+    service_actions.cpp
     service_auth.cpp
     service_error_transform.cpp
     service_filtered.cpp
