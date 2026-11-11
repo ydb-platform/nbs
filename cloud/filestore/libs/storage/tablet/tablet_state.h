@@ -250,7 +250,7 @@ private:
 
     bool CompressNodeRef = false;
 
-    ui32 SizeToNodesRatio = Max<ui16>();
+    ui32 SizeToNodesRatio = 65536;
 
     /*const*/ bool FileSystemEventsEnabled = false;
     /*const*/ bool FileSystemEventsDryRunModeEnabled = false;
