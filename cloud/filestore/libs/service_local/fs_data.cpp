@@ -52,33 +52,31 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
     NLowLevel::TFileStatEx stat;
-    ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
 
         auto newnode = TIndexNode::Create(*node, pathname);
         stat = newnode->Stat();
-        nodeId = newnode->GetNodeId();
 
         if (!session->TryInsertNode(
-                std::move(newnode),
+                newnode,
                 node->GetNodeId(),
                 pathname))
         {
             ReportLocalFsMaxSessionNodesInUse();
             return TErrorResponse(ErrorNoSpaceLeft());
         }
+        node = std::move(newnode);
     } else {
         handle = node->OpenHandle(flags);
         stat = node->Stat();
-        nodeId = node->GetNodeId();
     }
 
     // Don't persist flags that only make sense on initial open
     flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
 
     auto [handleId, error] =
-        session->InsertHandle(std::move(handle), nodeId, flags);
+        session->InsertHandle(std::move(handle), node, flags);
     if (HasError(error)) {
         // InsertHandle returns E_FS_NOSPC only when the session handle table
         // is full
@@ -128,7 +126,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     STORAGE_TRACE("ReadData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
+    auto handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TReadDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
@@ -157,6 +155,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
         future.Subscribe(
                 [&logRequest,
                  promise,
+                 handle,
                  buffers = std::move(buffers)](
                     const TFuture<ui32>& f) mutable
                 {
@@ -190,7 +189,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
-        [&logRequest, b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
+        [&logRequest, b = std::move(b), promise, handle] (const TFuture<ui32>& f) mutable {
             NProto::TReadDataResponse response;
             try {
                 auto bytesRead = f.GetValue();
@@ -219,7 +218,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     STORAGE_TRACE("WriteData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
+    auto handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TWriteDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
@@ -246,6 +245,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
                 [this,
                  &logRequest,
                  promise,
+                 handle,
                  bytesExpected,
                  buffers = std::move(buffers)](
                     const TFuture<ui32>& f) mutable
@@ -287,7 +287,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
         data,
         request.GetFlags())
         .Subscribe(
-            [&logRequest, b = std::move(b), promise](
+            [&logRequest, b = std::move(b), promise, handle](
                 const TFuture<ui32>& f) mutable
             {
                 NProto::TWriteDataResponse response;
@@ -317,7 +317,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
         << " flags: " << FallocateFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
+    auto handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
@@ -340,7 +340,7 @@ NProto::TFsyncResponse TLocalFileSystem::Fsync(
     STORAGE_TRACE("Fsync " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto* handle = session->LookupHandle(request.GetHandle());
+    auto handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }

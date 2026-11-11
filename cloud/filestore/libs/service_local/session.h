@@ -37,6 +37,7 @@ private:
     struct THandle
     {
         TFileHandle FileHandle;
+        TIndexNodePtr Node;
         ui64 RecordIndex = -1;
     };
 
@@ -55,7 +56,7 @@ private:
         TPersistentTable<THandleTableHeader, THandleTableRecord>;
 
     THashMap<TString, TString> Attrs;
-    THashMap<ui64, THandle> Handles;
+    THashMap<ui64, std::shared_ptr<THandle>> Handles;
     std::unique_ptr<THandleTable> HandleTable;
     std::atomic<ui64> NextHandleId = 0;
     TString FuseState;
@@ -161,7 +162,7 @@ public:
                 auto handle = node->OpenHandle(it->Flags);
                 auto [_, inserted] = Handles.emplace(
                     it->HandleId,
-                    THandle{std::move(handle), it.GetIndex()});
+                    std::make_shared<THandle>(THandle{std::move(handle), node, it.GetIndex()}));
                 Y_ABORT_UNLESS(
                     inserted,
                     "dup file handle for: %lu",
@@ -180,7 +181,7 @@ public:
     }
 
     [[nodiscard]] TResultOrError<ui64>
-    InsertHandle(TFileHandle handle, ui64 nodeId, int flags)
+    InsertHandle(TFileHandle handle, TIndexNodePtr node, int flags)
     {
         TWriteGuard guard(Lock);
 
@@ -200,16 +201,17 @@ public:
 
         auto* state = HandleTable->RecordData(recordIndex);
         state->HandleId = handleId;
-        state->NodeId = nodeId;
+        state->NodeId = node->GetNodeId();
         state->Flags = flags;
 
-        Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
+        Handles.emplace(handleId, std::make_shared<THandle>(
+            THandle{std::move(handle), std::move(node), recordIndex}));
         HandleTable->CommitRecord(recordIndex);
 
         return handleId;
     }
 
-    TFileHandle* LookupHandle(ui64 handleId)
+    std::shared_ptr<TFileHandle> LookupHandle(ui64 handleId)
     {
         TReadGuard guard(Lock);
 
@@ -218,7 +220,8 @@ public:
             return nullptr;
         }
 
-        return &it->second.FileHandle;
+        // Keep both the descriptor and its node alive through in-flight I/O.
+        return {it->second, &it->second->FileHandle};
     }
 
     void DeleteHandle(ui64 handleId)
@@ -227,14 +230,25 @@ public:
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            HandleTable->DeleteRecord(it->second.RecordIndex);
+            HandleTable->DeleteRecord(it->second->RecordIndex);
             Handles.erase(it);
         }
     }
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        return Index.LookupNode(nodeId);
+        if (auto node = Index.LookupNode(nodeId)) {
+            return node;
+        }
+        // Unlink removes the index entry, but open files still support stat,
+        // truncate, and other inode-based operations until their last close.
+        TReadGuard guard(Lock);
+        for (const auto& [id, handle]: Handles) {
+            if (handle->Node->GetNodeId() == nodeId) {
+                return handle->Node;
+            }
+        }
+        return nullptr;
     }
 
     TNodeMapper::TRemapResult RemapNode(
