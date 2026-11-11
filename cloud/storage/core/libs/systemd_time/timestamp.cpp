@@ -444,22 +444,12 @@ bool TryParseTimestamp(
     if (input.StartsWith("now+") || input.StartsWith("now-")) {
         input.Skip(3);
     }
-    bool relative = true;
-    bool subtract = false;
-    if (input.SkipPrefix("+")) {
-    } else if (input.SkipPrefix("-")) {
-        subtract = true;
-    } else if (input.ChopSuffix(" ago")) {
-        subtract = true;
-    } else if (!input.ChopSuffix(" left")) {
-        relative = false;
-    }
-    if (relative) {
+    const bool forward = input.SkipPrefix("+") || input.ChopSuffix(" left");
+    const bool backward =
+        !forward && (input.SkipPrefix("-") || input.ChopSuffix(" ago"));
+    if (forward || backward) {
         ui64 span;
-        if (!ParseSpan(input, span)) {
-            return false;
-        }
-        return ApplyOffset(now, span, subtract, result);
+        return ParseSpan(input, span) && ApplyOffset(now, span, backward, result);
     }
 
     // Prefer the complete timestamp so numeric timezone offsets keep their
