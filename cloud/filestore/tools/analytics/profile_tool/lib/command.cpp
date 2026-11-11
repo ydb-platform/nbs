@@ -112,7 +112,8 @@ int TCommand::Run(int argc, const char** argv)
     }
 
     const auto& parsed = OptsParseResult.GetRef();
-    THashSet<const char*> inputValues;
+    // Track argument positions, not text: const char* sets compare contents.
+    THashSet<const void*> inputValues;
     if (const auto* option =
             parsed.FindLongOptParseResult(ProfileLogLabel.data()))
     {
@@ -126,7 +127,7 @@ int TCommand::Run(int argc, const char** argv)
     // In PERMUTE mode getopt can leave the separator among free arguments.
     // Exclude only the first standalone separator, not option values or later
     // literal "--" paths.
-    THashSet<const char*> optionValues;
+    THashSet<const void*> optionValues;
     for (const auto* option: Opts.GetOpts()) {
         if (const auto* result = parsed.FindOptParseResult(option)) {
             for (const auto* value: result->Values()) {
