@@ -470,6 +470,22 @@ Y_UNIT_TEST_SUITE(TChronoAdaptedCases)
         }
     }
 
+    Y_UNIT_TEST(CompactNowOffsets)
+    {
+        const auto zone = NDatetime::GetUtcTimeZone();
+        const auto now = TInstant::ParseIso8601("2018-06-21T01:02:03.203918Z");
+        for (const auto input: {"now-2h", "now -2h", "now- 2h"}) {
+            AssertParse(input, now - TDuration::Hours(2), now, zone);
+        }
+        for (const auto input: {"now+2h", "now +2h", "now+ 2h"}) {
+            AssertParse(input, now + TDuration::Hours(2), now, zone);
+        }
+        AssertParse("now-1h30m", now - TDuration::Minutes(90), now, zone);
+        AssertParse("now+0.5s", now + TDuration::MilliSeconds(500), now, zone);
+        AssertParse("now-0.0000009s", now, now, zone);
+        AssertParse("now+1", now + TDuration::Seconds(1), now, zone);
+    }
+
     Y_UNIT_TEST(ModifierArithmeticBounds)
     {
         const auto zone = NDatetime::GetUtcTimeZone();
@@ -493,6 +509,12 @@ Y_UNIT_TEST_SUITE(TChronoAdaptedCases)
         UNIT_ASSERT(
             !TryParseTimestamp("now -1us", result, TInstant::Zero(), zone));
         UNIT_ASSERT_VALUES_EQUAL(result, now);
+        UNIT_ASSERT(
+            !TryParseTimestamp("now+1us", result, TInstant::Max(), zone));
+        UNIT_ASSERT_VALUES_EQUAL(result, now);
+        UNIT_ASSERT(
+            !TryParseTimestamp("now-1us", result, TInstant::Zero(), zone));
+        UNIT_ASSERT_VALUES_EQUAL(result, now);
         for (const auto input:
              {
                  "epoch -1s",
@@ -509,7 +531,14 @@ Y_UNIT_TEST_SUITE(TChronoAdaptedCases)
     {
         for (const auto input:
              {
-                 "now+1s",
+                 "now+",
+                 "now-",
+                 "now--1s",
+                 "now+-1s",
+                 "now-1unknown",
+                 "now-1h+2m",
+                 "now-1h ago",
+                 "nowhere-1h",
                  "today-1s",
                  "today +",
                  "today -",

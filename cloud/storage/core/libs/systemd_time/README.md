@@ -42,7 +42,8 @@ The parser also supports some extensions:
 - A timestamp followed by a signed span applies that offset to the parsed
   instant: `today +1s`, `now -2h`, `2018-08-09 07:06:05 +1s2m`, or
   `2018-08-09T07:06:05+05:30 -1h`. Whitespace is required before the modifier's
-  sign; whitespace after the sign is optional. Only one modifier is accepted.
+  sign, except after `now`: `now-2h` and `now+30m` are also accepted.
+  Whitespace after the sign is optional. Only one modifier is accepted.
 - `@` may be followed by a span relative to the Unix epoch: `@1s 2m` or
   `@ 1 s`. An empty `@` means the epoch.
 

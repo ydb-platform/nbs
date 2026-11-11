@@ -440,6 +440,10 @@ bool TryParseTimestamp(
     if (input.empty() || input.find('\0') != TStringBuf::npos) {
         return false;
     }
+    // Compact now offsets use the same elapsed-duration rules as +/- spans.
+    if (input.StartsWith("now+") || input.StartsWith("now-")) {
+        input.Skip(3);
+    }
     bool relative = true;
     bool subtract = false;
     if (input.SkipPrefix("+")) {
@@ -464,8 +468,8 @@ bool TryParseTimestamp(
         return true;
     }
 
-    // A span modifier needs whitespace before its sign. Date separators and
-    // directly attached RFC3339 timezone offsets are therefore not split.
+    // Other span modifiers need whitespace before their sign. Date separators
+    // and directly attached RFC3339 timezone offsets are therefore not split.
     for (size_t i = 1; i < input.size(); ++i) {
         if ((input[i] != '+' && input[i] != '-') || !IsAsciiSpace(input[i - 1]))
         {
