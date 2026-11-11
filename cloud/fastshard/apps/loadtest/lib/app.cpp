@@ -7,11 +7,12 @@
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
+#include <silk/util/logger.h>
+
 #include <util/generic/scope.h>
 #include <util/generic/singleton.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
-#include <util/system/progname.h>
 
 #include <signal.h>
 #include <unistd.h>
@@ -52,8 +53,7 @@ int TApp::Run(int argc, const char* argv[])
     try {
         options.Parse(argc, argv);
     } catch (const NLastGetopt::TException&) {
-        Cerr << GetProgramName() << " failed: " << CurrentExceptionMessage()
-             << Endl;
+        SILK_ERROR("%s", CurrentExceptionMessage().c_str());
         return 1;
     }
 
@@ -83,8 +83,7 @@ int TApp::Run(int argc, const char* argv[])
 
         return stats.GetSuccess() ? 0 : 1;
     } catch (...) {
-        Cerr << GetProgramName() << " failed: " << CurrentExceptionMessage()
-             << Endl;
+        SILK_ERROR("%s", CurrentExceptionMessage().c_str());
         return 1;
     }
 }

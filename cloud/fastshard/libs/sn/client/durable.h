@@ -66,6 +66,6 @@ using TDurableClientMetricsPtr = std::shared_ptr<TDurableClientMetrics>;
 IStorageNodePtr CreateDurableClient(
     IStorageNodePtr client,
     TDurableClientConfig config,
-    TDurableClientMetricsPtr metrics = nullptr);
+    TDurableClientMetricsPtr metrics);
 
 }   // namespace NCloud::NFastShard

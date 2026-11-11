@@ -10,11 +10,12 @@
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
+#include <silk/util/logger.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
-#include <util/stream/output.h>
+#include <util/string/builder.h>
 #include <util/string/printf.h>
 #include <util/system/spinlock.h>
 
@@ -98,11 +99,12 @@ struct TActionStats
         }
     }
 
-    void PrintSummary(IOutputStream& out, TDuration elapsed)
+    TString Summary(TDuration elapsed)
     {
         const ui64 count = Count.load();
         const double seconds = Max(elapsed.SecondsFloat(), 1e-9);
 
+        TStringBuilder out;
         with_lock (Lock) {
             out << Name << ": " << count << " ok, " << Errors.load()
                 << " errors, " << Retries.load() << " retries, "
@@ -118,8 +120,8 @@ struct TActionStats
             if (FirstError) {
                 out << ", first error: " << FirstError;
             }
-            out << Endl;
         }
+        return out;
     }
 };
 
@@ -190,13 +192,7 @@ public:
         //
 
         FiberFuture done;
-        const int r = FiberScheduler::run(
-            &TLoadTest::DriverMain,
-            TFiberParams{.Self = this},
-            &done);
-        if (r) {
-            ythrow yexception() << "failed to start fiber: " << ::strerror(r);
-        }
+        Spawn(&TLoadTest::DriverMain, &done);
         done.wait();
 
         return BuildStats();
@@ -335,10 +331,9 @@ private:
                 Client->ReadJournalTail(StoppableCtx, std::move(request));
             if (response.GetError().GetCode() == E_NOT_IMPLEMENTED) {
                 // TODO(#6956): drop once every storage node serves the tail
-                Cerr << "ReadJournalTail is not implemented by the storage "
-                        "node; assuming an empty journal, records start at "
-                        "lsn 1"
-                     << Endl;
+                SILK_WARN(
+                    "ReadJournalTail is not implemented by the storage node; "
+                    "assuming an empty journal, records start at lsn 1");
                 break;
             }
             if (HasError(response)) {
@@ -373,13 +368,13 @@ private:
         auto response =
             Client->ReleaseDevices(PersistentCtx, std::move(request));
         if (HasError(response)) {
-            Cerr << "ReleaseDevices: " << FormatError(response.GetError())
-                 << Endl;
+            SILK_ERROR(
+                "ReleaseDevices: %s",
+                FormatError(response.GetError()).c_str());
         }
     }
 
-    // The run was stopped or ran out of time; unlike ShouldStop it does
-    // not take a request from the --requests budget.
+    // The run was stopped or ran out of time.
     bool StopPending() const
     {
         return StopRequested.load() || TInstant::Now() >= Deadline;
@@ -404,21 +399,17 @@ private:
                GetErrorKind(error) == EErrorKind::ErrorRetriable;
     }
 
-    bool ShouldStop()
+    // Takes one request from the --requests budget. Returns false when the
+    // budget is used up.
+    bool TryTakeRequest()
     {
-        if (StopPending()) {
-            return true;
-        }
-        if (Options.Requests && RequestsIssued.fetch_add(1) >= Options.Requests)
-        {
-            return true;
-        }
-        return false;
+        return !Options.Requests ||
+               RequestsIssued.fetch_add(1) < Options.Requests;
     }
 
     void RunWorker()
     {
-        while (!ShouldStop()) {
+        while (!StopPending() && TryTakeRequest()) {
             if (RandomNumber<ui32>(100) < Options.ReadPercent) {
                 DoRead();
             } else {
@@ -510,9 +501,9 @@ private:
         if (response.GetError().GetCode() == E_NOT_IMPLEMENTED) {
             // TODO(#6956): drop once every storage node serves it
             if (AdvanceSupported.exchange(false)) {
-                Cerr << "AdvanceLsnLowWatermark is not implemented by the "
-                        "storage node; the journal will not be trimmed"
-                     << Endl;
+                SILK_WARN(
+                    "AdvanceLsnLowWatermark is not implemented by the "
+                    "storage node; the journal will not be trimmed");
             }
             return;
         }
@@ -539,19 +530,18 @@ private:
             const ui64 reads = Reads.Count.load();
             const double seconds = Max((now - last).SecondsFloat(), 1e-9);
 
-            Cerr << Sprintf(
-                        "%6.0fs: write %.0f req/s, read %.0f req/s, "
-                        "errors %lu, retries %lu",
-                        (now - Started).SecondsFloat(),
-                        (writes - lastWrites) / seconds,
-                        (reads - lastReads) / seconds,
-                        static_cast<unsigned long>(
-                            Writes.Errors.load() + Reads.Errors.load() +
-                            Advances.Errors.load()),
-                        static_cast<unsigned long>(
-                            Writes.Retries.load() + Reads.Retries.load() +
-                            Advances.Retries.load()))
-                 << Endl;
+            SILK_INFO(
+                "%6.0fs: write %.0f req/s, read %.0f req/s, "
+                "errors %lu, retries %lu",
+                (now - Started).SecondsFloat(),
+                (writes - lastWrites) / seconds,
+                (reads - lastReads) / seconds,
+                static_cast<unsigned long>(
+                    Writes.Errors.load() + Reads.Errors.load() +
+                    Advances.Errors.load()),
+                static_cast<unsigned long>(
+                    Writes.Retries.load() + Reads.Retries.load() +
+                    Advances.Retries.load()));
 
             lastWrites = writes;
             lastReads = reads;
@@ -578,7 +568,7 @@ private:
         stats.SetName(Options.Name);
 
         if (SetupError) {
-            Cerr << SetupError << Endl;
+            SILK_ERROR("%s", SetupError.c_str());
             stats.SetSuccess(false);
             return stats;
         }
@@ -589,7 +579,7 @@ private:
             errors += action->Errors.load();
             if (action->Count.load() || action->Errors.load()) {
                 action->Fill(*stats.AddStats());
-                action->PrintSummary(Cerr, elapsed);
+                SILK_INFO("%s", action->Summary(elapsed).c_str());
             }
         }
 
