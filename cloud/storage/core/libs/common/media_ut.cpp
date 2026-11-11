@@ -23,11 +23,14 @@ Y_UNIT_TEST_SUITE(TMediaKindTest)
             UNIT_ASSERT_C(
                 type != "unknown",
                 NProto::EStorageMediaKind_Name(mediaKind));
-
-            if (IsDiskRegistryLocalMediaKind(mediaKind)) {
-                UNIT_ASSERT_VALUES_EQUAL(type, MediaKindToStatsString(mediaKind));
-            }
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "local-ssd",
+            MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "local-hdd",
+            MediaKindToComputeType(NProto::STORAGE_MEDIA_HDD_LOCAL));
     }
 
     Y_UNIT_TEST(ShouldRecognizeSsdDirectMirror3Of5GroupMediaKind)
