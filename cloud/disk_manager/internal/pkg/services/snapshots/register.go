@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -25,7 +26,32 @@ func RegisterForExecution(
 	cellSelector cells.CellSelector,
 	backupS3 *backup.S3,
 	backupMetricsRegistry metrics.Registry,
+	exportConfigs ...*server_config.ExportConfig,
 ) error {
+
+	var exportConfig *server_config.ExportConfig
+	if len(exportConfigs) != 0 {
+		exportConfig = exportConfigs[0]
+	}
+
+	registerExport := taskRegistry.Register
+	if exportConfig != nil {
+		registerExport = taskRegistry.RegisterForExecution
+	}
+
+	err := registerExport(
+		"snapshots.ExportSnapshot",
+		func() tasks.Task {
+			return &exportSnapshotTask{
+				scheduler: taskScheduler,
+				storage:   storage,
+				config:    exportConfig,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
 
 	deletedSnapshotExpirationTimeout, err := time.ParseDuration(
 		config.GetDeletedSnapshotExpirationTimeout(),

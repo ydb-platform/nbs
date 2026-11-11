@@ -3,10 +3,11 @@ package facade
 import (
 	"context"
 
+	"google.golang.org/grpc"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"google.golang.org/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +36,19 @@ func (s *snapshotService) Delete(
 ) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.DeleteSnapshot(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
+func (s *snapshotService) Export(
+	ctx context.Context,
+	req *disk_manager.ExportSnapshotRequest,
+) (*disk_manager.Operation, error) {
+
+	taskID, err := s.service.ExportSnapshot(ctx, req)
 	if err != nil {
 		return nil, err
 	}

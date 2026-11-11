@@ -6,9 +6,10 @@ import (
 	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
+	"google.golang.org/grpc"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
-	"google.golang.org/grpc"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -182,6 +183,14 @@ func (c *client) CreateImage(
 	return c.imageServiceClient.Create(ctx, req)
 }
 
+func (c *client) ExportImage(
+	ctx context.Context,
+	req *disk_manager.ExportImageRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.imageServiceClient.Export(ctx, req)
+}
+
 func (c *client) UpdateImage(
 	ctx context.Context,
 	req *disk_manager.UpdateImageRequest,
@@ -301,6 +310,14 @@ func (c *client) DeleteSnapshot(
 ) (*disk_manager.Operation, error) {
 
 	return c.snapshotServiceClient.Delete(ctx, req)
+}
+
+func (c *client) ExportSnapshot(
+	ctx context.Context,
+	req *disk_manager.ExportSnapshotRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.snapshotServiceClient.Export(ctx, req)
 }
 
 func (c *client) Close() error {

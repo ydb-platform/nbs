@@ -8,6 +8,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    json_test.go
     mlock_test.go
 )
 

@@ -3,6 +3,7 @@ PROTO_LIBRARY()
 ONLY_TAGS(GO_PROTO)
 
 SRCS(
+    export_snapshot_task.proto
     backup_chunk_map.proto
     backup_chunks_task.proto
     backup_snapshot_data_task.proto

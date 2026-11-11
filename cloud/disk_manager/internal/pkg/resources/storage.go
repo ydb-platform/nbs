@@ -26,11 +26,14 @@ type DiskMeta struct {
 	PlacementPartitionIndex string `json:"placement_partition_index"`
 
 	CreateRequest proto.Message `json:"create_request"`
-	CreateTaskID  string        `json:"create_task_id"`
-	CreatingAt    time.Time     `json:"creating_at"`
-	CreatedAt     time.Time     `json:"created_at"`
-	CreatedBy     string        `json:"created_by"`
-	DeleteTaskID  string        `json:"delete_task_id"`
+	// Serialized create request read from YDB; its protobuf type depends on
+	// whether the disk was created empty, from an image, or from a snapshot.
+	CreateRequestData []byte    `json:"-"`
+	CreateTaskID      string    `json:"create_task_id"`
+	CreatingAt        time.Time `json:"creating_at"`
+	CreatedAt         time.Time `json:"created_at"`
+	CreatedBy         string    `json:"created_by"`
+	DeleteTaskID      string    `json:"delete_task_id"`
 
 	ScannedAt            time.Time `json:"scanned_at"`
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
