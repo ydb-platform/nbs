@@ -12,6 +12,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
 #include <util/string/builder.h>
@@ -57,6 +58,7 @@ private:
         const ui64 Generation = 0;
 
         TIntrusiveList<TInflightRequest> Inflight;
+        THashSet<TActorId> Subscribers;
         TInstant LastActivity = TInstant::Now();
         bool IdleCheckScheduled = false;
 
@@ -107,6 +109,9 @@ private:
         auto request = std::move(ev->Get()->Request);
 
         auto& tablet = GetOrCreateTablet(ctx, tabletId);
+        if (ev->Get()->Subscribe) {
+            tablet.Subscribers.insert(ev->Sender);
+        }
 
         const ui64 requestId = ++LastRequestId;
         auto [entry, inserted] = Requests.try_emplace(
@@ -262,6 +267,7 @@ private:
             tabletId);
 
         NTabletPipe::CloseClient(ctx, tablet.ClientId);
+        NotifySubscribers(ctx, tabletId, tablet);
         Tablets.erase(it);
     }
 
@@ -338,7 +344,18 @@ private:
 
         auto it = Tablets.find(tabletId);
         Fail(ctx, tabletId, it->second, reason);
+        NotifySubscribers(ctx, tabletId, it->second);
         Tablets.erase(it);
+    }
+
+    void NotifySubscribers(
+        const TActorContext& ctx,
+        ui64 tabletId,
+        const TTablet& tablet)
+    {
+        for (const auto& subscriber: tablet.Subscribers) {
+            ctx.Send(subscriber, new TEvTabletProxy::TEvPipeClosed(tabletId));
+        }
     }
 
     void Fail(
@@ -369,6 +386,7 @@ private:
         for (auto& [tabletId, tablet]: Tablets) {
             NTabletPipe::CloseClient(ctx, tablet.ClientId);
             Fail(ctx, tabletId, tablet, "tablet proxy is shutting down");
+            NotifySubscribers(ctx, tabletId, tablet);
         }
 
         Tablets.clear();
