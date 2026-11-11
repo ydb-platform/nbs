@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/fastshard/apps/loadtest/lib
+    cloud/fastshard/libs/sn/client
     cloud/fastshard/libs/sn/iface
     cloud/fastshard/libs/sn/testlib
     cloud/fastshard/public/api/protos

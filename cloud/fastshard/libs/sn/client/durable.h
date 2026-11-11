@@ -55,7 +55,9 @@ using TDurableClientMetricsPtr = std::shared_ptr<TDurableClientMetrics>;
  * Every attempt sends a copy of the original request, so the callee may
  * see one request more than once.
  *
- * Must be called from a silk fiber context, like the wrapped client.
+ * The methods of the returned client must be called from a silk fiber
+ * context, like the methods of the wrapped client. This function does no
+ * I/O and can be called from any thread.
  *
  * @param client - Storage node every attempt is sent to.
  * @param config - Retry limits.

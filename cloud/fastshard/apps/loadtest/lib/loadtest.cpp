@@ -1,7 +1,8 @@
 #include "loadtest.h"
 
+#include "context.h"
+
 #include <cloud/fastshard/libs/common/context.h>
-#include <cloud/fastshard/libs/sn/client/client.h>
 #include <cloud/fastshard/libs/sn/client/durable.h>
 #include <cloud/fastshard/public/api/protos/device.pb.h>
 
@@ -130,10 +131,10 @@ struct TActionStats
 class TLoadTest final: public ILoadTest
 {
 private:
-    const TOptions Options;
-    IStorageNodePtr Client;
-    const TDurableClientMetricsPtr Metrics =
-        std::make_shared<TDurableClientMetrics>();
+    const TAppContext& Ctx;
+    const TLoadTestConfig Config;
+    const IStorageNodePtr Client;
+    const TDurableClientMetricsPtr Metrics;
 
     // Requests that give up once the run stops: reads and advances. Set-up
     // uses it too, but runs before the stopper starts.
@@ -145,10 +146,9 @@ private:
     // One page of payload, copied into every written page.
     const TString PagePattern;
 
-    std::atomic<bool> StopRequested{false};
     TInstant Deadline = TInstant::Max();
 
-    // Requests handed out so far against Options.Requests.
+    // Requests handed out so far against Config.Requests.
     std::atomic<ui64> RequestsIssued{0};
 
     // Lsn of the newest record written or found in the journal; the
@@ -176,10 +176,16 @@ private:
     TString SetupError;
 
 public:
-    TLoadTest(TOptions options, IStorageNodePtr client)
-        : Options(std::move(options))
+    TLoadTest(
+            const TAppContext& ctx,
+            TLoadTestConfig config,
+            IStorageNodePtr client,
+            TDurableClientMetricsPtr clientMetrics)
+        : Ctx(ctx)
+        , Config(std::move(config))
         , Client(std::move(client))
-        , PagePattern(Options.PageSize, 'x')
+        , Metrics(std::move(clientMetrics))
+        , PagePattern(Config.PageSize, 'x')
     {}
 
     NFileStore::NProto::TTestStats Run() override
@@ -196,11 +202,6 @@ public:
         done.wait();
 
         return BuildStats();
-    }
-
-    void Stop() override
-    {
-        StopRequested.store(true);
     }
 
 private:
@@ -244,14 +245,6 @@ private:
 
     void RunDriver()
     {
-        if (!Client) {
-            Client = CreateStorageNodeClient(Options.Host, Options.Port);
-        }
-        Client = CreateDurableClient(
-            std::move(Client),
-            {.RetryTimeout = Options.RetryTimeout},
-            Metrics);
-
         const bool acquired = Acquire();
         if (acquired && FindLastLsn()) {
             RunLoad();
@@ -264,14 +257,14 @@ private:
 
     bool Acquire()
     {
-        if (Options.NoAcquire) {
+        if (Config.NoAcquire) {
             return true;
         }
 
         NCloud::NProto::TAcquireDevicesRequest request;
         PrepareHeaders(*request.MutableHeaders());
-        request.AddDeviceUUIDs(Options.DeviceUUID);
-        request.SetGeneration(Options.Generation);
+        request.AddDeviceUUIDs(Config.DeviceUUID);
+        request.SetGeneration(Config.Generation);
         auto response =
             Client->AcquireDevices(StoppableCtx, std::move(request));
         if (HasError(response)) {
@@ -284,31 +277,31 @@ private:
     void RunLoad()
     {
         Started = TInstant::Now();
-        if (Options.Duration) {
-            Deadline = Started + Options.Duration;
+        if (Config.Duration) {
+            Deadline = Started + Config.Duration;
         }
 
         FiberFuture stopper;
         Spawn(&TLoadTest::StopperMain, &stopper);
 
         std::unique_ptr<FiberFuture[]> workers(
-            new FiberFuture[Options.IoDepth]);
-        for (ui32 i = 0; i < Options.IoDepth; ++i) {
+            new FiberFuture[Config.IoDepth]);
+        for (ui32 i = 0; i < Config.IoDepth; ++i) {
             Spawn(&TLoadTest::WorkerMain, &workers[i]);
         }
 
         FiberFuture reporter;
-        if (Options.ReportInterval) {
+        if (Config.ReportInterval) {
             Spawn(&TLoadTest::ReporterMain, &reporter);
         }
 
-        for (ui32 i = 0; i < Options.IoDepth; ++i) {
+        for (ui32 i = 0; i < Config.IoDepth; ++i) {
             workers[i].wait();
         }
         Finished = TInstant::Now();
         Done.store(true);
 
-        if (Options.ReportInterval) {
+        if (Config.ReportInterval) {
             reporter.wait();
         }
         stopper.wait();
@@ -324,7 +317,7 @@ private:
         for (;;) {
             NCloud::NProto::TReadJournalTailRequest request;
             PrepareHeaders(*request.MutableHeaders());
-            request.SetDeviceUUID(Options.DeviceUUID);
+            request.SetDeviceUUID(Config.DeviceUUID);
             request.SetAfterLogSequenceNumber(after);
             request.SetMaxRecordCount(TailBatch);
             auto response =
@@ -358,13 +351,13 @@ private:
 
     void Release()
     {
-        if (Options.NoAcquire) {
+        if (Config.NoAcquire) {
             return;
         }
 
         NCloud::NProto::TReleaseDevicesRequest request;
         PrepareHeaders(*request.MutableHeaders());
-        request.AddDeviceUUIDs(Options.DeviceUUID);
+        request.AddDeviceUUIDs(Config.DeviceUUID);
         auto response =
             Client->ReleaseDevices(PersistentCtx, std::move(request));
         if (HasError(response)) {
@@ -377,7 +370,7 @@ private:
     // The run was stopped or ran out of time.
     bool StopPending() const
     {
-        return StopRequested.load() || TInstant::Now() >= Deadline;
+        return Ctx.ShouldStop.load() || TInstant::Now() >= Deadline;
     }
 
     // Cancels StoppableCtx once the run stops, so a request retried under
@@ -403,14 +396,14 @@ private:
     // budget is used up.
     bool TryTakeRequest()
     {
-        return !Options.Requests ||
-               RequestsIssued.fetch_add(1) < Options.Requests;
+        return !Config.Requests ||
+               RequestsIssued.fetch_add(1) < Config.Requests;
     }
 
     void RunWorker()
     {
         while (!StopPending() && TryTakeRequest()) {
-            if (RandomNumber<ui32>(100) < Options.ReadPercent) {
+            if (RandomNumber<ui32>(100) < Config.ReadPercent) {
                 DoRead();
             } else {
                 DoWrite();
@@ -426,13 +419,13 @@ private:
 
         NCloud::NProto::TWriteLogRecordRequest request;
         PrepareHeaders(*request.MutableHeaders());
-        request.SetDeviceUUID(Options.DeviceUUID);
+        request.SetDeviceUUID(Config.DeviceUUID);
         request.SetLogSequenceNumber(lsn);
         request.SetPrevLogSequenceNumber(lsn - 1);
 
         auto* group = request.AddPageGroups();
-        group->SetFirstPageNo(RandomPageNo(Options.WritePages));
-        for (ui32 i = 0; i < Options.WritePages; ++i) {
+        group->SetFirstPageNo(RandomPageNo(Config.WritePages));
+        for (ui32 i = 0; i < Config.WritePages; ++i) {
             group->AddContent(PagePattern);
         }
 
@@ -448,9 +441,9 @@ private:
         }
         Writes.Record(
             latency,
-            static_cast<ui64>(Options.WritePages) * Options.PageSize);
+            static_cast<ui64>(Config.WritePages) * Config.PageSize);
 
-        if (Options.AdvanceEvery && lsn % Options.AdvanceEvery == 0 &&
+        if (Config.AdvanceEvery && lsn % Config.AdvanceEvery == 0 &&
             AdvanceSupported.load())
         {
             DoAdvance(lsn);
@@ -461,12 +454,12 @@ private:
     {
         NCloud::NProto::TReadPagesRequest request;
         PrepareHeaders(*request.MutableHeaders());
-        request.SetDeviceUUID(Options.DeviceUUID);
+        request.SetDeviceUUID(Config.DeviceUUID);
 
         auto* ref = request.AddPageGroupRefs();
-        ref->SetFirstPageNo(RandomPageNo(Options.ReadPages));
-        ref->SetPageCount(Options.ReadPages);
-        ref->SetPageSize(Options.PageSize);
+        ref->SetFirstPageNo(RandomPageNo(Config.ReadPages));
+        ref->SetPageCount(Config.ReadPages);
+        ref->SetPageSize(Config.PageSize);
 
         const TInstant started = TInstant::Now();
         auto response = Client->ReadPages(StoppableCtx, std::move(request));
@@ -491,7 +484,7 @@ private:
     {
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
         PrepareHeaders(*request.MutableHeaders());
-        request.SetDeviceUUID(Options.DeviceUUID);
+        request.SetDeviceUUID(Config.DeviceUUID);
         request.SetLsnLowWatermark(lsn);
 
         const TInstant started = TInstant::Now();
@@ -523,7 +516,7 @@ private:
         TInstant last = Started;
 
         while (!Done.load()) {
-            FiberScheduler::sleep(Options.ReportInterval.NanoSeconds());
+            FiberScheduler::sleep(Config.ReportInterval.NanoSeconds());
 
             const TInstant now = TInstant::Now();
             const ui64 writes = Writes.Count.load();
@@ -551,21 +544,21 @@ private:
 
     ui64 RandomPageNo(ui32 pages) const
     {
-        return RandomNumber<ui64>(Options.PageCount - pages + 1);
+        return RandomNumber<ui64>(Config.PageCount - pages + 1);
     }
 
     void PrepareHeaders(NCloud::NProto::TDeviceRequestHeaders& headers) const
     {
-        headers.SetClientId(Options.ClientId);
-        if (Options.RequestTimeoutMs) {
-            headers.SetRequestTimeout(Options.RequestTimeoutMs);
+        headers.SetClientId(Config.ClientId);
+        if (Config.RequestTimeoutMs) {
+            headers.SetRequestTimeout(Config.RequestTimeoutMs);
         }
     }
 
     NFileStore::NProto::TTestStats BuildStats()
     {
         NFileStore::NProto::TTestStats stats;
-        stats.SetName(Options.Name);
+        stats.SetName(Config.Name);
 
         if (SetupError) {
             SILK_ERROR("%s", SetupError.c_str());
@@ -592,9 +585,17 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ILoadTestPtr CreateLoadTest(TOptions options, IStorageNodePtr client)
+ILoadTestPtr CreateLoadTest(
+    const TAppContext& ctx,
+    TLoadTestConfig config,
+    IStorageNodePtr client,
+    TDurableClientMetricsPtr clientMetrics)
 {
-    return std::make_shared<TLoadTest>(std::move(options), std::move(client));
+    return std::make_shared<TLoadTest>(
+        ctx,
+        std::move(config),
+        std::move(client),
+        std::move(clientMetrics));
 }
 
 }   // namespace NCloud::NFastShard::NLoadTest

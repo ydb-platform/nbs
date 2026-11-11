@@ -12,6 +12,8 @@ Only built in `OPENSOURCE` builds without `FORCE_FASTSHARD_IPC_STUB`:
 ./ya make cloud/fastshard/apps/loadtest
 ```
 
+The binary is `cloud/fastshard/apps/loadtest/bin/fastshard-loadtest`.
+
 ## What a run does
 
 1. `AcquireDevices` for `--device-uuid` with `--client-id` and

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/system/types.h>
@@ -8,11 +10,14 @@ namespace NCloud::NFastShard::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptions
+// Parameters of one load test. TOptions fills it from the command line
+// and validates it.
+struct TLoadTestConfig
 {
+    // Test name in the results.
+    TString Name = "fastshard-loadtest";
+
     // Target.
-    TString Host = "localhost";
-    ui16 Port = 0;
     TString ClientId = "fastshard-loadtest";
     ui32 RequestTimeoutMs = 0;
     TString DeviceUUID;
@@ -22,9 +27,9 @@ struct TOptions
 
     // Load shape.
     ui32 IoDepth = 1;
-    // Zero means "until --requests is reached or the run is stopped".
+    // Zero means "until Requests is reached or the run is stopped".
     TDuration Duration;
-    // Zero means "until --duration elapses or the run is stopped".
+    // Zero means "until Duration elapses or the run is stopped".
     ui64 Requests = 0;
     ui32 PageSize = 4096;
     // Page range [0, PageCount) of the device that requests address.
@@ -37,27 +42,9 @@ struct TOptions
     // the newest one, so the journal on the storage node does not fill
     // up. Zero disables it.
     ui64 AdvanceEvery = 256;
-    // A request failing with a retriable error (E_REJECTED, E_TIMEOUT, ...)
-    // is repeated, a write under the same lsn, until it succeeds or this
-    // long has passed since its first attempt. Zero disables retries.
-    TDuration RetryTimeout = TDuration::Seconds(30);
 
-    // Reporting.
-    TString Name = "fastshard-loadtest";
-    TString ResultsFile;
+    // Progress is logged this often. Zero disables it.
     TDuration ReportInterval;
-    bool Verbose = false;
-
-    /**
-     * Parses argv and validates the options.
-     *
-     * @throws NLastGetopt::TUsageException on invalid options.
-     */
-    void Parse(int argc, const char* argv[]);
-
-    // Validates option values; Parse calls it, tests that fill the struct
-    // by hand call it directly.
-    void Validate() const;
 };
 
 }   // namespace NCloud::NFastShard::NLoadTest

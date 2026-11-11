@@ -1,11 +1,12 @@
 #pragma once
 
-#include "options.h"
+#include "public.h"
 
+#include "config.h"
+
+#include <cloud/fastshard/libs/sn/client/durable.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
 #include <cloud/filestore/tools/testing/loadtest/protos/loadtest.pb.h>
-
-#include <memory>
 
 namespace NCloud::NFastShard::NLoadTest {
 
@@ -14,7 +15,7 @@ namespace NCloud::NFastShard::NLoadTest {
 /**
  * One load run against one device: IoDepth fibers, each issuing
  * WriteLogRecord / ReadPages requests back to back until the duration
- * elapses, the request count is reached or Stop is called.
+ * elapses, the request count is reached or the app context asks to stop.
  *
  * Written records form a single chain (every record's PrevLsn is the
  * previous record's Lsn) that continues from whatever the device's
@@ -32,19 +33,20 @@ struct ILoadTest
      *           request failed or the run could not be set up.
      */
     virtual NFileStore::NProto::TTestStats Run() = 0;
-
-    // Makes the running fibers finish their current request and exit.
-    // Safe to call from a signal handler or another thread.
-    virtual void Stop() = 0;
 };
 
-using ILoadTestPtr = std::shared_ptr<ILoadTest>;
-
 /**
- * @param options - Validated options.
- * @param client - Preset by tests; otherwise a TCP client to Host:Port
- *                 is created inside the driver fiber.
+ * @param ctx - Tells the test when to stop (ShouldStop). Must outlive the
+ *              test.
+ * @param config - Validated parameters of the test.
+ * @param client - Durable client to the storage node under test.
+ * @param clientMetrics - Retry counters of `client`; the test reports
+ *                        them in its stats.
  */
-ILoadTestPtr CreateLoadTest(TOptions options, IStorageNodePtr client = {});
+ILoadTestPtr CreateLoadTest(
+    const TAppContext& ctx,
+    TLoadTestConfig config,
+    IStorageNodePtr client,
+    TDurableClientMetricsPtr clientMetrics);
 
 }   // namespace NCloud::NFastShard::NLoadTest

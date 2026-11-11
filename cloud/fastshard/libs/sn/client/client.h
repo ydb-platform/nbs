@@ -60,7 +60,8 @@ using TStorageNodeClientMetricsPtr =
  *   - A TDeviceProtocolResponse.ProtocolError from the server is
  *     copied into the concrete response's Error field.
  *
- * Must be called from a silk fiber context.
+ * The methods of the returned client must be called from a silk fiber
+ * context. This function does no I/O and can be called from any thread.
  *
  * @param host - Server hostname or IP.
  * @param port - Server TCP port.
