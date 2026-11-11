@@ -177,6 +177,7 @@ public:
     NProto::ECompactionType GetHDDCompactionType() const;
     bool GetV1GarbageCompactionEnabled() const;
     bool GetIgnoringZeroedCompactionEnabled() const;
+    ui32 GetMaxBlobsPerRangeInTidyUpMode() const;
     ui32 GetCompactionGarbageThreshold() const;
     ui32 GetCompactionGarbageBlobLimit() const;
     ui32 GetCompactionGarbageBlockLimit() const;

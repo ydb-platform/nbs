@@ -21,6 +21,11 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
+ui32 TPartitionActor::GetCleanupThreshold() const
+{
+    return TidyUpPartitionMode ? 1 : Config->GetCleanupThreshold();
+}
+
 void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 {
     if (State->GetCleanupState().Status != EOperationStatus::Idle) {
@@ -53,7 +58,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
-            Config->GetCleanupThreshold()))
+            GetCleanupThreshold()))
     {
         // Not ready
         return;
@@ -278,6 +283,7 @@ void TPartitionActor::CompleteCleanup(
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+    ProcessTidyUp(ctx);
 
     ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);

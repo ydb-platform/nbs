@@ -878,6 +878,7 @@ void TPartitionActor::HandleFlushCompleted(
     EnqueueTrimFreshLogIfNeeded(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueCleanupIfNeeded(ctx);
+    ProcessTidyUp(ctx);
     ProcessCommitQueue(ctx);
 }
 

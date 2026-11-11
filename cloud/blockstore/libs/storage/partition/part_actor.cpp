@@ -166,6 +166,7 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
 
     State->FinishLoadState();
+    ProcessTidyUp(ctx);
 
     ctx.Schedule(
         Config->GetResourceMetricsUpdateInterval(),
@@ -687,6 +688,60 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
         ));
 }
 
+void TPartitionActor::HandleSetTidyUpPartitionMode(
+    const TEvPartition::TEvSetTidyUpPartitionMode::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const bool enabled = ev->Get()->Enabled &&
+        Config->GetMaxBlobsPerRangeInTidyUpMode();
+    if (TidyUpPartitionMode == enabled) {
+        return;
+    }
+
+    TidyUpPartitionMode = enabled;
+    TidyUpCompleted = false;
+    ProcessTidyUp(ctx);
+}
+
+void TPartitionActor::ProcessTidyUp(const TActorContext& ctx)
+{
+    if (!TidyUpPartitionMode || TidyUpCompleted || CurrentState != STATE_WORK) {
+        return;
+    }
+
+    EnqueueFlushIfNeeded(ctx);
+    EnqueueTrimFreshLogIfNeeded(ctx);
+    EnqueueCompactionIfNeeded(ctx);
+    EnqueueCleanupIfNeeded(ctx);
+    EnqueueCollectGarbageIfNeeded(ctx);
+
+    // No new writes arrive in tidy-up mode.
+    // Wait for startup recovery and scheduled operations to finish.
+    // Also check for pending work. A scan or metadata rebuild can block
+    // cleanup. Read-only channels can block compaction.
+    if (CompactionMapLoadState ||
+        State->GetFlushState().GetOperationState().Status !=
+            EOperationStatus::Idle ||
+        State->GetTrimFreshLogState().Status != EOperationStatus::Idle ||
+        State->GetCompactionState(ECompactionType::Tablet).Status !=
+            EOperationStatus::Idle ||
+        State->GetCleanupState().Status != EOperationStatus::Idle ||
+        State->GetCollectGarbageState().Status != EOperationStatus::Idle ||
+        HasPendingCompaction(ctx) ||
+        State->HasBlobCountToCleanupReachedThreshold(
+            State->GetCleanupCommitId(), GetCleanupThreshold()) ||
+        State->GetAddConfirmedBlobsState().Status != EOperationStatus::Idle)
+    {
+        return;
+    }
+
+    TidyUpCompleted = true;
+    NCloud::Send(
+        ctx,
+        LauncherID(),
+        std::make_unique<TEvPartition::TEvTidyUpCompleted>(TabletID()));
+}
+
 void TPartitionActor::SendGarbageCollectorCompleted(
     const TActorContext& ctx) const
 {
@@ -733,6 +788,7 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+    ProcessTidyUp(ctx);
 
     if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
         EnqueueFlushIfNeeded(ctx);
@@ -1152,6 +1208,7 @@ STFUNC(TPartitionActor::StateBoot)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1182,6 +1239,7 @@ STFUNC(TPartitionActor::StateInit)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1230,6 +1288,7 @@ STFUNC(TPartitionActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvSetTidyUpPartitionMode, HandleSetTidyUpPartitionMode);
 
         HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
@@ -1330,6 +1389,8 @@ STFUNC(TPartitionActor::StateZombie)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvPartition::TEvSetTidyUpPartitionMode);
+
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
         IgnoreFunc(TEvTablet::TEvTabletStop);
 

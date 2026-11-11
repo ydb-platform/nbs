@@ -1,5 +1,6 @@
 #include "follower_disk_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -132,8 +133,11 @@ bool TFollowerDiskActor::OnMessage(
     const TActorContext& ctx,
     TAutoPtr<NActors::IEventHandle>& ev)
 {
-    Y_UNUSED(ctx);
     switch (ev->GetTypeRewrite()) {
+        case NPartition::TEvPartition::EvSetTidyUpPartitionMode:
+            ctx.Send(ev->Forward(LeaderPartitionActorId));
+            break;
+
         HFunc(TEvVolume::TEvRdmaUnavailable, HandleRdmaUnavailable);
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,

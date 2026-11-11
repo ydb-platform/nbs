@@ -414,6 +414,11 @@ private:
     ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
+    TVector<ui64> TidyUpCompletedPartitions;
+    bool TidyUpPartitionMode = false;
+
+    bool IsTidyUpPartitionModeAllowed() const;
+    void DisableTidyUpPartitionMode(const NActors::TActorContext& ctx);
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 
@@ -1091,9 +1096,19 @@ private:
         const NPartition::TEvPartition::TEvBackpressureReport::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleTidyUpCompleted(
+        const NPartition::TEvPartition::TEvTidyUpCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleGarbageCollectorCompleted(
         const NPartition::TEvPartition::TEvGarbageCollectorCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandlePartitionMaintenanceCompleted(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        ui64 tabletId,
+        bool tidyUpCompleted);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

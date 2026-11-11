@@ -44,6 +44,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(UpdateLinkOnFollower,                                      __VA_ARGS__)\
     xxx(GetLinkStatus,                                             __VA_ARGS__)\
     xxx(CheckRange,                                                __VA_ARGS__)\
+    xxx(TidyUpPartitions,                                          __VA_ARGS__)\
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
@@ -399,6 +400,9 @@ struct TEvVolume
 
         EvDescribeBlobRequest = EvBegin + 74,
         EvDescribeBlobResponse = EvBegin + 75,
+
+        EvTidyUpPartitionsRequest = EvBegin + 76,
+        EvTidyUpPartitionsResponse = EvBegin + 77,
 
         EvEnd
     };

@@ -402,6 +402,32 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT_UNEQUAL(0, volumeConfig.GetBaseDiskTabletId());
     }
 
+    Y_UNIT_TEST(ShouldExecuteTidyUpPartitionsAction)
+    {
+        TTestEnv env;
+        const auto nodeIdx = SetupTestEnv(env, NProto::TStorageServiceConfig());
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume(DefaultDiskId);
+        NPrivateProto::TTidyUpPartitionsRequest request;
+        request.SetDiskId(DefaultDiskId);
+        TString input;
+        google::protobuf::util::MessageToJsonString(request, &input);
+        const auto response = service.ExecuteAction("tidyuppartitions", input);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        NPrivateProto::TTidyUpPartitionsResponse output;
+        UNIT_ASSERT(
+            google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(), &output)
+                .ok());
+
+        service.SendExecuteActionRequest("tidyuppartitions", "{}");
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT, service.RecvExecuteActionResponse()->GetStatus());
+        service.SendExecuteActionRequest("tidyuppartitions", "invalid json");
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT, service.RecvExecuteActionResponse()->GetStatus());
+    }
+
     Y_UNIT_TEST(ShouldForwardDeleteCheckpointDataToVolume)
     {
         TTestEnv env;

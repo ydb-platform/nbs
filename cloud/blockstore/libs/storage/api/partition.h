@@ -177,6 +177,9 @@ struct TEvPartition
 
         EvReleaseRange = EvBegin + 15,
 
+        EvTidyUpCompleted = EvBegin + 16,
+        EvSetTidyUpPartitionMode = EvBegin + 17,
+
         EvEnd
     };
 
@@ -184,6 +187,21 @@ struct TEvPartition
         "EvEnd expected to be < TBlockStoreEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
+
+    struct TSetTidyUpPartitionMode
+    {
+        const bool Enabled;
+
+        explicit TSetTidyUpPartitionMode(bool enabled)
+            : Enabled(enabled)
+        {}
+    };
+
+    using TEvSetTidyUpPartitionMode =
+        TRequestEvent<TSetTidyUpPartitionMode, EvSetTidyUpPartitionMode>;
+
+    using TEvTidyUpCompleted =
+        TRequestEvent<TGarbageCollectorCompleted, EvTidyUpCompleted>;
 
     using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 
