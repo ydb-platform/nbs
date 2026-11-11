@@ -331,8 +331,16 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return MakeFuture<TRestoreResult>(std::move(restored));
     }
 
-    TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
+    TResultOrError<TFuture<NCloud::NProto::TError>> Write(
+        ui64 key,
+        TBuffer buffer) override
     {
+        // a failing store rejects the record right away, as the device store
+        // does when it runs out of pages
+        if (FailWrites.load()) {
+            return MakeError(E_IO, "meta write failed");
+        }
+
         return WriteOrHold(key, std::move(buffer));
     }
 
@@ -380,7 +388,11 @@ private:
         TBuffer buffer)
     {
         if (key) {
-            return Impl->Write(*key, std::move(buffer));
+            auto futureOrError = Impl->Write(*key, std::move(buffer));
+            if (HasError(futureOrError)) {
+                return MakeFuture(futureOrError.GetError());
+            }
+            return futureOrError.ExtractResult();
         }
         return Impl->WriteMeta(std::move(buffer));
     }
@@ -483,7 +495,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     TResultOrError<ui64> Restore()
     {
-        return Run([&] { return Journal->Restore(); }).GetValueSync();
+        return Run([&] { return Journal->Restore(); });
     }
 
     ui64 RestoreOrFail()
@@ -597,8 +609,12 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void PutBuffer(ui64 key, TBuffer buffer)
     {
-        const auto error =
-            MetaStore->Impl->Write(key, std::move(buffer)).GetValueSync();
+        auto futureOrError = MetaStore->Impl->Write(key, std::move(buffer));
+        UNIT_ASSERT_C(
+            !HasError(futureOrError),
+            FormatError(futureOrError.GetError()));
+
+        const auto error = futureOrError.ExtractResult().GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
@@ -807,21 +823,28 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "6<-5 20:[");
     }
 
-    Y_UNIT_TEST_F(ShouldRestorePendingRecordBehindGap, TFixture)
+    Y_UNIT_TEST_F(ShouldDropPendingRecordBehindGapOnRestore, TFixture)
     {
         // everything acked has been flushed and cleaned up, lsn 5 <- 4 was
         // written before lsns 3 and 4 made it: the chain still starts at 2
         PutMetadata(2);
-        PutRecord(5, 4);
+        PutRecord(5, 4, {{.PageNo = 50, .Location = Range(0, 1)}});
 
+        // the record past the gap was never acked, the restart drops it
         UNIT_ASSERT_VALUES_EQUAL(2, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(2)));
 
-        // once the gap is filled the pending record joins the chain
+        // filling the gap does not bring it back, it has to be written again
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(4, 3, 'D', {{40, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
-            "3<-2 30:[C030]; 4<-3 40:[D040]; 5<-4",
+            "3<-2 30:[C030]; 4<-3 40:[D040]",
+            DescribeRecords(ReadTail(2)));
+
+        // its page is free: the rewrite may take it
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(5, 4, 'E', {{50, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "3<-2 30:[C030]; 4<-3 40:[D040]; 5<-4 50:[E050]",
             DescribeRecords(ReadTail(2)));
     }
 
@@ -917,10 +940,12 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         RecreateJournal();
 
-        // the restart drops the stranded record and restores the chain
+        // the restart drops the stranded record along with everything else
+        // past the chain and restores the chain - a restore does not tell a
+        // stranded record from one waiting behind a gap, so no critical event
         UNIT_ASSERT_VALUES_EQUAL(4, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 40:[D040]",
@@ -935,7 +960,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         FlushUpTo(5);
         UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
     }
 
@@ -953,7 +978,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
 
         // the unacked tail is kept and can be continued
@@ -1103,13 +1128,18 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         PutTornRecord(2, 1, {{.PageNo = 20, .Location = Range(0, 1)}});
         PutRecord(3, 2);
 
-        // the chain stops before the torn record, lsn 3 stays pending
+        // the chain stops before the torn record, lsn 3 is dropped with it
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(1)));
         UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{20, 1}})));
 
-        // and its page is free: the rewrite of lsn 2 fits and chains lsn 3
+        // and its page is free: the rewrite of lsn 2 fits, lsn 3 is written
+        // again after it
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]",
+            DescribeRecords(ReadTail(1)));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {}));
         UNIT_ASSERT_VALUES_EQUAL(
             "2<-1 20:[B020]; 3<-2",
             DescribeRecords(ReadTail(1)));

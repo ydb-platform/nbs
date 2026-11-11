@@ -76,11 +76,6 @@ std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer)
 TBuffer SerializeRecord(const TLogRecord& record)
 {
     const ui64 pageMappingCount = record.PageMappings.size();
-    Y_DEBUG_ABORT_UNLESS(
-        pageMappingCount <= std::numeric_limits<ui32>::max(),
-        "too many page mappings (%lu) in the log record with lsn %lu",
-        pageMappingCount,
-        record.Lsn);
 
     TRecordHeader header;
     header.Lsn = record.Lsn;

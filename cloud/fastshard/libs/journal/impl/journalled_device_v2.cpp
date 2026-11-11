@@ -296,7 +296,7 @@ private:
 
     NCloud::NProto::TError DoStart()
     {
-        auto response = Executor->ExtractResponse(Journal->Restore());
+        auto response = Journal->Restore();
         if (HasError(response)) {
             STORAGE_ERROR(
                 "unable to restore the journal on "

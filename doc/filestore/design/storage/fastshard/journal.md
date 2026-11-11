@@ -214,12 +214,13 @@ The device runs the cycle in the background, rescheduling it every 100 ms:
 
 1. read every entry back from the log metadata and sort by key (`Lsn`);
 2. take `LsnLowWatermark` from the journal metadata entry;
-3. deserialize the records and put them in chain order, reading the pages of
-   each record above the watermark back to check them against its crc: a torn
-   one, or one whose pages cannot be read, is dropped, since the writer never
-   had it acked, and the chain ends before it. A record at or below the
-   watermark is acked, which means both its writes are done, so it is trusted
-   without a read;
+3. deserialize the records and walk the chain forward from its head, reading
+   the pages of each record above the watermark back to check them against its
+   crc: a torn one, or one whose pages cannot be read, ends the chain. A record
+   at or below the watermark is acked, which means both its writes are done, so
+   it is trusted without a read. Everything past the end of the chain - the
+   torn record, the records waiting behind a gap, stranded records - was never
+   acked and is dropped: the writer writes it again;
 4. initialize the chain, the index and the flushed barrier from the first
    record;
 5. re-claim each record's pages in a freshly built page store, so the

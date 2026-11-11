@@ -22,9 +22,9 @@ struct IJournal
     // Restoring
     //
 
-    // Restores the journal state and returns lsn of the last indexed record
-    [[nodiscard]] virtual auto Restore()
-        -> NThreading::TFuture<TResultOrError<ui64>> = 0;
+    // Restores the journal state and returns lsn of the last indexed record.
+    // Must be called on the executor thread.
+    [[nodiscard]] virtual TResultOrError<ui64> Restore() = 0;
 
     //
     // Device API
