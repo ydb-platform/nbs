@@ -319,9 +319,9 @@ TTimeRange ParseGrafanaRange(
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
-    if (since > until) {
+    if (since >= until) {
         ythrow NLastGetopt::TUsageException()
-            << "--grafana-range \"from\" must not be later than \"to\"";
+            << "--grafana-range \"from\" must be earlier than \"to\"";
     }
     return {since, until};
 }

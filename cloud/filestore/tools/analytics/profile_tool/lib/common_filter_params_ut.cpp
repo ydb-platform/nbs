@@ -401,7 +401,11 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             now,
             "2026-10-06T13:46:30.146Z",
             "2026-10-06T14:31:30.146Z");
-        AssertGrafanaRange(R"({"from":"now","to":"now"})", now, now, now);
+        AssertGrafanaRange(
+            R"({"from":"2026-10-06T14:46:30.146Z","to":"2026-10-06T14:46:30.146001Z"})",
+            now,
+            now,
+            "2026-10-06T14:46:30.146001Z");
         AssertGrafanaRange(
             R"({"to":"now-15m", "from":"2026-10-06T15:00:00+02:00"})",
             now,
@@ -467,6 +471,30 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             UNIT_ASSERT_EXCEPTION(
                 invalidParams.GetTimeRange(invalidParsed),
                 NLastGetopt::TUsageException);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectEmptyGrafanaRanges)
+    {
+        for (const auto json: {
+                 R"({"from":"now","to":"now"})",
+                 R"({"from":"now/d","to":"now-1d/d"})",
+                 R"({"from":"2026-10-06T14:00:00Z","to":"2026-10-06T15:00:00+01:00"})",
+             })
+        {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(
+                opts,
+                TInstant::ParseIso8601("2026-10-06T14:46:30.146Z"));
+            const char* argv[] = {"profile-tool", "--grafana-range", json};
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts,
+                std::size(argv),
+                argv);
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                params.GetTimeRange(parsed),
+                NLastGetopt::TUsageException,
+                "\"from\" must be earlier than \"to\"");
         }
     }
 
