@@ -15,8 +15,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/size_literals.h>
-
 namespace NCloud::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,7 +115,6 @@ struct TBootstrap
             Processor,
             CreateWriteBackCacheLock(NProto::WBC_LOCK_ADAPTIVE),
             Storage,
-            1_MB /* maxCachedWriteRequestSize */,
             Timer,
             Stats->GetWriteBackCacheStateStats(),
             Stats->GetWriteDataRequestManagerStats(),

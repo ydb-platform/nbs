@@ -21,12 +21,10 @@ struct TLoadedWriteDataRequest
 TWriteDataRequestManager::TWriteDataRequestManager(
     ISequenceIdGeneratorPtr sequenceIdGenerator,
     IPersistentStoragePtr persistentStorage,
-    ui64 maxCachedWriteRequestSize,
     ITimerPtr timer,
     IWriteDataRequestManagerStatsPtr stats)
     : SequenceIdGenerator(std::move(sequenceIdGenerator))
     , PersistentStorage(std::move(persistentStorage))
-    , MaxCachedWriteRequestSize(maxCachedWriteRequestSize)
     , Timer(std::move(timer))
     , Stats(std::move(stats))
 {}
@@ -36,25 +34,6 @@ NProto::TError TWriteDataRequestManager::Init(
 {
     if (PersistentStorage->IsCorrupted()) {
         return MakeError(E_INVALID_STATE, "Persistent storage is corrupted");
-    }
-
-    // File ring buffer should be able to store any valid TWriteDataRequest.
-    // Inability to store it will cause this and future requests to remain
-    // in the pending queue forever (including requests with smaller size).
-    // Should fit max request data plus some headers (assume 1 KiB is enough).
-    const ui64 maxAllocationByteCount = MaxCachedWriteRequestSize + 1016;
-
-    const ui64 maxSupportedAllocationByteCount =
-        PersistentStorage->GetMaxSupportedAllocationByteCount();
-
-    if (maxSupportedAllocationByteCount < maxAllocationByteCount) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "MaxSupportedAllocationByteCount (%lu) is less than the "
-                "minimal allowed value (%lu)",
-                maxSupportedAllocationByteCount,
-                maxAllocationByteCount));
     }
 
     NProto::TError error = {};

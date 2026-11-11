@@ -28,7 +28,7 @@ NProto::TError TTestStorage::Visit(const TVisitor& visitor)
 
 ui64 TTestStorage::GetMaxSupportedAllocationByteCount() const
 {
-    return MaxSupportedAllocationByteCount;
+    return Max<ui64>();
 }
 
 TResultOrError<char*> TTestStorage::Alloc(size_t size)
@@ -93,11 +93,6 @@ void TTestStorage::SetCapacity(size_t capacity)
 {
     Capacity = capacity;
     SetStats();
-}
-
-void TTestStorage::SetMaxSupportedAllocationByteCount(ui64 byteCount)
-{
-    MaxSupportedAllocationByteCount = byteCount;
 }
 
 void TTestStorage::SetStats()

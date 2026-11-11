@@ -21,7 +21,6 @@ TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
     std::unique_ptr<IWriteBackCacheLock> lock,
     IPersistentStoragePtr persistentStorage,
-    ui64 maxCachedWriteRequestSize,
     ITimerPtr timer,
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
@@ -37,7 +36,6 @@ TWriteBackCacheState::TWriteBackCacheState(
     , RequestManager(
           SequenceIdGenerator,
           std::move(persistentStorage),
-          maxCachedWriteRequestSize,
           Timer,
           std::move(writeDataRequestManagerStats))
     , QueuedOperations(
