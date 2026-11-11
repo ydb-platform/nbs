@@ -5,7 +5,8 @@
 #include <util/generic/set.h>
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
-#include <util/system/mutex.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 #include <atomic>
 #include <optional>
@@ -198,7 +199,7 @@ class TRequestState final
 
     ITaskQueuePtr Completions;
     std::weak_ptr<IConnection> Connection;
-    TMutex Mutex;
+    TAdaptiveLock Lock;
     THashMap<ui64, TPendingRequest> Pending;
     TSet<TRequestDeadline> Deadlines;
     std::atomic<size_t> Outstanding = 0;
@@ -226,6 +227,8 @@ public:
         Connection = connection;
     }
 
+    // Reserves a request slot and returns its cookie. Send the request only
+    // after this succeeds.
     TResultOrError<ui64> Admit(
         TInstant deadline,
         ui32 responseType,
@@ -234,7 +237,7 @@ public:
         ui64 cookie = 0;
         std::optional<TRequestTimer::TTask> timer;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Phase != EPhase::Open) {
                 return MakeError(
                     E_INVALID_STATE,
@@ -291,7 +294,7 @@ public:
         bool timedOut = false;
         bool badResponse = false;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             const auto it = Pending.find(cookie);
             if (it != Pending.end()) {
                 timedOut = !HasError(result.GetError()) &&
@@ -339,7 +342,7 @@ public:
         THashMap<ui64, TPendingRequest> pending;
         bool first = false;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Phase == EPhase::Open) {
                 Phase = EPhase::Closing;
                 CloseError = error;
@@ -381,7 +384,7 @@ public:
     {
         TVector<ui64> expired;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Phase != EPhase::Open || !RequestTimer.IsCurrent(generation)) {
                 return;
             }
@@ -399,7 +402,7 @@ public:
         }
         std::optional<TRequestTimer::TTask> timer;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             RequestTimer.Finish(generation);
             timer = PrepareTimerLocked();
         }
@@ -454,7 +457,7 @@ private:
     {
         ITaskQueuePtr completions;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Phase != EPhase::Draining || CompletionOperations) {
                 return;
             }
