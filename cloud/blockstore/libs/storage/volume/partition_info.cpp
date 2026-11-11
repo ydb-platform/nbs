@@ -68,16 +68,6 @@ NActors::TActorId TActorsStack::GetTopWrapper() const
     return {};
 }
 
-NActors::TActorId TActorsStack::GetTabletActorId() const
-{
-    for (const auto& actor: Actors) {
-        if (actor.ActorPurpose == EActorPurpose::BlobStoragePartitionTablet) {
-            return actor.ActorId;
-        }
-    }
-    return {};
-}
-
 void TActorsStack::UpdateStartInfo(const TPartitionStartInfo& startInfo)
 {
     StartInfo = startInfo;

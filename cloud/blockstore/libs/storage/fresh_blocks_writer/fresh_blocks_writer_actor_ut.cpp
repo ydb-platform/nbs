@@ -601,6 +601,58 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldForwardTidyUpModeWhileStartingAndReady)
+    {
+        for (bool waitReady: {false, true}) {
+            TMyTestEnv testEnv;
+            InitTestActorRuntime(testEnv);
+            auto& runtime = testEnv.GetRuntime();
+            TAutoPtr<IEventHandle> ready;
+            TVector<bool> modes;
+            runtime.SetEventFilter([&](auto&, auto& event) {
+                if (!waitReady &&
+                    event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse &&
+                    event->GetRecipientRewrite() ==
+                        testEnv.FreshBlocksWriterActorId)
+                {
+                    ready = event.Release();
+                    return true;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvPartition::EvSetTidyUpPartitionMode &&
+                    event->GetRecipientRewrite() == testEnv.PartitionActorId)
+                {
+                    modes.push_back(event->template Get<
+                        TEvPartition::TEvSetTidyUpPartitionMode>()->Enabled);
+                    return true;
+                }
+                return false;
+            });
+
+            auto partition = testEnv.GetPartitionClient();
+            partition.WaitReady();
+            auto writer = testEnv.GetFreshBlocksWriterClient();
+            if (waitReady) {
+                writer.WaitReady();
+            }
+            writer.Send(
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(true));
+            writer.Send(
+                std::make_unique<TEvPartition::TEvSetTidyUpPartitionMode>(false));
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(2, modes.size());
+            UNIT_ASSERT(modes[0]);
+            UNIT_ASSERT(!modes[1]);
+
+            if (!waitReady) {
+                UNIT_ASSERT(ready);
+                runtime.SetEventFilter([](auto&, auto&) { return false; });
+                runtime.Send(ready.Release());
+                writer.WaitReady();
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAddFreshBlocksBeforeReply)
     {
         TMyTestEnv testEnv;

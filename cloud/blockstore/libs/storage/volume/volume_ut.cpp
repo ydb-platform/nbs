@@ -8850,13 +8850,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 stops = 0;
         ui32 boots = 0;
         ui32 modeChanges = 0;
+        THashSet<TActorId> partitionActors;
         runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() == TEvBootstrapper::EvStatus) {
+                const auto* msg =
+                    event->template Get<TEvBootstrapper::TEvStatus>();
+                if (msg->Status == TEvBootstrapper::STARTED) {
+                    partitionActors.insert(msg->TabletUser);
+                }
+            }
             if (event->GetTypeRewrite() == TEvPartition::EvTidyUpCompleted) {
                 completion = event.Release();
                 return true;
             }
             if (event->GetTypeRewrite() == TEvPartition::EvSetTidyUpPartitionMode &&
-                !event->template Get<TEvPartition::TEvSetTidyUpPartitionMode>()->Enabled)
+                !event->template Get<TEvPartition::TEvSetTidyUpPartitionMode>()->Enabled &&
+                partitionActors.contains(event->GetRecipientRewrite()))
             {
                 ++modeChanges;
             }

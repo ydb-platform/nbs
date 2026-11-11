@@ -2,6 +2,7 @@
 
 #include "io_companion_client.h"
 
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition/part_counters.h>
@@ -504,6 +505,10 @@ bool TFreshBlocksWriterActor::RejectRequests(STFUNC_SIG)
 STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 {
     switch (ev->GetTypeRewrite()) {
+        case TEvPartition::EvSetTidyUpPartitionMode:
+            this->ActorContext().Send(ev->Forward(PartitionActorId));
+            break;
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
@@ -529,6 +534,10 @@ STFUNC(TFreshBlocksWriterActor::StateWaitPartition)
 STFUNC(TFreshBlocksWriterActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        case TEvPartition::EvSetTidyUpPartitionMode:
+            this->ActorContext().Send(ev->Forward(PartitionActorId));
+            break;
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
         HFunc(
@@ -570,6 +579,7 @@ STFUNC(TFreshBlocksWriterActor::StateZombie)
 
         IgnoreFunc(TEvFreshBlocksWriter::TEvWaitReadyRequest);
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
+        IgnoreFunc(TEvPartition::TEvSetTidyUpPartitionMode);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse);
         IgnoreFunc(TEvPartitionCommonPrivate::TEvWriteFreshBlocksCompleted);
         IgnoreFunc(TEvPartitionPrivate::TEvProcessWriteQueue);

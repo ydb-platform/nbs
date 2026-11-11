@@ -531,7 +531,7 @@ void TVolumeActor::DisableTidyUpPartitionMode(const TActorContext& ctx)
         PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
     }
     for (const auto& partition: State->GetPartitions()) {
-        if (const auto actorId = partition.RelatedActors.GetTabletActorId()) {
+        if (const auto actorId = partition.GetTopActorId()) {
             NCloud::Send(
                 ctx,
                 actorId,
