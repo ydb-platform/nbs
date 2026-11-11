@@ -3867,6 +3867,50 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         check();
     }
 
+    Y_UNIT_TEST(ShouldShowSelectiveTrimOnMonitoringPage)
+    {
+        auto runtime = PrepareTestActorRuntime(SelectiveTrimConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        // The selective trim keeps the pin and collects the dead blobs above
+        // it.
+        partition.WriteBlocks(100, 'p');
+        for (char c = 'a'; c <= 'd'; ++c) {
+            partition.WriteBlocks(1, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL("S", counters.CommandKinds);
+
+        const TString html =
+            partition.RemoteHttpInfo(BuildRemoteHttpQuery(TestTabletId, {}))
+                ->Html;
+        UNIT_ASSERT_C(html.Contains("Fresh Log"), html);
+        // The pin and the last write are live, and the pin is kept.
+        UNIT_ASSERT_C(html.Contains("Live</span> 2 blobs"), html);
+        UNIT_ASSERT_C(html.Contains("1 kept"), html);
+        UNIT_ASSERT_C(!html.Contains("not acknowledged"), html);
+        UNIT_ASSERT_C(!html.Contains("failed)"), html);
+
+        // Each kind shows the time since its own last trim. The page drops
+        // the fraction of a second only for durations of a minute or more.
+        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
+        const TString later =
+            partition.RemoteHttpInfo(BuildRemoteHttpQuery(TestTabletId, {}))
+                ->Html;
+        UNIT_ASSERT_C(
+            later.Contains("Ordinary</span></td><td>Idle</td>"),
+            later);
+        UNIT_ASSERT_C(
+            later.Contains("Selective</span></td><td>Idle for 1m 0s</td>"),
+            later);
+    }
+
     Y_UNIT_TEST(ShouldCollectDeadBlobsBelowOrdinaryTrimToCommitIdSelectively)
     {
         auto runtime = PrepareTestActorRuntime(SelectiveTrimConfig());

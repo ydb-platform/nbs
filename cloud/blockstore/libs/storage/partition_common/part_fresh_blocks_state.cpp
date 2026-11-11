@@ -177,6 +177,35 @@ bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
            ordinaryTrimByteCount == OrdinaryTrimmableFreshBlobByteCount;
 }
 
+TUntrimmedFreshBlobsBreakdown
+TPartitionFreshBlobState::GetUntrimmedFreshBlobsBreakdown(
+    ui64 ordinaryTrimToCommitId,
+    ui64 lastSentSelectiveTrimToCommitId) const
+{
+    TUntrimmedFreshBlobsBreakdown result;
+
+    auto add = [](TFreshBlobStats& stats, const TUntrimmedFreshBlob& blob)
+    {
+        ++stats.BlobCount;
+        stats.ByteCount += blob.ByteCount;
+    };
+
+    for (const auto& [commitId, blob]: UntrimmedFreshBlobsByCommitId) {
+        if (commitId <= ordinaryTrimToCommitId) {
+            add(result.OrdinaryTrimmable, blob);
+        } else if (blob.Dead) {
+            add(result.DeadBehindLive, blob);
+        } else {
+            add(result.Live, blob);
+            if (commitId <= lastSentSelectiveTrimToCommitId) {
+                ++result.KeptBlobCount;
+            }
+        }
+    }
+
+    return result;
+}
+
 TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
 {
     auto& blobs = UntrimmedFreshBlobsByCommitId;

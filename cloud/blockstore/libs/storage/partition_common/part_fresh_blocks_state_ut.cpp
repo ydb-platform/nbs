@@ -740,6 +740,97 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             12,
             state.GetLastSentSelectiveTrimToCommitId());
     }
+
+    Y_UNIT_TEST(ShouldBreakDownUntrimmedFreshBlobs)
+    {
+        // Every blob has its own size, so that each sum names its blobs.
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId = 1; commitId <= 6; ++commitId) {
+            state.AddFreshBlob(
+                commitId,
+                BlobId(commitId),
+                1ULL << commitId,
+                TInstant::Zero());
+        }
+        for (ui64 commitId: {1, 2, 4, 6}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+
+        // Blob 3 is live, so OrdinaryTrimToCommitId is 2. The soft barrier at
+        // 4 keeps blob 3, but not blob 5.
+        auto blobs = state.GetUntrimmedFreshBlobsBreakdown(2, 4);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs.OrdinaryTrimmable.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(2 + 4, blobs.OrdinaryTrimmable.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs.DeadBehindLive.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(16 + 64, blobs.DeadBehindLive.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs.Live.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(8 + 32, blobs.Live.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.KeptBlobCount);
+
+        // Blob 3 dies, and OrdinaryTrimToCommitId moves to 4.
+        state.MarkFreshBlobDead(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        blobs = state.GetUntrimmedFreshBlobsBreakdown(4, 4);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs.OrdinaryTrimmable.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(8 + 16, blobs.OrdinaryTrimmable.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.DeadBehindLive.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(64, blobs.DeadBehindLive.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.Live.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(32, blobs.Live.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, blobs.KeptBlobCount);
+    }
+
+    Y_UNIT_TEST(ShouldCountTrimFreshLogResults)
+    {
+        TPartitionTrimFreshLogState state;
+        const auto at = [](ui64 seconds)
+        {
+            return TInstant::Seconds(seconds);
+        };
+
+        state.RegisterTrimFreshLogStarted(/*selective=*/false, at(1));
+        state.RegisterTrimFreshLogCompleted(
+            /*selective=*/false,
+            /*failed=*/false,
+            10,
+            at(2));
+        state.RegisterTrimFreshLogStarted(/*selective=*/true, at(3));
+        state.RegisterTrimFreshLogCompleted(
+            /*selective=*/true,
+            /*failed=*/false,
+            20,
+            at(4));
+        // A failed trim removes nothing.
+        state.RegisterTrimFreshLogStarted(/*selective=*/true, at(5));
+        state.RegisterTrimFreshLogCompleted(
+            /*selective=*/true,
+            /*failed=*/true,
+            0,
+            at(6));
+        state.RegisterTrimFreshLogStarted(/*selective=*/true, at(7));
+        state.RegisterTrimFreshLogCompleted(
+            /*selective=*/true,
+            /*failed=*/false,
+            30,
+            at(8));
+        state.RegisterTrimFreshLogStarted(/*selective=*/true, at(9));
+
+        const auto& ordinary = state.GetOrdinaryTrimStats();
+        UNIT_ASSERT_EQUAL(EOperationStatus::Idle, ordinary.State.Status);
+        UNIT_ASSERT_VALUES_EQUAL(at(2), ordinary.State.Timestamp);
+        UNIT_ASSERT_VALUES_EQUAL(1, ordinary.SucceededCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, ordinary.FailedCount);
+        UNIT_ASSERT_VALUES_EQUAL(10, ordinary.TrimmedByteCount);
+
+        const auto& selective = state.GetSelectiveTrimStats();
+        UNIT_ASSERT_EQUAL(EOperationStatus::Started, selective.State.Status);
+        UNIT_ASSERT_VALUES_EQUAL(at(9), selective.State.Timestamp);
+        UNIT_ASSERT_VALUES_EQUAL(2, selective.SucceededCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, selective.FailedCount);
+        UNIT_ASSERT_VALUES_EQUAL(50, selective.TrimmedByteCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

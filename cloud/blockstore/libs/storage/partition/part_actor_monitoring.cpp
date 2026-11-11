@@ -14,6 +14,7 @@
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/stream/format.h>
 #include <util/stream/str.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -321,6 +322,290 @@ void DumpScanDiskInfo(IOutputStream& out, ui64 current, ui64 total)
     DumpProgress(out, current, total);
 }
 
+TString FormatBlobCount(ui64 count)
+{
+    return TStringBuilder() << count << (count == 1 ? " blob" : " blobs");
+}
+
+void DumpFreshBlobsBarSegment(
+    IOutputStream& out,
+    TStringBuf barClass,
+    TStringBuf name,
+    const TFreshBlobStats& stats,
+    ui64 totalByteCount)
+{
+    if (!stats.ByteCount) {
+        return;
+    }
+
+    constexpr double MinPercentToShowSize = 10;
+    const double percent = 100.0 * stats.ByteCount / totalByteCount;
+    out << "<div class='progress-bar " << barClass << "' role='progressbar'"
+        << " style='width: " << Prec(percent, PREC_POINT_DIGITS, 2) << "%'"
+        << " title='" << name << ": " << FormatBlobCount(stats.BlobCount)
+        << ", " << FormatByteSize(stats.ByteCount) << "'>";
+    if (percent >= MinPercentToShowSize) {
+        out << FormatByteSize(stats.ByteCount);
+    }
+    out << "</div>";
+}
+
+void DumpFreshBlobsLegendItem(
+    IOutputStream& out,
+    TStringBuf labelClass,
+    TStringBuf name,
+    TStringBuf description,
+    const TFreshBlobStats& stats)
+{
+    out << "<span class='label " << labelClass << "' title='" << description
+        << "'>" << name << "</span> " << FormatBlobCount(stats.BlobCount)
+        << ", " << FormatByteSize(stats.ByteCount);
+}
+
+void DumpTrimDue(
+    IOutputStream& out,
+    TStringBuf barClass,
+    ui64 deadByteCount,
+    ui64 threshold)
+{
+    const ui64 percent = Min<ui64>(100, deadByteCount * 100 / threshold);
+    out << FormatByteSize(deadByteCount) << " of " << FormatByteSize(threshold)
+        << " dead"
+        << "<div class='progress' style='height: 6px; margin: 4px 0 0'>"
+        << "<div class='progress-bar " << barClass << "' role='progressbar'"
+        << " style='width: " << percent << "%'></div></div>";
+}
+
+void DumpTrimState(IOutputStream& out, const TOperationState& op, TInstant now)
+{
+    out << ToString(op.Status);
+    if (op.Timestamp != TInstant::Zero()) {
+        out << " for "
+            << FormatDuration(
+                   now > op.Timestamp ? now - op.Timestamp : TDuration::Zero());
+    }
+}
+
+void DumpTrimCounters(IOutputStream& out, const TTrimFreshLogStats& stats)
+{
+    out << stats.SucceededCount;
+    if (stats.FailedCount) {
+        out << " <span class='text-danger'>(" << stats.FailedCount
+            << " failed)</span>";
+    }
+}
+
+void DumpFreshLog(
+    IOutputStream& out,
+    const TPartitionState& state,
+    TInstant now,
+    TInstant freshWriteNow,
+    ui64 deadBlobByteCountTrimThreshold,
+    bool selectiveTrimEnabled)
+{
+    const ui64 ordinaryTrimToCommitId = state.GetTrimFreshLogToCommitId();
+    const ui64 lastSentSelectiveTrimToCommitId =
+        state.GetLastSentSelectiveTrimToCommitId();
+    const auto blobs = state.GetUntrimmedFreshBlobsBreakdown(
+        ordinaryTrimToCommitId,
+        lastSentSelectiveTrimToCommitId);
+    const ui64 totalBlobCount = blobs.OrdinaryTrimmable.BlobCount +
+                                blobs.DeadBehindLive.BlobCount +
+                                blobs.Live.BlobCount;
+    const ui64 totalByteCount = blobs.OrdinaryTrimmable.ByteCount +
+                                blobs.DeadBehindLive.ByteCount +
+                                blobs.Live.ByteCount;
+
+    // After a scan, the next one waits until this many more bytes die.
+    const ui64 killed = state.GetTotalKilledFreshBlobByteCount();
+    const ui64 selectiveScanWaitByteCount =
+        state.IsSelectiveScanAllowed(killed)
+            ? 0
+            : state.GetNextSelectiveScanTotalKilledByteCount() - killed;
+
+    HTML (out) {
+        PARA () {
+            out << "<strong>" << FormatByteSize(totalByteCount)
+                << "</strong> untrimmed in " << FormatBlobCount(totalBlobCount)
+                << " &middot; <strong>"
+                << FormatByteSize(state.GetUnflushedFreshBlobByteCount())
+                << "</strong> unflushed in "
+                << FormatBlobCount(state.GetUnflushedFreshBlobCount());
+
+            // The blob that the age flush threshold applies to.
+            const TInstant oldest = state.GetFirstUnflushedFreshBlobTimestamp(
+                ordinaryTrimToCommitId);
+            if (oldest == TInstant::Zero()) {
+                out << ", the oldest written at an unknown time";
+            } else if (oldest != TInstant::Max()) {
+                out << ", the oldest written "
+                    << FormatDuration(
+                           freshWriteNow > oldest ? freshWriteNow - oldest
+                                                  : TDuration::Zero())
+                    << " ago";
+            }
+        }
+
+        DIV_CLASS ("progress") {
+            DumpFreshBlobsBarSegment(
+                out,
+                "",
+                "Live",
+                blobs.Live,
+                totalByteCount);
+            DumpFreshBlobsBarSegment(
+                out,
+                "progress-bar-success",
+                "Ordinary trimmable",
+                blobs.OrdinaryTrimmable,
+                totalByteCount);
+            DumpFreshBlobsBarSegment(
+                out,
+                "progress-bar-warning",
+                "Dead behind live",
+                blobs.DeadBehindLive,
+                totalByteCount);
+        }
+
+        PARA () {
+            DumpFreshBlobsLegendItem(
+                out,
+                "label-primary",
+                "Live",
+                "Some blocks are neither overwritten nor flushed",
+                blobs.Live);
+            if (blobs.KeptBlobCount) {
+                out << ", <span title='Below the soft barrier, protected by "
+                       "Keep flags'>"
+                    << blobs.KeptBlobCount << " kept</span>";
+            }
+            out << "&emsp;";
+            DumpFreshBlobsLegendItem(
+                out,
+                "label-success",
+                "Ordinary trimmable",
+                "Dead and older than every live blob: the hard barrier of "
+                "an ordinary trim reaches them",
+                blobs.OrdinaryTrimmable);
+            out << "&emsp;";
+            DumpFreshBlobsLegendItem(
+                out,
+                "label-warning",
+                "Dead behind live",
+                "Dead and newer than a live blob: before a flush, only a "
+                "selective trim reaches them",
+                blobs.DeadBehindLive);
+        }
+
+        TABLE_CLASS ("table table-condensed") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Trim";
+                    }
+                    TABLEH () {
+                        out << "State";
+                    }
+                    TABLEH () {
+                        out << "Trigger";
+                    }
+                    TABLEH () {
+                        out << "Last barrier";
+                    }
+                    TABLEH () {
+                        out << "Trims since start";
+                    }
+                    TABLEH () {
+                        out << "Trimmed since start";
+                    }
+                }
+            }
+            TABLEBODY () {
+                const auto& ordinary = state.GetOrdinaryTrimStats();
+                TABLER () {
+                    TABLED () {
+                        out << "<span class='label label-success'>"
+                               "Ordinary</span>";
+                    }
+                    TABLED () {
+                        DumpTrimState(out, ordinary.State, now);
+                    }
+                    TABLED () {
+                        if (deadBlobByteCountTrimThreshold) {
+                            DumpTrimDue(
+                                out,
+                                "progress-bar-success",
+                                blobs.OrdinaryTrimmable.ByteCount,
+                                deadBlobByteCountTrimThreshold);
+                        } else {
+                            out << "<span class='text-muted'>"
+                                   "after every flush</span>";
+                        }
+                    }
+                    TABLED () {
+                        DumpCommitId(
+                            out,
+                            state.GetLastTrimFreshLogToCommitId());
+                    }
+                    TABLED () {
+                        DumpTrimCounters(out, ordinary);
+                    }
+                    TABLED () {
+                        out << FormatByteSize(ordinary.TrimmedByteCount);
+                    }
+                }
+
+                const auto& selective = state.GetSelectiveTrimStats();
+                TABLER () {
+                    TABLED () {
+                        out << "<span class='label label-warning'>"
+                               "Selective</span>";
+                    }
+                    TABLED () {
+                        DumpTrimState(out, selective.State, now);
+                    }
+                    TABLED () {
+                        if (selectiveTrimEnabled) {
+                            DumpTrimDue(
+                                out,
+                                "progress-bar-warning",
+                                blobs.DeadBehindLive.ByteCount,
+                                deadBlobByteCountTrimThreshold);
+
+                            if (selectiveScanWaitByteCount) {
+                                out << "<small class='text-muted'>"
+                                    << "The next scan waits for "
+                                    << FormatByteSize(
+                                           selectiveScanWaitByteCount)
+                                    << " of new dead blobs</small>";
+                            }
+                        } else {
+                            out << "<span class='text-muted'>disabled</span>";
+                        }
+                    }
+                    TABLED () {
+                        DumpCommitId(out, lastSentSelectiveTrimToCommitId);
+                        if (state.GetKeptToCommitId() <
+                            lastSentSelectiveTrimToCommitId)
+                        {
+                            out << " <span class='label label-default'"
+                                << " title='Keep flags are acknowledged up to "
+                                << state.GetKeptToCommitId()
+                                << "'>not acknowledged</span>";
+                        }
+                    }
+                    TABLED () {
+                        DumpTrimCounters(out, selective);
+                    }
+                    TABLED () {
+                        out << FormatByteSize(selective.TrimmedByteCount);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void DumpCompactionScoreHistory(
     IOutputStream& out,
     const TTsRingBuffer<TCompactionScores>& scoreHistory)
@@ -507,6 +792,17 @@ void TPartitionActor::HandleHttpInfo_Default(
 
                     TAG(TH3) { out << "State"; }
                     State->DumpHtml(out);
+
+                    TAG (TH3) {
+                        out << "Fresh Log";
+                    }
+                    DumpFreshLog(
+                        out,
+                        *State,
+                        ctx.Now(),
+                        SharedState->GetFreshWriteTimestamp(ctx),
+                        GetFreshDeadBlobByteCountTrimThreshold(),
+                        IsSelectiveTrimEnabled());
 
                     TAG(TH3) { out << "Partition Statistics"; }
                     DumpPartitionStats(out, State->GetConfig(), State->GetStats(), State->GetUnflushedFreshBlocksCount());
