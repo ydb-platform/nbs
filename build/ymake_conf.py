@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 import six
+from six.moves import shlex_quote
 
 from functools import total_ordering
 
@@ -1167,10 +1168,14 @@ class GnuToolchain(Toolchain):
             if target.is_linux:
                 self.env_go['PATH'].append('$OS_SDK_ROOT_RESOURCE_GLOBAL/usr/bin')
             elif target.is_macos:
-                self.env_go['PATH'].extend([
-                    '$MACOS_SDK_RESOURCE_GLOBAL/usr/bin',
-                    '$GO_FAKE_XCRUN_RESOURCE_GLOBAL',
-                ])
+                if self.tc.os_sdk_local:
+                    # Use the host's xcrun with the local Apple SDK.
+                    self.env_go['PATH'].append('/usr/bin')
+                else:
+                    self.env_go['PATH'].extend([
+                        '$MACOS_SDK_RESOURCE_GLOBAL/usr/bin',
+                        '$GO_FAKE_XCRUN_RESOURCE_GLOBAL',
+                    ])
 
         self.swift_flags_platform = []
         self.swift_lib_path = None
@@ -1355,6 +1360,11 @@ class GnuToolchain(Toolchain):
             return six.ensure_str(subprocess.check_output(tuple(args))).strip()
 
         def get_sdk_root(sdk):
+            # An explicit build flag also makes SDK selection part of the cache key.
+            root = preset('SDKROOT')
+            if root:
+                return root
+
             root = self.env.get('SDKROOT')
             if root not in (None, '', ['']):
                 return root
@@ -1371,6 +1381,12 @@ class GnuToolchain(Toolchain):
             self.env['SDKROOT'] = get_sdk_root('iphoneos')
         elif target.is_macos:
             self.env['SDKROOT'] = get_sdk_root('macosx')
+            # Match format_env's list serialization before quoting a compiler argument.
+            sdk_root = self.env['SDKROOT']
+            if isinstance(sdk_root, list):
+                sdk_root = ':'.join(sdk_root)
+            # CGO invokes the compiler in compound commands; pass the SDK explicitly.
+            self.c_flags_platform.extend(['-isysroot', shlex_quote(sdk_root)])
 
     def setup_sdk(self, project, var):
         self.platform_projects.append(project)
@@ -1396,6 +1412,10 @@ class GnuToolchain(Toolchain):
 
         emit('TOOLCHAIN_ENV', format_env(self.env, list_separator=':'))
         emit('_GO_TOOLCHAIN_ENV_PATH', format_env(self.env_go, list_separator=':'))
+        if self.build.target.is_macos:
+            emit('_GO_FAKE_XCRUN_PEERDIR', None if self.tc.os_sdk_local else 'build/external_resources/go_fake_xcrun')
+            # Local SDK selection is already passed to the compiler via SDKROOT.
+            emit('_GO_DARWIN_SDK_FLAGS', None if self.tc.os_sdk_local else '--sysroot=$MACOS_SDK_RESOURCE_GLOBAL')
         emit('C_FLAGS_PLATFORM', self.c_flags_platform)
         emit('SWIFT_FLAGS_PLATFORM', self.swift_flags_platform)
         emit('SWIFT_LD_FLAGS', '-L{}'.format(self.swift_lib_path) if self.swift_lib_path else '')
