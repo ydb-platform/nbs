@@ -988,6 +988,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
     // DeletionQueue. CompleteTx must not release the barrier again.
     Y_UNIT_TEST(ShouldNotReleaseCollectBarrierTwiceWhenRejectedAsAlreadyDeleted)
     {
+        if (IsRdmaForced()) {
+            // unconfirmed data is bound to the pipe that wrote it
+            return;
+        }
+
         constexpr ui32 block = 4_KB;
 
         NProto::TStorageConfig storageConfig;
@@ -2527,6 +2532,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnPipeDisconnection)
     {
+        if (IsRdmaForced()) {
+            // unconfirmed data is bound to the pipe that wrote it
+            return;
+        }
+
         constexpr ui32 block = 4_KB;
 
         NProto::TStorageConfig storageConfig;
@@ -2563,6 +2573,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnWritePipeDisconnection)
     {
+        if (IsRdmaForced()) {
+            // unconfirmed data is bound to the pipe that wrote it
+            return;
+        }
+
         constexpr ui32 block = 4_KB;
 
         NProto::TStorageConfig storageConfig;
@@ -2607,6 +2622,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
     Y_UNIT_TEST(ShouldKeepUnconfirmedDataOnSessionPipeDisconnection)
     {
+        if (IsRdmaForced()) {
+            // unconfirmed data is bound to the pipe that wrote it
+            return;
+        }
+
         constexpr ui32 block = 4_KB;
 
         NProto::TStorageConfig storageConfig;
@@ -2658,6 +2678,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
 
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnlyForDisconnectedPipe)
     {
+        if (IsRdmaForced()) {
+            // unconfirmed data is bound to the pipe that wrote it
+            return;
+        }
+
         constexpr ui32 block = 4_KB;
 
         NProto::TStorageConfig storageConfig;
