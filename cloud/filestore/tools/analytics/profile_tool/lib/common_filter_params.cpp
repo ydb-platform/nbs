@@ -196,6 +196,7 @@ bool TryParseGrafanaTimestamp(
     }
 
     auto current = referenceTime;
+    bool roundedUpperBound = false;
     const auto utc = NDatetime::GetUtcTimeZone();
     while (!input.empty()) {
         const char sign = input.front();
@@ -233,6 +234,13 @@ bool TryParseGrafanaTimestamp(
             {
                 return false;
             }
+            if (roundUp) {
+                // Keep Grafana's inclusive end-of-period value while applying
+                // subsequent operations, so rounding again stays in the same
+                // period. Convert to an exclusive bound only after parsing.
+                current -= TDuration::MilliSeconds(1);
+                roundedUpperBound = true;
+            }
             continue;
         }
         if (unit == 'M' || unit == 'Q' || unit == 'y') {
@@ -265,6 +273,13 @@ bool TryParseGrafanaTimestamp(
         } else if (!TryApplyGrafanaOffset(current, unit, count, sign == '-')) {
             return false;
         }
+    }
+    if (roundedUpperBound) {
+        const auto millisecond = TDuration::MilliSeconds(1);
+        if (current > TInstant::Max() - millisecond) {
+            return false;
+        }
+        current += millisecond;
     }
     result = current;
     return true;

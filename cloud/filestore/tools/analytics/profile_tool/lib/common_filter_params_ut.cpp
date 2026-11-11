@@ -326,7 +326,42 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             R"({"from":"now/M+1d/d","to":"now/M+1d/d"})",
             "2026-10-06T14:46:30.146Z",
             "2026-10-02T00:00:00Z",
-            "2026-11-03T00:00:00Z");
+            "2026-11-02T00:00:00Z");
+    }
+
+    Y_UNIT_TEST(ShouldKeepRepeatedRoundingInSamePeriod)
+    {
+        AssertGrafanaRange(
+            R"({"from":"now/d/d","to":"now/d/d"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-10-06T00:00:00Z",
+            "2026-10-07T00:00:00Z");
+        AssertGrafanaRange(
+            R"({"from":"now/d/M","to":"now/d/M"})",
+            "2026-10-31T14:46:30.146Z",
+            "2026-10-01T00:00:00Z",
+            "2026-11-01T00:00:00Z");
+        AssertGrafanaRange(
+            R"({"from":"now/y/fy","to":"now/y/fy"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-01-01T00:00:00Z",
+            "2027-01-01T00:00:00Z");
+        AssertGrafanaRange(
+            R"({"from":"now/s/s","to":"now/s/s"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-10-06T14:46:30Z",
+            "2026-10-06T14:46:31Z");
+    }
+
+    Y_UNIT_TEST(ShouldApplyCalendarOffsetsBeforeMakingUpperBoundExclusive)
+    {
+        // Grafana adds a month to February 29 at 23:59:59.999, giving
+        // March 29 at 23:59:59.999, then we make that bound exclusive.
+        AssertGrafanaRange(
+            R"({"from":"now/M+1M","to":"now/M+1M"})",
+            "2024-02-15T14:46:30.146Z",
+            "2024-03-01T00:00:00Z",
+            "2024-03-30T00:00:00Z");
     }
 
     Y_UNIT_TEST(ShouldClampGrafanaCalendarOffsets)
