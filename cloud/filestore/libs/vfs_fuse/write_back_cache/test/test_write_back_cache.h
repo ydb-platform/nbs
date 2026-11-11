@@ -30,7 +30,7 @@ public:
     TTestWriteBackCache(TTestWriteBackCache&&) noexcept;
     TTestWriteBackCache& operator=(TTestWriteBackCache&&) noexcept;
 
-    void Drain();
+    void SetDrainingMode();
     NThreading::TFuture<void> Shutdown();
     bool IsDrained() const;
 

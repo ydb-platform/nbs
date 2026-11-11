@@ -203,15 +203,21 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    void Drain()
+    void SetDrainingMode()
     {
-        StartDraining();
-        State.Drain();
+        if (!DrainRequested.exchange(true)) {
+            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
+        }
+
+        State.SetDrainingMode();
     }
 
     TFuture<void> Shutdown()
     {
-        StartDraining();
+        if (!DrainRequested.exchange(true)) {
+            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
+        }
+
         return State.Shutdown();
     }
 
@@ -514,13 +520,6 @@ public:
     }
 
 private:
-    void StartDraining()
-    {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
-        }
-    }
-
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
@@ -537,11 +536,10 @@ private:
             });
 
         if (!success) {
-            State.FlushFailed(
-                nodeId,
-                MakeError(
-                    E_INVALID_STATE,
-                    "WriteBackCache is in failed state"));
+            // This may happen if the storage is corrupted or an internal
+            // problem in the logic has happened. This is fatal and should
+            // result in suspending all operations. Flush will remain in-flight
+            // until manual resolution takes place.
             return;
         }
 
@@ -769,9 +767,9 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-void TWriteBackCache::Drain()
+void TWriteBackCache::SetDrainingMode()
 {
-    Impl->Drain();
+    Impl->SetDrainingMode();
 }
 
 TFuture<void> TWriteBackCache::Shutdown()
