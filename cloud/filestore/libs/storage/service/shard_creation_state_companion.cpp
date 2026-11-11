@@ -1,11 +1,21 @@
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/storage/api/components.h>
+#include <cloud/filestore/libs/storage/api/ss_proxy.h>
+
+#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/digest/city.h>
 #include <util/string/builder.h>
 
+#include <algorithm>
+
 namespace NCloud::NFileStore::NStorage {
+
+using namespace NActors;
 
 namespace {
 
@@ -197,6 +207,77 @@ NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
     CreatedShardBitmap = bitmap.ExtractResult();
 
     return {};
+}
+
+void TShardCreationStateCompanion::InitializeShardCreation(
+    const ui32 topologyShardCount,
+    const ui32 targetShardCount)
+{
+    Y_DEBUG_ABORT_UNLESS(topologyShardCount <= targetShardCount);
+    NextShardToCreate = topologyShardCount;
+    ShardsToCreate = targetShardCount - topologyShardCount;
+    TargetShardCount = targetShardCount;
+}
+
+void TShardCreationStateCompanion::StartShardCreation(
+    const TActorContext& ctx,
+    const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+    const ui32 limit)
+{
+    const ui32 endShardIndex = (limit == 0)
+                                   ? TargetShardCount
+                                   : std::min<ui32>(
+                                         NextShardToCreate + limit,
+                                         TargetShardCount);
+    for (ui32 shardIndex = NextShardToCreate; shardIndex < endShardIndex;
+         ++shardIndex)
+    {
+        CreateShard(ctx, shardConfigs, shardIndex);
+        NextShardToCreate = shardIndex + 1;
+    }
+}
+
+void TShardCreationStateCompanion::OnShardCreated(
+    const TActorContext& ctx,
+    const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+    const ui32 limit)
+{
+    Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
+    --ShardsToCreate;
+
+    if (ShardsToCreate && limit) {
+        if (NextShardToCreate < TargetShardCount) {
+            CreateShard(ctx, shardConfigs, NextShardToCreate);
+            ++NextShardToCreate;
+        }
+    }
+}
+
+void TShardCreationStateCompanion::CreateShard(
+    const TActorContext& ctx,
+    const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+    const ui32 shardIndex)
+{
+    auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
+        shardConfigs[shardIndex]);
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Creating shard %s",
+        LogTag.c_str(),
+        request->Config.GetFileSystemId().c_str());
+
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::move(request),
+        shardIndex);
+}
+
+bool TShardCreationStateCompanion::HasShardsToCreate() const
+{
+    return ShardsToCreate != 0;
 }
 
 TResultOrError<bool> TShardCreationStateCompanion::CanResetFsShardCreationState(
