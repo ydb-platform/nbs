@@ -84,7 +84,6 @@
 #include <cloud/blockstore/libs/validation/validation.h>
 #include <cloud/blockstore/libs/vhost/server.h>
 #include <cloud/blockstore/libs/vhost/vhost.h>
-#include <cloud/blockstore/private/api/protos/configs.pb.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -119,8 +118,6 @@
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
-
-#include <google/protobuf/util/json_util.h>
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
@@ -211,35 +208,6 @@ TThrottlingServiceConfig CreateThrottlingServicePolicyConfig(
         config.GetMaxWriteIops(),
         config.GetMaxBurstTime()
     );
-}
-
-TActionHandler CreateUpdateCertificatesAction(ICertificateWatcherPtr watcher)
-{
-    return [watcher = std::move(watcher)](const TString& input)
-    {
-        NPrivateProto::TUpdateCertificatesRequest request;
-        if (input &&
-            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
-        {
-            NProto::TExecuteActionResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "Failed to parse input");
-            return NThreading::MakeFuture(std::move(response));
-        }
-
-        return watcher->UpdateCertificates().Apply(
-            [](const auto& future)
-            {
-                NProto::TExecuteActionResponse response;
-                *response.MutableError() = future.GetValue();
-                if (!HasError(response)) {
-                    google::protobuf::util::MessageToJsonString(
-                        NPrivateProto::TUpdateCertificatesResponse(),
-                        response.MutableOutput());
-                }
-                return response;
-            });
-    };
 }
 
 }   // namespace
@@ -789,7 +757,9 @@ void TBootstrapBase::Init()
     Service = CreateActionsService(
         std::move(Service),
         {{"updatecertificates",
-          CreateUpdateCertificatesAction(CertificateWatcher)}});
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
 
     auto udsService = Service;
     if (!BootstrapConfig->ServerConfig->GetAllowAllRequestsViaUDS()) {

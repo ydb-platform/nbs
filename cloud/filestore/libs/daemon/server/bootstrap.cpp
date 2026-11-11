@@ -21,7 +21,6 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/private/api/protos/actions.pb.h>
 
 #include <cloud/fastshard/libs/bootstrap/core.h>
 
@@ -42,8 +41,6 @@
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
-#include <google/protobuf/util/json_util.h>
-
 namespace NCloud::NFileStore::NDaemon {
 
 using namespace NActors;
@@ -57,37 +54,6 @@ namespace {
 
 const TString ServerMetricsComponent = "server";
 const TString LocalServiceMetricsComponent = "local_service";
-
-////////////////////////////////////////////////////////////////////////////////
-
-TActionHandler CreateUpdateCertificatesAction(ICertificateWatcherPtr watcher)
-{
-    return [watcher = std::move(watcher)](const TString& input)
-    {
-        NProtoPrivate::TUpdateCertificatesRequest request;
-        if (input &&
-            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
-        {
-            NProto::TExecuteActionResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "Failed to parse input");
-            return NThreading::MakeFuture(std::move(response));
-        }
-
-        return watcher->UpdateCertificates().Apply(
-            [](const auto& future)
-            {
-                NProto::TExecuteActionResponse response;
-                *response.MutableError() = future.GetValue();
-                if (!HasError(response)) {
-                    google::protobuf::util::MessageToJsonString(
-                        NProtoPrivate::TUpdateCertificatesResponse(),
-                        response.MutableOutput());
-                }
-                return response;
-            });
-    };
-}
 
 }   // namespace
 
@@ -205,7 +171,9 @@ void TBootstrapServer::InitComponents()
     Service = CreateActionsService(
         std::move(Service),
         {{"updatecertificates",
-          CreateUpdateCertificatesAction(CertificateWatcher)}});
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
 
     // Wraps the actions service, so the actions need admin rights.
     if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr) {

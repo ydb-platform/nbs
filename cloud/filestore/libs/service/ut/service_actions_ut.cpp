@@ -96,6 +96,55 @@ Y_UNIT_TEST_SUITE(TActionsServiceTest)
             .GetValueSync();
         UNIT_ASSERT_C(!HasError(ping), FormatError(ping.GetError()));
     }
+
+    Y_UNIT_TEST(ShouldUpdateCertificates)
+    {
+        ui32 updates = 0;
+        NProto::TError result;
+        auto action = CreateUpdateCertificatesAction(
+            [&]
+            {
+                ++updates;
+                return MakeFuture(result);
+            });
+
+        // Input is optional.
+        auto response = action("").GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL("{}", response.GetOutput());
+
+        response = action("{}").GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(2, updates);
+
+        // The error of the update is the error of the action.
+        result = MakeError(E_TRY_AGAIN, "another update is in progress");
+        response = action("").GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_TRY_AGAIN,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL("", response.GetOutput());
+        UNIT_ASSERT_VALUES_EQUAL(3, updates);
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidUpdateCertificatesInput)
+    {
+        ui32 updates = 0;
+        auto action = CreateUpdateCertificatesAction(
+            [&]
+            {
+                ++updates;
+                return MakeFuture(NProto::TError());
+            });
+
+        auto response = action("not a json").GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(0, updates);
+    }
 }
 
 }   // namespace NCloud::NFileStore

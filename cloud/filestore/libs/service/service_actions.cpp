@@ -3,6 +3,10 @@
 #include "context.h"
 #include "filestore.h"
 
+#include <cloud/filestore/private/api/protos/actions.pb.h>
+
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NFileStore {
 
 using namespace NThreading;
@@ -102,6 +106,37 @@ IFileStoreServicePtr CreateActionsService(
     return std::make_shared<TActionsService>(
         std::move(service),
         std::move(actions));
+}
+
+TActionHandler CreateUpdateCertificatesAction(
+    std::function<TFuture<NProto::TError>()> updateCertificates)
+{
+    return [updateCertificates = std::move(updateCertificates)](
+               const TString& input)
+    {
+        NProtoPrivate::TUpdateCertificatesRequest request;
+        if (input &&
+            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
+        {
+            NProto::TExecuteActionResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "Failed to parse input");
+            return MakeFuture(std::move(response));
+        }
+
+        return updateCertificates().Apply(
+            [](const auto& future)
+            {
+                NProto::TExecuteActionResponse response;
+                *response.MutableError() = future.GetValue();
+                if (!HasError(response)) {
+                    google::protobuf::util::MessageToJsonString(
+                        NProtoPrivate::TUpdateCertificatesResponse(),
+                        response.MutableOutput());
+                }
+                return response;
+            });
+    };
 }
 
 }   // namespace NCloud::NFileStore

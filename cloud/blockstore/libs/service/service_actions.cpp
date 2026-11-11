@@ -3,6 +3,10 @@
 #include "service.h"
 #include "service_method.h"
 
+#include <cloud/blockstore/private/api/protos/configs.pb.h>
+
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -92,6 +96,37 @@ IBlockStorePtr CreateActionsService(
     return std::make_shared<TActionsService>(
         std::move(service),
         std::move(actions));
+}
+
+TActionHandler CreateUpdateCertificatesAction(
+    std::function<TFuture<NProto::TError>()> updateCertificates)
+{
+    return [updateCertificates = std::move(updateCertificates)](
+               const TString& input)
+    {
+        NPrivateProto::TUpdateCertificatesRequest request;
+        if (input &&
+            !google::protobuf::util::JsonStringToMessage(input, &request).ok())
+        {
+            NProto::TExecuteActionResponse response;
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, "Failed to parse input");
+            return MakeFuture(std::move(response));
+        }
+
+        return updateCertificates().Apply(
+            [](const auto& future)
+            {
+                NProto::TExecuteActionResponse response;
+                *response.MutableError() = future.GetValue();
+                if (!HasError(response)) {
+                    google::protobuf::util::MessageToJsonString(
+                        NPrivateProto::TUpdateCertificatesResponse(),
+                        response.MutableOutput());
+                }
+                return response;
+            });
+    };
 }
 
 }   // namespace NCloud::NBlockStore

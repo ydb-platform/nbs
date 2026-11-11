@@ -18,7 +18,6 @@ PEERDIR(
     cloud/filestore/libs/service_null
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/fastshard/server
-    cloud/filestore/private/api/protos
 
     cloud/fastshard/libs/bootstrap
 

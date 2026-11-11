@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/public/api/protos/action.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
@@ -24,5 +26,10 @@ using TActionHandler = std::function<
 IFileStoreServicePtr CreateActionsService(
     IFileStoreServicePtr service,
     THashMap<TString, TActionHandler> actions);
+
+// The "updatecertificates" action: |updateCertificates| re-reads the TLS
+// certificate files, e.g. with ICertificateWatcher::UpdateCertificates().
+TActionHandler CreateUpdateCertificatesAction(
+    std::function<NThreading::TFuture<NProto::TError>()> updateCertificates);
 
 }   // namespace NCloud::NFileStore
