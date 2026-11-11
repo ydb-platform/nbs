@@ -29,6 +29,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -191,6 +192,8 @@ private:
     THashMap<TString, TVolumeInfo*> VolumeInfoByDiskId;
     // Mapping of the DiskId to the volume info with exact DiskId match.
     THashMap<TString, TVolumeInfo*> VolumeInfoByRealDiskId;
+    // Ids of the resolved volume infos by their tablet.
+    THashMap<ui64, THashSet<ui64>> VolumeInfoIdsByTabletId;
 
     struct TBaseTabletId
     {
@@ -259,6 +262,10 @@ private:
         const TEvTabletProxy::TEvDisconnected::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandlePipeClosed(
+        const TEvTabletProxy::TEvPipeClosed::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleBaseDiskDescribeResponse(
         TVolumeInfo* volumeInfo,
         const NProto::TError& error,
@@ -291,10 +298,6 @@ private:
 
     void HandleClearBaseDiskIdToTabletIdMapping(
         const TEvVolume::TEvClearBaseDiskIdToTabletIdMapping::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleForgetVolume(
-        const TEvVolumeProxy::TEvForgetVolume::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePingRequest(
@@ -375,6 +378,14 @@ void TVolumeProxyActor::EraseVolumeInfo(TVolumeInfo* volumeInfo)
     removeFromMap(VolumeInfoByRealDiskId, volumeInfo->DiskId);
     removeFromMap(VolumeInfoByRealDiskId, volumeInfo->RealDiskId);
 
+    auto it = VolumeInfoIdsByTabletId.find(volumeInfo->TabletId);
+    if (it != VolumeInfoIdsByTabletId.end()) {
+        it->second.erase(volumeInfo->Id);
+        if (it->second.empty()) {
+            VolumeInfoIdsByTabletId.erase(it);
+        }
+    }
+
     VolumeInfoById.erase(volumeInfo->Id);
 }
 
@@ -436,6 +447,7 @@ void TVolumeProxyActor::CompleteVolumeInfo(
 
     volumeInfo.State = RESOLVED;
     volumeInfo.TabletId = tabletId;
+    VolumeInfoIdsByTabletId[tabletId].insert(volumeInfo.Id);
     volumeInfo.LastActivity = ctx.Now();
     ScheduleActivityCheck(ctx, volumeInfo, InactivityTimeout);
 
@@ -521,7 +533,9 @@ void TVolumeProxyActor::ForwardRequest(
         TMethod::Name,
         msg->CallContext->RequestId);
 
-    ForwardToTablet(tabletId, std::move(event));
+    // The pipe can be a new one, subscribe on every forward.
+    const bool subscribe = volumeInfoId != 0;
+    ForwardToTablet(tabletId, std::move(event), subscribe);
 }
 
 void TVolumeProxyActor::DescribeVolume(
@@ -569,6 +583,7 @@ void TVolumeProxyActor::HandleWakeup(
         return;
     }
 
+    // A request in flight still completes without the volume info.
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME_PROXY,
@@ -599,6 +614,35 @@ void TVolumeProxyActor::HandleDisconnected(
             "%s Connection to volume failed: %s",
             volumeInfo->LogTitle.GetWithTime().c_str(),
             FormatError(ev->Get()->GetError()).c_str());
+
+        EraseVolumeInfo(volumeInfo);
+    }
+}
+
+void TVolumeProxyActor::HandlePipeClosed(
+    const TEvTabletProxy::TEvPipeClosed::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const ui64 tabletId = ev->Get()->TabletId;
+
+    const auto* ids = VolumeInfoIdsByTabletId.FindPtr(tabletId);
+    if (!ids) {
+        return;
+    }
+
+    // A late notice may drop volume infos resolved after the pipe closed.
+    const TVector<ui64> volumeInfoIds(ids->begin(), ids->end());
+    for (const ui64 volumeInfoId: volumeInfoIds) {
+        TVolumeInfo* volumeInfo = GetVolumeInfoById(volumeInfoId);
+        if (!volumeInfo || volumeInfo->State != RESOLVED) {
+            continue;
+        }
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME_PROXY,
+            "%s Pipe to volume closed, remove volume info",
+            volumeInfo->LogTitle.GetWithTime().c_str());
 
         EraseVolumeInfo(volumeInfo);
     }
@@ -862,29 +906,6 @@ void TVolumeProxyActor::HandleClearBaseDiskIdToTabletIdMapping(
     }
 }
 
-void TVolumeProxyActor::HandleForgetVolume(
-    const TEvVolumeProxy::TEvForgetVolume::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    for (const bool exactDiskIdMatch: {false, true}) {
-        TVolumeInfo* volumeInfo = FindVolumeInfo(msg->DiskId, exactDiskIdMatch);
-        // A volume info that is being resolved has requests waiting for it.
-        if (!volumeInfo || volumeInfo->State != RESOLVED) {
-            continue;
-        }
-
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME_PROXY,
-            "%s Remove volume info of the destroyed volume",
-            volumeInfo->LogTitle.GetWithTime().c_str());
-
-        EraseVolumeInfo(volumeInfo);
-    }
-}
-
 void TVolumeProxyActor::HandlePingRequest(
     const TEvVolumeProxy::TEvKeepAliveRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -1058,6 +1079,7 @@ STFUNC(TVolumeProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvTabletProxy::TEvDisconnected, HandleDisconnected);
+        HFunc(TEvTabletProxy::TEvPipeClosed, HandlePipeClosed);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(
@@ -1069,7 +1091,6 @@ STFUNC(TVolumeProxyActor::StateWork)
 
         HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeResponse);
         HFunc(TEvVolumeProxy::TEvKeepAliveRequest, HandlePingRequest);
-        HFunc(TEvVolumeProxy::TEvForgetVolume, HandleForgetVolume);
         HFunc(TEvTabletProxy::TEvKeepAliveResponse, HandlePingResponse);
 
         default:

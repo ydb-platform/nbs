@@ -26,6 +26,7 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -69,6 +70,17 @@ ui32 SetupTestEnv(
         "nbs",
         storageConfig,
         CreateTestDiagnosticsConfig());
+}
+
+// DispatchEvents times out if the condition already holds.
+void WaitFor(TTestActorRuntime& runtime, const std::function<bool()>& condition)
+{
+    if (condition()) {
+        return;
+    }
+    UNIT_ASSERT(runtime.DispatchEvents(
+        TDispatchOptions{.CustomFinalCondition = condition},
+        TDuration::Seconds(5)));
 }
 
 // Drops the volume info the proxy holds for the disk: a request is held back
@@ -1603,7 +1615,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             grab(second));
     }
 
-    Y_UNIT_TEST(ShouldRecoverAfterIdleTabletRestart)
+    Y_UNIT_TEST(ShouldDescribeAfterIdleTabletRestart)
     {
         TTestEnv env;
         const ui32 nodeIdx = SetupTestEnv(env);
@@ -1614,6 +1626,241 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         const TActorId volumeProxyId =
             runtime.GetLocalServiceId(MakeVolumeProxyServiceId(), nodeIdx);
+        ui64 tabletId = 0;
+        ui32 describeCount = 0;
+        ui32 pipeClosedCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletProxy::EvForward: {
+                        tabletId =
+                            event->template Get<TEvTabletProxy::TEvForward>()
+                                ->TabletId;
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        if (event->Sender == volumeProxyId) {
+                            ++describeCount;
+                        }
+                        break;
+                    }
+                    case TEvTabletProxy::EvPipeClosed: {
+                        ++pipeClosedCount;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        service.StatVolume();
+        UNIT_ASSERT(tabletId);
+        UNIT_ASSERT_VALUES_EQUAL(0, describeCount);
+
+        // Each idle pipe break costs one describe and no error.
+        for (ui32 i = 1; i != 3; ++i) {
+            RebootTablet(runtime, tabletId, service.GetSender(), nodeIdx);
+            UNIT_ASSERT(runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition = [&]
+                    {
+                        return pipeClosedCount == i;
+                    }},
+                TDuration::Seconds(5)));
+
+            service.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(i, describeCount);
+            service.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(i, describeCount);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleLatePipeClosedNotice)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        const TActorId volumeProxyId =
+            runtime.GetLocalServiceId(MakeVolumeProxyServiceId(), nodeIdx);
+        ui64 tabletId = 0;
+        ui32 describeCount = 0;
+        ui32 pipeClosedCount = 0;
+        bool holdPipeClosed = true;
+        IEventHandlePtr heldPipeClosed;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletProxy::EvForward: {
+                        tabletId =
+                            event->template Get<TEvTabletProxy::TEvForward>()
+                                ->TabletId;
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        if (event->Sender == volumeProxyId) {
+                            ++describeCount;
+                        }
+                        break;
+                    }
+                    case TEvTabletProxy::EvPipeClosed: {
+                        if (holdPipeClosed) {
+                            holdPipeClosed = false;
+                            heldPipeClosed.reset(event.Release());
+                            return true;
+                        }
+                        ++pipeClosedCount;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        service.StatVolume();
+        UNIT_ASSERT(tabletId);
+
+        // The pipe broke, the notice is on its way to the volume proxy.
+        RebootTablet(runtime, tabletId, service.GetSender(), nodeIdx);
+        WaitFor(runtime, [&] { return bool(heldPipeClosed); });
+
+        // A request opens a new pipe using the old volume info.
+        service.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(0, describeCount);
+
+        // The late notice drops the volume info: one more describe.
+        runtime.Send(heldPipeClosed.release(), nodeIdx);
+        service.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(1, describeCount);
+
+        // The new pipe is watched: its break is noticed too.
+        pipeClosedCount = 0;
+        RebootTablet(runtime, tabletId, service.GetSender(), nodeIdx);
+        WaitFor(runtime, [&] { return pipeClosedCount == 1; });
+        service.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(2, describeCount);
+    }
+
+    Y_UNIT_TEST(ShouldResolveRecreatedVolume)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        ui64 tabletId = 0;
+        ui32 pipeClosedCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletProxy::EvForward: {
+                        tabletId =
+                            event->template Get<TEvTabletProxy::TEvForward>()
+                                ->TabletId;
+                        break;
+                    }
+                    case TEvTabletProxy::EvPipeClosed: {
+                        ++pipeClosedCount;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        service.StatVolume();
+        const ui64 oldTabletId = tabletId;
+        UNIT_ASSERT(oldTabletId);
+
+        // The pipe to the destroyed tablet breaks.
+        service.DestroyVolume();
+        WaitFor(runtime, [&] { return pipeClosedCount != 0; });
+
+        service.SendDestroyVolumeRequest();
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            service.RecvDestroyVolumeResponse()->GetStatus());
+
+        service.CreateVolume();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultDiskId,
+            service.StatVolume()->Record.GetVolume().GetDiskId());
+        UNIT_ASSERT(tabletId != oldTabletId);
+    }
+
+    Y_UNIT_TEST(ShouldResolvePublicNameAfterCopyBackAndIdleRestart)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("disk-copy");
+        service.WaitForVolume("disk-copy");
+
+        ui64 tabletId = 0;
+        ui32 pipeClosedCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletProxy::EvForward: {
+                        tabletId =
+                            event->template Get<TEvTabletProxy::TEvForward>()
+                                ->TabletId;
+                        break;
+                    }
+                    case TEvTabletProxy::EvPipeClosed: {
+                        ++pipeClosedCount;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Only the copy exists: the public name leads to it.
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk-copy",
+            service.StatVolume("disk")->Record.GetVolume().GetDiskId());
+        const ui64 copyTabletId = tabletId;
+        UNIT_ASSERT(copyTabletId);
+
+        service.CreateVolume("disk");
+        service.WaitForVolume("disk");
+
+        // The copy restarts with nothing in flight.
+        pipeClosedCount = 0;
+        RebootTablet(runtime, copyTabletId, service.GetSender(), nodeIdx);
+        WaitFor(runtime, [&] { return pipeClosedCount != 0; });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk",
+            service.StatVolume("disk")->Record.GetVolume().GetDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldForgetPublicAliasWhenSecondaryVolumeIsRecreated)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("other");
+        service.WaitForVolume("other");
+        service.CreateVolume("disk-copy");
+        service.WaitForVolume("disk-copy");
+
+        const TActorId volumeProxyId =
+            runtime.GetLocalServiceId(MakeVolumeProxyServiceId(), nodeIdx);
+        TVector<ui64> closedTabletIds;
         ui64 tabletId = 0;
         ui32 describeCount = 0;
         runtime.SetEventFilter(
@@ -1632,60 +1879,48 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         }
                         break;
                     }
+                    case TEvTabletProxy::EvPipeClosed: {
+                        closedTabletIds.push_back(
+                            event->template Get<TEvTabletProxy::TEvPipeClosed>()
+                                ->TabletId);
+                        break;
+                    }
                 }
                 return false;
             });
 
-        service.StatVolume();
-        UNIT_ASSERT(tabletId);
-
-        // Nothing is in flight: the tablet keeps its id, the next request
-        // goes to it over a new pipe with no error and no describe.
-        RebootTablet(runtime, tabletId, service.GetSender(), nodeIdx);
-        service.StatVolume();
-        UNIT_ASSERT_VALUES_EQUAL(0, describeCount);
-    }
-
-    Y_UNIT_TEST(ShouldForgetVolumeInfoOnDestroy)
-    {
-        TTestEnv env;
-        const ui32 nodeIdx = SetupTestEnv(env);
-
-        auto& runtime = env.GetRuntime();
-        TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume();
-
-        ui64 tabletId = 0;
-        runtime.SetEventFilter(
-            [&](auto&, auto& event)
-            {
-                if (event->GetTypeRewrite() == TEvTabletProxy::EvForward) {
-                    tabletId =
-                        event->template Get<TEvTabletProxy::TEvForward>()
-                            ->TabletId;
-                }
-                return false;
-            });
-
-        service.StatVolume();
+        // Two volume infos of one tablet.
+        service.StatVolume("other");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk-copy",
+            service.StatVolume("disk-copy")->Record.GetVolume().GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk-copy",
+            service.StatVolume("disk")->Record.GetVolume().GetDiskId());
         const ui64 oldTabletId = tabletId;
         UNIT_ASSERT(oldTabletId);
 
-        // Destroy makes the volume proxy forget the volume: the next
-        // requests resolve the disk id again instead of going to the
-        // destroyed tablet.
-        service.DestroyVolume();
-        service.SendDestroyVolumeRequest();
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_ALREADY,
-            service.RecvDestroyVolumeResponse()->GetStatus());
+        service.DestroyVolume("disk-copy");
+        WaitFor(runtime, [&] { return !closedTabletIds.empty(); });
+        UNIT_ASSERT_VALUES_EQUAL(1, closedTabletIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(oldTabletId, closedTabletIds[0]);
 
-        service.CreateVolume();
+        service.CreateVolume("disk-copy");
+        service.WaitForVolume("disk-copy");
 
+        // Both volume infos are gone, the public name leads to the new copy.
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultDiskId,
-            service.StatVolume()->Record.GetVolume().GetDiskId());
+            "disk-copy",
+            service.StatVolume("disk")->Record.GetVolume().GetDiskId());
         UNIT_ASSERT(tabletId != oldTabletId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk-copy",
+            service.StatVolume("disk-copy")->Record.GetVolume().GetDiskId());
+
+        // The volume info of another tablet is not affected.
+        const ui32 describes = describeCount;
+        service.StatVolume("other");
+        UNIT_ASSERT_VALUES_EQUAL(describes, describeCount);
     }
 
     Y_UNIT_TEST(ShouldForgetUnusedVolumeInfo)
