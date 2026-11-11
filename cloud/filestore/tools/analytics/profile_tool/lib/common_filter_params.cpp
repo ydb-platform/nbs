@@ -79,31 +79,28 @@ bool TryRoundGrafanaTimestamp(
     const auto utc = NDatetime::GetUtcTimeZone();
     const cctz::time_point<cctz::seconds> reference{
         cctz::seconds(current.Seconds())};
-    // Civil time stores calendar fields (year, month, day, hour, minute, second)
-    // without a timezone. This lookup gives the fields in UTC, which we use
-    // below to find the start and end of each calendar period.
+    // Civil time stores calendar fields (year, month, day, hour, minute,
+    // second) without a timezone. This lookup gives the fields in UTC, which we
+    // use below to find the requested calendar boundary.
     const auto civil = utc.lookup(reference).cs;
-    // start is the period's beginning; end is the next period's beginning.
     // Converting to a coarser civil type resets smaller fields to the period's
-    // start, and adding 1 advances by that type's unit (minute, day, etc.).
-    cctz::civil_second start;
-    cctz::civil_second end;
+    // start; advancing by one unit selects the exclusive upper boundary.
+    cctz::civil_second boundary;
     switch (unit) {
         case 's':
-            start = civil;
-            end = start + 1;
+            boundary = civil + (roundUp ? 1 : 0);
             break;
         case 'm':
-            start = cctz::civil_second(cctz::civil_minute(civil));
-            end = cctz::civil_second(cctz::civil_minute(civil) + 1);
+            boundary = cctz::civil_second(
+                cctz::civil_minute(civil) + (roundUp ? 1 : 0));
             break;
         case 'h':
-            start = cctz::civil_second(cctz::civil_hour(civil));
-            end = cctz::civil_second(cctz::civil_hour(civil) + 1);
+            boundary =
+                cctz::civil_second(cctz::civil_hour(civil) + (roundUp ? 1 : 0));
             break;
         case 'd':
-            start = cctz::civil_second(cctz::civil_day(civil));
-            end = cctz::civil_second(cctz::civil_day(civil) + 1);
+            boundary =
+                cctz::civil_second(cctz::civil_day(civil) + (roundUp ? 1 : 0));
             break;
         case 'w': {
             // Copied ranges omit Grafana's locale/week-start preference.
@@ -112,26 +109,24 @@ bool TryRoundGrafanaTimestamp(
             const auto day = cctz::prev_weekday(
                 cctz::civil_day(civil) + 1,
                 cctz::weekday::sunday);
-            start = cctz::civil_second(day);
-            end = cctz::civil_second(day + 7);
+            boundary = cctz::civil_second(day + (roundUp ? 7 : 0));
             break;
         }
         case 'M':
-            start = cctz::civil_second(cctz::civil_month(civil));
-            end = cctz::civil_second(cctz::civil_month(civil) + 1);
+            boundary = cctz::civil_second(
+                cctz::civil_month(civil) + (roundUp ? 1 : 0));
             break;
         case 'Q': {
             // Map months 1..12 to the quarter's first month: 1, 4, 7, or 10.
             const cctz::civil_month month(
                 civil.year(),
                 (civil.month() - 1) / 3 * 3 + 1);
-            start = cctz::civil_second(month);
-            end = cctz::civil_second(month + 3);
+            boundary = cctz::civil_second(month + (roundUp ? 3 : 0));
             break;
         }
         case 'y':
-            start = cctz::civil_second(cctz::civil_year(civil));
-            end = cctz::civil_second(cctz::civil_year(civil) + 1);
+            boundary =
+                cctz::civil_second(cctz::civil_year(civil) + (roundUp ? 1 : 0));
             break;
         default:
             return false;
@@ -141,12 +136,11 @@ bool TryRoundGrafanaTimestamp(
     // The until filter is exclusive, so use the next period's start to include
     // every microsecond of the selected period.
     const cctz::seconds::rep seconds =
-        utc.lookup(roundUp ? end : start).pre.time_since_epoch().count();
+        utc.lookup(boundary).pre.time_since_epoch().count();
     // Reject pre-epoch instants and check the final value fits before
     // multiplying seconds into microseconds.
     if (seconds < 0 ||
-        static_cast<ui64>(seconds) >
-            TInstant::Max().MicroSeconds() / 1000000)
+        static_cast<ui64>(seconds) > TInstant::Max().MicroSeconds() / 1000000)
     {
         return false;
     }
