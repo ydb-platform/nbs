@@ -47,15 +47,18 @@ void TVolumeActor::CompleteTidyUpPartitions(
     const TActorContext& ctx,
     TTxVolume::TTidyUpPartitions& args)
 {
-    if (args.ShouldStartPartitions &&
-        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
-    {
-        StartPartitionsForGc(ctx);
-    }
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolume::TEvTidyUpPartitionsResponse>());
+
+    if (args.ShouldStartPartitions &&
+        PartitionsStartedReason == EPartitionsStartedReason::NOT_STARTED)
+    {
+        // StartPartitionsNeeded is persisted. The new volume actor will start
+        // the partitions for GC when it loads the state.
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, SelfId());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

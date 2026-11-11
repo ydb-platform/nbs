@@ -8753,7 +8753,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         ui32 boots = 0;
         ui32 stops = 0;
+        ui32 reboots = 0;
         runtime->SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() == TEvents::TEvPoisonPill::EventType &&
+                event->Sender == event->GetRecipientRewrite())
+            {
+                ++reboots;
+            }
             if (event->GetTypeRewrite() == TEvPartition::EvWaitReadyResponse) {
                 ++boots;
             }
@@ -8770,16 +8776,18 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // Both runs start idle partitions even after the persistent flag was
         // reset, and completion from the previous run must not be reused.
         for (ui32 attempt = 0; attempt < 2; ++attempt) {
-            boots = stops = 0;
+            boots = stops = reboots = 0;
             tidyUp();
+            UNIT_ASSERT_VALUES_EQUAL(1, reboots);
             UNIT_ASSERT_VALUES_EQUAL(2, boots);
             UNIT_ASSERT_VALUES_EQUAL(2, stops);
         }
 
         volume.AddClient(clientInfo);
         volume.WaitReady();
-        boots = stops = 0;
+        boots = stops = reboots = 0;
         tidyUp();
+        UNIT_ASSERT_VALUES_EQUAL(0, reboots);
         UNIT_ASSERT_VALUES_EQUAL(0, boots);
         UNIT_ASSERT_VALUES_EQUAL(0, stops);
     }

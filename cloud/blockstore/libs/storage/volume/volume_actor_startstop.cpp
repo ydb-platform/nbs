@@ -552,8 +552,8 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
     TidyUpPartitionMode = IsTidyUpPartitionModeAllowed();
     GCCompletedPartitions.clear();
     TidyUpCompletedPartitions.clear();
-    PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
     StartPartitionsImpl(ctx);
+    PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
 }
 
 void TVolumeActor::HandleGracefulShutdown(
