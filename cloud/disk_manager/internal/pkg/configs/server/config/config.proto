@@ -58,6 +58,12 @@ message GrpcConfig {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message DisabledZonesConfig {
+    repeated string Zones = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Presence enables the export API and coordinator on controlplane hosts.
 // On hosts without GrpcConfig it also enables the S3 transfer executor.
 message ExportConfig {
@@ -135,5 +141,6 @@ message ServerConfig {
     // Prefix for ids of proxy overlay disks (one-shot overlay disks created
     // to read disk data directly from the storage nodes).
     optional string ProxyOverlayDiskIdPrefix = 23 [default = "proxy-"];
+    optional DisabledZonesConfig DisabledZonesConfig = 25;
     optional ExportConfig ExportConfig = 24;
 }
