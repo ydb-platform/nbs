@@ -2,8 +2,8 @@
 
 #include "detachable_target.h"
 #include "endpoint_router.h"
-#include "transport_switcher.h"
 #include "remote_storage.h"
+#include "transport_switcher.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -14,9 +14,13 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/guid.h>
+#include <util/generic/scope.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -45,11 +49,14 @@ constexpr TDuration AvoidCooldown = TDuration::Minutes(1);
 struct THostBinding
 {
     // Tells one binding from the next. Anything that was set in motion while
-    // an older binding was current - a request in flight, a handler held by
+    // an older binding was current - an rdma handler held by
     // an endpoint being torn down - carries the generation it belongs to, so
     // that its late arrival cannot be mistaken for news about the host we are
     // on now.
     ui64 Generation = 0;
+
+    // Control requests remain valid across data transport changes on this host.
+    ui64 ControlGeneration = 0;
 
     // The pool channel incarnation this binding was built on. A liveness
     // verdict for our host is ours to act on only if it names this same
@@ -60,7 +67,7 @@ struct THostBinding
     IBlockStorePtr ControlService;
 
     // the same service, wrapped so that whatever it answers is tagged with
-    // this binding's generation - see TBoundControlService
+    // the control generation - see TBoundControlService
     IBlockStorePtr BoundControlService;
     // what arming installs into the data router - and, for the switching
     // transport, what the switcher falls back to
@@ -76,7 +83,8 @@ using THostBindingPtr = std::shared_ptr<THostBinding>;
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService);
+    const IBlockStorePtr& controlService,
+    IBlockStorePtr grpcDataEndpoint);
 
 IBlockStorePtr CreateGrpcDataEndpoint(
     const TBootstrap& bootstrap,
@@ -91,7 +99,7 @@ void NoteMount(
 
 void NoteUnmount(TCellConnection& connection, const TString& diskId);
 
-// what carries a binding's data right now
+// The selected data route.
 TString DescribeDataTransport(
     const THostBinding& binding,
     const ITransportSwitcherPtr& switcher)
@@ -111,6 +119,31 @@ TString DescribeDataTransport(
         default:
             return "unknown";
     }
+}
+
+TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
+    const TBootstrap& bootstrap,
+    const THostBinding& binding)
+{
+    const auto& hostConfig = binding.HostConfig;
+    return PrepareTransportSwitching(
+        binding.Sink,
+        binding.DataEndpoint,
+        [bootstrap, hostConfig]
+        (NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        {
+            return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+                bootstrap,
+                hostConfig,
+                std::move(handler));
+        },
+        bootstrap.Timer,
+        bootstrap.Scheduler,
+        bootstrap.Logging,
+        hostConfig.GetFqdn(),
+        TTransportSwitcherConfig{
+            .SettleTime = hostConfig.GetRdmaSettleTime(),
+        });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -245,12 +278,15 @@ public:
 // A change that adds an event source, a settle point, or a piece of state
 // read by a handler should be checked against all three before anything
 // else.
+// A data transport change advances only the data binding generation; mount
+// responses keep their control generation until the connection changes host.
 class TCellConnection final
     : public ICellConnection
     , public ICellHostWatcher
     , public std::enable_shared_from_this<TCellConnection>
 {
 private:
+    const TString ConnectionId = CreateGuidAsString();
     const TCellHostPoolPtr Pool;
     const TBootstrap Bootstrap;
     const NClient::TClientAppConfigPtr ClientConfig;
@@ -265,6 +301,7 @@ private:
     mutable TAdaptiveLock Lock;
     THostBindingPtr Binding;
     ui64 LastGeneration = 0;
+    std::optional<NProto::ECellDataTransport> TransportOverride;
 
     // the disk mounted through this connection
     TString MountedDiskId;
@@ -376,6 +413,11 @@ public:
         }
     }
 
+    const TString& GetConnectionId() const
+    {
+        return ConnectionId;
+    }
+
     TCellMountStatus GetMountStatus() const
     {
         THostBindingPtr binding;
@@ -394,7 +436,89 @@ public:
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
         status.DataTransport = DescribeDataTransport(*binding, switcher);
+        status.SelectedTransport = binding->HostConfig.GetTransport();
+        status.ConnectionId = ConnectionId;
+        status.CanSelectRdma = binding->HostConfig.GetGrpcDataFallbackEnabled();
         return status;
+    }
+
+    NProto::TError SwitchDataTransport(NProto::ECellDataTransport transport)
+    {
+        if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
+            transport != NProto::CELL_DATA_TRANSPORT_RDMA)
+        {
+            return MakeError(E_ARGUMENT, "Unsupported cell data transport");
+        }
+
+        THostBindingPtr old;
+        TString diskId;
+        TString clientId;
+        with_lock (Lock) {
+            if (MountedDiskId.empty()) {
+                return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+            }
+            if (!BindingInstalled || MigrationInFlight) {
+                return MakeError(
+                    E_REJECTED,
+                    "Cell connection is changing; retry");
+            }
+            if (transport == NProto::CELL_DATA_TRANSPORT_RDMA &&
+                !Binding->HostConfig.GetGrpcDataFallbackEnabled())
+            {
+                return MakeError(
+                    E_ARGUMENT,
+                    "Manual RDMA selection requires gRPC data fallback");
+            }
+            if (Binding->HostConfig.GetTransport() == transport &&
+                (transport == NProto::CELL_DATA_TRANSPORT_GRPC ||
+                 Binding->Switcher))
+            {
+                TransportOverride = transport;
+                return {};
+            }
+            MigrationInFlight = true;
+            old = Binding;
+            diskId = MountedDiskId;
+            clientId = MountedClientId;
+        }
+
+        Y_DEFER
+        {
+            EndMigration();
+        };
+        THostBindingPtr binding;
+        try {
+            auto prepared = PrepareTransportChange(*old, transport);
+            if (HasError(prepared)) {
+                return prepared.GetError();
+            }
+            binding = prepared.ExtractResult();
+        } catch (...) {
+            return MakeError(E_FAIL, CurrentExceptionMessage());
+        }
+
+        auto error = CommitTransportChange(binding, diskId, clientId);
+        if (HasError(error)) {
+            return error;
+        }
+        if (old->Sink) {
+            old->Sink->Detach();
+        }
+        // The control channel and pool subscription stay on the same host.
+        // Old endpoints remain alive through their in-flight router requests.
+        InstallBinding(binding);
+        STORAGE_INFO(
+            "Cell data transport switched: cell="
+            << Pool->GetCellId() << " disk=" << diskId << " client=" << clientId
+            << " host=" << old->HostConfig.GetFqdn() << " from="
+            << NProto::ECellDataTransport_Name(old->HostConfig.GetTransport())
+            << " to=" << NProto::ECellDataTransport_Name(transport));
+        if (Pool->IsHostKnownDead(binding->HostConfig.GetFqdn())) {
+            OnHostUnavailable(
+                binding->HostConfig.GetFqdn(),
+                binding->ChannelEpoch);
+        }
+        return {};
     }
 
     IBlockStorePtr GetService() override
@@ -440,7 +564,7 @@ public:
         // the router holds a target until its request completes, so a mount
         // issued before a move still lands on the host we left, and what it
         // reports is news about that host's view of the world, not this one's
-        if (generation != CurrentGeneration()) {
+        if (generation != CurrentControlGeneration()) {
             return;
         }
 
@@ -459,8 +583,6 @@ public:
 
     void OnHostUnavailable(const TString& fqdn, ui64 epoch) noexcept override
     {
-        ui64 generation = 0;
-
         with_lock (Lock) {
             const bool aboutCurrentHost =
                 fqdn == Binding->HostConfig.GetFqdn();
@@ -486,10 +608,10 @@ public:
                 return;
             }
 
-            generation = Binding->Generation;
+            MoveAwayRequests.insert(Binding->Generation);
         }
 
-        RequestMoveAway(generation);
+        RunPendingMoveAway();
     }
 
     // Without a fallback this host serves nothing at all while its rdma is
@@ -660,14 +782,79 @@ public:
         RunPendingMoveAway();
     }
 
-    [[nodiscard]] ui64 CurrentGeneration() const
+    [[nodiscard]] ui64 CurrentControlGeneration() const
     {
         with_lock (Lock) {
-            return Binding->Generation;
+            return Binding->ControlGeneration;
         }
     }
 
 private:
+    TResultOrError<THostBindingPtr> PrepareTransportChange(
+        const THostBinding& old,
+        NProto::ECellDataTransport transport)
+    {
+        auto config = old.HostConfig;
+        config.SetTransport(transport);
+        const bool hasGrpcDataEndpoint =
+            old.HostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_GRPC ||
+            old.HostConfig.GetGrpcDataFallbackEnabled();
+        auto built = BuildHostBinding(
+            Bootstrap,
+            config,
+            old.ControlService,
+            hasGrpcDataEndpoint ? old.DataEndpoint : nullptr);
+        if (HasError(built)) {
+            return built.GetError();
+        }
+
+        auto binding = built.ExtractResult();
+        binding->ChannelEpoch = old.ChannelEpoch;
+        binding->Generation = ReserveGeneration();
+        binding->ControlGeneration = old.ControlGeneration;
+        binding->BoundControlService = old.BoundControlService;
+        if (transport != NProto::CELL_DATA_TRANSPORT_RDMA) {
+            return binding;
+        }
+
+        binding->Sink = CreateDetachableTarget(DataRouter);
+        auto prepared = PrepareBindingTransportSwitching(Bootstrap, *binding);
+        if (HasError(prepared)) {
+            return prepared.GetError();
+        }
+        binding->Switcher = prepared.ExtractResult();
+        return binding;
+    }
+
+    NProto::TError CommitTransportChange(
+        const THostBindingPtr& binding,
+        const TString& diskId,
+        const TString& clientId)
+    {
+        with_lock (Lock) {
+            if (MountedDiskId != diskId || MountedClientId != clientId) {
+                return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+            }
+            const auto* avoidance =
+                Avoid.FindPtr(binding->HostConfig.GetFqdn());
+            if (MoveAwayRequests.contains(Binding->Generation) && avoidance &&
+                avoidance->PingUntil > Bootstrap.Timer->Now())
+            {
+                MoveAwayRequests.insert(binding->Generation);
+            }
+            Binding = binding;
+            TransportOverride = binding->HostConfig.GetTransport();
+            if (*TransportOverride == NProto::CELL_DATA_TRANSPORT_RDMA) {
+                return {};
+            }
+            for (auto& [host, avoidance]: Avoid) {
+                Y_UNUSED(host);
+                avoidance.RdmaUntil = {};
+            }
+        }
+        return {};
+    }
+
     void ReportServingHost(const TString& fqdn)
     {
         if (Observer) {
@@ -698,8 +885,8 @@ private:
         return except;
     }
 
-    // `generation` is the binding the request is about; the move is only
-    // started or queued if that binding is still the current one.
+    // A transport change preserves the control generation; a host migration
+    // invalidates responses from the host we left.
     void MigrateTo(TString fqdn, TString reason, ui64 generation)
     {
         // outside the lock, and before anything else: the pinger may have
@@ -710,7 +897,7 @@ private:
         }
 
         with_lock (Lock) {
-            if (generation != Binding->Generation ||
+            if (generation != Binding->ControlGeneration ||
                 !IsWorthMovingToLocked(fqdn))
             {
                 return;
@@ -769,7 +956,12 @@ private:
         TResultOrError<THostBindingPtr> built = MakeError(E_FAIL);
         try {
             auto hostConfig = Pool->MakeHostConfig(fqdn);
-            built = BuildHostBinding(Bootstrap, hostConfig, controlService);
+            with_lock (Lock) {
+                if (TransportOverride) {
+                    hostConfig.SetTransport(*TransportOverride);
+                }
+            }
+            built = BuildHostBinding(Bootstrap, hostConfig, controlService, {});
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
             return;
@@ -961,8 +1153,7 @@ void NoteUnmount(TCellConnection& connection, const TString& diskId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// One host's control service, tied to the binding it belongs to. What comes
-// back through it is tagged with that binding's generation, so a response is
+// One host's control service. Responses carry its control generation and are
 // identified by the object that actually served the request rather than by
 // what the connection pointed at when the request went out: those are two
 // different steps, and a move can fall between them.
@@ -1076,13 +1267,14 @@ NProto::TError TCellConnection::PrepareDataPath(
     const THostBindingPtr& binding)
 {
     binding->Generation = ReserveGeneration();
+    binding->ControlGeneration = binding->Generation;
 
     // built here, with the generation, so that the router can only ever be
     // pointed at a control service that knows which binding it belongs to
     binding->BoundControlService = std::make_shared<TBoundControlService>(
         binding->ControlService,
         weak_from_this(),
-        binding->Generation);
+        binding->ControlGeneration);
 
     const auto& hostConfig = binding->HostConfig;
     const bool rdmaOnly =
@@ -1132,25 +1324,19 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
         return;
     }
 
-    binding->Sink = CreateDetachableTarget(DataRouter);
-    auto switcher = StartTransportSwitching(
-        binding->Sink,
-        binding->DataEndpoint,
-        [bootstrap = Bootstrap, hostConfig](
-            NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
-        {
-            return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
-                bootstrap,
-                hostConfig,
-                std::move(handler));
-        },
-        Bootstrap.Timer,
-        Bootstrap.Scheduler,
-        Bootstrap.Logging,
-        hostConfig.GetFqdn(),
-        TTransportSwitcherConfig{
-            .SettleTime = hostConfig.GetRdmaSettleTime(),
-        });
+    ITransportSwitcherPtr switcher;
+    with_lock (Lock) {
+        switcher = binding->Switcher;
+    }
+    if (!switcher) {
+        binding->Sink = CreateDetachableTarget(DataRouter);
+        auto prepared = PrepareBindingTransportSwitching(Bootstrap, *binding);
+        if (HasError(prepared)) {
+            return;
+        }
+        switcher = prepared.ExtractResult();
+    }
+    switcher->Activate();
 
     // the binding may already be current, and the mon page reads it
     with_lock (Lock) {
@@ -1187,7 +1373,8 @@ IBlockStorePtr CreateGrpcDataEndpoint(
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService)
+    const IBlockStorePtr& controlService,
+    IBlockStorePtr grpcDataEndpoint)
 {
     auto binding = std::make_shared<THostBinding>();
     binding->HostConfig = hostConfig;
@@ -1195,21 +1382,19 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
-            if (hostConfig.GetGrpcDataFallbackEnabled()) {
-                // the switcher starts on this and returns to it whenever rdma
-                // is not carrying data
-                binding->DataEndpoint = CreateGrpcDataEndpoint(
-                    bootstrap,
-                    hostConfig,
-                    controlService);
+            if (!hostConfig.GetGrpcDataFallbackEnabled()) {
+                return binding;
             }
-            return binding;
+            // The switcher uses the gRPC endpoint while RDMA is unavailable.
+            [[fallthrough]];
 
         case NProto::CELL_DATA_TRANSPORT_GRPC:
-            binding->DataEndpoint = CreateGrpcDataEndpoint(
-                bootstrap,
-                hostConfig,
-                controlService);
+            binding->DataEndpoint = grpcDataEndpoint
+                                        ? std::move(grpcDataEndpoint)
+                                        : CreateGrpcDataEndpoint(
+                                              bootstrap,
+                                              hostConfig,
+                                              controlService);
             return binding;
 
         default:
@@ -1245,24 +1430,50 @@ public:
 
     TVector<TCellMountStatus> GetMounts()
     {
-        TVector<TCellConnectionPtr> live;
-        with_lock (Lock) {
-            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
-            for (const auto& weak: Connections) {
-                if (auto connection = weak.lock()) {
-                    live.push_back(std::move(connection));
-                }
-            }
-        }
-
         TVector<TCellMountStatus> mounts;
-        for (const auto& connection: live) {
+        for (const auto& connection: GetLiveConnections()) {
             auto status = connection->GetMountStatus();
             if (status.DiskId) {
                 mounts.push_back(std::move(status));
             }
         }
         return mounts;
+    }
+
+    NProto::TError SwitchDataTransport(
+        const TString& connectionId,
+        NProto::ECellDataTransport transport)
+    {
+        if (connectionId.empty()) {
+            return MakeError(E_ARGUMENT, "Connection must be specified");
+        }
+
+        TCellConnectionPtr selected;
+        for (const auto& connection: GetLiveConnections()) {
+            if (connection->GetConnectionId() == connectionId) {
+                selected = connection;
+                break;
+            }
+        }
+        if (selected) {
+            return selected->SwitchDataTransport(transport);
+        }
+        return MakeError(E_NOT_FOUND, "Cell mount no longer exists");
+    }
+
+private:
+    TVector<TCellConnectionPtr> GetLiveConnections()
+    {
+        TVector<TCellConnectionPtr> live;
+        with_lock (Lock) {
+            EraseIf(Connections, [](const auto& c) { return c.expired(); });
+            for (const auto& weak: Connections) {
+                if (auto connection = weak.lock()) {
+                    live.push_back(std::move(connection));
+                }
+            }
+        }
+        return live;
     }
 };
 
@@ -1274,6 +1485,14 @@ TCellConnectionRegistryPtr CreateCellConnectionRegistry()
 TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry)
 {
     return registry.GetMounts();
+}
+
+NProto::TError SwitchCellDataTransport(
+    TCellConnectionRegistry& registry,
+    const TString& connectionId,
+    NProto::ECellDataTransport transport)
+{
+    return registry.SwitchDataTransport(connectionId, transport);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1309,7 +1528,7 @@ TCellConnectionFuture CreateCellConnection(
             auto dataRouter = CreateEndpointRouter(controlService);
 
             auto built =
-                BuildHostBinding(bootstrap, hostConfig, controlService);
+                BuildHostBinding(bootstrap, hostConfig, controlService, {});
             if (HasError(built)) {
                 pool->ReleaseControlChannel(fqdn);
                 return MakeFuture(
@@ -1327,8 +1546,7 @@ TCellConnectionFuture CreateCellConnection(
                 std::move(dataRouter),
                 built.GetResult());
 
-            // built only once the connection exists: without a fallback the
-            // rdma endpoint is handed a handler that has to reach it
+            // The RDMA handler needs the connection to exist first.
             auto error = connection->PrepareDataPath(built.GetResult());
             if (HasError(error)) {
                 // no explicit release here, unlike the branches above: the

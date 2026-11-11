@@ -1,4 +1,6 @@
 #include "cell_manager.h"
+
+#include "cell_manager_impl.h"
 #include "describe_volume.h"
 #include "mon.h"
 
@@ -26,11 +28,10 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
-#include <util/stream/str.h>
-
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/stream/str.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -292,6 +293,19 @@ public:
 
 Y_UNIT_TEST_SUITE(TCellManagerTest)
 {
+    Y_UNIT_TEST(ShouldRejectTransportSelectionWithoutConnectionRegistry)
+    {
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(NProto::TCellsConfig{}),
+            TBootstrap{});
+        const auto error = manager
+                               .SwitchDataTransport(
+                                   "connection",
+                                   NProto::CELL_DATA_TRANSPORT_GRPC)
+                               .GetValue();
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_INVALID_STATE);
+    }
+
     Y_UNIT_TEST(ShouldHandleCellDescribeRequestsOverInsecureChannel)
     {
         TPortManager portManager;
@@ -841,6 +855,27 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].Host);
         UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
         UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].TabletHost);
+
+        const auto selected = cellManager
+                                  ->SwitchDataTransport(
+                                      mounts[0].ConnectionId,
+                                      NProto::CELL_DATA_TRANSPORT_GRPC)
+                                  .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(selected), FormatError(selected));
+        const auto afterSelection = cellManager->GetSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(afterSelection.Mounts.size(), 1);
+        UNIT_ASSERT(
+            afterSelection.Mounts[0].SelectedTransport ==
+            NProto::CELL_DATA_TRANSPORT_GRPC);
+        const auto noRdma = cellManager
+                                ->SwitchDataTransport(
+                                    mounts[0].ConnectionId,
+                                    NProto::CELL_DATA_TRANSPORT_RDMA)
+                                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(noRdma.GetCode(), E_ARGUMENT);
+        const auto afterFailure = cellManager->GetSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(afterFailure.Mounts.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(afterFailure.Mounts[0].DataTransport, "grpc");
 
         auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
         request->SetDiskId("disk-1");

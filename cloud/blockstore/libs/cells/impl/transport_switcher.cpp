@@ -33,6 +33,7 @@ private:
 
     TAdaptiveLock Lock;
     IBlockStorePtr Preferred;       // the rdma endpoint, once acquired
+    bool Active = false;
     bool PreferredActive = false;   // is the router pointing at it
     bool Connected = false;
     bool EverActive = false;
@@ -68,23 +69,15 @@ public:
         }
     }
 
-    void Start()
+    void Activate() override
     {
-        auto result = Factory(GetEndpointHandler());
-
-        if (HasError(result) || !result.GetResult()) {
-            STORAGE_WARN(
-                "[" << Host << "] can't set up the preferred transport: "
-                    << FormatError(result.GetError())
-                    << ", staying on the fallback");
-            return;
-        }
-
         ui64 generation = 0;
         bool connected = false;
-
         with_lock (Lock) {
-            Preferred = result.GetResult();
+            if (Active) {
+                return;
+            }
+            Active = true;
             connected = Connected;
             if (connected) {
                 generation = ++SettleGeneration;
@@ -94,6 +87,29 @@ public:
         if (connected) {
             StartSettling(generation);
         }
+    }
+
+    NProto::TError Start()
+    {
+        auto result = Factory(GetEndpointHandler());
+
+        if (HasError(result) || !result.GetResult()) {
+            auto error = HasError(result)
+                             ? result.GetError()
+                             : MakeError(
+                                   E_FAIL,
+                                   "Preferred transport endpoint is missing");
+            STORAGE_WARN(
+                "[" << Host << "] can't set up the preferred transport: "
+                    << FormatError(error) << ", staying on the fallback");
+            return error;
+        }
+
+        with_lock (Lock) {
+            Preferred = result.ExtractResult();
+        }
+
+        return {};
     }
 
     void OnConnected()
@@ -172,7 +188,7 @@ private:
         bool firstTime = false;
 
         with_lock (Lock) {
-            if (generation != SettleGeneration || !Connected ||
+            if (!Active || generation != SettleGeneration || !Connected ||
                 PreferredActive || !Preferred)
             {
                 return;
@@ -250,7 +266,7 @@ TTransportSwitcher::GetEndpointHandler()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ITransportSwitcherPtr StartTransportSwitching(
+TResultOrError<ITransportSwitcherPtr> PrepareTransportSwitching(
     ITransportTargetPtr target,
     IBlockStorePtr fallback,
     TEndpointFactory factory,
@@ -270,9 +286,12 @@ ITransportSwitcherPtr StartTransportSwitching(
         std::move(host),
         config);
 
-    switcher->Start();
+    auto error = switcher->Start();
+    if (HasError(error)) {
+        return error;
+    }
 
-    return switcher;
+    return ITransportSwitcherPtr(std::move(switcher));
 }
 
 }   // namespace NCloud::NBlockStore::NCells
