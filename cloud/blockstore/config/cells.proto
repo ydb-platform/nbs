@@ -110,6 +110,7 @@ message TCellsConfig
 
     // EDS used to resolve EdsHostPatterns of the cells. HostPatterns,
     // InstancePort and SecureInstancePort are not used here: the patterns
-    // come from each cell, the ports from its TCellConfig.
+    // come from each cell, the ports from its TCellConfig. RequestInterval
+    // defaults to an hour here, spread by up to half of it either way.
     optional TEdsConfig Eds = 7;
 }

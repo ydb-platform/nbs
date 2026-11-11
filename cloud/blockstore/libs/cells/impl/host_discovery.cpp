@@ -5,6 +5,8 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
+#include <util/random/random.h>
+
 namespace NCloud::NBlockStore::NCells {
 
 using namespace NThreading;
@@ -98,8 +100,12 @@ void TCellHostDiscovery::ScheduleFetch()
         return;
     }
 
+    // nodes restarted together would otherwise ask EDS in lockstep for good
+    const auto delay = Interval / 2 + TDuration::MicroSeconds(
+        RandomNumber<ui64>(Interval.MicroSeconds() + 1));
+
     Scheduler->Schedule(
-        Timer->Now() + Interval,
+        Timer->Now() + delay,
         [weak = weak_from_this()]
         {
             if (auto self = weak.lock()) {

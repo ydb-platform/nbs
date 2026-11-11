@@ -135,12 +135,14 @@ Y_UNIT_TEST_SUITE(TCellHostDiscoveryTest)
         env.Fetcher->Hosts = {"host-x"};
         env.Discovery->Start();
 
+        // the next fetch lands somewhere between half the interval and one
+        // and a half, so that nodes started together drift apart
         env.Fetcher->Hosts = {"host-y"};
-        env.AdvanceTime(TDuration::Minutes(4));
+        env.AdvanceTime(TDuration::Minutes(2));
         UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->Asked.size());
 
-        env.AdvanceTime(TDuration::Minutes(1));
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->Asked.size());
+        env.AdvanceTime(TDuration::Minutes(6));
+        UNIT_ASSERT(env.Fetcher->Asked.size() >= 2);
         UNIT_ASSERT_EQUAL((THashSet<TString>{"host-a", "host-y"}), env.Hosts());
     }
 
@@ -151,13 +153,14 @@ Y_UNIT_TEST_SUITE(TCellHostDiscoveryTest)
         env.Discovery->Start();
 
         env.Fetcher->Error = MakeError(E_REJECTED, "eds is down");
-        env.AdvanceTime(TDuration::Minutes(5));
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->Asked.size());
+        env.AdvanceTime(TDuration::Minutes(8));
+        const auto asked = env.Fetcher->Asked.size();
+        UNIT_ASSERT(asked >= 2);
         UNIT_ASSERT_EQUAL((THashSet<TString>{"host-a", "host-x"}), env.Hosts());
 
         // and keeps trying
-        env.AdvanceTime(TDuration::Minutes(5));
-        UNIT_ASSERT_VALUES_EQUAL(3, env.Fetcher->Asked.size());
+        env.AdvanceTime(TDuration::Minutes(8));
+        UNIT_ASSERT(env.Fetcher->Asked.size() > asked);
     }
 
     Y_UNIT_TEST(ShouldStopFetchingWhenStopped)
@@ -177,8 +180,8 @@ Y_UNIT_TEST_SUITE(TCellHostDiscoveryTest)
         env.Discovery->Start();
 
         env.Fetcher->Hosts = {};
-        env.AdvanceTime(TDuration::Minutes(5));
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->Asked.size());
+        env.AdvanceTime(TDuration::Minutes(8));
+        UNIT_ASSERT(env.Fetcher->Asked.size() >= 2);
         UNIT_ASSERT_EQUAL((THashSet<TString>{"host-a", "host-x"}), env.Hosts());
     }
 }

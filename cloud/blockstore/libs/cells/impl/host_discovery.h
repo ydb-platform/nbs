@@ -17,10 +17,10 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Asks EDS for the hosts matching one cell's patterns every Interval and
-// hands what it lists to the pool as configured hosts. A failed fetch, or
-// an empty answer, leaves the pool on the previous list. The fetcher is
-// shared and started by its owner.
+// Asks EDS for the hosts matching one cell's patterns at start and then
+// every Interval, give or take half of it, and hands what it lists to the
+// pool as configured hosts. A failed fetch, or an empty answer, leaves the
+// pool on the previous list. The fetcher is shared and started by its owner.
 class TCellHostDiscovery
     : public std::enable_shared_from_this<TCellHostDiscovery>
 {
