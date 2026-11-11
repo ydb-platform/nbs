@@ -176,9 +176,7 @@ TError ValidateReadBlobInput(
         }
         const ui32 size = GetStoredChunkSize(compression, lastChunkSize, chunk);
         const ui64 end = static_cast<ui64>(offset) + size;
-        if (!size || end > blobSize ||
-            (lastChunk ? end != blobSize : end == blobSize))
-        {
+        if (!size || end > blobSize) {
             return MakeError(
                 E_ARGUMENT,
                 "Chunk sizes do not match the blob size");
@@ -388,7 +386,6 @@ class TDecompressChunkIter
 private:
     const ui64 BlockSize;
     const ui32 ChunkSize;
-    const size_t LastChunkSize;
     const TCompressionMetadata& Compression;
     const NBlockCodecs::ICodec& Codec;
     const size_t ChunkCount;
@@ -404,22 +401,18 @@ private:
 public:
     TDecompressChunkIter(
         ui64 blockSize,
-        ui32 chunkSize,
-        size_t lastChunkSize,
         const TCompressionMetadata& compression,
         const NBlockCodecs::ICodec& codec,
-        size_t chunkCount,
         const TRope& compressedData,
         TVector<ui32>* blockChecksums)
         : BlockSize(blockSize)
-        , ChunkSize(chunkSize)
-        , LastChunkSize(lastChunkSize)
+        , ChunkSize(compression.GetChunkSize())
         , Compression(compression)
         , Codec(codec)
-        , ChunkCount(chunkCount)
+        , ChunkCount(compression.GetPlainChunks().CompressedChunkSizeSize())
         , Iter(compressedData.Begin())
         , RemainingBytes(compressedData.GetSize())
-        , CurrentChunk(chunkCount)
+        , CurrentChunk(ChunkCount)
         , BlockChecksums(blockChecksums)
     {}
 
@@ -491,7 +484,7 @@ public:
     NProto::TError ExtractAndDecompressNextChunk(size_t chunk)
     {
         const size_t compressedSize =
-            GetStoredChunkSize(Compression, LastChunkSize, chunk);
+            Compression.GetPlainChunks().GetCompressedChunkSize(chunk);
 
         if (compressedSize > RemainingBytes) {
             return MakeError(
@@ -577,11 +570,8 @@ TError DecompressBlob(
 
     TDecompressChunkIter iter(
         blockSize,
-        chunkSize,
-        lastChunkSize,
         compression,
         *codec,
-        compression.GetPlainChunks().CompressedChunkSizeSize(),
         compressedData,
         blockChecksums);
 
