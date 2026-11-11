@@ -196,8 +196,7 @@ void TQueuedOperations::FailFlushOrReleasePromise(
         TFlushOrReleasePromiseFailedEvent{std::move(promise), error});
 }
 
-void TQueuedOperations::CompleteShutdownPromise(
-    NThreading::TPromise<void> promise)
+void TQueuedOperations::CompleteShutdownPromise(NThreading::TPromise<void> promise)
 {
     Events.push_back(TShutdownPromiseCompletedEvent{std::move(promise)});
 }

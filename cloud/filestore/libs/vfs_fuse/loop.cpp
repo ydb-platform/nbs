@@ -1168,8 +1168,7 @@ private:
                              ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                    // Drain will run asynchronously in background
-                    WriteBackCache.Drain();
+                    WriteBackCache.SetDrainingMode();
                 }
 
                 ModuleStatsRegistry->Register(
@@ -1527,10 +1526,10 @@ private:
         // request-driven WriteBackCache call is in flight. Cache callbacks
         // retain TImpl while accessing its state, so destruction cannot race
         // a TQueuedOperations::Release() serialization pass.
-        if (WriteBackCache) {
+        if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) Executing WriteBackCache "
-                "Shutdown()",
+                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
+                "executing Shutdown()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 

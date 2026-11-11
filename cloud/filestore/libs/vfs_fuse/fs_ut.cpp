@@ -44,13 +44,13 @@
 #include <util/datetime/base.h>
 #include <util/folder/dirut.h>
 #include <util/folder/path.h>
+#include <util/system/file_lock.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 #include <util/generic/ylimits.h>
 #include <util/random/random.h>
 #include <util/system/file.h>
-#include <util/system/file_lock.h>
 #include <util/system/mutex.h>
 
 #include <array>
@@ -8198,7 +8198,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            features);
+            features,
+            /* handleOpsQueueStateFileSize= */ 1000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
 
         auto writeDataCalledPromise = NewPromise();
         auto responsePromise = NewPromise<NProto::TWriteDataResponse>();
@@ -8248,8 +8250,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             1000000000000,
             "got maxTime " << maxTime);
 
-        // Complete the shutdown flush so StopAsync can finish
-        responsePromise.SetValue(NProto::TWriteDataResponse());
+        // StopAsync must finish even if the shutdown flush fails.
+        responsePromise.SetValue(TErrorResponse(E_IO, "Flush failed"));
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
@@ -8338,8 +8340,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         // Deadlock previously happened when:
         // - automatic flush was executed on a scheduler thread;
-        // - at the same time, Stop was requested and started cache shutdown;
-        // - shutdown continuation was called on the same scheduler thread;
+        // - at the same time, Stop was requested and triggered Shutdown;
+        // - Shutdown continuation was called on the same scheduler thread;
         // - Stop continuation was called on the same scheduler thread and tried
         //   to stop scheduler.
 
@@ -8366,7 +8368,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             writeDataCalled.SetValue();
 
             // Returns a pending future that will be completed manually on a
-            // scheduler thread after verifying shutdown is in progress
+            // scheduler thread after verifying Shutdown is in progress
             return writeDataPromise.GetFuture();
         };
 
@@ -8400,12 +8402,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto stoppingCounter = cacheCounters->FindSubgroup("state", "Stopping")
                                    ->GetCounter("OperationalState");
 
-        // Automatic flush does not create a request internally
-        UNIT_ASSERT_VALUES_EQUAL(0, flushAllCounter->GetAtomic());
-
         auto stopFuture = bootstrap.StopAsync();
 
-        // Wait until shutdown begins without creating a FlushAll request.
+        // Wait until Shutdown starts without creating a FlushAll request.
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]

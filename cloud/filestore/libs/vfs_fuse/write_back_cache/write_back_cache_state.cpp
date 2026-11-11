@@ -63,21 +63,20 @@ NProto::TError TWriteBackCacheState::Init()
     return error;
 }
 
-void TWriteBackCacheState::Drain()
+void TWriteBackCacheState::SetDrainingMode()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    StartDraining();
+    SetDrainingMode(false);
 }
 
 TFuture<void> TWriteBackCacheState::Shutdown()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    ShutdownMode = true;
-    StartDraining();
-    CheckShutdownCompletion();
-    return ShutdownPromise.GetFuture();
+    auto future = ShutdownPromise.GetFuture();
+    SetDrainingMode(true);
+    return future;
 }
 
 bool TWriteBackCacheState::IsDrained() const
@@ -94,10 +93,10 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
 
     if (DrainingMode) {
         // This may happen due to race condition that is valid scenario:
-        // - TWriteBackCache::Drain is called in one thread;
+        // - TWriteBackCache::SetDrainingMode is called in one thread;
         // - WriteData request is being processed in another thread.
         //
-        // But currently, Drain is called only at session creation
+        // But currently, draining is requested only at session creation
         // or destruction where WriteData requests are not expected.
         // Therefore, we report an error.
         ReportWriteBackCacheWritingNotAllowedInDrainingMode(
@@ -388,8 +387,10 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    // A failed cache retains this node and its flush reservation until this
-    // completion retires it, so the invariant below still applies
+    if (IsFailed) {
+        return;
+    }
+
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
     Y_ABORT_UNLESS(
@@ -401,11 +402,8 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
         std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
 
     // We will recalculate the flush status later
-    CompleteNodeFlush(nodeState);
-
-    if (IsFailed) {
-        return;
-    }
+    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+    Stats->FlushCompleted();
 
     for (size_t i = 0; i < requestCount; i++) {
         Y_ABORT_UNLESS(nodeState.Cache.HasUnflushedRequests());
@@ -433,9 +431,10 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    // Cache failure does not remove this node's requested flush or unflushed
-    // data; only this node's completion can retire them. These checks remain
-    // valid even when IsFailed is set.
+    if (IsFailed) {
+        return EFlushRetryStatus::ShouldNotRetry;
+    }
+
     auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
 
     Y_ABORT_UNLESS(
@@ -450,11 +449,6 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     const auto flushHandle =
         std::exchange(nodeState.FlushHandle, NProto::E_INVALID_HANDLE);
-
-    if (IsFailed) {
-        CompleteNodeFlush(nodeState);
-        return EFlushRetryStatus::ShouldNotRetry;
-    }
 
     Stats->FlushFailed();
 
@@ -540,7 +534,6 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         while (!handleState.UnflushedRequests.Empty()) {
             auto* request = handleState.UnflushedRequests.PopFront();
             if (!RequestManager.SetHandleReleased(request)) {
-                CompleteNodeFlush(nodeState);
                 SetFailedFlag();
                 return EFlushRetryStatus::ShouldNotRetry;
             }
@@ -565,14 +558,15 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     TryRemoveUnusedHandle(nodeState, flushHandle);
 
-    // During shutdown, any flush error, including a retriable one, permits
-    // dropping cached data instead of retrying.
+    // During shutdown, a flush error permits dropping cached data instead
+    // of retrying.
     const bool shouldDropCachedData =
         nodeState.Handles.empty() ||
         (ShutdownMode && !nodeState.Cache.HasPendingRequests());
 
     if (shouldDropCachedData) {
-        CompleteNodeFlush(nodeState);
+        nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
+        Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);
         return EFlushRetryStatus::ShouldNotRetry;
     }
@@ -720,14 +714,6 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     return MakeFuture<TWriteDataResponse>();
 }
 
-void TWriteBackCacheState::StartDraining()
-{
-    DrainingMode = true;
-    if (!IsFailed) {
-        TriggerFlushAll(true);
-    }
-}
-
 void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 {
     if (includePendingRequests) {
@@ -739,7 +725,9 @@ void TWriteBackCacheState::TriggerFlushAll(bool includePendingRequests)
 
     for (auto nodeId: NodesReadyToFlush) {
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-        RequestNodeFlush(nodeId, nodeState);
+        nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
+        Stats->FlushStarted();
+        QueuedOperations.ScheduleFlushNode(nodeId);
     }
 
     NodesReadyToFlush.clear();
@@ -772,42 +760,23 @@ void TWriteBackCacheState::UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState)
             break;
     }
 
+    nodeState.FlushStatus = newFlushStatus;
+
     // Process new state
-    switch (newFlushStatus) {
+    switch (nodeState.FlushStatus) {
         case ENodeFlushStatus::NothingToFlush:
-            nodeState.FlushStatus = newFlushStatus;
             break;
 
         case ENodeFlushStatus::FlushRequested:
-            RequestNodeFlush(nodeId, nodeState);
+            Stats->FlushStarted();
+            QueuedOperations.ScheduleFlushNode(nodeId);
             break;
 
         case ENodeFlushStatus::ReadyToFlush:
-            nodeState.FlushStatus = newFlushStatus;
             auto inserted = NodesReadyToFlush.insert(nodeId).second;
             Y_ABORT_UNLESS(inserted);
             break;
     }
-}
-
-void TWriteBackCacheState::RequestNodeFlush(ui64 nodeId, TNodeState& nodeState)
-{
-    Y_ABORT_UNLESS(nodeState.FlushStatus != ENodeFlushStatus::FlushRequested);
-
-    nodeState.FlushStatus = ENodeFlushStatus::FlushRequested;
-    ++NodesFlushRequestedCount;
-    Stats->FlushStarted();
-    QueuedOperations.ScheduleFlushNode(nodeId);
-}
-
-void TWriteBackCacheState::CompleteNodeFlush(TNodeState& nodeState)
-{
-    Y_ABORT_UNLESS(nodeState.FlushStatus == ENodeFlushStatus::FlushRequested);
-    Y_ABORT_UNLESS(NodesFlushRequestedCount > 0);
-
-    nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
-    --NodesFlushRequestedCount;
-    Stats->FlushCompleted();
 }
 
 void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
@@ -849,9 +818,8 @@ void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
 
 void TWriteBackCacheState::CheckShutdownCompletion()
 {
-    if (!IsFailed && ShutdownMode && !ShutdownCompletionQueued &&
-        NodesFlushRequestedCount == 0 &&
-        !RequestManager.HasPendingOrUnflushedRequests())
+    if (ShutdownMode && !ShutdownCompletionQueued &&
+        GetOperationalState() == EOperationalState::Inactive)
     {
         QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
         ShutdownCompletionQueued = true;
@@ -1241,6 +1209,16 @@ void TWriteBackCacheState::FailAllUnallocatedPendingRequests(
             CheckAndAcquireBarriers(nodeState);
         }
     }
+}
+
+void TWriteBackCacheState::SetDrainingMode(bool shutdown)
+{
+    ShutdownMode |= shutdown;
+    DrainingMode = true;
+    if (!IsFailed) {
+        TriggerFlushAll(true);
+    }
+    CheckShutdownCompletion();
 }
 
 void TWriteBackCacheState::SetFailedFlag()

@@ -135,24 +135,25 @@ public:
     EWriteBackCacheMode GetMode() const;
 
     /* Irreversibly stops accepting cached writes and starts asynchronous
-     * flushing. WriteDataDirect remains allowed. Use IsDrained() to check when
-     * no pending or unflushed writes remain; a failed cache cannot drain.
+     * flushing. WriteDataDirect remains allowed.
      *
-     * Flush failures retain data for retries while live handles remain.
+     * Backend flush errors retain data for retries while live handles remain.
      * Without live handles, data is discarded as during normal operation.
-     */
-    void Drain();
-
-    /* Starts draining for session shutdown. On any flush error, cached writes
-     * may be dropped even with live handles once the node has no pending writes.
-     * Pending requests are not cancelled.
      *
-     * The future completes successfully once no pending or unflushed writes
-     * remain and all requested flushes have retired. It is independent of
-     * FlushAllData() and stays pending if the cache is in failed state.
-     * Writes dropped after flush errors also count as drained, so completion
-     * does not guarantee persistence.
-     * Keep the cache alive until the future completes.
+     * Use IsDrained() to check completion. Storage corruption or an internal
+     * cache failure suspends draining.
+     */
+    void SetDrainingMode();
+
+    /* Starts draining for session shutdown, allowing cached writes to be
+     * dropped after flush errors, even with live handles, once their node has
+     * no pending writes.
+     *
+     * The future completes successfully once the cache is healthy and no
+     * pending or unflushed writes remain, independently of FlushAllData().
+     * Storage corruption or an internal cache failure leaves it pending.
+     * Discarded writes count as drained, so completion does not guarantee
+     * persistence. Keep the cache alive until the future completes.
      */
     [[nodiscard]] NThreading::TFuture<void> Shutdown();
 

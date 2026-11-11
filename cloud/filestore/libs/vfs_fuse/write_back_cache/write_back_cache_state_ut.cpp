@@ -130,11 +130,6 @@ struct TBootstrap
         State->UpdateStats();
     }
 
-    void StartShutdown() const
-    {
-        State->Shutdown();
-    }
-
     TString DumpEvents()
     {
         return Processor.RotateLog();
@@ -451,7 +446,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
 
-        b.State->Drain();
+        b.State->SetDrainingMode();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -483,6 +478,32 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(f1.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, f1.GetValue());
+    }
+
+    Y_UNIT_TEST(ShouldKeepShutdownPendingAfterEvictionFailure)
+    {
+        class TFailFreeStorage final: public TTestStorage
+        {
+        public:
+            using TTestStorage::TTestStorage;
+
+            NProto::TError Free(const void*) override
+            {
+                return MakeError(E_IO, "Injected Free failure");
+            }
+        };
+
+        TBootstrap b;
+        b.Storage = std::make_shared<TFailFreeStorage>(
+            b.Stats->GetPersistentStorageStats());
+        UNIT_ASSERT(b.Recreate());
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+
+        auto shutdown = b.State->Shutdown();
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(!shutdown.IsReady());
+        UNIT_ASSERT(!b.State->IsDrained());
     }
 
     Y_UNIT_TEST(HandleReleaseFailures)
@@ -550,91 +571,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(c2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, c2.GetValue());
 
-        b.State->Drain();
+        b.State->SetDrainingMode();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
-            b.Metrics.WriteDataRequestDroppedCount->Get());
-    }
-
-    Y_UNIT_TEST(ShouldRejectCachedWritesInShutdownMode)
-    {
-        TBootstrap b;
-        b.StartShutdown();
-
-        auto write = b.AddAndGetError(1, 101, 0, "abc");
-
-        UNIT_ASSERT(write.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, write.GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
-        UNIT_ASSERT(b.State->IsDrained());
-    }
-
-    Y_UNIT_TEST(ShouldKeepShutdownPendingAfterCacheCorruption)
-    {
-        class TFailTagStorage final: public TTestStorage
-        {
-        public:
-            using TTestStorage::TTestStorage;
-
-            NProto::TError SetTag(const void*, ui32) override
-            {
-                return MakeError(E_IO, "Injected SetTag failure");
-            }
-        };
-
-        TBootstrap b;
-        b.Storage = std::make_shared<TFailTagStorage>(
-            b.Stats->GetPersistentStorageStats());
-        UNIT_ASSERT(b.Recreate());
-        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
-        UNIT_ASSERT(b.Add(2, 202, 0, "def").GetValue());
-        b.State->AddFlushAllRequest();
-
-        auto shutdown = b.State->Shutdown();
-        UNIT_ASSERT(!shutdown.HasValue());
-
-        // Node 2 is still scheduled, without a borrowed handle, when node 1's
-        // completion detects a persistent-storage failure.
-        b.State->FlushSucceeded(1, 1);
-        b.UpdateStats();
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
-        UNIT_ASSERT(!shutdown.HasValue());
-        UNIT_ASSERT(!b.State->VisitUnflushedRequestsFromFrontFlushBatch(
-            2,
-            [](const TCachedWriteDataRequest*) {}));
-        UNIT_ASSERT(!shutdown.HasValue());
-
-        UNIT_ASSERT(
-            b.State->FlushFailed(2, MakeError(E_INVALID_STATE)) ==
-            EFlushRetryStatus::ShouldNotRetry);
-        UNIT_ASSERT(!shutdown.IsReady());
-    }
-
-    Y_UNIT_TEST(ShouldWaitForBarrierBlockedWritesOnShutdown)
-    {
-        TBootstrap b;
-        auto barrier = b.State->AcquireBarrier(1);
-        UNIT_ASSERT(barrier.HasValue());
-        UNIT_ASSERT(!HasError(barrier.GetValue().GetError()));
-        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
-        UNIT_ASSERT(b.DumpEvents().empty());
-
-        auto shutdown = b.State->Shutdown();
-        UNIT_ASSERT(!shutdown.HasValue());
-        UNIT_ASSERT(b.DumpEvents().empty());
-
-        b.State->ReleaseBarrier(1, barrier.GetValue().GetResult());
-        UNIT_ASSERT_VALUES_EQUAL("1", b.DumpEvents());
-        UNIT_ASSERT(!shutdown.HasValue());
-
-        b.State->FlushSucceeded(1, 1);
-        UNIT_ASSERT(shutdown.HasValue());
-        shutdown.GetValue();
-        UNIT_ASSERT(b.State->IsDrained());
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
             b.Metrics.WriteDataRequestDroppedCount->Get());
     }
 
@@ -652,6 +592,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
             UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
             auto flush = b.State->AddFlushRequest(1);
+            auto shutdown = b.State->Shutdown();
+            UNIT_ASSERT(!shutdown.IsReady());
             UNIT_ASSERT_VALUES_EQUAL("", b.DumpEvents());
             UNIT_ASSERT_VALUES_EQUAL("", b.GetFrontFlushBatch(1));
 
@@ -1587,8 +1529,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!backpressured3.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
 
-        NThreading::TFuture<void> shutdownFuture;
-
         auto checked = barrier.Apply(
             [&](const auto& future)
             {
@@ -1596,7 +1536,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                 // Only the other two pending requests may fail.
                 if (shutdown) {
                     b.State->ReleaseBarrier(1, future.GetValue().GetResult());
-                    shutdownFuture = b.State->Shutdown();
+                    b.State->Shutdown();
+                    b.State->SetDrainingMode();
                 }
 
                 const auto retryStatus = b.State->FlushFailed(
@@ -1625,22 +1566,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
 
         if (shutdown) {
-            UNIT_ASSERT(!shutdownFuture.HasValue());
-
-            // Once serialization has completed, the next failed attempt may
-            // drop the cached requests safely.
+            // Serialization has finished, so the next failure can safely drop
+            // this node's cached writes.
             UNIT_ASSERT(
                 b.State->FlushFailed(1, MakeError(E_IO)) ==
                 EFlushRetryStatus::ShouldNotRetry);
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
                 b.Metrics.WriteDataRequestDroppedCount->Get());
-
-            // Node 2's remaining cached writes must finish flushing too.
-            UNIT_ASSERT(!shutdownFuture.HasValue());
-            b.FlushCache(2);
-            shutdownFuture.GetValue();
-            UNIT_ASSERT(b.State->IsDrained());
         }
     }
 

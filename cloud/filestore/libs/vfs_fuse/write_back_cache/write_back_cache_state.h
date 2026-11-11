@@ -71,10 +71,6 @@ private:
     // FlushAll is requested
     THashSet<ui64> NodesReadyToFlush;
 
-    // Nodes in ENodeFlushStatus::FlushRequested state, including queued flushes
-    // and retries
-    size_t NodesFlushRequestedCount = 0;
-
     TWriteDataRequestManager RequestManager;
     TQueuedOperations QueuedOperations;
 
@@ -93,21 +89,21 @@ private:
     // shutdown until manual resolution.
     bool IsFailed = false;
 
-    // Set by Drain() and Shutdown(): reject new cached writes and flush
-    // existing data. Drain() alone retains data for retries after flush errors
-    // while live handles remain.
+    // Set by SetDrainingMode() or Shutdown(): reject new cached writes and
+    // flush existing data.
+    // Without ShutdownMode, flush errors retain data while live handles remain.
     bool DrainingMode = false;
 
-    // Set only by Shutdown(), together with DrainingMode. Permits dropping
-    // cached data on any flush error once the node has no pending writes,
-    // even with live handles.
+    // Enabled by Shutdown() and never cleared. Permits dropping cached data
+    // on flush errors once the node has no pending writes, even with live handles.
     bool ShutdownMode = false;
+
+    // Counts all shutdown drops, including those without live handles.
     ui64 ShutdownDroppedRequestCount = 0;
 
     // Prevents queuing shutdown completion more than once
     bool ShutdownCompletionQueued = false;
-    NThreading::TPromise<void> ShutdownPromise =
-        NThreading::NewPromise<void>();
+    NThreading::TPromise<void> ShutdownPromise = NThreading::NewPromise<void>();
 
 public:
     using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
@@ -127,11 +123,9 @@ public:
     NProto::TError Init();
 
     // Stop accepting cached writes and flush pending and unflushed requests.
-    void Drain();
+    void SetDrainingMode();
 
-    // Flush or discard cached writes independently of frontend FlushAll
-    // requests. Complete successfully after requested flushes finish, or remain
-    // pending if the cache is in failed state.
+    // Complete successfully after draining; stay pending in a failed state.
     NThreading::TFuture<void> Shutdown();
 
     // Returns true if the cache is in draining mode and there are no more
@@ -239,13 +233,10 @@ private:
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased);
 
-    void StartDraining();
     void TriggerFlushAll(bool includePendingRequests);
 
     bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
-    void RequestNodeFlush(ui64 nodeId, TNodeState& nodeState);
-    void CompleteNodeFlush(TNodeState& nodeState);
     void TriggerFlushCompletions(TNodeState& nodeState);
     void CheckShutdownCompletion();
 
@@ -298,6 +289,9 @@ private:
         const NCloud::NProto::TError& error);
 
     void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
+
+    // If shutdown is true, flush errors may drop cached data.
+    void SetDrainingMode(bool shutdown);
 
     void SetFailedFlag();
 };

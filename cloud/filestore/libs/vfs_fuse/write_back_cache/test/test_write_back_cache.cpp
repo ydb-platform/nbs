@@ -166,11 +166,9 @@ public:
         ThreadPool.Stop();
     }
 
-    void Drain()
+    void SetDrainingMode()
     {
-        // Apply the mode transition before returning without waiting for
-        // backend completion.
-        Cache.Drain();
+        Cache.SetDrainingMode();
     }
 
     TFuture<void> Shutdown()
@@ -318,9 +316,9 @@ TTestWriteBackCache::TTestWriteBackCache(
 TTestWriteBackCache& TTestWriteBackCache::operator=(
     TTestWriteBackCache&&) noexcept = default;
 
-void TTestWriteBackCache::Drain()
+void TTestWriteBackCache::SetDrainingMode()
 {
-    Impl->Drain();
+    Impl->SetDrainingMode();
 }
 
 TFuture<void> TTestWriteBackCache::Shutdown()
