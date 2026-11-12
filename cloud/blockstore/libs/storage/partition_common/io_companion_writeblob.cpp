@@ -78,7 +78,7 @@ public:
 private:
     void SendPutRequest(const TActorContext& ctx);
 
-    void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
+    void NotifyCompleted(const TActorContext& ctx, const TResponse& response);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -87,7 +87,8 @@ private:
     void ReplyError(
         const TActorContext& ctx,
         const TEvBlobStorage::TEvPutResult& response,
-        const TString& description);
+        const TString& description,
+        EErrorSource errorSource);
 
 private:
     STFUNC(StateWork);
@@ -227,16 +228,17 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
 void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const TResponse& response)
 {
     auto request =
         std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobCompleted>(
-            error,
+            response.GetError(),
             Request->BlobId,
             StorageStatusFlags,
             ApproximateFreeSpaceShare,
             ResponseReceived - RequestSent,
             BSGroupOperationId);
+    request->ErrorSource = response.ErrorSource;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -245,7 +247,11 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    NotifyCompleted(ctx, response->GetError());
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
+    NotifyCompleted(ctx, *response);
 
     if (ResponseReceived) {
         LWTRACK(
@@ -264,7 +270,8 @@ void TWriteBlobActor::ReplyAndDie(
 void TWriteBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvPutResult& response,
-    const TString& description)
+    const TString& description,
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -274,11 +281,10 @@ void TWriteBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TResponse>(MakeError(
-            E_REJECTED,
-            "TEvBlobStorage::TEvPut failed: " + description)));
+    auto reply = std::make_unique<TResponse>(
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description));
+    reply->ErrorSource = errorSource;
+    ReplyAndDie(ctx, std::move(reply));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,13 +303,13 @@ void TWriteBlobActor::HandlePutResult(
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
     auto blobId = MakeBlobId(TabletId, Request->BlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received");
+        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
         return;
     }
 
@@ -452,8 +458,9 @@ void TIOCompanion::HandleWriteBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (++WriteBlobErrorCount >=
-            Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        if (msg->ErrorSource == EErrorSource::BlobStorage &&
+            ++WriteBlobErrorCount >=
+                Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 PartitionConfig.GetDiskId(),
