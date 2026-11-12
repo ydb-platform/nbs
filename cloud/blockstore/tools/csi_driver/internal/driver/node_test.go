@@ -2900,7 +2900,6 @@ func TestEndpointBalancing(t *testing.T) {
 		for _, tc := range []struct {
 			name      string
 			enabled   bool
-			mapping   map[string]uint
 			wantIndex uint
 		}{
 			{name: "disabled", enabled: false, wantIndex: 0},
@@ -2911,7 +2910,6 @@ func TestEndpointBalancing(t *testing.T) {
 					nbsServerReplicaCount:   2,
 					nfsVhostReplicaCount:    2,
 					enableEndpointBalancing: tc.enabled,
-					zoneIdToBackendIndex:    tc.mapping,
 				}
 				ctx := context.Background()
 				if backend == "nbs" {
