@@ -937,6 +937,47 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 	}
 }
 
+func TestLoadZoneMappingReplicaCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name                      string
+		backendIndex              uint
+		nfsVhostReplicaCountUsed  uint
+		nbsServerReplicaCountUsed uint
+		errorMessage              string
+	}{
+		{name: "zero index", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1},
+		{name: "last valid index", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 2},
+		{name: "different valid counts", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3},
+		{name: "index equals nfs count", backendIndex: 2, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3,
+			errorMessage: `zone_id "zone1": backend_index 2 must be less than NfsVhostReplicaCountUsed 2`},
+		{name: "index exceeds nfs count", backendIndex: 3, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 4,
+			errorMessage: `zone_id "zone1": backend_index 3 must be less than NfsVhostReplicaCountUsed 2`},
+		{name: "index equals nbs count", backendIndex: 2, nfsVhostReplicaCountUsed: 3, nbsServerReplicaCountUsed: 2,
+			errorMessage: `zone_id "zone1": backend_index 2 must be less than NbsServerReplicaCountUsed 2`},
+		{name: "index exceeds nbs count", backendIndex: 3, nfsVhostReplicaCountUsed: 4, nbsServerReplicaCountUsed: 2,
+			errorMessage: `zone_id "zone1": backend_index 3 must be less than NbsServerReplicaCountUsed 2`},
+		{name: "zero nfs count", backendIndex: 0, nfsVhostReplicaCountUsed: 0, nbsServerReplicaCountUsed: 1,
+			errorMessage: `zone_id "zone1": backend_index 0 must be less than NfsVhostReplicaCountUsed 0`},
+		{name: "zero nbs count", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 0,
+			errorMessage: `zone_id "zone1": backend_index 0 must be less than NbsServerReplicaCountUsed 0`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zones.json")
+			data := fmt.Sprintf(`[{"zone_id": "zone1", "backend_index": %d}]`, tc.backendIndex)
+			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+
+			mapping, err := loadZoneMapping(path, tc.nfsVhostReplicaCountUsed, tc.nbsServerReplicaCountUsed)
+			if tc.errorMessage != "" {
+				require.EqualError(t, err, tc.errorMessage)
+				require.Nil(t, mapping)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, map[string]uint{"zone1": tc.backendIndex}, mapping)
+		})
+	}
+}
+
 func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
 	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
@@ -944,7 +985,7 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 		{"zone_id": "zone0", "backend_index": 0},
 		{"zone_id": "zone1", "backend_index": 1}
 	]`), 0600))
-	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath)
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -1049,7 +1090,7 @@ func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 		{"zone_id": "zone0", "backend_index": 0},
 		{"zone_id": "zone1", "backend_index": 1}
 	]`), 0600))
-	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath)
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {

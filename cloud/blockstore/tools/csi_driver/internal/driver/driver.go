@@ -196,7 +196,11 @@ func createClients(cfg Config) (*driverClients, error) {
 	}, nil
 }
 
-func loadZoneMapping(path string) (map[string]uint, error) {
+func loadZoneMapping(
+	path string,
+	nfsVhostReplicaCountUsed uint,
+	nbsServerReplicaCountUsed uint,
+) (map[string]uint, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -215,6 +219,14 @@ func loadZoneMapping(path string) (map[string]uint, error) {
 		if _, exists := result[pair.ZoneID]; exists {
 			return nil, fmt.Errorf("duplicate zone_id %q", pair.ZoneID)
 		}
+		if pair.BackendIndex >= nfsVhostReplicaCountUsed {
+			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NfsVhostReplicaCountUsed %d",
+				pair.ZoneID, pair.BackendIndex, nfsVhostReplicaCountUsed)
+		}
+		if pair.BackendIndex >= nbsServerReplicaCountUsed {
+			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NbsServerReplicaCountUsed %d",
+				pair.ZoneID, pair.BackendIndex, nbsServerReplicaCountUsed)
+		}
 		result[pair.ZoneID] = pair.BackendIndex
 	}
 	return result, nil
@@ -228,7 +240,11 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	zoneIdToBackendIndex := make(map[string]uint)
 	if cfg.ZoneIdConfigPath != "" {
-		zoneIdToBackendIndex, err = loadZoneMapping(cfg.ZoneIdConfigPath)
+		zoneIdToBackendIndex, err = loadZoneMapping(
+			cfg.ZoneIdConfigPath,
+			cfg.NfsVhostReplicaCountUsed,
+			cfg.NbsServerReplicaCountUsed,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load zone mapping: %v", err)
 		}
