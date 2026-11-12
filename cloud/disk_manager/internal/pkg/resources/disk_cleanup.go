@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -48,8 +49,10 @@ func (s *storageYDB) loadDiskCleanupState(
 	return states[0], nil
 }
 
+// Tombstone is a placeholder of a disk without metadata, which deletion is
+// not completed yet.
 func diskIsTombstone(state diskState) bool {
-	return state.status == diskStatusDeleted && state.tombstone
+	return state.status == diskStatusDeleting && state.tombstone
 }
 
 // Placeholder written by code without the explicit tombstone flag is
@@ -81,20 +84,13 @@ func diskCleanupIDs(state diskState) ([]string, error) {
 	return ids, nil
 }
 
-func (s *storageYDB) setDiskCleanupIDs(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	state diskState,
-	ids []string,
-) error {
-
+func encodeDiskCleanupIDs(ids []string) (string, error) {
 	data, err := json.Marshal(ids)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	state.cleanupTaskIDs = string(data)
-	return s.updateDiskState(ctx, tx, state)
+	return string(data), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +133,14 @@ func (s *storageYDB) PrepareDiskCleanup(
 				return tx.Commit(ctx)
 			}
 
-			err = s.setDiskCleanupIDs(ctx, tx, state, append(ids, cleanupID))
+			state.cleanupTaskIDs, err = encodeDiskCleanupIDs(
+				append(ids, cleanupID),
+			)
+			if err != nil {
+				return err
+			}
+
+			err = s.updateDiskState(ctx, tx, state)
 			if err != nil {
 				return err
 			}
@@ -170,5 +173,16 @@ func (s *storageYDB) CompleteDiskCleanup(
 	}
 
 	ids = slices.DeleteFunc(ids, func(id string) bool { return id == cleanupID })
-	return s.setDiskCleanupIDs(ctx, tx, state, ids)
+
+	state.cleanupTaskIDs, err = encodeDiskCleanupIDs(ids)
+	if err != nil {
+		return err
+	}
+
+	if len(ids) == 0 && diskIsTombstone(state) {
+		// The last cleanup reservation is released: deletion is completed.
+		return s.markDiskDeleted(ctx, tx, state, time.Now())
+	}
+
+	return s.updateDiskState(ctx, tx, state)
 }

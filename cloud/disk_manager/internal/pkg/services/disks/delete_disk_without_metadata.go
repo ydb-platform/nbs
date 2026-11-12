@@ -2,7 +2,6 @@ package disks
 
 import (
 	"context"
-	"time"
 
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -27,8 +26,9 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 	diskID := t.request.Disk.DiskId
 	zoneID := t.request.Disk.ZoneId
 	if len(zoneID) == 0 {
-		// Zone was not specified in the request.
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		// Zone was not specified in the request: nothing to clean up, the
+		// tombstone keeps the disk ID reserved.
+		return nil
 	}
 
 	selfTaskID := execCtx.GetTaskID()

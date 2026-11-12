@@ -534,7 +534,7 @@ func (s *storageYDB) deleteDisk(
 			}
 
 			// Should be idempotent.
-			if state.status == diskStatusDeleted {
+			if state.status == diskStatusDeleted || state.tombstone {
 				return nil, nil
 			}
 
@@ -546,7 +546,7 @@ func (s *storageYDB) deleteDisk(
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
-		state.status = diskStatusDeleted
+		state.status = diskStatusDeleting
 		state.tombstone = true
 	}
 
@@ -565,7 +565,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.status == diskStatusDeleted {
+	if state.tombstone {
 		return nil, nil
 	}
 
@@ -618,6 +618,12 @@ func (s *storageYDB) diskDeleted(
 		return tx.Commit(ctx)
 	}
 
+	if state.tombstone {
+		// Tombstone deletion is completed by CompleteDiskCleanup, when the
+		// last cleanup reservation is released.
+		return tx.Commit(ctx)
+	}
+
 	if state.status != diskStatusDeleting {
 		err = tx.Commit(ctx)
 		if err != nil {
@@ -631,10 +637,26 @@ func (s *storageYDB) diskDeleted(
 		)
 	}
 
+	err = s.markDiskDeleted(ctx, tx, state, deletedAt)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) markDiskDeleted(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	state diskState,
+	deletedAt time.Time,
+) error {
+
 	state.status = diskStatusDeleted
+	state.tombstone = false
 	state.deletedAt = deletedAt
 
-	err = s.updateDiskState(ctx, tx, state)
+	err := s.updateDiskState(ctx, tx, state)
 	if err != nil {
 		return err
 	}
@@ -649,13 +671,9 @@ func (s *storageYDB) diskDeleted(
 		values ($deleted_at, $disk_id)
 	`, s.disksPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(state.id)),
 	)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	return err
 }
 
 func (s *storageYDB) clearDeletedDisks(
@@ -706,8 +724,7 @@ func (s *storageYDB) clearDeletedDisks(
 				declare $status as Int64;
 
 				delete from disks
-				where id = $disk_id and status = $status
-				and (tombstone is null or not tombstone);
+				where id = $disk_id and status = $status;
 
 				delete from deleted
 				where deleted_at = $deleted_at and disk_id = $disk_id

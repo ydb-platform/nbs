@@ -94,12 +94,25 @@ func executeRW(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestTrackedDiskDeletionKeepsTombstone(t *testing.T) {
+func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 
-	_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
 	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	_, err = storage.CreateDisk(ctx, DiskMeta{
+		ID:            "disk",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create",
+	})
+	require.Error(t, err)
+
+	// Only the last cleanup reservation completes tombstone deletion.
+	err = storage.DiskDeleted(ctx, "disk", time.Now())
+	require.NoError(t, err)
+	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
 
 	for _, id := range []string{"first", "second", "first"} {
 		prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "delete", id)
@@ -108,9 +121,9 @@ func TestTrackedDiskDeletionKeepsTombstone(t *testing.T) {
 	}
 
 	state := readTrackedDisk(t, ctx, db, storage, "disk")
-	require.True(t, state.tombstone)
+	require.True(t, diskIsTombstone(state))
 	require.Equal(t, `["first","second"]`, state.cleanupTaskIDs)
-	require.True(t, state.deletedAt.Equal(time.Unix(0, 0)))
+	require.False(t, state.deletedAt.After(time.Unix(0, 0)))
 
 	// Reservation is released only together with the transaction.
 	err = completeDiskCleanup(ctx, db, storage, "disk", "first", false)
@@ -121,43 +134,33 @@ func TestTrackedDiskDeletionKeepsTombstone(t *testing.T) {
 		readTrackedDisk(t, ctx, db, storage, "disk").cleanupTaskIDs,
 	)
 
-	for _, id := range []string{"first", "second", "unknown"} {
+	err = completeDiskCleanup(ctx, db, storage, "disk", "first", true)
+	require.NoError(t, err)
+
+	state = readTrackedDisk(t, ctx, db, storage, "disk")
+	require.True(t, diskIsTombstone(state))
+	require.Equal(t, `["second"]`, state.cleanupTaskIDs)
+
+	beforeCompletion := time.Now()
+	for _, id := range []string{"second", "unknown"} {
 		err = completeDiskCleanup(ctx, db, storage, "disk", id, true)
 		require.NoError(t, err)
 	}
 
 	state = readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
 	require.Equal(t, "[]", state.cleanupTaskIDs)
-	require.True(t, state.tombstone)
-	require.True(t, state.deletedAt.Equal(time.Unix(0, 0)))
+	require.False(t, state.deletedAt.Before(beforeCompletion))
 
-	// Neither DeleteDisk nor CompleteDiskCleanup puts the tombstone into the
-	// deleted queue, so seed an expired entry to check the collector filter.
-	executeRW(t, ctx, db, func(
-		ctx context.Context,
-		session *persistence.Session,
-	) (persistence.Result, error) {
-
-		return session.ExecuteRW(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $deleted_at as Timestamp;
-		declare $disk_id as Utf8;
-
-		upsert into deleted (deleted_at, disk_id)
-		values ($deleted_at, $disk_id)
-	`, storage.(*storageYDB).disksPath),
-			persistence.ValueParam(
-				"$deleted_at",
-				persistence.TimestampValue(time.Now().Add(-time.Hour)),
-			),
-			persistence.ValueParam("$disk_id", persistence.UTF8Value("disk")),
-		)
-	})
-
-	err = storage.ClearDeletedDisks(ctx, time.Now(), 100)
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late", "late")
 	require.NoError(t, err)
-	require.True(t, readTrackedDisk(t, ctx, db, storage, "disk").tombstone)
+	require.False(t, prepared)
+
+	// Completed deletion is put into the deleted queue and collected.
+	err = storage.ClearDeletedDisks(ctx, time.Now().Add(time.Second), 100)
+	require.NoError(t, err)
+	require.Empty(t, readTrackedDisk(t, ctx, db, storage, "disk").id)
 }
 
 func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
@@ -192,10 +195,9 @@ func TestDiskTombstoneClassification(t *testing.T) {
 		state    diskState
 		expected bool
 	}{
-		{"explicit tombstone", diskState{status: diskStatusDeleted, tombstone: true}, true},
-		{"explicit tombstone with timestamp", diskState{status: diskStatusDeleted, tombstone: true, deletedAt: time.Now()}, true},
+		{"tombstone", diskState{status: diskStatusDeleting, tombstone: true}, true},
+		{"deleting disk", diskState{status: diskStatusDeleting}, false},
 		{"completed or legacy placeholder", diskState{status: diskStatusDeleted, deletedAt: time.Now()}, false},
-		{"deleting", diskState{status: diskStatusDeleting, tombstone: true}, false},
 		{"live", diskState{status: diskStatusReady}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,8 +252,10 @@ func TestLegacyDeletedDiskCleanup(t *testing.T) {
 				declare $id as Utf8;
 				declare $timestamp as Timestamp;
 				declare $null_timestamp as Bool;
+				declare $status as Int64;
 
 				update disks set
+					status = $status,
 					tombstone = null,
 					cleanup_task_ids = null,
 					deleted_at = if($null_timestamp, null, $timestamp)
@@ -260,6 +264,7 @@ func TestLegacyDeletedDiskCleanup(t *testing.T) {
 					persistence.ValueParam("$id", persistence.UTF8Value("disk")),
 					persistence.ValueParam("$timestamp", persistence.TimestampValue(time.Now())),
 					persistence.ValueParam("$null_timestamp", persistence.BoolValue(tc.nullTimestamp)),
+					persistence.ValueParam("$status", persistence.Int64Value(int64(diskStatusDeleted))),
 				)
 			})
 
@@ -273,6 +278,7 @@ func TestLegacyDeletedDiskCleanup(t *testing.T) {
 			require.True(t, prepared)
 
 			state := readTrackedDisk(t, ctx, db, storage, "disk")
+			require.Equal(t, diskStatusDeleted, state.status)
 			require.False(t, state.tombstone)
 			require.Equal(t, `["cleanup"]`, state.cleanupTaskIDs)
 
