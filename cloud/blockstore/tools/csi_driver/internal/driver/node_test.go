@@ -2922,8 +2922,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nbsClients = append(service.nbsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNbsClientIndex(ctx, "")
-					require.NoError(t, err)
+					index := service.getNbsClientIndex(ctx, "")
 					require.Equal(t, tc.wantIndex, index)
 				} else {
 					for i := 0; i < 2; i++ {
@@ -2935,8 +2934,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nfsClients = append(service.nfsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNfsClientIndex(ctx, "")
-					require.NoError(t, err)
+					index := service.getNfsClientIndex(ctx, "")
 					require.Equal(t, tc.wantIndex, index)
 				}
 			})
