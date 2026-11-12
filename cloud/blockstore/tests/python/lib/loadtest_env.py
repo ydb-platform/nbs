@@ -54,6 +54,8 @@ class LocalLoadTest:
             load_configs_from_cms=True,
             log_config=None,
             bs_failure_probability=None,
+            kikimr_output_path=None,
+            config_sub_folder=None,
     ):
 
         self.__endpoint = endpoint
@@ -63,6 +65,7 @@ class LocalLoadTest:
 
         self.configurator = KikimrConfigGenerator(
             erasure=None,
+            output_path=kikimr_output_path,
             binary_paths=[kikimr_binary_path],
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
@@ -104,6 +107,7 @@ class LocalLoadTest:
             kikimr_port,
             self.configurator.domains_txt,
             server_app_config=server_app_config,
+            config_sub_folder=config_sub_folder,
             contract_validation=contract_validation,
             storage_config_patches=storage_config_patches,
             tracking_enabled=tracking_enabled,
