@@ -181,11 +181,13 @@ size_t SerializeError(ui32 code, TStringBuf message, TStringBuf buffer)
         NCloud::ReportFailedToSerializeRdmaError(FormatError(error));
     }
 
-    if (error.SerializeToArray(
-        const_cast<char*>(buffer.data()),
-        error.ByteSize()))
+    const size_t byteSize = error.ByteSizeLong();
+    if (byteSize <= buffer.size() &&
+        error.SerializeToArray(
+            const_cast<char*>(buffer.data()),
+            static_cast<int>(byteSize)))
     {
-        return error.ByteSizeLong();
+        return byteSize;
     }
 
     return 0;   // will be interpreted as E_FAIL by ParseError
@@ -207,6 +209,10 @@ TString SerializeError(ui32 code, TStringBuf message)
 
 NProto::TError ParseError(TStringBuf buffer)
 {
+    if (buffer.empty()) {
+        return MakeError(E_FAIL, "rdma error");
+    }
+
     NProto::TError error;
 
     if (!error.ParseFromArray(buffer.data(), buffer.size())) {
