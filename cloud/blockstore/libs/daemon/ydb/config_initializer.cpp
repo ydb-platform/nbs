@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/config/sections_update/volume_throttling.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/local_nvme/config.h>
@@ -19,6 +20,7 @@
 
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
@@ -111,6 +113,7 @@ TConfigInitializerYdb::BuildCurrentBlockstoreConfig() const
     if (LocalNVMeConfig) {
         config.MutableLocalNVMe()->CopyFrom(LocalNVMeConfig->GetConfigProto());
     }
+    config.MutableVolumeThrottling()->CopyFrom(VolumeThrottlingConfig);
     if (DiskAgentConfig) {
         config.MutableDiskAgent()->CopyFrom(DiskAgentConfig->GetConfigProto());
     }
@@ -250,6 +253,24 @@ void TConfigInitializerYdb::InitComputeClientConfig()
     }
 
     ComputeClientConfig = std::move(config);
+}
+
+void TConfigInitializerYdb::InitVolumeThrottlingConfig()
+{
+    NProto::TVolumeThrottlingServiceConfig config;
+    if (Options->VolumeThrottlingConfig) {
+        ParseProtoTextFromFileRobust(Options->VolumeThrottlingConfig, config);
+    }
+
+    // Publish usable rules only after their known coefficients are valid.
+    TVector<TString> issues;
+    const auto error = PrepareStaticVolumeThrottlingConfig(config, issues);
+    // Warn about unusable selectors.
+    for (const auto& issue: issues) {
+        STORAGE_WARN(issue);
+    }
+    Y_ENSURE(!HasError(error), error.GetMessage());
+    VolumeThrottlingConfig = std::move(config);
 }
 
 void TConfigInitializerYdb::InitLocalNVMeConfig()

@@ -24,6 +24,7 @@ struct TOptionsYdb final
     TString RootKmsConfig;
     TString ComputeConfig;
     TString LocalNVMeConfig;
+    TString VolumeThrottlingConfig;
 
     TOptionsYdb();
 

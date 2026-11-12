@@ -34,7 +34,8 @@ namespace NCloud::NBlockStore {
     xxx(GetComputeClientConfig)                                                \
     xxx(GetRootKmsConfig)                                                      \
     xxx(GetCellsConfig)                                                        \
-    xxx(GetLocalNVMeConfig)
+    xxx(GetLocalNVMeConfig)                                                    \
+    xxx(GetVolumeThrottlingConfig)
 
 // A configuration wrapper that fails once while the manager reads adapter
 // inputs. Publish it through the holder to exercise recovery without changing

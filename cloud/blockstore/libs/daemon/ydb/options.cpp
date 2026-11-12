@@ -48,6 +48,10 @@ TOptionsYdb::TOptionsYdb()
     Opts.AddLongOption("local-nvme-file")
         .RequiredArgument("PATH")
         .StoreResult(&LocalNVMeConfig);
+
+    Opts.AddLongOption("volume-throttling-file")
+        .RequiredArgument("PATH")
+        .StoreResult(&VolumeThrottlingConfig);
 }
 
 void TOptionsYdb::Parse(int argc, char** argv)

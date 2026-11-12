@@ -341,13 +341,13 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(400, static_cast<i64>(control));
     }
 
-    // Check that the aggregate proto contains 19 top-level configuration
+    // Check that the aggregate proto contains 20 top-level configuration
     // sections, including the representative sections below.
     Y_UNIT_TEST(ShouldExposeCompleteAggregateSchema)
     {
         const auto* descriptor = NProto::TBlockstoreConfig::descriptor();
 
-        UNIT_ASSERT_VALUES_EQUAL(19, descriptor->field_count());
+        UNIT_ASSERT_VALUES_EQUAL(20, descriptor->field_count());
 
         // Selective check
         UNIT_ASSERT(descriptor->FindFieldByName("Server"));

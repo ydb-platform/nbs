@@ -21,6 +21,7 @@ SRCS(
     server.proto
     spdk.proto
     storage.proto
+    volume_throttling.proto
     ydbstats.proto
 )
 
