@@ -1,3 +1,4 @@
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
@@ -10,12 +11,14 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
+#include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <util/system/hostname.h>
+#include <util/system/type_name.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -108,7 +111,11 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
-        NProto::TStorageServiceConfig config;
+        SetUpRuntime({});
+    }
+
+    void SetUpRuntime(NProto::TStorageServiceConfig config)
+    {
         {
             NProto::TLinkedDiskFillBandwidth defaultBandwidth;
             defaultBandwidth.SetReadBandwidth(100);
@@ -663,6 +670,16 @@ void CheckLeaderRemovalDuringPromotion(ELeaderRemovalPoint removalPoint)
         cancellationAllowed ? S_ALREADY : E_INVALID_STATE,
         responses.at(6));
 }
+
+struct TPullStatisticsFixture: public TFixture
+{
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        SetUpRuntime(std::move(config));
+    }
+};
 
 }   // namespace
 
@@ -3152,6 +3169,289 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         DoShouldOwnSourcePartitionAfterRecovery(
             *this,
             TFollowerDiskInfo::EState::Error);
+    }
+
+    template <typename TRequest>
+    void CheckRequestForwardedToLeaderPartition(
+        TTestActorRuntime& runtime,
+        TActorId followerDiskActor,
+        TActorId leaderPartitionActor,
+        ui64 cookie)
+    {
+        const auto statisticsCollector = runtime.AllocateEdgeActor();
+        runtime.Send(new IEventHandle(
+            followerDiskActor,
+            statisticsCollector,
+            new TRequest(),
+            0,   // flags
+            cookie));
+
+        TAutoPtr<IEventHandle> handle;
+        runtime.GrabEdgeEvent<TRequest>(handle, TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(
+            handle,
+            TStringBuilder() << TypeName<TRequest>()
+                             << " was not forwarded to the leader partition");
+        UNIT_ASSERT_VALUES_EQUAL(leaderPartitionActor, handle->Recipient);
+        // The leader partition must reply directly to the collector.
+        UNIT_ASSERT_VALUES_EQUAL(statisticsCollector, handle->Sender);
+        UNIT_ASSERT_VALUES_EQUAL(cookie, handle->Cookie);
+    }
+
+    void DoShouldForwardPullStatisticsRequestsToLeaderPartition(
+        TFixture& fixture,
+        TFollowerDiskInfo::EState persistedState)
+    {
+        NProto::TStorageServiceConfig storageConfig;
+        storageConfig.SetUsePullSchemeForVolumeStatistics(true);
+        auto config = std::make_shared<TStorageConfig>(
+            std::move(storageConfig),
+            std::make_shared<NFeatures::TFeaturesConfig>());
+
+        const auto leaderPartitionActor = fixture.Runtime->AllocateEdgeActor();
+        const auto leaderVolumeActor = fixture.Runtime->AllocateEdgeActor();
+
+        const auto followerDiskActor =
+            fixture.Runtime->Register(new TFollowerDiskActor(
+                TLogTitle(
+                    GetCycleCount(),
+                    TLogTitle::TVolume{
+                        .TabletId = TestVolumeTablets[0],
+                        .DiskId = "vol1"}),
+                std::move(config),
+                CreateTestDiagnosticsConfig(),
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                TFollowerDiskActorParams{
+                    .LeaderMediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                    .LeaderDiskId = "vol1",
+                    .LeaderBlockCount = fixture.VolumeBlockCount,
+                    .LeaderBlockSize = DefaultBlockSize,
+                    .LeaderVolumeActorId = leaderVolumeActor,
+                    .LeaderPartitionActorId = leaderPartitionActor,
+                    .ClientId = "client",
+                    .FollowerDiskInfo = {
+                        .Link =
+                            {.LinkUUID = "link-id",
+                             .LeaderDiskId = "vol1",
+                             .LeaderCellId = "leader-cell",
+                             .FollowerDiskId = "vol2",
+                             .FollowerCellId = "follower-cell"},
+                        .CreatedAt = TInstant::Now(),
+                        .State = persistedState,
+                        .MediaKind = NProto::STORAGE_MEDIA_SSD}}));
+
+        fixture.Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // DiskRegistry-based leader.
+        CheckRequestForwardedToLeaderPartition<
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest>(
+            *fixture.Runtime,
+            followerDiskActor,
+            leaderPartitionActor,
+            1);
+
+        // BlobStorage-based leader.
+        CheckRequestForwardedToLeaderPartition<
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest>(
+            *fixture.Runtime,
+            followerDiskActor,
+            leaderPartitionActor,
+            2);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldForwardPullStatisticsRequestsToLeaderPartitionWhilePreparing,
+        TFixture)
+    {
+        DoShouldForwardPullStatisticsRequestsToLeaderPartition(
+            *this,
+            TFollowerDiskInfo::EState::Preparing);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldForwardPullStatisticsRequestsToLeaderPartitionWhenDataReady,
+        TFixture)
+    {
+        DoShouldForwardPullStatisticsRequestsToLeaderPartition(
+            *this,
+            TFollowerDiskInfo::EState::DataReady);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldForwardPullStatisticsRequestsToLeaderPartitionWhenLeadershipTransferred,
+        TFixture)
+    {
+        DoShouldForwardPullStatisticsRequestsToLeaderPartition(
+            *this,
+            TFollowerDiskInfo::EState::LeadershipTransferred);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldForwardPullStatisticsRequestsToLeaderPartitionInErrorState,
+        TFixture)
+    {
+        DoShouldForwardPullStatisticsRequestsToLeaderPartition(
+            *this,
+            TFollowerDiskInfo::EState::Error);
+    }
+
+    void DoShouldPullLeaderStatisticsWhileFollowerIsPreparing(
+        TFixture& fixture,
+        NProto::EStorageMediaKind leaderMediaType,
+        NProto::EStorageMediaKind followerMediaType)
+    {
+        auto& runtime = *fixture.Runtime;
+
+        std::optional<TFollowerDiskInfo::EState> followerState;
+        auto followerStateObserver = runtime.AddObserver<
+            TEvVolumePrivate::TEvUpdateFollowerStateResponse>(
+            [&](TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev)
+            { followerState = ev->Get()->Follower.State; });
+
+        TVolumeClient volume1(runtime, 0, TestVolumeTablets[0]);
+        volume1.CreateVolume(volume1.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            leaderMediaType,
+            fixture.VolumeBlockCount,
+            "vol1"));
+        volume1.WaitReady();
+
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume1.AddClient(clientInfo1);
+        fixture.Volumes["vol1"] = {
+            .VolumeClient = &volume1,
+            .VolumeClientInfo = &clientInfo1};
+
+        TVolumeClient volume2(runtime, 0, TestVolumeTablets[1]);
+        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            followerMediaType,
+            fixture.VolumeBlockCount,
+            "vol2"));
+        volume2.WaitReady();
+        fixture.Volumes["vol2"] = {
+            .VolumeClient = &volume2,
+            .VolumeClientInfo = nullptr};
+
+        TLeaderFollowerLink link{
+            .LinkUUID = "",
+            .LeaderDiskId = "vol1",
+            .LeaderCellId = "su1",
+            .FollowerDiskId = "vol2",
+            .FollowerCellId = "su2"};
+        volume1.LinkLeaderVolumeToFollower(link);
+        UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::Preparing, followerState);
+
+        // The partitions were restarted to wrap them with the follower actor.
+        volume1.ReconnectPipe();
+        volume1.AddClient(clientInfo1);
+
+        UNIT_ASSERT(fixture.WriteBlocks(TBlockRange64::MakeOneBlock(0)));
+
+        ui32 followerDiskRequestCount = 0;
+        ui32 followerPartitionRequestCount = 0;
+        auto onRequest = [&](const TActorId& recipient)
+        {
+            auto* actor = runtime.FindActor(recipient);
+            if (dynamic_cast<TFollowerDiskActor*>(actor)) {
+                ++followerDiskRequestCount;
+            }
+            if (dynamic_cast<TVolumeAsPartitionActor*>(actor)) {
+                ++followerPartitionRequestCount;
+            }
+        };
+        auto requestObserver = runtime.AddObserver<
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest>(
+            [&](TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev)
+            { onRequest(ev->GetRecipientRewrite()); });
+        auto drRequestObserver =
+            runtime.AddObserver<TEvNonreplPartitionPrivate::
+                                    TEvGetDiskRegistryBasedPartCountersRequest>(
+                [&](TEvNonreplPartitionPrivate::
+                        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev)
+                { onRequest(ev->GetRecipientRewrite()); });
+
+        TStringBuilder errors;
+        auto responseObserver = runtime.AddObserver<
+            TEvPartitionCommonPrivate::TEvPartCountersCombined>(
+            [&](TEvPartitionCommonPrivate::TEvPartCountersCombined::TPtr& ev)
+            {
+                if (HasError(ev->Get()->Error)) {
+                    errors << FormatError(ev->Get()->Error) << "; ";
+                }
+            });
+        auto drResponseObserver = runtime.AddObserver<
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersResponse>(
+            [&](TEvNonreplPartitionPrivate::
+                    TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev)
+            {
+                if (HasError(ev->Get()->Error)) {
+                    errors << FormatError(ev->Get()->Error) << "; ";
+                }
+            });
+
+        volume1.SendToPipe(std::make_unique<
+                           TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        TAutoPtr<IEventHandle> handle;
+        auto* response = runtime.GrabEdgeEventRethrow<
+            TEvStatsService::TEvGetServiceStatisticsResponse>(
+            handle,
+            TDuration::Seconds(5));
+        UNIT_ASSERT(handle);
+
+        // Make sure the statistics were pulled while the data was transferring.
+        UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::Preparing, followerState);
+
+        UNIT_ASSERT_LT(0, followerDiskRequestCount);
+        // The follower volume reports its own statistics.
+        UNIT_ASSERT_VALUES_EQUAL(0, followerPartitionRequestCount);
+        UNIT_ASSERT_C(errors.empty(), errors);
+
+        ui64 writeBytes = 0;
+        for (const auto& partCounters: response->PartsCounters) {
+            UNIT_ASSERT_VALUES_EQUAL("vol1", partCounters.DiskId);
+            writeBytes += partCounters.DiskCounters->RequestCounters.WriteBlocks
+                              .RequestBytes;
+        }
+        UNIT_ASSERT_LE(DefaultBlockSize, writeBytes);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPullLeaderStatisticsWhileFollowerIsPreparing_SSD_NRD,
+        TPullStatisticsFixture)
+    {
+        DoShouldPullLeaderStatisticsWhileFollowerIsPreparing(
+            *this,
+            NProto::STORAGE_MEDIA_SSD,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldPullLeaderStatisticsWhileFollowerIsPreparing_NRD_SSD,
+        TPullStatisticsFixture)
+    {
+        DoShouldPullLeaderStatisticsWhileFollowerIsPreparing(
+            *this,
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            NProto::STORAGE_MEDIA_SSD);
     }
 }
 
