@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -123,3 +124,42 @@ def test_dumpevents_output_is_preserved_on_failure(tmp_path):
     output_files = list(tmp_path.iterdir())
     assert len(output_files) == 1
     assert output_files[0].read_text() == dump
+
+
+@pytest.mark.parametrize("close_early", [False, True])
+def test_dump_file_stays_linked_until_reader_closes(tmp_path, close_early):
+    dump = _event_line("ReadData", "{node_id=1}") * 2
+    writer = _execute_writer(dump)
+    outputs = []
+
+    def execute(command, **kwargs):
+        outputs.append(kwargs["stdout"])
+        return writer(command, **kwargs)
+
+    with mock.patch.object(
+        profile_log.common,
+        "output_path",
+        return_value=str(tmp_path),
+    ), mock.patch.object(
+        profile_log.common,
+        "execute",
+        side_effect=execute,
+    ):
+        events = profile_log.iter_profile_log_events(
+            "/test/filestore-profile-tool",
+            "/test/profile.log",
+            "nfs_test",
+        )
+        try:
+            assert next(events).request_type == "ReadData"
+            output = outputs[0]
+            assert not output.closed
+            assert Path(output.name).exists()
+            if not close_early:
+                assert len(list(events)) == 1
+        finally:
+            events.close()
+
+    assert output.closed
+    assert not Path(output.name).exists()
+    assert list(tmp_path.iterdir()) == []
