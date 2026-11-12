@@ -1248,6 +1248,13 @@ STFUNC(TVolumeActor::StateWork)
             HandleDestroyOutdatedLeaderVolumeResponse);
 
         HFunc(
+            TEvService::TEvRemoveTagsResponse,
+            HandleRemoveSourceDiskIdTagResponse);
+        HFunc(
+            TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag,
+            HandleRetryRemoveSourceDiskIdTag);
+
+        HFunc(
             TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted,
             HandleDiskRegistryDeviceOperationStarted);
 
@@ -1339,6 +1346,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
+        IgnoreFunc(TEvService::TEvRemoveTagsResponse);
+        IgnoreFunc(TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag);
         IgnoreFunc(TEvNonreplPartitionPrivate::
                        TEvGetDiskRegistryBasedPartCountersResponse);
         HFunc(
