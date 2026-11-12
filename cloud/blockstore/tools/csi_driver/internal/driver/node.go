@@ -458,7 +458,6 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, zoneId string) uint
 	endpointsCount := math.MaxInt32
 	nbsClientIndex := uint(0)
 	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
-
 		listEndpointsResp, err := s.nbsClients[index].ListEndpoints(ctx,
 			&nbsapi.TListEndpointsRequest{})
 		if err != nil {
