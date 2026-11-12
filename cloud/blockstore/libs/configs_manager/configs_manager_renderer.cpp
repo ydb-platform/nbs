@@ -142,6 +142,8 @@ NProto::TBlockstoreConfig BuildEffectiveConfig(
         currentConfig.GetCellsConfig()->GetCellsConfig());
     config.MutableLocalNVMe()->CopyFrom(
         currentConfig.GetLocalNVMeConfig()->GetConfigProto());
+    config.MutableVolumeThrottling()->CopyFrom(
+        *currentConfig.GetVolumeThrottlingConfig());
     return config;
 }
 

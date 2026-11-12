@@ -10,6 +10,7 @@ SRCS(
     opaque_config_parser.cpp
     sections_update.cpp
     sections_update/features.cpp
+    sections_update/volume_throttling.cpp
 )
 
 PEERDIR(
@@ -27,6 +28,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_registry_proxy/model
+    cloud/blockstore/libs/storage/volume_throttling_manager/model
     cloud/blockstore/libs/ydbstats
     cloud/storage/core/libs/common
     cloud/storage/core/libs/config

@@ -70,6 +70,7 @@ struct TConfigInitializerYdb final
     NProto::TGrpcClientConfig ComputeClientConfig;
     NProto::TRootKmsConfig RootKmsConfig;
     TLocalNVMeConfigPtr LocalNVMeConfig;
+    NProto::TVolumeThrottlingServiceConfig VolumeThrottlingConfig;
 
     TConfigInitializerYdb(TOptionsYdbPtr options);
 
@@ -83,6 +84,7 @@ struct TConfigInitializerYdb final
     void InitRootKmsConfig();
     void InitComputeClientConfig();
     void InitLocalNVMeConfig();
+    void InitVolumeThrottlingConfig();
 
     // Return current configuration as TBlockstoreConfig
     NProto::TBlockstoreConfig GetCurrentBlockstoreConfig() const;
