@@ -22,9 +22,7 @@ def _expand_placeholders(config_path):
     if expanded == content:
         return config_path
 
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False, dir=common.output_path()
-    )
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir=common.output_path())
     tmp.write(expanded)
     tmp.close()
     return tmp.name
@@ -36,13 +34,13 @@ def _disable_index_consistency_validation(config_path):
 
     for test in config.Tests:
         if test.HasField("LoadTest"):
-            logger.info(f"Disabling IndexConsistencyValidation for test='{test.LoadTest.Name or '<empty>'}' "
-                         "because sanitizer is enabled")
+            logger.info(
+                f"Disabling IndexConsistencyValidation for test='{test.LoadTest.Name or '<empty>'}' "
+                "because sanitizer is enabled"
+            )
             test.LoadTest.IndexConsistencyValidation.Enabled = False
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", dir=common.output_path(), delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", dir=common.output_path(), delete=False) as f:
         f.write(text_format.MessageToString(config))
         return f.name
 
