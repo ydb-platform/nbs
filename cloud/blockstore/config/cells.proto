@@ -12,7 +12,7 @@ enum ECellDataTransport
 {
     CELL_DATA_TRANSPORT_UNSET = 0;
     CELL_DATA_TRANSPORT_GRPC = 1;
-    CELL_DATA_TRANSPORT_NBD = 2;
+    CELL_DATA_TRANSPORT_ICV2 = 2;
     CELL_DATA_TRANSPORT_RDMA = 3;
 };
 
@@ -55,12 +55,13 @@ message TCellConfig
     // whose configured hosts are all down.
     optional uint32 MinCellConnections = 10;
 
-    // While the RDMA data endpoint is unavailable - either because it has not
-    // been set up yet or because the connection broke - serve data over gRPC.
+    // While the RDMA or IC V2 data endpoint is unavailable - either because
+    // it has not been set up yet or because the connection broke - serve data
+    // over gRPC.
     optional bool GrpcDataFallbackEnabled = 11;
 
-    // How long an RDMA connection that has dropped once has to stay up again
-    // before data is moved back onto it, in milliseconds.
+    // How long an RDMA or IC V2 connection that has dropped once has to stay
+    // up again before data is moved back onto it, in milliseconds.
     optional uint32 RdmaSettleTime = 12;
 
     // HostMigrationEnabled: the hosts are always watched over gRPC now, and a

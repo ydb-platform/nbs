@@ -260,6 +260,8 @@ TString DescribeTransport(
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             return grpcDataFallbackEnabled ? "rdma + grpc fallback" : "rdma";
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
+            return grpcDataFallbackEnabled ? "icv2 + grpc fallback" : "icv2";
         default:
             return "unknown";
     }
@@ -415,7 +417,7 @@ void RenderCells(
 
 TStringBuf TransportLabelKind(const TString& transport)
 {
-    if (transport == "rdma") {
+    if (transport == "rdma" || transport == "icv2") {
         return "success";
     }
     if (transport == "grpc fallback") {
@@ -433,16 +435,17 @@ void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
         << "<select name='Transport' class='form-control input-sm'>";
     constexpr std::array transports = {
         NProto::CELL_DATA_TRANSPORT_GRPC,
-        NProto::CELL_DATA_TRANSPORT_RDMA};
-    constexpr std::array names = {"gRPC", "RDMA"};
+        NProto::CELL_DATA_TRANSPORT_RDMA,
+        NProto::CELL_DATA_TRANSPORT_ICV2};
+    constexpr std::array names = {"gRPC", "RDMA", "IC V2"};
     for (size_t i = 0; i < transports.size(); ++i) {
         out << "<option value='"
             << NProto::ECellDataTransport_Name(transports[i]) << "'";
         if (mount.SelectedTransport == transports[i]) {
             out << " selected";
         }
-        if (transports[i] == NProto::CELL_DATA_TRANSPORT_RDMA &&
-            !mount.CanSelectRdma)
+        if (UsesEndpointHandler(transports[i]) &&
+            !mount.GrpcDataFallbackEnabled)
         {
             out << " disabled title='Requires gRPC data fallback'";
         }
@@ -461,9 +464,8 @@ void RenderMounts(
            "cells</small></h3>"
         << "<p class='text-muted'>Transport selection applies to this "
            "disk/client "
-           "on this node until the connection closes. RDMA keeps its "
-           "configured "
-           "gRPC fallback policy.</p>";
+           "on this node until the connection closes. RDMA and IC V2 keep "
+           "the configured gRPC fallback policy.</p>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
         return;
@@ -676,7 +678,7 @@ private:
                 params.Get("Transport"),
                 &transport) ||
             (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
-             transport != NProto::CELL_DATA_TRANSPORT_RDMA) ||
+             !UsesEndpointHandler(transport)) ||
             params.Get("ConnectionId").empty())
         {
             ReplyTransportChanged(
@@ -685,7 +687,7 @@ private:
                 ev->Cookie,
                 MakeError(
                     E_ARGUMENT,
-                    "Expected POST with connection and gRPC/RDMA "
+                    "Expected POST with connection and gRPC/RDMA/IC V2 "
                     "transport"));
             return;
         }

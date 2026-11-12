@@ -18,6 +18,15 @@ namespace NCloud::NBlockStore::NCells {
 
 class TCellConfig;
 
+// RDMA and IC V2 keep a connection to the host and report its state through
+// a handler, which is what the gRPC data fallback and the moves away from a
+// host whose link will not come up are built on. gRPC has nothing to report.
+inline bool UsesEndpointHandler(NProto::ECellDataTransport transport)
+{
+    return transport == NProto::CELL_DATA_TRANSPORT_RDMA ||
+           transport == NProto::CELL_DATA_TRANSPORT_ICV2;
+}
+
 struct TCellHostConfig
 {
 private:

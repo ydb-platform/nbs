@@ -109,16 +109,26 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TPromise<IBlockStorePtr> DeferredSetupPromise =
         NewPromise<IBlockStorePtr>();
 
+    // IC V2 is served the way rdma is below: the endpoint comes back before
+    // it has connected and the handler is how its state is reported
+    NCloud::IClientEndpointHandlerPtr IcV2Handler;
+    THashMap<TString, std::shared_ptr<TTestBlockStore>> IcV2Services;
+
     TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         NCloud::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
-        Y_UNUSED(config);
-        Y_UNUSED(handler);
 
-        return MakeError(E_NOT_IMPLEMENTED, "IC V2 is not used in this test");
+        IcV2Handler = std::move(handler);
+
+        auto& service = IcV2Services[config.GetFqdn()];
+        if (!service) {
+            service = std::make_shared<TTestBlockStore>();
+        }
+
+        return TResultOrError<IBlockStorePtr>(IBlockStorePtr(service));
     }
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
@@ -570,7 +580,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
             count + 1);
         const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
         UNIT_ASSERT_VALUES_EQUAL(mounts.size(), 1);
-        UNIT_ASSERT(!mounts[0].CanSelectRdma);
+        UNIT_ASSERT(!mounts[0].GrpcDataFallbackEnabled);
         UNIT_ASSERT_VALUES_EQUAL(mounts[0].DataTransport, "grpc");
     }
 
@@ -2087,6 +2097,119 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL("host-b", connection->GetHost());
         UNIT_ASSERT_VALUES_EQUAL(1, counters.NoMigrationTarget->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, counters.HostsUnavailable->Val());
+    }
+
+    Y_UNIT_TEST(ShouldServeDataOverGrpcWhileIcV2IsBeingSetUp)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_ICV2, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+
+        const auto grpcRequests = env.GrpcClient->Service->RequestCount;
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            grpcRequests + 1,
+            env.GrpcClient->Service->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.EndpointsSetup->IcV2Services["host-a"]->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "grpc fallback",
+            GetCellMounts(*env.Bootstrap.Connections)[0].DataTransport);
+
+        UNIT_ASSERT(env.EndpointsSetup->IcV2Handler);
+        env.EndpointsSetup->IcV2Handler->HandleConnected();
+
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.EndpointsSetup->IcV2Services["host-a"]->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "icv2",
+            GetCellMounts(*env.Bootstrap.Connections)[0].DataTransport);
+
+        // and back the moment the link breaks
+        env.EndpointsSetup->IcV2Handler->HandleDisconnected();
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.EndpointsSetup->IcV2Services["host-a"]->RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            grpcRequests + 2,
+            env.GrpcClient->Service->RequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldServeDataOverIcV2FromTheStartWithoutFallback)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_ICV2, false);
+        auto connection = env.Connect("host-a");
+
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.EndpointsSetup->IcV2Services["host-a"]->RequestCount);
+        UNIT_ASSERT(!env.EndpointsSetup->RdmaHandler);
+    }
+
+    Y_UNIT_TEST(ShouldMoveAwayWhenIcV2WillNotComeUpWithoutFallback)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_ICV2, false, 0, true);
+        auto connection = env.Connect("host-a");
+
+        UNIT_ASSERT(env.EndpointsSetup->IcV2Handler);
+        env.EndpointsSetup->IcV2Handler->HandleUnavailable();
+
+        UNIT_ASSERT_VALUES_EQUAL("host-b", connection->GetHost());
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.EndpointsSetup->IcV2Services["host-b"]->RequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldSwitchAMountOntoIcV2ByHand)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, true, 0, true);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_ICV2);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL("grpc fallback", mounts[0].DataTransport);
+        UNIT_ASSERT(
+            mounts[0].SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2);
+
+        UNIT_ASSERT(env.EndpointsSetup->IcV2Handler);
+        env.EndpointsSetup->IcV2Handler->HandleConnected();
+        TTestEnv::Read(connection);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.EndpointsSetup->IcV2Services["host-a"]->RequestCount);
+        UNIT_ASSERT(!env.EndpointsSetup->RdmaHandler);
+
+        // the choice survives a move to another host
+        env.Pool->SetHostAlive("host-a", false);
+        UNIT_ASSERT_VALUES_EQUAL("host-b", connection->GetHost());
+        mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT(
+            mounts[0].SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2);
+    }
+
+    Y_UNIT_TEST(ShouldRejectManualIcV2WithoutFallback)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false);
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "client");
+
+        const auto error =
+            env.Switch("disk", "client", NProto::CELL_DATA_TRANSPORT_ICV2);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        UNIT_ASSERT(!env.EndpointsSetup->IcV2Handler);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "grpc",
+            GetCellMounts(*env.Bootstrap.Connections)[0].DataTransport);
     }
 }
 

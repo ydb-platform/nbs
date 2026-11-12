@@ -65,11 +65,12 @@ struct TCellMountStatus
     TString ClientId;
     TString CellId;
     TString Host;            // the cell host the connection is on now
-    TString DataTransport;   // selected route, or RDMA's active gRPC fallback
+    TString DataTransport;   // selected route, or the active gRPC fallback
     TString TabletHost;      // where the mount found the volume tablet
     NProto::ECellDataTransport SelectedTransport =
         NProto::CELL_DATA_TRANSPORT_UNSET;
-    bool CanSelectRdma = false;
+    // what a manual switch onto RDMA or IC V2 requires
+    bool GrpcDataFallbackEnabled = false;
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no
