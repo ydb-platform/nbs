@@ -2,7 +2,7 @@
 
 #include "host_pool.h"
 
-#include <cloud/blockstore/libs/discovery/public.h>
+#include <cloud/blockstore/libs/cells/iface/eds_host_fetcher.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -26,7 +26,7 @@ class TCellHostDiscovery
 {
 private:
     const TCellHostPoolPtr Pool;
-    const NDiscovery::IEdsInstanceFetcherPtr Fetcher;
+    const IEdsHostFetcherPtr Fetcher;
     const TVector<TString> Patterns;
     const TDuration Interval;
     const ITimerPtr Timer;
@@ -39,7 +39,7 @@ private:
 public:
     TCellHostDiscovery(
         TCellHostPoolPtr pool,
-        NDiscovery::IEdsInstanceFetcherPtr fetcher,
+        IEdsHostFetcherPtr fetcher,
         TVector<TString> patterns,
         TDuration interval,
         ITimerPtr timer,

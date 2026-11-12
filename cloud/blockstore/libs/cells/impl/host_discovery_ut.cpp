@@ -1,7 +1,5 @@
 #include "host_discovery.h"
 
-#include <cloud/blockstore/libs/discovery/fetch.h>
-
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -16,7 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestFetcher: public NDiscovery::IEdsInstanceFetcher
+struct TTestFetcher: public IEdsHostFetcher
 {
     TVector<TString> Hosts;
     NProto::TError Error;
@@ -27,14 +25,6 @@ struct TTestFetcher: public NDiscovery::IEdsInstanceFetcher
 
     void Stop() override
     {}
-
-    TFuture<NProto::TError> FetchInstances(
-        NDiscovery::TInstanceList& instances) override
-    {
-        Y_UNUSED(instances);
-        UNIT_FAIL("the cells never ask for instances");
-        return {};
-    }
 
     TFuture<TResultOrError<TVector<TString>>> FetchHosts(
         TVector<TString> hostPatterns) override

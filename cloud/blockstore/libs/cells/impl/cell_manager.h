@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/icv2/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -27,6 +26,6 @@ ICellManagerPtr CreateCellManager(
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
     IBlockStorePtr localService,
-    NDiscovery::IEdsInstanceFetcherPtr edsFetcher = {});
+    IEdsHostFetcherPtr edsFetcher = {});
 
 }   // namespace NCloud::NBlockStore::NCells

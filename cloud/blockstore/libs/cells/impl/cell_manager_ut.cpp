@@ -5,6 +5,7 @@
 #include "mon.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/eds_host_fetcher.h>
 #include <cloud/blockstore/libs/cells/iface/inbound_activity.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -12,7 +13,6 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore/libs/discovery/fetch.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -974,10 +974,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             .AddCell("uvw", 9001, 0, 1, 1, {"host-b"})
             .Build();
         cfg.MutableEds()->SetEndpoint("eds:1");
+        cfg.MutableEds()->SetRequestInterval(3600'000);
         cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
 
         TBootstrap bootstrap{
-            .EdsFetcher = NDiscovery::CreateEdsInstanceFetcherStub()};
+            .EdsFetcher = CreateEdsHostFetcherStub()};
         TCellManager manager(
             std::make_shared<TCellsConfig>(std::move(cfg)),
             bootstrap);
@@ -985,11 +986,28 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, manager.HostDiscoveries.size());
     }
 
+    Y_UNIT_TEST(ShouldLeaveEdsOffWithoutARequestInterval)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-a"})
+            .Build();
+        cfg.MutableEds()->SetEndpoint("eds:1");
+        cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
+
+        // the default: patterns and an endpoint alone do not switch it on
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(std::move(cfg)),
+            TBootstrap{});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, manager.HostDiscoveries.size());
+    }
+
     Y_UNIT_TEST(ShouldRefuseEdsPatternsWithoutAFetcher)
     {
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-a"})
             .Build();
+        cfg.MutableEds()->SetRequestInterval(3600'000);
         cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
 
         UNIT_ASSERT_EXCEPTION(

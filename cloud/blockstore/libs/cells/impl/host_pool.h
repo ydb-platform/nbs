@@ -106,6 +106,11 @@ private:
         ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture Endpoint;
         ui32 RefCount = 0;
         bool Configured = false;
+        // discovery listed it once and does not any more: the operator is
+        // taking it out, so nothing new is placed or moved onto it, however
+        // well it answers. A mount naming it as the tablet host still goes
+        // there, that path does not pick
+        bool Retired = false;
         EHostLiveness Liveness = EHostLiveness::Unknown;
         TVector<std::weak_ptr<ICellHostWatcher>> Watchers;
     };
@@ -147,9 +152,8 @@ public:
 
     // The hosts discovery lists for the cell right now. They are configured
     // hosts like the ones from TCellConfig, which stay whatever discovery
-    // says. A host no longer listed is treated like a discovered one from
-    // here on: dropped at once if nothing was ever built for it, otherwise
-    // once nobody holds it.
+    // says. A host no longer listed is retired: never picked again, not
+    // counted as a live channel, dropped as soon as nobody holds it.
     void UpdateConfiguredHosts(const TVector<TString>& fqdns);
 
     // Both return true if this changed the liveness of the host. The error

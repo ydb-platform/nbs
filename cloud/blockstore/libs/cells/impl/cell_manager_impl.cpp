@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
-#include <cloud/blockstore/libs/discovery/fetch.h>
+#include <cloud/blockstore/libs/cells/iface/eds_host_fetcher.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -41,15 +41,12 @@ TCellManager::TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap)
             std::make_shared<TCellHostPool>(cell.second, Bootstrap));
     }
 
-    // hosts join and leave a cell rarely: an hour unless told otherwise, not
-    // the discovery service's five minutes
-    const auto& eds = Config->GetEds();
-    const auto interval = eds.HasRequestInterval()
-        ? TDuration::MilliSeconds(eds.GetRequestInterval())
-        : TDuration::Hours(1);
+    // no interval, no EDS: the cells live on their static lists
+    const auto interval =
+        TDuration::MilliSeconds(Config->GetEds().GetRequestInterval());
     for (const auto& [cellId, cell]: Config->GetCells()) {
         auto patterns = cell->GetEdsHostPatterns();
-        if (patterns.empty()) {
+        if (!interval || patterns.empty()) {
             continue;
         }
 
@@ -331,7 +328,7 @@ ICellManagerPtr CreateCellManager(
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
     IBlockStorePtr localService,
-    NDiscovery::IEdsInstanceFetcherPtr edsFetcher)
+    IEdsHostFetcherPtr edsFetcher)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());

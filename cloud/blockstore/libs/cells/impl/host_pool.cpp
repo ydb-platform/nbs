@@ -112,7 +112,7 @@ TResultOrError<TCellHostConfig> TCellHostPool::PickHostImpl(
 
     with_lock (Lock) {
         for (const auto& [fqdn, channel]: Channels) {
-            if (channel.Liveness == EHostLiveness::Dead ||
+            if (channel.Liveness == EHostLiveness::Dead || channel.Retired ||
                 except.contains(fqdn))
             {
                 continue;
@@ -399,8 +399,10 @@ size_t TCellHostPool::CountLiveChannelsLocked(const TString& except) const
     size_t count = 0;
     for (const auto& [fqdn, channel]: Channels) {
         // an entry exists for every configured host from the moment the pool
-        // is built; what makes it a connection is having been set up
-        if (channel.Liveness != EHostLiveness::Dead &&
+        // is built; what makes it a connection is having been set up. A
+        // retired host is not counted: nothing can be placed on it, so it
+        // covers nobody
+        if (channel.Liveness != EHostLiveness::Dead && !channel.Retired &&
             channel.Endpoint.Initialized() && fqdn != except)
         {
             ++count;
@@ -543,10 +545,12 @@ void TCellHostPool::UpdateConfiguredHosts(const TVector<TString>& fqdns)
 
         THashSet<TString> listed(fqdns.begin(), fqdns.end());
         for (const auto& fqdn: listed) {
-            Channels[fqdn].Configured = true;
+            auto& channel = Channels[fqdn];
+            channel.Configured = true;
+            channel.Retired = false;
         }
 
-        TVector<TString> unbuilt;
+        TVector<TString> unheld;
         for (auto& [fqdn, channel]: Channels) {
             if (!channel.Configured || listed.contains(fqdn) ||
                 Config->GetHosts().contains(fqdn))
@@ -555,16 +559,17 @@ void TCellHostPool::UpdateConfiguredHosts(const TVector<TString>& fqdns)
             }
 
             channel.Configured = false;
-            if (!channel.Endpoint.Initialized() && !channel.RefCount) {
-                unbuilt.push_back(fqdn);
+            channel.Retired = true;
+            // nothing may be placed on it, so a channel nobody holds has no
+            // one left to serve
+            if (!channel.RefCount) {
+                unheld.push_back(fqdn);
             }
         }
-        for (const auto& fqdn: unbuilt) {
+        for (const auto& fqdn: unheld) {
             Channels.erase(fqdn);
         }
 
-        // the rest of the unlisted hosts follow the discovered hosts' rules
-        PruneRetainedDiscoveredLocked();
         TopUpWarmChannelsLocked();
 
         *Counters.HostsConfigured = CountIf(
@@ -582,18 +587,37 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
     TCellHostEndpoints result;
 
     with_lock (Lock) {
-        // two passes: a describe goes to configured hosts while any of them
-        // answers, and only falls back to what we heard about at runtime
+        // a describe goes to configured hosts while any of them answers, and
+        // only falls back to what we heard about at runtime. Within each, a
+        // host that answered a ping comes first, then one with a channel
+        // nobody has asked yet, and a cold one last: discovery can list
+        // hundreds of hosts nobody has talked to, and building a channel to
+        // a random one of them while a verified host is right there would
+        // make a describe fail on every one of them that is down
+        const auto rank = [](const TChannel& channel)
+        {
+            if (channel.Liveness == EHostLiveness::Alive) {
+                return 0;
+            }
+            return channel.Endpoint.Initialized() ? 1 : 2;
+        };
+
         for (bool configured: {true, false}) {
-            for (auto& [fqdn, channel]: Channels) {
+            TVector<std::pair<int, TString>> candidates;
+            for (const auto& [fqdn, channel]: Channels) {
+                if (channel.Configured == configured &&
+                    channel.Liveness != EHostLiveness::Dead && !channel.Retired)
+                {
+                    candidates.emplace_back(rank(channel), fqdn);
+                }
+            }
+            StableSort(
+                candidates,
+                [](const auto& l, const auto& r) { return l.first < r.first; });
+
+            for (const auto& [_, fqdn]: candidates) {
                 if (!count) {
                     break;
-                }
-
-                if (channel.Configured != configured ||
-                    channel.Liveness == EHostLiveness::Dead)
-                {
-                    continue;
                 }
 
                 try {
@@ -653,7 +677,8 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
         // leave the pool short of live channels, it is kept: it is then the
         // only way back into a cell whose configured hosts are all down.
         if (!channel.Configured && channel.RefCount == 0 &&
-            CountLiveChannelsLocked(fqdn) >= Config->GetMinCellConnections())
+            (channel.Retired ||
+             CountLiveChannelsLocked(fqdn) >= Config->GetMinCellConnections()))
         {
             Channels.erase(it);
             UpdateHostsUnavailableLocked();

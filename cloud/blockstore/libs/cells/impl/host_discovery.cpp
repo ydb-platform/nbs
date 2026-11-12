@@ -1,7 +1,5 @@
 #include "host_discovery.h"
 
-#include <cloud/blockstore/libs/discovery/fetch.h>
-
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -15,7 +13,7 @@ using namespace NThreading;
 
 TCellHostDiscovery::TCellHostDiscovery(
         TCellHostPoolPtr pool,
-        NDiscovery::IEdsInstanceFetcherPtr fetcher,
+        IEdsHostFetcherPtr fetcher,
         TVector<TString> patterns,
         TDuration interval,
         ITimerPtr timer,

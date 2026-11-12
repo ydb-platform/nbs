@@ -24,7 +24,6 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/icv2/iface
     cloud/blockstore/libs/diagnostics
-    cloud/blockstore/libs/discovery
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
 

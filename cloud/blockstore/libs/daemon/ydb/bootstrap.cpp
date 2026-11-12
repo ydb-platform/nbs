@@ -4,6 +4,7 @@
 #include "options.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/eds_host_fetcher.h>
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
@@ -308,7 +309,12 @@ TServerModuleFactories::TServerModuleFactories()
 
     EdsInstanceFetcherFactory = [](auto...)
     {
-        return NDiscovery::CreateEdsInstanceFetcherStub();
+        return NDiscovery::CreateInstanceFetcherStub();
+    };
+
+    CellsEdsHostFetcherFactory = [](auto...)
+    {
+        return NCells::CreateEdsHostFetcherStub();
     };
 
     ComputeClientFactory = [](auto...)
@@ -1157,10 +1163,14 @@ void TBootstrapYdb::SetupCellManager()
 
         // its own fetcher: the cells list their own patterns, and the
         // discovery service may well not be running at all
-        NDiscovery::IEdsInstanceFetcherPtr edsFetcher;
-        if (BootstrapConfig->CellsConfig->GetEds().GetEndpoint()) {
-            edsFetcher = ServerModuleFactories->EdsInstanceFetcherFactory(
-                BootstrapConfig->CellsConfig->GetEds(),
+        NCells::IEdsHostFetcherPtr edsFetcher;
+        const auto& eds = BootstrapConfig->CellsConfig->GetEds();
+        if (eds.GetRequestInterval()) {
+            Y_ENSURE(
+                eds.GetEndpoint(),
+                "Cells EDS has a RequestInterval but no Endpoint");
+            edsFetcher = ServerModuleFactories->CellsEdsHostFetcherFactory(
+                eds,
                 Logging,
                 Monitoring);
         }

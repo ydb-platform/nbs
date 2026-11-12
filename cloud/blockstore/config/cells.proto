@@ -108,9 +108,10 @@ message TCellsConfig
     // Enable/Disable feature
     optional bool CellsEnabled = 6;
 
-    // EDS used to resolve EdsHostPatterns of the cells. HostPatterns,
-    // InstancePort and SecureInstancePort are not used here: the patterns
-    // come from each cell, the ports from its TCellConfig. RequestInterval
-    // defaults to an hour here, spread by up to half of it either way.
+    // EDS used to resolve EdsHostPatterns of the cells. Off unless
+    // RequestInterval is set: that is how often each cell is asked, spread
+    // by up to half of it either way; an hour is a sensible value.
+    // HostPatterns, InstancePort and SecureInstancePort are not used here:
+    // the patterns come from each cell, the ports from its TCellConfig.
     optional TEdsConfig Eds = 7;
 }
