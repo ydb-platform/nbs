@@ -267,8 +267,8 @@ void BuildGroupsInfoForUpload(
         }
     };
 
-    for (const auto& [_, tabletChannels]: volume.VolumeChannelInfos) {
-        addChannels(tabletChannels.first, tabletChannels.second);
+    for (const auto& [_, tabletChannels]: volume.VolumeChannelsByDiskId) {
+        addChannels(tabletChannels.TabletId, tabletChannels.Channels);
     }
     for (const auto& [partitionTabletId, channels]: volume.ChannelInfos) {
         addChannels(partitionTabletId, channels);

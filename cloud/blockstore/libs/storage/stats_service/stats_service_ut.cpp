@@ -1730,6 +1730,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4)));
         UNIT_ASSERT(!groups.contains(
             std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+
+        auto expectedGroups = groups;
+        expectedGroups.erase(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4));
+        groups.clear();
+        partitions.clear();
+        RegisterVolume(runtime, "vol0", 40, {});
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT(groups == expectedGroups);
+        UNIT_ASSERT(partitions == expectedPartitions);
     }
 
     Y_UNIT_TEST(ShouldSplitRowsIntoMultipleRequests)
