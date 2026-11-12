@@ -631,6 +631,9 @@ private:
         auto& headers = *Request->MutableHeaders();
 
         auto now = TInstant::Now();
+        // Capture server wall time; CPU cycle counts have no Unix epoch.
+        ProfileLogRecord.Request.SetTimestampMcs(now.MicroSeconds());
+
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
         if (!timestamp || timestamp > now || now - timestamp > TDuration::Seconds(1)) {
             // fix request timestamp
@@ -813,7 +816,7 @@ private:
             << " #" << RequestId
             << " request completed");
 
-        if (CallContext) {
+        if (CallContext && Started) {
             const ui64 now = GetCycleCount();
             const auto ts = CallContext->CalcRequestTime(now);
 
@@ -835,14 +838,9 @@ private:
 
             AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
 
-            const auto startTs = TInstant::MilliSeconds(
-                CallContext->GetRequestStartedCycles() /
-                GetCyclesPerMillisecond());
-
             ProfileLogRecord.FileSystemId = CallContext->FileSystemId;
 
             auto request = &ProfileLogRecord.Request;
-            request->SetTimestampMcs(startTs.MicroSeconds());
             request->SetDurationMcs(ts.TotalTime.MicroSeconds());
             request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
 
