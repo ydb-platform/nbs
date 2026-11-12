@@ -149,13 +149,24 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 
 	state = readTrackedDisk(t, ctx, db, storage, "disk")
 	require.Equal(t, diskStatusDeleted, state.status)
-	require.False(t, state.tombstone)
+	require.True(t, state.tombstone)
 	require.Equal(t, "[]", state.cleanupTaskIDs)
 	require.False(t, state.deletedAt.Before(beforeCompletion))
 
 	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late", "late")
 	require.NoError(t, err)
 	require.False(t, prepared)
+
+	// The task which created the tombstone may resume after another task has
+	// completed the deletion. It must not clean up a completed deletion.
+	prepared, err = storage.PrepareDiskCleanup(ctx, "disk", "delete", "creator")
+	require.NoError(t, err)
+	require.False(t, prepared)
+	require.Equal(
+		t,
+		"[]",
+		readTrackedDisk(t, ctx, db, storage, "disk").cleanupTaskIDs,
+	)
 
 	// Completed deletion is put into the deleted queue and collected.
 	err = storage.ClearDeletedDisks(ctx, time.Now().Add(time.Second), 100)
@@ -197,6 +208,7 @@ func TestDiskTombstoneClassification(t *testing.T) {
 	}{
 		{"tombstone", diskState{status: diskStatusDeleting, tombstone: true}, true},
 		{"deleting disk", diskState{status: diskStatusDeleting}, false},
+		{"completed tombstone", diskState{status: diskStatusDeleted, tombstone: true, deletedAt: time.Now()}, false},
 		{"completed or legacy placeholder", diskState{status: diskStatusDeleted, deletedAt: time.Now()}, false},
 		{"live", diskState{status: diskStatusReady}, false},
 	} {
