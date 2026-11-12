@@ -637,7 +637,7 @@ func (s *storageYDB) diskDeleted(
 		)
 	}
 
-	err = s.markDiskDeleted(ctx, tx, state, deletedAt)
+	err = s.markDiskDeleted(ctx, tx, diskID, state, deletedAt)
 	if err != nil {
 		return err
 	}
@@ -648,6 +648,7 @@ func (s *storageYDB) diskDeleted(
 func (s *storageYDB) markDiskDeleted(
 	ctx context.Context,
 	tx *persistence.Transaction,
+	diskID string,
 	state diskState,
 	deletedAt time.Time,
 ) error {
@@ -671,7 +672,7 @@ func (s *storageYDB) markDiskDeleted(
 		values ($deleted_at, $disk_id)
 	`, s.disksPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
-		persistence.ValueParam("$disk_id", persistence.UTF8Value(state.id)),
+		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
 	)
 	return err
 }

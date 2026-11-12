@@ -181,7 +181,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 
 	if len(ids) == 0 && diskIsTombstone(state) {
 		// The last cleanup reservation is released: deletion is completed.
-		return s.markDiskDeleted(ctx, tx, state, time.Now())
+		return s.markDiskDeleted(ctx, tx, diskID, state, time.Now())
 	}
 
 	return s.updateDiskState(ctx, tx, state)
