@@ -382,8 +382,11 @@ void TBlobIoCounters::Add(const THistogramRequestCounters& counters)
 {
     ReadBlob.Count += counters.ReadBlob.Count;
     ReadBlob.Bytes += counters.ReadBlob.RequestBytes;
-    WriteBlob.Count += counters.WriteBlob.Count;
-    WriteBlob.Bytes += counters.WriteBlob.RequestBytes;
+
+    // Currently patched blobs are supported as written blobs
+    WriteBlob.Count += counters.WriteBlob.Count + counters.PatchBlob.Count;
+    WriteBlob.Bytes +=
+        counters.WriteBlob.RequestBytes + counters.PatchBlob.RequestBytes;
 }
 
 void TBlobIoCounters::Reset()
