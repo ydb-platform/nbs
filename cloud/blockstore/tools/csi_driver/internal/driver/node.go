@@ -447,14 +447,6 @@ func (s *nodeService) getBackendIndexByZoneId(zoneId string, replicaCount uint) 
 		return 0, nil
 	}
 
-	if backendIndex >= replicaCount {
-		return 0, fmt.Errorf(
-			"Invalid backend index %d for zone %s",
-			backendIndex,
-			zoneId,
-		)
-	}
-
 	return backendIndex, nil
 }
 
