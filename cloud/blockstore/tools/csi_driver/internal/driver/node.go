@@ -432,7 +432,7 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) getBackendIndexByZoneId(zoneId string, replicaCount uint) uint {
+func (s *nodeService) getBackendIndexByZoneId(zoneId string) uint {
 	backendIndex, found := s.zoneIdToBackendIndex[zoneId]
 	if !found {
 		// return 0 if zoneId is not found in the map, as a default backend index
@@ -448,7 +448,7 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, zoneId string) uint
 	}
 
 	if len(s.zoneIdToBackendIndex) > 0 {
-		return s.getBackendIndexByZoneId(zoneId, s.nbsServerReplicaCount)
+		return s.getBackendIndexByZoneId(zoneId)
 	}
 
 	if !s.enableEndpointBalancing {
@@ -479,7 +479,7 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, zoneId string) uint
 	}
 
 	if len(s.zoneIdToBackendIndex) > 0 {
-		return s.getBackendIndexByZoneId(zoneId, s.nfsVhostReplicaCount)
+		return s.getBackendIndexByZoneId(zoneId)
 	}
 
 	if !s.enableEndpointBalancing {
