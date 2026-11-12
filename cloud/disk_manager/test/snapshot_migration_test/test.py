@@ -171,7 +171,7 @@ class _MigrationTestSetup:
         if self.dst_s3 is not None:
             self.dst_s3.stop_service()
 
-    def admin(self, *args: str):
+    def admin(self, *args: str, input=None):
         return subprocess.check_output(
             [
                 self.disk_manager_admin_binary_path,
@@ -179,6 +179,7 @@ class _MigrationTestSetup:
                 "--server-config", self.server_config_path,
                 *args,
             ],
+            input=input,
         ).decode()
 
     def wait_admin_task(self, *args, timeout_sec=360):
@@ -264,6 +265,14 @@ class _MigrationTestSetup:
             "--zone-id", "zone-a",
             "--src-disk-id", src_disk_id,
             "--folder-id", "folder",
+        )
+
+    def delete_snapshot(self, snapshot_id: str):
+        self.admin(
+            "snapshots",
+            "delete",
+            "--id", snapshot_id,
+            input=f"{snapshot_id}\n".encode(),
         )
 
     def create_image_from_snapshot(
@@ -724,3 +733,76 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
                 assert base_snapshot_ids[snapshot_id] == ""
             else:
                 assert base_snapshot_ids[snapshot_id] == [*checksums_by_snapshot_id.keys()][i - 1]
+
+
+@pytest.mark.parametrize("use_s3", [False, True])
+def test_disk_manager_snapshot_database_migration_with_deleted_base_snapshot(
+    use_s3,
+):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3,
+        use_s3_as_dst=use_s3,
+        migrating_snapshots_inflight_limit=5,
+    ) as setup:
+        disk_size = 16 * 1024 * 1024
+        disk_id = "disk"
+        parent_snapshot_id = "parent_snapshot"
+        child_snapshot_id = "child_snapshot"
+        grandchild_snapshot_id = "grandchild_snapshot"
+
+        disk = setup.create_new_disk(disk_id, disk_size)
+        setup.fill_disk(disk_id, 0, disk.blocks_count)
+        setup.create_snapshot(disk_id, parent_snapshot_id)
+
+        checksums_by_snapshot_id = {}
+        for snapshot_id, block_index in [
+            (child_snapshot_id, 0),
+            (grandchild_snapshot_id, disk.blocks_count // 2),
+        ]:
+            # Retain unchanged chunks from the parent as well as new data.
+            setup.fill_disk(disk_id, block_index, 1)
+            setup.create_snapshot(disk_id, snapshot_id)
+            checksums_by_snapshot_id[snapshot_id] = setup.checksum_disk(disk_id)
+
+        source_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        }
+        assert source_entries[child_snapshot_id]["base_snapshot_id"] == parent_snapshot_id
+        assert source_entries[grandchild_snapshot_id]["base_snapshot_id"] == child_snapshot_id
+
+        setup.delete_snapshot(parent_snapshot_id)
+        deadline = time.monotonic() + 360
+        while True:
+            source_entries = {
+                entry["id"]: entry
+                for entry in setup.get_snapshot_database_entries(setup.ydb.mon_port)
+            }
+            if parent_snapshot_id not in source_entries:
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for parent snapshot data collection")
+            time.sleep(1)
+
+        assert set(source_entries) == set(checksums_by_snapshot_id)
+        assert source_entries[child_snapshot_id]["base_snapshot_id"] == parent_snapshot_id
+
+        task_id = setup.start_database_migration()
+        setup.wait_for_dpl_metric_equals(0)
+
+        destination_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        }
+        assert set(destination_entries) == set(checksums_by_snapshot_id)
+        # A zero backlog must correspond to Ready destination snapshots.
+        assert all(int(entry["status"]) == 1 for entry in destination_entries.values())
+        assert destination_entries[child_snapshot_id]["base_snapshot_id"] == ""
+        assert destination_entries[grandchild_snapshot_id]["base_snapshot_id"] == child_snapshot_id
+
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        for snapshot_id, checksum in checksums_by_snapshot_id.items():
+            restored_disk_id = f"restored_{snapshot_id}"
+            setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
+            assert setup.checksum_disk(restored_disk_id) == checksum

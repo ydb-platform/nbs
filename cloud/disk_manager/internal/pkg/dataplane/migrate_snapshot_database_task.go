@@ -203,6 +203,10 @@ func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
 		return false, err
 	}
 
+	if srcSnapshotMeta == nil {
+		return false, nil
+	}
+
 	if len(srcSnapshotMeta.BaseSnapshotID) == 0 {
 		return true, nil
 	}
@@ -215,11 +219,22 @@ func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
 		return false, err
 	}
 
-	if baseSnapshotMeta == nil {
-		return false, nil
+	if baseSnapshotMeta != nil && baseSnapshotMeta.Ready {
+		return true, nil
 	}
 
-	return baseSnapshotMeta.Ready, nil
+	srcBaseSnapshotMeta, err := m.srcStorage.GetSnapshotMeta(
+		ctx,
+		srcSnapshotMeta.BaseSnapshotID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	// The base was ready when this snapshot was created, so a non-ready base
+	// is now deleting. It will not be migrated, but the snapshot has a complete
+	// chunk map of its own and can be migrated without the base.
+	return srcBaseSnapshotMeta == nil || !srcBaseSnapshotMeta.Ready, nil
 }
 
 func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
