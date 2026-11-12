@@ -41,11 +41,18 @@ private:
         ui64 Lsn = 0;
     };
 
+    enum class EPageState
+    {
+        NotLoaded,
+        Loading,
+        Loaded,
+    };
+
     struct TPageVersions
     {
         TPage Committed;
         TVector<TPage> Dirty;
-        bool IsLoading = false;
+        EPageState State = EPageState::NotLoaded;
 
         TVector<TPage>::iterator FindAtLsn(ui64 lsn)
         {
@@ -199,6 +206,7 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
 
         pageVersions->Committed = std::move(*it);
         pageVersions->Committed.Lsn = lsn;
+        pageVersions->State = EPageState::Loaded;
         pageVersions->Dirty.erase(pageVersions->Dirty.begin(), ++it);
     }
 
@@ -245,14 +253,6 @@ NProto::TError TPageStore::WritePage(
     auto& p = PageCache[pageNo];
 
     //
-    // If we're writing the page, it should either not exist yet or be already
-    // loaded. And when we implement eviction, we should implement pinning for
-    // the pages that are being processed as well.
-    //
-
-    Y_ABORT_UNLESS(!p.IsLoading);
-
-    //
     // Linear search is ok because we don't expect to have more than a couple
     // page groups in log-record.
     //
@@ -288,7 +288,7 @@ NProto::TError TPageStore::WritePage(
     // Updating page cache.
     //
 
-    if (p.Committed.Lsn) {
+    if (p.State == EPageState::Loaded) {
         Y_ABORT_UNLESS(
             p.Committed.Lsn < lsn,
             "p.Committed.Lsn=%lu, lsn=%lu, pageNo=%lu",
@@ -335,28 +335,34 @@ NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const
         TPageCache::insert_ctx insertCtx{};
         cachedPage = PageCache.find(pageNo, insertCtx);
         if (cachedPage != PageCache.end()) {
-            if (cachedPage->second.IsLoading) {
-                return MakeError(E_REJECTED, TStringBuilder() << "page "
-                    << pageNo << " is loading");
-            }
+            switch (cachedPage->second.State) {
+                case EPageState::NotLoaded: {
+                    cachedPage->second.State = EPageState::Loading;
+                    cachedPage->second.Committed.Lsn = LastCommittedLsn;
+                    break;
+                }
 
-            *page = cachedPage->second.Committed.Content;
-            if (page->Empty()) {
-                page->Fill(0, PageSize);
-            }
+                case EPageState::Loading: {
+                    return MakeError(E_REJECTED, TStringBuilder() << "page "
+                        << pageNo << " is loading");
+                }
 
-            return {};
+                case EPageState::Loaded: {
+                    *page = cachedPage->second.Committed.Content;
+                    return {};
+                }
+            }
+        } else {
+            cachedPage = PageCache.insert_direct(
+                std::make_pair(
+                    pageNo,
+                    TPageVersions{
+                        .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
+                        .Dirty = {},
+                        .State = EPageState::Loading,
+                    }),
+                insertCtx);
         }
-
-        cachedPage = PageCache.insert_direct(
-            std::make_pair(
-                pageNo,
-                TPageVersions{
-                    .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
-                    .Dirty = {},
-                    .IsLoading = true,
-                }),
-            insertCtx);
     }
 
     return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
@@ -376,36 +382,57 @@ NProto::TError TPageStore::ReadPageForUpdate(
         TPageCache::insert_ctx insertCtx{};
         cachedPage = PageCache.find(pageNo, insertCtx);
         if (cachedPage != PageCache.end()) {
-            if (cachedPage->second.IsLoading) {
-                return MakeError(E_REJECTED, TStringBuilder() << "page "
-                    << pageNo << " is loading");
+            switch (cachedPage->second.State) {
+                case EPageState::NotLoaded: {
+                    if (cachedPage->second.Dirty.empty()) {
+                        //
+                        // Nothing to return, need to load the page.
+                        //
+
+                        cachedPage->second.State = EPageState::Loading;
+                        cachedPage->second.Committed.Lsn = LastCommittedLsn;
+                    }
+
+                    break;
+                }
+
+                case EPageState::Loading: {
+                    return MakeError(E_REJECTED, TStringBuilder() << "page "
+                        << pageNo << " is loading");
+                }
+
+                case EPageState::Loaded: {
+                    break;
+                }
             }
 
-            //
-            // We should not be trying to work with a page version older than
-            // the last dirty one.
-            //
+            if (cachedPage->second.State != EPageState::Loading) {
+                //
+                // We should not be trying to work with a page version older
+                // than the last dirty one.
+                //
 
-            Y_ABORT_UNLESS(
-                cachedPage->second.LastLsn() <= lsn,
-                "cachedPage->second.LastLsn()=%lu, lsn=%lu, pageNo=%lu",
-                cachedPage->second.LastLsn(),
-                lsn,
-                pageNo);
+                Y_ABORT_UNLESS(
+                    cachedPage->second.LastLsn() <= lsn,
+                    "cachedPage->second.LastLsn()=%lu, lsn=%lu, pageNo=%lu",
+                    cachedPage->second.LastLsn(),
+                    lsn,
+                    pageNo);
 
-            *page = cachedPage->second.LastContent();
-            return {};
+                *page = cachedPage->second.LastContent();
+                return {};
+            }
+        } else {
+            cachedPage = PageCache.insert_direct(
+                std::make_pair(
+                    pageNo,
+                    TPageVersions{
+                        .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
+                        .Dirty = {},
+                        .State = EPageState::Loading,
+                    }),
+                insertCtx);
         }
-
-        cachedPage = PageCache.insert_direct(
-            std::make_pair(
-                pageNo,
-                TPageVersions{
-                    .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
-                    .Dirty = {},
-                    .IsLoading = true,
-                }),
-            insertCtx);
     }
 
     return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
@@ -421,11 +448,19 @@ NProto::TError TPageStore::DoReadPage(
     {
         std::lock_guard g(Mutex);
 
-        if (page->Empty()) {
-            PageCache.erase(cachedPage);
-        } else {
-            cachedPage->second.Committed.Content = *page;
-            cachedPage->second.IsLoading = false;
+        //
+        // A parallel write may have completed and replaced the Committed page
+        // version already - in this case we don't need to do anything.
+        // Otherwise we need to update the page.
+        //
+
+        if (cachedPage->second.State != EPageState::Loaded) {
+            if (page->Empty()) {
+                cachedPage->second.State = EPageState::NotLoaded;
+            } else {
+                cachedPage->second.Committed.Content = *page;
+                cachedPage->second.State = EPageState::Loaded;
+            }
         }
     };
 

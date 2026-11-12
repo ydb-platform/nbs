@@ -264,7 +264,7 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
         [factory](benchmark::State& state) {
             CreateUnlinkNodeBench(state, factory);
         })
-        ->Arg(1)->Arg(8)
+        ->Arg(1)->Arg(8)->Arg(32)
         ->Unit(benchmark::kMicrosecond)
         ->UseRealTime();
 
@@ -273,7 +273,7 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
         [factory](benchmark::State& state) {
             WriteReadData4KBench(state, factory);
         })
-        ->Arg(1)->Arg(8)
+        ->Arg(1)->Arg(8)->Arg(32)
         ->Unit(benchmark::kMicrosecond)
         ->UseRealTime();
 }
