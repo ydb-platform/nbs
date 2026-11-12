@@ -51,9 +51,9 @@ TMaybe<TRecordBounds> ScanBoundaryFrames(
                     continue;
                 }
                 for (const auto& request: record->GetRequests()) {
-                    Y_ENSURE(
-                        request.HasTimestampMcs(),
-                        "Missing request timestamp");
+                    if (!request.HasTimestampMcs()) {
+                        continue;
+                    }
                     const auto time =
                         TInstant::MicroSeconds(request.GetTimestampMcs());
                     if (time < MinRecordTime) {

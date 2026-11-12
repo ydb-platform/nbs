@@ -371,6 +371,35 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
         }
     }
 
+    Y_UNIT_TEST(ShouldSkipRequestsWithoutTimestamps)
+    {
+        for (const bool includeValid: {false, true}) {
+            TTempFileHandle input;
+            TEventLog log(input.Name(), 0);
+            {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                record.AddRequests();
+                if (includeValid) {
+                    record.AddRequests()->SetTimestampMcs(Time(1000).MicroSeconds());
+                    record.AddRequests();
+                    record.AddRequests()->SetTimestampMcs(Time(2000).MicroSeconds());
+                }
+                record.AddRequests();
+                frame.LogEvent(record);
+                frame.Flush();
+            }
+            log.CloseLog();
+            const auto bounds = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT_VALUES_EQUAL(bounds.StartTime.Defined(), includeValid);
+            UNIT_ASSERT_VALUES_EQUAL(bounds.EndTime.Defined(), includeValid);
+            if (includeValid) {
+                UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(1000));
+                UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, Time(2000));
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldIgnoreTimestampsBeforeYear2000)
     {
         const auto cutoff = Time(0);
