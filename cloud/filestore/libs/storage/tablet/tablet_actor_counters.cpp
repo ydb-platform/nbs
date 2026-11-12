@@ -958,6 +958,14 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
             latencyStats.LastAccessed.MicroSeconds());
     }
 
+    for (const auto& requestTypeStats: GetRequestTypeLatencyStats()) {
+        auto* out = response->Record.AddRequestTypeStats();
+        out->SetRequestType(
+            GetFileStoreRequestName(requestTypeStats.RequestType));
+        out->SetRequestCount(requestTypeStats.RequestCount);
+        out->SetTotalLatencyUs(requestTypeStats.TotalLatencyUs);
+    }
+
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

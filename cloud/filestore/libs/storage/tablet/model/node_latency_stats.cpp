@@ -31,6 +31,7 @@ void TNodeLatencyStatsTracker::Reset(size_t maxEntries, TDuration decayHalfLife)
         TLatencyKeyExtractor{});
 
     DecayHalfLife = decayHalfLife;
+    RequestTypeStats.clear();
     Enabled = maxEntries != 0 && decayHalfLife != TDuration::Zero();
 }
 
@@ -86,6 +87,11 @@ bool TNodeLatencyStatsTracker::UpdateLatencyStats(
         static_cast<double>(stats.TotalLatencyUs) / stats.RequestCount;
     stats.LastAccessed = now;
 
+    auto& requestTypeStats = RequestTypeStats[requestType];
+    requestTypeStats.RequestType = requestType;
+    ++requestTypeStats.RequestCount;
+    requestTypeStats.TotalLatencyUs += latency.MicroSeconds();
+
     return Ranking.InsertOrUpdate(std::move(stats));
 }
 
@@ -100,6 +106,17 @@ TVector<TNodeLatencyStats> TNodeLatencyStatsTracker::GetLatencyStats(
             CalculateLatencyDecay(stats, now, DecayHalfLife);
     }
 
+    return result;
+}
+
+TVector<TRequestTypeLatencyStats>
+TNodeLatencyStatsTracker::GetRequestTypeStats() const
+{
+    TVector<TRequestTypeLatencyStats> result;
+    result.reserve(RequestTypeStats.size());
+    for (const auto& item: RequestTypeStats) {
+        result.push_back(item.second);
+    }
     return result;
 }
 

@@ -264,6 +264,13 @@ message TNodeLatencyStats
     uint32 NodeType = 8;
 }
 
+message TRequestTypeLatencyStats
+{
+    string RequestType = 1;
+    uint64 RequestCount = 2;
+    uint64 TotalLatencyUs = 3;
+}
+
 message TGetDiagnosticStatsRequest
 {
     // Optional request headers.
@@ -283,6 +290,8 @@ message TGetDiagnosticStatsResponse
     repeated TNodeLatencyStats LatencyStats = 2;
 
     repeated TNodeStats NodeStats = 3;
+
+    repeated TRequestTypeLatencyStats RequestTypeStats = 4;
 }
 
 

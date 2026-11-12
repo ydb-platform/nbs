@@ -466,6 +466,7 @@ public:
         TDuration latency);
 
     TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
+    TVector<TRequestTypeLatencyStats> GetRequestTypeLatencyStats() const;
 
     TMiscNodeStats GetMiscNodeStats() const;
     THandlesStats GetHandlesStats() const;

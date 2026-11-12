@@ -6,6 +6,7 @@
 
 #include <util/datetime/base.h>
 #include <util/digest/multi.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -20,6 +21,13 @@ struct TNodeLatencyStats
     ui64 TotalLatencyUs = 0;
     double AverageLatencyDecayedUs = 0.0;
     TInstant LastAccessed;
+};
+
+struct TRequestTypeLatencyStats
+{
+    EFileStoreRequest RequestType = EFileStoreRequest::MAX;
+    ui64 RequestCount = 0;
+    ui64 TotalLatencyUs = 0;
 };
 
 struct TLatencyKey
@@ -67,6 +75,7 @@ private:
         TLatencyKeyHash>;
 
     TRanking Ranking;
+    THashMap<EFileStoreRequest, TRequestTypeLatencyStats> RequestTypeStats;
     bool Enabled;
 
 public:
@@ -93,6 +102,7 @@ public:
         TDuration halfLife);
 
     TVector<TNodeLatencyStats> GetLatencyStats(TInstant now, ui32 n) const;
+    TVector<TRequestTypeLatencyStats> GetRequestTypeStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

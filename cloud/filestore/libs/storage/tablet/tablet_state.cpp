@@ -328,6 +328,12 @@ TVector<TNodeLatencyStats> TIndexTabletState::GetLatencyStats(
     return Impl->LatencyTracker.GetLatencyStats(now, n);
 }
 
+TVector<TRequestTypeLatencyStats>
+TIndexTabletState::GetRequestTypeLatencyStats() const
+{
+    return Impl->LatencyTracker.GetRequestTypeStats();
+}
+
 void TIndexTabletState::UpdateConfig(
     IIndexTabletDatabase& db,
     const TStorageConfig& config,
