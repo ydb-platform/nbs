@@ -5,86 +5,9 @@
 #include <cloud/blockstore/libs/storage/volume_throttling_manager/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
-#include <cloud/storage/core/libs/common/media.h>
-
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <algorithm>
-
 namespace NCloud::NBlockStore::NStorage {
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TVolumeThrottlingRules =
-    google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>;
-
-bool SpecificDiskFilterApplies(
-    const NProto::TSpecificDiskFilter& filter,
-    const TString& diskId)
-{
-    const auto& diskIds = filter.GetDiskIds();
-    return Find(diskIds, diskId) != diskIds.end();
-}
-
-bool DiskFilterApplies(
-    const NProto::TDiskFilter& filter,
-    const TString& cloudId,
-    const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind)
-{
-    const auto& cloudIds = filter.GetCloudIds();
-    if (!cloudIds.empty() && Find(cloudIds, cloudId) == cloudIds.end()) {
-        return false;
-    }
-
-    const auto& folderIds = filter.GetFolderIds();
-    if (!folderIds.empty() && Find(folderIds, folderId) == folderIds.end()) {
-        return false;
-    }
-
-    const auto& mediaKinds = filter.GetMediaKinds();
-    return mediaKinds.empty() ||
-           Find(mediaKinds, mediaKind) != mediaKinds.end();
-}
-
-NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
-    const TVolumeThrottlingRules& rules,
-    const TString& diskId,
-    const TString& cloudId,
-    const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind)
-{
-    const NProto::TVolumeThrottlingRule* resultPtr = nullptr;
-
-    for (const auto& rule: rules) {
-        switch (rule.GetSelectorCase()) {
-            case NProto::TVolumeThrottlingRule::kDisks:
-                if (SpecificDiskFilterApplies(rule.GetDisks(), diskId)) {
-                    return rule;
-                }
-                break;
-            case NProto::TVolumeThrottlingRule::kFilter:
-                if (DiskFilterApplies(
-                        rule.GetFilter(),
-                        cloudId,
-                        folderId,
-                        mediaKind))
-                {
-                    // Pointer is used to avoid copying here
-                    resultPtr = &rule;
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
-    return resultPtr ? *resultPtr : NProto::TVolumeThrottlingRule{};
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -112,7 +35,7 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         return;
     }
 
-    auto error = ValidateThrottlingConfig(throttlingConfig);
+    auto error = ValidateThrottlingConfigRules(throttlingConfig.GetRules());
     if (HasError(error)) {
         LOG_WARN(
             ctx,
