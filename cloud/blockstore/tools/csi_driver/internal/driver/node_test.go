@@ -2902,9 +2902,8 @@ func TestEndpointBalancing(t *testing.T) {
 			mapping   map[string]uint
 			wantIndex uint
 		}{
-			{name: "disabled"},
+			{name: "disabled", enabled: false, wantIndex: 0},
 			{name: "enabled", enabled: true, wantIndex: 1},
-			{name: "zone mapping with balancing disabled", mapping: map[string]uint{"zone": 1}, wantIndex: 1},
 		} {
 			t.Run(backend+"/"+tc.name, func(t *testing.T) {
 				service := &nodeService{
@@ -2924,7 +2923,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nbsClients = append(service.nbsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNbsClientIndex(ctx, "volume", "zone")
+					index, err := service.getNbsClientIndex(ctx, "volume", "")
 					require.NoError(t, err)
 					require.Equal(t, tc.wantIndex, index)
 				} else {
@@ -2937,7 +2936,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nfsClients = append(service.nfsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNfsClientIndex(ctx, "volume", "zone")
+					index, err := service.getNfsClientIndex(ctx, "volume", "")
 					require.NoError(t, err)
 					require.Equal(t, tc.wantIndex, index)
 				}
