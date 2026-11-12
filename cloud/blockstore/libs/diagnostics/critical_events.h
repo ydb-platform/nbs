@@ -92,6 +92,7 @@ using TCritEventParams =
     xxx(MonitoringResourceNotFound)                                            \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
+    xxx(InvalidReadBlobOffsets)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
     xxx(DiskRegistryInsertToPendingCleanupFailed)                              \

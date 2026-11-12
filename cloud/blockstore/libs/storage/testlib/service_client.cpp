@@ -526,6 +526,16 @@ TServiceClient::CreateAddTagsRequest(
     return request;
 }
 
+std::unique_ptr<TEvService::TEvRemoveTagsRequest>
+TServiceClient::CreateRemoveTagsRequest(
+    const TString& diskId,
+    const TVector<TString>& tagsToRemove)
+{
+    return std::make_unique<TEvService::TEvRemoveTagsRequest>(
+        diskId,
+        tagsToRemove);
+}
+
 std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
 TServiceClient::CreateCreateVolumeLinkRequest(
     const TString& leaderDiskId,

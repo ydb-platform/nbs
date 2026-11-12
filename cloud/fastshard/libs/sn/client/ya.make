@@ -3,6 +3,7 @@ LIBRARY()
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
         client.cpp
+        durable.cpp
     )
 
     PEERDIR(

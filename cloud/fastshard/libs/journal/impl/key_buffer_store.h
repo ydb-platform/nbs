@@ -40,7 +40,7 @@ struct IKeyBufferStore
     [[nodiscard]] virtual NThreading::TFuture<TRestoreResult> Restore() = 0;
 
     [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+        -> TResultOrError<NThreading::TFuture<NCloud::NProto::TError>> = 0;
 
     [[nodiscard]] virtual auto WriteMeta(TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;

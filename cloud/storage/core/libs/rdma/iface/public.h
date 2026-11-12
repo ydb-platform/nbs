@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/public.h>
+
 #include <memory>
 
 namespace google::protobuf {
@@ -32,9 +34,6 @@ using IClientEndpointPtr = std::shared_ptr<IClientEndpoint>;
 
 struct IClientRequestHandler;
 using IClientRequestHandlerPtr = std::shared_ptr<IClientRequestHandler>;
-
-struct IClientEndpointHandler;
-using IClientEndpointHandlerPtr = std::shared_ptr<IClientEndpointHandler>;
 
 struct TClientConfig;
 using TClientConfigPtr = std::shared_ptr<TClientConfig>;

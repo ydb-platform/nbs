@@ -159,7 +159,7 @@ TString DescribeRecords(
 ////////////////////////////////////////////////////////////////////////////////
 
 // An in-memory device that can be told to fail its requests or to hold the
-// reads until the test lets them through.
+// reads or the writes until the test lets them through.
 struct TTestDevice final: public IDevice
 {
     const IDevicePtr Impl = CreateInMemoryDevice(DefaultPageSize);
@@ -173,10 +173,19 @@ struct TTestDevice final: public IDevice
         TPromise<TResultOrError<TVector<TBuffer>>> Response;
     };
 
+    struct TBlockedWrite
+    {
+        TVector<TPageRange> Ranges;
+        TPromise<NCloud::NProto::TError> Error;
+    };
+
     TMutex Mutex;
     bool BlockReads = false;
     TManualEvent ReadBlocked;
     TVector<TBlockedRead> BlockedReads;
+    bool BlockWrites = false;
+    TManualEvent WriteBlocked;
+    TVector<TBlockedWrite> BlockedWrites;
 
     TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
@@ -205,6 +214,16 @@ struct TTestDevice final: public IDevice
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "write failed"));
+        }
+
+        with_lock (Mutex) {
+            if (BlockWrites) {
+                auto error = NewPromise<NCloud::NProto::TError>();
+                BlockedWrites.push_back(
+                    {.Ranges = std::move(ranges), .Error = error});
+                WriteBlocked.Signal();
+                return error.GetFuture();
+            }
         }
 
         return Impl->WritePages(std::move(ranges));
@@ -240,6 +259,29 @@ struct TTestDevice final: public IDevice
         for (auto& read: blocked) {
             read.Response.SetValue(
                 Impl->ReadPages(std::move(read.RangeRefs)).GetValueSync());
+        }
+    }
+
+    void BlockWritesUntilReleased()
+    {
+        with_lock (Mutex) {
+            BlockWrites = true;
+        }
+    }
+
+    void ReleaseWrites()
+    {
+        TVector<TBlockedWrite> blocked;
+
+        with_lock (Mutex) {
+            BlockWrites = false;
+            blocked.swap(BlockedWrites);
+            WriteBlocked.Reset();
+        }
+
+        for (auto& write: blocked) {
+            write.Error.SetValue(
+                Impl->WritePages(std::move(write.Ranges)).GetValueSync());
         }
     }
 };
@@ -289,8 +331,16 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return MakeFuture<TRestoreResult>(std::move(restored));
     }
 
-    TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
+    TResultOrError<TFuture<NCloud::NProto::TError>> Write(
+        ui64 key,
+        TBuffer buffer) override
     {
+        // a failing store rejects the record right away, as the device store
+        // does when it runs out of pages
+        if (FailWrites.load()) {
+            return MakeError(E_IO, "meta write failed");
+        }
+
         return WriteOrHold(key, std::move(buffer));
     }
 
@@ -338,7 +388,11 @@ private:
         TBuffer buffer)
     {
         if (key) {
-            return Impl->Write(*key, std::move(buffer));
+            auto futureOrError = Impl->Write(*key, std::move(buffer));
+            if (HasError(futureOrError)) {
+                return MakeFuture(futureOrError.GetError());
+            }
+            return futureOrError.ExtractResult();
         }
         return Impl->WriteMeta(std::move(buffer));
     }
@@ -415,7 +469,6 @@ struct TFixture: public NUnitTest::TBaseFixture
             PageCount,
             DefaultPageSize,
             EDevicePageStoreMode::Checked);
-
         Journal = CreateJournal(
             Logging,
             Executor,
@@ -442,7 +495,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     TResultOrError<ui64> Restore()
     {
-        return Run([&] { return Journal->Restore(); }).GetValueSync();
+        return Run([&] { return Journal->Restore(); });
     }
 
     ui64 RestoreOrFail()
@@ -458,6 +511,16 @@ struct TFixture: public NUnitTest::TBaseFixture
         NCloud::NProto::TWriteLogRecordRequest request)
     {
         return Run([&] { return Journal->Write(std::move(request)); });
+    }
+
+    // Returns once the write is on the executor - for a write the test
+    // holds up at a store.
+    TFuture<NCloud::NProto::TWriteLogRecordResponse> StartWrite(
+        NCloud::NProto::TWriteLogRecordRequest request)
+    {
+        return Executor->Execute(
+            [this, request = std::move(request)]() mutable
+            { return Journal->Write(std::move(request)); });
     }
 
     ui32 Write(NCloud::NProto::TWriteLogRecordRequest request)
@@ -546,8 +609,12 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void PutBuffer(ui64 key, TBuffer buffer)
     {
-        const auto error =
-            MetaStore->Impl->Write(key, std::move(buffer)).GetValueSync();
+        auto futureOrError = MetaStore->Impl->Write(key, std::move(buffer));
+        UNIT_ASSERT_C(
+            !HasError(futureOrError),
+            FormatError(futureOrError.GetError()));
+
+        const auto error = futureOrError.ExtractResult().GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
@@ -556,7 +623,20 @@ struct TFixture: public NUnitTest::TBaseFixture
         PutBuffer(key, TBuffer(data.data(), data.size()));
     }
 
-    // Stores a record under its lsn, the way the journal does
+    // The crc of what the device holds at the given locations
+    ui32 DevicePagesCrc(const TVector<TPageMapping>& pageMappings)
+    {
+        TVector<TPageRangeRef> locations;
+        for (const auto& mapping: pageMappings) {
+            locations.push_back(mapping.Location);
+        }
+
+        auto response = Device->Impl->ReadPages(locations).GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        return CalculatePagesCrc(response.GetResult());
+    }
+
+    // Stores a record under its lsn with the crc of its pages on the device
     void PutRecord(
         ui64 lsn,
         ui64 prevLsn,
@@ -565,15 +645,24 @@ struct TFixture: public NUnitTest::TBaseFixture
         PutRecordUnderKey(lsn, lsn, prevLsn, std::move(pageMappings));
     }
 
+    // Stores a record whose crc does not match its pages
+    void PutTornRecord(ui64 lsn, ui64 prevLsn, TVector<TPageMapping> mappings)
+    {
+        const ui32 crc = ~DevicePagesCrc(mappings);
+        PutRecordUnderKey(lsn, lsn, prevLsn, std::move(mappings), crc);
+    }
+
     void PutRecordUnderKey(
         ui64 key,
         ui64 lsn,
         ui64 prevLsn,
-        TVector<TPageMapping> pageMappings = {})
+        TVector<TPageMapping> pageMappings = {},
+        std::optional<ui32> pagesCrc = std::nullopt)
     {
         TLogRecord record;
         record.Lsn = lsn;
         record.PrevLsn = prevLsn;
+        record.PagesCrc = pagesCrc ? *pagesCrc : DevicePagesCrc(pageMappings);
         record.PageMappings = std::move(pageMappings);
 
         PutBuffer(key, SerializeRecord(record));
@@ -734,21 +823,28 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "6<-5 20:[");
     }
 
-    Y_UNIT_TEST_F(ShouldRestorePendingRecordBehindGap, TFixture)
+    Y_UNIT_TEST_F(ShouldDropPendingRecordBehindGapOnRestore, TFixture)
     {
         // everything acked has been flushed and cleaned up, lsn 5 <- 4 was
         // written before lsns 3 and 4 made it: the chain still starts at 2
         PutMetadata(2);
-        PutRecord(5, 4);
+        PutRecord(5, 4, {{.PageNo = 50, .Location = Range(0, 1)}});
 
+        // the record past the gap was never acked, the restart drops it
         UNIT_ASSERT_VALUES_EQUAL(2, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(2)));
 
-        // once the gap is filled the pending record joins the chain
+        // filling the gap does not bring it back, it has to be written again
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(4, 3, 'D', {{40, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
-            "3<-2 30:[C030]; 4<-3 40:[D040]; 5<-4",
+            "3<-2 30:[C030]; 4<-3 40:[D040]",
+            DescribeRecords(ReadTail(2)));
+
+        // its page is free: the rewrite may take it
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(5, 4, 'E', {{50, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "3<-2 30:[C030]; 4<-3 40:[D040]; 5<-4 50:[E050]",
             DescribeRecords(ReadTail(2)));
     }
 
@@ -844,10 +940,12 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         RecreateJournal();
 
-        // the restart drops the stranded record and restores the chain
+        // the restart drops the stranded record along with everything else
+        // past the chain and restores the chain - a restore does not tell a
+        // stranded record from one waiting behind a gap, so no critical event
         UNIT_ASSERT_VALUES_EQUAL(4, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 40:[D040]",
@@ -862,7 +960,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         FlushUpTo(5);
         UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
     }
 
@@ -880,7 +978,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            0,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
 
         // the unacked tail is kept and can be continued
@@ -898,10 +996,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             Restore().GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToRestoreRecordWithSelfIntersectingPages, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldFailToRestoreAckedRecordWithSelfIntersectingPages,
+        TFixture)
     {
         // a single record whose own mappings share a journal page - there is
         // no telling which of the two the page belongs to
+        PutMetadata(1);
         PutRecord(
             1,
             0,
@@ -909,6 +1010,19 @@ Y_UNIT_TEST_SUITE(TJournalTest)
              {.PageNo = 20, .Location = Range(1, 2)}});
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldDropUnackedRecordWithSelfIntersectingPages, TFixture)
+    {
+        // the same record is dropped while unacked: it cannot be checked
+        PutRecord(
+            1,
+            0,
+            {{.PageNo = 10, .Location = Range(0, 2)},
+             {.PageNo = 20, .Location = Range(1, 2)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(0)));
     }
 
     Y_UNIT_TEST_F(ShouldFailToRestoreRecordWithEmptyPageRange, TFixture)
@@ -984,6 +1098,92 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             {{.PageNo = DevicePageCount - 2, .Location = Range(0, 2)}});
 
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
+    }
+
+    Y_UNIT_TEST_F(ShouldDropUnackedRecordWhosePagesCannotBeRead, TFixture)
+    {
+        PageCount = 1;
+        RecreateJournal();
+
+        PutRecord(1, 0, {{.PageNo = 10, .Location = Range(0, 1)}});
+
+        // an unacked record whose pages cannot be read is dropped as torn
+        Device->FailReads.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // its page is free again
+        Device->FailReads.store(false);
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(0)));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldDropTornRecordOnRestore, TFixture)
+    {
+        PageCount = 1;
+        RecreateJournal();
+
+        // lsn 2 made it to the meta store but its page did not, lsn 3 did
+        PutMetadata(1);
+        PutRecord(1, 0);
+        PutTornRecord(2, 1, {{.PageNo = 20, .Location = Range(0, 1)}});
+        PutRecord(3, 2);
+
+        // the chain stops before the torn record, lsn 3 is dropped with it
+        UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(1)));
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{20, 1}})));
+
+        // and its page is free: the rewrite of lsn 2 fits, lsn 3 is written
+        // again after it
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]",
+            DescribeRecords(ReadTail(1)));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]; 3<-2",
+            DescribeRecords(ReadTail(1)));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotReadPagesOfAckedRecordsOnRestore, TFixture)
+    {
+        // an acked record has its pages written, there is nothing to check
+        PutMetadata(2);
+        PutRecord(1, 0, {{.PageNo = 10, .Location = Range(0, 1)}});
+        PutRecord(2, 1, {{.PageNo = 20, .Location = Range(1, 1)}});
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, RestoreOrFail());
+    }
+
+    Y_UNIT_TEST_F(ShouldDropRecordOfFailedPageWriteOnRestore, TFixture)
+    {
+        PageCount = 1;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // the record of lsn 2 lands, its page does not: the page is freed
+        Device->FailWrites.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("2", StoredKeys());
+
+        // the page goes to lsn 1 next
+        Device->FailWrites.store(false);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("1,2", StoredKeys());
+
+        RecreateJournal();
+
+        // the restart tells the records sharing the page apart by crc
+        UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010]",
+            DescribeGroups(ReadPages({{10, 1}, {20, 1}})));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            DescribeRecords(ReadTail(0)));
     }
 
     //
@@ -1177,6 +1377,79 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL("1", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldWritePagesAndRecordInParallel, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        Device->BlockWritesUntilReleased();
+        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT(Device->WriteBlocked.WaitT(TDuration::Seconds(30)));
+
+        // the record is in the meta store while its page is still in flight
+        UNIT_ASSERT_VALUES_EQUAL("1", StoredKeys());
+        UNIT_ASSERT(!write.HasValue());
+
+        Device->ReleaseWrites();
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            write.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010]",
+            DescribeGroups(ReadPages({{10, 1}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotFreePagesBeforeFailedWriteIsOver, TFixture)
+    {
+        PageCount = 1;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // the page write fails at once, the record write is still in flight
+        MetaStore->BlockWritesUntilReleased();
+        Device->FailWrites.store(true);
+        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT(MetaStore->WriteBlocked.WaitT(TDuration::Seconds(30)));
+
+        // the failure waits for the record write: the page is still taken
+        UNIT_ASSERT(!write.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        MetaStore->ReleaseWrites();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            write.GetValueSync().GetError().GetCode());
+
+        // and free once it is over
+        Device->FailWrites.store(false);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotWritePagesOfRecordRejectedByMetaStore, TFixture)
+    {
+        PageCount = 1;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // a page write, if there were one, would be held here
+        Device->BlockWritesUntilReleased();
+        MetaStore->FailWrites.store(true);
+        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+
+        // the record write fails at once, so the write is over without it
+        UNIT_ASSERT(write.Wait(TDuration::Seconds(30)));
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, write.GetValue().GetError().GetCode());
+        with_lock (Device->Mutex) {
+            UNIT_ASSERT(Device->BlockedWrites.empty());
+        }
+
+        // and its page is free again
+        Device->ReleaseWrites();
+        MetaStore->FailWrites.store(false);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
     }
 
     Y_UNIT_TEST_F(ShouldSpreadRecordOverFragmentedPages, TFixture)
