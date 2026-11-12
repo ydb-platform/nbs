@@ -26,7 +26,13 @@
 #include <variant>
 
 namespace NActors {
+#if defined(_arm_)
+    // Increase StackSize to 128kb to avoid stack overflow on ARM due to older
+    // glibc implementations(< 1.38) allocate a page-sized buffer using alloca
+    static constexpr ui32 StackSize = 128 * 1024;
+#else
     static constexpr ui32 StackSize = 64 * 1024; // 64k should be enough
+#endif
 
     static constexpr size_t RdmaHandshakeRegionSize = 4096;
     static constexpr ui32 RdmaSendReceiveVersion = 1;
