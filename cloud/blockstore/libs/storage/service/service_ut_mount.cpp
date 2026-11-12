@@ -4520,6 +4520,281 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
     }
 
+    auto ChangeBindingManually(
+        TServiceClient& service,
+        EChangeBindingOp action)
+    {
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                DefaultDiskId,
+                action,
+                NProto::EPreemptionSource::SOURCE_MANUAL));
+        return service
+            .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+    }
+
+    Y_UNIT_TEST(ShouldAllowBindingChangeAfterReleaseOfRemoteVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+        service.MountVolume();
+        service.WaitForVolume(DefaultDiskId);
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::RELEASE_TO_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::RELEASE_TO_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::ACQUIRE_FROM_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotMountOnAcquireOfLocalVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.MountVolume();
+        service.WaitForVolume(DefaultDiskId);
+
+        ui32 internalMountResponses = 0;
+        ui32 manualPreemptionUpdates = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvServicePrivate::EvInternalMountVolumeResponse:
+                        ++internalMountResponses;
+                        break;
+                    case TEvServicePrivate::EvUpdateManuallyPreemptedVolume:
+                        ++manualPreemptionUpdates;
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::ACQUIRE_FROM_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, internalMountResponses);
+        UNIT_ASSERT_VALUES_EQUAL(0, manualPreemptionUpdates);
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::RELEASE_TO_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAllowBindingChangeAfterRejectionForRemoteMounter)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+        service.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+
+        for (int i = 0; i < 2; ++i) {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::RELEASE_TO_HIVE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "No local mounter found",
+                response->GetError().GetMessage());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAllowBindingChangeAfterQueuedRejection)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        auto sessionId = service.MountVolume()->Record.GetSessionId();
+        service.WaitForVolume(DefaultDiskId);
+
+        TAutoPtr<IEventHandle> unmountProcessed;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvServicePrivate::EvUnmountRequestProcessed)
+                {
+                    unmountProcessed = ev;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        // Keep the unmount of the only local mounter in progress.
+        service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(unmountProcessed);
+
+        // The binding change is queued behind the unmount.
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                DefaultDiskId,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                NProto::EPreemptionSource::SOURCE_MANUAL));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        runtime.Send(unmountProcessed.Release(), nodeIdx);
+
+        {
+            auto response = service.RecvUnmountVolumeResponse();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = ChangeBindingManually(
+                service,
+                EChangeBindingOp::RELEASE_TO_HIVE);
+            UNIT_ASSERT_VALUES_UNEQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFailPostponedBindingChangeIfDescribeFails)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        // Hold the describe request of the new volume session actor.
+        TAutoPtr<IEventHandle> describeRequest;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                if (!describeRequest &&
+                    ev->GetTypeRewrite() == TEvSSProxy::EvDescribeVolumeRequest)
+                {
+                    describeRequest = ev;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        service.SendMountVolumeRequest();
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(describeRequest);
+
+        // The binding change is postponed until the describe completes.
+        service.SendRequest(
+            MakeStorageServiceId(),
+            std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                DefaultDiskId,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                NProto::EPreemptionSource::SOURCE_MANUAL));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        const auto error = MakeError(E_FAIL, "Describe failed");
+        runtime.Send(
+            new IEventHandle(
+                describeRequest->Sender,
+                describeRequest->Recipient,
+                new TEvSSProxy::TEvDescribeVolumeResponse(error),
+                0,   // flags
+                describeRequest->Cookie),
+            nodeIdx);
+
+        {
+            auto response = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                error.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                error.GetCode(),
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // The failed volume session actor is gone, so a new mount succeeds.
+        service.MountVolume();
+    }
+
     Y_UNIT_TEST(ShouldReturnSilentErrorIfVolumeRemovedBeforeMountForReplicated)
     {
         TTestEnv env;

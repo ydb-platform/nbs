@@ -223,6 +223,9 @@ private:
     TVolumeThrottlerLogger ThrottlerLogger;
 
     std::unique_ptr<TVolumeState> State;
+    TBackoffDelayProvider SourceDiskIdTagRemovalDelayProvider{
+        TDuration::Seconds(1),
+        TDuration::Seconds(15)};
     bool StateLoadFinished = false;
     TInstant ExecutorActivationTimestamp;
     TInstant StateLoadTimestamp;
@@ -414,8 +417,6 @@ private:
     ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
-
-    std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 
     struct TPartCountersData
     {
@@ -1366,6 +1367,23 @@ private:
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
     void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void AddPendingLeadershipTransferRequest(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        const TLeaderFollowerLink& link);
+    void ReplyToPendingLeadershipTransferRequest(
+        const NActors::TActorContext& ctx);
+    void RemoveSourceDiskIdTagIfNeeded(const NActors::TActorContext& ctx);
+    void SendRemoveSourceDiskIdTagRequest(
+        const NActors::TActorContext& ctx,
+        const TString& sourceDiskId);
+    void FinishSourceDiskIdTagRemoval(const NActors::TActorContext& ctx);
+    void HandleRemoveSourceDiskIdTagResponse(
+        const TEvService::TEvRemoveTagsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleRetryRemoveSourceDiskIdTag(
+        const TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void HandleDestroyOutdatedLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

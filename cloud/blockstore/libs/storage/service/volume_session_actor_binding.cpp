@@ -34,7 +34,15 @@ void TVolumeSessionActor::PostponeChangeVolumeBindingRequest(
     const TEvService::TEvChangeVolumeBindingRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
+    if (ShuttingDown) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvChangeVolumeBindingResponse>(
+                ShuttingDownError));
+        return;
+    }
+
     MountUnmountRequests.emplace(ev.Release());
 }
 
@@ -46,6 +54,8 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
 
     auto replyError = [&] (NProto::TError result)
     {
+        VolumeInfo->RebindingIsInflight = false;
+
         using TResponse = TEvService::TEvChangeVolumeBindingResponse;
         auto response = std::make_unique<TResponse>(std::move(result));
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -69,6 +79,7 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
         if (VolumeInfo->BindingType == NProto::BINDING_LOCAL) {
             replyError(
                 MakeError(S_ALREADY, "Volume is already running at host"));
+            return;
         }
         bindingType = NProto::BINDING_LOCAL;
     }

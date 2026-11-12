@@ -109,6 +109,18 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TPromise<IBlockStorePtr> DeferredSetupPromise =
         NewPromise<IBlockStorePtr>();
 
+    TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config,
+        NCloud::IClientEndpointHandlerPtr handler) override
+    {
+        Y_UNUSED(bootstrap);
+        Y_UNUSED(config);
+        Y_UNUSED(handler);
+
+        return MakeError(E_NOT_IMPLEMENTED, "IC V2 is not used in this test");
+    }
+
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) override
@@ -131,7 +143,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
                 false));
     }
 
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr RdmaHandler;
+    NCloud::IClientEndpointHandlerPtr RdmaHandler;
 
     // one service per fqdn: a move can only be told apart from staying put
     // if the host it lands on answers through a different service
@@ -150,7 +162,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
 

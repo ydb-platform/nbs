@@ -5486,6 +5486,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         DoShouldHitNodesCountLimit(true);
     }
 
+    Y_UNIT_TEST(ShouldReturnEffectiveNodesCountFromStatFileStore)
+    {
+        constexpr ui64 sizeToNodesRatio = 64_KB;
+        constexpr ui64 expectedNodesCount = 2ull * Max<ui32>();
+        constexpr ui64 blocksCount =
+            expectedNodesCount * sizeToNodesRatio / DefaultBlockSize;
+
+        NProto::TStorageConfig config;
+        config.SetSizeToNodesRatio(sizeToNodesRatio);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, blocksCount);
+        const auto headers = service.InitSession(fsId, "client");
+
+        const auto response = service.StatFileStore(headers, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedNodesCount,
+            response->Record.GetFileStore().GetNodesCount());
+    }
+
     Y_UNIT_TEST(TestWriteWithExternalPayload)
     {
         NProto::TStorageConfig config;

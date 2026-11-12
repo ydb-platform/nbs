@@ -544,6 +544,8 @@ struct TEvVolumePrivate
         EvLinkOnFollowerCreated,
         EvLinkOnFollowerDestroyed,
         EvLinkOnFollowerDataTransferred,
+        EvRetryLeadershipTransfer,
+        EvRetryRemoveSourceDiskIdTag,
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
@@ -640,6 +642,12 @@ struct TEvVolumePrivate
     using TEvLinkOnFollowerDataTransferred = TResponseEvent<
         TLinkOnFollowerDataTransferred,
         EvLinkOnFollowerDataTransferred>;
+
+    using TEvRetryLeadershipTransfer =
+        TRequestEvent<TEmpty, EvRetryLeadershipTransfer>;
+
+    using TEvRetryRemoveSourceDiskIdTag =
+        TRequestEvent<TEmpty, EvRetryRemoveSourceDiskIdTag>;
 
     using TEvCreateLinkFinished =
         TResponseEvent<TCreateLinkFinished, EvCreateLinkFinished>;

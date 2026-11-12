@@ -27,6 +27,63 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         tablet.WaitReady();
     }
 
+    Y_UNIT_TEST(ShouldNotCapNodesCountAtUi32Max)
+    {
+        constexpr ui64 sizeToNodesRatio = 64_KB;
+        constexpr ui64 expectedNodesCount = 2ull * Max<ui32>();
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetSizeToNodesRatio(sizeToNodesRatio);
+
+        TTestEnv env({}, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TFileSystemConfig fileSystemConfig;
+        fileSystemConfig.BlockCount =
+            expectedNodesCount * sizeToNodesRatio / fileSystemConfig.BlockSize;
+        fileSystemConfig.NodeCount = Max<ui32>();
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            fileSystemConfig);
+
+        // Restart the tablet to verify that TIndexTabletState::SizeToNodesRatio
+        // is reloaded.
+        tablet.RebootTablet();
+        tablet.WaitReady();
+
+        const auto storageStats = GetStorageStats(tablet);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedNodesCount,
+            storageStats.GetTotalNodesCount());
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+
+        auto counters = env.GetRuntime().GetAppData().Counters;
+        auto subgroup = counters->FindSubgroup("counters", "filestore");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("component", "storage_fs");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("host", "cluster");
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup(
+            "filesystem",
+            fileSystemConfig.FileSystemId);
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("cloud", fileSystemConfig.CloudId);
+        UNIT_ASSERT(subgroup);
+        subgroup = subgroup->FindSubgroup("folder", fileSystemConfig.FolderId);
+        UNIT_ASSERT(subgroup);
+
+        const ui64 actualNodesCount =
+            subgroup->GetCounter("TotalNodesCount")->GetAtomic();
+        UNIT_ASSERT_VALUES_EQUAL(expectedNodesCount, actualNodesCount);
+    }
+
     Y_UNIT_TEST(ShouldUpdateConfig)
     {
         TTestEnv env;
