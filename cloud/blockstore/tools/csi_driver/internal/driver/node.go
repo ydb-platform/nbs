@@ -317,16 +317,16 @@ func (s *nodeService) NodeStageVolume(
 					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						clientIndex, err = s.getNfsClientIndex(ctx, nbsId, req.VolumeContext[zoneIdVolumeContextKey])
+						clientIndex, err = s.getNfsClientIndex(ctx, req.VolumeContext[zoneIdVolumeContextKey])
 						if err != nil {
 							return nil, s.statusErrorf(codes.InvalidArgument,
 								"Failed to get NFS client index: %v", err)
 						}
 					} else {
-						clientIndex, err = s.getNbsClientIndex(ctx, nbsId, req.VolumeContext[zoneIdVolumeContextKey])
+						clientIndex, err = s.getNbsClientIndex(ctx, req.VolumeContext[zoneIdVolumeContextKey])
 						if err != nil {
 							return nil, s.statusErrorf(codes.InvalidArgument,
-								"Failed to get NFS client index: %v", err)
+								"Failed to get NBS client index: %v", err)
 						}
 					}
 					stageData = &StageData{
@@ -458,7 +458,7 @@ func (s *nodeService) getBackendIndexByZoneId(zoneId string, replicaCount uint) 
 	return backendIndex, nil
 }
 
-func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zoneId string) (uint, error) {
+func (s *nodeService) getNbsClientIndex(ctx context.Context, zoneId string) (uint, error) {
 	if s.nbsServerReplicaCount < 2 {
 		return 0, nil
 	}
@@ -490,7 +490,7 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zo
 	return nbsClientIndex, nil
 }
 
-func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string, zoneId string) (uint, error) {
+func (s *nodeService) getNfsClientIndex(ctx context.Context, zoneId string) (uint, error) {
 	if s.nfsVhostReplicaCount < 2 {
 		return 0, nil
 	}

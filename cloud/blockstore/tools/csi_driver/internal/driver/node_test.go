@@ -996,6 +996,7 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 		{name: "empty zone", zoneId: "", clientIndex: 0},
 		{name: "zone0", zoneId: "zone0", clientIndex: 0},
 		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, true, false, true, 1, 2)
@@ -2923,7 +2924,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nbsClients = append(service.nbsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNbsClientIndex(ctx, "volume", "")
+					index, err := service.getNbsClientIndex(ctx, "")
 					require.NoError(t, err)
 					require.Equal(t, tc.wantIndex, index)
 				} else {
@@ -2936,7 +2937,7 @@ func TestEndpointBalancing(t *testing.T) {
 						service.nfsClients = append(service.nfsClients, client)
 						defer client.AssertExpectations(t)
 					}
-					index, err := service.getNfsClientIndex(ctx, "volume", "")
+					index, err := service.getNfsClientIndex(ctx, "")
 					require.NoError(t, err)
 					require.Equal(t, tc.wantIndex, index)
 				}
