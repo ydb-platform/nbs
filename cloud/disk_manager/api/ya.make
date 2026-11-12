@@ -24,6 +24,8 @@ SRCS(
     operation_service.proto
     placement_group.proto
     placement_group_service.proto
+    quota.proto
+    quota_service.proto
     snapshot_service.proto
 )
 
