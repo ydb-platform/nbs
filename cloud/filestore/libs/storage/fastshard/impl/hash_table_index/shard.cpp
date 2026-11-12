@@ -1057,18 +1057,25 @@ public:
                 }
             }
 
-            if (!HasError(error)) {
-                wcg.Link();
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] SetNodeAttr error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
+                wcg.Rollback();
+                return response;
             }
+
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
-        if (!HasError(error)) {
-            error = Storage->WriteLogRecord(
-                std::move(writeContext.Headers),
-                std::move(writeContext.PageGroups),
-                writeContext.GetLink());
-        }
+        error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups),
+            writeContext.GetLink());
 
         if (HasError(error)) {
             SILK_LOG(
@@ -1180,19 +1187,18 @@ public:
                 writeContext,
                 &attr);
 
-            if (!HasError(error)) {
-                wcg.Link();
+            if (HasError(error)) {
+                SILK_LOG(
+                    LogLevel(error),
+                    "[%s] CreateNode::CreateNodeImpl error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(error).c_str());
+                *response.MutableError() = std::move(error);
+                wcg.Rollback();
+                return response;
             }
-        }
 
-        if (HasError(error)) {
-            SILK_LOG(
-                LogLevel(error),
-                "[%s] CreateNode::CreateNodeImpl error=%s",
-                lc.Describe().c_str(),
-                FormatError(error).c_str());
-            *response.MutableError() = std::move(error);
-            return response;
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
@@ -1390,6 +1396,7 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
+                wcg.Rollback();
                 return response;
             }
 
@@ -1403,6 +1410,7 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
+                wcg.Rollback();
                 return response;
             }
 
@@ -1414,6 +1422,7 @@ public:
                     lc.Describe().c_str(),
                     FormatError(error).c_str());
                 *response.MutableError() = std::move(error);
+                wcg.Rollback();
                 return response;
             }
 
@@ -1463,10 +1472,15 @@ public:
         const auto createFlag = NProto::TCreateHandleRequest::E_CREATE;
         const auto exclFlag = NProto::TCreateHandleRequest::E_EXCLUSIVE;
 
+        std::unique_lock l(Mutex);
+
+        //
+        // wcg should be initialized after the lock because it's important to
+        // destroy it before the lock is released in case of pre-commit errors
+        //
+
         TWriteContext writeContext;
         TWriteContextGuard wcg(writeContext, *PageStore);
-
-        std::unique_lock l(Mutex);
         wcg.Init();
 
         ui64 nodeId = request.GetNodeId();
@@ -1659,18 +1673,17 @@ public:
                 }
             }
 
-            if (!HasError(response.GetError())) {
-                wcg.Link();
+            if (HasError(response.GetError())) {
+                SILK_LOG(
+                    LogLevel(response.GetError()),
+                    "[%s] DestroyHandle error=%s",
+                    lc.Describe().c_str(),
+                    FormatError(response.GetError()).c_str());
+                wcg.Rollback();
+                return response;
             }
-        }
 
-        if (HasError(response.GetError())) {
-            SILK_LOG(
-                LogLevel(response.GetError()),
-                "[%s] DestroyHandle error=%s",
-                lc.Describe().c_str(),
-                FormatError(response.GetError()).c_str());
-            return response;
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
@@ -2412,6 +2425,7 @@ public:
                         lc.Describe().c_str(),
                         c.Component->Describe().c_str(),
                         FormatError(error).c_str());
+                    wcg.Rollback();
                     return error;
                 }
             }

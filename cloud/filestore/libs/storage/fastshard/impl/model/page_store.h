@@ -55,6 +55,7 @@ struct TWriteContext
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
     bool PagesCollected = false;
+    bool RolledBack = false;
 
     TLsnLink GetLink() const
     {
@@ -93,10 +94,7 @@ public:
 
     ~TWriteContextGuard()
     {
-        if (!Context.PagesCollected) {
-            auto pages = CollectPages(Context);
-            Store.RollbackPages(Context.Lsn, pages);
-        }
+        Rollback();
     }
 
     // Must be called after shard mutex is taken. Otherwise concurrent shard ops
@@ -111,6 +109,19 @@ public:
     void Link()
     {
         Context.PrevLsn = Store.LinkRecord(Context.Lsn);
+    }
+
+    // Should be called explicitly for any pre-commit rollback. This should be
+    // done while still holding all the required locks because otherwise a
+    // concurrently running operation may read the pages that are never going
+    // to be committed.
+    void Rollback()
+    {
+        if (!Context.PagesCollected && !Context.RolledBack) {
+            auto pages = CollectPages(Context);
+            Store.RollbackPages(Context.Lsn, pages);
+            Context.RolledBack = true;
+        }
     }
 };
 
