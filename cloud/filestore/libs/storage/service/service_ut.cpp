@@ -927,21 +927,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         );
         UNIT_ASSERT_VALUES_UNEQUAL("", headers.SessionId);
 
-        auto headers2 = service.InitSession(
-            "test",
-            "client",
-            "",         // checkpointId
-            true        // restoreClientSession
-        );
+        auto headers2 = service.InitSession("test", "client");
         UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, headers2.SessionId);
 
-        auto headers3 = service.InitSession(
-            "test",
-            "client",
-            "",         // checkpointId
-            false       // restoreClientSession
+        THeaders headers3 = {"test", "client", "", 0};
+        service.AssertCreateSessionFailed(
+            headers3,
+            "" /* checkpointId */,
+            false /* restoreClientSession */
         );
-        UNIT_ASSERT_VALUES_UNEQUAL(headers.SessionId, headers3.SessionId);
 
         service.DestroySession(headers);
     }
@@ -985,24 +979,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto headers = service.InitSession("test", "client");
 
-        THeaders roHeaders;
+        THeaders roHeaders{"test", "client", "", 1};
         service.InitSession(
             roHeaders,
-            "test",
-            "client",
             "",     // checkpointId
             true,   // restoreClientSession
-            1,
             true);  // readOnly
 
-        THeaders rwHeaders;
+        THeaders rwHeaders{"test", "client", "", 1};
         service.InitSession(
             rwHeaders,
-            "test",
-            "client",
             "",     // checkpointId
             true,   // restoreClientSession
-            1,
             false);  // readOnly
 
         UNIT_ASSERT_VALUES_EQUAL(3, notifications.size());
@@ -1090,17 +1078,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto headers = service.InitSession("test", "client");
         service.PingSession(headers);
 
-        THeaders restoredHeaders;
+        THeaders restoredHeaders{"test", "client", "", 1};
         // Recover the same client session without specifying SessionId.
         // The tablet should return the same SessionId and create a new
         // subsession for seqNo=1.
         service.InitSession(
             restoredHeaders,
-            "test",
-            "client",
-            "",     // checkpointId
-            true,   // restoreClientSession
-            1);
+            "",    // checkpointId
+            true   // restoreClientSession
+        );
 
         UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, restoredHeaders.SessionId);
         UNIT_ASSERT(subSessionActor0);
@@ -1332,7 +1318,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service1.CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"));
         service1.ListNodes(headers1, 1);
 
-        auto headers2 = service2.InitSession("test", "client", "", false, 1, true);
+        auto headers2 = service2.InitSession("test", "client2", "", false, 1, true);
         service2.PingSession(headers2);
 
         headers2 = service2.InitSession("test", "client", "", true, 1);
@@ -1577,13 +1563,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
         service.ListNodes(headers, 1);
 
-        THeaders headers1;
-        auto response1 = service.InitSession(headers1, "test", "client", "", true, 1, true);
+        THeaders headers1{"test", "client", "", 1};
+        auto response1 = service.InitSession(headers1, "", true, true);
         UNIT_ASSERT_VALUES_EQUAL(response1->Record.GetSession().GetSessionState(), "123");
         service.PingSession(headers1);
 
-        THeaders headers2;
-        auto response2 = service.InitSession(headers2, "test", "client", "", true, 1, false);
+        THeaders headers2{"test", "client", "", 1};
+        auto response2 = service.InitSession(headers2, "", true, false);
         UNIT_ASSERT_VALUES_EQUAL(response2->Record.GetSession().GetSessionState(), "123");
         service.PingSession(headers2);
 
@@ -1754,8 +1740,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const char* fsId = "test";
         const char* clientId = "client";
         service.CreateFileStore(fsId, 1'000);
-        THeaders headers;
-        auto session = service.InitSession(headers, fsId, clientId);
+        THeaders headers{fsId, clientId};
+        auto session = service.InitSession(headers);
 
         CheckStorageConfigValues(
             {"LazyXAttrsEnabled"},
@@ -1897,8 +1883,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore(fsId, 1'000);
 
-        THeaders headers;
-        auto session = service.InitSession(headers, fsId, clientId);
+        THeaders headers{fsId, clientId};
+        auto session = service.InitSession(headers);
 
         UNIT_ASSERT(
             !session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
@@ -1907,7 +1893,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         WaitForTabletStart(service);
 
-        session = service.InitSession(headers, fsId, clientId);
+        session = service.InitSession(headers);
 
         UNIT_ASSERT(
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
@@ -1946,17 +1932,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         THeaders headers1 = {"test", "client", "session", 3};
         service.CreateSession(
             headers1,
-            "", // checkpointId
-            false, // restoreClientSession
-            headers1.SessionSeqNo);
+            "",     // checkpointId
+            false   // restoreClientSession
+        );
         service.ResetSession(headers1, "some_state");
 
         THeaders headers2 = {"test", "client2", "session2", 4};
         service.CreateSession(
             headers2,
-            "", // checkpointId
-            false, // restoreClientSession
-            headers2.SessionSeqNo);
+            "",     // checkpointId
+            false   // restoreClientSession
+        );
         service.ResetSession(headers2, "some_state2");
 
         NProtoPrivate::TDescribeSessionsRequest request;
@@ -2379,7 +2365,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             response->GetStatus(),
             response->GetErrorReason());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, sessionCreated);
+        UNIT_ASSERT_VALUES_EQUAL(3, sessionCreated);
     }
 
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
@@ -4430,8 +4416,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(originalFs, 1000);
         service.CreateFileStore(mirroredFs, 1000);
 
-        auto originalHeaders = service.InitSession(originalFs, "client");
-        auto mirroredHeaders = service.InitSession(mirroredFs, "client");
+        auto originalHeaders = service.InitSession(originalFs, "client-original");
+        auto mirroredHeaders = service.InitSession(mirroredFs, "client-mirrored");
 
         // Create file in the original fs
         service.CreateNode(originalHeaders, TCreateNodeArgs::File(RootNodeId, "testfile"));

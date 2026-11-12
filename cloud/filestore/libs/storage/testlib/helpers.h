@@ -16,7 +16,7 @@ struct THeaders
 {
     TString FileSystemId;
     TString ClientId;
-    TString SessionId;
+    TString SessionId = "";
     ui64 SessionSeqNo = 0;
     bool DisableMultiTabletForwarding = false;
 

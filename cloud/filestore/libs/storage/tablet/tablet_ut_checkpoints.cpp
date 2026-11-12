@@ -1,4 +1,5 @@
 #include "tablet.h"
+#include "tablet_state_iface.h"
 
 #include <cloud/filestore/libs/storage/testlib/helpers.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -66,7 +67,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetCheckpointNodesCount(), 3);   // TODO(#1923)
         }
 
-        tablet.InitSession("client", "session2", "checkpoint");
+        tablet.InitSession("client2", "session2", "checkpoint");
 
         tablet.AccessNode(id1);
         tablet.AccessNode(id2);
@@ -149,7 +150,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
         TString expected = expected2;
         memset(expected.begin() + 100, 'B', 10);
 
-        tablet.InitSession("client", "session1", "checkpoint1");
+        tablet.InitSession("client1", "session1", "checkpoint1");
         ui64 handle1 = CreateHandle(tablet, id);
 
         {
@@ -158,7 +159,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             UNIT_ASSERT_VALUES_EQUAL(expected1, buffer);
         }
 
-        tablet.InitSession("client", "session2", "checkpoint2");
+        tablet.InitSession("client2", "session2", "checkpoint2");
         ui64 handle2 = CreateHandle(tablet, id);
 
         {
@@ -307,7 +308,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             UNIT_ASSERT_VALUES_EQUAL(expected2, buffer);
         }
 
-        tablet.InitSession("client", "sessionc", "checkpoint");
+        tablet.InitSession("client2", "session2", "checkpoint");
         handle1 = CreateHandle(tablet, id1);
         handle2 = CreateHandle(tablet, id2);
 
@@ -403,7 +404,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
 
         for (int i = 0; i < targetSuccessfulCheckpoints;) {
             tablet.InitSession(
-                "client",
+                TStringBuilder() << "client_" << i,
                 TStringBuilder() << "session_" << i,
                 successfulCheckpoints[i].first);
             tablet.SendCreateHandleRequest(id, TCreateHandleArgs::RDWR);
