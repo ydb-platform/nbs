@@ -185,6 +185,7 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     SendCachedAcquireRequestsToAgent(ctx, args.Config);
 
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

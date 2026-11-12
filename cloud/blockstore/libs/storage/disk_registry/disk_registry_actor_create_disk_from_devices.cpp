@@ -150,6 +150,8 @@ void TDiskRegistryActor::CompleteCreateDiskFromDevices(
     response->Record.SetBlockCount(args.LogicalBlockCount);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    ReplyToCompletedPendingDeallocations(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

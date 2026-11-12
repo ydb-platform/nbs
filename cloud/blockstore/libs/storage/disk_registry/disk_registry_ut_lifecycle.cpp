@@ -44,6 +44,132 @@ using namespace std::chrono_literals;
 }                                                                              \
 // EXPECT_DISK_STATE
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TPendingCleanupFixture: public NUnitTest::TBaseFixture
+{
+    const NProto::TAgentConfig Agent = CreateAgentConfig(
+        "agent-1",
+        {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB),
+        });
+
+    std::unique_ptr<TDiskRegistryTestRuntime> Runtime;
+    std::optional<TDiskRegistryClient> DiskRegistry;
+
+    TString StuckDeviceId;
+    bool SecureEraseRequested = false;
+
+    void SetUpRuntime(
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig())
+    {
+        // Don't retry the stuck secure erase.
+        config.SetNonReplicatedSecureEraseTimeout(Max<ui32>());
+
+        Runtime =
+            TTestRuntimeBuilder().With(config).WithAgents({Agent}).Build();
+
+        DiskRegistry.emplace(*Runtime);
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {Agent}));
+
+        RegisterAndWaitForAgents(*Runtime, {Agent});
+
+        Runtime->SetObserverFunc(
+            [this](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    const auto& record =
+                        event->Get<TEvDiskAgent::TEvSecureEraseDeviceRequest>()
+                            ->Record;
+                    if (record.GetDeviceUUID() == StuckDeviceId) {
+                        SecureEraseRequested = true;
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+    }
+
+    TString AllocateDisk(const TString& diskId)
+    {
+        auto response = DiskRegistry->AllocateDisk(diskId, 10_GB);
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+
+        return response->Record.GetDevices(0).GetDeviceUUID();
+    }
+
+    // Deallocates the disk in the sync mode. The secure erase of the disk's
+    // device never finishes, so the response is postponed until the device
+    // leaves the pending cleanup.
+    TString DeallocateDiskWithStuckSecureErase(const TString& diskId)
+    {
+        StuckDeviceId = AllocateDisk(diskId);
+
+        DiskRegistry->MarkDiskForCleanup(diskId);
+        DiskRegistry->SendDeallocateDiskRequest(diskId, true);   // sync
+
+        Runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return SecureEraseRequested;
+                };
+                return options;
+            }());
+
+        UNIT_ASSERT(SecureEraseRequested);
+        UNIT_ASSERT(!TryRecvDeallocateDiskResponse());
+
+        return StuckDeviceId;
+    }
+
+    std::unique_ptr<TEvDiskRegistry::TEvDeallocateDiskResponse>
+    TryRecvDeallocateDiskResponse()
+    {
+        TAutoPtr<IEventHandle> handle;
+        Runtime->GrabEdgeEventRethrow<
+            TEvDiskRegistry::TEvDeallocateDiskResponse>(handle, WaitTimeout);
+
+        if (!handle) {
+            return nullptr;
+        }
+
+        return std::unique_ptr<TEvDiskRegistry::TEvDeallocateDiskResponse>(
+            handle->Release<TEvDiskRegistry::TEvDeallocateDiskResponse>()
+                .Release());
+    }
+
+    void CheckDeallocationIsCompleted()
+    {
+        auto response = TryRecvDeallocateDiskResponse();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    NProto::TActionResult CmsAction(NProto::TAction action)
+    {
+        auto response = DiskRegistry->CmsAction(TVector{std::move(action)});
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+
+        return response->Record.GetActionResults(0);
+    }
+};
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
@@ -3523,6 +3649,200 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             });
         UNIT_ASSERT(dirtyDevice);
         UNIT_ASSERT_VALUES_EQUAL("", dirtyDevice->GetDiskId());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenAgentReportsBrokenDevice,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto deviceId = DeallocateDiskWithStuckSecureErase("vol");
+
+        {
+            auto request = std::make_unique<TEvBrokeDevice>();
+            request->DeviceUUID = deviceId;
+
+            Runtime->Send(new IEventHandle(
+                MakeDiskAgentServiceId(Runtime->GetNodeId(0)),
+                Runtime->AllocateEdgeActor(),
+                request.release()));
+        }
+        RegisterAgent(*Runtime, 0);
+
+        CheckDeallocationIsCompleted();
+
+        const auto backup =
+            DiskRegistry->BackupDiskRegistryState(NProto::BDRSS_LOCAL_DB);
+        const auto* dirtyDevice = FindIfPtr(
+            backup->Record.GetLocalDBBackup().GetDirtyDevices(),
+            [&](const auto& x) { return x.GetId() == deviceId; });
+        UNIT_ASSERT(dirtyDevice);
+        UNIT_ASSERT_VALUES_EQUAL("", dirtyDevice->GetDiskId());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenDeviceIsRemovedFromConfig,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto deviceId = DeallocateDiskWithStuckSecureErase("vol");
+
+        auto agent = Agent;
+        agent.ClearDevices();
+        for (const auto& device: Agent.GetDevices()) {
+            if (device.GetDeviceUUID() != deviceId) {
+                *agent.AddDevices() = device;
+            }
+        }
+
+        const auto response =
+            DiskRegistry->UpdateConfig(CreateRegistryConfig(1, {agent}));
+        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.AffectedDisksSize());
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenHostIsPurged,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        DeallocateDiskWithStuckSecureErase("vol");
+
+        NProto::TAction action;
+        action.SetHost(Agent.GetAgentId());
+        action.SetType(NProto::TAction::PURGE_HOST);
+
+        const auto result = CmsAction(std::move(action));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetResult().GetCode(),
+            FormatError(result.GetResult()));
+        UNIT_ASSERT_VALUES_EQUAL(0, result.DependentDisksSize());
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenHostIsRemoved,
+        TPendingCleanupFixture)
+    {
+        auto config = CreateDefaultStorageConfig();
+        config.SetDiskRegistryCleanupConfigOnRemoveHost(true);
+        SetUpRuntime(std::move(config));
+
+        DeallocateDiskWithStuckSecureErase("vol");
+
+        NProto::TAction action;
+        action.SetHost(Agent.GetAgentId());
+        action.SetType(NProto::TAction::REMOVE_HOST);
+
+        const auto result = CmsAction(std::move(action));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetResult().GetCode(),
+            FormatError(result.GetResult()));
+        UNIT_ASSERT_VALUES_EQUAL(0, result.DependentDisksSize());
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenDeviceIsPurged,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto deviceId = DeallocateDiskWithStuckSecureErase("vol");
+        const auto* device = FindIfPtr(
+            Agent.GetDevices(),
+            [&](const auto& x) { return x.GetDeviceUUID() == deviceId; });
+        UNIT_ASSERT(device);
+
+        NProto::TAction action;
+        action.SetHost(Agent.GetAgentId());
+        action.SetDevice(device->GetDeviceName());
+        action.SetType(NProto::TAction::PURGE_DEVICE);
+
+        const auto result = CmsAction(std::move(action));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetResult().GetCode(),
+            FormatError(result.GetResult()));
+        UNIT_ASSERT_VALUES_EQUAL(0, result.DependentDisksSize());
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenDeviceIsUsedToCreateDisk,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto deviceId = DeallocateDiskWithStuckSecureErase("vol");
+
+        NProto::TDeviceConfig device;
+        device.SetDeviceUUID(deviceId);
+
+        DiskRegistry->CreateDiskFromDevices(
+            "new-vol",
+            DefaultLogicalBlockSize,
+            TVector{device},
+            true);   // force
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenDeviceIsMovedToAnotherDisk,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto sourceDeviceId = AllocateDisk("vol-1");
+        const auto targetDeviceId = DeallocateDiskWithStuckSecureErase("vol-2");
+
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvChangeDiskDeviceRequest>();
+        request->Record.SetDiskId("vol-1");
+        request->Record.SetSourceDeviceId(sourceDeviceId);
+        request->Record.SetTargetDeviceId(targetDeviceId);
+        DiskRegistry->SendRequest(std::move(request));
+
+        const auto response = DiskRegistry->RecvChangeDiskDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        CheckDeallocationIsCompleted();
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCompleteSyncDeallocationWhenDeviceIsUsedAsReplacement,
+        TPendingCleanupFixture)
+    {
+        SetUpRuntime();
+
+        const auto deviceId = AllocateDisk("vol-1");
+        const auto replacementId = DeallocateDiskWithStuckSecureErase("vol-2");
+
+        auto request =
+            DiskRegistry->CreateReplaceDeviceRequest("vol-1", deviceId);
+        request->Record.SetDeviceReplacementUUID(replacementId);
+        DiskRegistry->SendRequest(std::move(request));
+
+        const auto response = DiskRegistry->RecvReplaceDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        CheckDeallocationIsCompleted();
     }
 }
 

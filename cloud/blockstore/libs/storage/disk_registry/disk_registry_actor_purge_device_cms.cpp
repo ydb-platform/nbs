@@ -101,6 +101,7 @@ void TDiskRegistryActor::CompletePurgeDeviceCms(
         FormatError(args.Error).c_str(),
         args.Timeout.Seconds());
 
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

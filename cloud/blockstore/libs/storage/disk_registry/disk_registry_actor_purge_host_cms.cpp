@@ -104,6 +104,7 @@ void TDiskRegistryActor::CompletePurgeHostCms(
             return out.Str();
         }().c_str());
 
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

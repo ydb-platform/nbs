@@ -98,7 +98,8 @@ void TDiskRegistryActor::CompleteChangeDiskDevice(
         std::make_unique<TEvDiskRegistry::TEvChangeDiskDeviceResponse>(
             std::move(args.Error)));
 
-     ReallocateDisks(ctx);
+    ReplyToCompletedPendingDeallocations(ctx);
+    ReallocateDisks(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
