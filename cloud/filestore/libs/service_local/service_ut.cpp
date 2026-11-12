@@ -1,7 +1,6 @@
 #include "service.h"
 
 #include "config.h"
-#include "session.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -1639,31 +1638,6 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(bootstrap.ReadData(handle, 0, 8).GetBuffer(), "contents");
         bootstrap.DestroyHandle(handle);
         UNIT_ASSERT(HasError(bootstrap.NoAssertGetNodeAttr(node)));
-    }
-
-    Y_UNIT_TEST(ShouldKeepAcquiredHandleAliveAfterClose)
-    {
-        TTempDirectory dir;
-        TFsPath root(dir);
-        auto state = root / "state";
-        state.MkDirs();
-        TSession session("fs", root, state, "client", 100, 100, false,
-            10, false, TDuration::Seconds(1), CreateLoggingService("console", {TLOG_ERR}));
-        session.Init(false);
-        auto node = session.LookupNode(RootNodeId);
-        auto file = node->OpenHandle("file", O_CREAT | O_RDWR, 0600);
-        auto fileNode = TIndexNode::Create(*node, "file");
-        auto result = session.InsertHandle(std::move(file), fileNode, O_RDWR);
-        UNIT_ASSERT(!HasError(result.GetError()));
-        const auto id = result.GetResult();
-        auto acquired = session.LookupHandle(id);
-        UNIT_ASSERT(acquired && acquired->IsOpen());
-        session.DeleteHandle(id);
-        UNIT_ASSERT(!session.LookupHandle(id));
-        // This is the ownership held by an in-flight request while RELEASE
-        // concurrently removes the handle from the session table.
-        UNIT_ASSERT(acquired->IsOpen());
-        UNIT_ASSERT_VALUES_EQUAL(acquired->Pwrite("data", 4, 0), 4);
     }
 
     Y_UNIT_TEST(ShouldReadAndWriteData)

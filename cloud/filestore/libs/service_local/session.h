@@ -56,7 +56,7 @@ private:
         TPersistentTable<THandleTableHeader, THandleTableRecord>;
 
     THashMap<TString, TString> Attrs;
-    THashMap<ui64, std::shared_ptr<THandle>> Handles;
+    THashMap<ui64, THandle> Handles;
     std::unique_ptr<THandleTable> HandleTable;
     std::atomic<ui64> NextHandleId = 0;
     TString FuseState;
@@ -162,7 +162,7 @@ public:
                 auto handle = node->OpenHandle(it->Flags);
                 auto [_, inserted] = Handles.emplace(
                     it->HandleId,
-                    std::make_shared<THandle>(THandle{std::move(handle), node, it.GetIndex()}));
+                    THandle{std::move(handle), node, it.GetIndex()});
                 Y_ABORT_UNLESS(
                     inserted,
                     "dup file handle for: %lu",
@@ -204,14 +204,14 @@ public:
         state->NodeId = node->GetNodeId();
         state->Flags = flags;
 
-        Handles.emplace(handleId, std::make_shared<THandle>(
-            THandle{std::move(handle), std::move(node), recordIndex}));
+        Handles.emplace(
+            handleId, THandle{std::move(handle), std::move(node), recordIndex});
         HandleTable->CommitRecord(recordIndex);
 
         return handleId;
     }
 
-    std::shared_ptr<TFileHandle> LookupHandle(ui64 handleId)
+    TFileHandle* LookupHandle(ui64 handleId)
     {
         TReadGuard guard(Lock);
 
@@ -220,8 +220,7 @@ public:
             return nullptr;
         }
 
-        // Keep both the descriptor and its node alive through in-flight I/O.
-        return {it->second, &it->second->FileHandle};
+        return &it->second.FileHandle;
     }
 
     void DeleteHandle(ui64 handleId)
@@ -230,7 +229,7 @@ public:
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
-            HandleTable->DeleteRecord(it->second->RecordIndex);
+            HandleTable->DeleteRecord(it->second.RecordIndex);
             Handles.erase(it);
         }
     }
@@ -244,8 +243,8 @@ public:
         // truncate, and other inode-based operations until their last close.
         TReadGuard guard(Lock);
         for (const auto& [id, handle]: Handles) {
-            if (handle->Node->GetNodeId() == nodeId) {
-                return handle->Node;
+            if (handle.Node->GetNodeId() == nodeId) {
+                return handle.Node;
             }
         }
         return nullptr;

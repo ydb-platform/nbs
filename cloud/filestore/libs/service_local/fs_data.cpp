@@ -126,7 +126,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     STORAGE_TRACE("ReadData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
+    auto* handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TReadDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
@@ -155,7 +155,6 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
         future.Subscribe(
                 [&logRequest,
                  promise,
-                 handle,
                  buffers = std::move(buffers)](
                     const TFuture<ui32>& f) mutable
                 {
@@ -189,7 +188,7 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
     TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
     FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
-        [&logRequest, b = std::move(b), promise, handle] (const TFuture<ui32>& f) mutable {
+        [&logRequest, b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
             NProto::TReadDataResponse response;
             try {
                 auto bytesRead = f.GetValue();
@@ -218,7 +217,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
     STORAGE_TRACE("WriteData " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
+    auto* handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return MakeFuture<NProto::TWriteDataResponse>(
             TErrorResponse(ErrorInvalidHandle(request.GetHandle())));
@@ -245,7 +244,6 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
                 [this,
                  &logRequest,
                  promise,
-                 handle,
                  bytesExpected,
                  buffers = std::move(buffers)](
                     const TFuture<ui32>& f) mutable
@@ -287,7 +285,7 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
         data,
         request.GetFlags())
         .Subscribe(
-            [&logRequest, b = std::move(b), promise, handle](
+            [&logRequest, b = std::move(b), promise](
                 const TFuture<ui32>& f) mutable
             {
                 NProto::TWriteDataResponse response;
@@ -317,7 +315,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
         << " flags: " << FallocateFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
+    auto* handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
@@ -340,7 +338,7 @@ NProto::TFsyncResponse TLocalFileSystem::Fsync(
     STORAGE_TRACE("Fsync " << ProtoMessagePrinter.ToString(request));
 
     auto session = GetSession(request);
-    auto handle = session->LookupHandle(request.GetHandle());
+    auto* handle = session->LookupHandle(request.GetHandle());
     if (!handle || !handle->IsOpen()) {
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
