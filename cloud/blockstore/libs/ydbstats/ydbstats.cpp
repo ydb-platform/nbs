@@ -472,7 +472,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         return rowsBuilder.Build();
     };
 
-    if (setupResult.TableNames.Stats) {
+    if (setupResult.TableNames.Stats && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -480,7 +480,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.History) {
+    if (setupResult.TableNames.History && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -488,7 +488,7 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.Archive) {
+    if (setupResult.TableNames.Archive && !rows.Stats.empty()) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
@@ -496,22 +496,26 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
             buildYdbRows(addStatsRows));
     }
 
-    if (setupResult.TableNames.Metrics) {
+    if (setupResult.TableNames.Metrics && !rows.Metrics.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Metrics,
             buildYdbRows(addMetricsRows));
     }
 
-    if (setupResult.TableNames.Groups) {
+    if (setupResult.TableNames.Groups && !rows.Groups.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Groups,
             buildYdbRows(addGroupsRows));
     }
 
-    if (setupResult.TableNames.Partitions) {
+    if (setupResult.TableNames.Partitions && !rows.Partitions.empty()) {
         dataForUpload.emplace_back(
             setupResult.TableNames.Partitions,
             buildYdbRows(addPartitionsRows));
+    }
+
+    if (dataForUpload.empty()) {
+        return MakeFuture(MakeError(S_OK));
     }
 
     auto executor = std::make_shared<TBulkUpsertExecutor>(
@@ -550,7 +554,7 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::EnsureInitialized()
                 });
         }
 
-        if (State == WORKING) {
+        if (State == WORKING && Config->GetHistoryTablePrefix()) {
             auto sinceLastCheck = (TInstant::Now() - LastCleanupCheck).Days();
             auto threshold = Config->GetHistoryTableLifetimeDays();
             if (!CleanupRunning && sinceLastCheck >= threshold) {
@@ -649,6 +653,9 @@ TFuture<TSetupTablesResult> TYdbStatsUploader::SetupTables() const
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupStatsTable() const
 {
     auto tableName = Config->GetStatsTableName();
+    if (!tableName) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK), tableName));
+    }
     return SetupTable(tableName, TableSchemes.Stats).Apply(
         [=] (const auto& future) {
             return TSetupTableResult(future.GetValue(), tableName);
@@ -703,6 +710,10 @@ TFuture<TSetupTableResult> TYdbStatsUploader::SetupPartitionsTable() const
 
 TFuture<TSetupTableResult> TYdbStatsUploader::SetupHistoryTable() const
 {
+    if (!Config->GetHistoryTablePrefix()) {
+        return MakeFuture(TSetupTableResult(MakeError(S_OK)));
+    }
+
     return DbStorage->GetHistoryTables().Apply(
         [=, this] (const auto& future) {
             const auto& result = future.GetValue();
@@ -825,6 +836,10 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
 
 bool TYdbStatsUploader::IsRotationRequired(TInstant ts) const
 {
+    if (!Config->GetHistoryTablePrefix()) {
+        return false;
+    }
+
     auto configValue = Config->GetStatsTableRotationAfterDays();
     auto currentDay = TInstant::Now().Days();
     return currentDay - ts.Days() >= configValue;

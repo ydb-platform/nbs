@@ -4,10 +4,10 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
-#include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -26,7 +26,7 @@ struct TTransportSwitcherConfig
 };
 
 using TEndpointFactory = std::function<TResultOrError<IBlockStorePtr>(
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr)>;
+    NCloud::IClientEndpointHandlerPtr)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,8 +38,10 @@ struct ITransportSwitcher
 {
     virtual ~ITransportSwitcher() = default;
 
-    virtual NCloud::NStorage::NRdma::IClientEndpointHandlerPtr
-        GetEndpointHandler() = 0;
+    virtual NCloud::IClientEndpointHandlerPtr GetEndpointHandler() = 0;
+
+    // Enables router updates after the prepared binding has been installed.
+    virtual void Activate() = 0;
 
     // whether the data goes over the preferred transport now, rather than
     // the fallback
@@ -48,14 +50,16 @@ struct ITransportSwitcher
 
 using ITransportSwitcherPtr = std::shared_ptr<ITransportSwitcher>;
 
-ITransportSwitcherPtr StartTransportSwitching(
+// Creates the preferred endpoint without changing the router. Until Activate,
+// endpoint callbacks only record its connection state.
+TResultOrError<ITransportSwitcherPtr> PrepareTransportSwitching(
     ITransportTargetPtr target,
     IBlockStorePtr fallback,
     TEndpointFactory factory,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
-    TString host,
+    TString endpointName,
     TTransportSwitcherConfig config);
 
 }   // namespace NCloud::NBlockStore::NCells

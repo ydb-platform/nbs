@@ -16,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/endpoints
+    cloud/blockstore/libs/icv2/iface
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/local_nvme

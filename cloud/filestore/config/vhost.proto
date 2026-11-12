@@ -112,6 +112,7 @@ message TVhostServiceConfig
     // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
     // The value is compared with the number of flush batches needed to drain
     // unflushed WriteData requests.
+    // Default: 8. Value 0 disables this threshold.
     optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
 
     // Limit of the total size (in bytes) of the HandleOpsQueue state files of

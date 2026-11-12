@@ -6,3 +6,4 @@ repos:
     -   id: end-of-file-fixer
         exclude: (^|/)canondata/
     -   id: trailing-whitespace
+        exclude: ^import-ydb/patches/.*\.patch$

@@ -22,6 +22,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
+    TDuration::Seconds(30);
+constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
+    TDuration::Seconds(180);
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
@@ -1087,16 +1098,25 @@ void TVolumeState::DeleteCreateFollowerRequestInfo(
         { return requestInfo.Link.Match(link); });
 }
 
-void TVolumeState::StartCreateLeaderRequest()
+void TVolumeState::StartCreateLeaderRequest(const TLeaderFollowerLink& link)
 {
-    Y_DEBUG_ABORT_UNLESS(!CreateLeaderRequestInProgress);
-    CreateLeaderRequestInProgress = true;
+    Y_DEBUG_ABORT_UNLESS(!LeaderLinkBeingCreated);
+    LeaderLinkBeingCreated = link;
 }
 
 void TVolumeState::FinishCreateLeaderRequest()
 {
-    Y_DEBUG_ABORT_UNLESS(CreateLeaderRequestInProgress);
-    CreateLeaderRequestInProgress = false;
+    Y_DEBUG_ABORT_UNLESS(LeaderLinkBeingCreated);
+    LeaderLinkBeingCreated.reset();
+}
+
+std::optional<TLeaderFollowerLink> TVolumeState::FindCreatingLeaderLink(
+    const TLeaderFollowerLink& link) const
+{
+    if (LeaderLinkBeingCreated && LeaderLinkBeingCreated->Match(link)) {
+        return LeaderLinkBeingCreated;
+    }
+    return std::nullopt;
 }
 
 std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
@@ -1210,6 +1230,87 @@ ELeadershipStatus TVolumeState::GetLeadershipStatus() const
     return LeadershipStatus;
 }
 
+const TOutdatedLeaderDestruction&
+TVolumeState::StartOutdatedLeaderDestructionAttempt()
+{
+    if (!OutdatedLeaderDestruction) {
+        OutdatedLeaderDestruction.emplace(
+            TOutdatedLeaderDestruction{
+                .TryCount = 0,
+                .DelayProvider = TBackoffDelayProvider(
+                    OutdatedLeaderDestructionBackoffDelay,
+                    OutdatedLeaderDestructionMaxBackoffDelay)});
+    }
+
+    ++OutdatedLeaderDestruction->TryCount;
+    return *OutdatedLeaderDestruction;
+}
+
+void TVolumeState::IncreaseOutdatedLeaderDestructionDelay()
+{
+    Y_DEBUG_ABORT_UNLESS(OutdatedLeaderDestruction);
+
+    OutdatedLeaderDestruction->DelayProvider.IncreaseDelay();
+}
+
+bool TVolumeState::IsSourceDiskIdTagRemovalInProgress() const
+{
+    return SourceDiskIdTagRemovalInProgress;
+}
+
+void TVolumeState::StartSourceDiskIdTagRemoval()
+{
+    Y_DEBUG_ABORT_UNLESS(!SourceDiskIdTagRemovalInProgress);
+
+    SourceDiskIdTagRemovalInProgress = true;
+}
+
+void TVolumeState::FinishSourceDiskIdTagRemoval()
+{
+    SourceDiskIdTagRemovalInProgress = false;
+}
+
+bool TVolumeState::IsLeaderLinkBeingRemoved(
+    const TLeaderFollowerLink& link) const
+{
+    return LeaderLinkBeingRemoved == link.LinkUUID;
+}
+
+void TVolumeState::StartRemovingLeaderLink(const TLeaderFollowerLink& link)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        !LeaderLinkBeingRemoved || IsLeaderLinkBeingRemoved(link));
+
+    LeaderLinkBeingRemoved = link.LinkUUID;
+}
+
+void TVolumeState::FinishRemovingLeaderLink(const TLeaderFollowerLink& link)
+{
+    if (IsLeaderLinkBeingRemoved(link)) {
+        LeaderLinkBeingRemoved.reset();
+    }
+}
+
+bool TVolumeState::TryAddPendingLeadershipTransferRequest(
+    TRequestInfoPtr requestInfo,
+    const TLeaderFollowerLink& link)
+{
+    if (PendingLeadershipTransfer) {
+        return false;
+    }
+
+    PendingLeadershipTransfer.emplace(TPendingLeadershipTransfer{
+        .Link = link,
+        .Request = std::move(requestInfo)});
+    return true;
+}
+
+std::optional<TVolumeState::TPendingLeadershipTransfer>
+TVolumeState::TakePendingLeadershipTransfer()
+{
+    return std::exchange(PendingLeadershipTransfer, std::nullopt);
+}
+
 void TVolumeState::UpdateLeadershipStatus()
 {
     // We need to return the diskId of the disk that is currently the principal.
@@ -1297,7 +1398,9 @@ bool TVolumeState::IsCreateCheckpointOperationRestricted() const
 {
     const bool createFollowerRequestInProgress =
         !CreateFollowerRequests.empty();
-    if (CreateLeaderRequestInProgress || createFollowerRequestInProgress) {
+    if (LeaderLinkBeingCreated || LeaderLinkBeingRemoved ||
+        createFollowerRequestInProgress)
+    {
         return true;
     }
 

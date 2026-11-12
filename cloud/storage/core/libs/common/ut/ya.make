@@ -21,6 +21,7 @@ SRCS(
     block_buffer_ut.cpp
     block_data_ref_ut.cpp
     byte_range_ut.cpp
+    compressed_bitmap_serialization_ut.cpp
     concurrent_queue_ut.cpp
     context_ut.cpp
     disjoint_interval_map_ut.cpp

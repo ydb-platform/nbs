@@ -161,7 +161,17 @@ void TCreateVolumeLinkActor::HandlePersistedOnLeader(
     auto error = message->GetError();
 
     if (HasError(error)) {
-        ReplyAndDie(ctx, message->GetError());
+        if (error.GetCode() == E_CANCELLED &&
+            Follower.State == TFollowerDiskInfo::EState::Preparing)
+        {
+            NCloud::Register<TPropagateLinkToFollowerActor>(
+                ctx,
+                LogPrefix,
+                CreateRequestInfo(VolumeActorId, 0, MakeIntrusive<TCallContext>()),
+                Follower.Link,
+                TPropagateLinkToFollowerActor::EReason::Destruction);
+        }
+        ReplyAndDie(ctx, error);
         return;
     }
 
