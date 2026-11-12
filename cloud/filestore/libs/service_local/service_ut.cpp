@@ -1625,6 +1625,21 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
     }
 
+    Y_UNIT_TEST(ShouldKeepUnlinkedOpenNode)
+    {
+        TTestBootstrap bootstrap("fs");
+        const auto opened = bootstrap.CreateHandle(
+            RootNodeId, "file", TCreateHandleArgs::CREATE);
+        const auto handle = opened.GetHandle();
+        const auto node = opened.GetNodeAttr().GetId();
+        bootstrap.WriteData(handle, 0, "contents");
+        bootstrap.UnlinkNode(RootNodeId, "file", false);
+        UNIT_ASSERT_VALUES_EQUAL(bootstrap.GetNodeAttr(node).GetNode().GetSize(), 8);
+        UNIT_ASSERT_VALUES_EQUAL(bootstrap.ReadData(handle, 0, 8).GetBuffer(), "contents");
+        bootstrap.DestroyHandle(handle);
+        UNIT_ASSERT(HasError(bootstrap.NoAssertGetNodeAttr(node)));
+    }
+
     Y_UNIT_TEST(ShouldReadAndWriteData)
     {
         TTestBootstrap bootstrap("fs");
@@ -2400,7 +2415,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         }
 
         // b c -> c
-        bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR);
+        const auto replacedHandle =
+            bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR).GetHandle();
         bootstrap.RenameNode(RootNodeId, "b", RootNodeId, "c", 0);
         {
             auto response = bootstrap.ListNodes(RootNodeId);
@@ -2411,7 +2427,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             auto link = bootstrap.ReadLink(id2);
             UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
 
-            auto stat = bootstrap.AssertGetNodeAttrFailed(id1);
+            // Replacing the final link does not invalidate an open file.
+            const auto stat = bootstrap.GetNodeAttr(id1).GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 0);
+            bootstrap.DestroyHandle(replacedHandle);
+            bootstrap.AssertGetNodeAttrFailed(id1);
         }
 
         // non-existing to existing

@@ -52,33 +52,31 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         Config->GetGuestOnlyPermissionsCheckEnabled());
     TFileHandle handle;
     NLowLevel::TFileStatEx stat;
-    ui64 nodeId;
     if (const auto& pathname = request.GetName()) {
         handle = node->OpenHandle(pathname, flags, mode);
 
         auto newnode = TIndexNode::Create(*node, pathname);
         stat = newnode->Stat();
-        nodeId = newnode->GetNodeId();
 
         if (!session->TryInsertNode(
-                std::move(newnode),
+                newnode,
                 node->GetNodeId(),
                 pathname))
         {
             ReportLocalFsMaxSessionNodesInUse();
             return TErrorResponse(ErrorNoSpaceLeft());
         }
+        node = std::move(newnode);
     } else {
         handle = node->OpenHandle(flags);
         stat = node->Stat();
-        nodeId = node->GetNodeId();
     }
 
     // Don't persist flags that only make sense on initial open
     flags = flags & ~(O_CREAT | O_EXCL | O_TRUNC);
 
     auto [handleId, error] =
-        session->InsertHandle(std::move(handle), nodeId, flags);
+        session->InsertHandle(std::move(handle), node, flags);
     if (HasError(error)) {
         // InsertHandle returns E_FS_NOSPC only when the session handle table
         // is full

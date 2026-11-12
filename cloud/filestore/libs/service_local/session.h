@@ -37,6 +37,7 @@ private:
     struct THandle
     {
         TFileHandle FileHandle;
+        TIndexNodePtr Node;
         ui64 RecordIndex = -1;
     };
 
@@ -161,7 +162,7 @@ public:
                 auto handle = node->OpenHandle(it->Flags);
                 auto [_, inserted] = Handles.emplace(
                     it->HandleId,
-                    THandle{std::move(handle), it.GetIndex()});
+                    THandle{std::move(handle), node, it.GetIndex()});
                 Y_ABORT_UNLESS(
                     inserted,
                     "dup file handle for: %lu",
@@ -180,7 +181,7 @@ public:
     }
 
     [[nodiscard]] TResultOrError<ui64>
-    InsertHandle(TFileHandle handle, ui64 nodeId, int flags)
+    InsertHandle(TFileHandle handle, TIndexNodePtr node, int flags)
     {
         TWriteGuard guard(Lock);
 
@@ -200,10 +201,11 @@ public:
 
         auto* state = HandleTable->RecordData(recordIndex);
         state->HandleId = handleId;
-        state->NodeId = nodeId;
+        state->NodeId = node->GetNodeId();
         state->Flags = flags;
 
-        Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
+        Handles.emplace(
+            handleId, THandle{std::move(handle), std::move(node), recordIndex});
         HandleTable->CommitRecord(recordIndex);
 
         return handleId;
@@ -234,7 +236,18 @@ public:
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        return Index.LookupNode(nodeId);
+        if (auto node = Index.LookupNode(nodeId)) {
+            return node;
+        }
+        // Unlink removes the index entry, but open files still support stat,
+        // truncate, and other inode-based operations until their last close.
+        TReadGuard guard(Lock);
+        for (const auto& [id, handle]: Handles) {
+            if (handle.Node->GetNodeId() == nodeId) {
+                return handle.Node;
+            }
+        }
+        return nullptr;
     }
 
     TNodeMapper::TRemapResult RemapNode(
