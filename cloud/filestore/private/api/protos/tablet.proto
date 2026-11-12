@@ -1163,14 +1163,15 @@ message TFileSystemShardCreationState
     // are treated as committed history.
     NCloud.NProto.TCompressedBitmapData CreatedShardBitmap = 2;
 
-    // First shard index covered by the current creation range.
-    uint32 BaseShardCount = 3;
+    // Number of shards in the main filesystem topology when this shard
+    // creation/resize plan started.
+    uint32 TopologyShardCount = 3;
 
     // Exclusive upper bound for the target shard range.
     uint32 TargetShardCount = 4;
 
     // Hash of target shard create configs in
-    // [BaseShardCount, TargetShardCount).
+    // [TopologyShardCount, TargetShardCount).
     uint64 TargetShardConfigHash = 5;
 }
 

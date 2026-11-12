@@ -35,11 +35,11 @@ TVector<NKikimrFileStore::TConfig> MakeShardConfigs()
 }
 
 ui64 CalculateNewShardConfigsHashForTest(
-    ui32 baseShardCount,
+    ui32 topologyShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs)
 {
     const auto result =
-        CalculateNewShardConfigsHash(baseShardCount, shardConfigs);
+        CalculateNewShardConfigsHash(topologyShardCount, shardConfigs);
     UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
     return result.GetResult();
 }
@@ -47,12 +47,12 @@ ui64 CalculateNewShardConfigsHashForTest(
 NProtoPrivate::TFileSystemShardCreationState MakeState(
     ui32 version,
     std::initializer_list<ui32> createdShards,
-    ui32 baseShardCount,
+    ui32 topologyShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs)
 {
     const ui32 targetShardCount = shardConfigs.size();
     UNIT_ASSERT_C(
-        baseShardCount <= targetShardCount,
+        topologyShardCount <= targetShardCount,
         "Invalid test shard range");
 
     NCloud::TCompressedBitmap bitmap(targetShardCount);
@@ -66,10 +66,12 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
 
     NProtoPrivate::TFileSystemShardCreationState state;
     state.SetVersion(version);
-    state.SetBaseShardCount(baseShardCount);
+    state.SetTopologyShardCount(topologyShardCount);
     state.SetTargetShardCount(targetShardCount);
     state.SetTargetShardConfigHash(
-        CalculateNewShardConfigsHashForTest(baseShardCount, shardConfigs));
+        CalculateNewShardConfigsHashForTest(
+            topologyShardCount,
+            shardConfigs));
     SaveCompressedBitmap(
         bitmap,
         targetShardCount,
@@ -153,7 +155,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(42, companion.GetShardCreationStateVersion());
         UNIT_ASSERT(companion.HasCreatedShardBitmap());
-        UNIT_ASSERT_VALUES_EQUAL(0, companion.GetBaseShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, companion.GetTopologyShardCount());
         UNIT_ASSERT_VALUES_EQUAL(ShardCount, companion.GetTargetShardCount());
         UNIT_ASSERT_VALUES_EQUAL(
             CalculateNewShardConfigsHashForTest(0, shardConfigs),
@@ -217,7 +219,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
             companion.SetupCreatedShardBitmap(ShardCount, nextShardConfigs);
 
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        UNIT_ASSERT_VALUES_EQUAL(ShardCount, companion.GetBaseShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(ShardCount, companion.GetTopologyShardCount());
         UNIT_ASSERT_VALUES_EQUAL(
             nextShardConfigs.size(),
             companion.GetTargetShardCount());

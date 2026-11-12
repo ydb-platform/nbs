@@ -16,9 +16,9 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Calculate a hash of configs for shards added by this plan, starting at
-// baseShardCount. Ignore operational metadata that changes between retries.
+// topologyShardCount. Ignore operational metadata that changes between retries.
 TResultOrError<ui64> CalculateNewShardConfigsHash(
-    ui32 baseShardCount,
+    ui32 topologyShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,8 +73,8 @@ public:
 
     // Version of the locally held persistent state, used for conditional updates.
     ui32 GetShardCreationStateVersion() const;
-    // Number of shards in the committed topology before this plan.
-    ui32 GetBaseShardCount() const;
+    // Topology shard count when this shard creation/resize plan started.
+    ui32 GetTopologyShardCount() const;
     // Total number of shards after this plan completes.
     ui32 GetTargetShardCount() const;
     // Hash of configs for shards added by this plan.
@@ -86,17 +86,18 @@ public:
     // Initialize the working bitmap for the requested plan; reject a conflicting
     // plan if previously created shards have not joined the committed topology.
     NProto::TError SetupCreatedShardBitmap(
-        ui32 baseShardCount,
+        ui32 topologyShardCount,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
 private:
-    TResultOrError<bool> HasUncommittedCreatedShards(
-        ui32 committedShardCount) const;
-
-    NProto::TError ValidateOrResetShardCreationState(
-        ui32 baseShardCount,
+    // Return whether the saved plan can be reset because its bitmap has no bits
+    // outside the current topology. Reject a conflicting plan otherwise.
+    TResultOrError<bool> CanResetFsShardCreationState(
+        ui32 topologyShardCount,
         ui32 targetShardCount,
-        ui64 targetShardConfigHash);
+        ui64 newShardConfigsHash,
+        const NCloud::TCompressedBitmap& fsBitmap,
+        ui64 fsBitmapBitCount) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
