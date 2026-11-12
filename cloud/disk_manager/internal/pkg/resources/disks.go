@@ -632,7 +632,6 @@ func (s *storageYDB) diskDeleted(
 	}
 
 	state.status = diskStatusDeleted
-	state.tombstone = false
 	state.deletedAt = deletedAt
 
 	err = s.updateDiskState(ctx, tx, state)

@@ -5,33 +5,46 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"time"
 
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Unlike getDiskState, does not commit tx when the disk is missing: tx may
+// belong to a task state update.
 func (s *storageYDB) loadDiskCleanupState(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
 ) (diskState, error) {
+
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
-		select * from disks where id = $id
-	`, s.disksPath), persistence.ValueParam("$id", persistence.UTF8Value(diskID)))
+
+		select *
+		from disks
+		where id = $id
+	`, s.disksPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
+	)
 	if err != nil {
 		return diskState{}, err
 	}
 	defer res.Close()
+
 	states, err := scanDiskStates(ctx, res)
 	if err != nil {
 		return diskState{}, err
 	}
+
 	if len(states) == 0 {
 		return diskState{}, nil
 	}
+
 	return states[0], nil
 }
 
@@ -39,63 +52,99 @@ func diskIsTombstone(state diskState) bool {
 	return state.status == diskStatusDeleted && state.tombstone
 }
 
-func diskDeletionCompleted(state diskState) bool {
-	if state.tombstone {
-		return false
-	}
-	return state.status == diskStatusDeleted && state.deletedAt.After(time.Unix(0, 0))
+// Placeholder written by code without the explicit tombstone flag is
+// indistinguishable from a completed deletion, except that the task which
+// created it is still running. Such a task must finish its external cleanup.
+func diskIsLegacyPlaceholderOf(state diskState, deleteTaskID string) bool {
+	return state.status == diskStatusDeleted &&
+		!state.tombstone &&
+		len(deleteTaskID) != 0 &&
+		state.deleteTaskID == deleteTaskID
 }
 
 func diskCleanupIDs(state diskState) ([]string, error) {
 	var ids []string
-	if state.cleanupTaskIDs == "" {
+	if len(state.cleanupTaskIDs) == 0 {
 		return ids, nil
 	}
+
 	err := json.Unmarshal([]byte(state.cleanupTaskIDs), &ids)
-	return ids, err
+	if err != nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"failed to parse cleanup task ids %q of disk %q: %w",
+			state.cleanupTaskIDs,
+			state.id,
+			err,
+		)
+	}
+
+	return ids, nil
 }
+
+func (s *storageYDB) setDiskCleanupIDs(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	state diskState,
+	ids []string,
+) error {
+
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
+
+	state.cleanupTaskIDs = string(data)
+	return s.updateDiskState(ctx, tx, state)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (s *storageYDB) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
+	deleteTaskID string,
 	cleanupID string,
-) (prepared bool, err error) {
-	err = s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
-		tx, err := session.BeginRWTransaction(ctx)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback(ctx)
-		state, err := s.loadDiskCleanupState(ctx, tx, diskID)
-		if err != nil {
-			return err
-		}
-		ids, err := diskCleanupIDs(state)
-		if err != nil {
-			return err
-		}
-		if !diskIsTombstone(state) {
-			prepared = false
+) (bool, error) {
+
+	var prepared bool
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			tx, err := session.BeginRWTransaction(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+
+			state, err := s.loadDiskCleanupState(ctx, tx, diskID)
+			if err != nil {
+				return err
+			}
+
+			prepared = diskIsTombstone(state) ||
+				diskIsLegacyPlaceholderOf(state, deleteTaskID)
+			if !prepared {
+				return tx.Commit(ctx)
+			}
+
+			ids, err := diskCleanupIDs(state)
+			if err != nil {
+				return err
+			}
+
+			if slices.Contains(ids, cleanupID) {
+				return tx.Commit(ctx)
+			}
+
+			err = s.setDiskCleanupIDs(ctx, tx, state, append(ids, cleanupID))
+			if err != nil {
+				return err
+			}
+
 			return tx.Commit(ctx)
-		}
-		if cleanupID == "" {
-			return fmt.Errorf("empty legacy cleanup ID for disk %q", diskID)
-		}
-		if !slices.Contains(ids, cleanupID) {
-			ids = append(ids, cleanupID)
-		}
-		data, err := json.Marshal(ids)
-		if err != nil {
-			return err
-		}
-		state.cleanupTaskIDs = string(data)
-		if err := s.updateDiskState(ctx, tx, state); err != nil {
-			return err
-		}
-		err = tx.Commit(ctx)
-		prepared = err == nil
-		return err
-	})
+		},
+	)
 	return prepared, err
 }
 
@@ -105,32 +154,21 @@ func (s *storageYDB) CompleteDiskCleanup(
 	diskID string,
 	cleanupID string,
 ) error {
+
 	state, err := s.loadDiskCleanupState(ctx, tx, diskID)
 	if err != nil {
 		return err
 	}
+
 	ids, err := diskCleanupIDs(state)
 	if err != nil {
 		return err
 	}
-	if !diskIsTombstone(state) || !slices.Contains(ids, cleanupID) {
+
+	if !slices.Contains(ids, cleanupID) {
 		return nil
 	}
-	remaining := make([]string, 0, len(ids)-1)
-	for _, id := range ids {
-		if id != cleanupID {
-			remaining = append(remaining, id)
-		}
-	}
-	data, err := json.Marshal(remaining)
-	if err != nil {
-		return err
-	}
-	state.cleanupTaskIDs = string(data)
 
-	err = s.updateDiskState(ctx, tx, state)
-	if err != nil {
-		return err
-	}
-	return nil
+	ids = slices.DeleteFunc(ids, func(id string) bool { return id == cleanupID })
+	return s.setDiskCleanupIDs(ctx, tx, state, ids)
 }
