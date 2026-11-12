@@ -76,7 +76,7 @@ struct THostBinding
     IDetachableTargetPtr Sink;
 
     // only without a fallback: there is no switcher to hold it
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr RdmaHandler;
+    NCloud::IClientEndpointHandlerPtr RdmaHandler;
 };
 using THostBindingPtr = std::shared_ptr<THostBinding>;
 
@@ -129,8 +129,7 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
     return PrepareTransportSwitching(
         binding.Sink,
         binding.DataEndpoint,
-        [bootstrap, hostConfig]
-        (NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        [bootstrap, hostConfig](NCloud::IClientEndpointHandlerPtr handler)
         {
             return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
                 bootstrap,
@@ -140,7 +139,8 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
         bootstrap.Timer,
         bootstrap.Scheduler,
         bootstrap.Logging,
-        hostConfig.GetFqdn(),
+        TStringBuilder() << "RDMA " << hostConfig.GetFqdn() << ":"
+                         << hostConfig.GetRdmaPort(),
         TTransportSwitcherConfig{
             .SettleTime = hostConfig.GetRdmaSettleTime(),
         });
@@ -1223,8 +1223,7 @@ public:
 // The only listener an rdma endpoint gets when there is no fallback: with no
 // second transport to fall back to, the one thing worth reacting to is the
 // link never coming up.
-class TRdmaOnlyHandler final
-    : public NCloud::NStorage::NRdma::IClientEndpointHandler
+class TRdmaOnlyHandler final: public NCloud::IClientEndpointHandler
 {
 private:
     const std::weak_ptr<TCellConnection> Connection;
