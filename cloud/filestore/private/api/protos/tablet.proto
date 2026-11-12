@@ -23,6 +23,32 @@ package NCloud.NFileStore.NProtoPrivate;
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
+// RDMA tablet side channel envelope.
+
+message TActorId
+{
+    fixed64 RawX1 = 1;
+    fixed64 RawX2 = 2;
+}
+
+message TTabletRdmaRequest
+{
+    // Event type of the wrapped request.
+    uint32 MethodId = 1;
+
+    // Pipe server of the client's tablet pipe. The request goes to the tablet
+    // of that pipe, which handles it as one received through the pipe.
+    // TODO(#7890): remove
+    TActorId PipeServerId = 2;
+}
+
+message TTabletRdmaResponse
+{
+    // Event type of the wrapped response.
+    uint32 MethodId = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // WaitReady request/response.
 
 message TWaitReadyRequest
