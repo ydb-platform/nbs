@@ -172,7 +172,7 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
         bootstrap.Logging,
         DescribeDataEndpoint(hostConfig),
         TTransportSwitcherConfig{
-            .SettleTime = hostConfig.GetRdmaSettleTime(),
+            .SettleTime = hostConfig.GetEndpointSettleTime(),
         });
 }
 

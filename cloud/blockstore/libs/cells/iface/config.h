@@ -38,7 +38,7 @@ private:
     TString CellId;
     NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
     bool GrpcDataFallbackEnabled = false;
-    TDuration RdmaSettleTime;
+    TDuration EndpointSettleTime;
 
 public:
     TCellHostConfig(
@@ -74,9 +74,9 @@ public:
         return GrpcDataFallbackEnabled;
     }
 
-    TDuration GetRdmaSettleTime() const
+    TDuration GetEndpointSettleTime() const
     {
-        return RdmaSettleTime;
+        return EndpointSettleTime;
     }
 
     TString GetFqdn() const
@@ -115,7 +115,7 @@ public:
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::ECellDataTransport GetTransport() const;
     [[nodiscard]] bool GetGrpcDataFallbackEnabled() const;
-    [[nodiscard]] TDuration GetRdmaSettleTime() const;
+    [[nodiscard]] TDuration GetEndpointSettleTime() const;
     [[nodiscard]] TDuration GetHostPingPeriod() const;
     [[nodiscard]] TDuration GetHostPingTimeout() const;
     [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;

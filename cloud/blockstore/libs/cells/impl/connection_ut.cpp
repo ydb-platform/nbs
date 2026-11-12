@@ -335,7 +335,7 @@ struct TTestEnv
         NProto::ECellDataTransport transport =
             NProto::CELL_DATA_TRANSPORT_GRPC,
         bool grpcDataFallback = false,
-        ui32 rdmaSettleTimeMs = 0,
+        ui32 settleTimeMs = 0,
         // a place to move to once a host is declared dead
         bool secondHost = false,
         // and another, so that a test can tell "stay where the move put you"
@@ -347,7 +347,7 @@ struct TTestEnv
         proto.SetGrpcPort(9766);
         proto.SetTransport(transport);
         proto.SetGrpcDataFallbackEnabled(grpcDataFallback);
-        proto.SetRdmaSettleTime(rdmaSettleTimeMs);
+        proto.SetEndpointSettleTime(settleTimeMs);
         proto.AddHosts()->SetFqdn("host-a");
         if (secondHost) {
             proto.AddHosts()->SetFqdn("host-b");
@@ -2210,6 +2210,28 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "grpc",
             GetCellMounts(*env.Bootstrap.Connections)[0].DataTransport);
+    }
+
+    Y_UNIT_TEST(ShouldReadTheSettleTimeUnderItsOldName)
+    {
+        NProto::TCellConfig proto;
+        proto.AddHosts()->SetFqdn("host-a");
+
+        proto.SetRdmaSettleTime(3000);
+        const TCellConfig old(proto);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(3),
+            old.GetEndpointSettleTime());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(3),
+            old.GetHosts().at("host-a").GetEndpointSettleTime());
+
+        // the new name wins once both are set
+        proto.SetEndpointSettleTime(5000);
+        const TCellConfig both(proto);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(5),
+            both.GetEndpointSettleTime());
     }
 }
 

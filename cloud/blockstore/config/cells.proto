@@ -60,9 +60,8 @@ message TCellConfig
     // over gRPC.
     optional bool GrpcDataFallbackEnabled = 11;
 
-    // How long an RDMA or IC V2 connection that has dropped once has to stay
-    // up again before data is moved back onto it, in milliseconds.
-    optional uint32 RdmaSettleTime = 12;
+    // Use EndpointSettleTime. Honoured while EndpointSettleTime is unset.
+    optional uint32 RdmaSettleTime = 12 [deprecated = true];
 
     // HostMigrationEnabled: the hosts are always watched over gRPC now, and a
     // connection always moves off a host that stopped answering and onto the
@@ -75,6 +74,12 @@ message TCellConfig
     // How long a ping may take before the host counts as dead, in
     // milliseconds.
     optional uint32 HostPingTimeout = 15;
+
+    // 16 is taken by EdsHostPatterns in the EDS host discovery change.
+
+    // How long an RDMA or IC V2 connection that has dropped once has to stay
+    // up again before data is moved back onto it, in milliseconds.
+    optional uint32 EndpointSettleTime = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
