@@ -437,7 +437,9 @@ void TIndexTabletActor::HandleConfigureShards(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateShardTopology(msg->Record.GetShardTopology());
+        error = ValidateShardTopology(
+            GetFileSystem().GetShardTopology(),
+            msg->Record.GetShardTopology());
     }
 
     if (error.GetCode() != S_OK) {
@@ -561,7 +563,9 @@ void TIndexTabletActor::HandleConfigureAsShard(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateShardTopology(msg->Record.GetShardTopology());
+        error = ValidateShardTopology(
+            GetFileSystem().GetShardTopology(),
+            msg->Record.GetShardTopology());
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {

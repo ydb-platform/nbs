@@ -70,6 +70,11 @@ void AddOrdinaryShard(
     const TString& shardId,
     NProtoPrivate::TShardTopology& topology);
 
+// Adds a shard that stores files only, on devices of its own.
+void AddFastShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology);
+
 // Converts shard ids list into default topology representation.
 NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds);
