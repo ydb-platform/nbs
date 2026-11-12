@@ -392,7 +392,7 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
     }
 
-    Y_UNIT_TEST(ShouldPreserveInterleavedInputOrderForEqualTimes)
+    Y_UNIT_TEST(ShouldCollectOptionValuesBeforePositionalPaths)
     {
         TTempFileHandle first;
         TTempFileHandle second;
@@ -412,8 +412,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
             UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
             UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
             UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
-            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(second.Name()));
-            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(third.Name()));
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[1], RealPath(third.Name()));
+            UNIT_ASSERT_VALUES_EQUAL(command.Inputs[2], RealPath(second.Name()));
             UNIT_ASSERT_VALUES_EQUAL(command.Inputs[3], RealPath(first.Name()));
         }
     }

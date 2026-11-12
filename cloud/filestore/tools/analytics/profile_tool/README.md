@@ -36,7 +36,8 @@ per-request filtering are unchanged.
 Incomplete or corrupt boundary frames are ignored when estimating bounds. Files with unknown record bounds are retained.
 
 Multiple files are sorted by detected record end time, oldest first. Unknown
-bounds sort last; equal or unknown end times retain their input order. Boundary
+bounds sort last. Ties keep command-line order within each group: option values
+first, then positional paths. Boundary
 frames are probed once for sorting even without time filters, and pruning reuses
 those bounds. Single inputs are not probed. No times are inferred from filenames
 or filesystem modification times.
