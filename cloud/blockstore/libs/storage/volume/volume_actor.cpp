@@ -509,11 +509,17 @@ void TVolumeActor::DoRegisterVolume(
     }
 
     {
+        TVector<NKikimr::TTabletChannelInfo> channels;
+        if (State->GetDiskId() == diskId) {
+            channels = Info()->Channels;
+        }
+
         auto request = std::make_unique<TEvStatsService::TEvRegisterVolume>(
             volume.GetDiskId(),
             TabletID(),
             std::move(volume),
-            SelfId());
+            SelfId(),
+            std::move(channels));
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
     }
 }
