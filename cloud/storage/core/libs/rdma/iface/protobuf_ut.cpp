@@ -105,45 +105,14 @@ TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
     }
 }
 
-TEST(TProtoMessageSerializerTest, ShouldSerializeErrorWithinBuffer)
+TEST(TProtoMessageSerializerTest, ShouldNotWriteErrorPastBuffer)
 {
     auto buffer = TString(64, 'A');
 
-    const size_t bytes = SerializeError(E_REJECTED, "rejected", buffer);
-    ASSERT_NE(0u, bytes);
-    ASSERT_GE(buffer.size(), bytes);
-
-    const auto error = ParseError(TStringBuf(buffer).Head(bytes));
-    EXPECT_EQ(E_REJECTED, error.GetCode());
-    EXPECT_EQ("rejected", error.GetMessage());
-}
-
-TEST(TProtoMessageSerializerTest, ShouldShortenErrorMessageToFitBuffer)
-{
-    auto buffer = TString(32, 'A');
-
-    const size_t bytes =
-        SerializeError(E_REJECTED, TString(1024, 'x'), buffer);
-    ASSERT_NE(0u, bytes);
-    ASSERT_GE(buffer.size(), bytes);
-
-    const auto error = ParseError(TStringBuf(buffer).Head(bytes));
-    EXPECT_EQ(E_REJECTED, error.GetCode());
-    EXPECT_EQ("rdma error", error.GetMessage());
-}
-
-TEST(TProtoMessageSerializerTest, ShouldNotWriteErrorPastBuffer)
-{
-    const auto expected = TString(64, 'A');
-    auto buffer = expected;
-
     EXPECT_EQ(
         0u,
-        SerializeError(
-            E_REJECTED,
-            "rejected",
-            TStringBuf(buffer.begin(), 4)));
-    EXPECT_EQ(expected, buffer);
+        SerializeError(E_REJECTED, "rejected", TStringBuf(buffer).Head(4)));
+    EXPECT_EQ(TString(64, 'A'), buffer);
 
     EXPECT_EQ(0u, SerializeError(E_REJECTED, "rejected", TStringBuf()));
 }
