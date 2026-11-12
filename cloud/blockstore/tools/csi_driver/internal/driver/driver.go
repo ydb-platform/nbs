@@ -1,9 +1,11 @@
 package driver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -210,8 +212,16 @@ func loadZoneMapping(
 		ZoneID       string `json:"zone_id"`
 		BackendIndex uint   `json:"backend_index"`
 	}
-	if err := json.Unmarshal(data, &pairs); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&pairs); err != nil {
 		return nil, err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("unexpected data after zone mapping")
 	}
 
 	result := make(map[string]uint, len(pairs))

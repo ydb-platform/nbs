@@ -56,7 +56,7 @@ func main() {
 	flag.UintVar(&cfg.NbsServerReplicaCountTotal, "nbs-server-replica-count-total", 1, "total number of replicas of the blockstore-server on the node")
 	flag.StringVar(&cfg.FilesystemPrefix, "filesystem-prefix", "", "prefix used for filesystem names")
 	flag.StringVar(&cfg.ZoneIdConfigPath, "zone-id-config-path", "", "Path to file with zone ID mapping")
-	flag.BoolVar(&cfg.EnableEndpointBalancing, "enable-endpoint-balancing", false, "Distribute endpoints across backends by endpoint count when no zone mapping is configured")
+	flag.BoolVar(&cfg.EnableEndpointBalancing, "enable-endpoint-balancing", false, "Distribute endpoints across backends by endpoint count")
 	flag.Parse()
 
 	defer klog.Flush()
