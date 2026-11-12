@@ -3586,7 +3586,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TFreshLogTrimCounters counters;
         runtime->SetObserverFunc(CountFreshLogTrims(counters));
 
-        // Each overwrite kills one blob.
+        // Each overwrite kills one blob of a block and a small header. Two
+        // dead blobs stay below the threshold of three blocks.
         partition.WriteBlocks(1, 1);
         partition.WriteBlocks(1, 2);
         partition.WriteBlocks(1, 3);

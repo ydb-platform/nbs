@@ -253,8 +253,10 @@ public:
     void MarkFreshBlobDead(ui64 commitId);
 
     // Moves the ordinary trim boundary up to ordinaryTrimToCommitId, which must
-    // not decrease between calls. Returns the dead bytes at or below it.
-    [[nodiscard]] ui64 UpdateOrdinaryTrimmableFreshBlobByteCount(
+    // not decrease between calls. Returns the bytes of every untrimmed blob at
+    // or below it without reading their Dead flags: the caller keeps the
+    // boundary below every trim barrier, so all of these blobs are dead.
+    [[nodiscard]] ui64 GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
         ui64 ordinaryTrimToCommitId);
 
     // Debug check of the dead byte counts. liveCommitIds: all referenced

@@ -25,7 +25,7 @@ bool TPartitionActor::ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId)
 
     const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
     return !threshold || State->IsOrdinaryTrimRequested() ||
-           State->UpdateOrdinaryTrimmableFreshBlobByteCount(
+           State->GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
                ordinaryTrimToCommitId) >= threshold;
 }
 
@@ -42,7 +42,7 @@ bool TPartitionActor::ShouldStartSelectiveTrim(
     // Therefore, more blobs must die after every scan.
     const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
     if (State->GetDeadUntrimmedFreshBlobByteCount() <
-            State->UpdateOrdinaryTrimmableFreshBlobByteCount(
+            State->GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
                 ordinaryTrimToCommitId) +
                 threshold ||
         !State->IsSelectiveScanAllowed(
