@@ -725,6 +725,12 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo);
 
+    TPartitionStatInfo* ApplyDiskRegistryBasedPartCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        const TString& diskId,
+        const TPartNonreplCountersData& partCountersData);
+
     void UpdateDiskRegistryBasedPartCounters(
         const NActors::TActorContext& ctx,
         TDataForUpdatingDiskRegistryBasedPartCounters data);
