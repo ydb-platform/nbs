@@ -36,4 +36,7 @@ def test_load(test_case):
         auth_token=os.getenv("ACCESS_SERVICE_TOKEN"),
     )
 
+    if test_case.name == "read-write":
+        pytest.fail("Intentional failure to verify YDB node log upload to S3")
+
     return None
