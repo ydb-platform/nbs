@@ -718,6 +718,9 @@ void TSession::ForceVolumeRemount(const TString& sessionId)
             // stop reusing it and make requests wait for the pending remount.
             InPlannedRemount = false;
             LastSuccessfulMountResponse = {};
+            STORAGE_WARN(
+                "Session " << sessionId.Quote()
+                           << " rejected during planned remount");
         }
     }
 }
