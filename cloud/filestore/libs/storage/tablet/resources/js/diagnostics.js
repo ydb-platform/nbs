@@ -128,17 +128,19 @@ function diagnosticsInit(tabletId) {
                     ], load);
                 diagnosticsRenderTable(content, 'Node access stats', [
                     {key: 'rank', title: '#'}, {key: 'shard_id', title: 'Shard'},
-                    {key: 'node_id', title: 'Node'}, {key: 'requests', title: 'Requests'},
+                    {key: 'node_id', title: 'Node'}, {key: 'node_type', title: 'Type'},
+                    {key: 'requests', title: 'Requests'},
                     {key: 'access_score', title: 'Access score'},
                     {key: 'last_accessed', title: 'Last accessed'}], data.node_access, [
                         control('Top', 'topAccessed', topOptions)
                     ], load);
                 diagnosticsRenderTable(content, 'Node latency stats', [
                     {key: 'rank', title: '#'}, {key: 'shard_id', title: 'Shard'},
-                    {key: 'node_id', title: 'Node'},
+                    {key: 'node_id', title: 'Node'}, {key: 'node_type', title: 'Type'},
                     {key: 'request_type', title: 'Request type'},
                     {key: 'requests', title: 'Requests'},
                     {key: 'avg_decayed_us', title: 'Avg decayed (us)'},
+                    {key: 'normalized_avg_us', title: 'Normalized avg (us)'},
                     {key: 'total_decayed_us', title: 'Total decayed (us)'},
                     {key: 'total_us', title: 'Total (us)'},
                     {key: 'last_accessed', title: 'Last accessed'}], data.node_latency, [

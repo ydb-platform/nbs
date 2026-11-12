@@ -3,6 +3,7 @@
 #include "latency_normalization.h"
 
 #include <cloud/filestore/libs/diagnostics/aggregate.h>
+#include <cloud/filestore/libs/diagnostics/latency_normalization.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -10,6 +11,8 @@
 #include <util/generic/hash.h>
 
 #include <google/protobuf/util/json_util.h>
+
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NClient {
 
