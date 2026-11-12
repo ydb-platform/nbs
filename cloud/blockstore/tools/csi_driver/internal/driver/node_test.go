@@ -1101,6 +1101,7 @@ func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 		{name: "empty zone", zoneId: "", clientIndex: 0},
 		{name: "zone0", zoneId: "zone0", clientIndex: 0},
 		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, true, false, true, 2, 1)
