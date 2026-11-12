@@ -366,6 +366,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
     auto currentRequest = std::make_unique<
         TEvPartitionCommonPrivate::TEvReadBlobRequest>();
     currentRequest->Deadline = TInstant::Max();
+    currentRequest->Async = OriginalRequest.GetSnapshotCreationRead();
     TSgList currentSgList;
 
     for (const auto& request: requests) {
@@ -392,6 +393,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                 currentRequest = std::make_unique<
                     TEvPartitionCommonPrivate::TEvReadBlobRequest>();
                 currentRequest->Deadline = TInstant::Max();
+                currentRequest->Async = OriginalRequest.GetSnapshotCreationRead();
             }
             currentRequest->BlobId = requestRef.BlobId;
             currentRequest->Proxy = NKikimr::MakeBlobStorageProxyID(requestRef.BSGroupId);
