@@ -940,11 +940,15 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 func TestLoadZoneMappingReplicaCounts(t *testing.T) {
 	for _, tc := range []struct {
 		name                      string
+		configData                string
 		backendIndex              uint
 		nfsVhostReplicaCountUsed  uint
 		nbsServerReplicaCountUsed uint
 		errorMessage              string
 	}{
+		{name: "unknown field", configData: `[{"zone_id": "zone1", "backend_index": 0, "unknown": true}]`,
+			nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1,
+			errorMessage: `json: unknown field "unknown"`},
 		{name: "zero index", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1},
 		{name: "last valid index", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 2},
 		{name: "different valid counts", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3},
@@ -963,7 +967,10 @@ func TestLoadZoneMappingReplicaCounts(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "zones.json")
-			data := fmt.Sprintf(`[{"zone_id": "zone1", "backend_index": %d}]`, tc.backendIndex)
+			data := tc.configData
+			if data == "" {
+				data = fmt.Sprintf(`[{"zone_id": "zone1", "backend_index": %d}]`, tc.backendIndex)
+			}
 			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
 
 			mapping, err := loadZoneMapping(path, tc.nfsVhostReplicaCountUsed, tc.nbsServerReplicaCountUsed)
