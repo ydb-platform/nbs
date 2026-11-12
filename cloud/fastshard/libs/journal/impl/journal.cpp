@@ -189,6 +189,21 @@ TVector<TPageRangeRef> GetPageRanges(
     return ranges;
 }
 
+TVector<TPageRangeRef> GetPageRanges(
+    const NProto::TReadPagesRequest& request)
+{
+    TVector<TPageRangeRef> ranges;
+    ranges.reserve(request.PageGroupRefsSize());
+
+    for (const auto& ref: request.GetPageGroupRefs()) {
+        ranges.push_back(
+            {.FirstPageNo = ref.GetFirstPageNo(),
+             .PageCount = ref.GetPageCount()});
+    }
+
+    return ranges;
+}
+
 // TODO(#6956): return TVector<TArrayRef> to avoid unnecessary copying
 TVector<TBuffer> GetPages(const NProto::TWriteLogRecordRequest& request)
 {
@@ -295,6 +310,42 @@ TVector<TPageMapping> CreatePageMappings(
     return mappings;
 }
 
+// Returns the parts of |ranges| that |mappings| do not cover.
+TVector<TPageRangeRef> GetMissingPageRanges(
+    const TVector<TPageRangeRef>& ranges,
+    const TVector<TPageMapping>& mappings)
+{
+    TVector<TPageRangeRef> missing;
+
+    auto addGap = [&](ui64 begin, ui64 end)
+    {
+        if (begin < end) {
+            missing.push_back(
+                {.FirstPageNo = begin, .PageCount = end - begin});
+        }
+    };
+
+    size_t i = 0;
+    for (const auto& range: ranges) {
+        const ui64 end = range.FirstPageNo + range.PageCount;
+        ui64 pageNo = range.FirstPageNo;
+
+        for (; i < mappings.size(); ++i) {
+            const auto& [mappedPageNo, location] = mappings[i];
+            if (mappedPageNo < range.FirstPageNo || mappedPageNo >= end) {
+                break;
+            }
+
+            addGap(pageNo, mappedPageNo);
+            pageNo = mappedPageNo + location.PageCount;
+        }
+
+        addGap(pageNo, end);
+    }
+
+    return missing;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TJournal final
@@ -331,8 +382,8 @@ public:
     [[nodiscard]] auto Write(NProto::TWriteLogRecordRequest request)
         -> TFuture<NProto::TWriteLogRecordResponse> override;
 
-    [[nodiscard]] auto Read(NProto::TReadPagesRequest request) const
-        -> TFuture<NProto::TReadPagesResponse> override;
+    [[nodiscard]] TResultOrError<TJournalReadResult> Read(
+        NProto::TReadPagesRequest request) const override;
 
     [[nodiscard]] NProto::TReadJournalTailResponse ReadTail(
         NProto::TReadJournalTailRequest request) const override;
@@ -367,6 +418,11 @@ private:
         const NProto::TWriteLogRecordRequest& request);
 
     void IndexChainedRecords();
+
+    NProto::TReadPagesResponse OnRead(
+        const TLogPageIndex::TLookupResult& lookup,
+        TLsnBarrier::TGuard& lsnBarrierGuard,
+        const TResultOrError<TVector<TBuffer>>& buffersOrError) const;
 
     NProto::TError ReadPageGroups(
         const TVector<TPageMapping>& mappings,
@@ -787,52 +843,106 @@ void TJournal::IndexChainedRecords()
     }
 }
 
-TFuture<NProto::TReadPagesResponse> TJournal::Read(
+TResultOrError<TJournalReadResult> TJournal::Read(
     NProto::TReadPagesRequest request) const
 {
-    using TResponse = NProto::TReadPagesResponse;
-
     auto err = ValidatePageRanges(request.GetPageGroupRefs(), DevicePageCount);
     if (HasError(err)) {
-        return MakeFuture<TResponse>(TErrorResponse(std::move(err)));
+        return err;
     }
 
     //
     // Pin the flushed lsn until the read is done: the records past it stay in
-    // the journal, and the ones up to it are on the device already
+    // the journal, and the ones up to it are on the device already. The read
+    // finishes after this method returns, so the guard is shared with the
+    // callback below
     //
 
-    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+    auto lsnBarrierGuard =
+        std::make_shared<TLsnBarrier::TGuard>(FlushedLsnBarrier.Acquire());
 
     //
     // Look up the journalled pages of the requested ranges, skipping the
     // flushed records - the reader takes their pages from the device
     //
 
-    TVector<TPageRangeRef> ranges;
-    ranges.reserve(request.PageGroupRefsSize());
-    for (const auto& ref: request.GetPageGroupRefs()) {
-        ranges.push_back(
-            {.FirstPageNo = ref.GetFirstPageNo(),
-             .PageCount = ref.GetPageCount()});
+    const auto ranges = GetPageRanges(request);
+    auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard->GetLsn());
+
+    TJournalReadResult result;
+    result.MissingPageNos = GetMissingPageRanges(ranges, lookup.Mappings);
+
+    //
+    // Answer at once when no requested page is in the journal - there is
+    // nothing to read from the data store
+    //
+
+    if (lookup.Mappings.empty()) {
+        NProto::TReadPagesResponse response;
+        response.SetLastAckedLogSequenceNumber(lookup.LastIndexedLsn);
+        result.Future = MakeFuture(std::move(response));
+        return result;
     }
 
-    auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard.GetLsn());
+    //
+    // Start reading the journalled pages and return without waiting, so that
+    // the caller can read the missing pages from the device at the same time
+    //
+
+    auto future = DataStore->Read(GetLocations(lookup.Mappings));
+
+    result.Future = future.Apply(
+        [self = shared_from_this(),
+         lsnBarrierGuard = std::move(lsnBarrierGuard),
+         lookup = std::move(lookup)](const auto& future)
+        {
+            return self->OnRead(lookup, *lsnBarrierGuard, future.GetValue());
+        });
+
+    return result;
+}
+
+NProto::TReadPagesResponse TJournal::OnRead(
+    const TLogPageIndex::TLookupResult& lookup,
+    TLsnBarrier::TGuard& lsnBarrierGuard,
+    const TResultOrError<TVector<TBuffer>>& buffersOrError) const
+{
+    //
+    // Release the flushed lsn while the caller keeps the journal alive. The
+    // guard lives as long as the read callback object, and that can be longer
+    // than the journal
+    //
+
+    Y_DEFER
+    {
+        lsnBarrierGuard.Release();
+    };
+
+    if (HasError(buffersOrError)) {
+        return TErrorResponse(buffersOrError.GetError());
+    }
 
     //
     // Fill the response with the content of the journalled pages and the lsn
     // the page index was looked up at
     //
 
-    TResponse response;
+    NProto::TReadPagesResponse response;
     response.SetLastAckedLogSequenceNumber(lookup.LastIndexedLsn);
 
-    auto error = ReadPageGroups(lookup.Mappings, response.MutablePageGroups());
+    size_t bufferCount = 0;
+    auto error = FillPageGroups(
+        lookup.Mappings,
+        buffersOrError.GetResult(),
+        0, /* firstBufferIndex */
+        &bufferCount,
+        response.MutablePageGroups());
+
     if (HasError(error)) {
-        return MakeFuture<TResponse>(TErrorResponse(error));
+        return TErrorResponse(std::move(error));
     }
 
-    return MakeFuture(std::move(response));
+    return response;
 }
 
 NProto::TReadJournalTailResponse TJournal::ReadTail(
@@ -945,19 +1055,19 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     ui64 maxPageCount) const
 {
     //
-    // Pin the flushed lsn and take the ready records right after it, in
-    // chain order - stop at the first one that has not been acked yet or is
-    // past what the caller allows
+    // Take the ready records right after the flushed lsn, in chain order -
+    // stop at the first one that has not been acked yet or is past what the
+    // caller allows
     //
 
-    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+    const ui64 flushedLsn = FlushedLsnBarrier.Acquire().GetLsn();
 
     const ui64 lsnLowWatermark =
         LsnLowWatermark.load(std::memory_order_acquire);
     const ui64 maxLsn = Min(maxAllowedLsn, lsnLowWatermark);
 
     auto run = LogRecordChain.GetReadyRun(
-        lsnBarrierGuard.GetLsn(),
+        flushedLsn,
         0 /* maxRecordCount */);
 
     //
