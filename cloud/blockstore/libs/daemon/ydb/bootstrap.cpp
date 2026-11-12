@@ -23,7 +23,7 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
-#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory_stub.h>
+#include <cloud/blockstore/libs/icv2/service/service.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
@@ -1165,7 +1165,7 @@ void TBootstrapYdb::SetupCellManager()
             ServerStats,
             std::move(cellCertProvider),
             RdmaClient,
-            NIcV2::CreateDataEndpointFactoryStub(),
+            IcV2Service,
             Service);
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);

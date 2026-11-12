@@ -71,6 +71,17 @@ struct TCellMountStatus
         NProto::CELL_DATA_TRANSPORT_UNSET;
     // what a manual switch onto RDMA or IC V2 requires
     bool GrpcDataFallbackEnabled = false;
+    TString IcV2ChannelState;   // empty for other transports
+    ui64 IcV2ConnectionAttempts = 0;
+    ui64 IcV2ConnectionFailures = 0;
+    ui64 ReadRequests = 0;
+    ui64 ReadErrors = 0;
+    ui64 ReadBytes = 0;
+    ui64 WriteRequests = 0;
+    ui64 WriteErrors = 0;
+    ui64 WriteBytes = 0;
+    ui64 ZeroRequests = 0;
+    ui64 ZeroErrors = 0;
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no

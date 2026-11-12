@@ -872,6 +872,13 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT(
             afterSelection.Mounts[0].SelectedTransport ==
             NProto::CELL_DATA_TRANSPORT_GRPC);
+        // An unavailable transport must not disturb the mounted gRPC path.
+        const auto unavailable = cellManager
+                                     ->SwitchDataTransport(
+                                         mounts[0].ConnectionId,
+                                         NProto::CELL_DATA_TRANSPORT_ICV2)
+                                     .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(unavailable.GetCode(), E_ARGUMENT);
         const auto noRdma = cellManager
                                 ->SwitchDataTransport(
                                     mounts[0].ConnectionId,
