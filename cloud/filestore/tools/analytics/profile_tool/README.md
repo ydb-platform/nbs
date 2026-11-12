@@ -27,8 +27,11 @@ Profile log fills in three places:
 exact per-request `--since` and `--until` filters to its contents.
 
 With multiple files and either time bound set, the tool skips files outside the
-range estimated from their first and last usable profile frames. It scans frame
-headers using the eventlog library and decodes boundary records. The minimum and maximum
+range estimated from their first and last usable profile frames. It uses the
+eventlog library to scan forward from the start and within a 64 KiB tail window,
+doubling the window until a usable frame is found or the whole file is covered.
+Healthy logs need only a prefix and tail scan; unusable boundaries may require
+scanning the whole file. The minimum and maximum
 request timestamps across both boundary frames supply the start and end.
 Timestamps before 2000-01-01 UTC are excluded from these estimates. If no valid
 timestamps are found, the bounds remain unknown. Stored records and exact
@@ -37,8 +40,8 @@ Incomplete or corrupt boundary frames are ignored when estimating bounds. Files 
 
 Multiple files are sorted by detected record end time, oldest first. Unknown
 bounds sort last. Ties keep command-line order within each group: option values
-first, then positional paths. Boundary
-frames are probed once for sorting even without time filters, and pruning reuses
+first, then positional paths. Boundary frames are probed once for sorting even
+without time filters, and pruning reuses
 those bounds. Single inputs are not probed. No times are inferred from filenames
 or filesystem modification times.
 

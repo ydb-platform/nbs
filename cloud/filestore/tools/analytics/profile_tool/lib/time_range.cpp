@@ -21,39 +21,26 @@ struct TRecordBounds
     TInstant End;
 };
 
-TVector<TStringBuf> FindCompleteFrames(TStringBuf data)
+TMaybe<TRecordBounds> ScanBoundaryFrames(
+    TStringBuf data,
+    bool last,
+    const TString& path,
+    bool& reportedInvalidTimestamp,
+    bool& reportedError)
 {
-    TVector<TStringBuf> frames;
-    TMemoryInput input(data);
-    while (input.Avail()) {
-        const auto offset = data.size() - input.Avail();
+    // Ignore clock-relative timestamps interpreted as Unix timestamps.
+    constexpr auto MinRecordTime = TInstant::Seconds(946684800); // 2000-01-01 UTC
+    TMaybe<TRecordBounds> result;
+    while (!data.empty()) {
+        TMemoryInput input(data);
         auto frame = FindNextFrame(&input, NEvClass::Factory());
         if (!frame || frame->FrameLength() > input.Avail()) {
             break;
         }
-        input.Skip(frame->FrameLength());
-        frames.push_back(
-            data.SubStr(offset, data.size() - input.Avail() - offset));
-    }
-    return frames;
-}
-
-TMaybe<TRecordBounds> ReadBoundaryFrame(
-    const TVector<TStringBuf>& frames,
-    bool last,
-    const TString& path,
-    bool& reportedInvalidTimestamp)
-{
-    // Ignore clock-relative timestamps interpreted as Unix timestamps.
-    constexpr auto MinRecordTime = TInstant::Seconds(946684800); // 2000-01-01 UTC
-    bool reportedError = false;
-    for (size_t i = 0; i < frames.size(); ++i) {
-        TMemoryInput input(frames[last ? frames.size() - 1 - i : i]);
+        // Advance the search independently of decoding, which may fail partway
+        // through the payload. The frame continues reading from input.
+        data = data.SubStr(data.size() - input.Avail() + frame->FrameLength());
         try {
-            auto frame = FindNextFrame(&input, NEvClass::Factory());
-            if (!frame) {
-                continue;
-            }
             TMaybe<TRecordBounds> bounds;
             for (auto it = frame->GetIterator(); it.Avail(); it.Next()) {
                 const auto event = *it;
@@ -89,7 +76,10 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
                 }
             }
             if (bounds) {
-                return bounds;
+                if (!last) {
+                    return bounds;
+                }
+                result = bounds;
             }
         } catch (const yexception& error) {
             if (!reportedError) {
@@ -102,7 +92,30 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
             // errors.
         }
     }
-    return {};
+    return result;
+}
+
+TMaybe<TRecordBounds> ReadBoundaryFrame(
+    TStringBuf data,
+    bool last,
+    const TString& path,
+    bool& reportedInvalidTimestamp)
+{
+    bool reportedError = false;
+    size_t windowSize = last ? Min<size_t>(64 * 1024, data.size()) : data.size();
+    for (;;) {
+        const auto bounds = ScanBoundaryFrames(
+            data.SubStr(data.size() - windowSize),
+            last,
+            path,
+            reportedInvalidTimestamp,
+            reportedError);
+        if (bounds || windowSize == data.size()) {
+            return bounds;
+        }
+        // Saturate at the file size without overflowing when doubling.
+        windowSize += Min(windowSize, data.size() - windowSize);
+    }
 }
 
 }   // namespace
@@ -115,17 +128,11 @@ TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
     }
     try {
         const auto data = TBlob::FromFile(path);
-        const auto frames = FindCompleteFrames(data.AsStringBuf());
-        if (frames.empty()) {
-            Cerr << "Cannot determine record range for " << path
-                 << ": no complete eventlog frames" << Endl;
-            return file;
-        }
         bool reportedInvalidTimestamp = false;
-        const auto first =
-            ReadBoundaryFrame(frames, false, path, reportedInvalidTimestamp);
-        const auto last =
-            ReadBoundaryFrame(frames, true, path, reportedInvalidTimestamp);
+        const auto first = ReadBoundaryFrame(
+            data.AsStringBuf(), false, path, reportedInvalidTimestamp);
+        const auto last = ReadBoundaryFrame(
+            data.AsStringBuf(), true, path, reportedInvalidTimestamp);
         if (first && last) {
             file.StartTime = Min(first->Start, last->Start);
             file.EndTime = Max(first->End, last->End);

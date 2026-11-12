@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 
 #include <library/cpp/eventlog/eventlog.h>
+#include <library/cpp/eventlog/logparser.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/system/tempfile.h>
@@ -183,6 +184,97 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             UNIT_ASSERT_VALUES_EQUAL(*truncated.StartTime, Time(900));
             UNIT_ASSERT_VALUES_EQUAL(*truncated.EndTime, Time(2000));
         }
+    }
+
+    Y_UNIT_TEST(ShouldExpandTailWindow)
+    {
+        // Deterministic, poorly compressible text makes a frame larger than
+        // the initial 64 KiB window without depending on random test seeds.
+        TString payload;
+        ui32 state = 1;
+        for (size_t i = 0; i < 256 * 1024; ++i) {
+            state = state * 1664525u + 1013904223u;
+            payload.push_back(' ' + ((state >> 24) % 95));
+        }
+        for (const bool largeFrame: {false, true}) {
+            TTempFileHandle input;
+            TEventLog log(input.Name(), 0);
+            ui64 firstFrameEnd = 0;
+            for (const auto timestamp: {1000, 2000}) {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                record.AddRequests()->SetTimestampMcs(Time(timestamp).MicroSeconds());
+                if (largeFrame && timestamp == 2000) {
+                    record.SetFileSystemId(payload);
+                }
+                frame.LogEvent(record);
+                frame.Flush();
+                if (!firstFrameEnd) {
+                    firstFrameEnd = input.GetLength();
+                }
+            }
+            log.CloseLog();
+            if (largeFrame) {
+                UNIT_ASSERT(input.GetLength() - firstFrameEnd > 64 * 1024);
+            } else {
+                // No complete frame in the initial windows: keep expanding
+                // past trailing garbage to find the last usable record.
+                input.Pwrite(payload.data(), payload.size(), input.GetLength());
+            }
+            const auto bounds = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT(bounds.StartTime);
+            UNIT_ASSERT(bounds.EndTime);
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(1000));
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, Time(2000));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSkipFalseMarkersAndPartialTrailingHeaders)
+    {
+        TTempFileHandle input;
+        TEventLog log(input.Name(), 0);
+        ui64 firstFrameEnd = 0;
+        for (const auto timestamp: {1000, 2000}) {
+            TSelfFlushLogFrame frame(log);
+            NProto::TProfileLogRecord record;
+            record.AddRequests()->SetTimestampMcs(Time(timestamp).MicroSeconds());
+            frame.LogEvent(record);
+            frame.Flush();
+            if (!firstFrameEnd) {
+                firstFrameEnd = input.GetLength();
+            }
+        }
+        log.CloseLog();
+        TString contents(input.GetLength(), '\0');
+        UNIT_ASSERT_VALUES_EQUAL(
+            input.Pread(contents.Detach(), contents.size(), 0),
+            contents.size());
+        const auto sync = COMPRESSED_LOG_FRAME_SYNC_DATA;
+        for (size_t length = 0;
+             length < sync.size() + sizeof(TFrameHeader);
+             ++length)
+        {
+            input.Pwrite(contents.data(), contents.size(), 0);
+            input.Resize(firstFrameEnd + length);
+            const auto bounds = GetProfileLogFile(input.Name(), true);
+            UNIT_ASSERT(bounds.StartTime);
+            UNIT_ASSERT(bounds.EndTime);
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(1000));
+            UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, Time(1000));
+        }
+
+        // A complete sync marker with an invalid header, then a partial header.
+        // Neither must hide the preceding complete frame during reverse search.
+        const TString tail = TString(sync) + TString(sizeof(TFrameHeader), '\0') +
+                             TString(sync) + "partial";
+        input.Pwrite(contents.data(), contents.size(), 0);
+        input.Pwrite(tail.data(), tail.size(), contents.size());
+        input.Resize(contents.size() + tail.size());
+        const auto bounds = GetProfileLogFile(input.Name(), true);
+        UNIT_ASSERT(bounds.StartTime);
+        UNIT_ASSERT(bounds.EndTime);
+        UNIT_ASSERT_VALUES_EQUAL(*bounds.StartTime, Time(1000));
+        UNIT_ASSERT_VALUES_EQUAL(*bounds.EndTime, Time(2000));
     }
 
     Y_UNIT_TEST(ShouldReadFirstAndLastRecordWithinOneFrame)
