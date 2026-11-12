@@ -200,22 +200,36 @@ void TMaskSensitiveData::MaskSensitiveData(
         options.SetForceStrongOrdering(true);
         CurrentEvent.Reset();
 
+        const auto reportReadError = [&file, ignoreErrors](const yexception& error)
+        {
+            Cerr << "Error reading profile log " << file.Path << ": "
+                 << error.what() << Endl;
+            if (ignoreErrors) {
+                Cerr << "Skipping unreadable remainder of profile log: "
+                     << file.Path << Endl;
+            }
+        };
+
+        try {
+            CurrentEvent = CreateIterator(options);
+        } catch (const yexception& error) {
+            reportReadError(error);
+            if (!ignoreErrors) {
+                throw;
+            }
+            continue;
+        }
+
         for (;;) {
             try {
-                if (!CurrentEvent) {
-                    CurrentEvent = CreateIterator(options);
-                }
                 if (!Advance()) {
                     break;
                 }
             } catch (const yexception& error) {
-                Cerr << "Error reading profile log " << file.Path << ": "
-                     << error.what() << Endl;
+                reportReadError(error);
                 if (!ignoreErrors) {
                     throw;
                 }
-                Cerr << "Skipping unreadable remainder of profile log: "
-                     << file.Path << Endl;
                 break;
             }
             // Masking and output failures must not be treated as read errors.

@@ -42,7 +42,7 @@ public:
     TString Transform(const TString& str, const ui64 nodeId) const;
     void MaskRequest(NProto::TProfileLogRequestInfo& request) const;
     void MaskSensitiveData(
-        const TVector<TProfileLogFile>& in,
+        const TVector<TProfileLogFile>& profileLogFiles,
         const TString& out,
         bool ignoreErrors = false);
 };
