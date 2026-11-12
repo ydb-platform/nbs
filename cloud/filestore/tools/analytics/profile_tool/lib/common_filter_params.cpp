@@ -319,10 +319,6 @@ TTimeRange ParseGrafanaRange(
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
-    if (since >= until) {
-        ythrow NLastGetopt::TUsageException()
-            << "--grafana-range \"from\" must be earlier than \"to\"";
-    }
     return {since, until};
 }
 
@@ -397,13 +393,16 @@ TMaybe<ui64> TCommonFilterParams::GetHandle(
 TTimeRange TCommonFilterParams::GetTimeRange(
     const NLastGetopt::TOptsParseResultException& parseResult) const
 {
-    if (parseResult.Has(GrafanaRangeLabel.data())) {
-        return ParseGrafanaRange(parseResult, ReferenceTime);
+    const TTimeRange range = parseResult.Has(GrafanaRangeLabel.data())
+        ? ParseGrafanaRange(parseResult, ReferenceTime)
+        : TTimeRange{
+              ParseTimestamp(SinceLabel, parseResult, ReferenceTime),
+              ParseTimestamp(UntilLabel, parseResult, ReferenceTime)};
+    if (range.Since && range.Until && *range.Since >= *range.Until) {
+        ythrow NLastGetopt::TUsageException()
+            << "time range start must be earlier than its end";
     }
-    return {
-        ParseTimestamp(SinceLabel, parseResult, ReferenceTime),
-        ParseTimestamp(UntilLabel, parseResult, ReferenceTime),
-    };
+    return range;
 }
 
 }   // namespace NCloud::NFileStore::NProfileTool

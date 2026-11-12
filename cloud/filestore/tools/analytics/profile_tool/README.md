@@ -28,7 +28,8 @@ time-only, and day keywords such as `today` also use UTC unless a timezone is
 specified explicitly. For example, `2023-01-01T10:00:00` means
 `2023-01-01T10:00:00Z` on every machine. Invalid `--since` or `--until` values
 stop the command with an error. Use `--since=-2h` for two hours ago; a bare `2h`
-is invalid.
+is invalid. When both bounds are supplied, `--since` must be strictly earlier
+than `--until`; empty and reversed ranges are rejected.
 
 `--grafana-range` accepts absolute ISO 8601 timestamps and relative expressions
 such as `now-15m`. Offsets support `s`, `m`, `h`, `d`, `w`, `M`, `Q`, and `y`.

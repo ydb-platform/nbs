@@ -77,29 +77,23 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         };
 
         for (const auto& example: cases) {
-            NLastGetopt::TOpts opts;
-            const TCommonFilterParams params(opts, now);
-            const char* argv[] = {
-                "profile-tool",
-                "--since",
-                example.Input,
-                "--until",
-                example.Input,
-            };
-            const NLastGetopt::TOptsParseResultException parsed(
-                &opts,
-                std::size(argv),
-                argv);
-            const auto expected = TInstant::ParseIso8601(example.Expected);
-            const auto range = params.GetTimeRange(parsed);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                range.Since.GetRef(),
-                expected,
-                example.Input);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                range.Until.GetRef(),
-                expected,
-                example.Input);
+            for (const auto option: {"--since", "--until"}) {
+                NLastGetopt::TOpts opts;
+                const TCommonFilterParams params(opts, now);
+                const char* argv[] = {"profile-tool", option, example.Input};
+                const NLastGetopt::TOptsParseResultException parsed(
+                    &opts,
+                    std::size(argv),
+                    argv);
+                const auto range = params.GetTimeRange(parsed);
+                const auto& bound = TStringBuf(option) == "--since"
+                    ? range.Since
+                    : range.Until;
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    bound.GetRef(),
+                    TInstant::ParseIso8601(example.Expected),
+                    example.Input);
+            }
         }
     }
 
@@ -494,7 +488,7 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             UNIT_ASSERT_EXCEPTION_CONTAINS(
                 params.GetTimeRange(parsed),
                 NLastGetopt::TUsageException,
-                "\"from\" must be earlier than \"to\"");
+                "time range start must be earlier than its end");
         }
     }
 
@@ -616,6 +610,37 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         const auto repeated = params.GetTimeRange(parsed);
         UNIT_ASSERT_VALUES_EQUAL(repeated.Since.GetRef(), range.Since.GetRef());
         UNIT_ASSERT_VALUES_EQUAL(repeated.Until.GetRef(), range.Until.GetRef());
+    }
+
+    Y_UNIT_TEST(ShouldRejectEmptyOrReversedTimeFilters)
+    {
+        const struct
+        {
+            const char* Since;
+            const char* Until;
+        } cases[] = {
+            {"-1h", "-2h"},
+            {"now", "now"},
+            {"2026-10-06T14:00:00Z", "2026-10-06T15:00:00+01:00"},
+            {"2026-10-07", "2026-10-06"},
+        };
+        for (const auto& example: cases) {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(
+                opts,
+                TInstant::ParseIso8601("2026-10-06T14:46:30.146Z"));
+            const char* argv[] = {
+                "profile-tool", "--since", example.Since,
+                "--until", example.Until};
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts,
+                std::size(argv),
+                argv);
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                params.GetTimeRange(parsed),
+                NLastGetopt::TUsageException,
+                "time range start must be earlier than its end");
+        }
     }
 
     Y_UNIT_TEST(ShouldRejectInvalidTimestamps)
