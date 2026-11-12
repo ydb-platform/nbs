@@ -12,6 +12,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/set.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
@@ -197,6 +198,9 @@ struct TTestJournal final: public IJournal
         return NCloud::NProto::TReadPagesResponse();
     };
 
+    // The future that Read returns is set only when this one is set
+    TFuture<void> ReadBarrier = MakeFuture();
+
     TManualEvent AllRecordsFlushed;
     mutable TManualEvent FlushCycleCompleted;
 
@@ -226,14 +230,58 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>();
     }
 
-    TFuture<NCloud::NProto::TReadPagesResponse> Read(
+    // Answers with the response of ReadHandler and takes the pages of the
+    // request that the response does not hold as the missing ones. An error
+    // response of ReadHandler becomes the error of the read itself.
+    TResultOrError<TJournalReadResponse> Read(
         NCloud::NProto::TReadPagesRequest request) const override
     {
         with_lock (Mutex) {
             ReadRequests.push_back(request);
         }
 
-        return MakeFuture(ReadHandler(request));
+        auto response = ReadHandler(request);
+        if (HasError(response)) {
+            return response.GetError();
+        }
+
+        TSet<ui64> journalled;
+        for (const auto& group: response.GetPageGroups()) {
+            for (ui64 i = 0; i < group.ContentSize(); ++i) {
+                journalled.insert(group.GetFirstPageNo() + i);
+            }
+        }
+
+        TJournalReadResponse result;
+
+        auto& missing = result.MissingPageNos;
+        for (const auto& ref: request.GetPageGroupRefs()) {
+            bool extend = false;
+
+            for (ui64 i = 0; i < ref.GetPageCount(); ++i) {
+                const ui64 pageNo = ref.GetFirstPageNo() + i;
+                if (journalled.contains(pageNo)) {
+                    extend = false;
+                    continue;
+                }
+
+                if (extend) {
+                    ++missing.back().PageCount;
+                } else {
+                    missing.push_back({.FirstPageNo = pageNo, .PageCount = 1});
+                    extend = true;
+                }
+            }
+        }
+
+        result.Future = ReadBarrier.Apply(
+            [response = std::move(response)](const auto& future)
+            {
+                Y_UNUSED(future);
+                return response;
+            });
+
+        return result;
     }
 
     auto ReadTail(NCloud::NProto::TReadJournalTailRequest request) const
@@ -722,6 +770,52 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             E_INVALID_STATE,
             response.GetError().GetCode(),
             FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST_F(ShouldReadFromJournalAndDataStoreInParallel, TFixture)
+    {
+        Journal->ReadHandler = [] (const auto& request) {
+            Y_UNUSED(request);
+            return MakeReadResponse({MakeGroup(12, 2, "J")}, 5);
+        };
+
+        // the journal does not answer until the test lets it
+
+        auto journalReadBarrier = NewPromise<void>();
+        Journal->ReadBarrier = journalReadBarrier.GetFuture();
+
+        TManualEvent dataStoreReadStarted;
+        DataStore->ReadHandler = [&] (const auto& rangeRefs) {
+            dataStoreReadStarted.Signal();
+            return ServePagesFromDevice(rangeRefs);
+        };
+
+        auto future = Device->ReadPages(MakeReadRequest({{10, 4}}));
+
+        // the data store is read while the journal read is still running
+
+        UNIT_ASSERT(dataStoreReadStarted.WaitT(TDuration::Seconds(30)));
+        UNIT_ASSERT(!future.HasValue());
+
+        journalReadBarrier.SetValue();
+
+        const auto response = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        const auto deviceRequests = DataStore->GetReadRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10+2",
+            DescribeRefs(deviceRequests[0]));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[D10,D11,J12,J13]",
+            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(5, response.GetLastAckedLogSequenceNumber());
     }
 
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)

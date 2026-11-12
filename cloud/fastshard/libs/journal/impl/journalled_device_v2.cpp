@@ -13,8 +13,8 @@
 
 #include <library/cpp/coroutine/engine/impl.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/hash.h>
-#include <util/generic/map.h>
 #include <util/generic/scope.h>
 #include <util/string/builder.h>
 
@@ -29,60 +29,6 @@ namespace {
 constexpr TDuration IdleFlushDelay = TDuration::MilliSeconds(100);
 
 ////////////////////////////////////////////////////////////////////////////////
-
-NCloud::NProto::TReadPagesRequest MakeMissingRequest(
-    const NCloud::NProto::TReadPagesRequest& originalRequest,
-    const NCloud::NProto::TReadPagesResponse& journalResponse)
-{
-    TMap<ui64, ui64> covered;
-    for (const auto& group: journalResponse.GetPageGroups()) {
-        if (!group.ContentSize()) {
-            continue;
-        }
-
-        const ui64 firstPageNo = group.GetFirstPageNo();
-        covered.emplace(firstPageNo, firstPageNo + group.ContentSize());
-    }
-
-    NCloud::NProto::TReadPagesRequest missing;
-    missing.MutableHeaders()->CopyFrom(originalRequest.GetHeaders());
-    missing.SetDeviceUUID(originalRequest.GetDeviceUUID());
-
-    for (const auto& ref: originalRequest.GetPageGroupRefs()) {
-        const ui64 endPageNo = ref.GetFirstPageNo() + ref.GetPageCount();
-        ui64 pageNo = ref.GetFirstPageNo();
-
-        auto addRef = [&](ui64 begin, ui64 end)
-        {
-            if (begin >= end) {
-                return;
-            }
-
-            auto& missingRef = *missing.AddPageGroupRefs();
-            missingRef.SetFirstPageNo(begin);
-            missingRef.SetPageCount(end - begin);
-            missingRef.SetPageSize(ref.GetPageSize());
-        };
-
-        auto it = covered.upper_bound(pageNo);
-        if (it != covered.begin() && std::prev(it)->second > pageNo) {
-            --it;
-        }
-
-        for (; it != covered.end() && it->first < endPageNo; ++it) {
-            addRef(pageNo, it->first);
-            pageNo = it->second;
-
-            if (pageNo >= endPageNo) {
-                break;
-            }
-        }
-
-        addRef(pageNo, endPageNo);
-    }
-
-    return missing;
-}
 
 NCloud::NProto::TReadPagesResponse MergeResponses(
     const NCloud::NProto::TReadPagesRequest& request,
@@ -316,9 +262,38 @@ private:
     NCloud::NProto::TReadPagesResponse DoReadPages(
         NCloud::NProto::TReadPagesRequest request)
     {
+        //
+        // Pin the indexed lsn until the read is done: the flush cycle does
+        // not flush records above the pinned lsn. Without the pin, a record
+        // written after the journal lookup could reach the device while the
+        // device read is running, and the response would mix pages of
+        // different lsns
+        //
+
         const auto lsnBarrierGuard = IndexedLsnBarrier.Acquire();
 
-        auto journalFuture = Journal->Read(request);
+        //
+        // Start the journal read. It returns at once with the ranges that
+        // the journal does not hold and a future for the pages that it does
+        //
+
+        auto journalResult = Journal->Read(request);
+        if (HasError(journalResult)) {
+            return TErrorResponse(journalResult.GetError());
+        }
+
+        auto [missing, journalFuture] = journalResult.ExtractResult();
+
+        //
+        // Start the device read for the missing ranges before waiting for
+        // the journal, so that the two reads run in parallel
+        //
+
+        TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture;
+        if (missing) {
+            deviceFuture = DataStore->ReadPages(missing);
+        }
+
         auto journalResp = Executor->ExtractResponse(std::move(journalFuture));
         if (HasError(journalResp)) {
             return journalResp;
@@ -326,21 +301,15 @@ private:
 
         ui64 lastAckedLsn = journalResp.GetLastAckedLogSequenceNumber();
 
-        auto missing = MakeMissingRequest(request, journalResp);
-
         NCloud::NProto::TReadPagesResponse deviceResp;
 
-        if (missing.PageGroupRefsSize()) {
-            const auto rangeRefs = MakePageRangeRefs(missing);
-
-            auto deviceFuture = DataStore->ReadPages(rangeRefs);
-
+        if (missing) {
             auto result = Executor->ExtractResponse(std::move(deviceFuture));
             if (HasError(result)) {
                 return TErrorResponse(result.GetError());
             }
 
-            deviceResp = MakeReadPagesResponse(rangeRefs, result.GetResult());
+            deviceResp = MakeReadPagesResponse(missing, result.GetResult());
             if (HasError(deviceResp)) {
                 return deviceResp;
             }
