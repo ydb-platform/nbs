@@ -233,6 +233,10 @@ func loadZoneMapping(
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
+	if cfg.ZoneIdConfigPath != "" && cfg.EnableEndpointBalancing {
+		return nil, fmt.Errorf("ZoneIdConfigPath and EnableEndpointBalancing cannot be used together")
+	}
+
 	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err

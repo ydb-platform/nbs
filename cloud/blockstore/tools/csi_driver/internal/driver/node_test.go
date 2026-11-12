@@ -1018,7 +1018,7 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				testCtx.nfsVhostReplicaCount,
 				testCtx.nbsServerReplicaCount,
-				true,  // enableEndpointBalancing
+				false, // enableEndpointBalancing
 				false, // offlineResize
 			)
 
@@ -1123,7 +1123,7 @@ func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 				defaultStartEndpointRequestTimeout,
 				testCtx.nfsVhostReplicaCount,
 				testCtx.nbsServerReplicaCount,
-				true,  // enableEndpointBalancing
+				false, // enableEndpointBalancing
 				false, // offlineResize
 			)
 
