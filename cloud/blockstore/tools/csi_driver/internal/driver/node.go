@@ -440,27 +440,31 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
+func (s *nodeService) getBackendIndexByZoneId(zoneId string, replicaCount uint) (uint, error) {
+	backendIndex, found := s.zoneIdToBackendIndex[zoneId]
+	if !found {
+		// return 0 if zoneId is not found in the map, as a default backend index
+		return 0, nil
+	}
+
+	if backendIndex >= replicaCount {
+		return 0, fmt.Errorf(
+			"Invalid backend index %d for zone %s",
+			backendIndex,
+			zoneId,
+		)
+	}
+
+	return backendIndex, nil
+}
+
 func (s *nodeService) getNbsClientIndex(ctx context.Context, volumeId string, zoneId string) (uint, error) {
 	if s.nbsServerReplicaCount < 2 {
 		return 0, nil
 	}
 
-	useProjectIdMapping := len(s.zoneIdToBackendIndex) > 0
-	if useProjectIdMapping {
-		backendIndex, found := s.zoneIdToBackendIndex[zoneId]
-		if found {
-			if backendIndex >= s.nbsServerReplicaCount {
-				return 0, fmt.Errorf(
-					"Invalid backend index %d for zone %s",
-					backendIndex,
-					zoneId,
-				)
-			}
-
-			return backendIndex, nil
-		}
-
-		return 0, nil
+	if len(s.zoneIdToBackendIndex) > 0 {
+		return s.getBackendIndexByZoneId(zoneId, s.nbsServerReplicaCount)
 	}
 
 	if !s.enableEndpointBalancing {
@@ -491,22 +495,8 @@ func (s *nodeService) getNfsClientIndex(ctx context.Context, filesystemId string
 		return 0, nil
 	}
 
-	useProjectIdMapping := len(s.zoneIdToBackendIndex) > 0
-	if useProjectIdMapping {
-		backendIndex, found := s.zoneIdToBackendIndex[zoneId]
-		if found {
-			if backendIndex >= s.nfsVhostReplicaCount {
-				return 0, fmt.Errorf(
-					"Invalid backend index %d for zone %s",
-					backendIndex,
-					zoneId,
-				)
-			}
-
-			return backendIndex, nil
-		}
-
-		return 0, nil
+	if len(s.zoneIdToBackendIndex) > 0 {
+		return s.getBackendIndexByZoneId(zoneId, s.nfsVhostReplicaCount)
 	}
 
 	if !s.enableEndpointBalancing {
