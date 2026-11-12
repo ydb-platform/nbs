@@ -46,7 +46,7 @@ constexpr ui64 DataDevicePageCount = 1024;
 // The metadata store keeps one entry per in-flight record plus the journal
 // metadata, and its pages carry a 48 byte header.
 constexpr ui32 MetaPageSize = 256;
-constexpr ui64 MetaPageCount = 64;
+constexpr ui64 DefaultMetaPageCount = 64;
 
 constexpr TStringBuf DeviceUUID = "test-device";
 
@@ -255,8 +255,9 @@ struct TFixture: public NUnitTest::TBaseFixture
     IDevicePtr LogDataDevice;
     std::shared_ptr<TRecordingDevice> DataDevice;
 
-    // the number of journal pages the next stack is given
+    // the number of journal pages and metadata pages the next stack is given
     ui64 JournalPageCount = DefaultJournalPageCount;
+    ui64 MetaPageCount = DefaultMetaPageCount;
 
     IKeyBufferStorePtr MetaStore;
     IDevicePageStorePtr PageStore;
@@ -463,6 +464,30 @@ struct TTinyJournalFixture: public TFixture
     }
 };
 
+// A metadata store with a single page for the records beside the two
+// superblock slots: it holds one record at a time, a second one has no free
+// page to be appended into.
+struct TTinyMetaStoreFixture: public TFixture
+{
+    TTinyMetaStoreFixture()
+    {
+        MetaPageCount = 3;
+    }
+};
+
+// A journal and a metadata store large enough for a long run of single page
+// records.
+struct TLargeJournalFixture: public TFixture
+{
+    static constexpr ui64 RecordCount = 200;
+
+    TLargeJournalFixture()
+    {
+        JournalPageCount = 2 * RecordCount;
+        MetaPageCount = 2 * RecordCount;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -568,7 +593,10 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         WriteRecordOrFail(1, 0, 'A', {{10, 4}});
         WriteRecordOrFail(2, 1, 'B', {{20, 4}});
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(3, 2, 'C', {{30, 1}}));
+        // a full journal is told apart from any other refusal
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(3, 2, 'C', {{30, 1}}));
 
         // the pages come back once the records they hold are flushed
 
@@ -581,6 +609,70 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011,A012,A013] 30:[C030]",
             ReadPagesOrFail({{10, 4}, {30, 1}}));
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldFreeMetaStorePagesOfFlushedRecords,
+        TTinyMetaStoreFixture)
+    {
+        WriteRecordOrFail(1, 0, 'A', {{10, 1}});
+
+        // the journal has room for the pages, the metadata store has none
+        // for the record - a full metadata store is a full journal
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        // the page comes back once the record it holds is flushed
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        WaitUntil(
+            [&] { return WriteRecord(2, 1, 'B', {{20, 1}}) == S_OK; },
+            "the metadata store pages to be freed");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 20:[B020]",
+            ReadPagesOrFail({{10, 1}, {20, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldFlushManyRecordsInOneDeviceWrite, TLargeJournalFixture)
+    {
+        // a long run of records, flushable all at once: the flush is not to
+        // cost a device write per record, or it cannot keep up with the
+        // records coming in
+
+        constexpr ui64 firstPageNo = 100;
+
+        for (ui64 i = 0; i < RecordCount; ++i) {
+            WriteRecordOrFail(i + 1, i, 'A', {{firstPageNo + i, 1}});
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(RecordCount));
+
+        const ui64 lastPageNo = firstPageNo + RecordCount - 1;
+        WaitForDataDevice(
+            {{lastPageNo, 1}},
+            TStringBuilder()
+                << lastPageNo << ":[" << MakeContent('A', lastPageNo) << "]");
+
+        // every record went to the data device in the one write, as a single
+        // range of pages next to each other
+
+        const auto writes = DataDevice->GetWrites();
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, writes[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(firstPageNo, writes[0][0].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(RecordCount, writes[0][0].Pages.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder()
+                << firstPageNo << ":[" << MakeContent('A', firstPageNo) << "]",
+            ReadDataDevice({{firstPageNo, 1}}));
+
+        // and the journal has let go of all of them
+
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail()));
     }
 
     Y_UNIT_TEST_F(ShouldRestoreUnflushedRecords, TFixture)
@@ -757,10 +849,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         // the device means the one in the middle has been dealt with
         WaitForDataDevice({{30, 1}}, "30:[D030]");
 
+        // all three are flushable at once, so they go in one write - the one
+        // with no pages adds nothing to it
         const auto writes = DataDevice->GetWrites();
-        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
-        UNIT_ASSERT_VALUES_EQUAL("10:[A010]", DescribeRanges(writes[0]));
-        UNIT_ASSERT_VALUES_EQUAL("30:[D030]", DescribeRanges(writes[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 30:[D030]",
+            DescribeRanges(writes[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 30:[D030]",
