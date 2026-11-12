@@ -43,7 +43,10 @@ VolumeActor        v                  |                 |         |     |
              VolumeClientActor <---------------Pipe---------------/     |
                                       |                 |               |
                                       v                 |               |
-                               VolumeProxy <---Pipe---------------------/
+                               VolumeProxy              |               |
+                                      |                 |               |
+                                      v                 |               |
+                               TabletProxy <---Pipe---------------------/
                                                         |
 */
 

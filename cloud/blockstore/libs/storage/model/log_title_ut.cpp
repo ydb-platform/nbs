@@ -186,17 +186,12 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
                 .TemporaryServer = false});
 
         UNIT_ASSERT_STRINGS_EQUAL(
-            "[vp:? d:disk1 pg:0]",
+            "[vp:? d:disk1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
         logTitle.SetTabletId(12345);
         UNIT_ASSERT_STRINGS_EQUAL(
-            "[vp:12345 d:disk1 pg:0]",
-            logTitle.Get(TLogTitle::EDetails::Brief));
-
-        logTitle.SetGeneration(5);
-        UNIT_ASSERT_STRINGS_EQUAL(
-            "[vp:12345 d:disk1 pg:5]",
+            "[vp:12345 d:disk1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
         TLogTitle temporayLogTitle(
@@ -205,7 +200,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
                 .DiskId = "disk1",
                 .TemporaryServer = true});
         UNIT_ASSERT_STRINGS_EQUAL(
-            "[~vp:? d:disk1 pg:0]",
+            "[~vp:? d:disk1]",
             temporayLogTitle.Get(TLogTitle::EDetails::Brief));
     }
 

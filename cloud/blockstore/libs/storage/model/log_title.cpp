@@ -145,7 +145,6 @@ TString ToString(const TLogTitle::TVolumeProxy& data)
     }
     stream << "vp:" << TOptional{data.TabletId};
     stream << " d:" << data.DiskId;
-    stream << " pg:" << data.Generation;
 
     return stream;
 }

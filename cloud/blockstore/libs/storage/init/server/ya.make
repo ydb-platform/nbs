@@ -34,6 +34,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/libs/tablet_proxy
     cloud/storage/core/libs/user_stats
     cloud/storage/core/libs/rdma/iface
 
