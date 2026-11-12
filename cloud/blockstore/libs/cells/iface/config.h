@@ -36,6 +36,7 @@ private:
     ui32 NbdPort = 0;
     TString Fqdn;
     TString CellId;
+    ui32 IcV2Port = 0;
     NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
     bool GrpcDataFallbackEnabled = false;
     TDuration EndpointSettleTime;
@@ -48,6 +49,11 @@ public:
     TCellHostConfig() = default;
 
     const TString& GetCellId() const;
+
+    ui32 GetIcV2Port() const
+    {
+        return IcV2Port;
+    }
 
     ui32 GetGrpcPort() const
     {
@@ -110,6 +116,7 @@ public:
 
     [[nodiscard]] TString GetCellId() const;
     [[nodiscard]] ui32 GetGrpcPort() const;
+    [[nodiscard]] ui32 GetIcV2Port() const;
     [[nodiscard]] ui32 GetSecureGrpcPort() const;
     [[nodiscard]] ui32 GetRdmaPort() const;
     [[nodiscard]] ui32 GetNbdPort() const;

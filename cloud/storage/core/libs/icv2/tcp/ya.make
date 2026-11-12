@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    address_resolver.cpp
     connector.cpp
     listener.cpp
     socket_helpers.cpp
