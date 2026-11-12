@@ -26,6 +26,7 @@ TVolumePerfSettings GetAdaptedPerfSettings(
     // significantly more expensive than ssd
     switch (kind) {
         case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD:
+        case NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID:
             kind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
             break;
         case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD_NONREPLICATED:

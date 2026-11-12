@@ -168,11 +168,12 @@ struct TVolumeStatsInfo
 
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
-    struct TRealDiskStats
+    struct TRealDiskStatsInfo
     {
+        NActors::TActorId VolumeActorId;
         TBlobIoCounters BlobLoadCountersDiff;
     };
-    THashMap<TString, TRealDiskStats> RealDiskStats;
+    THashMap<TString, TRealDiskStatsInfo> RealDiskStats;
 
     TVolumeStatsInfo(
         NProto::TVolume config,

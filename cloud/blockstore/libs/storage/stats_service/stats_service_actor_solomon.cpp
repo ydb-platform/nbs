@@ -318,6 +318,9 @@ void TStatsServiceActor::HandleRegisterVolume(
     const auto* msg = ev->Get();
 
     auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    volume->RealDiskStats[msg->DiskId] = {
+        .VolumeActorId = msg->ActorId,
+        .BlobLoadCountersDiff = {}};
 
     LOG_DEBUG(
         ctx,
@@ -446,9 +449,11 @@ void TStatsServiceActor::UpdateVolumePartCounters(
     volume->PerfCounters.DiskCounters.Add(*partCounters.DiskCounters);
     volume->PerfCounters.YdbDiskCounters.Add(*partCounters.DiskCounters);
 
-    auto& realDiskStat = volume->RealDiskStats[partCounters.DiskId];
-    realDiskStat.BlobLoadCountersDiff.Add(
-        partCounters.DiskCounters->RequestCounters);
+    if (volume->RealDiskIds.contains(partCounters.DiskId)) {
+        auto& realDiskStat = volume->RealDiskStats[partCounters.DiskId];
+        realDiskStat.BlobLoadCountersDiff.Add(
+            partCounters.DiskCounters->RequestCounters);
+    }
 
     State.GetTotalCounters().UpdatePartCounters(*partCounters.DiskCounters);
 
