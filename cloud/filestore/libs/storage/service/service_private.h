@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 
@@ -53,6 +54,15 @@ struct TEvServicePrivate
     };
 
     //
+    // Fast shard device allocation
+    //
+
+    struct TFastShardsAllocated
+    {
+        NProtoPrivate::TShardTopology Topology;
+    };
+
+    //
     // Events declaration
     //
 
@@ -67,6 +77,8 @@ struct TEvServicePrivate
         EvUpdateStats,
         EvStartReadData,
         EvReleaseReadDataActor,
+        EvFastShardsAllocated,
+        EvFastShardsDeallocated,
 
         EvEnd
     };
@@ -85,6 +97,10 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
+    using TEvFastShardsAllocated =
+        TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
+    using TEvFastShardsDeallocated =
+        TResponseEvent<TEmpty, EvFastShardsDeallocated>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
