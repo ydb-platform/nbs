@@ -49,7 +49,7 @@ constexpr TDuration AvoidCooldown = TDuration::Minutes(1);
 struct THostBinding
 {
     // Tells one binding from the next. Anything that was set in motion while
-    // an older binding was current - an rdma handler held by
+    // an older binding was current - a data endpoint handler held by
     // an endpoint being torn down - carries the generation it belongs to, so
     // that its late arrival cannot be mistaken for news about the host we are
     // on now.
@@ -76,7 +76,7 @@ struct THostBinding
     IDetachableTargetPtr Sink;
 
     // only without a fallback: there is no switcher to hold it
-    NCloud::IClientEndpointHandlerPtr RdmaHandler;
+    NCloud::IClientEndpointHandlerPtr DataHandler;
 };
 using THostBindingPtr = std::shared_ptr<THostBinding>;
 
@@ -109,16 +109,47 @@ TString DescribeDataTransport(
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
             // until the switcher is in, the data goes the fallback way
             if (hostConfig.GetGrpcDataFallbackEnabled() &&
                 (!switcher || !switcher->IsPreferredActive()))
             {
                 return "grpc fallback";
             }
-            return "rdma";
+            return hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_RDMA
+                       ? "rdma"
+                       : "icv2";
         default:
             return "unknown";
     }
+}
+
+// The endpoint of a transport that reports its state - see
+// UsesEndpointHandler. Handed back before it has connected.
+TResultOrError<IBlockStorePtr> SetupHostDataEndpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& hostConfig,
+    NCloud::IClientEndpointHandlerPtr handler)
+{
+    if (hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_ICV2) {
+        return bootstrap.EndpointsSetup->SetupHostIcV2Endpoint(
+            bootstrap,
+            hostConfig,
+            std::move(handler));
+    }
+    return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+        bootstrap,
+        hostConfig,
+        std::move(handler));
+}
+
+TString DescribeDataEndpoint(const TCellHostConfig& hostConfig)
+{
+    if (hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_ICV2) {
+        return TStringBuilder() << "IC V2 " << hostConfig.GetFqdn();
+    }
+    return TStringBuilder() << "RDMA " << hostConfig.GetFqdn() << ":"
+                            << hostConfig.GetRdmaPort();
 }
 
 TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
@@ -131,7 +162,7 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
         binding.DataEndpoint,
         [bootstrap, hostConfig](NCloud::IClientEndpointHandlerPtr handler)
         {
-            return bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
+            return SetupHostDataEndpoint(
                 bootstrap,
                 hostConfig,
                 std::move(handler));
@@ -139,10 +170,9 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
         bootstrap.Timer,
         bootstrap.Scheduler,
         bootstrap.Logging,
-        TStringBuilder() << "RDMA " << hostConfig.GetFqdn() << ":"
-                         << hostConfig.GetRdmaPort(),
+        DescribeDataEndpoint(hostConfig),
         TTransportSwitcherConfig{
-            .SettleTime = hostConfig.GetRdmaSettleTime(),
+            .SettleTime = hostConfig.GetEndpointSettleTime(),
         });
 }
 
@@ -255,10 +285,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 // A connection serves through one binding at a time and moves between them.
-// Everything asynchronous that reaches it - a ping verdict, an rdma callback,
-// a mount response - was set in motion under some binding, and arrives under
-// whichever is current by then. Three rules keep that from going wrong, and
-// every handler below is an instance of them:
+// Everything asynchronous that reaches it - a ping verdict, a data endpoint
+// callback, a mount response - was set in motion under some binding, and
+// arrives under whichever is current by then. Three rules keep that from
+// going wrong, and every handler below is an instance of them:
 //
 // 1. Every event carries the identity of the binding it is about: a
 //    generation, or a host name resolved to one under the lock. Nothing is
@@ -309,17 +339,17 @@ private:
     TString MountedTabletHost;
 
     // Why a host is no good for this connection. Kept apart because each
-    // is taken back by its own kind of news: rdma coming up says nothing
-    // about a control path the pinger found dead, and the pinger changing
-    // its mind says nothing about rdma.
+    // is taken back by its own kind of news: the data link coming up says
+    // nothing about a control path the pinger found dead, and the pinger
+    // changing its mind says nothing about the data link.
     struct TAvoidance
     {
         TInstant PingUntil;
-        TInstant RdmaUntil;
+        TInstant DataUntil;
 
         [[nodiscard]] bool InForce(TInstant now) const
         {
-            return PingUntil > now || RdmaUntil > now;
+            return PingUntil > now || DataUntil > now;
         }
     };
 
@@ -338,7 +368,7 @@ private:
     bool MigrationInFlight = false;
     TString PendingTarget;
 
-    // The connection is built in steps, and the rdma client is handed its
+    // The connection is built in steps, and the data endpoint is handed its
     // handler before the last one. A callback arriving in between must not
     // act: a move started then would race the rest of the setup and could
     // leave the host, the control path and the data path disagreeing.
@@ -438,14 +468,15 @@ public:
         status.DataTransport = DescribeDataTransport(*binding, switcher);
         status.SelectedTransport = binding->HostConfig.GetTransport();
         status.ConnectionId = ConnectionId;
-        status.CanSelectRdma = binding->HostConfig.GetGrpcDataFallbackEnabled();
+        status.GrpcDataFallbackEnabled =
+            binding->HostConfig.GetGrpcDataFallbackEnabled();
         return status;
     }
 
     NProto::TError SwitchDataTransport(NProto::ECellDataTransport transport)
     {
         if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
-            transport != NProto::CELL_DATA_TRANSPORT_RDMA)
+            !UsesEndpointHandler(transport))
         {
             return MakeError(E_ARGUMENT, "Unsupported cell data transport");
         }
@@ -462,16 +493,18 @@ public:
                     E_REJECTED,
                     "Cell connection is changing; retry");
             }
-            if (transport == NProto::CELL_DATA_TRANSPORT_RDMA &&
+            if (UsesEndpointHandler(transport) &&
                 !Binding->HostConfig.GetGrpcDataFallbackEnabled())
             {
                 return MakeError(
                     E_ARGUMENT,
-                    "Manual RDMA selection requires gRPC data fallback");
+                    TStringBuilder()
+                        << "Manual "
+                        << NProto::ECellDataTransport_Name(transport)
+                        << " selection requires gRPC data fallback");
             }
             if (Binding->HostConfig.GetTransport() == transport &&
-                (transport == NProto::CELL_DATA_TRANSPORT_GRPC ||
-                 Binding->Switcher))
+                (!UsesEndpointHandler(transport) || Binding->Switcher))
             {
                 TransportOverride = transport;
                 return {};
@@ -536,8 +569,8 @@ public:
 
     // Builds whatever of the data path can still fail, and touches nothing
     // the connection is currently serving through. A member rather than a
-    // free function because without a fallback the rdma client reports "not
-    // coming up" to a handler that has to reach this connection.
+    // free function because without a fallback the data endpoint reports
+    // "not coming up" to a handler that has to reach this connection.
     NProto::TError PrepareDataPath(const THostBindingPtr& binding);
 
     // Points both routers at the prepared binding and, for the switching
@@ -614,10 +647,10 @@ public:
         RunPendingMoveAway();
     }
 
-    // Without a fallback this host serves nothing at all while its rdma is
-    // down, so the reasoning that keeps a connection put when gRPC still
+    // Without a fallback this host serves nothing at all while its data link
+    // is down, so the reasoning that keeps a connection put when gRPC still
     // carries data does not apply here.
-    void OnRdmaUnusable(ui64 generation, const TString& fqdn) noexcept
+    void OnDataLinkUnusable(ui64 generation, const TString& fqdn) noexcept
     {
         with_lock (Lock) {
             // recorded here, by name, for the current binding and for one
@@ -626,7 +659,7 @@ public:
             // depend on that decision ever being reached - another move can
             // carry the connection past it first
             if (generation >= Binding->Generation) {
-                Avoid[fqdn].RdmaUntil = Bootstrap.Timer->Now() + AvoidCooldown;
+                Avoid[fqdn].DataUntil = Bootstrap.Timer->Now() + AvoidCooldown;
             }
         }
 
@@ -634,7 +667,7 @@ public:
     }
 
     // The one way to say "the binding with this generation cannot serve".
-    // Both the pinger and the rdma client come through here, so both get
+    // Both the pinger and the data endpoint come through here, so both get
     // the same three-way treatment: a binding older than the current one is
     // no longer ours and is ignored; anything else is noted and acted on at
     // the next settle point - which is right now, if nothing is in flight.
@@ -691,9 +724,9 @@ public:
 
             // the request itself stays where it is until the move is
             // committed to below: the lock is let go for the pick, and
-            // whatever happens meanwhile must still find it there - rdma
-            // coming up takes it back, a move the mount response starts
-            // leaves it waiting for its settle point
+            // whatever happens meanwhile must still find it there - the
+            // data link coming up takes it back, a move the mount response
+            // starts leaves it waiting for its settle point
             except = HostsToAvoidLocked();
         }
 
@@ -743,7 +776,7 @@ public:
 
     // Data flows here again. That says nothing about the other hosts, so
     // only this one is forgiven.
-    void OnRdmaUsable(ui64 generation, const TString& fqdn) noexcept
+    void OnDataLinkUsable(ui64 generation, const TString& fqdn) noexcept
     {
         with_lock (Lock) {
             if (generation < Binding->Generation) {
@@ -756,10 +789,10 @@ public:
                 return;
             }
 
-            // rdma takes back what rdma said, and nothing else: a request
-            // to leave stands as long as anything is still held against
-            // the host - the pinger's verdict, say
-            avoidance->RdmaUntil = {};
+            // the data link takes back what it said, and nothing else: a
+            // request to leave stands as long as anything is still held
+            // against the host - the pinger's verdict, say
+            avoidance->DataUntil = {};
             if (!avoidance->InForce(Bootstrap.Timer->Now())) {
                 MoveAwayRequests.erase(generation);
             }
@@ -767,7 +800,7 @@ public:
     }
 
     // Called once the first binding is in place and the connection is
-    // watched. Anything an rdma callback asked for while the connection was
+    // watched. Anything a data callback asked for while the connection was
     // still being built happens now.
     void CompleteSetup()
     {
@@ -813,7 +846,7 @@ private:
         binding->Generation = ReserveGeneration();
         binding->ControlGeneration = old.ControlGeneration;
         binding->BoundControlService = old.BoundControlService;
-        if (transport != NProto::CELL_DATA_TRANSPORT_RDMA) {
+        if (!UsesEndpointHandler(transport)) {
             return binding;
         }
 
@@ -844,12 +877,12 @@ private:
             }
             Binding = binding;
             TransportOverride = binding->HostConfig.GetTransport();
-            if (*TransportOverride == NProto::CELL_DATA_TRANSPORT_RDMA) {
+            if (UsesEndpointHandler(*TransportOverride)) {
                 return {};
             }
             for (auto& [host, avoidance]: Avoid) {
                 Y_UNUSED(host);
-                avoidance.RdmaUntil = {};
+                avoidance.DataUntil = {};
             }
         }
         return {};
@@ -1029,7 +1062,8 @@ private:
 
         try {
             // only now that the old sink is cut off: the new switcher can
-            // point the router at rdma from inside this call
+            // point the router at the preferred transport from inside this
+            // call
             InstallBinding(binding);
         } catch (...) {
             // both routers already point at the new host, so the connection
@@ -1220,10 +1254,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The only listener an rdma endpoint gets when there is no fallback: with no
+// The only listener a data endpoint gets when there is no fallback: with no
 // second transport to fall back to, the one thing worth reacting to is the
 // link never coming up.
-class TRdmaOnlyHandler final: public NCloud::IClientEndpointHandler
+class TNoFallbackHandler final: public NCloud::IClientEndpointHandler
 {
 private:
     const std::weak_ptr<TCellConnection> Connection;
@@ -1231,7 +1265,7 @@ private:
     const TString Host;
 
 public:
-    TRdmaOnlyHandler(
+    TNoFallbackHandler(
             std::weak_ptr<TCellConnection> connection,
             ui64 generation,
             TString host)
@@ -1243,7 +1277,7 @@ public:
     void HandleConnected() override
     {
         if (auto connection = Connection.lock()) {
-            connection->OnRdmaUsable(Generation, Host);
+            connection->OnDataLinkUsable(Generation, Host);
         }
     }
 
@@ -1255,7 +1289,7 @@ public:
         // repeats on every reconnect attempt, which is what gives the move
         // its retries for free
         if (auto connection = Connection.lock()) {
-            connection->OnRdmaUnusable(Generation, Host);
+            connection->OnDataLinkUnusable(Generation, Host);
         }
     }
 };
@@ -1276,25 +1310,22 @@ NProto::TError TCellConnection::PrepareDataPath(
         binding->ControlGeneration);
 
     const auto& hostConfig = binding->HostConfig;
-    const bool rdmaOnly =
-        hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_RDMA &&
-        !hostConfig.GetGrpcDataFallbackEnabled();
+    const bool noFallback = UsesEndpointHandler(hostConfig.GetTransport()) &&
+                            !hostConfig.GetGrpcDataFallbackEnabled();
 
-    if (!rdmaOnly) {
+    if (!noFallback) {
         // the other transports had their endpoint built along with the
         // binding, and building it cannot fail here
         return {};
     }
 
-    binding->RdmaHandler = std::make_shared<TRdmaOnlyHandler>(
+    binding->DataHandler = std::make_shared<TNoFallbackHandler>(
         weak_from_this(),
         binding->Generation,
         hostConfig.GetFqdn());
 
-    auto endpoint = Bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
-        Bootstrap,
-        hostConfig,
-        binding->RdmaHandler);
+    auto endpoint =
+        SetupHostDataEndpoint(Bootstrap, hostConfig, binding->DataHandler);
 
     if (HasError(endpoint)) {
         return endpoint.GetError();
@@ -1313,11 +1344,11 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
     ControlRouter->SetTarget(binding->BoundControlService);
 
     // the target goes in before the switcher starts: the switcher may point
-    // the router at rdma straight away, and installing the fallback
-    // afterwards would undo that
+    // the router at the preferred transport straight away, and installing
+    // the fallback afterwards would undo that
     DataRouter->SetTarget(binding->DataEndpoint);
 
-    if (hostConfig.GetTransport() != NProto::CELL_DATA_TRANSPORT_RDMA ||
+    if (!UsesEndpointHandler(hostConfig.GetTransport()) ||
         !hostConfig.GetGrpcDataFallbackEnabled())
     {
         return;
@@ -1368,7 +1399,7 @@ IBlockStorePtr CreateGrpcDataEndpoint(
 
 // Builds everything that ties a connection to one host, EXCEPT the data path
 // - that is TCellConnection::PrepareDataPath, which needs a live connection
-// to hand the rdma client a handler.
+// to hand the data endpoint a handler.
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
@@ -1381,10 +1412,12 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
             if (!hostConfig.GetGrpcDataFallbackEnabled()) {
                 return binding;
             }
-            // The switcher uses the gRPC endpoint while RDMA is unavailable.
+            // The switcher uses the gRPC endpoint while the preferred
+            // transport is unavailable.
             [[fallthrough]];
 
         case NProto::CELL_DATA_TRANSPORT_GRPC:
@@ -1545,7 +1578,7 @@ TCellConnectionFuture CreateCellConnection(
                 std::move(dataRouter),
                 built.GetResult());
 
-            // The RDMA handler needs the connection to exist first.
+            // The data endpoint handler needs the connection to exist first.
             auto error = connection->PrepareDataPath(built.GetResult());
             if (HasError(error)) {
                 // no explicit release here, unlike the branches above: the

@@ -23,7 +23,7 @@ namespace {
         NProto::ECellDataTransport,                                            \
         NProto::CELL_DATA_TRANSPORT_GRPC                                      )\
     xxx(GrpcDataFallbackEnabled,     bool,                   false            )\
-    xxx(RdmaSettleTime,              TDuration,   TDuration::Seconds(10)      )\
+    xxx(EndpointSettleTime,          TDuration,   TDuration::Seconds(10)      )\
     xxx(HostPingPeriod,              TDuration,   TDuration::Seconds(5)       )\
     xxx(HostPingTimeout,             TDuration,   TDuration::Seconds(2)       )\
 // BLOCKSTORE_CELL_DEFAULT_CONFIG
@@ -116,6 +116,15 @@ void DumpImpl(
     os << NProto::ECellDataTransport_Name(value);
 }
 
+// Fields that changed name read through the new one.
+NProto::TCellConfig MigrateCellConfig(NProto::TCellConfig config)
+{
+    if (!config.HasEndpointSettleTime() && config.HasRdmaSettleTime()) {
+        config.SetEndpointSettleTime(config.GetRdmaSettleTime());
+    }
+    return config;
+}
+
 NProto::TClientAppConfig CreateClientAppConfig(
     const NProto::TClientConfig& config)
 {
@@ -142,7 +151,7 @@ TCellHostConfig::TCellHostConfig(
           hostConfig.GetTransport() ? hostConfig.GetTransport()
                                     : cellConfig.GetTransport())
     , GrpcDataFallbackEnabled(cellConfig.GetGrpcDataFallbackEnabled())
-    , RdmaSettleTime(cellConfig.GetRdmaSettleTime())
+    , EndpointSettleTime(cellConfig.GetEndpointSettleTime())
 {
 }
 
@@ -167,7 +176,7 @@ struct TCellConfig::TImpl
     BLOCKSTORE_CELL_DEFAULT_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
 
     explicit TImpl(NProto::TCellConfig config = {})
-        : Config(std::move(config))
+        : Config(MigrateCellConfig(std::move(config)))
     {
     }
 
