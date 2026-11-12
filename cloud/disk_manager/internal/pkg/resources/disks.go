@@ -653,8 +653,6 @@ func (s *storageYDB) markDiskDeleted(
 	deletedAt time.Time,
 ) error {
 
-	// NOTE: tombstone flag is kept, so that legacy cleanup rules don't apply
-	// to completed tombstone deletion.
 	state.status = diskStatusDeleted
 	state.deletedAt = deletedAt
 
