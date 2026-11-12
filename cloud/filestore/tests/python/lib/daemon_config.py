@@ -117,12 +117,6 @@ class FilestoreDaemonConfigGenerator:
 
         self.__trace_sampling_rate = trace_sampling_rate
 
-        # Kikimr recipes generate all configs later, once the domain and
-        # nameservice configs are available.  Local recipes do not call
-        # generate_configs(), but they still need the test diagnostics config.
-        if not self.__is_storage_kikimr():
-            self.generate_configs(None, None)
-
     @property
     def port(self):
         return self.__port
@@ -313,7 +307,7 @@ class FilestoreDaemonConfigGenerator:
                 config_file.flush()
                 logger.info("written config file: " + path)
 
-    def generate_configs(self, domains_txt, names_txt):
+    def generate_configs(self, domains_txt=None, names_txt=None):
         self.__proto_configs = {
             "diag.txt": self.__generate_diag_txt(),
         }

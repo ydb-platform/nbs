@@ -25,6 +25,7 @@ def test_local_diagnostics_config():
             kikimr_port=0,
             domain=None,
         )
+        configurator.generate_configs()
 
         diag_config_path = os.path.join(configurator.configs_dir, "diag.txt")
         with open(diag_config_path) as config_file:
