@@ -1046,7 +1046,7 @@ private:
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
     void UnregisterRdmaPipe(const NActors::TActorId& pipeServerId);
-    void UnregisterRdmaTablet(const NActors::TActorContext& ctx);
+    void UnregisterRdmaTablet();
 
     void UpdateLogTag();
 

@@ -369,7 +369,7 @@ bool TIndexTabletActor::OnRenderAppHtmlPage(
 void TIndexTabletActor::OnDetach(const TActorContext& ctx)
 {
     Counters = nullptr;
-    UnregisterRdmaTablet(ctx);
+    UnregisterRdmaTablet();
 
     Die(ctx);
 }
@@ -388,7 +388,7 @@ void TIndexTabletActor::OnTabletDead(
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
-    UnregisterRdmaTablet(ctx);
+    UnregisterRdmaTablet();
 
     if (FastShardServer) {
         FastShardServer->UnregisterShard(GetFileSystemId());
@@ -2199,10 +2199,10 @@ void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)
     }
 }
 
-void TIndexTabletActor::UnregisterRdmaTablet(const TActorContext& ctx)
+void TIndexTabletActor::UnregisterRdmaTablet()
 {
     if (RdmaTabletRegistry) {
-        RdmaTabletRegistry->UnregisterTablet(ctx, SelfId());
+        RdmaTabletRegistry->UnregisterTablet(SelfId());
     }
 }
 

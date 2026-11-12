@@ -1,4 +1,3 @@
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_private.h>
 #include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -18,8 +17,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
+TActorId MakeActorId(ui64 localId)
 {
+    return TActorId(1, 0, localId, 0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTabletEnv
+{
+    using TEvServerConnected = TEvTabletPipe::TEvServerConnected;
+
     TTestEnv Env;
     const ui32 NodeIdx;
     const ui64 TabletId;
@@ -29,12 +37,11 @@ struct TEnv
     THashMap<TActorId, TActorId> PipeServers;
     TTestActorRuntime::TEventObserverHolder PipeObserver;
 
-    TEnv()
+    TTabletEnv()
         : NodeIdx(Env.AddDynamicNode())
         , TabletId(Env.BootIndexTablet(NodeIdx))
         , Registry(Env.GetRdmaTabletRegistry(GetRuntime().GetNodeId(NodeIdx)))
     {
-        using TEvServerConnected = TEvTabletPipe::TEvServerConnected;
         PipeObserver = GetRuntime().AddObserver<TEvServerConnected>(
             [this](TEvServerConnected::TPtr& ev)
             {
@@ -50,21 +57,10 @@ struct TEnv
         return Env.GetRuntime();
     }
 
-    TActorId AttachForwarder()
+    std::pair<TActorId, TActorId> GetPipeServer() const
     {
-        const auto forwarderId = GetRuntime().AllocateEdgeActor(NodeIdx);
-        Registry->AttachForwarder(forwarderId);
-        return forwarderId;
-    }
-
-    TActorId WaitTabletGone(const TActorId& forwarderId)
-    {
-        using TEvTabletGone = TEvRdmaTabletPrivate::TEvTabletGone;
-        auto ev = GetRuntime().GrabEdgeEvent<TEvTabletGone>(
-            forwarderId,
-            TDuration::Seconds(10));
-        UNIT_ASSERT(ev);
-        return ev->Get()->TabletActorId;
+        UNIT_ASSERT_VALUES_EQUAL(1, PipeServers.size());
+        return *PipeServers.begin();
     }
 };
 
@@ -74,30 +70,89 @@ struct TEnv
 
 Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
 {
-    Y_UNIT_TEST(ShouldRegisterPipeOfConnectedClient)
+    Y_UNIT_TEST(ShouldFindTabletOfRegisteredPipe)
     {
-        TEnv env;
+        TRdmaTabletRegistry registry;
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(2), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(3), MakeActorId(20));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(10),
+            registry.FindTablet(MakeActorId(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(10),
+            registry.FindTablet(MakeActorId(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(3)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(4)));
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterPipe)
+    {
+        TRdmaTabletRegistry registry;
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(2), MakeActorId(10));
+
+        registry.UnregisterPipe(MakeActorId(1));
+        registry.UnregisterPipe(MakeActorId(3));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(10),
+            registry.FindTablet(MakeActorId(2)));
+
+        registry.UnregisterPipe(MakeActorId(2));
+        registry.UnregisterTablet(MakeActorId(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(2)));
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterOnlyPipesOfTablet)
+    {
+        TRdmaTabletRegistry registry;
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(2), MakeActorId(10));
+        // e.g. the next generation of the tablet
+        registry.RegisterPipe(MakeActorId(3), MakeActorId(20));
+
+        registry.UnregisterTablet(MakeActorId(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(2)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(3)));
+
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(10),
+            registry.FindTablet(MakeActorId(1)));
+    }
+
+    Y_UNIT_TEST(ShouldRegisterPipeUntilClientDisconnects)
+    {
+        TTabletEnv env;
         TIndexTabletClient tablet(env.GetRuntime(), env.NodeIdx, env.TabletId);
 
-        UNIT_ASSERT_VALUES_EQUAL(1, env.PipeServers.size());
-        const auto [pipeServerId, tabletActorId] = *env.PipeServers.begin();
+        const auto [pipeServerId, tabletActorId] = env.GetPipeServer();
         UNIT_ASSERT(tabletActorId);
         UNIT_ASSERT_VALUES_EQUAL(
             tabletActorId,
             env.Registry->FindTablet(pipeServerId));
-    }
 
-    Y_UNIT_TEST(ShouldUnregisterPipeOfDisconnectedClient)
-    {
-        TEnv env;
-        TIndexTabletClient tablet1(env.GetRuntime(), env.NodeIdx, env.TabletId);
-        const auto pipeServer1 = env.PipeServers.begin()->first;
-
-        env.PipeServers.clear();
-        TIndexTabletClient tablet2(env.GetRuntime(), env.NodeIdx, env.TabletId);
-        const auto [pipeServer2, tabletActorId] = *env.PipeServers.begin();
-
-        tablet1.DisconnectPipe();
+        tablet.DisconnectPipe();
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvTabletPipe::EvServerDisconnected);
@@ -105,65 +160,44 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             TActorId(),
-            env.Registry->FindTablet(pipeServer1));
-        UNIT_ASSERT_VALUES_EQUAL(
-            tabletActorId,
-            env.Registry->FindTablet(pipeServer2));
+            env.Registry->FindTablet(pipeServerId));
     }
 
-    Y_UNIT_TEST(ShouldUnregisterPipesAndNotifyForwarderWhenTabletDies)
+    Y_UNIT_TEST(ShouldUnregisterPipesWhenTabletDies)
     {
-        TEnv env;
-        const auto forwarderId = env.AttachForwarder();
+        using TEvServerDisconnected = TEvTabletPipe::TEvServerDisconnected;
 
+        TTabletEnv env;
         TIndexTabletClient tablet(env.GetRuntime(), env.NodeIdx, env.TabletId);
-        const auto [pipeServerId, tabletActorId] = *env.PipeServers.begin();
+
+        const auto [pipeServerId, tabletActorId] = env.GetPipeServer();
+        UNIT_ASSERT_VALUES_EQUAL(
+            tabletActorId,
+            env.Registry->FindTablet(pipeServerId));
+
+        // only the tablet's death may unregister the pipe
+        auto& runtime = env.GetRuntime();
+        auto dropDisconnect = runtime.AddObserver<TEvServerDisconnected>(
+            [&](TEvServerDisconnected::TPtr& ev)
+            {
+                if (ev->Get()->ServerId == pipeServerId) {
+                    ev.Reset();
+                }
+            });
 
         env.PipeServers.clear();
         tablet.RebootTablet();
+        tablet.WaitReady();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            tabletActorId,
-            env.WaitTabletGone(forwarderId));
         UNIT_ASSERT_VALUES_EQUAL(
             TActorId(),
             env.Registry->FindTablet(pipeServerId));
 
-        tablet.WaitReady();
-
-        UNIT_ASSERT_VALUES_EQUAL(1, env.PipeServers.size());
-        const auto [nextPipeServerId, nextTabletActorId] =
-            *env.PipeServers.begin();
+        const auto [nextPipeServerId, nextTabletActorId] = env.GetPipeServer();
         UNIT_ASSERT_VALUES_UNEQUAL(tabletActorId, nextTabletActorId);
         UNIT_ASSERT_VALUES_EQUAL(
             nextTabletActorId,
             env.Registry->FindTablet(nextPipeServerId));
-    }
-
-    Y_UNIT_TEST(ShouldNotUnregisterPipesOfAnotherTabletActor)
-    {
-        TEnv env;
-        const auto forwarderId = env.AttachForwarder();
-
-        TIndexTabletClient tablet(env.GetRuntime(), env.NodeIdx, env.TabletId);
-        const auto tabletActorId = env.PipeServers.begin()->second;
-
-        // e.g. the next generation that registered before the previous one
-        // unregistered
-        const auto otherPipeServerId =
-            env.GetRuntime().AllocateEdgeActor(env.NodeIdx);
-        const auto otherTabletActorId =
-            env.GetRuntime().AllocateEdgeActor(env.NodeIdx);
-        env.Registry->RegisterPipe(otherPipeServerId, otherTabletActorId);
-
-        tablet.RebootTablet();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            tabletActorId,
-            env.WaitTabletGone(forwarderId));
-        UNIT_ASSERT_VALUES_EQUAL(
-            otherTabletActorId,
-            env.Registry->FindTablet(otherPipeServerId));
     }
 }
 

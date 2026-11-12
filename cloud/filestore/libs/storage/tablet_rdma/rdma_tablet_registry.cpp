@@ -1,20 +1,10 @@
 #include "rdma_tablet_registry.h"
 
-#include "rdma_private.h"
-
-#include <util/generic/algorithm.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
-
-void TRdmaTabletRegistry::AttachForwarder(const TActorId& forwarderId)
-{
-    auto guard = Guard(Lock);
-    ForwarderId = forwarderId;
-}
 
 // TODO after #7890 we don't need find for every request, but it shouldn't be a
 // big problem anyway
@@ -31,31 +21,40 @@ void TRdmaTabletRegistry::RegisterPipe(
 {
     auto guard = Guard(Lock);
     Pipes[pipeServerId] = tabletActorId;
+    TabletPipes[tabletActorId].insert(pipeServerId);
 }
 
 void TRdmaTabletRegistry::UnregisterPipe(const TActorId& pipeServerId)
 {
     auto guard = Guard(Lock);
-    Pipes.erase(pipeServerId);
+    auto pipe = Pipes.find(pipeServerId);
+    if (pipe == Pipes.end()) {
+        return;
+    }
+
+    auto tablet = TabletPipes.find(pipe->second);
+    if (tablet != TabletPipes.end()) {
+        tablet->second.erase(pipeServerId);
+        if (tablet->second.empty()) {
+            TabletPipes.erase(tablet);
+        }
+    }
+
+    Pipes.erase(pipe);
 }
 
-void TRdmaTabletRegistry::UnregisterTablet(
-    const TActorContext& ctx,
-    const TActorId& tabletActorId)
+void TRdmaTabletRegistry::UnregisterTablet(const TActorId& tabletActorId)
 {
-    TActorId forwarderId;
-    with_lock (Lock) {
-        EraseNodesIf(
-            Pipes,
-            [&](const auto& pipe) { return pipe.second == tabletActorId; });
-        forwarderId = ForwarderId;
+    auto guard = Guard(Lock);
+    auto tablet = TabletPipes.find(tabletActorId);
+    if (tablet == TabletPipes.end()) {
+        return;
     }
 
-    if (forwarderId) {
-        ctx.Send(
-            forwarderId,
-            new TEvRdmaTabletPrivate::TEvTabletGone(tabletActorId));
+    for (const auto& pipeServerId: tablet->second) {
+        Pipes.erase(pipeServerId);
     }
+    TabletPipes.erase(tablet);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

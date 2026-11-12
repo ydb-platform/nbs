@@ -5,6 +5,7 @@
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/system/spinlock.h>
 
 #include <memory>
@@ -21,12 +22,9 @@ class TRdmaTabletRegistry final
 private:
     mutable TAdaptiveLock Lock;
     THashMap<NActors::TActorId, NActors::TActorId> Pipes;
-    NActors::TActorId ForwarderId;
+    THashMap<NActors::TActorId, THashSet<NActors::TActorId>> TabletPipes;
 
 public:
-    // The forwarder gets TEvTabletGone for every tablet that unregisters.
-    void AttachForwarder(const NActors::TActorId& forwarderId);
-
     // Empty if the pipe server is not registered.
     NActors::TActorId FindTablet(const NActors::TActorId& pipeServerId) const;
 
@@ -36,9 +34,7 @@ public:
 
     void UnregisterPipe(const NActors::TActorId& pipeServerId) override;
 
-    void UnregisterTablet(
-        const NActors::TActorContext& ctx,
-        const NActors::TActorId& tabletActorId) override;
+    void UnregisterTablet(const NActors::TActorId& tabletActorId) override;
 };
 
 using TRdmaTabletRegistryPtr = std::shared_ptr<TRdmaTabletRegistry>;

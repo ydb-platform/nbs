@@ -25,7 +25,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(TABLET_PROXY)                                                          \
     xxx(SS_PROXY)                                                              \
     xxx(DISK_REGISTRY_PROXY)                                                   \
-    xxx(RDMA)                                                                  \
 // FILESTORE_ACTORS
 
 #define FILESTORE_COMPONENTS(xxx)                                              \
