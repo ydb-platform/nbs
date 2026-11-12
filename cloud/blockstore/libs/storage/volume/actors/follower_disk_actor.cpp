@@ -149,6 +149,14 @@ bool TFollowerDiskActor::OnMessage(
         // base class.
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
 
+        HFunc(
+            TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
+            ForwardGetPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            ForwardGetDiskRegistryBasedPartCounters);
+
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {
             return HandleRWClientIdChanged(
@@ -351,6 +359,21 @@ void TFollowerDiskActor::HandleRdmaUnavailable(
     const TActorContext& ctx)
 {
     ForwardMessageToActor(ev, ctx, LeaderVolumeActorId);
+}
+
+void TFollowerDiskActor::ForwardGetPartCounters(
+    const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, LeaderPartitionActorId);
+}
+
+void TFollowerDiskActor::ForwardGetDiskRegistryBasedPartCounters(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ForwardMessageToActor(ev, ctx, LeaderPartitionActorId);
 }
 
 bool TFollowerDiskActor::HandleRWClientIdChanged(

@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+message Quota {
+    uint32 quota_id = 1;
+    uint64 max_bytes = 2;
+    uint64 max_nodes = 3;
+    uint64 used_bytes = 4;
+    uint64 used_nodes = 5;
+}

@@ -72,15 +72,17 @@ public:
         return MakeFuture<TRestoreResult>(std::move(buffers));
     }
 
-    TFuture<NProto::TError> Write(ui64 key, TBuffer buffer) override
+    TResultOrError<TFuture<NProto::TError>> Write(
+        ui64 key,
+        TBuffer buffer) override
     {
         {
             std::lock_guard lock(Lock);
 
             if (key < ErasedBelowKey) {
-                return MakeFuture(MakeError(
+                return MakeError(
                     E_ARGUMENT,
-                    TStringBuilder() << "key " << key << " is erased"));
+                    TStringBuilder() << "key " << key << " is erased");
             }
 
             Buffers[key] = std::move(buffer);
@@ -461,7 +463,9 @@ public:
 
     TFuture<TRestoreResult> Restore() override;
 
-    TFuture<NProto::TError> Write(ui64 key, TBuffer buffer) override;
+    TResultOrError<TFuture<NProto::TError>> Write(
+        ui64 key,
+        TBuffer buffer) override;
 
     TFuture<NProto::TError> WriteMeta(TBuffer buffer) override;
 
@@ -569,7 +573,9 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
         });
 }
 
-TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
+TResultOrError<TFuture<NProto::TError>> TDeviceKeyBufferStore::Write(
+    ui64 key,
+    TBuffer buffer)
 {
     // an entry never spans pages
     if (buffer.Size() > PageSize ||
@@ -577,12 +583,12 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
                 GetSerializedEntrySize(static_cast<ui32>(buffer.Size())) >
             PageSize)
     {
-        return MakeFuture(MakeError(
+        return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "the buffer of " << buffer.Size() << " bytes under key "
                 << key << " does not fit the page of " << PageSize
-                << " bytes"));
+                << " bytes");
     }
 
     ui64 seq = 0;
@@ -591,14 +597,13 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
         std::lock_guard lock(Lock);
 
         if (!Restored) {
-            return MakeFuture(
-                MakeError(E_INVALID_STATE, "the store is not restored"));
+            return MakeError(E_INVALID_STATE, "the store is not restored");
         }
 
         if (key < Superblock.ErasedBelowKey) {
-            return MakeFuture(MakeError(
+            return MakeError(
                 E_ARGUMENT,
-                TStringBuilder() << "key " << key << " is erased"));
+                TStringBuilder() << "key " << key << " is erased");
         }
 
         seq = NextSeq++;
@@ -615,7 +620,7 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::Write(ui64 key, TBuffer buffer)
         PageSize);
 
     if (HasError(result)) {
-        return MakeFuture(result.GetError());
+        return result.GetError();
     }
     auto pageRange = result.ExtractResult();
 

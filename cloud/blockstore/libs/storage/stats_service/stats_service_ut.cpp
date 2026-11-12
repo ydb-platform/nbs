@@ -143,7 +143,8 @@ void RegisterVolume(
     NProto::EStorageMediaKind kind,
     bool isSystem,
     ui64 volumeTabletID = 0,
-    TVector<NKikimr::TTabletChannelInfo> channels = {})
+    TVector<NKikimr::TTabletChannelInfo> channels = {},
+    TActorId volumeActorId = {})
 {
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
@@ -157,7 +158,7 @@ void RegisterVolume(
         diskId,
         volumeTabletID,
         std::move(volume),
-        runtime.AllocateEdgeActor(),
+        volumeActorId ? volumeActorId : runtime.AllocateEdgeActor(),
         std::move(channels));
     runtime.Send(
         new IEventHandle(
@@ -2100,6 +2101,63 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
         }
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsOncePerVolumeActor)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            NYdbStats::CreateVolumesStatsUploaderStub());
+
+        // A volume registers its shadow disks with its own actor id.
+        const auto volumeActorId = runtime.AllocateEdgeActor();
+        const auto otherVolumeActorId = runtime.AllocateEdgeActor();
+        const TVector<std::pair<TString, TActorId>> volumes = {
+            {"vol0", volumeActorId},
+            {"vol0-cp1", volumeActorId},
+            {"vol0-cp2", volumeActorId},
+            {"vol1", otherVolumeActorId}};
+        for (const auto& [diskId, actorId]: volumes) {
+            RegisterVolume(
+                runtime,
+                diskId,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                false,   // isSystem
+                0,       // volumeTabletID
+                {},      // channels
+                actorId);
+        }
+
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                new TEvents::TEvWakeup()),
+            0);
+
+        // Stay well below UpdateCountersInterval so that neither the next
+        // wakeup nor the collector's timeout fires.
+        const auto timeout = TDuration::Seconds(1);
+        auto countRequests = [&](const TActorId& actorId)
+        {
+            ui32 count = 0;
+            while (runtime.GrabEdgeEvent<
+                   TEvStatsService::TEvGetServiceStatisticsRequest>(
+                actorId,
+                timeout))
+            {
+                ++count;
+            }
+            return count;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(volumeActorId));
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(otherVolumeActorId));
     }
 
     Y_UNIT_TEST(ShouldNotCrashCrashWhenDiskCountersIsNullptrPullScheme)

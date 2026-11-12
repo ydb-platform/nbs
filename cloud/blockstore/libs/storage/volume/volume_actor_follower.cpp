@@ -277,8 +277,10 @@ void TVolumeActor::UpdateLeaderLink(
         return;
     }
 
+    // Match may resolve the link by UUID alone or without a UUID. Updating
+    // its state must preserve the identity of the persisted record.
     auto leaderInfo = TLeaderDiskInfo{
-        .Link = std::move(link),
+        .Link = std::move(currentLeader->Link),
         .CreatedAt = TInstant::Now(),
         .State = state};
 
