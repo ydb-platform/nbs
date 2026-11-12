@@ -2,6 +2,7 @@ import os
 
 from google.protobuf import text_format
 
+from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.filestore.config.server_pb2 import TServerAppConfig
 from cloud.filestore.tests.python.lib.daemon_config import (
     FilestoreServerConfigGenerator,
@@ -9,6 +10,34 @@ from cloud.filestore.tests.python.lib.daemon_config import (
 )
 
 from contrib.ydb.core.protos import config_pb2
+
+
+def test_local_diagnostics_config():
+    for generator_type in (
+        FilestoreServerConfigGenerator,
+        FilestoreVhostConfigGenerator,
+    ):
+        configurator = generator_type(
+            binary_path="filestore",
+            app_config=TServerAppConfig(),
+            service_type="local",
+            verbose=False,
+            kikimr_port=0,
+            domain=None,
+        )
+
+        diag_config_path = os.path.join(configurator.configs_dir, "diag.txt")
+        with open(diag_config_path) as config_file:
+            generated_config = text_format.Parse(
+                config_file.read(),
+                TDiagnosticsConfig(),
+            )
+
+        assert generated_config.ProfileLogTimeThreshold == 100
+
+        command = configurator.generate_command()
+        diag_file_arg = command.index("--diag-file")
+        assert command[diag_file_arg + 1] == diag_config_path
 
 
 def test_blob_storage_config():
