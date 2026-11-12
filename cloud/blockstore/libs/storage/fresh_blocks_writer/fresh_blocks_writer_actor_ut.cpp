@@ -554,6 +554,36 @@ TString GetBlocksContent(
     return result;
 }
 
+// Fresh-log trims and flushes of the test partition.
+struct TFreshLogTrimObserver
+{
+    ui32 TrimsCompleted = 0;
+    ui32 TrimsFailed = 0;
+    ui32 FlushesCompleted = 0;
+
+    TTestActorRuntime::TEventObserver Observer()
+    {
+        return [this](TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                    ++TrimsCompleted;
+                    if (FAILED(msg->GetStatus())) {
+                        ++TrimsFailed;
+                    }
+                    break;
+                }
+                case TEvPartitionPrivate::EvFlushCompleted:
+                    ++FlushesCompleted;
+                    break;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+    }
+};
+
 TTestActorRuntime::TEventObserver StorageStateChanger(
     ui32  flag,
     TMaybe<ui32> groupIdFilter = {})
@@ -1699,21 +1729,8 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         auto fbwClient = testEnv.GetFreshBlocksWriterClient();
         fbwClient.WaitReady();
 
-        ui32 trimsCompleted = 0;
-        ui32 flushesCompleted = 0;
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted:
-                        ++trimsCompleted;
-                        break;
-                    case TEvPartitionPrivate::EvFlushCompleted:
-                        ++flushesCompleted;
-                        break;
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+        TFreshLogTrimObserver trims;
+        runtime.SetObserverFunc(trims.Observer());
 
         auto fill = [](ui32 i)
         {
@@ -1725,8 +1742,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         }
         runtime.DispatchEvents({}, 100ms);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, flushesCompleted);
-        UNIT_ASSERT_GT(trimsCompleted, 10);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.TrimsFailed);
+        UNIT_ASSERT_GT(trims.TrimsCompleted, 10);
 
         auto check = [&](TFreshBlocksWriterClient& client)
         {

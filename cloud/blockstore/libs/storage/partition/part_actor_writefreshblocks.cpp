@@ -253,6 +253,9 @@ void TPartitionActor::HandleAddFreshBlocks(
     }
 
     State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
+    for (ui64 commitId: deadCommitIds) {
+        State->MarkFreshBlobDead(commitId);
+    }
 
     if (FreshBlocksWriter) {
         SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
@@ -275,9 +278,6 @@ void TPartitionActor::HandleAddFreshBlocks(
         EnqueueFlushIfNeeded(ctx);
     }
 
-    for (ui64 commitId: deadCommitIds) {
-        State->MarkFreshBlobDead(commitId);
-    }
     // New dead blobs may have made a trim due.
     if (GetFreshDeadBlobByteCountTrimThreshold()) {
         EnqueueTrimFreshLogIfNeeded(ctx);
