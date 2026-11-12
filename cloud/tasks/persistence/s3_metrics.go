@@ -125,6 +125,24 @@ func (m *s3Metrics) OnRetry(req *request.Request) {
 	retryCounter.Inc()
 }
 
+// Records how long an attempt of the call waited for the attempt limiter.
+func (m *s3Metrics) OnAttemptWait(name string, wait time.Duration) {
+	subRegistry := m.registry.WithTags(map[string]string{
+		"call": name,
+	})
+
+	subRegistry.Counter("attemptWaitMs").Add(wait.Milliseconds())
+}
+
+// Records the current rate of the attempt limiter of the call.
+func (m *s3Metrics) OnAttemptRate(name string, rate float64) {
+	subRegistry := m.registry.WithTags(map[string]string{
+		"call": name,
+	})
+
+	subRegistry.Gauge("attemptRate").Set(rate)
+}
+
 func (m *s3Metrics) OnQuotaExceeded(ctx context.Context, name string) {
 	subRegistry := m.registry.WithTags(map[string]string{
 		"call": name,
