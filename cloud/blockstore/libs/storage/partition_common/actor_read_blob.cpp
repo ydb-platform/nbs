@@ -260,10 +260,23 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                iter.ExtractPlainDataAndAdvance(to, BlockSize);
-                if (ShouldCalculateChecksums) {
+                if (ShouldCalculateChecksums &&
+                    iter.ContiguousSize() < BlockSize)
+                {
+                    auto block = TString::Uninitialized(BlockSize);
+                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
                     blockChecksums.push_back(
-                        ComputeDefaultDigest(sglist[sglistIndex]));
+                        ComputeDefaultDigest({block.data(), BlockSize}));
+
+                    memcpy(to, block.data(), BlockSize);
+                } else {
+                    if (ShouldCalculateChecksums) {
+                        // The client can modify the destination concurrently.
+                        blockChecksums.push_back(
+                            ComputeDefaultDigest(
+                                {iter.ContiguousData(), BlockSize}));
+                    }
+                    iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 }
                 ++sglistIndex;
             }
