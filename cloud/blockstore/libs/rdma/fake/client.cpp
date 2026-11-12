@@ -1090,7 +1090,7 @@ public:
     auto StartEndpoint(
         TString host,
         ui32 port,
-        NRdma::IClientEndpointHandlerPtr handler)
+        NCloud::IClientEndpointHandlerPtr handler)
         -> TResultOrError<NRdma::IClientEndpointPtr> override;
 
     void DumpHtml(IOutputStream& out) const override;
@@ -1136,7 +1136,7 @@ auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
 auto TFakeRdmaClient::StartEndpoint(
     TString host,
     ui32 port,
-    NRdma::IClientEndpointHandlerPtr handler)
+    NCloud::IClientEndpointHandlerPtr handler)
     -> TResultOrError<NRdma::IClientEndpointPtr>
 {
     Y_UNUSED(handler);

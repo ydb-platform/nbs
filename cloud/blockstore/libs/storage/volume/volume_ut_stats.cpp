@@ -13,6 +13,47 @@ using namespace NTestVolumeHelpers;
 
 Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 {
+    Y_UNIT_TEST(ShouldRegisterVolumeWithChannelHistory)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        auto expectedInfo = CreateTestTabletInfo(
+            TestVolumeTablets[0], TTabletTypes::BlockStoreVolume);
+        bool registered = false;
+        auto observer =
+            runtime->AddObserver<TEvStatsService::TEvRegisterVolume>(
+                [&](TEvStatsService::TEvRegisterVolume::TPtr& ev)
+                {
+                    const auto* msg = ev->Get();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        TestVolumeTablets[0], msg->TabletId);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expectedInfo->Channels.size(),
+                        msg->ChannelInfos.size());
+                    for (size_t i = 0; i < expectedInfo->Channels.size(); ++i) {
+                        const auto& expected = expectedInfo->Channels[i];
+                        const auto& actual = msg->ChannelInfos[i];
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expected.Channel, actual.Channel);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expected.History.size(), actual.History.size());
+                        for (size_t j = 0; j < expected.History.size(); ++j) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                expected.History[j].GroupID,
+                                actual.History[j].GroupID);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                expected.History[j].FromGeneration,
+                                actual.History[j].FromGeneration);
+                        }
+                    }
+                    registered = true;
+                });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+        UNIT_ASSERT(registered);
+    }
+
     Y_UNIT_TEST(ShouldSendPartitionStatsForNonreplicatedVolume)
     {
         auto state = MakeIntrusive<TDiskRegistryState>();
@@ -992,6 +1033,22 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto runtime =
             PrepareTestActorRuntime(config, {}, {}, {}, {diskAgentState});
 
+        bool sourceRegistered = false;
+        bool shadowRegistered = false;
+        auto registrationObserver =
+            runtime->AddObserver<TEvStatsService::TEvRegisterVolume>(
+                [&](TEvStatsService::TEvRegisterVolume::TPtr& ev)
+                {
+                    const auto* msg = ev->Get();
+                    if (msg->DiskId == "vol0") {
+                        UNIT_ASSERT(!msg->ChannelInfos.empty());
+                        sourceRegistered = true;
+                    } else if (msg->DiskId == "vol0-c1") {
+                        UNIT_ASSERT(msg->ChannelInfos.empty());
+                        shadowRegistered = true;
+                    }
+                });
+
         struct TReadAndWriteByteCount
         {
             ui64 ReadByteCount = 0;
@@ -1104,6 +1161,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             directCopyBytes,
             statsForDisks["vol0"].DirectCopyByteCount);
+
+        UNIT_ASSERT(sourceRegistered);
+        UNIT_ASSERT(shadowRegistered);
     }
 
     Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)
