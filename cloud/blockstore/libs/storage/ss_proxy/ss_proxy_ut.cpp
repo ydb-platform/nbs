@@ -1419,6 +1419,80 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectDescribeSchemeOnSchemeCacheLookupError)
+    {
+        using EStatus = NSchemeCache::TSchemeCacheNavigate::EStatus;
+
+        TTestEnv env;
+        auto config = CreateStorageConfig(
+            []()
+            {
+                NProto::TStorageServiceConfig config;
+                config.SetUseSchemeCache(true);
+                return config;
+            }());
+        SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+
+        const TString name = "lookup-error-path";
+        EStatus forcedStatus = EStatus::Unknown;
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvTxProxySchemeCache::EvNavigateKeySetResult)
+                {
+                    auto* msg = event->Get<
+                        TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                    auto* record = msg->Request.Get();
+                    if (!record || record->ResultSet.size() != 1) {
+                        return false;
+                    }
+
+                    // don't touch the requests made by SchemeCache itself
+                    auto& entry = record->ResultSet.front();
+                    if (entry.Path.empty() || entry.Path.back() != name) {
+                        return false;
+                    }
+
+                    entry.Status = forcedStatus;
+                    record->ErrorCount = 1;
+                }
+                return false;
+            });
+
+        const std::pair<EStatus, TString> statuses[] = {
+            {EStatus::LookupError, "LookupError"},
+            {EStatus::RedirectLookupError, "RedirectLookupError"},
+        };
+
+        for (const auto& [status, statusName]: statuses) {
+            forcedStatus = status;
+
+            TActorId sender = runtime.AllocateEdgeActor();
+
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+                    config->GetSchemeShardDir() + "/" + name,
+                    true /* addPathToError */));
+
+            TAutoPtr<IEventHandle> handle;
+            auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_STRING_CONTAINS(response->GetErrorReason(), statusName);
+        }
+    }
+
     Y_UNIT_TEST(ShouldFailDecsribeVolumeIfSSTimesout)
     {
         TTestEnv env;
