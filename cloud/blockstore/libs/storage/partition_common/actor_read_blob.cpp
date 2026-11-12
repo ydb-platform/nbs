@@ -260,15 +260,10 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
+                iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 if (ShouldCalculateChecksums) {
-                    auto block = TString::Uninitialized(BlockSize);
-                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
                     blockChecksums.push_back(
-                        ComputeDefaultDigest({block.data(), BlockSize}));
-
-                    memcpy(to, block.data(), BlockSize);
-                } else {
-                    iter.ExtractPlainDataAndAdvance(to, BlockSize);
+                        ComputeDefaultDigest(sglist[sglistIndex]));
                 }
                 ++sglistIndex;
             }
