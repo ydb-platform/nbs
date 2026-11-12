@@ -1297,9 +1297,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .NodeCount = 3
-        });
+        TFileSystemConfig fileSystemConfig;
+        fileSystemConfig.NodeCount = 3;
+        fileSystemConfig.BlockCount =
+            env.GetStorageConfig()->GetSizeToNodesRatio() *
+            fileSystemConfig.NodeCount / fileSystemConfig.BlockSize;
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            fileSystemConfig);
+
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
