@@ -6,6 +6,8 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/config
+    cloud/blockstore/libs/config
+    cloud/blockstore/libs/configs_manager
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/service

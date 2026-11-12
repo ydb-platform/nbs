@@ -12,6 +12,7 @@
 
 #include "sections_update/features.h"
 #include "sections_update/section_updater.h"
+#include "sections_update/volume_throttling.h"
 
 #include <util/generic/algorithm.h>
 #include <util/generic/array_ref.h>
@@ -50,6 +51,11 @@ TArrayRef<const TConfigSectionUpdaterEntry> GetConfigSectionUpdaters()
             "Features",
             NProto::TBlockstoreConfig::kFeaturesFieldNumber,
             GetFeaturesSectionUpdater(),
+        },
+        {
+            "VolumeThrottling",
+            NProto::TBlockstoreConfig::kVolumeThrottlingFieldNumber,
+            GetVolumeThrottlingSectionUpdater(),
         },
     };
     return updaters;
