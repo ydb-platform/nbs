@@ -1291,13 +1291,6 @@ void TVolumeState::FinishRemovingLeaderLink(const TLeaderFollowerLink& link)
     }
 }
 
-bool TVolumeState::HasPendingLeadershipTransfer(
-    const TLeaderFollowerLink& link) const
-{
-    return PendingLeadershipTransfer &&
-           PendingLeadershipTransfer->Link.Match(link);
-}
-
 bool TVolumeState::TryAddPendingLeadershipTransferRequest(
     TRequestInfoPtr requestInfo,
     const TLeaderFollowerLink& link)

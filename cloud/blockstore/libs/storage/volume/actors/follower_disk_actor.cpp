@@ -383,6 +383,10 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    if (msg->GetError().GetCode() == E_CANCELLED) {
+        return;
+    }
+
     FollowerDiskInfo = msg->Follower;
     ApplyLinkState(ctx);
     if (State == EState::LeadershipTransferredAndPersisted) {
@@ -413,16 +417,13 @@ void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(
             newFollowerInfo.ErrorMessage = FormatError(msg->GetError());
             PersistFollowerState(ctx, newFollowerInfo);
         } else {
-            // We need to repeat the leadership transfer, and not go into error,
-            // since the client could have already switched to a new leader, and
-            // passing into an error state can lead the client to switch to an
-            // old leader who is already outdated.
-            if (!LeadershipTransferRetryScheduled) {
-                LeadershipTransferRetryScheduled = true;
-                ctx.Schedule(
-                    LeadershipTransferRetryDelayProvider.GetDelayAndIncrease(),
-                    new TEvVolumePrivate::TEvRetryLeadershipTransfer());
-            }
+            // Retry even E_CANCELLED: a crash after the promotion commit but
+            // before the removal commit restores the promoted follower.
+            // Treating cancellation as final could return clients to an
+            // outdated source.
+            ctx.Schedule(
+                LeadershipTransferRetryDelayProvider.GetDelayAndIncrease(),
+                new TEvVolumePrivate::TEvRetryLeadershipTransfer());
         }
         return;
     }
@@ -436,7 +437,6 @@ void TFollowerDiskActor::HandleRetryLeadershipTransfer(
 {
     Y_UNUSED(ev);
 
-    LeadershipTransferRetryScheduled = false;
     if (State == EState::DataTransferred) {
         PropagateLeadershipToFollower(ctx);
     }

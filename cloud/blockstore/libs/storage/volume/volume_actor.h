@@ -223,6 +223,9 @@ private:
     TVolumeThrottlerLogger ThrottlerLogger;
 
     std::unique_ptr<TVolumeState> State;
+    TBackoffDelayProvider SourceDiskIdTagRemovalDelayProvider{
+        TDuration::Seconds(1),
+        TDuration::Seconds(15)};
     bool StateLoadFinished = false;
     TInstant ExecutorActivationTimestamp;
     TInstant StateLoadTimestamp;
@@ -1371,6 +1374,9 @@ private:
     void ReplyToPendingLeadershipTransferRequest(
         const NActors::TActorContext& ctx);
     void RemoveSourceDiskIdTagIfNeeded(const NActors::TActorContext& ctx);
+    void SendRemoveSourceDiskIdTagRequest(
+        const NActors::TActorContext& ctx,
+        const TString& sourceDiskId);
     void FinishSourceDiskIdTagRemoval(const NActors::TActorContext& ctx);
     void HandleRemoveSourceDiskIdTagResponse(
         const TEvService::TEvRemoveTagsResponse::TPtr& ev,

@@ -91,7 +91,6 @@ struct TCreateFollowerRequestInfo
     TLeaderFollowerLink Link;
     NActors::TActorId CreateVolumeLinkActor;
     TVector<TRequestInfoPtr> Requests;
-    bool Cancelled = false;
 };
 
 using TCreateFollowerRequests = TVector<TCreateFollowerRequestInfo>;
@@ -899,7 +898,6 @@ public:
     void StartRemovingLeaderLink(const TLeaderFollowerLink& link);
     void FinishRemovingLeaderLink(const TLeaderFollowerLink& link);
 
-    bool HasPendingLeadershipTransfer(const TLeaderFollowerLink& link) const;
     [[nodiscard]] bool TryAddPendingLeadershipTransferRequest(
         TRequestInfoPtr requestInfo,
         const TLeaderFollowerLink& link);

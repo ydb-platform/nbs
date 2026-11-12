@@ -139,9 +139,6 @@ void TVolumeActor::CompleteRemoveLeader(
 {
     State->RemoveLeader(args.Link);
     State->FinishRemovingLeaderLink(args.Link);
-    if (State->HasPendingLeadershipTransfer(args.Link)) {
-        ReplyToPendingLeadershipTransferRequest(ctx);
-    }
 
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
@@ -300,9 +297,7 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
     }
 
     for (const auto& leader: State->GetAllLeaders()) {
-        if (leader.State != TLeaderDiskInfo::EState::Leader ||
-            State->IsLeaderLinkBeingRemoved(leader.Link))
-        {
+        if (leader.State != TLeaderDiskInfo::EState::Leader) {
             continue;
         }
 
@@ -362,15 +357,11 @@ void TVolumeActor::ReplyToPendingLeadershipTransferRequest(
     }
 
     const auto leader = State->FindLeader(pending->Link);
-    const bool cancelled = !leader ||
-                           leader->State < TLeaderDiskInfo::EState::Leader ||
-                           State->IsLeaderLinkBeingRemoved(leader->Link);
     NCloud::Reply(
         ctx,
         *pending->Request,
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-            cancelled ? MakeError(E_CANCELLED, "Leader link was removed")
-                      : MakeError(S_OK)));
+            MakeError(S_OK)));
 }
 
 void TVolumeActor::RemoveSourceDiskIdTagIfNeeded(const TActorContext& ctx)
@@ -387,8 +378,7 @@ void TVolumeActor::RemoveSourceDiskIdTagIfNeeded(const TActorContext& ctx)
         State->GetAllLeaders(),
         [&](const TLeaderDiskInfo& leader)
         {
-            return leader.State >= TLeaderDiskInfo::EState::Leader &&
-                   !State->IsLeaderLinkBeingRemoved(leader.Link);
+            return leader.State >= TLeaderDiskInfo::EState::Leader;
         });
     if (!hasPromotedLeader) {
         return;
@@ -399,13 +389,21 @@ void TVolumeActor::RemoveSourceDiskIdTagIfNeeded(const TActorContext& ctx)
         return;
     }
 
+    State->StartSourceDiskIdTagRemoval();
+    SendRemoveSourceDiskIdTagRequest(ctx, *sourceDiskId);
+}
+
+void TVolumeActor::SendRemoveSourceDiskIdTagRequest(
+    const TActorContext& ctx,
+    const TString& sourceDiskId)
+{
+    Y_DEBUG_ABORT_UNLESS(State->IsSourceDiskIdTagRemovalInProgress());
+
     TVector<TString> tagsToRemove{
-        MakeTag(SourceDiskIdTagName, *sourceDiskId)};
-    if (sourceDiskId->empty()) {
+        MakeTag(SourceDiskIdTagName, sourceDiskId)};
+    if (sourceDiskId.empty()) {
         tagsToRemove.emplace_back(SourceDiskIdTagName);
     }
-
-    State->StartSourceDiskIdTagRemoval();
 
     // Publish the committed principal before the source tells clients to
     // switch. Waiting until the source is deleted would leave discovery
@@ -414,7 +412,7 @@ void TVolumeActor::RemoveSourceDiskIdTagIfNeeded(const TActorContext& ctx)
         State->GetDiskId(), std::move(tagsToRemove));
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
     ctx.Schedule(
-        TDuration::Seconds(1),
+        SourceDiskIdTagRemovalDelayProvider.GetDelayAndIncrease(),
         new TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag());
 }
 
@@ -427,6 +425,7 @@ void TVolumeActor::FinishSourceDiskIdTagRemoval(const TActorContext& ctx)
     }
 
     State->FinishSourceDiskIdTagRemoval();
+    SourceDiskIdTagRemovalDelayProvider.Reset();
     ReplyToPendingLeadershipTransferRequest(ctx);
     DestroyOutdatedLeaderIfNeeded(ctx);
 }
@@ -463,11 +462,13 @@ void TVolumeActor::HandleRetryRemoveSourceDiskIdTag(
         return;
     }
 
-    State->FinishSourceDiskIdTagRemoval();
-    RemoveSourceDiskIdTagIfNeeded(ctx);
-    if (!State->IsSourceDiskIdTagRemovalInProgress()) {
+    const auto sourceDiskId = GetSourceDiskId(State->GetMeta());
+    if (!sourceDiskId) {
         FinishSourceDiskIdTagRemoval(ctx);
+        return;
     }
+
+    SendRemoveSourceDiskIdTagRequest(ctx, *sourceDiskId);
 }
 
 void TVolumeActor::HandleDestroyOutdatedLeaderVolumeResponse(

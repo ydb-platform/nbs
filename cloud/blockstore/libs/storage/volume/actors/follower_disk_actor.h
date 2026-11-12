@@ -84,7 +84,6 @@ private:
     TBackoffDelayProvider LeadershipTransferRetryDelayProvider{
         TDuration::Seconds(1),
         TDuration::Seconds(15)};
-    bool LeadershipTransferRetryScheduled = false;
 
 public:
     TFollowerDiskActor(

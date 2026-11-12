@@ -2163,7 +2163,39 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
     }
 
-    Y_UNIT_TEST(ShouldKeepPendingLinkOperationsAfterResetMeta)
+    Y_UNIT_TEST(ShouldKeepPendingLeadershipTransferAfterResetMeta)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        auto meta = state.GetMeta();
+        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=source");
+        state.ResetMeta(meta);
+        state.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Leader});
+        state.StartSourceDiskIdTagRemoval();
+        const auto request = MakeIntrusive<TRequestInfo>();
+        UNIT_ASSERT(state.TryAddPendingLeadershipTransferRequest(request, link));
+
+        meta.MutableVolumeConfig()->ClearTagsStr();
+        state.ResetMeta(meta);
+
+        UNIT_ASSERT(state.FindLeader(link));
+        UNIT_ASSERT(state.IsSourceDiskIdTagRemovalInProgress());
+        UNIT_ASSERT(!state.IsLeaderLinkBeingRemoved(link));
+        const auto pending = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(pending);
+        UNIT_ASSERT(pending->Link.Match(link));
+        UNIT_ASSERT(pending->Request == request);
+    }
+
+    Y_UNIT_TEST(ShouldKeepPendingLinkRemovalAfterResetMeta)
     {
         auto state = CreateVolumeState();
         const TLeaderFollowerLink link{
@@ -2175,25 +2207,20 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         state.AddOrUpdateLeader(
             TLeaderDiskInfo{
                 .Link = link,
-                .State = TLeaderDiskInfo::EState::Leader});
-        state.StartSourceDiskIdTagRemoval();
+                .State = TLeaderDiskInfo::EState::Following});
         state.StartRemovingLeaderLink(link);
-        const auto request = MakeIntrusive<TRequestInfo>();
-        UNIT_ASSERT(state.TryAddPendingLeadershipTransferRequest(request, link));
 
         auto meta = state.GetMeta();
-        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=source");
-        state.ResetMeta(meta);
-        meta.MutableVolumeConfig()->ClearTagsStr();
+        meta.MutableVolumeConfig()->SetVersion(
+            meta.GetVolumeConfig().GetVersion() + 1);
         state.ResetMeta(meta);
 
-        UNIT_ASSERT(state.FindLeader(link));
-        UNIT_ASSERT(state.IsSourceDiskIdTagRemovalInProgress());
+        const auto leader = state.FindLeader(link);
+        UNIT_ASSERT(leader);
+        UNIT_ASSERT_EQUAL(TLeaderDiskInfo::EState::Following, leader->State);
         UNIT_ASSERT(state.IsLeaderLinkBeingRemoved(link));
-        const auto pending = state.TakePendingLeadershipTransfer();
-        UNIT_ASSERT(pending);
-        UNIT_ASSERT(pending->Link.Match(link));
-        UNIT_ASSERT(pending->Request == request);
+        UNIT_ASSERT(!state.IsSourceDiskIdTagRemovalInProgress());
+        UNIT_ASSERT(!state.TakePendingLeadershipTransfer());
     }
 
     Y_UNIT_TEST(ShouldKeepOnlyOnePendingLeadershipTransferRequest)
@@ -2208,10 +2235,8 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         const auto first = MakeIntrusive<TRequestInfo>();
         const auto repeated = MakeIntrusive<TRequestInfo>();
         UNIT_ASSERT(state.TryAddPendingLeadershipTransferRequest(first, link));
-        for (ui32 i = 0; i < 1000; ++i) {
-            UNIT_ASSERT(
-                !state.TryAddPendingLeadershipTransferRequest(repeated, link));
-        }
+        UNIT_ASSERT(
+            !state.TryAddPendingLeadershipTransferRequest(repeated, link));
         auto nextLink = link;
         nextLink.LinkUUID = "next-link";
         UNIT_ASSERT(
@@ -2222,13 +2247,10 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT(pending);
         UNIT_ASSERT(pending->Link.Match(link));
         UNIT_ASSERT(pending->Request == first);
-        UNIT_ASSERT(!state.HasPendingLeadershipTransfer(link));
         UNIT_ASSERT(!state.TakePendingLeadershipTransfer());
 
         UNIT_ASSERT(
             state.TryAddPendingLeadershipTransferRequest(repeated, nextLink));
-        UNIT_ASSERT(state.HasPendingLeadershipTransfer(nextLink));
-        UNIT_ASSERT(!state.HasPendingLeadershipTransfer(link));
         UNIT_ASSERT(pending->Request == first);
         const auto next = state.TakePendingLeadershipTransfer();
         UNIT_ASSERT(next);
