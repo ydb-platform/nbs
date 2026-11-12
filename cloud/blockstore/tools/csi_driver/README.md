@@ -1,9 +1,44 @@
 # Endpoint balancing
 
 Pass `--enable-endpoint-balancing` to select the backend with the fewest
-endpoints for NBS and NFS volumes. It is disabled by default: without a zone
-mapping, the driver selects backend 0. Zone mappings take precedence over
-endpoint balancing.
+endpoints for NBS and NFS volumes. It is disabled by default: the driver selects
+backend 0 unless a zone mapping is configured.
+
+# Zone mapping
+
+In VM mode, use `--zone-id-config-path=/etc/csi/zones.json` to select the NBS
+server or NFS vhost replica by the volume's `zoneId`. Mount the configuration
+file into the CSI driver container. The file contains a JSON array:
+
+```json
+[
+  {"zone_id": "zone0", "backend_index": 0},
+  {"zone_id": "zone1", "backend_index": 1}
+]
+```
+
+Set `zoneId` in the PV's `spec.csi.volumeAttributes`, for example:
+
+```yaml
+volumeAttributes:
+  zoneId: zone1
+```
+
+Backend indices are zero-based and must be less than both
+`--nfs-vhost-replica-count` and `--nbs-server-replica-count`. For the example
+above, set both counts to at least 2 and their corresponding
+`--nfs-vhost-replica-count-total` and `--nbs-server-replica-count-total` to at
+least the counts used. Zone IDs must be unique. The driver rejects invalid
+mappings at startup.
+
+An unknown zone selects backend 0. A missing `zoneId` is treated as an empty
+string; add an entry with `"zone_id": ""` to map it explicitly, otherwise it
+also selects backend 0. The selected backend is saved in the staging record
+and reused while the volume remains staged. The mapping is loaded at startup;
+restart the driver after changing the file.
+
+`--zone-id-config-path` and `--enable-endpoint-balancing` are mutually
+exclusive. The driver fails to start if both are set.
 
 # Volume expansion
 
