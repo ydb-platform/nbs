@@ -7,6 +7,7 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -150,6 +151,21 @@ TString DescribeDataEndpoint(const TCellHostConfig& hostConfig)
     }
     return TStringBuilder() << "RDMA " << hostConfig.GetFqdn() << ":"
                             << hostConfig.GetRdmaPort();
+}
+
+TStringBuf DescribeIcV2ChannelState(NIcV2::EHostChannelState state)
+{
+    switch (state) {
+        case NIcV2::EHostChannelState::Idle:
+            return "idle";
+        case NIcV2::EHostChannelState::Connecting:
+            return "connecting";
+        case NIcV2::EHostChannelState::Connected:
+            return "connected";
+        case NIcV2::EHostChannelState::Disconnected:
+            return "disconnected";
+    }
+    return "unknown";
 }
 
 TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
@@ -470,6 +486,25 @@ public:
         status.ConnectionId = ConnectionId;
         status.GrpcDataFallbackEnabled =
             binding->HostConfig.GetGrpcDataFallbackEnabled();
+        const auto io = DataRouter->GetIoStats();
+        status.ReadRequests = io.ReadRequests;
+        status.ReadErrors = io.ReadErrors;
+        status.ReadBytes = io.ReadBytes;
+        status.WriteRequests = io.WriteRequests;
+        status.WriteErrors = io.WriteErrors;
+        status.WriteBytes = io.WriteBytes;
+        status.ZeroRequests = io.ZeroRequests;
+        status.ZeroErrors = io.ZeroErrors;
+        if (status.SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2 &&
+            Bootstrap.IcV2EndpointFactory)
+        {
+            const auto channel =
+                Bootstrap.IcV2EndpointFactory->GetDataEndpointStatus(
+                    binding->DataEndpoint);
+            status.IcV2ChannelState = DescribeIcV2ChannelState(channel.State);
+            status.IcV2ConnectionAttempts = channel.ConnectionAttempts;
+            status.IcV2ConnectionFailures = channel.ConnectionFailures;
+        }
         return status;
     }
 

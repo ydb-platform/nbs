@@ -127,6 +127,83 @@ Y_UNIT_TEST_SUITE(TEndpointRouterTest)
         promise.SetValue(NProto::TReadBlocksLocalResponse{});
         UNIT_ASSERT(future.HasValue());
     }
+
+    Y_UNIT_TEST(ShouldCountCompletedIoForCurrentTargetAndResetOnSwitch)
+    {
+        auto first = std::make_shared<TCountingService>();
+        first->Pending = NewPromise<NProto::TReadBlocksLocalResponse>();
+        auto router = CreateEndpointRouter(first);
+
+        auto read = std::make_shared<NProto::TReadBlocksLocalRequest>();
+        read->SetBlockSize(4096);
+        read->SetBlocksCount(3);
+        auto pending = router->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(), read);
+        UNIT_ASSERT_VALUES_EQUAL(router->GetIoStats().ReadRequests, 0);
+
+        auto second = std::make_shared<TCountingService>();
+        second->WriteBlocksLocalHandler = [](const auto&)
+        {
+            return MakeFuture(NProto::TWriteBlocksLocalResponse{});
+        };
+        second->ZeroBlocksHandler = [](const auto&)
+        {
+            return MakeFuture(NProto::TZeroBlocksResponse{});
+        };
+        router->SetTarget(second);
+        first->Pending.SetValue(NProto::TReadBlocksLocalResponse{});
+        UNIT_ASSERT(pending.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(router->GetIoStats().ReadRequests, 0);
+
+        read = std::make_shared<NProto::TReadBlocksLocalRequest>();
+        read->SetBlockSize(4096);
+        read->SetBlocksCount(2);
+        router->ReadBlocksLocal(MakeIntrusive<TCallContext>(), read);
+
+        auto write = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        write->SetBlockSize(4096);
+        write->BlocksCount = 1;
+        router->WriteBlocksLocal(MakeIntrusive<TCallContext>(), write);
+        router->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TZeroBlocksRequest>());
+
+        second->ReadBlocksLocalHandler = [](const auto&)
+        {
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_IO, "read failed");
+            return MakeFuture(std::move(response));
+        };
+        router->ReadBlocksLocal(MakeIntrusive<TCallContext>(), read);
+
+        second->WriteBlocksLocalHandler = [](const auto&)
+        {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_IO, "write failed");
+            return MakeFuture(std::move(response));
+        };
+        router->WriteBlocksLocal(MakeIntrusive<TCallContext>(), write);
+
+        second->ZeroBlocksHandler = [](const auto&)
+        {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = MakeError(E_IO, "zero failed");
+            return MakeFuture(std::move(response));
+        };
+        router->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TZeroBlocksRequest>());
+
+        const auto stats = router->GetIoStats();
+        UNIT_ASSERT_VALUES_EQUAL(stats.ReadRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ReadErrors, 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ReadBytes, 8192);
+        UNIT_ASSERT_VALUES_EQUAL(stats.WriteRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.WriteErrors, 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.WriteBytes, 4096);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ZeroRequests, 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ZeroErrors, 1);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

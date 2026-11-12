@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
@@ -335,6 +336,7 @@ void RenderCell(
                     TABLEH() { out << "gRPC"; }
                     TABLEH() { out << "Secure gRPC"; }
                     TABLEH() { out << "RDMA"; }
+                    TABLEH() { out << "IC V2"; }
                 }
             }
             TABLEBODY() {
@@ -380,6 +382,9 @@ void RenderCell(
                             out << FormatPort(host.GetSecureGrpcPort());
                         }
                         TABLED() { out << FormatPort(host.GetRdmaPort()); }
+                        TABLED() {
+                            out << FormatPort(host.GetIcV2Port());
+                        }
                     }
                 }
             }
@@ -464,8 +469,11 @@ void RenderMounts(
            "cells</small></h3>"
         << "<p class='text-muted'>Transport selection applies to this "
            "disk/client "
-           "on this node until the connection closes. RDMA and IC V2 keep "
-           "the configured gRPC fallback policy.</p>";
+           "on this node until the connection closes. RDMA and IC V2 keep their "
+           "configured "
+           "gRPC fallback policy. The transport badge shows the selected "
+           "route; the IC V2 channel column shows its live TCP state. "
+           "Idle means no connection has been attempted yet.</p>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
         return;
@@ -480,6 +488,8 @@ void RenderMounts(
                     TABLEH() { out << "Cell"; }
                     TABLEH() { out << "Host"; }
                     TABLEH() { out << "Transport"; }
+                    TABLEH() { out << "IC V2 channel"; }
+                    TABLEH() { out << "I/O (current transport)"; }
                     TABLEH() { out << "Tablet"; }
                 }
             }
@@ -504,6 +514,35 @@ void RenderMounts(
                                 TransportLabelKind(mount.DataTransport),
                                 mount.DataTransport);
                             RenderTransportControl(out, mount);
+                        }
+                        TABLED() {
+                            if (mount.IcV2ChannelState) {
+                                const TStringBuf kind =
+                                    mount.IcV2ChannelState == "connected"
+                                        ? "success"
+                                        : mount.IcV2ChannelState == "disconnected"
+                                              ? "warning"
+                                              : "default";
+                                RenderLabel(
+                                    out,
+                                    kind,
+                                    mount.IcV2ChannelState);
+                                out << " <small>attempts: "
+                                    << mount.IcV2ConnectionAttempts
+                                    << ", failures: "
+                                    << mount.IcV2ConnectionFailures
+                                    << "</small>";
+                            }
+                        }
+                        TABLED() {
+                            out << "R: " << mount.ReadRequests
+                                << "/" << mount.ReadErrors
+                                << " (" << FormatByteSize(mount.ReadBytes)
+                                << ")<br>W: " << mount.WriteRequests
+                                << "/" << mount.WriteErrors
+                                << " (" << FormatByteSize(mount.WriteBytes)
+                                << ")<br>Z: " << mount.ZeroRequests
+                                << "/" << mount.ZeroErrors;
                         }
                         TABLED () {
                             // empty when the cell is older than the field
