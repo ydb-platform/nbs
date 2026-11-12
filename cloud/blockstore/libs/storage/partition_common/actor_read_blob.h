@@ -47,7 +47,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    TVector<TBlockRange32> BlockRangesForEachRequest;
+    TVector<TBlockRange32> QueryBlockRanges;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -101,10 +101,11 @@ private:
         TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> Responses;
     };
 
-    TResultOrError<TDataThatCanBeProcessed> FillBrokenDataAndFilterItOut(
+    bool FillBrokenDataAndFilterItOut(
         const NKikimr::TEvBlobStorage::TEvGetResult* msg,
         const TSgList& sglist,
-        const NActors::TActorContext& ctx);
+        const NActors::TActorContext& ctx,
+        TDataThatCanBeProcessed& dataThatCanBeProcessed) const;
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(
         std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
@@ -112,9 +113,9 @@ private:
         std::span<const ui16> blockOffsets);
 
     TVector<ui32> FillBlockChecksumsForRecoveredBlocksIfNeeded(
-        std::span<const ui16> originalBlockOffsets,
-        std::span<const ui16> newBlockOffsets,
-        TVector<ui32> newBlockChecksums);
+        std::span<const ui16> blockOffsets,
+        std::span<const ui16> blockOffsetsWithoutRecovered,
+        TVector<ui32> blockChecksumsWithoutRecovered);
 
 private:
     STFUNC(StateWork);

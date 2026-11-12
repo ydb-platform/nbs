@@ -333,7 +333,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             MakeBlobId(blob.Data.size()),
             blob.Compression,
             blocks));
-        UNIT_ASSERT_VALUES_EQUAL(2, plan.QueriesCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, plan.QueryCount);
         UNIT_ASSERT_VALUES_EQUAL(0, plan.Queries[0].Shift);
         UNIT_ASSERT_VALUES_EQUAL(
             GetChunkSize(blob.Compression, blob.Data.size(), 0),
@@ -348,7 +348,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
 
         TVector<TRope> inputs;
         for (const auto& query:
-             MakeArrayRef(plan.Queries.Get(), plan.QueriesCount))
+             MakeArrayRef(plan.Queries.Get(), plan.QueryCount))
         {
             inputs.emplace_back(
                 TString(TStringBuf(blob.Data).SubStr(query.Shift, query.Size)));
@@ -1313,7 +1313,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             MakeBlobId(blob.Data.size()),
             blob.Compression,
             blocks));
-        UNIT_ASSERT_VALUES_EQUAL(1, plan.QueriesCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, plan.QueryCount);
         UNIT_ASSERT_VALUES_EQUAL(0, plan.Queries[0].Shift);
         UNIT_ASSERT_VALUES_EQUAL(blob.Data.size(), plan.Queries[0].Size);
 

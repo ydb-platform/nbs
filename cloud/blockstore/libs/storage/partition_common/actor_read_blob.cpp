@@ -110,39 +110,39 @@ TReadPlan TReadBlobActor::GetQueries() const
     size_t blocksCount = Request->BlobOffsets.size();
 
     TArrayHolder<TEvGetQuery> queries(new TEvGetQuery[blocksCount]);
-    size_t queriesCount = 0;
+    size_t queryCount = 0;
 
-    TVector<TBlockRange32> blockRangesForEachRequest;
+    TVector<TBlockRange32> queryBlockRanges;
 
     for (size_t i = 0; i < blocksCount; ++i) {
         if (i && Request->BlobOffsets[i] == Request->BlobOffsets[i - 1] + 1) {
             // extend range
-            queries[queriesCount - 1].Size += BlockSize;
-            blockRangesForEachRequest.back().End = Request->BlobOffsets[i];
+            queries[queryCount - 1].Size += BlockSize;
+            queryBlockRanges.back().End = Request->BlobOffsets[i];
         } else {
-            queries[queriesCount++].Set(
+            queries[queryCount++].Set(
                 Request->BlobId,
                 Request->BlobOffsets[i] * BlockSize,
                 BlockSize);
-            blockRangesForEachRequest.push_back(
+            queryBlockRanges.push_back(
                 TBlockRange32::MakeOneBlock(Request->BlobOffsets[i]));
         }
     }
 
     return TReadPlan{
         .Queries = std::move(queries),
-        .QueriesCount = queriesCount,
-        .BlockRangesForEachRequest = std::move(blockRangesForEachRequest)};
+        .QueryCount = queryCount,
+        .QueryBlockRanges = std::move(queryBlockRanges)};
 }
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
-    auto [queries, queriesCount, blockRangesForEachRequest] = GetQueries();
-    BlockRangesForEachRequest = std::move(blockRangesForEachRequest);
+    auto [queries, queryCount, queryBlockRanges] = GetQueries();
+    QueryBlockRanges = std::move(queryBlockRanges);
 
     auto request = std::make_unique<TEvBlobStorage::TEvGet>(
         queries,
-        queriesCount,
+        queryCount,
         Request->Deadline,
         Request->Async ? NKikimrBlobStorage::AsyncRead
                        : NKikimrBlobStorage::FastRead);
@@ -247,19 +247,38 @@ void TReadBlobActor::ReplyError(
         errorSource);
 }
 
-auto TReadBlobActor::FillBrokenDataAndFilterItOut(
+bool TReadBlobActor::FillBrokenDataAndFilterItOut(
     const NKikimr::TEvBlobStorage::TEvGetResult* msg,
     const TSgList& sglist,
-    const NActors::TActorContext& ctx) -> TResultOrError<TDataThatCanBeProcessed>
+    const NActors::TActorContext& ctx,
+    TDataThatCanBeProcessed& dataThatCanBeProcessed) const
 {
     if (StorageAccessMode != EStorageAccessMode::Repair) {
-        return MakeError(S_ALREADY);
+        return false;
     }
 
-    TVector<TEvBlobStorage::TEvGetResult::TResponse> responses;
-    responses.reserve(msg->ResponseSz);
+    auto isBroken = [](const auto& response)
+    {
+        return response.Status != NKikimrProto::OK &&
+               NCloud::IsUnrecoverable(response.Status);
+    };
+
+    bool hasBrokenBlocks = false;
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        responses.push_back(msg->Responses[i]);
+        if (isBroken(msg->Responses[i])) {
+            hasBrokenBlocks = true;
+            break;
+        }
+    }
+
+    if (!hasBrokenBlocks) {
+        return false;
+    }
+
+    dataThatCanBeProcessed.Responses.clear();
+    dataThatCanBeProcessed.Responses.reserve(msg->ResponseSz);
+    for (size_t i = 0; i < msg->ResponseSz; ++i) {
+        dataThatCanBeProcessed.Responses.push_back(msg->Responses[i]);
     }
 
     const auto markerBlock = GetBrokenDataMarkerBlock(BlockSize);
@@ -268,19 +287,12 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
         TWellKnownEntityTypes::TABLET,
         PartitionTabletId);
 
-    auto isBroken = [](const auto& response)
-    {
-        return response.Status != NKikimrProto::OK &&
-               NCloud::IsUnrecoverable(response.Status);
-    };
-
-    TSgList sglistForBlocksWithNoBrokenData;
-    TVector<ui16> blockOffsetsWithNoBrokenData;
     size_t blockIndex = 0;
-    for (size_t requestIndex = 0; requestIndex < responses.size();
+    for (size_t requestIndex = 0;
+         requestIndex < dataThatCanBeProcessed.Responses.size();
          ++requestIndex)
     {
-        const auto& response = responses[requestIndex];
+        const auto& response = dataThatCanBeProcessed.Responses[requestIndex];
         if (isBroken(response)) {
             LOG_WARN(
                 ctx,
@@ -291,7 +303,7 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
                 msg->Print(false).data());
         }
 
-        const auto& range = BlockRangesForEachRequest[requestIndex];
+        const auto& range = QueryBlockRanges[requestIndex];
         for (; blockIndex < sglist.size() &&
                Request->BlobOffsets[blockIndex] <= range.End;
              ++blockIndex)
@@ -311,21 +323,19 @@ auto TReadBlobActor::FillBrokenDataAndFilterItOut(
                     markerBlock.data(),
                     markerBlock.size());
             } else {
-                sglistForBlocksWithNoBrokenData.push_back(block);
-                blockOffsetsWithNoBrokenData.push_back(
+                dataThatCanBeProcessed.Sglist.push_back(block);
+                dataThatCanBeProcessed.BlockOffsets.push_back(
                     Request->BlobOffsets[blockIndex]);
             }
         }
     }
 
-    auto toRemove = std::ranges::remove_if(responses, isBroken);
+    auto toRemove =
+        std::ranges::remove_if(dataThatCanBeProcessed.Responses, isBroken);
 
-    responses.erase(toRemove.begin(), toRemove.end());
+    dataThatCanBeProcessed.Responses.erase(toRemove.begin(), toRemove.end());
 
-    return TDataThatCanBeProcessed{
-        .Sglist = std::move(sglistForBlocksWithNoBrokenData),
-        .BlockOffsets = std::move(blockOffsetsWithNoBrokenData),
-        .Responses = std::move(responses)};
+    return true;
 }
 
 TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
@@ -352,7 +362,11 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
                 return MakeError(E_REJECTED, "response is out of range");
             }
 
-            Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
+            STORAGE_VERIFY(
+                sglist[sglistIndex].Size() == BlockSize,
+                TWellKnownEntityTypes::TABLET,
+                PartitionTabletId);
+
             void* to = const_cast<char*>(sglist[sglistIndex].Data());
             if (ShouldCalculateChecksums) {
                 auto block = TString::Uninitialized(BlockSize);
@@ -376,21 +390,21 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
 }
 
 TVector<ui32> TReadBlobActor::FillBlockChecksumsForRecoveredBlocksIfNeeded(
-    std::span<const ui16> originalBlockOffsets,
-    std::span<const ui16> newBlockOffsets,
-    TVector<ui32> newBlockChecksums)
+    std::span<const ui16> blockOffsets,
+    std::span<const ui16> blockOffsetsWithoutRecovered,
+    TVector<ui32> blockChecksumsWithoutRecovered)
 {
     if (!ShouldCalculateChecksums ||
-        originalBlockOffsets.size() == newBlockOffsets.size())
+        blockOffsets.size() == blockOffsetsWithoutRecovered.size())
     {
-        return newBlockChecksums;
+        return blockChecksumsWithoutRecovered;
     }
 
     TVector<ui32> blockChecksums;
-    blockChecksums.reserve(originalBlockOffsets.size());
+    blockChecksums.reserve(blockOffsets.size());
 
     STORAGE_VERIFY(
-        originalBlockOffsets.size() >= newBlockOffsets.size(),
+        blockOffsets.size() >= blockOffsetsWithoutRecovered.size(),
         TWellKnownEntityTypes::TABLET,
         PartitionTabletId);
 
@@ -398,27 +412,34 @@ TVector<ui32> TReadBlobActor::FillBlockChecksumsForRecoveredBlocksIfNeeded(
     const ui32 markerBlockChecksum =
         ComputeDefaultDigest({markerBlock.data(), markerBlock.size()});
 
+    // blockOffsetsWithoutRecoveredBlocks is a subset of originalBlockOffsets,
+    // sorted in ascending order
     size_t originalIdx = 0;
     size_t newIdx = 0;
-    while (originalIdx < originalBlockOffsets.size() &&
-           newIdx < newBlockOffsets.size())
+    while (originalIdx < blockOffsets.size() &&
+           newIdx < blockOffsetsWithoutRecovered.size())
     {
-        if (originalBlockOffsets[originalIdx] == newBlockOffsets[newIdx]) {
-            blockChecksums.push_back(newBlockChecksums[newIdx]);
+        if (blockOffsets[originalIdx] == blockOffsetsWithoutRecovered[newIdx]) {
+            blockChecksums.push_back(blockChecksumsWithoutRecovered[newIdx]);
             ++originalIdx;
             ++newIdx;
         } else {
+            STORAGE_VERIFY(
+                blockOffsetsWithoutRecovered[newIdx] >
+                    blockOffsets[originalIdx],
+                TWellKnownEntityTypes::TABLET,
+                PartitionTabletId);
             blockChecksums.push_back(markerBlockChecksum);
             ++originalIdx;
         }
     }
 
     STORAGE_VERIFY(
-        newIdx == newBlockOffsets.size(),
+        newIdx == blockOffsetsWithoutRecovered.size(),
         TWellKnownEntityTypes::TABLET,
         PartitionTabletId);
 
-    for (; originalIdx < originalBlockOffsets.size(); ++originalIdx) {
+    for (; originalIdx < blockOffsets.size(); ++originalIdx) {
         blockChecksums.push_back(markerBlockChecksum);
     }
 
@@ -444,7 +465,7 @@ void TReadBlobActor::HandleGetResult(
 
     TVector<ui32> blockChecksums;
 
-    if (BlockRangesForEachRequest.size() != msg->ResponseSz) {
+    if (QueryBlockRanges.size() != msg->ResponseSz) {
         ReplyError(
             ctx,
             *msg,
@@ -456,19 +477,19 @@ void TReadBlobActor::HandleGetResult(
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
 
-        auto [dataThatCanBeProcessed, error] =
-            FillBrokenDataAndFilterItOut(msg, sglist, ctx);
+        TDataThatCanBeProcessed dataThatCanBeProcessed;
+
+        const bool hasBrokenBlocks = FillBrokenDataAndFilterItOut(
+            msg,
+            sglist,
+            ctx,
+            dataThatCanBeProcessed);
 
         std::span<TEvBlobStorage::TEvGetResult::TResponse> responsesToProcess;
         std::span<const TBlockDataRef> sglistToProcess;
         std::span<const ui16> blockOffsetsToProcess;
 
-        if (HasError(error)) {
-            ReplyError(ctx, *msg, error.GetMessage(), EErrorSource::Local);
-            return;
-        }
-
-        if (error.GetCode() == S_ALREADY) {
+        if (!hasBrokenBlocks) {
             responsesToProcess = {msg->Responses.Get(), msg->ResponseSz};
             sglistToProcess = sglist;
             blockOffsetsToProcess = Request->BlobOffsets;

@@ -492,7 +492,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
 
     using TQuery = NKikimr::TEvBlobStorage::TEvGet::TQuery;
 
-    size_t requestsCount = 0;
+    size_t queryCount = 0;
     std::optional<ui16> lastChunkIndex;
     for (const auto blockOffset: blockOffsets) {
         const size_t chunk =
@@ -500,24 +500,24 @@ TResultOrError<TReadPlan> PlanReadBlob(
         if (!lastChunkIndex ||
             (*lastChunkIndex != chunk && *lastChunkIndex + 1 != chunk))
         {
-            ++requestsCount;
+            ++queryCount;
         }
         lastChunkIndex = chunk;
     }
 
-    TArrayHolder<TQuery> queries(new TQuery[requestsCount]);
+    TArrayHolder<TQuery> queries(new TQuery[queryCount]);
     size_t queriesCount = 0;
     size_t nextChunk = 0;
     ui64 offset = 0;
 
-    TVector<TBlockRange32> blockRangesForEachRequest;
+    TVector<TBlockRange32> queryBlocksRanges;
 
     for (const auto blockOffset: blockOffsets) {
         const ui64 blockStart = static_cast<ui64>(blockOffset) * blockSize;
         const size_t chunk = blockStart / chunkSize;
 
         if (chunk < nextChunk) {
-            blockRangesForEachRequest.back().End = blockOffset;
+            queryBlocksRanges.back().End = blockOffset;
             continue;
         }
 
@@ -536,30 +536,30 @@ TResultOrError<TReadPlan> PlanReadBlob(
         {
             previousQuery->Size += SafeIntegerCast<ui32>(size);
         } else {
-            Y_ABORT_UNLESS(queriesCount < requestsCount);
+            Y_ABORT_UNLESS(queriesCount < queryCount);
             queries[queriesCount++].Set(
                 blobId,
                 SafeIntegerCast<ui32>(offset),
                 SafeIntegerCast<ui32>(size));
-            blockRangesForEachRequest.push_back(
+            queryBlocksRanges.push_back(
                 TBlockRange32::MakeOneBlock(blockOffset));
         }
-        blockRangesForEachRequest.back().End = blockOffset;
+        queryBlocksRanges.back().End = blockOffset;
         offset += size;
         nextChunk = chunk + 1;
     }
 
     Y_ABORT_UNLESS(
-        queriesCount == requestsCount,
+        queriesCount == queryCount,
         "Expected %zu requests, got %zu, offsets: %s",
-        requestsCount,
+        queryCount,
         queriesCount,
         JoinSeq(", ", blockOffsets).c_str());
 
     return TReadPlan{
         .Queries = std::move(queries),
-        .QueriesCount = requestsCount,
-        .BlockRangesForEachRequest = std::move(blockRangesForEachRequest)};
+        .QueryCount = queryCount,
+        .QueryBlockRanges = std::move(queryBlocksRanges)};
 }
 
 TBlobCompressor::TBlobCompressor(

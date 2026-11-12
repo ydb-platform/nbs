@@ -313,7 +313,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
-        std::optional<EErrorSource> ErrorSource = std::nullopt;
+        std::optional<EErrorSource> ErrorSource;
 
         TWriteBlobCompleted() = default;
 

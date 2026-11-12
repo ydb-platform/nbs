@@ -46,11 +46,11 @@ struct TReadPlan
     TArrayHolder<NKikimr::TEvBlobStorage::TEvGet::TQuery> Queries;
 
     // Number of initialized queries, after deduplication and coalescing.
-    size_t QueriesCount = 0;
+    size_t QueryCount = 0;
 
     // Closed ranges of requested block offsets depending on each query.
     // Ranges are sorted and disjoint; unrequested offsets may lie within them.
-    TVector<TBlockRange32> BlockRangesForEachRequest;
+    TVector<TBlockRange32> QueryBlockRanges;
 };
 
 /**
