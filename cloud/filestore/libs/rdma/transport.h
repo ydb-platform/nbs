@@ -5,16 +5,13 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <google/protobuf/message.h>
+
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/strbuf.h>
-#include <util/generic/string.h>
 
 #include <memory>
-
-namespace google::protobuf {
-    class Message;
-}
 
 namespace NCloud::NFileStore::NProtoPrivate {
     class TTabletRdmaRequest;
@@ -24,15 +21,13 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Outcome of one tablet request. On success the body for MethodId is either
-// Response (serialized) or ResponseProto (typed record, serialized by the RDMA
-// target straight into the send buffer).
+// Outcome of one tablet request. On success Response is the record for
+// MethodId, serialized by the RDMA target straight into the send buffer.
 struct TTabletTransportResponse
 {
     NCloud::NProto::TError Error;
     ui32 MethodId = 0;
-    TString Response;
-    std::shared_ptr<google::protobuf::Message> ResponseProto;
+    std::unique_ptr<google::protobuf::Message> Response;
 
     TTabletTransportResponse() = default;
 
@@ -40,24 +35,19 @@ struct TTabletTransportResponse
         : Error(std::move(error))
     {}
 
-    TTabletTransportResponse(ui32 methodId, TString response)
-        : MethodId(methodId)
-        , Response(std::move(response))
-    {}
-
     TTabletTransportResponse(
             ui32 methodId,
-            std::shared_ptr<google::protobuf::Message> responseProto)
+            std::unique_ptr<google::protobuf::Message> response)
         : MethodId(methodId)
-        , ResponseProto(std::move(responseProto))
+        , Response(std::move(response))
     {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Bridges a decoded RDMA request into local request handling. envelope and
-// requestBody point into the transport receive buffer and are valid only
-// during the call.
+// requestBody are valid only during the call; requestBody points into the
+// transport receive buffer.
 struct IRdmaTabletRequestHandler
 {
     virtual ~IRdmaTabletRequestHandler() = default;

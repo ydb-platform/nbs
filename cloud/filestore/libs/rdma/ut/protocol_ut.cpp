@@ -41,8 +41,9 @@ Y_UNIT_TEST_SUITE(TTabletRdmaProtocolTest)
             data);
         UNIT_ASSERT_VALUES_EQUAL(size, written);
 
-        auto parsed =
-            TTabletRdmaProtocol::Serializer()->Parse(buffer).ExtractResult();
+        auto result = TTabletRdmaProtocol::Serializer()->Parse(buffer);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        auto parsed = result.ExtractResult();
 
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(TTabletRdmaProtocol::TabletRequest),
@@ -72,8 +73,9 @@ Y_UNIT_TEST_SUITE(TTabletRdmaProtocolTest)
             0,
             envelope);
 
-        auto parsed =
-            TTabletRdmaProtocol::Serializer()->Parse(buffer).ExtractResult();
+        auto result = TTabletRdmaProtocol::Serializer()->Parse(buffer);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        auto parsed = result.ExtractResult();
 
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(TTabletRdmaProtocol::TabletResponse),
@@ -106,8 +108,9 @@ Y_UNIT_TEST_SUITE(TTabletRdmaProtocolTest)
             envelope,
             data);
 
-        auto parsed =
-            TTabletRdmaProtocol::Serializer()->Parse(buffer).ExtractResult();
+        auto result = TTabletRdmaProtocol::Serializer()->Parse(buffer);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        auto parsed = result.ExtractResult();
         UNIT_ASSERT_VALUES_EQUAL(body.size(), parsed.Data.size());
         UNIT_ASSERT_VALUES_EQUAL(body, TString(parsed.Data));
     }

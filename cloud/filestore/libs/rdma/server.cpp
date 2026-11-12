@@ -5,15 +5,15 @@
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/storage/core/libs/common/block_data_ref.h>
 #include <cloud/storage/core/libs/common/context.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
 
-#include <google/protobuf/message.h>
-
 #include <library/cpp/threading/future/future.h>
+
+#include <google/protobuf/message.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -59,9 +59,9 @@ public:
         auto resultOrError = TTabletRdmaProtocol::Serializer()->Parse(in);
         if (HasError(resultOrError)) {
             const auto& error = resultOrError.GetError();
-            STORAGE_WARN("failed to parse RDMA request: "
-                << FormatError(error));
-            SendError(context, E_REJECTED, error.GetMessage());
+            STORAGE_WARN(
+                "failed to parse RDMA request: " << FormatError(error));
+            SendError(context, E_ARGUMENT, error.GetMessage());
             return;
         }
 
@@ -70,7 +70,7 @@ public:
             STORAGE_WARN("unexpected RDMA message id: " << parsed.MsgId);
             SendError(
                 context,
-                E_REJECTED,
+                E_NOT_IMPLEMENTED,
                 "unexpected RDMA message id in request");
             return;
         }
@@ -78,15 +78,27 @@ public:
         const auto* envelope =
             static_cast<NProtoPrivate::TTabletRdmaRequest*>(parsed.Proto.get());
 
-        auto self = shared_from_this();
-        RequestHandler
-            ->HandleRequest(*envelope, parsed.Data, std::move(callContext))
-            .Subscribe(
-                [self, context, out](
-                    const NThreading::TFuture<TTabletTransportResponse>& future)
-                {
-                    self->CompleteRequest(context, out, future.GetValue());
-                });
+        auto error = SafeExecute<NProto::TError>(
+            [&]
+            {
+                RequestHandler
+                    ->HandleRequest(
+                        *envelope,
+                        parsed.Data,
+                        std::move(callContext))
+                    .Subscribe(
+                        [self = shared_from_this(), context, out](
+                            const NThreading::TFuture<TTabletTransportResponse>&
+                                future)
+                        { self->CompleteRequest(context, out, future); });
+                return NProto::TError();
+            });
+
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "failed to dispatch RDMA request: " << FormatError(error));
+            SendError(context, error.GetCode(), error.GetMessage());
+        }
     }
 
 private:
@@ -112,74 +124,68 @@ private:
     void CompleteRequest(
         void* context,
         TStringBuf out,
-        const TTabletTransportResponse& response)
+        const NThreading::TFuture<TTabletTransportResponse>& future)
+    {
+        auto result = SafeExecute<TResultOrError<size_t>>(
+            [&] { return SerializeResponse(out, future.GetValue()); });
+
+        if (HasError(result)) {
+            const auto& error = result.GetError();
+            SendError(context, error.GetCode(), error.GetMessage());
+            return;
+        }
+
+        SendResponse(context, result.GetResult());
+    }
+
+    TResultOrError<size_t> SerializeResponse(
+        TStringBuf out,
+        const TTabletTransportResponse& response) const
     {
         if (HasError(response.Error)) {
-            SendError(
-                context,
-                response.Error.GetCode(),
-                response.Error.GetMessage());
-            return;
+            return response.Error;
         }
 
         NProtoPrivate::TTabletRdmaResponse envelope;
         envelope.SetMethodId(response.MethodId);
 
-        const size_t dataLen = response.ResponseProto
-            ? response.ResponseProto->ByteSizeLong()
-            : response.Response.size();
+        const size_t dataLen =
+            response.Response ? response.Response->ByteSizeLong() : 0;
 
-        const size_t responseBytes =
-            TProtoMessageSerializer::MessageByteSize(envelope, dataLen);
-
-        if (responseBytes > out.size()) {
-            STORAGE_WARN("RDMA response does not fit the message buffer: "
-                << responseBytes << " > " << out.size());
-            SendError(
-                context,
-                E_REJECTED,
+        if (dataLen > out.size() ||
+            TProtoMessageSerializer::MessageByteSize(envelope, dataLen) >
+                out.size())
+        {
+            STORAGE_WARN(
+                "RDMA response does not fit the message buffer: "
+                << dataLen << " body bytes, " << out.size() << " buffer bytes");
+            return MakeError(
+                E_ARGUMENT,
                 "response does not fit one RDMA message");
-            return;
         }
 
-        size_t serialized = 0;
-        if (response.ResponseProto) {
-            const size_t offset =
-                TProtoMessageSerializer::SerializeWithDataLength(
-                    out,
-                    TTabletRdmaProtocol::TabletResponse,
-                    0,   // flags
-                    envelope,
-                    dataLen);
-            response.ResponseProto->SerializeWithCachedSizesToArray(
-                reinterpret_cast<ui8*>(const_cast<char*>(out.data())) + offset);
-            serialized = offset + dataLen;
-        } else {
-            TBlockDataRef dataRef;
-            TBlockDataRefSpan data;
-            if (!response.Response.empty()) {
-                dataRef = TBlockDataRef(
-                    response.Response.data(),
-                    response.Response.size());
-                data = TBlockDataRefSpan(&dataRef, 1);
-            }
+        const size_t offset = TProtoMessageSerializer::SerializeWithDataLength(
+            out,
+            TTabletRdmaProtocol::TabletResponse,
+            0,   // flags
+            envelope,
+            dataLen);
 
-            serialized = TProtoMessageSerializer::SerializeWithData(
-                out,
-                TTabletRdmaProtocol::TabletResponse,
-                0,   // flags
-                envelope,
-                data);
+        if (response.Response) {
+            auto* body =
+                reinterpret_cast<ui8*>(const_cast<char*>(out.data())) + offset;
+            auto* end =
+                response.Response->SerializeWithCachedSizesToArray(body);
+            Y_DEBUG_ABORT_UNLESS(end == body + dataLen);
         }
 
-        SendResponse(context, serialized);
+        return offset + dataLen;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileStoreRdmaServiceTarget final
-    : public IStartable
+class TFileStoreRdmaServiceTarget final: public IStartable
 {
 private:
     const TFileStoreRdmaServerConfigPtr Config;
@@ -187,15 +193,12 @@ private:
     const IServerPtr Server;
     const IRdmaTabletRequestHandlerPtr RequestHandler;
 
-    TLog Log;
-    std::shared_ptr<TRequestHandler> Handler;
-
 public:
     TFileStoreRdmaServiceTarget(
-            TFileStoreRdmaServerConfigPtr config,
-            ILoggingServicePtr logging,
-            IServerPtr server,
-            IRdmaTabletRequestHandlerPtr requestHandler)
+        TFileStoreRdmaServerConfigPtr config,
+        ILoggingServicePtr logging,
+        IServerPtr server,
+        IRdmaTabletRequestHandlerPtr requestHandler)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Server(std::move(server))
@@ -204,19 +207,27 @@ public:
 
     void Start() override
     {
-        Log = Logging->CreateLog("NFS_RDMA");
-        Handler = std::make_shared<TRequestHandler>(RequestHandler, Log);
+        TLog Log = Logging->CreateLog("NFS_RDMA");
+        auto handler = std::make_shared<TRequestHandler>(RequestHandler, Log);
 
-        auto endpoint = Server->StartEndpoint(
-            Config->ListenAddress,
-            Config->ListenPort,
-            Handler);
-        if (!endpoint) {
-            STORAGE_ERROR("unable to start RDMA endpoint "
-                << Config->ListenAddress << ":" << Config->ListenPort);
+        IServerEndpointPtr endpoint;
+        try {
+            endpoint = Server->StartEndpoint(
+                Config->ListenAddress,
+                Config->ListenPort,
+                handler);
+        } catch (...) {
+            handler->SetEndpoint({});
+            throw;
         }
 
-        Handler->SetEndpoint(std::move(endpoint));
+        if (!endpoint) {
+            STORAGE_ERROR(
+                "unable to start RDMA endpoint " << Config->ListenAddress << ":"
+                                                 << Config->ListenPort);
+        }
+
+        handler->SetEndpoint(std::move(endpoint));
     }
 
     void Stop() override

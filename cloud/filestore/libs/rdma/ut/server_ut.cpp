@@ -14,6 +14,11 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
+#include <util/system/event.h>
+
+#include <thread>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NCloud::NStorage::NRdma;
@@ -29,6 +34,7 @@ struct TTestRequestHandler final
     ui32 Calls = 0;
     NProtoPrivate::TTabletRdmaRequest Envelope;
     TString Body;
+    TString Exception;
 
     TPromise<TTabletTransportResponse> Response =
         NewPromise<TTabletTransportResponse>();
@@ -41,6 +47,10 @@ struct TTestRequestHandler final
         Y_UNUSED(callContext);
 
         ++Calls;
+        if (Exception) {
+            ythrow yexception() << Exception;
+        }
+
         Envelope = envelope;
         Body = TString(requestBody);
         return Response.GetFuture();
@@ -50,13 +60,16 @@ struct TTestRequestHandler final
 ////////////////////////////////////////////////////////////////////////////////
 
 // The real server listens before StartEndpoint() returns the endpoint, so a
-// request may reach the handler first.
+// poller thread may complete a request first.
 struct TEarlyRequestServer final
     : public IServer
 {
     const IServerPtr Server;
     const TStringBuf In;
     const TStringBuf Out;
+
+    std::thread Poller;
+    TManualEvent Handled;
 
     TEarlyRequestServer(IServerPtr server, TStringBuf in, TStringBuf out)
         : Server(std::move(server))
@@ -69,12 +82,26 @@ struct TEarlyRequestServer final
         ui32 port,
         IServerHandlerPtr handler) override
     {
-        handler->HandleRequest(
-            nullptr,
-            handler->CreateCallContext(),
-            In,
-            Out);
-        return Server->StartEndpoint(std::move(host), port, std::move(handler));
+        auto endpoint = Server->StartEndpoint(std::move(host), port, handler);
+
+        Poller = std::thread(
+            [this, handler]
+            {
+                handler->HandleRequest(
+                    nullptr,
+                    handler->CreateCallContext(),
+                    In,
+                    Out);
+                Handled.Signal();
+            });
+        Handled.WaitT(TDuration::MilliSeconds(100));
+
+        return endpoint;
+    }
+
+    void Join()
+    {
+        Poller.join();
     }
 
     void Start() override
@@ -93,8 +120,7 @@ struct TEarlyRequestServer final
 
 struct TEnv
 {
-    std::shared_ptr<TTestRequestHandler> RequestHandler =
-        std::make_shared<TTestRequestHandler>();
+    const std::shared_ptr<TTestRequestHandler> RequestHandler;
 
     size_t ResponseBytes = 0;
     bool Responded = false;
@@ -109,11 +135,15 @@ struct TEnv
     TString Out;
 
     explicit TEnv(size_t outSize)
-        : TEnv(outSize, TString())
+        : TEnv(outSize, std::make_shared<TTestRequestHandler>(), TString())
     {}
 
-    TEnv(size_t outSize, TString earlyRequest)
-        : In(std::move(earlyRequest))
+    TEnv(
+            size_t outSize,
+            std::shared_ptr<TTestRequestHandler> requestHandler,
+            TString earlyRequest)
+        : RequestHandler(std::move(requestHandler))
+        , In(std::move(earlyRequest))
         , Out(outSize, 0)
     {
         Server = std::make_shared<TTestRdmaServer>(
@@ -134,9 +164,12 @@ struct TEnv
         auto config = std::make_shared<TFileStoreRdmaServerConfig>();
         config->ListenAddress = "::1";
 
+        std::shared_ptr<TEarlyRequestServer> earlyServer;
         IServerPtr server = Server;
         if (In) {
-            server = std::make_shared<TEarlyRequestServer>(Server, In, Out);
+            earlyServer =
+                std::make_shared<TEarlyRequestServer>(Server, In, Out);
+            server = earlyServer;
         }
 
         Target = CreateFileStoreRdmaServiceTarget(
@@ -145,6 +178,10 @@ struct TEnv
             std::move(server),
             RequestHandler);
         Target->Start();
+
+        if (earlyServer) {
+            earlyServer->Join();
+        }
     }
 
     void Send(TString in)
@@ -196,6 +233,30 @@ TString MakeRequest(ui32 methodId, TStringBuf body)
     NProtoPrivate::TTabletRdmaRequest envelope;
     envelope.SetMethodId(methodId);
     return MakeRequest(envelope, body);
+}
+
+std::unique_ptr<NProto::TError> MakeRecord(TString message)
+{
+    auto record = std::make_unique<NProto::TError>();
+    record->SetCode(E_IO);
+    record->SetMessage(std::move(message));
+    return record;
+}
+
+size_t ResponseByteSize(ui32 methodId, const NProto::TError& record)
+{
+    NProtoPrivate::TTabletRdmaResponse envelope;
+    envelope.SetMethodId(methodId);
+    return TProtoMessageSerializer::MessageByteSize(
+        envelope,
+        record.ByteSizeLong());
+}
+
+NProto::TError ParseRecord(TStringBuf data)
+{
+    NProto::TError record;
+    UNIT_ASSERT(record.ParseFromArray(data.data(), data.size()));
+    return record;
 }
 
 }   // namespace
@@ -256,11 +317,8 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
         UNIT_ASSERT_VALUES_EQUAL("request-body", env.RequestHandler->Body);
         UNIT_ASSERT(!env.Responded);
 
-        auto record = std::make_shared<NProto::TError>();
-        record->SetCode(E_IO);
-        record->SetMessage("typed response");
         env.RequestHandler->Response.SetValue(
-            TTabletTransportResponse(101, std::move(record)));
+            TTabletTransportResponse(101, MakeRecord("typed response")));
 
         UNIT_ASSERT(!env.Failed);
         auto parsed = env.ParseResponse();
@@ -271,42 +329,26 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
             parsed.Proto.get());
         UNIT_ASSERT_VALUES_EQUAL(101, envelope->GetMethodId());
 
-        NProto::TError body;
-        UNIT_ASSERT(
-            body.ParseFromArray(parsed.Data.data(), parsed.Data.size()));
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_IO), body.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("typed response", body.GetMessage());
+        auto record = ParseRecord(parsed.Data);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_IO), record.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("typed response", record.GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldServeRequestReceivedWhileEndpointIsStarting)
+    Y_UNIT_TEST(ShouldAnswerRequestCompletedWhileEndpointIsStarting)
     {
-        TEnv env(4_KB, MakeRequest(100, "request-body"));
+        auto requestHandler = std::make_shared<TTestRequestHandler>();
+        requestHandler->Response.SetValue(
+            TTabletTransportResponse(101, MakeRecord("early response")));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, env.RequestHandler->Calls);
-        UNIT_ASSERT_VALUES_EQUAL(100, env.RequestHandler->Envelope.GetMethodId());
-        UNIT_ASSERT(!env.Responded);
+        TEnv env(4_KB, requestHandler, MakeRequest(100, "request-body"));
 
-        env.RequestHandler->Response.SetValue(
-            TTabletTransportResponse(101, TString("response-body")));
-
+        UNIT_ASSERT_VALUES_EQUAL(1, requestHandler->Calls);
+        UNIT_ASSERT_VALUES_EQUAL(100, requestHandler->Envelope.GetMethodId());
         UNIT_ASSERT(!env.Failed);
         auto parsed = env.ParseResponse();
-        UNIT_ASSERT_VALUES_EQUAL("response-body", TString(parsed.Data));
-    }
-
-    Y_UNIT_TEST(ShouldSerializeStringResponse)
-    {
-        TEnv env(4_KB);
-
-        env.Send(MakeRequest(2, ""));
-        env.RequestHandler->Response.SetValue(
-            TTabletTransportResponse(3, TString("serialized-body")));
-
-        auto parsed = env.ParseResponse();
-        const auto* envelope = static_cast<NProtoPrivate::TTabletRdmaResponse*>(
-            parsed.Proto.get());
-        UNIT_ASSERT_VALUES_EQUAL(3, envelope->GetMethodId());
-        UNIT_ASSERT_VALUES_EQUAL("serialized-body", TString(parsed.Data));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "early response",
+            ParseRecord(parsed.Data).GetMessage());
     }
 
     Y_UNIT_TEST(ShouldSerializeEmptyResponse)
@@ -314,8 +356,9 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
         TEnv env(4_KB);
 
         env.Send(MakeRequest(2, ""));
-        env.RequestHandler->Response.SetValue(
-            TTabletTransportResponse(3, TString()));
+        env.RequestHandler->Response.SetValue(TTabletTransportResponse(
+            3,
+            std::make_unique<NProto::TError>()));
 
         auto parsed = env.ParseResponse();
         UNIT_ASSERT(parsed.Data.empty());
@@ -335,6 +378,33 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
         UNIT_ASSERT_VALUES_EQUAL("tablet request timed out", env.ErrorMessage);
     }
 
+    Y_UNIT_TEST(ShouldReplyWithErrorWhenHandlerThrows)
+    {
+        TEnv env(4_KB);
+        env.RequestHandler->Exception = "handler failed";
+
+        env.Send(MakeRequest(2, "body"));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, env.RequestHandler->Calls);
+        UNIT_ASSERT(!env.Responded);
+        UNIT_ASSERT(env.Failed);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_FAIL), env.ErrorCode);
+        UNIT_ASSERT_STRING_CONTAINS(env.ErrorMessage, "handler failed");
+    }
+
+    Y_UNIT_TEST(ShouldReplyWithErrorWhenResponseFutureFails)
+    {
+        TEnv env(4_KB);
+        env.RequestHandler->Response.SetException("tablet request failed");
+
+        env.Send(MakeRequest(2, "body"));
+
+        UNIT_ASSERT(!env.Responded);
+        UNIT_ASSERT(env.Failed);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_FAIL), env.ErrorCode);
+        UNIT_ASSERT_STRING_CONTAINS(env.ErrorMessage, "tablet request failed");
+    }
+
     Y_UNIT_TEST(ShouldRejectMalformedRequest)
     {
         TEnv env(4_KB);
@@ -343,7 +413,7 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, env.RequestHandler->Calls);
         UNIT_ASSERT(env.Failed);
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_REJECTED), env.ErrorCode);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_ARGUMENT), env.ErrorCode);
     }
 
     Y_UNIT_TEST(ShouldRejectUnexpectedMessageId)
@@ -363,20 +433,42 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, env.RequestHandler->Calls);
         UNIT_ASSERT(env.Failed);
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_REJECTED), env.ErrorCode);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(E_NOT_IMPLEMENTED),
+            env.ErrorCode);
+    }
+
+    Y_UNIT_TEST(ShouldSerializeResponseThatExactlyFitsOutBuffer)
+    {
+        auto record = MakeRecord("exact fit");
+        const size_t responseBytes = ResponseByteSize(3, *record);
+
+        TEnv env(responseBytes);
+
+        env.Send(MakeRequest(2, "body"));
+        env.RequestHandler->Response.SetValue(
+            TTabletTransportResponse(3, std::move(record)));
+
+        UNIT_ASSERT(!env.Failed);
+        UNIT_ASSERT_VALUES_EQUAL(responseBytes, env.ResponseBytes);
+        auto parsed = env.ParseResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "exact fit",
+            ParseRecord(parsed.Data).GetMessage());
     }
 
     Y_UNIT_TEST(ShouldRejectResponseThatDoesNotFitOutBuffer)
     {
-        TEnv env(64);
+        auto record = MakeRecord("one byte too long");
+        TEnv env(ResponseByteSize(3, *record) - 1);
 
         env.Send(MakeRequest(2, "body"));
         env.RequestHandler->Response.SetValue(
-            TTabletTransportResponse(3, TString(1_KB, 'x')));
+            TTabletTransportResponse(3, std::move(record)));
 
         UNIT_ASSERT(!env.Responded);
         UNIT_ASSERT(env.Failed);
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_REJECTED), env.ErrorCode);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_ARGUMENT), env.ErrorCode);
     }
 }
 
