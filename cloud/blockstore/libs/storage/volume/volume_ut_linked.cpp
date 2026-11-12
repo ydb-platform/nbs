@@ -1079,7 +1079,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         volume1.WaitReady();
 
         TVolumeClient volume2(*runtime, 0, TestVolumeTablets[1]);
-        volume2.CreateVolume(volume2.CreateUpdateVolumeConfigRequest(
+        auto followerConfig = volume2.CreateUpdateVolumeConfigRequest(
             0,
             0,
             0,
@@ -1088,7 +1088,10 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             1,
             NProto::STORAGE_MEDIA_SSD,
             7 * 1024,   // block count per partition
-            "vol2"));
+            "vol2");
+        followerConfig->Record.MutablePartitions(0)->SetTabletId(
+            TestPartitionTablets[1]);
+        volume2.CreateVolume(std::move(followerConfig));
         volume2.WaitReady();
 
         auto forwardRequest = [&](TAutoPtr<IEventHandle>& event, TString diskId)
@@ -1122,7 +1125,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             if (event->GetTypeRewrite() ==
                 TEvVolume::EvUpdateLinkOnFollowerResponse)
             {
-                // Drop first 3 responses from follower.
+                // Drop the first two responses from the follower.
                 if (updateLinkOnFollowerResponseCount++ < 2) {
                     return true;
                 }
@@ -1142,7 +1145,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         // Create link
         volume1.LinkLeaderVolumeToFollower(link);
 
-        // Should get 4 responses from follower.
+        // Two responses are lost; the third completes link creation.
         UNIT_ASSERT_VALUES_EQUAL(3, updateLinkOnFollowerResponseCount);
     }
 
