@@ -6,7 +6,9 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -51,6 +53,21 @@ struct TEvServicePrivate
     };
 
     //
+    // Fast shard device allocation
+    //
+
+    struct TAllocatedFastShardConfig
+    {
+        ui64 TabletId = 0;
+        NProtoPrivate::TPersistentFastShardConfig Config;
+    };
+
+    struct TFastShardsAllocated
+    {
+        THashMap<TString, TAllocatedFastShardConfig> FastShards;
+    };
+
+    //
     // Events declaration
     //
 
@@ -63,6 +80,8 @@ struct TEvServicePrivate
         EvSessionCreated,
         EvSessionDestroyed,
         EvUpdateStats,
+        EvFastShardsAllocated,
+        EvFastShardsDeallocated,
 
         EvEnd
     };
@@ -75,6 +94,8 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
+    using TEvFastShardsAllocated = TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
+    using TEvFastShardsDeallocated = TResponseEvent<TEmpty, EvFastShardsDeallocated>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

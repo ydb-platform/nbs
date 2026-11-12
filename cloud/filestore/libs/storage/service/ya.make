@@ -34,6 +34,7 @@ SRCS(
     service_actor_destroyfs.cpp
     service_actor_destroyhandle.cpp
     service_actor_destroysession.cpp
+    service_actor_fastshard.cpp
     service_actor_forward.cpp
     service_actor_getfsinfo.cpp
     service_actor_getnodeattr.cpp
@@ -58,6 +59,7 @@ PEERDIR(
     cloud/filestore/libs/diagnostics
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
+    cloud/filestore/libs/storage/disk_registry_proxy/api
     cloud/filestore/libs/storage/model
     cloud/filestore/private/api/protos
 

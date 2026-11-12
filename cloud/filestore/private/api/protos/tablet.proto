@@ -810,6 +810,8 @@ message TConfigureShardsRequest
     // Shard FileSystem identifiers for regular files. If empty, then
     // ShardFileSystemIds will be used for regular files.
     repeated string FileShardFileSystemIds = 7;
+
+    TFastShardTopology FastShardTopology = 8;
 }
 
 message TConfigureShardsResponse
@@ -862,6 +864,18 @@ message TFastShardConfig
         TPersistentFastShardConfig PersistentConfig = 1;
         TMemFastShardConfig MemConfig = 2;
     }
+}
+
+message TFastShard
+{
+    string ShardId = 1;
+    uint64 TabletId = 2;
+}
+
+message TFastShardTopology
+{
+    repeated TFastShard Shards = 1;
+    NProto.EFastShardStorageKind StorageKind = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1176,6 +1190,8 @@ message TGetFileSystemTopologyResponse
 
     // Main FileSystem identifier.
     string MainFileSystemId = 10;
+
+    TFastShardTopology FastShardTopology = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -290,6 +290,9 @@ void TIndexTabletActor::HandleUpdateConfig(
         oldConfig.GetFileShardFileSystemIds();
     newConfig.SetIsFastShard(oldConfig.GetIsFastShard());
     *newConfig.MutableFastShardConfig() = oldConfig.GetFastShardConfig();
+    if (oldConfig.HasFastShardTopology()) {
+        *newConfig.MutableFastShardTopology() = oldConfig.GetFastShardTopology();
+    }
     newConfig.SetShardNo(oldConfig.GetShardNo());
     newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
@@ -483,6 +486,9 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
         args.Request.GetForceDirectoryCreationInShards());
     config.SetStrictFileSystemSizeEnforcementEnabled(
         args.Request.GetStrictFileSystemSizeEnforcementEnabled());
+    if (args.Request.HasFastShardTopology()) {
+        *config.MutableFastShardTopology() = std::move(*args.Request.MutableFastShardTopology());
+    }
 
     LOG_INFO(
         ctx,

@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include "helpers.h"
+#include "service_actor_fastshard.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -58,6 +59,10 @@ private:
     void DescribeSessions(const TActorContext& ctx);
     void RestartTablet(const TActorContext& ctx);
     void GetFileSystemTopology(const TActorContext& ctx);
+
+    void DeallocateFastShards(
+        const TActorContext& ctx,
+        const NProtoPrivate::TFastShardTopology& topology);
     void DestroyShards(const TActorContext& ctx);
     void DestroyShard(const TActorContext& ctx, const ui32 shardIndex);
     void DestroyFileStore(const TActorContext& ctx);
@@ -80,6 +85,10 @@ private:
 
     void HandleGetFileSystemTopologyResponse(
         const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleFastShardsDeallocated(
+        const TEvServicePrivate::TEvFastShardsDeallocated::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleDestroyFileStoreResponse(
@@ -348,17 +357,45 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
         ShardIds.push_back(std::move(shardId));
     }
 
-    if (ShardIds) {
+    DeallocateFastShards(ctx, msg->Record.GetFastShardTopology());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDestroyFileStoreActor::DeallocateFastShards(
+    const TActorContext& ctx,
+    const NProtoPrivate::TFastShardTopology& topology)
+{
+    if (!topology.ShardsSize()) {
         DestroyShards(ctx);
-    } else {
-        DestroyFileStore(ctx);
+        return;
     }
+
+    NCloud::Register(ctx, CreateDeallocateFastShardsActor(StorageConfig, SelfId(), FileSystemId, topology));
+}
+
+void TDestroyFileStoreActor::HandleFastShardsDeallocated(
+    const TEvServicePrivate::TEvFastShardsDeallocated::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    DestroyShards(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDestroyFileStoreActor::DestroyShards(const TActorContext& ctx)
 {
+    if (ShardIds.empty()) {
+        DestroyFileStore(ctx);
+        return;
+    }
+
     NextShardToDestroy = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex =
@@ -493,6 +530,10 @@ STFUNC(TDestroyFileStoreActor::StateWork)
         HFunc(
             TEvIndexTablet::TEvGetFileSystemTopologyResponse,
             HandleGetFileSystemTopologyResponse);
+
+        HFunc(
+            TEvServicePrivate::TEvFastShardsDeallocated,
+            HandleFastShardsDeallocated);
 
         HFunc(
             TEvSSProxy::TEvDestroyFileStoreResponse,

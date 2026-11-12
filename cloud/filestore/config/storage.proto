@@ -1007,4 +1007,14 @@ message TStorageConfig
     // Zero uses the client's default size (currently 256 MiB).
     // New files are subject to the vhost minimum size and total size limit.
     optional uint64 ServerWriteBackCacheStateFileSize = 562;
+
+    // Disk registry device pool the fast shard devices are allocated from.
+    optional string FastShardDevicePoolName = 563;
+
+    // Disk registry pool device size a fast shard storage group copy takes.
+    // 93 GiB by default, the default disk registry allocation unit.
+    optional uint64 FastShardAllocationSize = 564;
+
+    // Device space kept for the journal, the storage group and shard metadata.
+    optional uint64 FastShardReservedSize = 565;
 }
