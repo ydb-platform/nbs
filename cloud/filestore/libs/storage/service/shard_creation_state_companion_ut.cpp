@@ -34,12 +34,12 @@ TVector<NKikimrFileStore::TConfig> MakeShardConfigs()
     return MakeShardConfigs(ShardCount);
 }
 
-ui64 CalculateShardCreationTargetHashForTest(
+ui64 CalculateNewShardConfigsHashForTest(
     ui32 baseShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs)
 {
     const auto result =
-        CalculateShardCreationTargetHash(baseShardCount, shardConfigs);
+        CalculateNewShardConfigsHash(baseShardCount, shardConfigs);
     UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
     return result.GetResult();
 }
@@ -69,7 +69,7 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
     state.SetBaseShardCount(baseShardCount);
     state.SetTargetShardCount(targetShardCount);
     state.SetTargetShardConfigHash(
-        CalculateShardCreationTargetHashForTest(baseShardCount, shardConfigs));
+        CalculateNewShardConfigsHashForTest(baseShardCount, shardConfigs));
     SaveCompressedBitmap(
         bitmap,
         targetShardCount,
@@ -108,7 +108,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT_VALUES_EQUAL(42, companion.GetShardCreationStateVersion());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInTargetHash)
+    Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInNewShardConfigsHash)
     {
         const auto shardConfigs = MakeShardConfigs();
 
@@ -118,21 +118,21 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         sameShardConfigs[3].SetAlterTs(100501);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CalculateShardCreationTargetHashForTest(0, shardConfigs),
-            CalculateShardCreationTargetHashForTest(0, sameShardConfigs));
+            CalculateNewShardConfigsHashForTest(0, shardConfigs),
+            CalculateNewShardConfigsHashForTest(0, sameShardConfigs));
 
         auto differentShardConfigs = shardConfigs;
         differentShardConfigs[3].SetBlocksCount(
             differentShardConfigs[3].GetBlocksCount() + 1);
 
         UNIT_ASSERT_VALUES_UNEQUAL(
-            CalculateShardCreationTargetHashForTest(0, shardConfigs),
-            CalculateShardCreationTargetHashForTest(0, differentShardConfigs));
+            CalculateNewShardConfigsHashForTest(0, shardConfigs),
+            CalculateNewShardConfigsHashForTest(0, differentShardConfigs));
     }
 
-    Y_UNIT_TEST(ShouldRejectInvalidShardCreationTargetHashRange)
+    Y_UNIT_TEST(ShouldRejectInvalidNewShardConfigsHashRange)
     {
-        const auto result = CalculateShardCreationTargetHash(
+        const auto result = CalculateNewShardConfigsHash(
             ShardCount + 1,
             MakeShardConfigs());
 
@@ -156,8 +156,8 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, companion.GetBaseShardCount());
         UNIT_ASSERT_VALUES_EQUAL(ShardCount, companion.GetTargetShardCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            CalculateShardCreationTargetHashForTest(0, shardConfigs),
-            companion.GetTargetShardConfigHash());
+            CalculateNewShardConfigsHashForTest(0, shardConfigs),
+            companion.GetNewShardConfigsHash());
         UNIT_ASSERT(!companion.IsShardCreated(0));
         UNIT_ASSERT(companion.IsShardCreated(1));
         UNIT_ASSERT(!companion.IsShardCreated(2));
@@ -198,7 +198,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
         UNIT_ASSERT(error.GetMessage().Contains(
-            "Unfinished shard creation state conflicts with current target"));
+            "Unfinished shard creation state conflicts with current plan"));
         UNIT_ASSERT(error.GetMessage().Contains(
             "Retry the previous create/resize request with the same "
             "parameters"));
@@ -222,10 +222,10 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
             nextShardConfigs.size(),
             companion.GetTargetShardCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            CalculateShardCreationTargetHashForTest(
+            CalculateNewShardConfigsHashForTest(
                 ShardCount,
                 nextShardConfigs),
-            companion.GetTargetShardConfigHash());
+            companion.GetNewShardConfigsHash());
         UNIT_ASSERT(!companion.IsShardCreated(1));
         UNIT_ASSERT(!companion.IsShardCreated(4));
         UNIT_ASSERT(!companion.IsShardCreated(6));

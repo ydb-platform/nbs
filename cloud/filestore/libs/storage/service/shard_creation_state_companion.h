@@ -15,7 +15,9 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<ui64> CalculateShardCreationTargetHash(
+// Calculate a hash of configs for shards added by this plan, starting at
+// baseShardCount. Ignore operational metadata that changes between retries.
+TResultOrError<ui64> CalculateNewShardConfigsHash(
     ui32 baseShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
@@ -26,8 +28,8 @@ TResultOrError<ui64> CalculateShardCreationTargetHash(
 // SetupCreatedShardBitmap once the committed topology and desired shard configs
 // are known.
 //
-// CreatedShardBitmap is the working copy of created-shard bits;
-// ShardCreationState holds the last received state, or the target prepared by
+// CreatedShardBitmap contains persisted bits and local creation successes;
+// ShardCreationState holds the last received state, or the plan prepared by
 // SetupCreatedShardBitmap.
 //
 // The actor owns request scheduling, retries, and the fallback for Tablets that
@@ -54,34 +56,35 @@ private:
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
 public:
+    // Track shard creation state for fileSystemId.
     explicit TShardCreationStateCompanion(TString fileSystemId);
 
-    // The initial read is complete, including an Unsupported response. This
-    // does not imply that persistent state exists or the local bitmap is ready.
+    // Whether the initial read completed, including an unsupported response.
     bool IsPersistentStateLoaded() const;
-    // The Tablet supports reading and updating persistent shard creation state.
+    // Whether the Tablet returned persistent shard creation state.
     bool IsPersistentStateSupported() const;
-    // Record an initial response from a Tablet without persistent state
-    // support.
+    // Record that the initial read found no persistent state support.
     void MarkPersistentStateUnsupported();
 
-    // The working bitmap has been initialized for the current target.
+    // Whether the working bitmap is initialized for the current plan.
     bool HasCreatedShardBitmap() const;
-    // Whether the shard is known to be created, including unpersisted progress.
+    // Whether this shard is marked created in persisted or local progress.
     bool IsShardCreated(ui32 shardIndex) const;
 
+    // Version of the locally held persistent state, used for conditional updates.
     ui32 GetShardCreationStateVersion() const;
+    // Number of shards in the committed topology before this plan.
     ui32 GetBaseShardCount() const;
+    // Total number of shards after this plan completes.
     ui32 GetTargetShardCount() const;
-    ui64 GetTargetShardConfigHash() const;
+    // Hash of configs for shards added by this plan.
+    ui64 GetNewShardConfigsHash() const;
 
-    // Record the received state and support status; does not initialize or
-    // replace the local working bitmap.
+    // Record state returned by the Tablet without initializing the working bitmap.
     void SetShardCreationState(
         const NProtoPrivate::TFileSystemShardCreationState& state);
-    // Prepare the working bitmap from state and the committed shard count.
-    // Reject a different target while created shards remain uncommitted;
-    // otherwise reset completed history for the new target.
+    // Initialize the working bitmap for the requested plan; reject a conflicting
+    // plan if previously created shards have not joined the committed topology.
     NProto::TError SetupCreatedShardBitmap(
         ui32 baseShardCount,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs);

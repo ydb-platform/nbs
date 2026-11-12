@@ -30,7 +30,7 @@ NKikimrFileStore::TConfig BuildShardCreationTargetConfigForHash(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<ui64> CalculateShardCreationTargetHash(
+TResultOrError<ui64> CalculateNewShardConfigsHash(
     const ui32 baseShardCount,
     const TVector<NKikimrFileStore::TConfig>& shardConfigs)
 {
@@ -118,7 +118,7 @@ ui32 TShardCreationStateCompanion::GetTargetShardCount() const
     return ShardCreationState.GetTargetShardCount();
 }
 
-ui64 TShardCreationStateCompanion::GetTargetShardConfigHash() const
+ui64 TShardCreationStateCompanion::GetNewShardConfigsHash() const
 {
     return ShardCreationState.GetTargetShardConfigHash();
 }
@@ -145,7 +145,7 @@ NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
     }
 
     const auto targetShardConfigHashResult =
-        CalculateShardCreationTargetHash(baseShardCount, shardConfigs);
+        CalculateNewShardConfigsHash(baseShardCount, shardConfigs);
     if (HasError(targetShardConfigHashResult)) {
         return targetShardConfigHashResult.GetError();
     }
@@ -231,7 +231,7 @@ NProto::TError TShardCreationStateCompanion::ValidateOrResetShardCreationState(
     return MakeError(
         E_INVALID_STATE,
         TStringBuilder()
-            << "Unfinished shard creation state conflicts with current target"
+            << "Unfinished shard creation state conflicts with current plan"
             << " for filesystem " << FileSystemId.Quote()
             << ": stored base=" << ShardCreationState.GetBaseShardCount()
             << ", target=" << ShardCreationState.GetTargetShardCount()
