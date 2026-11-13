@@ -29,7 +29,7 @@ namespace {
     xxx(NodeAttrsCacheLimit,    ui32,           64 * 1024                     )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
-    xxx(MaxWritePages,          ui32,           256                           )\
+    xxx(MaxRequestPages,        ui32,           256                           )\
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \

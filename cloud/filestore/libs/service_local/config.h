@@ -126,7 +126,7 @@ public:
 
     ui32 GetMaxFuseLoopThreads() const;
 
-    ui32 GetMaxWritePages() const;
+    ui32 GetMaxRequestPages() const;
 
     bool GetFSyncQueueDisabled() const;
 
