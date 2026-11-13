@@ -244,6 +244,23 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
                 return;
             }
 
+            case TSchemeCacheNavigate::EStatus::LookupError:
+            case TSchemeCacheNavigate::EStatus::RedirectLookupError: {
+                // SchemeBoard is not able to give an authoritative answer
+                // right now: its replicas are unreachable or have not been
+                // populated by SchemeShard yet (e.g. the cluster is starting
+                // up).
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "SchemeCache is not able to resolve path "
+                            << Path.Quote()
+                            << " at the moment: " << entry.Status));
+                return;
+            }
+
             default: {
                 const TString message = TStringBuilder()
                     << "SchemeCache resolve failed with uncertain "
