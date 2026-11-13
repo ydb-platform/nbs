@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -2336,6 +2337,98 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 nodeIdx = SetupTestEnv(env);
 
         DoTestShouldBringRemotelyMountedVolumeBack(env, nodeIdx);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportLocalMountForPreemptedVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+
+        TActorId volumeActorId;
+        std::optional<bool> isLocalMount;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvStatsService::EvRegisterVolume: {
+                        const auto* msg =
+                            event->Get<TEvStatsService::TEvRegisterVolume>();
+                        if (msg->DiskId == DefaultDiskId) {
+                            volumeActorId = msg->ActorId;
+                        }
+                        break;
+                    }
+                    case TEvStatsService::EvVolumeSelfCounters: {
+                        const auto* msg =
+                            event
+                                ->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                        if (msg->DiskId == DefaultDiskId) {
+                            isLocalMount = msg->IsLocalMount;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto getIsLocalMount = [&]
+        {
+            UNIT_ASSERT(volumeActorId);
+            isLocalMount.reset();
+            runtime.Send(
+                new IEventHandle(
+                    volumeActorId,
+                    runtime.AllocateEdgeActor(nodeIdx),
+                    new TEvVolumePrivate::TEvUpdateCounters()),
+                nodeIdx);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT(isLocalMount.has_value());
+            return *isLocalMount;
+        };
+
+        TServiceClient service(runtime, nodeIdx);
+
+        auto changeBinding = [&](EChangeBindingOp op)
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    op,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetErrorReason());
+        };
+
+        service.CreateVolume();
+
+        auto sessionId = service.MountVolume()->Record.GetSessionId();
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        // The tablet runs on the local mounter's host.
+        UNIT_ASSERT(getIsLocalMount());
+
+        changeBinding(EChangeBindingOp::RELEASE_TO_HIVE);
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        // The volume is preempted: the client is still the local mounter, but
+        // the tablet is started by Hive.
+        UNIT_ASSERT(!getIsLocalMount());
+
+        changeBinding(EChangeBindingOp::ACQUIRE_FROM_HIVE);
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        UNIT_ASSERT(getIsLocalMount());
+
+        service.UnmountVolume(DefaultDiskId, sessionId);
     }
 
     void DoTestShouldSucceedSettingRemoteBindingForRemotelyMountedVolume(
