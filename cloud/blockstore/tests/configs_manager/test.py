@@ -281,7 +281,8 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path, dedicated_
         ydb.stop()
 
 
-# Verify startup delivery, replacement, rejection, and removal with real nodes.
+# Verify startup delivery, replacement, rejection, and removal when the static
+# dispatcher allow list does not include PrivateDatabaseConfigItem.
 def test_dynamic_blockstore_config_lifecycle():
     ydb = start_dynamic_config_ydb()
     nbs = None
@@ -298,6 +299,9 @@ def test_dynamic_blockstore_config_lifecycle():
         # Distinguish the PrivateDatabaseConfig startup seed from the static configuration.
         config = make_nbs_config(ydb, True)
         config.files["storage"].WriteBlobThreshold = 100
+        config.files["storage"].ConfigDispatcherSettings.AllowList.Names.append(
+            "NameserviceConfigItem"
+        )
         nbs = start_nbs(config)
 
         # Observe the applied seed in the configuration retained by a startup consumer.
@@ -309,6 +313,8 @@ def test_dynamic_blockstore_config_lifecycle():
         assert re.search(r"BLOCKSTORE_SERVER.*Applied startup PrivateDatabaseConfig", log)
         updates = wait_config_delivery(nbs)
 
+        # Verify runtime delivery when the configured allow list
+        # does not include PrivateDatabaseConfigItem.
         replace_database_config(
             ydb,
             1,
