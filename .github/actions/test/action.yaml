@@ -165,6 +165,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         GITHUB_JOB_ID: ${{ job.check_run_id }}
+        COMPONENT: ${{ inputs.component }}
         NUMBER_OF_RETRIES: ${{ inputs.number_of_retries }}
         TEST_TIMEOUT_MINUTES: ${{ inputs.test_timeout_minutes }}
         TEST_BUDGET_MINUTES: ${{ inputs.test_budget_minutes }}
@@ -611,6 +612,8 @@ runs:
                 --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/${COMPONENT_DIR}${i}/" \
                 --build-preset "${platform_name}-${BUILD_PRESET}" \
                 --workload-status in_progress \
+                --component "${COMPONENT:-all}" \
+                --test-iteration "$((i - 1))" \
                 --test-target "${TEST_TARGET//\"/}" \
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
                 --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \

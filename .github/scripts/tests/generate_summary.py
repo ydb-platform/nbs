@@ -29,6 +29,7 @@ from ..helpers import (
 )
 from ..set_build_and_test_targets import JOIN_GROUPS
 from .junit_utils import get_property_value, iter_xml_files
+from .status_plaque import Plaque, Report, component_for_target
 
 LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
@@ -47,6 +48,7 @@ SUMMARY_JSON_SCHEMA_VERSION = 1
 WORKLOAD_CHECK_STATUS_ICONS = {
     "pending": ":white_circle:",
     "running": ":hourglass_flowing_sand:",
+    "built": ":hammer:",
     "completed": ":white_check_mark:",
     "failed_build": ":red_circle:",
     "failed": ":x:",
@@ -58,6 +60,7 @@ WORKLOAD_CHECK_STATUS_ICONS = {
 WORKLOAD_CHECK_STATUS_ORDER = {
     "pending": 0,
     "running": 1,
+    "built": 1,
     "completed": 2,
     "failed": 3,
     "cancelled": 3,
@@ -760,6 +763,7 @@ def get_workload_check_line(
     suffixes = {
         "pending": "",
         "running": "",
+        "built": " (build passed; waiting for test results)",
         "completed": "",
         "failed_build": " (build failed)",
         "failed": " (job failed before reporting completion)",
@@ -856,6 +860,13 @@ def replace_workload_checks_block(
     build_preset: str,
     components: list[str],
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        # Initialization may be retried after some workers have already started.
+        for component in components:
+            plaque.workload(component)
+        return plaque.replace(body)
+
     checks_block = "\n".join(get_workload_checks_text(build_preset, components))
     pattern = re.compile(
         rf"{re.escape(WORKLOAD_CHECKS_START)}.*?{re.escape(WORKLOAD_CHECKS_END)}",
@@ -876,6 +887,11 @@ def ensure_workload_check_row(
     build_preset: str,
     component: str,
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        plaque.workload(component)
+        return plaque.replace(body)
+
     if get_workload_check_line_match(body, component) is not None:
         return body
 
@@ -902,6 +918,13 @@ def get_workload_check_status(
     body: str,
     component: str,
 ) -> str | None:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        return next(
+            (row.status for row in plaque.workloads if row.component == component),
+            None,
+        )
+
     match = get_workload_check_line_match(body, component)
     if match is None:
         return None
@@ -929,6 +952,10 @@ def is_workload_check_update_applied(
         if current_status != status:
             return False
 
+        plaque = Plaque.from_comment(body)
+        if plaque is not None:
+            return not job_url or plaque.workload(component).job_url == job_url
+
         match = get_workload_check_line_match(body, component)
         if match is None:
             return False
@@ -951,6 +978,11 @@ def update_workload_check_block(
     job_url: str = "",
     build_error_log_url: str = "",
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        plaque.workload(component).update(status, job_url, build_error_log_url)
+        return plaque.replace(body)
+
     match = get_workload_check_line_match(body, component)
     if match is None:
         return body
@@ -988,7 +1020,7 @@ def update_workload_check_block(
 
 
 def is_stale_workload_check_status(status: str | None) -> bool:
-    return status in ("pending", "running")
+    return status in ("pending", "running", "built")
 
 
 def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
@@ -1009,6 +1041,19 @@ def complete_workload_checks_block(
     body: str,
     job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        for row in plaque.workloads:
+            if not is_stale_workload_check_status(row.status):
+                continue
+            conclusion = (
+                job_conclusion_resolver(row.job_url, row.component)
+                if job_conclusion_resolver
+                else None
+            )
+            row.update(workload_check_status_for_job_conclusion(conclusion), "", "")
+        return plaque.replace(body)
+
     pattern = re.compile(
         r"^.*<!-- workload-check component=(?P<component>[^ ]+) -->$",
         re.MULTILINE,
@@ -1128,15 +1173,16 @@ def get_base_comment_body(
     body.extend(
         [
             "> [!NOTE]",
-            "> This is an automated comment that will be appended during run.",
+            "> Build and test status. Updated as each workload progresses.",
             "",
         ]
     )
     body.extend(get_workload_status_text(build_preset, workload_status))
     body.append("")
-    if workload_components is not None:
-        body.extend(get_workload_checks_text(build_preset, workload_components))
-        body.append("")
+    plaque = Plaque(build_preset)
+    for component in workload_components or []:
+        plaque.workload(component)
+    body.append(plaque.render())
     return body
 
 
@@ -1150,6 +1196,8 @@ def update_pr_comment(
     test_time: str,
     is_dry_run: bool,
     workload_status: str,
+    component: str = "",
+    test_iteration: int = 0,
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1159,6 +1207,70 @@ def update_pr_comment(
         is_dry_run,
     )
     comment = find_pr_comment(pr, header_prefix)
+    # Existing comments from older runners retain their legacy format. New
+    # comments keep structured results so retries update one table in place.
+    if comment is None or Plaque.from_comment(comment.body) is not None:
+        component = component or component_for_target(test_target)
+        reports = [
+            Report(
+                iteration=test_iteration,
+                title=line.title if line else "Tests",
+                target=test_target,
+                commit=pr.head.sha,
+                total=line.test_count if line else 0,
+                counts={
+                    status.name: line.count(status) if line else 0
+                    for status in TestStatus.summary_table_order()
+                },
+                url=(line.report_url or "") if line else "",
+                build_error_url=summary.build_error_log_url,
+                build_failed_count=get_build_failed_count(),
+                history_url=test_history_url or "",
+                elapsed=test_time,
+            )
+            for line in summary.lines or [None]
+        ]
+
+        def update_plaque(body: str) -> str:
+            plaque = Plaque.from_comment(body)
+            assert plaque is not None
+            row = plaque.workload(component)
+            for report in reports:
+                row.add_report(report)
+            if workload_status == "completed" and is_stale_workload_check_status(
+                row.status
+            ):
+                row.status = "completed"
+            elif row.status == "pending":
+                row.status = "running"
+            return plaque.replace(
+                replace_workload_status_block(body, build_preset, workload_status)
+            )
+
+        if comment is None:
+            body = "\n".join(
+                get_base_comment_body(
+                    header, build_preset, is_dry_run, workload_status, [component]
+                )
+            )
+            pr.create_issue_comment(update_plaque(body))
+            return
+
+        def reports_applied(body: str) -> bool:
+            plaque = Plaque.from_comment(body)
+            return plaque is not None and all(
+                report in plaque.workload(component).reports for report in reports
+            )
+
+        edit_pr_comment(
+            pr=pr,
+            header_prefix=header_prefix,
+            update_body=update_plaque,
+            is_applied=reports_applied,
+            operation=f"test summary for {build_preset}/{component}/{test_iteration}",
+        )
+        return
+
     comment_text = get_comment_text(
         pr,
         summary,
@@ -1168,18 +1280,6 @@ def update_pr_comment(
         test_time,
     )
     comment_block = "\n".join(comment_text)
-
-    if comment is None:
-        body = get_base_comment_body(
-            header,
-            build_preset,
-            is_dry_run,
-            workload_status,
-        )
-        body.extend(comment_text)
-        LOGGER.info("Creating new comment")
-        pr.create_issue_comment("\n".join(body))
-        return
 
     def append_summary_if_missing(body: str) -> str:
         body = replace_workload_status_block(
@@ -1380,6 +1480,8 @@ def main() -> None:
         "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
     )
     parser.add_argument("--test-target", default="", required=False)
+    parser.add_argument("--component", default="")
+    parser.add_argument("--test-iteration", type=int, default=0)
     parser.add_argument(
         "--is-dry-run",
         default=False,
@@ -1463,6 +1565,8 @@ def main() -> None:
             args.test_time,
             args.is_dry_run,
             args.workload_status,
+            component=args.component,
+            test_iteration=args.test_iteration,
         )
 
 
