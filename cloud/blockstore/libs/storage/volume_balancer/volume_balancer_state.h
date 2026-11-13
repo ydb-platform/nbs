@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 

@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
