@@ -10,6 +10,8 @@
 #include <util/stream/file.h>
 #include <util/stream/str.h>
 
+#include <vector>
+
 namespace NCloud {
 
 namespace {
@@ -131,6 +133,14 @@ bool HasField(
         return reflection->FieldSize(message, field) != 0;
     }
     return reflection->HasField(message, field);
+}
+
+// Check known field presence without inspecting child messages or unknown fields.
+bool HasKnownFields(const google::protobuf::Message& message)
+{
+    std::vector<const google::protobuf::FieldDescriptor*> fields;
+    message.GetReflection()->ListFields(message, &fields);
+    return !fields.empty();
 }
 
 }   // namespace NCloud

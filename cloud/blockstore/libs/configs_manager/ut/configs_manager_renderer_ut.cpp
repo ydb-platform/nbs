@@ -66,6 +66,10 @@ protected:
     // Published startup configuration retained for preparation-failure tests.
     TBlockstoreConfigHolderPtr ConfigHolder;
 
+    // Reasons for dynamic sections rejected before manager creation;
+    // empty when all startup sections were accepted.
+    TString StartupRejectedSectionsReason;
+
     // Start a manager with the minimal sources and isolated critical logging.
     void SetUp(NUnitTest::TTestContext&) override;
 
@@ -110,6 +114,7 @@ void TRendererActorFixture::SetUp(NUnitTest::TTestContext&)
         .StaticConfig = std::move(staticConfig),
         .StartupConfig = std::move(startupConfig),
         .InitialDynamicConfig = std::move(dynamicConfig),
+        .StartupRejectedSectionsReason = StartupRejectedSectionsReason,
         .StorageConfigControls = std::move(controls),
         .ConfigsDispatcherId = Dispatcher,
     }));
@@ -166,6 +171,20 @@ TString TRendererActorFixture::GetMonitoringPage()
     UNIT_ASSERT(response);
     response->Get()->Output(output);
     return output.Str();
+}
+
+// Actor fixture for a startup configuration with a rejected dynamic section.
+// Reuse the base runtime and supply the rejection reason before actor creation.
+class TPartiallyAppliedStartupFixture: public TRendererActorFixture
+{
+public:
+    TPartiallyAppliedStartupFixture();
+};
+
+TPartiallyAppliedStartupFixture::TPartiallyAppliedStartupFixture()
+{
+    StartupRejectedSectionsReason =
+        "Rejected TestSection configuration: invalid value <&>";
 }
 
 }   // namespace
@@ -1257,6 +1276,76 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "<span class='config-update-rejected'>- rejected: "
             "Internal error: received a null PrivateDatabaseConfig "
             "payload from ConfigsDispatcher</span>");
+    }
+
+    // Verify that startup section rejection is visible before dispatcher
+    // delivery, with escaped details and no runtime source.
+    Y_UNIT_TEST_F(
+        ShouldRenderPartiallyAppliedStartupBeforeFirstDelivery,
+        TPartiallyAppliedStartupFixture)
+    {
+        // Read the initial state without delivering a runtime configuration.
+        const auto startupTime = Runtime.GetCurrentTime().ToString();
+        const auto html = GetMonitoringPage();
+
+        // Attribute the rejected section and accepted values to startup.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            startupTime +
+                ", startup (partially applied) "
+                "<span class='config-update-rejected'>- rejected: "
+                "Rejected TestSection configuration: invalid value "
+                "&lt;&amp;&gt;</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.WriteBlobThreshold</td>"
+            "<td>100</td><td>200</td><td>&mdash;</td>"
+            "<td>&mdash;</td><td>200</td>");
+    }
+
+    // Verify that clean initial deliveries clear startup rejection and a new
+    // delivery cookie switches unchanged values to runtime.
+    Y_UNIT_TEST_F(
+        ShouldClearStartupSectionRejectionOnAcceptedDelivery,
+        TPartiallyAppliedStartupFixture)
+    {
+        const auto startupTime = Runtime.GetCurrentTime().ToString();
+
+        // Clear the rejection without changing startup time or values, and
+        // preserve that state when the dispatcher repeats its first delivery.
+        for (int i = 0; i != 2; ++i) {
+            Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            SendNotification(
+                std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+                1);
+            WaitForAck(1);
+
+            const auto html = GetMonitoringPage();
+            UNIT_ASSERT_STRING_CONTAINS(html, startupTime + ", startup</td>");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html,
+                "StorageService.WriteBlobThreshold</td>"
+                "<td>100</td><td>200</td><td>&mdash;</td>"
+                "<td>&mdash;</td><td>200</td>");
+        }
+
+        // Treat a new delivery with the same values as a runtime update.
+        Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        const auto receiptTime = Runtime.GetCurrentTime().ToString();
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+            2);
+        WaitForAck(2);
+
+        const auto html = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            receiptTime + ", runtime (unchanged)</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.WriteBlobThreshold</td>"
+            "<td>100</td><td>200</td><td>200</td>"
+            "<td>&mdash;</td><td>200</td>");
     }
 }
 

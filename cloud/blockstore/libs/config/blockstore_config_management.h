@@ -56,11 +56,12 @@ bool IsPrivateDatabaseConfigEnabled(
     bool dynamicYamlConfigurationEnabled,
     bool temporaryServer);
 
-// Merge dynamicConfig into a copy of staticConfig according to protobuf rules,
-// except for Features. Keep the first feature with each name within a source;
-// replace a matching static feature with the complete dynamic record at its
-// position, and append dynamic-only features in their source order.
-// Pass dynamicConfig normalized by NormalizeDynamicBlockstoreConfig().
+// Merge dynamic overrides into a copy of the static configuration using
+// protobuf rules and section-specific composition policies.
+//
+// staticConfig - static configuration used as the merge base.
+// dynamicConfig - dynamic configuration to apply, already normalized with
+// NormalizeDynamicBlockstoreConfig() using the same staticConfig.
 NProto::TBlockstoreConfig MergeBlockstoreConfigSources(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig);

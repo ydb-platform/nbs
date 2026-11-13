@@ -1,12 +1,3 @@
-/*******************************************************************************
-
-Each accepted PrivateDatabaseConfig replaces the previous YAML source and
-is applied to the static configuration saved before CMS.
-Parser failures preserve the published configuration. An empty or absent
-section clears dynamic overrides; equivalent inputs do not republish.
-
-*******************************************************************************/
-
 #include "configs_manager.h"
 
 #include "configs_manager_renderer.h"
@@ -14,10 +5,12 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
+#include <cloud/blockstore/libs/config/sections_update.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/config/runtime_config.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -66,6 +59,37 @@ void ReportConfigUpdateError(
                    "configuration is kept only in memory and will be lost "
                    "after a restart.")
                 : ""));
+}
+
+// Report each section's issues and collect every rejection for monitoring.
+TString ReportConfigSectionsIssues(
+    const TConfigSectionsUpdateIssues& updateIssues,
+    const TActorContext& ctx)
+{
+    TString rejectedSectionsReason;
+    for (const auto& section: updateIssues.Sections) {
+        // Keep nonfatal skips visible even if another rule rejects the section.
+        for (const auto& issue: section.Issues) {
+            LOG_WARN_S(ctx, TBlockStoreComponents::CONFIGS_MANAGER, issue);
+        }
+        if (!HasError(section.RejectionError)) {
+            continue;
+        }
+
+        // Report each rejection and preserve their order in the monitoring
+        // text.
+        const auto reason = FormatConfigSectionRejection(section);
+        if (!rejectedSectionsReason.empty()) {
+            rejectedSectionsReason += "; ";
+        }
+        rejectedSectionsReason += reason;
+        ReportDynamicConfigError(
+            TStringBuilder()
+            << reason << ". Keeping the last accepted dynamic " << section.Path
+            << " section. Fix or roll back the configuration before restarting"
+               " NBS: the retained section is kept only in memory.");
+    }
+    return rejectedSectionsReason;
 }
 
 class TConfigsManagerActor final
@@ -151,7 +175,13 @@ TConfigsManagerActor::TConfigsManagerActor(TConfigsManagerArgs args)
 {
     ConfigRenderer.Data.StartupDynamicConfig = DynamicConfig;
     ConfigRenderer.Data.DynamicConfigPresent =
-        DynamicConfig.ByteSizeLong() != 0;
+        HasKnownFields(DynamicConfig);
+    ConfigRenderer.Data.RejectedUpdateReason =
+        std::move(args.StartupRejectedSectionsReason);
+    if (ConfigRenderer.Data.RejectedUpdateReason) {
+        ConfigRenderer.Data.UpdateStatus =
+            EConfigUpdateStatus::StartupPartiallyApplied;
+    }
 }
 
 void TConfigsManagerActor::Bootstrap(const TActorContext& ctx)
@@ -188,7 +218,6 @@ STFUNC(TConfigsManagerActor::StateWork)
     }
 }
 
-// Register the read-only page on the existing BlockStore monitoring root.
 void TConfigsManagerActor::RegisterPages(const TActorContext& ctx)
 {
     auto* mon = NKikimr::AppData(ctx)->Mon;
@@ -206,7 +235,6 @@ void TConfigsManagerActor::RegisterPages(const TActorContext& ctx)
         SelfId());
 }
 
-// Reply with the accepted sources and live effective values from one snapshot.
 void TConfigsManagerActor::Handle(
     const NMon::TEvHttpInfo::TPtr& ev,
     const TActorContext& ctx)
@@ -224,7 +252,6 @@ void TConfigsManagerActor::Handle(
         ev->Cookie);
 }
 
-// Register one recipient and send an initial notice on every request.
 void TConfigsManagerActor::Handle(
     const TEvConfigsManager::TEvSetConfigSubscriptionRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -248,7 +275,6 @@ void TConfigsManagerActor::Handle(
         IEventHandle::FlagTrackDelivery);
 }
 
-// Remove the selected recipient and confirm even an already absent entry.
 void TConfigsManagerActor::Handle(
     const TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -265,7 +291,6 @@ void TConfigsManagerActor::Handle(
         ev->Cookie);
 }
 
-// Remove a subscriber only when its config notice targets a missing actor.
 void TConfigsManagerActor::Handle(const TEvents::TEvUndelivered::TPtr& ev)
 {
     const auto* message = ev->Get();
@@ -276,7 +301,6 @@ void TConfigsManagerActor::Handle(const TEvents::TEvUndelivered::TPtr& ev)
     }
 }
 
-// Process new config from ConfigsDispatcher
 void TConfigsManagerActor::Handle(
     const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -293,6 +317,8 @@ void TConfigsManagerActor::Handle(
     NProto::TBlockstoreConfig newDynamicConfig;
     NConfig::TRuntimeConfigDiagnostics diagnostics;
     IBlockstoreConfigPtr newConfig;
+    TConfigSectionsUpdateIssues updateIssues;
+    TString rejectedSectionsReason;
 
     // Prepare the complete update before changing the publication or live
     // controls, so an exception leaves the last accepted state intact.
@@ -319,6 +345,11 @@ void TConfigsManagerActor::Handle(
                 return;
             }
 
+            updateIssues =
+                PrepareDynamicConfigSectionsUpdate(config, &DynamicConfig);
+            rejectedSectionsReason =
+                ReportConfigSectionsIssues(updateIssues, ctx);
+
             newDynamicConfig = std::move(config);
         }
 
@@ -332,18 +363,31 @@ void TConfigsManagerActor::Handle(
                 "PrivateDatabaseConfig is unchanged; skipping publication");
             ConfigRenderer.Data.DynamicConfigPresent =
                 message->OpaqueConfigs.contains(PrivateDatabaseConfigKind);
-            // Treat an identical first delivery as startup even if the CMS
-            // version is newer. This is acceptable: the label still describes
+            // Preserve section rejection diagnostics even when the dynamic
+            // configuration is unchanged.
+            // If no sections are rejected, treat an identical first delivery as
+            // startup even if the CMS version is newer: the label describes
             // the configuration values applied at startup.
-            if (ConfigRenderer.Data.UpdateStatus !=
-                    EConfigUpdateStatus::Startup ||
-                ev->Cookie != *ConfigRenderer.Data.StartupDeliveryCookie)
-            {
+            const bool isStartupDelivery =
+                (ConfigRenderer.Data.UpdateStatus ==
+                     EConfigUpdateStatus::Startup ||
+                 ConfigRenderer.Data.UpdateStatus ==
+                     EConfigUpdateStatus::StartupPartiallyApplied) &&
+                ev->Cookie == *ConfigRenderer.Data.StartupDeliveryCookie;
+            if (isStartupDelivery) {
+                ConfigRenderer.Data.UpdateStatus =
+                    updateIssues.HasRejectedSections()
+                        ? EConfigUpdateStatus::StartupPartiallyApplied
+                        : EConfigUpdateStatus::Startup;
+            } else {
                 ConfigRenderer.Data.LastUpdateTime = ctx.Now();
                 ConfigRenderer.Data.UpdateStatus =
-                    EConfigUpdateStatus::RuntimeUnchanged;
+                    updateIssues.HasRejectedSections()
+                        ? EConfigUpdateStatus::RuntimePartiallyApplied
+                        : EConfigUpdateStatus::RuntimeUnchanged;
             }
-            ConfigRenderer.Data.RejectedUpdateReason.clear();
+            ConfigRenderer.Data.RejectedUpdateReason =
+                std::move(rejectedSectionsReason);
             ReplyConfigNotificationResponse(ev, ctx);
             return;
         }
@@ -377,15 +421,23 @@ void TConfigsManagerActor::Handle(
     ConfigRenderer.Data.DynamicConfigPresent =
         message->OpaqueConfigs.contains(PrivateDatabaseConfigKind);
     ConfigRenderer.Data.LastUpdateTime = ctx.Now();
-    ConfigRenderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
-    ConfigRenderer.Data.RejectedUpdateReason.clear();
+    ConfigRenderer.Data.UpdateStatus =
+        updateIssues.HasRejectedSections()
+            ? EConfigUpdateStatus::RuntimePartiallyApplied
+            : EConfigUpdateStatus::Runtime;
+    ConfigRenderer.Data.RejectedUpdateReason =
+        std::move(rejectedSectionsReason);
     ConfigRenderer.Data.RuntimeDiagnostics = std::move(diagnostics);
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::CONFIGS_MANAGER,
-        (DynamicConfig.ByteSizeLong() ? "Accepted PrivateDatabaseConfig"
-                                      : "Reset PrivateDatabaseConfig"));
+        (ConfigRenderer.Data.UpdateStatus ==
+                 EConfigUpdateStatus::RuntimePartiallyApplied
+             ? "Partially accepted PrivateDatabaseConfig"
+             : (HasKnownFields(DynamicConfig)
+                    ? "Accepted PrivateDatabaseConfig"
+                    : "Reset PrivateDatabaseConfig")));
 
     // Do not wait for consumers: they process the snapshot carried by each
     // notification at their safe point.
@@ -399,7 +451,6 @@ void TConfigsManagerActor::Handle(
     ReplyConfigNotificationResponse(ev, ctx);
 }
 
-// Send ConfigNotificationResponse to ConfigsDispatcher
 void TConfigsManagerActor::ReplyConfigNotificationResponse(
     const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
     const TActorContext& ctx)

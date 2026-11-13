@@ -160,6 +160,8 @@ public:
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .StartupConfig = Args.StartupBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
+                        .StartupRejectedSectionsReason =
+                            Args.StartupRejectedSectionsReason,
                         .StorageConfigControls =
                             storageConfig->GetControls(),
                     }),
