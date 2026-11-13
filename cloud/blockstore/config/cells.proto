@@ -109,8 +109,9 @@ message TCellsConfig
     optional bool CellsEnabled = 6;
 
     // EDS used to resolve EdsHostPatterns of the cells. Off unless
-    // RequestInterval is set: that is how often each cell is asked, spread
-    // by up to half of it either way; an hour is a sensible value.
+    // RequestInterval is set: that is how often each cell is asked; an hour
+    // is a sensible value. The fetcher holds repeat requests back by up to
+    // half of it so that the nodes do not poll EDS in lockstep.
     // HostPatterns, InstancePort and SecureInstancePort are not used here:
     // the patterns come from each cell, the ports from its TCellConfig.
     optional TEdsConfig Eds = 7;

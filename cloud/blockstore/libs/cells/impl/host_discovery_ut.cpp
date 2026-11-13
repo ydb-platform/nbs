@@ -125,14 +125,12 @@ Y_UNIT_TEST_SUITE(TCellHostDiscoveryTest)
         env.Fetcher->Hosts = {"host-x"};
         env.Discovery->Start();
 
-        // the next fetch lands somewhere between half the interval and one
-        // and a half, so that nodes started together drift apart
         env.Fetcher->Hosts = {"host-y"};
         env.AdvanceTime(TDuration::Minutes(2));
         UNIT_ASSERT_VALUES_EQUAL(1, env.Fetcher->Asked.size());
 
-        env.AdvanceTime(TDuration::Minutes(6));
-        UNIT_ASSERT(env.Fetcher->Asked.size() >= 2);
+        env.AdvanceTime(TDuration::Minutes(3));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Fetcher->Asked.size());
         UNIT_ASSERT_EQUAL((THashSet<TString>{"host-a", "host-y"}), env.Hosts());
     }
 
