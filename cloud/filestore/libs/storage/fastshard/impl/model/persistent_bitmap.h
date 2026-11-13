@@ -39,7 +39,7 @@ public:
     {}
 
 public:
-    NProto::TError Get(ui64 bit, bool* result) const;
+    NProto::TError GetForLookup(ui64 bit, bool* result) const;
     NProto::TError Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups);
     NProto::TError

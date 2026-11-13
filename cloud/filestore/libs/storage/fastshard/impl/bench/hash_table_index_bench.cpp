@@ -18,8 +18,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 ShardNo = 1U;
-constexpr ui64 NodesPerGroup = 256U;
-constexpr ui64 GroupCapacity = 256_MB;
+constexpr ui64 NodesPerGroup = 1024U;
+constexpr ui64 GroupCapacity = 1_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 // The google benchmark module owns main(), so the silk runtime is

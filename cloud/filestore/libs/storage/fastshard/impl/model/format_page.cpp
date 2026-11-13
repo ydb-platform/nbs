@@ -20,7 +20,8 @@ NProto::TError TFormatPage::RegisterStart(
     TWriteContext& writeContext)
 {
     TBuffer page;
-    auto error = PageStore->ReadPage(writeContext.Lsn, Slot.PageNo, &page);
+    auto error =
+        PageStore->ReadPageForUpdate(writeContext.Lsn, Slot.PageNo, &page);
     if (HasError(error)) {
         return error;
     }
