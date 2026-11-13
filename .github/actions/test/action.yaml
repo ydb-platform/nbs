@@ -622,6 +622,7 @@ runs:
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
                 --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
                 --trace-report-url "$TRACE_REPORT_URL" \
+                --trace-otlp-url "$TRACE_OTLP_URL" \
                 "Tests" ya-test.html "${JUNIT_REPORT_XML}.${i}"
             unset GITHUB_TOKEN
             echo "report_generated=yes" >> "$GITHUB_OUTPUT"
