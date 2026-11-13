@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
@@ -40,6 +39,9 @@ class TVolumeBalancerState
         TInstant LastSuccessfulPull;
 
         ui32 SufferCount = 0;
+
+        // Estimated time to process the reported load statistics with the
+        // configured read/write IOPS and bandwidth
         std::optional<TDuration> Cost;
 
         TVolumeInfo(TDuration pullInterval);
@@ -133,8 +135,7 @@ private:
         TInstant now) const;
 
     std::optional<TDuration> CalculateCostPerIO(
-        const TBlobIoCounters& counters,
-        NProto::EStorageMediaKind mediaKind) const;
+        const NProto::TVolumeBalancerDiskStats& stats) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

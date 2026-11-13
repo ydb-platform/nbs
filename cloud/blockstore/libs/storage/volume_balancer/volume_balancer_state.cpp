@@ -105,19 +105,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         }
 
         if (info.IsLocal) {
-            TBlobIoCounters counters{
-                .ReadBlob =
-                    {
-                        .Count = v.GetReadBlobCount(),
-                        .Bytes = v.GetReadBlobBytes(),
-                    },
-                .WriteBlob =
-                    {
-                        .Count = v.GetWriteBlobCount(),
-                        .Bytes = v.GetWriteBlobBytes(),
-                    },
-            };
-            info.Cost = CalculateCostPerIO(counters, info.MediaKind);
+            info.Cost = CalculateCostPerIO(v);
         } else {
             info.Cost = std::nullopt;
         }
@@ -364,11 +352,10 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
 }
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
-    const TBlobIoCounters& counters,
-    NProto::EStorageMediaKind mediaKind) const
+    const NProto::TVolumeBalancerDiskStats& stats) const
 {
     const auto perfSettings =
-        GetAdaptedPerfSettings(*DiagnosticsConfig, mediaKind);
+        GetAdaptedPerfSettings(*DiagnosticsConfig, stats.GetStorageMediaKind());
     if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
         return std::nullopt;
@@ -381,15 +368,15 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
         expectedParallelism * CostPerIO(
                                   perfSettings.Write.Iops,
                                   perfSettings.Write.Bandwidth,
-                                  counters.WriteBlob.Bytes,
-                                  counters.WriteBlob.Count);
+                                  stats.GetWriteBlobBytes(),
+                                  stats.GetWriteBlobCount());
 
     const TDuration readCost =
         expectedParallelism * CostPerIO(
                                   perfSettings.Read.Iops,
                                   perfSettings.Read.Bandwidth,
-                                  counters.ReadBlob.Bytes,
-                                  counters.ReadBlob.Count);
+                                  stats.GetReadBlobBytes(),
+                                  stats.GetReadBlobCount());
     return writeCost + readCost;
 }
 
