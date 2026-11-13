@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     config_ut.cpp
+    test_executor_ut.cpp
     test_scenarios/aligned_test_scenario_ut.cpp
 )
 
