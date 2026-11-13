@@ -469,11 +469,8 @@ void CompleteCompoundRequestImpl(
             }
         }
 
-        const TCpuCycles elapsed = status == VHD_BDEV_SUCCESS
-            ? GetCycleCount() - req->SubmitTs : 0;
-
         if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(elapsed);
+            stats.Times[bio->type].Increment(GetCycleCount() - req->SubmitTs);
             stats.Sizes[bio->type].Increment(bytes);
         }
 

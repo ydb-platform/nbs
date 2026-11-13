@@ -98,6 +98,7 @@ private:
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
     TAtomicStats FinalStats;
+    TLatencySliConfigPtr LatencySli;
     std::optional<TCompleteStats> StoppedStats;
     TSimpleStats LastStats;
 
@@ -131,16 +132,17 @@ void TServer::Start(const TOptions& options)
 
     SocketPath = options.SocketPath;
 
-    FinalStats.SetLatencySli(options.LatencySli);
+    LatencySli = options.LatencySli;
     Info = Backend->Init(options);
-    Info.io_completed_opaque = &FinalStats;
-    Info.measure_latency = bool(FinalStats.LatencySli);
+    Info.io_completed_opaque = this;
+    Info.measure_latency = LatencySli && LatencySli->Enabled;
     Info.io_completed_cb =
         [](void* opaque,
            bool write, uint64_t bytes, bool failed, uint64_t elapsedUs) noexcept
     {
-        static_cast<TAtomicStats*>(opaque)->RecordFinalOutcome(
-            write, bytes, failed, elapsedUs);
+        auto* server = static_cast<TServer*>(opaque);
+        server->FinalStats.RecordFinalOutcome(
+            write, bytes, failed, elapsedUs, server->LatencySli.get());
     };
 
     for (ui32 i = 0; i != options.QueueCount; ++i) {

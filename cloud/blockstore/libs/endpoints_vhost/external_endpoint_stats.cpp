@@ -87,12 +87,9 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
         ? request.VolumeInfo->GetLatencySli() : nullptr;
     const auto& meta = stats["latency_sli"];
     const auto version = meta["version"].GetUInteger();
-    const bool matching =
-        counters &&
-        ((version == 1 && meta["config"].IsString() &&
-          meta["config"].GetString() == counters->GetSerializedConfig()) ||
-         (version == 2 && meta["config_id"].IsString() &&
-          meta["config_id"].GetString() == counters->GetConfigFingerprint()));
+    const bool matching = counters && version == 2 &&
+        meta["config_id"].IsString() &&
+        meta["config_id"].GetString() == counters->GetConfigFingerprint();
 
     // Old children count successful AIO reads before decryption, but add a
     // timing sample only after decryption succeeds. Recover that split when

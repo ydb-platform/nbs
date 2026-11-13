@@ -344,21 +344,6 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldMergeReadAndWriteOutcomesUsingTheirOwnThresholds)
-    {
-        TFixture f;
-        f.Complete(1500); // above the 1000us read threshold
-        f.Server->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
-        f.Complete(1500, 0, S_OK, true); // below the 2000us write threshold
-        f.Server->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
-    }
-
     Y_UNIT_TEST(ShouldUseManualSizeBoundariesAndInclusiveThreshold)
     {
         auto config = TLatencySliConfig::TryParse("1;0:1:4097:100;0:4097:8193:200;1:1:8193:300").value();
@@ -421,11 +406,15 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
     Y_UNIT_TEST(ShouldCountAtOriginalCompletionAndRetainAllWaits)
     {
         TFixture f;
-        f.Complete(500);
-        f.Complete(1500);
+        f.Complete(1500); // above the 1000us read threshold
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+        f.Complete(1500, 0, S_OK, true); // below the 2000us write threshold
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+        f.Complete(2000, 1500, S_OK, true); // inclusive write threshold
         f.Complete(1500, 1000);
         f.Complete(1500, 0, S_OK, false, 4096, false, 600, 600);
-        f.Complete(1500, 0, S_OK, true);
         f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
         f.Server->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(2, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
@@ -469,19 +458,6 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL(7, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-    }
-
-    Y_UNIT_TEST(ShouldIncludeAllThrottlerWaitsInLatency)
-    {
-        TFixture f;
-        f.Complete(2000, 1500);
-        f.Complete(2000, 1500, S_OK, true);
-        f.Complete(2000);
-        f.Server->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldIncludeResponseDeliveryTime)
@@ -583,21 +559,19 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
 
     Y_UNIT_TEST(ShouldBeDisabledByDefaultAndLeaveClientStatsUsable)
     {
-        TFixture f(std::nullopt);
-        f.Complete(500);
-        f.Server->UpdateStats(true);
-        UNIT_ASSERT(!f.Sli->FindCounter("LatencyTotalOps"));
-        auto client = CreateClientStats(std::make_shared<TDumpable>(), f.Monitoring,
-            CreateRequestStatsStub(), CreateVolumeStatsStub(), "client");
+        for (const auto enabled: {std::optional<bool>{}, std::optional<bool>{false}}) {
+            TFixture f(enabled);
+            f.Complete(500);
+            f.Server->UpdateStats(true);
+            UNIT_ASSERT(!f.Sli->FindCounter("LatencyTotalOps"));
+        }
+        auto client = CreateClientStats(
+            std::make_shared<TDumpable>(),
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
+            "client");
         UNIT_ASSERT(!client->GetLatencySliConfig(0).Enabled);
-    }
-
-    Y_UNIT_TEST(ShouldRespectExplicitDisable)
-    {
-        TFixture f(false);
-        f.Complete(500);
-        f.Server->UpdateStats(true);
-        UNIT_ASSERT(!f.Sli->FindCounter("LatencyTotalOps"));
     }
 }
 

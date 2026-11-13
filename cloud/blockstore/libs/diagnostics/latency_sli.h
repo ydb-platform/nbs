@@ -10,7 +10,6 @@ class TLatencySliCounters
 {
 private:
     const TLatencySliConfig Config;
-    const TString SerializedConfig;
     const TString ConfigFingerprint;
     struct TCounters
     {
@@ -25,7 +24,6 @@ public:
     TLatencySliCounters(
         TLatencySliConfig config, NMonitoring::TDynamicCounters& group)
         : Config(std::move(config))
-        , SerializedConfig(Config.Serialize())
         , ConfigFingerprint(GetLatencySliConfigFingerprint(Config))
     {
         Counters = {
@@ -33,11 +31,6 @@ public:
             group.GetCounter("LatencyBadOps", true),
             group.GetCounter("LatencyTotalOps", true),
             group.GetCounter("LatencyUnknownOps", true)};
-    }
-
-    const TString& GetSerializedConfig() const
-    {
-        return SerializedConfig;
     }
 
     const TString& GetConfigFingerprint() const

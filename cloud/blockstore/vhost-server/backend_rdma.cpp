@@ -458,15 +458,14 @@ void TRdmaBackend::CompleteRequest(
     auto* bio = vhd_get_bdev_io(io);
 
     ++CompletionStatsData.Completed;
-    TCpuCycles elapsed = 0;
 
     if (!isError) {
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        elapsed = GetCycleCount() - startCycles;
-        CompletionStatsData.Times[bio->type].Increment(elapsed);
+        CompletionStatsData.Times[bio->type].Increment(
+            GetCycleCount() - startCycles);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }

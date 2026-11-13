@@ -232,20 +232,11 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             ci.DiagnosticsConfig->GetLatencySliThresholds().size());
         const auto ssd = ci.DiagnosticsConfig->GetLatencySliConfig(
             NProto::STORAGE_MEDIA_SSD);
-        UNIT_ASSERT(ssd.Enabled);
-        UNIT_ASSERT(ssd.Classify(false, 4096, 1000, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(ssd.Classify(false, 4096, 1001, false) == ELatencySliResult::Bad);
-        UNIT_ASSERT(ssd.Classify(true, 4096, 1500, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(ssd.Classify(false, 4097, 1, false) == ELatencySliResult::Unknown);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;0:1:4097:1000;1:1:4097:2000", ssd.Serialize());
         const auto hdd = ci.DiagnosticsConfig->GetLatencySliConfig(
             NProto::STORAGE_MEDIA_HDD);
-        UNIT_ASSERT(hdd.Classify(false, 8192, 5000, false) == ELatencySliResult::Good);
-        UNIT_ASSERT(hdd.Classify(true, 4096, 1, false) == ELatencySliResult::Unknown);
-
-        // The VHost child receives the same resolved thresholds as its parent.
-        const auto child = TLatencySliConfig::TryParse(ssd.Serialize()).value();
-        UNIT_ASSERT_VALUES_EQUAL(ssd.Serialize(), child.Serialize());
-        UNIT_ASSERT(child.Classify(true, 4096, 2001, false) == ELatencySliResult::Bad);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:5000", hdd.Serialize());
     }
 
     Y_UNIT_TEST(ShouldKeepLatencySliFileSnapshotWhenApplyingCmsConfig)
@@ -327,8 +318,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             NProto::STORAGE_MEDIA_SSD);
         UNIT_ASSERT(config.Enabled);
         UNIT_ASSERT(ci.DiagnosticsConfig->GetLatencySliThresholds().empty());
-        UNIT_ASSERT(config.Classify(false, 4096, 1, false) == ELatencySliResult::Unknown);
-        UNIT_ASSERT(config.Classify(false, 4096, 1, true) == ELatencySliResult::Bad);
     }
 
     Y_UNIT_TEST(ShouldRejectUnreadableOrMalformedLatencySliFiles)

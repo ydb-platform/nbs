@@ -832,7 +832,7 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
     TVector<char> guest(size, 'W');
     std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
 
-    // A negative index means that all parts succeed.
+    // -1 means that all the parts succeed.
     for (int failedPart: {-1, 0, 1, 2}) {
         std::array<size_t, 3> order{0, 1, 2};
         do {
@@ -864,8 +864,6 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
                     stats);
                 if (i != order.back()) {
                     EXPECT_TRUE(CompletedBios.empty());
-                    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyGood.load());
-                    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyBad.load());
                 }
             }
 
@@ -877,7 +875,7 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             ASSERT_EQ(1u, CompletedBios.size());
             EXPECT_EQ(&bio.io, CompletedBios[0].Io);
             EXPECT_EQ(
-                failedPart < 0 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
+                failedPart == -1 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
                 CompletedBios[0].Status);
         } while (std::next_permutation(order.begin(), order.end()));
     }

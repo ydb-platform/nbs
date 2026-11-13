@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/common/latency_sli.h>
 
 #include <util/datetime/base.h>
-#include <util/datetime/cputimer.h>
 #include <util/system/types.h>
 
 #include <array>
@@ -121,26 +120,22 @@ struct TStats
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
 
-    // Set once before workers start; never copied into monitoring snapshots.
-    TLatencySliConfigPtr LatencySli;
-
-    void SetLatencySli(TLatencySliConfigPtr config)
-    {
-        LatencySli = config && config->Enabled ? std::move(config) : nullptr;
-    }
-
     void RecordFinalOutcome(
-        bool write, ui64 bytes, bool failed, ui64 elapsedUs) noexcept
+        bool write,
+        ui64 bytes,
+        bool failed,
+        ui64 elapsedUs,
+        const TLatencySliConfig* latencySli) noexcept
     {
         auto& stats = Requests[write];
         ++(failed ? stats.FinalErrors : stats.FinalCount);
-        if (!LatencySli) {
+        if (!latencySli || !latencySli->Enabled) {
             return;
         }
         const auto result =
             !failed && elapsedUs == std::numeric_limits<ui64>::max()
                 ? ELatencySliResult::Unknown
-                : LatencySli->Classify(write, bytes, elapsedUs, failed);
+                : latencySli->Classify(write, bytes, elapsedUs, failed);
         auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
                       : result == ELatencySliResult::Bad ? stats.LatencyBad
                                                         : stats.LatencyUnknown;
@@ -148,21 +143,6 @@ struct TStats
     }
 
     TStats() = default;
-
-    TStats(TStats&&) noexcept requires std::is_same_v<T, ui64> = default;
-    TStats& operator=(TStats&&) noexcept requires std::is_same_v<T, ui64> = default;
-
-    TStats(const TStats& rhs) noexcept
-        requires std::is_same_v<T, ui64>
-    {
-        operator=<T>(rhs);
-    }
-
-    TStats& operator=(const TStats& rhs) noexcept
-        requires std::is_same_v<T, ui64>
-    {
-        return this == &rhs ? *this : operator=<T>(rhs);
-    }
 
     template <typename U>
     explicit TStats(const TStats<U>& rhs) noexcept
@@ -191,7 +171,6 @@ struct TStats
             Times[i].template operator=<U>(rhs.Times[i]);
             Sizes[i].template operator=<U>(rhs.Sizes[i]);
         }
-        LatencySli.reset();
 
         return *this;
     }

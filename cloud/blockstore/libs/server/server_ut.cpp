@@ -767,24 +767,26 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager ports;
         const ui16 port = ports.GetPort();
         TTestFactory factory;
-        auto received = NewPromise<void>();
-        auto response = NewPromise<NProto::TWriteBlocksResponse>();
         auto completion = NewPromise<ui32>();
         auto service = std::make_shared<TTestService>();
-        service->WriteBlocksHandler = [&](const auto&)
+        service->ReadBlocksHandler = [](const auto&)
         {
-            received.SetValue();
-            return response.GetFuture();
+            NProto::TReadBlocksResponse response;
+            response.MutableBlocks()->AddBuffers(TString(4096, 'x'));
+            return MakeFuture(std::move(response));
         };
         auto stats = std::make_shared<TTestServerStats>();
         stats->RequestCompletedHandler =
-            [&](auto&, auto&, auto&, const auto& error)
+            [completion](auto&, auto&, auto&, const auto& error) mutable
         {
             completion.TrySetValue(error.GetCode());
         };
         NProto::TServerAppConfig proto;
         proto.MutableServerConfig()->SetPort(port);
         proto.MutableServerConfig()->SetDataPort(0);
+        // The request fits this limit, but the successful backend response
+        // exceeds it, making gRPC response delivery fail deterministically.
+        proto.MutableServerConfig()->SetMaxMessageSize(1024);
         auto server = CreateServer(
             std::make_shared<TServerAppConfig>(proto),
             factory.Logging,
@@ -809,16 +811,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             endpoint->Stop();
         };
-        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
-        request->MutableBlocks()->AddBuffers(TString(4096, 'x'));
+        auto request = std::make_shared<NProto::TReadBlocksRequest>();
+        request->SetBlocksCount(1);
+        request->SetBlockSize(4096);
         auto result =
-            endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
-        received.GetFuture().GetValue(TDuration::Seconds(5));
-        endpoint->Stop();
-        client->Stop();
-        UNIT_ASSERT(HasError(result.GetValue(TDuration::Seconds(5))));
-        // The backend succeeds only after the client has closed the RPC.
-        response.SetValue(NProto::TWriteBlocksResponse());
+            endpoint->ReadBlocks(MakeIntrusive<TCallContext>(), request);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_GRPC_RESOURCE_EXHAUSTED,
+            result.GetValue(TDuration::Seconds(5)).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_CANCELLED,
             completion.GetFuture().GetValue(TDuration::Seconds(5)));

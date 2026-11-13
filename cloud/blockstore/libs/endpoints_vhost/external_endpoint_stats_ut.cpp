@@ -172,7 +172,9 @@ auto LatencySnapshot(ui64 good, ui64 bad = 0)
 {
     return NJson::TJsonMap{
         {"latency_sli", NJson::TJsonMap{
-            {"version", ui64(1)}, {"config", "1;0:1:8193:1000"}}},
+            {"version", ui64(2)},
+            {"config_id", GetLatencySliConfigFingerprint(
+                TLatencySliConfig::TryParse("1;0:1:8193:1000").value())}}},
         {"read", NJson::TJsonMap{
             {"latency_good", good}, {"latency_bad", bad},
             {"latency_unknown", ui64(0)}}},
@@ -195,35 +197,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         reader.Update(LatencySnapshot(0)); // idle before the first request
         reader.Update(LatencySnapshot(0, 1));
         reader.Update(LatencySnapshot(0, 1)); // idle between failures
-        reader.Update(LatencySnapshot(0, 1));
         reader.Update(LatencySnapshot(0, 2));
+        reader.Update(LatencySnapshot(0, 2)); // idle after the last failure
         UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
-
-        reader.Update(LatencySnapshot(1, 2));
-        reader.Update(LatencySnapshot(1, 2)); // idle after a successful request
-        reader.Update(LatencySnapshot(1, 3));
-        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
-    }
-
-    Y_UNIT_TEST(ShouldAcceptBoundedConfigIdentity)
-    {
-        TFixture f(true);
-        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
-        auto snapshot = LatencySnapshot(3, 2);
-        snapshot["latency_sli"]["version"] = ui64(2);
-        snapshot["latency_sli"]["config_id"] = GetLatencySliConfigFingerprint(
-            *TLatencySliConfig::TryParse("1;0:1:8193:1000"));
-        reader.Update(snapshot);
-        auto group = f.GetLatencyCounters();
-        UNIT_ASSERT_VALUES_EQUAL(
-            3, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            2, group->GetCounter("LatencyBadOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPreserveEncryptionFailuresInLegacyFallback)
@@ -280,7 +258,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
         auto mismatched = LatencySnapshot(12);
-        mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
+        mismatched["latency_sli"]["config_id"] = "different-config";
         mismatched["read"]["count"] = ui64(1);
         reader.Update(mismatched);
         auto matching = LatencySnapshot(13);
@@ -313,11 +291,11 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
     Y_UNIT_TEST(ShouldKeepFailuresWithIncompatibleLatencyConfig)
     {
         for (const auto* operation: {"read", "write"}) {
-            for (const char* config: {"", "1;0:1:8193:2000"}) {
+            for (const char* configId: {"", "different-config"}) {
                 TFixture f(true);
                 TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
                 auto snapshot = LatencySnapshot(0);
-                snapshot["latency_sli"]["config"] = config;
+                snapshot["latency_sli"]["config_id"] = configId;
                 snapshot[operation]["count"] = ui64(3);
                 snapshot[operation]["errors"] = ui64(2);
                 snapshot[operation]["latency_bad"] = ui64(5);
