@@ -206,7 +206,10 @@ func registerControlplaneTasks(
 
 	logging.Info(ctx, "Registering image tasks")
 	// Snapshot and image backups report their queues side by side.
-	backupQueueMetricsRegistry := mon.NewRegistry("backup_queue")
+	var backupQueueMetricsRegistry metrics.Registry
+	if backupS3 != nil {
+		backupQueueMetricsRegistry = mon.NewRegistry("backup_queue")
+	}
 
 	err = images.RegisterForExecution(
 		ctx,

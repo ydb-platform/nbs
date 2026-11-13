@@ -1607,6 +1607,7 @@ func createImagesYDBTables(
 	folder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Creating tables for images in %v", db.AbsolutePath(folder))
@@ -1639,54 +1640,57 @@ func createImagesYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		"backup_queue",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
-			// Identifies the attempt: the create task of the image for one
-			// queued by its folder, a new ID for one queued by hand.
-			persistence.WithColumn(
-				"backup_id",
-				persistence.Optional(persistence.TypeUTF8),
+	if backupEnabled {
+		err = db.CreateOrAlterTable(
+			ctx,
+			folder,
+			"backup_queue",
+			persistence.NewCreateTableDescription(
+				persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+				// Identifies the attempt: the create task of the image for one
+				// queued by its folder, a new ID for one queued by hand.
+				persistence.WithColumn(
+					"backup_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				// The images.BackupImage task of the attempt; empty while the
+				// attempt waits for a free slot.
+				persistence.WithColumn(
+					"task_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithColumn(
+					"enqueued_at",
+					persistence.Optional(persistence.TypeTimestamp),
+				),
+				persistence.WithPrimaryKeyColumn("image_id"),
 			),
-			// The images.BackupImage task of the attempt; empty while the
-			// attempt waits for a free slot.
-			persistence.WithColumn(
-				"task_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"enqueued_at",
-				persistence.Optional(persistence.TypeTimestamp),
-			),
-			persistence.WithPrimaryKeyColumn("image_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Created backup_queue table")
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Created backup_queue table")
 
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		"backup_delete_queue",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn(
-				"image_id",
-				persistence.Optional(persistence.TypeUTF8),
+		err = db.CreateOrAlterTable(
+			ctx,
+			folder,
+			"backup_delete_queue",
+			persistence.NewCreateTableDescription(
+				persistence.WithColumn(
+					"image_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithPrimaryKeyColumn("image_id"),
 			),
-			persistence.WithPrimaryKeyColumn("image_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Created backup_delete_queue table")
+
 	}
-	logging.Info(ctx, "Created backup_delete_queue table")
 
 	logging.Info(ctx, "Created tables for images")
 
@@ -1697,6 +1701,7 @@ func dropImagesYDBTables(
 	ctx context.Context,
 	folder string,
 	db *persistence.YDBClient,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Dropping tables for images in %v", db.AbsolutePath(folder))
@@ -1713,17 +1718,20 @@ func dropImagesYDBTables(
 	}
 	logging.Info(ctx, "Dropped deleted table")
 
-	err = db.DropTable(ctx, folder, "backup_queue")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped backup_queue table")
+	if backupEnabled {
+		err = db.DropTable(ctx, folder, "backup_queue")
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped backup_queue table")
 
-	err = db.DropTable(ctx, folder, "backup_delete_queue")
-	if err != nil {
-		return err
+		err = db.DropTable(ctx, folder, "backup_delete_queue")
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped backup_delete_queue table")
+
 	}
-	logging.Info(ctx, "Dropped backup_delete_queue table")
 
 	logging.Info(ctx, "Dropped tables for images")
 

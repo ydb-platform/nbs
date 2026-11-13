@@ -177,6 +177,7 @@ func initSnapshotExport(
 					}),
 					nil,
 					creds,
+					persistence.WithS3ExportCompatibility(),
 				)
 				if err != nil {
 					cleanup()
@@ -189,6 +190,7 @@ func initSnapshotExport(
 				sourceRegistry,
 				snapshotDB,
 				s3,
+				config.GetSnapshotStorageBackupConfig() != nil,
 			)
 			if err != nil {
 				cleanup()

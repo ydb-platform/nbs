@@ -87,6 +87,7 @@ func CreateYDBTables(
 	placementGroupsFolder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	err := createDisksYDBTables(ctx, disksFolder, db, dropUnusedColumns)
@@ -94,12 +95,12 @@ func CreateYDBTables(
 		return err
 	}
 
-	err = createImagesYDBTables(ctx, imagesFolder, db, dropUnusedColumns)
+	err = createImagesYDBTables(ctx, imagesFolder, db, dropUnusedColumns, backupEnabled)
 	if err != nil {
 		return err
 	}
 
-	err = createSnapshotsYDBTables(ctx, snapshotsFolder, db, dropUnusedColumns)
+	err = createSnapshotsYDBTables(ctx, snapshotsFolder, db, dropUnusedColumns, backupEnabled)
 	if err != nil {
 		return err
 	}
@@ -144,6 +145,7 @@ func DropYDBTables(
 	filesystemsFolder string,
 	placementGroupsFolder string,
 	db *persistence.YDBClient,
+	backupEnabled bool,
 ) error {
 
 	err := dropDisksYDBTables(ctx, disksFolder, db)
@@ -151,12 +153,12 @@ func DropYDBTables(
 		return err
 	}
 
-	err = dropImagesYDBTables(ctx, imagesFolder, db)
+	err = dropImagesYDBTables(ctx, imagesFolder, db, backupEnabled)
 	if err != nil {
 		return err
 	}
 
-	err = dropSnapshotsYDBTables(ctx, snapshotsFolder, db)
+	err = dropSnapshotsYDBTables(ctx, snapshotsFolder, db, backupEnabled)
 	if err != nil {
 		return err
 	}
