@@ -31,9 +31,7 @@ void AllowConfigItem(
     ui32 kind,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* info)
 {
-    if (auto* allowList =
-            std::get_if<NKikimr::NConfig::TAllowList>(&info->ItemsServeRules))
-    {
+    if (auto* allowList = std::get_if<TAllowList>(&info->ItemsServeRules)) {
         allowList->Items.insert(kind);
     }
 }
