@@ -2467,6 +2467,96 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         });
     }
 
+    Y_UNIT_TEST_F(ShouldDeferDeviceUpdatesUntilAfterDriverSwitch, TFixture)
+    {
+        const auto& device = Devices[0];
+        TPromise<TVector<NProto::TNVMeDevice>> responses[]{
+            NewPromise<TVector<NProto::TNVMeDevice>>(),
+            NewPromise<TVector<NProto::TNVMeDevice>>(),
+            NewPromise<TVector<NProto::TNVMeDevice>>()};
+        TAutoEvent fetchRequested;
+
+        Y_DEFER
+        {
+            Service->Stop();
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&, attempt = 0]() mutable
+            {
+                if (attempt++ == 0) {
+                    return MakeFuture(Devices);
+                }
+
+                fetchRequested.Signal();
+                return responses[attempt - 2].GetFuture();
+            });
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+        }
+
+        // Complete the driver switch while a provider request is in flight.
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [](const TString&) { return TString("vfio0"); };
+        auto acquire = Service->AcquireNVMeDevice(
+            device.GetSerialNumber(),
+            EmptyIdempotenceId);
+        const auto [_, acquireError] = acquire.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            acquireError.GetCode(),
+            FormatError(acquireError));
+
+        auto updatedDevices = Devices;
+        auto& updatedDevice = updatedDevices[0];
+        updatedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_MAINTENANCE);
+        updatedDevice.SetPCIAddress("0000:f2:00.0");
+        updatedDevice.SetIOMMUGroup(42);
+        updatedDevice.SetFirmwareRev("new-firmware");
+        Executor
+            ->Execute(
+                [&]
+                {
+                    SysFs->AddrToDevice[updatedDevice.GetPCIAddress()] =
+                        updatedDevice;
+                })
+            .GetValueSync();
+
+        // Successful sysfs reads and explicit provider state changes must also
+        // be ignored when the request overlaps a driver switch.
+        responses[0].SetValue(updatedDevices);
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.DebugString(),
+                devices[0].DebugString());
+        }
+
+        // The next request does not overlap switching and must apply all
+        // changes.
+        responses[1].SetValue(updatedDevices);
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            updatedDevice.DebugString(),
+            devices[0].DebugString());
+    }
+
     Y_UNIT_TEST_F(ShouldReconcileDevices, TFixture)
     {
         TVector<NProto::TNVMeDevice> providedDeviceList;
