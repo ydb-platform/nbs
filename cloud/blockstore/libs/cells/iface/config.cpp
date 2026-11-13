@@ -206,6 +206,12 @@ const TConfiguredHostsByFqdn& TCellConfig::GetHosts() const
     return Impl->ConfiguredHosts;
 }
 
+TVector<TString> TCellConfig::GetEdsHostPatterns() const
+{
+    const auto& patterns = Impl->Config.GetEdsHostPatterns();
+    return {patterns.begin(), patterns.end()};
+}
+
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
 type TCellConfig::Get##name() const                                            \
 {                                                                              \
@@ -295,6 +301,11 @@ const NProto::TCellsConfig& TCellsConfig::GetCellsConfig() const
 const NClient::TClientAppConfig& TCellsConfig::GetGrpcClientConfig() const
 {
     return Impl->GrpcClientConfig;
+}
+
+const NProto::TEdsConfig& TCellsConfig::GetEds() const
+{
+    return Impl->Config.GetEds();
 }
 
 const TCellConfigByCellId& TCellsConfig::GetCells() const

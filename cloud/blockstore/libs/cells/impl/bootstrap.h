@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/icv2/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -35,6 +36,9 @@ struct TBootstrap
 
     // the node's own service, queried alongside the cells on a describe/search
     IBlockStorePtr LocalService;
+
+    // resolves the cells' EdsHostPatterns; null when there is no EDS to ask
+    IEdsHostFetcherPtr EdsFetcher;
 
     ITaskQueuePtr RdmaTaskQueue;
 

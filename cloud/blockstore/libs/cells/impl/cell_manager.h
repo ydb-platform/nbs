@@ -25,6 +25,7 @@ ICellManagerPtr CreateCellManager(
     ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
-    IBlockStorePtr localService);
+    IBlockStorePtr localService,
+    IEdsHostFetcherPtr edsFetcher = {});
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -1243,6 +1243,182 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         UNIT_ASSERT(seen.contains(hosts.Warm[1]));
         UNIT_ASSERT(!seen.contains("host-z"));
     }
+
+    Y_UNIT_TEST(ShouldPlaceOnHostsLearnedFromDiscovery)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        pool.UpdateConfiguredHosts({"host-a", "host-x"});
+        UNIT_ASSERT_VALUES_EQUAL(3, pool.GetCounters().HostsConfigured->Val());
+
+        // the static list stays whatever discovery says
+        THashSet<TString> seen;
+        for (ui32 i = 0; i < 200; ++i) {
+            auto picked = pool.PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            seen.insert(picked.GetResult().GetFqdn());
+        }
+        UNIT_ASSERT(seen.contains("host-a"));
+        UNIT_ASSERT(seen.contains("host-b"));
+        UNIT_ASSERT(seen.contains("host-x"));
+    }
+
+    Y_UNIT_TEST(ShouldForgetAColdHostDiscoveryNoLongerLists)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        pool.UpdateConfiguredHosts({"host-x"});
+        pool.UpdateConfiguredHosts({});
+
+        // nothing was ever built for it and nobody held it
+        for (const auto& status: pool.GetHostStatuses()) {
+            UNIT_ASSERT_VALUES_UNEQUAL("host-x", status.Fqdn);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, pool.GetCounters().HostsConfigured->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepAHeldHostDiscoveryNoLongerListsUntilReleased)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        pool.UpdateConfiguredHosts({"host-x"});
+        pool.AcquireControlChannel("host-x");
+        pool.UpdateConfiguredHosts({});
+
+        // still there while a connection holds it, but no longer where new
+        // connections go while a configured host is available
+        bool present = false;
+        for (const auto& status: pool.GetHostStatuses()) {
+            present |= status.Fqdn == "host-x";
+        }
+        UNIT_ASSERT(present);
+        for (ui32 i = 0; i < 50; ++i) {
+            auto picked = pool.PickHost();
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_UNEQUAL("host-x", picked.GetResult().GetFqdn());
+        }
+
+        // let go, it is dropped at once
+        pool.ReleaseControlChannel("host-x");
+        for (const auto& status: pool.GetHostStatuses()) {
+            UNIT_ASSERT_VALUES_UNEQUAL("host-x", status.Fqdn);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWarmAHostLearnedFromDiscoveryWhenShortOfLiveChannels)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        pool.AcquireControlChannel("host-a");
+        pool.AcquireControlChannel("host-b");
+        pool.SetHostAlive("host-a", false);
+        pool.SetHostAlive("host-b", false);
+
+        // the only hosts left are dead, so the new one fills the warm minimum
+        pool.UpdateConfiguredHosts({"host-x"});
+        UNIT_ASSERT_VALUES_EQUAL(1, endpoints->SetupCalls["host-x"]);
+    }
+
+    Y_UNIT_TEST(ShouldNotMoveOntoAHostDiscoveryNoLongerLists)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        // host-x answers and is held, so it would normally be the verified
+        // host a move prefers over the unprobed configured ones
+        pool.UpdateConfiguredHosts({"host-x"});
+        pool.AcquireControlChannel("host-x");
+        pool.SetHostAlive("host-x", true);
+        pool.UpdateConfiguredHosts({});
+
+        // the operator is taking it out: not a target for a move either
+        for (ui32 i = 0; i < 50; ++i) {
+            auto picked = pool.PickHostExcept({"host-a"});
+            UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+            UNIT_ASSERT_VALUES_EQUAL("host-b", picked.GetResult().GetFqdn());
+        }
+
+        // and not a last resort: the static list is all that is left to try
+        pool.AcquireControlChannel("host-a");
+        pool.AcquireControlChannel("host-b");
+        pool.SetHostAlive("host-a", false);
+        pool.SetHostAlive("host-b", false);
+        UNIT_ASSERT(HasError(pool.PickHost()));
+
+        // until discovery lists it again
+        pool.UpdateConfiguredHosts({"host-x"});
+        auto picked = pool.PickHost();
+        UNIT_ASSERT_C(!HasError(picked), picked.GetError());
+        UNIT_ASSERT_VALUES_EQUAL("host-x", picked.GetResult().GetFqdn());
+    }
+
+    Y_UNIT_TEST(ShouldWarmTheReplacementWhenDiscoveryRotatesHosts)
+    {
+        // no static hosts: the cell lives on what discovery lists
+        NProto::TCellConfig proto;
+        proto.SetCellId("cell-1");
+        proto.SetGrpcPort(9766);
+        proto.SetMinCellConnections(1);
+
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(
+            std::make_shared<TCellConfig>(std::move(proto)),
+            MakeBootstrap(endpoints));
+        pool.Start();
+
+        pool.UpdateConfiguredHosts({"host-x"});
+        UNIT_ASSERT_VALUES_EQUAL(1, endpoints->SetupCalls["host-x"]);
+
+        // host-x is held by a connection and still answers, but it is on
+        // its way out: it does not fill the warm minimum, host-y does
+        pool.AcquireControlChannel("host-x");
+        pool.SetHostAlive("host-x", true);
+        pool.UpdateConfiguredHosts({"host-y"});
+        UNIT_ASSERT_VALUES_EQUAL(1, endpoints->SetupCalls["host-y"]);
+
+        // the connection lets go: nothing is left for host-x to serve, even
+        // though host-y has not answered a ping yet
+        pool.ReleaseControlChannel("host-x");
+        for (const auto& status: pool.GetHostStatuses()) {
+            UNIT_ASSERT_VALUES_UNEQUAL("host-x", status.Fqdn);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDescribeThroughVerifiedHostsFirst)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        pool.Start();
+
+        auto clientConfig = std::make_shared<NClient::TClientAppConfig>();
+
+        // discovery brings in hosts nobody has talked to; host-a answered
+        pool.UpdateConfiguredHosts({"host-x", "host-y", "host-z"});
+        pool.AcquireControlChannel("host-a");
+        pool.SetHostAlive("host-a", true);
+
+        for (ui32 i = 0; i < 10; ++i) {
+            auto describe = pool.GetDescribeEndpoints(clientConfig);
+            UNIT_ASSERT_VALUES_EQUAL(1, describe.size());
+            UNIT_ASSERT_C(
+                describe[0].GetLogTag().Contains("host-a"),
+                describe[0].GetLogTag());
+        }
+
+        // no channel was built to a cold host just to ask it
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoints->SetupCalls["host-x"]);
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoints->SetupCalls["host-y"]);
+        UNIT_ASSERT_VALUES_EQUAL(0, endpoints->SetupCalls["host-z"]);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells
