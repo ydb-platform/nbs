@@ -24,6 +24,7 @@
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/service/service_actions.h>
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
@@ -430,10 +431,19 @@ void TBootstrapVhost::InitComponents()
             break;
     }
 
+    EndpointManager = CreateActionsService(
+        std::move(EndpointManager),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
+
+    // Wraps the actions service, so the actions need admin rights.
     if (Configs->Options->Service == EServiceKind::Kikimr) {
         EndpointManager = CreateAuthService(
             std::move(EndpointManager),
-            CreateKikimrAuthProvider(ActorSystem));
+            CreateKikimrAuthProvider(ActorSystem),
+            Configs->ServerConfig->GetActionsNoAuth());
     }
 
     auto serverCounters =

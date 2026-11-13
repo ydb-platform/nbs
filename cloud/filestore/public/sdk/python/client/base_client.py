@@ -49,6 +49,7 @@ ENDPOINT_METHODS = [
     "list_endpoints",
     "kick_endpoint",
     "ping",
+    "execute_action",
 ]
 
 

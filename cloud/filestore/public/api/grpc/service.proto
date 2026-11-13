@@ -464,4 +464,15 @@ service TEndpointManagerService
             body: "*"
         };
     }
+
+    //
+    // Private API.
+    //
+
+    rpc ExecuteAction(TExecuteActionRequest) returns (TExecuteActionResponse) {
+        option (google.api.http) = {
+            post: "/execute_action"
+            body: "*"
+        };
+    }
 }

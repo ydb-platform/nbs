@@ -5,7 +5,9 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 TEST_SRCS(test.py)
 
 DEPENDS(
+    cloud/filestore/apps/client
     cloud/filestore/apps/server
+    cloud/filestore/apps/vhost
 )
 
 DATA(

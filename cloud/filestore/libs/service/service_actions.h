@@ -27,6 +27,11 @@ IFileStoreServicePtr CreateActionsService(
     IFileStoreServicePtr service,
     THashMap<TString, TActionHandler> actions);
 
+// The same for the endpoint service, e.g. of filestore-vhost.
+IEndpointManagerPtr CreateActionsService(
+    IEndpointManagerPtr service,
+    THashMap<TString, TActionHandler> actions);
+
 // The "updatecertificates" action: |updateCertificates| re-reads the TLS
 // certificate files, e.g. with ICertificateWatcher::UpdateCertificates().
 TActionHandler CreateUpdateCertificatesAction(
