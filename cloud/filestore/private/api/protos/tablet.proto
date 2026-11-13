@@ -1157,6 +1157,8 @@ message TUnsafeChangeTabletStateRequest
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 3;
+
+    optional bool GuestPosixAclEnabled = 4;
 }
 
 message TUnsafeChangeTabletStateResponse

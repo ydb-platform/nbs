@@ -80,6 +80,8 @@ message TCreateHandleRequest
     // If set, the client allows CreateHandle to return before the handle is
     // durably persisted.
     bool AllowAsyncCreateHandle = 14;
+
+    bool GuestPosixAclEnabled = 15;
 }
 
 message TCreateHandleResponse

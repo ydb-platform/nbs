@@ -915,14 +915,30 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
 {
     Y_UNUSED(ctx);
 
-    auto db = CreateIndexTabletDatabase(tx.DB);
+    if (args.Request.HasGuestPosixAclEnabled() &&
+        args.Request.GetGuestPosixAclEnabled() != GetGuestPosixAclEnabled() &&
+        HasSessions())
+    {
+        args.Error = MakeError(
+            E_REJECTED,
+            "GuestPosixAclEnabled cannot be changed while the tablet has "
+            "sessions");
+        return;
+    }
 
+    auto db = CreateIndexTabletDatabase(tx.DB);
     if (args.Request.HasCompressNodeRef()) {
         SetCompressNodeRef(*db, args.Request.GetCompressNodeRef());
     }
 
     if (args.Request.HasFrozen()) {
         SetFrozen(*db, args.Request.GetFrozen());
+    }
+
+    if (args.Request.HasGuestPosixAclEnabled()) {
+        SetGuestPosixAclEnabled(
+            *db,
+            args.Request.GetGuestPosixAclEnabled());
     }
 }
 
@@ -933,7 +949,8 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>(
+            std::move(args.Error));
 
     LOG_INFO(
         ctx,
