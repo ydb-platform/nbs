@@ -17,17 +17,19 @@
 {% for report in workload.reports or [none] %}
 {% set status = workload.overall(report) %}
 <tr>
-<td align="center">{{ icon(status) }}{% if workload.workflow_failed %}<sup title="{{ 'Part of workflow failed but you can merge changes' if status == 'completed' else 'Part of workflow failed' }}">❗</sup>{% endif %}</td>
+<td align="center">{{ icon(status) }}{% if workload.workflow_failed %}<sup title="{{ 'Part of workflow failed but you can merge changes' if workload.can_merge_after_cleanup_failure(report) else 'Part of workflow failed' }}">❗</sup>{% endif %}</td>
 {% if loop.first %}
 <td rowspan="{{ workload.reports|length or 1 }}">{% for target in workload.target.split(',') %}{{ link(target, workload.job_url) }}{% if not loop.last %},<br />{% endif %}{% endfor %}</td>
 {% endif %}
 {% if report %}
-<td align="center">{% if loop.first and workload.build %}{{ icon(workload.build) }}{% if workload.build_error_url %} {{ link('log', workload.build_error_url) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}{% else %}—{% endif %}</td>
+{% set build_state = workload.build_state(report) %}
+{% set build_error_url = report.build_error_url if report.count('FAIL_BUILD') else workload.build_error_url %}
+<td align="center">{% if build_state %}{{ icon(build_state) }}{% if build_error_url %} {{ link('log', build_error_url) }}{% endif %}{% if loop.first %}{{ duration(workload.build_duration_seconds, 'Build') }}{% endif %}{% else %}—{% endif %}</td>
 <td align="center" title="{{ report.title }}; commit {{ report.commit }}; test time {{ report.elapsed }}s">{{ report.iteration }}{% if report.history_url %} {{ link('history', report.history_url) }}{% endif %}</td>
 {% if report.message %}
 <td colspan="8">🔴 {{ report.message }}{% if report.build_error_url %} — {{ link('log', report.build_error_url) }}{% endif %}{{ duration(report.elapsed, 'Tests') }}</td>
 {% else %}
-<td align="center">{{ icon('failed' if report.failed else 'completed') }}{{ duration(report.elapsed, 'Tests') }}</td>
+<td align="center">{{ icon('failed' if report.failed else 'completed') }}{% if report.execution_message %}<br /> {{ report.execution_message }}{% endif %}{{ duration(report.elapsed, 'Tests') }}</td>
 <td align="right">{{ link(report.total, report.url) }}</td>
 {% for status in count_statuses %}
 <td align="right">{{ link(report.count(status), report.count_url(status)) }}</td>

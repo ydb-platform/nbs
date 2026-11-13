@@ -372,6 +372,7 @@ runs:
                 JUNIT_AVAILABLE=0
             fi
             FAIL_CHECKER_RC="$RC"
+            ATTEMPT_BUILD_FAILED_COUNT=0
             if [ "$JUNIT_AVAILABLE" -eq 0 ] && [ "$FAIL_CHECKER_RC" -eq 0 ]; then
                 FAIL_CHECKER_RC=1
             fi
@@ -474,6 +475,7 @@ runs:
                 fi
                 BUILD_FAILED_COUNT_TMP=$BUILD_FAILED_COUNT
                 FAIL_CHECKER_TEMP_FILE=$(mktemp -p /home/github)
+                export FAIL_CHECKER_TEMP_FILE
                 FAIL_CHECKER_EXIT_CODE_FILE=$(mktemp)
                 set +e
                 {
@@ -487,6 +489,7 @@ runs:
                     if [ -z "$BUILD_FAILED_COUNT" ]; then
                         BUILD_FAILED_COUNT=0
                     fi
+                    ATTEMPT_BUILD_FAILED_COUNT=$BUILD_FAILED_COUNT
                     rm "$FAIL_CHECKER_TEMP_FILE"
                 fi
                 if [ "$BUILD_FAILED_COUNT" -gt "$BUILD_FAILED_COUNT_TMP" ]; then
@@ -567,7 +570,7 @@ runs:
 
             platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
             BUILD_ERROR_LOG_URL_FOR_ITERATION=""
-            SUMMARY_BUILD_FAILED_COUNT="${BUILD_FAILED_COUNT:-0}"
+            SUMMARY_BUILD_FAILED_COUNT="$ATTEMPT_BUILD_FAILED_COUNT"
             SUMMARY_FILE="$ARTIFACTS_DIR/summary/${COMPONENT_DIR}${i}/build_errors.html"
             PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/.github" \
                 python3 -m scripts.tests.ya_build_errors \
@@ -614,6 +617,7 @@ runs:
                 --workload-status in_progress \
                 --component "${COMPONENT:-all}" \
                 --test-iteration "$((i - 1))" \
+                --test-exit-code "$FAIL_CHECKER_RC" \
                 --test-target "${TEST_TARGET//\"/}" \
                 --test-time $((TEST_END_TIME - TEST_START_TIME)) \
                 --build-error-log-url "$BUILD_ERROR_LOG_URL_FOR_ITERATION" \
