@@ -88,6 +88,8 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvRebuildMetadataRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetBatchSize(Request.GetBatchSize());
+    request->Record.SetAllowedCpuTimePerSecond(
+        Request.GetAllowedCpuTimePerSecond());
 
     switch (Request.GetMetadataType()) {
         case NPrivateProto::USED_BLOCKS: {
@@ -96,6 +98,10 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
         }
         case NPrivateProto::BLOCK_COUNT: {
             request->Record.SetMetadataType(NProto::BLOCK_COUNT);
+            break;
+        }
+        case NPrivateProto::COMPACTION_MAP: {
+            request->Record.SetMetadataType(NProto::COMPACTION_MAP);
             break;
         }
         default: {
