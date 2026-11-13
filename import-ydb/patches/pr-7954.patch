@@ -1,0 +1,142 @@
+diff --git a/contrib/ydb/core/blobstorage/nodewarden/node_warden_proxy.cpp b/contrib/ydb/core/blobstorage/nodewarden/node_warden_proxy.cpp
+index bea1d71e0ce..d06d406ac76 100644
+--- a/contrib/ydb/core/blobstorage/nodewarden/node_warden_proxy.cpp
++++ b/contrib/ydb/core/blobstorage/nodewarden/node_warden_proxy.cpp
+@@ -51,6 +51,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
+                             .Controls = TBlobStorageProxyControlWrappers{
+                                 .EnablePutBatching = EnablePutBatching,
+                                 .EnableVPatch = EnableVPatch,
++                                .LongRequestThresholdMs = LongRequestThresholdMs,
+                                 ADD_CONTROLS_FOR_DEVICE_TYPES(SlowDiskThreshold),
+                                 ADD_CONTROLS_FOR_DEVICE_TYPES(PredictedDelayMultiplier),
+                                 ADD_CONTROLS_FOR_DEVICE_TYPES(MaxNumOfSlowDisks),
+@@ -74,6 +75,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
+                         .Controls = TBlobStorageProxyControlWrappers{
+                             .EnablePutBatching = EnablePutBatching,
+                             .EnableVPatch = EnableVPatch,
++                            .LongRequestThresholdMs = LongRequestThresholdMs,
+                             ADD_CONTROLS_FOR_DEVICE_TYPES(SlowDiskThreshold),
+                             ADD_CONTROLS_FOR_DEVICE_TYPES(PredictedDelayMultiplier),
+                             ADD_CONTROLS_FOR_DEVICE_TYPES(MaxNumOfSlowDisks),
+@@ -89,6 +91,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
+             .Controls = TBlobStorageProxyControlWrappers{
+                 .EnablePutBatching = EnablePutBatching,
+                 .EnableVPatch = EnableVPatch,
++                .LongRequestThresholdMs = LongRequestThresholdMs,
+                 ADD_CONTROLS_FOR_DEVICE_TYPES(SlowDiskThreshold),
+                 ADD_CONTROLS_FOR_DEVICE_TYPES(PredictedDelayMultiplier),
+                 ADD_CONTROLS_FOR_DEVICE_TYPES(MaxNumOfSlowDisks),
+diff --git a/contrib/ydb/core/blobstorage/ut_blobstorage/long_request_threshold.cpp b/contrib/ydb/core/blobstorage/ut_blobstorage/long_request_threshold.cpp
+new file mode 100644
+index 00000000000..4a571267ca2
+--- /dev/null
++++ b/contrib/ydb/core/blobstorage/ut_blobstorage/long_request_threshold.cpp
+@@ -0,0 +1,75 @@
++#include <contrib/ydb/core/blobstorage/ut_blobstorage/lib/env.h>
++
++#include <util/stream/str.h>
++
++Y_UNIT_TEST_SUITE(LongRequestThreshold) {
++    Y_UNIT_TEST(IcbUpdatesAffectExistingProxy) {
++        TStringStream log;
++        TEnvironmentSetup env({
++            .NodeCount = 1,
++            .Erasure = TBlobStorageGroupType::ErasureNone,
++        });
++        env.Runtime->LogStream = &log;
++        env.Runtime->SetLogPriority(NKikimrServices::BS_PROXY_GET, NLog::PRI_WARN);
++        env.CreateBoxAndPool(1, 1);
++        env.Sim(TDuration::Minutes(1));
++
++        const auto groups = env.GetGroups();
++        UNIT_ASSERT_VALUES_EQUAL(groups.size(), 1);
++        const ui32 groupId = groups.front();
++        const TActorId edge = env.Runtime->AllocateEdgeActor(1);
++        const TString data = "long request threshold test";
++        const TLogoBlobID blobId(1, 1, 1, 0, data.size(), 0);
++
++        // Create the proxy before updating its ICB control.
++        env.Runtime->WrapInActorContext(edge, [&] {
++            SendToBSProxy(edge, groupId, new TEvBlobStorage::TEvPut(blobId, data, TInstant::Max()));
++        });
++        auto put = env.WaitForEdgeActorEvent<TEvBlobStorage::TEvPutResult>(edge, false);
++        UNIT_ASSERT_VALUES_EQUAL(put->Get()->Status, NKikimrProto::OK);
++
++        auto checkGet = [&](ui64 thresholdMs, bool expectWarning) {
++            TAtomic previousValue;
++            auto icb = env.Runtime->GetNode(1)->AppData->Icb;
++            icb->SetValue("DSProxyControls.LongRequestThresholdMs", thresholdMs, previousValue);
++            TAtomic currentValue = 0;
++            bool exists = false;
++            icb->GetValue("DSProxyControls.LongRequestThresholdMs", currentValue, exists);
++            UNIT_ASSERT(exists);
++            UNIT_ASSERT_VALUES_EQUAL(currentValue, thresholdMs);
++            // TMemorizableControlWrapper caches the value for up to 15 seconds.
++            env.Sim(TDuration::Seconds(16));
++            log.Clear();
++
++            std::vector<std::unique_ptr<IEventHandle>> delayed;
++            env.Runtime->FilterFunction = [&](ui32, std::unique_ptr<IEventHandle>& ev) {
++                if (ev->GetTypeRewrite() == TEvBlobStorage::TEvVGetResult::EventType) {
++                    delayed.push_back(std::move(ev));
++                    return false;
++                }
++                return true;
++            };
++            env.Runtime->WrapInActorContext(edge, [&] {
++                SendToBSProxy(edge, groupId, new TEvBlobStorage::TEvGet(
++                    blobId, 0, data.size(), TInstant::Max(), NKikimrBlobStorage::FastRead));
++            });
++            env.Sim(TDuration::MilliSeconds(200));
++            env.Runtime->FilterFunction = {};
++            UNIT_ASSERT(!delayed.empty());
++            for (auto& ev : delayed) {
++                const ui32 nodeId = ev->GetRecipientRewrite().NodeId();
++                env.Runtime->Send(ev.release(), nodeId);
++            }
++
++            auto get = env.WaitForEdgeActorEvent<TEvBlobStorage::TEvGetResult>(edge, false);
++            UNIT_ASSERT_VALUES_EQUAL(get->Get()->Status, NKikimrProto::OK);
++            UNIT_ASSERT_VALUES_EQUAL(get->Get()->ResponseSz, 1);
++            UNIT_ASSERT_VALUES_EQUAL(get->Get()->Responses[0].Status, NKikimrProto::OK);
++            UNIT_ASSERT_VALUES_EQUAL(get->Get()->Responses[0].Buffer.ConvertToString(), data);
++            UNIT_ASSERT_VALUES_EQUAL_C(log.Str().Contains("BPG71"), expectWarning, log.Str());
++        };
++
++        checkGet(1000, false);
++        checkGet(100, true);
++    }
++}
+diff --git a/contrib/ydb/core/blobstorage/ut_blobstorage/ut_long_request_threshold/ya.make b/contrib/ydb/core/blobstorage/ut_blobstorage/ut_long_request_threshold/ya.make
+new file mode 100644
+index 00000000000..7496af13ea2
+--- /dev/null
++++ b/contrib/ydb/core/blobstorage/ut_blobstorage/ut_long_request_threshold/ya.make
+@@ -0,0 +1,15 @@
++UNITTEST_FOR(contrib/ydb/core/blobstorage/ut_blobstorage)
++
++FORK_SUBTESTS()
++
++SIZE(MEDIUM)
++
++SRCS(
++    long_request_threshold.cpp
++)
++
++PEERDIR(
++    contrib/ydb/core/blobstorage/ut_blobstorage/lib
++)
++
++END()
+diff --git a/contrib/ydb/core/blobstorage/ut_blobstorage/ya.make b/contrib/ydb/core/blobstorage/ut_blobstorage/ya.make
+index f9c7e6537a4..b9543891608 100644
+--- a/contrib/ydb/core/blobstorage/ut_blobstorage/ya.make
++++ b/contrib/ydb/core/blobstorage/ut_blobstorage/ya.make
+@@ -73,6 +73,7 @@ RECURSE_FOR_TESTS(
+     ut_donor
+     ut_group_reconfiguration
+     ut_huge
++    ut_long_request_threshold
+     ut_startup_brokers
+     ut_read_only_vdisk
+     ut_osiris
