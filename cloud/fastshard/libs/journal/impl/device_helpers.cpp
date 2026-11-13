@@ -53,6 +53,12 @@ TVector<TPageRange> MakePageRanges(
     return MakePageRangesImpl(request.GetPageGroups());
 }
 
+TVector<TPageRange> MakePageRanges(
+    const NCloud::NProto::TWritePagesRequest& request)
+{
+    return MakePageRangesImpl(request.GetPageGroups());
+}
+
 TVector<TPageRange> MakePageRanges(const NCloud::NProto::TJournalRecord& record)
 {
     return MakePageRangesImpl(record.GetPageGroups());

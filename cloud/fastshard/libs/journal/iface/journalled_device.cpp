@@ -53,6 +53,13 @@ public:
         Y_UNUSED(request);
         return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>({});
     }
+
+    [[nodiscard]] auto WritePages(NCloud::NProto::TWritePagesRequest request)
+        -> TFuture<NCloud::NProto::TWritePagesResponse> final
+    {
+        Y_UNUSED(request);
+        return MakeFuture<NCloud::NProto::TWritePagesResponse>({});
+    }
 };
 
 }   // namespace

@@ -18,6 +18,8 @@ namespace {
 struct TTestDevice final: public IDevice
 {
     ui32 WritePagesCount = 0;
+    TVector<TPageRange> LastWrittenRanges;
+    NCloud::NProto::TError WritePagesError;
 
     [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> TFuture<TResultOrError<TVector<TBuffer>>> final
@@ -31,11 +33,10 @@ struct TTestDevice final: public IDevice
     [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
         -> TFuture<NCloud::NProto::TError> final
     {
-        Y_UNUSED(ranges);
-
         ++WritePagesCount;
+        LastWrittenRanges = std::move(ranges);
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture(WritePagesError);
     }
 
     [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
@@ -117,6 +118,50 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         // the rejected records have not reached the data store
 
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->WritePagesCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldWritePagesToDataStore, TFixture)
+    {
+        NCloud::NProto::TWritePagesRequest request;
+
+        auto& group = *request.AddPageGroups();
+        group.SetFirstPageNo(0x10);
+        group.AddContent()->resize(4096, 'A');
+        group.AddContent()->resize(4096, 'B');
+
+        const auto error =
+            Device->WritePages(request).GetValueSync().GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, DataStore->WritePagesCount);
+
+        const auto& ranges = DataStore->LastWrittenRanges;
+        UNIT_ASSERT_VALUES_EQUAL(1, ranges.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x10, ranges[0].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Pages.size());
+
+        for (size_t i = 0; i != group.ContentSize(); ++i) {
+            const auto& page = ranges[0].Pages[i];
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                group.GetContent(i),
+                TStringBuf(page.Data(), page.Size()),
+                i);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReportWritePagesError, TFixture)
+    {
+        DataStore->WritePagesError = MakeError(E_IO, "device is broken");
+
+        NCloud::NProto::TWritePagesRequest request;
+
+        auto& group = *request.AddPageGroups();
+        group.SetFirstPageNo(0x10);
+        group.AddContent()->resize(4096, 'A');
+
+        const auto error =
+            Device->WritePages(request).GetValueSync().GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
     }
 }
 

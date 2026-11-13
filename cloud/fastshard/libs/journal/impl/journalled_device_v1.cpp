@@ -138,6 +138,14 @@ public:
         NCloud::NProto::TAdvanceLsnLowWatermarkResponse response;
         return MakeFuture(response);
     }
+
+    [[nodiscard]] auto WritePages(NCloud::NProto::TWritePagesRequest request)
+        -> TFuture<NCloud::NProto::TWritePagesResponse> final
+    {
+        return DataStore->WritePages(MakePageRanges(request)).Apply(
+            [](const auto& future) -> NCloud::NProto::TWritePagesResponse
+            { return TErrorResponse(ExtractResponse(future)); });
+    }
 };
 
 }   // namespace
