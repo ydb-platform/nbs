@@ -1654,6 +1654,7 @@ func createSnapshotsYDBTables(
 	folder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Creating tables for snapshots in %v", db.AbsolutePath(folder))
@@ -1704,56 +1705,59 @@ func createSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		"backup_queue",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn(
-				"backup_id",
-				persistence.Optional(persistence.TypeUTF8),
+	if backupEnabled {
+		err = db.CreateOrAlterTable(
+			ctx,
+			folder,
+			"backup_queue",
+			persistence.NewCreateTableDescription(
+				persistence.WithColumn(
+					"backup_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+				// The snapshots.BackupSnapshot task of the attempt; empty while
+				// the attempt waits for a free slot.
+				persistence.WithColumn(
+					"task_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithColumn(
+					"enqueued_at",
+					persistence.Optional(persistence.TypeTimestamp),
+				),
+				persistence.WithPrimaryKeyColumn("snapshot_id"),
 			),
-			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-			// The snapshots.BackupSnapshot task of the attempt; empty while
-			// the attempt waits for a free slot.
-			persistence.WithColumn(
-				"task_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"enqueued_at",
-				persistence.Optional(persistence.TypeTimestamp),
-			),
-			persistence.WithPrimaryKeyColumn("snapshot_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Created backup_queue table")
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Created backup_queue table")
 
-	err = db.CreateOrAlterTable(
-		ctx,
-		folder,
-		"backup_delete_queue",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn(
-				"snapshot_id",
-				persistence.Optional(persistence.TypeUTF8),
+		err = db.CreateOrAlterTable(
+			ctx,
+			folder,
+			"backup_delete_queue",
+			persistence.NewCreateTableDescription(
+				persistence.WithColumn(
+					"snapshot_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithColumn(
+					"disk_id",
+					persistence.Optional(persistence.TypeUTF8),
+				),
+				persistence.WithPrimaryKeyColumn("snapshot_id"),
 			),
-			persistence.WithColumn(
-				"disk_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithPrimaryKeyColumn("snapshot_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Created backup_delete_queue table")
+
 	}
-	logging.Info(ctx, "Created backup_delete_queue table")
 
 	logging.Info(ctx, "Created tables for snapshots")
 
@@ -1764,6 +1768,7 @@ func dropSnapshotsYDBTables(
 	ctx context.Context,
 	folder string,
 	db *persistence.YDBClient,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Dropping tables for snapshots in %v", db.AbsolutePath(folder))
@@ -1786,17 +1791,20 @@ func dropSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Dropped deleted table")
 
-	err = db.DropTable(ctx, folder, "backup_queue")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped backup_queue table")
+	if backupEnabled {
+		err = db.DropTable(ctx, folder, "backup_queue")
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped backup_queue table")
 
-	err = db.DropTable(ctx, folder, "backup_delete_queue")
-	if err != nil {
-		return err
+		err = db.DropTable(ctx, folder, "backup_delete_queue")
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped backup_delete_queue table")
+
 	}
-	logging.Info(ctx, "Dropped backup_delete_queue table")
 
 	logging.Info(ctx, "Dropped tables for snapshots")
 

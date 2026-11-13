@@ -127,7 +127,7 @@ func setupEnvironment(
 		ChunkBlobsS3KeyPrefix:     &chunkBlobsS3KeyPrefix,
 	}
 
-	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true)
 	require.NoError(t, err)
 
 	return ctx, db, s3, config
@@ -311,7 +311,7 @@ func TestWriteChunkWithOverriddenTableName(t *testing.T) {
 
 			tableName := "chunk_blobs_v2"
 			config.ChunkBlobsTableName = &tableName
-			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true)
 			require.NoError(t, err)
 
 			storage := newStorage(db, s3, config, testCase.useS3)
@@ -330,7 +330,7 @@ func TestShadowTableRepeatsWrites(t *testing.T) {
 
 			shadowTableName := "chunk_blobs_shadow"
 			config.ChunkBlobsShadowTableName = &shadowTableName
-			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+			err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true)
 			require.NoError(t, err)
 
 			storage := newStorage(db, s3, config, testCase.useS3)

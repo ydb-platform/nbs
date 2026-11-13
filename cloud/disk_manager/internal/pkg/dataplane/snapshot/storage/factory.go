@@ -15,9 +15,14 @@ func NewStorage(
 	metricsRegistry common_metrics.Registry,
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
+	backupEnabled bool,
 ) (Storage, error) {
 
 	tablesPath := db.AbsolutePath(config.GetStorageFolder())
+	followerChunksTableName := ""
+	if backupEnabled {
+		followerChunksTableName = config.GetFollowerChunksTableName()
+	}
 	probeCompressionPercentage := config.GetProbeCompressionPercentage()
 
 	var chunkStorageS3 *chunks.StorageS3
@@ -31,7 +36,7 @@ func NewStorage(
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
-			config.GetFollowerChunksTableName(),
+			followerChunksTableName,
 			metrics.New(metricsRegistry, "s3"),
 			probeCompressionPercentage,
 		)
@@ -39,6 +44,7 @@ func NewStorage(
 
 	ydbMetrics := metrics.New(metricsRegistry, "ydb")
 	return &storageYDB{
+		backupEnabled:            backupEnabled,
 		db:                       db,
 		tablesPath:               tablesPath,
 		metrics:                  ydbMetrics,
@@ -46,13 +52,13 @@ func NewStorage(
 		shallowCopyWorkerCount:   int(config.GetShallowCopyWorkerCount()),
 		shallowCopyInflightLimit: int(config.GetShallowCopyInflightLimit()),
 		chunkCompression:         config.GetChunkCompression(),
-		followerChunksTableName:  config.GetFollowerChunksTableName(),
+		followerChunksTableName:  followerChunksTableName,
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
-			config.GetFollowerChunksTableName(),
+			followerChunksTableName,
 			ydbMetrics,
 			probeCompressionPercentage,
 		),
