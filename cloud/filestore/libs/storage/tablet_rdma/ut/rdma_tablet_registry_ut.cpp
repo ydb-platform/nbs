@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_private.h>
 #include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -108,11 +109,31 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             registry.FindTablet(MakeActorId(2)));
 
         registry.UnregisterPipe(MakeActorId(2));
-        registry.UnregisterTablet(MakeActorId(10));
 
         UNIT_ASSERT_VALUES_EQUAL(
             TActorId(),
             registry.FindTablet(MakeActorId(2)));
+    }
+
+    Y_UNIT_TEST(ShouldMovePipeRegisteredForAnotherTablet)
+    {
+        TRdmaTabletRegistry registry;
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(20));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(1)));
+
+        registry.UnregisterTablet(MakeActorId(10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(1)));
+
+        registry.UnregisterTablet(MakeActorId(20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(1)));
     }
 
     Y_UNIT_TEST(ShouldUnregisterOnlyPipesOfTablet)
@@ -155,7 +176,14 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         tablet.DisconnectPipe();
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvTabletPipe::EvServerDisconnected);
+        options.FinalEvents.emplace_back(
+            [&](IEventHandle& ev)
+            {
+                return ev.GetTypeRewrite() ==
+                           TEvTabletPipe::EvServerDisconnected &&
+                       ev.Get<TEvTabletPipe::TEvServerDisconnected>()
+                               ->ServerId == pipeServerId;
+            });
         env.GetRuntime().DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -198,6 +226,27 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             nextTabletActorId,
             env.Registry->FindTablet(nextPipeServerId));
+    }
+
+    Y_UNIT_TEST(ShouldNotifyForwarderWhenTabletDies)
+    {
+        using TEvTabletGone = TEvRdmaTabletPrivate::TEvTabletGone;
+
+        TTabletEnv env;
+        auto& runtime = env.GetRuntime();
+        const auto forwarderId = runtime.AllocateEdgeActor(env.NodeIdx);
+        env.Registry->AttachForwarder(forwarderId);
+
+        TIndexTabletClient tablet(runtime, env.NodeIdx, env.TabletId);
+        const auto tabletActorId = env.GetPipeServer().second;
+
+        tablet.RebootTablet();
+
+        auto gone = runtime.GrabEdgeEvent<TEvTabletGone>(
+            forwarderId,
+            TDuration::Seconds(10));
+        UNIT_ASSERT(gone);
+        UNIT_ASSERT_VALUES_EQUAL(tabletActorId, gone->Get()->TabletActorId);
     }
 }
 
