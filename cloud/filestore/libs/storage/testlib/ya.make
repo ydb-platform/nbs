@@ -24,6 +24,7 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet_proxy
+    cloud/filestore/libs/storage/tablet_rdma
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

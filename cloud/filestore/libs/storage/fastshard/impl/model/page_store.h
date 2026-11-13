@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/buffer.h>
 
@@ -23,16 +24,18 @@ public:
     // Exchanges w last successful write lsn
     virtual ui64 LinkRecord(ui64 lsn) = 0;
 
-    virtual ui64 GetPageSize() const = 0;
-    virtual void CommitPages(const TVector<ui64>& pages) = 0;
-    virtual void RollbackPages(const TVector<ui64>& pages) = 0;
+    [[nodiscard]] virtual ui64 GetPageSize() const = 0;
+    virtual void CommitPages(ui64 lsn, const TVector<ui64>& pages) = 0;
+    virtual void RollbackPages(ui64 lsn, const TVector<ui64>& pages) = 0;
     [[nodiscard]] virtual NProto::TError WritePage(
         ui64 lsn,
         ui64 pageNo,
         TBuffer page,
         TVector<TPageGroup>& logRecord) = 0;
     [[nodiscard]] virtual NProto::TError
-    ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
+    ReadPageForLookup(ui64 pageNo, TBuffer* page) const = 0;
+    [[nodiscard]] virtual NProto::TError
+    ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
 
     /**
      * Drops all cached pages. Only committed pages may be cached at the
@@ -52,6 +55,7 @@ struct TWriteContext
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
     bool PagesCollected = false;
+    bool RolledBack = false;
 
     TLsnLink GetLink() const
     {
@@ -90,12 +94,7 @@ public:
 
     ~TWriteContextGuard()
     {
-        if (!Context.PagesCollected) {
-            auto pages = CollectPages(Context);
-            Store.RollbackPages(pages);
-        }
-
-        // TODO(#5895) - notify storage that this Lsn was skipped
+        Rollback();
     }
 
     // Must be called after shard mutex is taken. Otherwise concurrent shard ops
@@ -105,11 +104,24 @@ public:
         Context.Lsn = Store.AllocateLsn();
     }
 
-    // Must be called before releasing Init mutex in case of successful operation
-    // to chains it for write
+    // Must be called before releasing Init mutex in case of successful
+    // operation to chains it for write
     void Link()
     {
         Context.PrevLsn = Store.LinkRecord(Context.Lsn);
+    }
+
+    // Should be called explicitly for any pre-commit rollback. This should be
+    // done while still holding all the required locks because otherwise a
+    // concurrently running operation may read the pages that are never going
+    // to be committed.
+    void Rollback()
+    {
+        if (!Context.PagesCollected && !Context.RolledBack) {
+            auto pages = CollectPages(Context);
+            Store.RollbackPages(Context.Lsn, pages);
+            Context.RolledBack = true;
+        }
     }
 };
 
