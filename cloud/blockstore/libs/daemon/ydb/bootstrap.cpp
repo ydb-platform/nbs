@@ -598,9 +598,11 @@ void TBootstrapYdb::InitKikimrService()
     registerOpts.UseYamlConfig =
         ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled();
 
-    if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
-        !ConfigInitializer->Options->TemporaryServer)
-    {
+    const bool privateDatabaseConfigEnabled =
+        IsPrivateDatabaseConfigEnabled(
+            ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled(),
+            ConfigInitializer->Options->TemporaryServer);
+    if (privateDatabaseConfigEnabled) {
         registerOpts.PrivateDatabaseConfigParser =
             CreateBlockstoreOpaqueConfigParser();
     }
@@ -626,10 +628,7 @@ void TBootstrapYdb::InitKikimrService()
                 << (cmsConfig->PrivateDatabaseConfig ? "yes" : "no"));
         }
 
-        if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
-            !ConfigInitializer->Options->TemporaryServer &&
-            cmsConfig->PrivateDatabaseConfig)
-        {
+        if (privateDatabaseConfigEnabled && cmsConfig->PrivateDatabaseConfig) {
             auto [config, error] =
                 ExtractBlockstoreConfig(*cmsConfig->PrivateDatabaseConfig);
             if (HasError(error)) {

@@ -26,6 +26,12 @@ void NormalizeDynamicBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     NProto::TBlockstoreConfig& dynamicConfig);
 
+// Check whether the static YAML flag enables PrivateDatabaseConfig processing
+// for a non-temporary server.
+bool IsPrivateDatabaseConfigEnabled(
+    bool dynamicYamlConfigurationEnabled,
+    bool temporaryServer);
+
 // Extract an unmodified config; return E_ARGUMENT with parser diagnostics for
 // TError or E_INVALID_STATE for an unexpected type, without logging, so callers
 // can choose how to report and handle each error.

@@ -1,6 +1,7 @@
 #include "actorsystem.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
+#include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -150,8 +151,9 @@ public:
 
         const NServer::TServerAppConfig staticServerConfig(
             Args.StaticBlockstoreConfigProto.GetServer());
-        if (staticServerConfig.GetDynamicYamlConfigurationEnabled() &&
-            !Args.TemporaryServer)
+        if (IsPrivateDatabaseConfigEnabled(
+                staticServerConfig.GetDynamicYamlConfigurationEnabled(),
+                Args.TemporaryServer))
         {
             setup->LocalServices.emplace_back(
                 MakeConfigsManagerServiceId(),
@@ -639,8 +641,9 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
                 staticStorageConfig.GetSchemeShardDir(),
                 staticStorageConfig.GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
-            if (staticServerConfig.GetDynamicYamlConfigurationEnabled() &&
-                !sArgs.TemporaryServer)
+            if (IsPrivateDatabaseConfigEnabled(
+                    staticServerConfig.GetDynamicYamlConfigurationEnabled(),
+                    sArgs.TemporaryServer))
             {
                 constexpr ui32 kind =
                     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
