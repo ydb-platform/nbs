@@ -673,7 +673,7 @@ void TBootstrapYdb::InitKikimrService()
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
         StartupBlockstoreConfig = MakeBlockstoreConfig(
-            startupBlockstoreConfigProto,
+            staticBlockstoreConfig,
             cmsBlockstoreConfig,
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
