@@ -1,10 +1,20 @@
 #include "rdma_tablet_registry.h"
 
+#include "rdma_private.h"
+
+#include <contrib/ydb/library/actors/core/actor.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void TRdmaTabletRegistry::AttachForwarder(const TActorId& forwarderId)
+{
+    auto guard = Guard(Lock);
+    ForwarderId = forwarderId;
+}
 
 // TODO after #7890 we don't need find for every request, but it shouldn't be a
 // big problem anyway
@@ -45,16 +55,25 @@ void TRdmaTabletRegistry::UnregisterPipe(const TActorId& pipeServerId) noexcept
 void TRdmaTabletRegistry::UnregisterTablet(
     const TActorId& tabletActorId) noexcept
 {
-    auto guard = Guard(Lock);
-    auto tablet = TabletPipes.find(tabletActorId);
-    if (tablet == TabletPipes.end()) {
-        return;
+    TActorId forwarderId;
+    {
+        auto guard = Guard(Lock);
+        auto tablet = TabletPipes.find(tabletActorId);
+        if (tablet != TabletPipes.end()) {
+            for (const auto& pipeServerId: tablet->second) {
+                Pipes.erase(pipeServerId);
+            }
+            TabletPipes.erase(tablet);
+        }
+        forwarderId = ForwarderId;
     }
 
-    for (const auto& pipeServerId: tablet->second) {
-        Pipes.erase(pipeServerId);
+    if (forwarderId) {
+        TActivationContext::Send(
+            forwarderId,
+            std::make_unique<TEvRdmaTabletPrivate::TEvTabletGone>(
+                tabletActorId));
     }
-    TabletPipes.erase(tablet);
 }
 
 void TRdmaTabletRegistry::EraseTabletPipe(

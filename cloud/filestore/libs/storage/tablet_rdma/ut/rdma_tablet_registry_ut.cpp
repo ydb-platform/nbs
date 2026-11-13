@@ -1,3 +1,4 @@
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_private.h>
 #include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -225,6 +226,27 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(
             nextTabletActorId,
             env.Registry->FindTablet(nextPipeServerId));
+    }
+
+    Y_UNIT_TEST(ShouldNotifyForwarderWhenTabletDies)
+    {
+        using TEvTabletGone = TEvRdmaTabletPrivate::TEvTabletGone;
+
+        TTabletEnv env;
+        auto& runtime = env.GetRuntime();
+        const auto forwarderId = runtime.AllocateEdgeActor(env.NodeIdx);
+        env.Registry->AttachForwarder(forwarderId);
+
+        TIndexTabletClient tablet(runtime, env.NodeIdx, env.TabletId);
+        const auto tabletActorId = env.GetPipeServer().second;
+
+        tablet.RebootTablet();
+
+        auto gone = runtime.GrabEdgeEvent<TEvTabletGone>(
+            forwarderId,
+            TDuration::Seconds(10));
+        UNIT_ASSERT(gone);
+        UNIT_ASSERT_VALUES_EQUAL(tabletActorId, gone->Get()->TabletActorId);
     }
 }
 
