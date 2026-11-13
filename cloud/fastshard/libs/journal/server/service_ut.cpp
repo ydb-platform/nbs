@@ -293,6 +293,12 @@ public:
         return MakeResponse<NProto::TAdvanceLsnLowWatermarkResponse>();
     }
 
+    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest /*request*/)
+        -> TFuture<NProto::TWritePagesResponse> final
+    {
+        return MakeResponse<NProto::TWritePagesResponse>();
+    }
+
 private:
     template <typename TResponse>
     TFuture<TResponse> MakeResponse()
@@ -611,6 +617,13 @@ struct TFixture: public NUnitTest::TBaseFixture
                      MakeRequest<NProto::TAdvanceLsnLowWatermarkRequest>(
                          deviceUUID,
                          clientId))
+                 .GetValueSync()
+                 .GetError(),
+             NProto::ACCESS_READ_WRITE},
+            {Service
+                 ->WritePages(MakeRequest<NProto::TWritePagesRequest>(
+                     deviceUUID,
+                     clientId))
                  .GetValueSync()
                  .GetError(),
              NProto::ACCESS_READ_WRITE},

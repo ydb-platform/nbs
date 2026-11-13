@@ -137,6 +137,15 @@ public:
         NProto::TAdvanceLsnLowWatermarkResponse response;
         return MakeFuture(response);
     }
+
+    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
+        -> TFuture<NProto::TWritePagesResponse> final
+    {
+        return DataStore->WritePages(MakePageRanges(request))
+            .Apply(
+                [](const auto& future) -> NProto::TWritePagesResponse
+                { return TErrorResponse(ExtractResponse(future)); });
+    }
 };
 
 }   // namespace
