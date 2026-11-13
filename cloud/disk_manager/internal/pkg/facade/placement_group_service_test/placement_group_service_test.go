@@ -46,6 +46,7 @@ func TestDiskServiceCreateDeletePlacementGroup(t *testing.T) {
 		ydbClient,
 		endedMigrationExpirationTimeout,
 		false, // backupEnabled
+		nil,   // backupFolderIDs
 	)
 	require.NoError(t, err)
 

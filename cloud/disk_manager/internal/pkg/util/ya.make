@@ -7,7 +7,10 @@ SRCS(
     proto.go
 )
 
-GO_TEST_SRCS(mlock_test.go)
+GO_TEST_SRCS(
+    json_test.go
+    mlock_test.go
+)
 
 END()
 

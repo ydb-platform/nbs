@@ -17,3 +17,10 @@ echo Remove passphrase from server key:
 openssl rsa -passin pass:$mypass -in server.key -out server.key
 
 rm server1.csr server2.csr
+
+echo Generate the key and the certificate that replace the server ones in certificate update tests:
+openssl genrsa -traditional -out server_new.key 4096
+openssl req -new -key server_new.key -out server_new.csr -subj "/C=RU/L=MyCloud/O=MyCloud/OU=Infrastructure/CN=localhost"
+openssl x509 -req -days 36500 -in server_new.csr -signkey server_new.key -set_serial 02 -out server_new.crt -extfile <(printf "subjectAltName=DNS:localhost")
+
+rm server_new.csr

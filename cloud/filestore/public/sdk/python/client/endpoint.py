@@ -225,6 +225,48 @@ class EndpointClient(object):
             trace_id,
             request_timeout)
 
+    @_handle_errors
+    def execute_action_async(
+            self,
+            action,
+            input,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+        request = protos.TExecuteActionRequest(
+            Action=action,
+            Input=input
+        )
+
+        return self.__impl.execute_action_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def execute_action(
+            self,
+            action,
+            input,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+        request = protos.TExecuteActionRequest(
+            Action=action,
+            Input=input
+        )
+
+        return self.__impl.execute_action(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
 
 def CreateEndpointClient(
         endpoint,

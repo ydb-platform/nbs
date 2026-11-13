@@ -142,7 +142,7 @@ public:
     {
         Y_DEBUG_ABORT_UNLESS(!Thread.joinable());
 
-        Log = Logging->CreateLog("BLOCKSTORE_NVME");
+        Log = Logging->CreateLog("BLOCKSTORE_LOCAL_NVME");
 
         STORAGE_INFO("Connecting to " << SocketPath << " socket");
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
 	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -23,6 +24,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
@@ -258,12 +260,23 @@ func run(
 	var s3Bucket string
 
 	var backupS3 *backup.S3
+	exportRegistry := newSnapshotExportRegistry(config, mon)
 	backupConfig := config.GetSnapshotStorageBackupConfig()
 	if backupConfig != nil {
+		var s3Registry, backupRegistry metrics.Registry
+		if exportRegistry != nil {
+			s3Registry = exportRegistry.WithPrefix("s3").WithTags(map[string]string{
+				"s3_role": "source", "resource_kind": "all",
+			})
+			backupRegistry = exportRegistry
+		} else {
+			s3Registry = mon.NewRegistry("backup_s3_client")
+			backupRegistry = mon.NewRegistry("backup")
+		}
 		var s3Client *persistence.S3Client
 		s3Client, err = persistence.NewS3ClientFromConfig(
 			backupConfig.GetS3Config(),
-			mon.NewRegistry("backup_s3_client"),
+			s3Registry,
 			nil, // availabilityMonitoring
 			creds,
 		)
@@ -293,6 +306,10 @@ func run(
 			backupConfig.GetS3KeyPrefix(),
 			kekID,
 			kek,
+			performance.ConvertMiBsToBytes(
+				backupConfig.GetUploadBandwidthMiBsPerHost(),
+			),
+			backupRegistry,
 		)
 		if err != nil {
 			return err
@@ -471,6 +488,14 @@ func run(
 			}
 		}
 	}
+
+	closeExport, err := initSnapshotExport(
+		ctx, config, exportRegistry, creds, taskRegistry, backupS3, db,
+	)
+	if err != nil {
+		return err
+	}
+	defer closeExport()
 
 	var serve func() error
 

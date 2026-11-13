@@ -3,6 +3,7 @@ PROTO_LIBRARY()
 ONLY_TAGS(GO_PROTO)
 
 SRCS(
+    export_snapshot_task.proto
     backup_chunk_map.proto
     backup_chunks_task.proto
     backup_snapshot_data_task.proto
@@ -11,17 +12,21 @@ SRCS(
     create_snapshot_from_disk_task.proto
     create_snapshot_from_snapshot_task.proto
     create_snapshot_from_url_task.proto
+    delete_backup_snapshot_data_task.proto
     delete_disk_from_incremental.proto
     delete_snapshot_data_task.proto
     delete_snapshot_task.proto
     migrate_snapshot_task.proto
     migrate_snapshot_database_task.proto
     replicate_disk_task.proto
+    schedule_backup_chunks_tasks.proto
+    transfer_from_backup_to_disk_task.proto
     transfer_from_disk_to_disk_task.proto
     transfer_from_snapshot_to_disk_task.proto
 )
 
 PEERDIR(
+    cloud/disk_manager/api
     cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos
     cloud/disk_manager/internal/pkg/types
 )

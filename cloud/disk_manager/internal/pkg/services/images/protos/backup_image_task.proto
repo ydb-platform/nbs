@@ -8,6 +8,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message BackupImageRequest {
     string ImageId = 1;
+    // The attempt in images/backup_queue.
+    string BackupId = 2;
 }
 
 message BackupImageTaskState {

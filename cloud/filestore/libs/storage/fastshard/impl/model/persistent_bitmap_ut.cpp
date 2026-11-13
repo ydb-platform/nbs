@@ -33,16 +33,18 @@ TVector<ui64> CollectPages(const TVector<TPageGroup>& groups)
     return res;
 }
 
-void Flush(TVector<TPageGroup>& groups, IPageStore& pageStore)
+void Flush(TWriteContext& writeContext, IPageStore& pageStore)
 {
-    pageStore.CommitPages(CollectPages(groups));
-    groups.clear();
+    pageStore.CommitPages(
+        writeContext.Lsn,
+        CollectPages(writeContext.PageGroups));
 }
 
-void Rollback(TVector<TPageGroup>& groups, IPageStore& pageStore)
+void Rollback(TWriteContext& writeContext, IPageStore& pageStore)
 {
-    pageStore.RollbackPages(CollectPages(groups));
-    groups.clear();
+    pageStore.RollbackPages(
+        writeContext.Lsn,
+        CollectPages(writeContext.PageGroups));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,74 +81,106 @@ TEST(PersistentBitmapTest, SetResetAllocate)
 {
     TFixture fx;
 
-    TVector<TPageGroup> pageGroups;
-
     bool result = false;
-    auto error = fx.Bitmap->Get(1000, &result);
+    auto error = fx.Bitmap->GetForLookup(1000, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_FALSE(result);
 
-    error = fx.Bitmap->Set(fx.PageStore->AllocateLsn(), 1000, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Set(writeContext.Lsn, 1000, writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
 
     result = false;
-    error = fx.Bitmap->Get(1000, &result);
+    error = fx.Bitmap->GetForLookup(1000, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_TRUE(result);
 
     ui64 bit = 0;
-    error = fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
 
     result = false;
-    error = fx.Bitmap->Get(bit, &result);
+    error = fx.Bitmap->GetForLookup(bit, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_TRUE(result);
 
     ui64 bit2 = 0;
-    error = fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit2, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
-    ASSERT_TRUE(bit != bit2) << bit;
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit2,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+        ASSERT_TRUE(bit != bit2) << bit;
+    }
 
     result = false;
-    error = fx.Bitmap->Get(bit2, &result);
+    error = fx.Bitmap->GetForLookup(bit2, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_TRUE(result);
 
-    error = fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), bit2, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Reset(
+            writeContext.Lsn,
+            bit2,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
 
     result = false;
-    error = fx.Bitmap->Get(bit2, &result);
+    error = fx.Bitmap->GetForLookup(bit2, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_FALSE(result);
 
-    error = fx.Bitmap->Set(fx.PageStore->AllocateLsn(), bit2, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Set(writeContext.Lsn, bit2, writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
 
     result = false;
-    error = fx.Bitmap->Get(bit2, &result);
+    error = fx.Bitmap->GetForLookup(bit2, &result);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_TRUE(result);
 
     ui64 bit3 = 0;
-    error = fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit3, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
-    ASSERT_TRUE(bit != bit3) << bit;
-    ASSERT_TRUE(bit2 != bit3) << bit;
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit3,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+        ASSERT_TRUE(bit != bit3) << bit;
+        ASSERT_TRUE(bit2 != bit3) << bit;
+    }
 }
 
 void DoTestOutOfSpace(ui64 maxBits)
 {
     TFixture fx(maxBits);
-
-    TVector<TPageGroup> pageGroups;
 
     const ui64 cap = fx.MaxBits;
 
@@ -154,30 +188,54 @@ void DoTestOutOfSpace(ui64 maxBits)
 
     for (ui64 i = 0; i < cap; ++i) {
         ui64 bit = 0;
-        auto error =
-            fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit,
+            writeContext.PageGroups);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-        Flush(pageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
 
         ASSERT_TRUE(bitSet.insert(bit).second);
         ASSERT_LT(bit, cap);
     }
 
     ui64 bit = 0;
-    auto error =
-        fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
-    ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
-    Rollback(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit,
+            writeContext.PageGroups);
+        ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
+        Rollback(writeContext, *fx.PageStore);
+    }
 
-    error = fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), 1000, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Reset(
+            writeContext.Lsn,
+            1000,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
 
     bit = 0;
-    error = fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
-    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-    Flush(pageGroups, *fx.PageStore);
-    ASSERT_EQ(1000ULL, bit);
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+        ASSERT_EQ(1000ULL, bit);
+    }
 }
 
 // The page size need not be a power of two: 12K pages hold 98304 bits each.
@@ -212,8 +270,6 @@ void DoTestOutOfSpaceDuringMultiAllocationTransaction(ui64 maxBits)
 {
     TFixture fx(maxBits);
 
-    TVector<TPageGroup> pageGroups;
-
     const ui64 cap = fx.MaxBits;
 
     //
@@ -222,10 +278,14 @@ void DoTestOutOfSpaceDuringMultiAllocationTransaction(ui64 maxBits)
 
     for (ui64 i = 0; i < cap; ++i) {
         ui64 bit = 0;
-        auto error =
-            fx.Bitmap->Allocate(fx.PageStore->AllocateLsn(), &bit, pageGroups);
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Allocate(
+            writeContext.Lsn,
+            &bit,
+            writeContext.PageGroups);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-        Flush(pageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     //
@@ -233,10 +293,14 @@ void DoTestOutOfSpaceDuringMultiAllocationTransaction(ui64 maxBits)
     //
 
     for (const ui64 freedBit: {ui64(1000), ui64(1001)}) {
-        auto error =
-            fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), freedBit, pageGroups);
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        auto error = fx.Bitmap->Reset(
+            writeContext.Lsn,
+            freedBit,
+            writeContext.PageGroups);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-        Flush(pageGroups, *fx.PageStore);
+        Flush(writeContext, *fx.PageStore);
     }
 
     //
@@ -244,21 +308,30 @@ void DoTestOutOfSpaceDuringMultiAllocationTransaction(ui64 maxBits)
     // one must fail with E_FS_OUT_OF_SPACE.
     //
 
-    const ui64 lsn = fx.PageStore->AllocateLsn();
-
     ui64 bit = 0;
-    auto error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    TWriteContext writeContext;
+    writeContext.Lsn = fx.PageStore->AllocateLsn();
+    auto error = fx.Bitmap->Allocate(
+        writeContext.Lsn,
+        &bit,
+        writeContext.PageGroups);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_EQ(1000ULL, bit);
 
-    error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    error = fx.Bitmap->Allocate(
+        writeContext.Lsn,
+        &bit,
+        writeContext.PageGroups);
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     ASSERT_EQ(1001ULL, bit);
 
-    error = fx.Bitmap->Allocate(lsn, &bit, pageGroups);
+    error = fx.Bitmap->Allocate(
+        writeContext.Lsn,
+        &bit,
+        writeContext.PageGroups);
     ASSERT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
 
-    Rollback(pageGroups, *fx.PageStore);
+    Rollback(writeContext, *fx.PageStore);
 }
 
 TEST(PersistentBitmapTest, OutOfSpaceDuringMultiAllocationTransaction1Page)
@@ -274,8 +347,6 @@ TEST(PersistentBitmapTest, OutOfSpaceDuringMultiAllocationTransaction2Pages)
 TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 {
     TFixture fx;
-
-    TVector<TPageGroup> pageGroups;
 
     const double setProb = 0.01;
     const double resetProb = 0.5;
@@ -297,10 +368,14 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
         if (rng.GenRandReal2() < setProb) {
             ui64 bit = rng.Uniform(cap);
             refImpl.Set(bit);
-            auto error =
-                fx.Bitmap->Set(fx.PageStore->AllocateLsn(), bit, pageGroups);
+            TWriteContext writeContext;
+            writeContext.Lsn = fx.PageStore->AllocateLsn();
+            auto error = fx.Bitmap->Set(
+                writeContext.Lsn,
+                bit,
+                writeContext.PageGroups);
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-            Flush(pageGroups, *fx.PageStore);
+            Flush(writeContext, *fx.PageStore);
         }
 
         //
@@ -310,10 +385,14 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
         if (rng.GenRandReal2() < resetProb) {
             ui64 bit = rng.Uniform(cap);
             refImpl.Reset(bit);
-            auto error =
-                fx.Bitmap->Reset(fx.PageStore->AllocateLsn(), bit, pageGroups);
+            TWriteContext writeContext;
+            writeContext.Lsn = fx.PageStore->AllocateLsn();
+            auto error = fx.Bitmap->Reset(
+                writeContext.Lsn,
+                bit,
+                writeContext.PageGroups);
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-            Flush(pageGroups, *fx.PageStore);
+            Flush(writeContext, *fx.PageStore);
         }
 
         //
@@ -322,12 +401,14 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 
         if (rng.GenRandReal2() < allocateProb) {
             ui64 bit = 0;
+            TWriteContext writeContext;
+            writeContext.Lsn = fx.PageStore->AllocateLsn();
             auto error = fx.Bitmap->Allocate(
-                fx.PageStore->AllocateLsn(),
+                writeContext.Lsn,
                 &bit,
-                pageGroups);
+                writeContext.PageGroups);
             ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
-            Flush(pageGroups, *fx.PageStore);
+            Flush(writeContext, *fx.PageStore);
             ASSERT_FALSE(refImpl.Get(bit))
                 << "i=" << i << ", bit=" << bit << ", bits=" << refImpl.Count();
             refImpl.Set(bit);
@@ -339,7 +420,7 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 
         ui64 bit = rng.Uniform(cap);
         bool result = false;
-        auto error = fx.Bitmap->Get(bit, &result);
+        auto error = fx.Bitmap->GetForLookup(bit, &result);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(result, refImpl.Get(bit))
             << "i=" << i << ", bit=" << bit << ", result=" << result
@@ -358,7 +439,7 @@ TEST(PersistentBitmapTest, SetResetAllocateRandomized)
 
     for (ui64 bit = 0; bit < cap; ++bit) {
         bool result = false;
-        auto error = fx.Bitmap->Get(bit, &result);
+        auto error = fx.Bitmap->GetForLookup(bit, &result);
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
         ASSERT_EQ(refImpl.Get(bit), result);
     }

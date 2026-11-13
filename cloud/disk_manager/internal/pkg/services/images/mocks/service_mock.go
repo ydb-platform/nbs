@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 )
@@ -26,6 +27,15 @@ func (s *ServiceMock) CreateImage(
 func (s *ServiceMock) DeleteImage(
 	ctx context.Context,
 	req *disk_manager.DeleteImageRequest,
+) (string, error) {
+
+	args := s.Called(ctx, req)
+	return args.String(0), args.Error(1)
+}
+
+func (s *ServiceMock) ExportImage(
+	ctx context.Context,
+	req *disk_manager.ExportImageRequest,
 ) (string, error) {
 
 	args := s.Called(ctx, req)

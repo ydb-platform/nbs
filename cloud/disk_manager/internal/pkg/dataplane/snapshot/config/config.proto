@@ -33,4 +33,9 @@ message SnapshotConfig {
     optional string ChunkBlobsShadowTableName = 15;
     optional bool ChunkBlobsStoreExternalBlobs = 16 [default = true];
     optional bool ChunkBlobsShadowStoreExternalBlobs = 17 [default = false];
+
+    // Table of the chunks copied to the follower bucket or queued for it. A new
+    // follower bucket gets a new, empty table, so that its backups copy every
+    // chunk they need into it instead of skipping the chunks of the old bucket.
+    optional string FollowerChunksTableName = 18 [default = "follower_chunks"];
 }
